@@ -65,16 +65,49 @@ export async function logDecisionTurn(turn: DecisionLogTurn): Promise<void> {
   }
 
   try {
+    // P0 FIX (2026-06-23): NOT-NULL safety. `ai_decision_log` enforces
+    // NOT NULL on decision_type / input_data / output_data, and the
+    // forensic audit requires reasoning to always be present. Coerce any
+    // missing field to a safe, non-empty value so a logging failure can
+    // never break the farmer response path.
+    const safeDecisionType =
+      (typeof turn.decision_type === 'string' && turn.decision_type.trim()) || 'UNKNOWN';
+    const safeInputData =
+      turn.input_data && typeof turn.input_data === 'object' ? turn.input_data : {};
+    const safeOutputData =
+      turn.output_data && typeof turn.output_data === 'object' ? turn.output_data : {};
+
+    let safeReasoning: string;
+    if (typeof turn.reasoning === 'string' && turn.reasoning.trim().length > 0) {
+      safeReasoning = turn.reasoning;
+    } else {
+      // Fall back to a generated trace summary, then rule_id, then sentinel.
+      const ruleId =
+        (safeOutputData as any)?.primary_decision?.rule_id ||
+        (safeOutputData as any)?.rule_id ||
+        null;
+      const summaryParts: string[] = [];
+      if (turn.trace_id) summaryParts.push(`trace=${turn.trace_id}`);
+      summaryParts.push(`decision_type=${safeDecisionType}`);
+      if (ruleId) summaryParts.push(`rule=${ruleId}`);
+      if (typeof turn.confidence_score === 'number') {
+        summaryParts.push(`confidence=${turn.confidence_score.toFixed(2)}`);
+      }
+      safeReasoning = summaryParts.length > 0
+        ? summaryParts.join(' | ')
+        : 'no_reasoning_captured';
+    }
+
     const row = {
       tenant_id: turn.tenant_id ?? null,
       farmer_id: turn.farmer_id ?? null,
       land_id: turn.land_id ?? null,
-      decision_type: turn.decision_type ?? 'UNKNOWN',
+      decision_type: safeDecisionType,
       model_version: turn.model_version ?? 'orchestrator-v1',
       prompt_version: turn.prompt_version ?? null,
-      input_data: turn.input_data ?? {},
-      output_data: turn.output_data ?? {},
-      reasoning: turn.reasoning ?? null,
+      input_data: safeInputData,
+      output_data: safeOutputData,
+      reasoning: safeReasoning,
       confidence_score: turn.confidence_score ?? null,
       execution_time_ms: turn.execution_time_ms ?? null,
       weather_data: turn.weather_data ?? null,
@@ -91,12 +124,19 @@ export async function logDecisionTurn(turn: DecisionLogTurn): Promise<void> {
       variety_resistance_applied: turn.variety_resistance_applied ?? null,
     };
 
+    // tenant_id is NOT NULL in ai_decision_log — skip the insert (don't crash)
+    // when no tenant context is available so logging never breaks responses.
+    if (!row.tenant_id) {
+      console.warn('[DecisionLogger] Skipping insert — no tenant_id available');
+      return;
+    }
+
     const { error } = await (client.from('ai_decision_log') as any).insert(row);
     if (error) {
-      console.warn(`[DecisionLogger] Insert failed: ${error.message}`);
+      console.warn(`[DecisionLogger] Insert failed (non-fatal): ${error.message}`);
     }
   } catch (e) {
-    console.warn(`[DecisionLogger] Exception: ${(e as Error).message}`);
+    console.warn(`[DecisionLogger] Exception (non-fatal): ${(e as Error).message}`);
   }
 }
 

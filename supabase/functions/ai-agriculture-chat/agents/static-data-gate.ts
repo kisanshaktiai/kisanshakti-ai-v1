@@ -239,6 +239,28 @@ const STATIC_QUERY_PATTERNS = {
  * 
  * CRITICAL: This MUST be called BEFORE NLU Agent
  */
+/**
+ * P0 GUARD (2026-06-23): Detect negation / damage / emergence-failure
+ * predicates in a farmer message so the StaticGate refuses to answer them
+ * as bare lookups (e.g. CROP_NAME → "this field has rice"). When this
+ * returns true the gate MUST pass the query to the AI / symbolic pipeline.
+ *
+ * Exported for unit testing.
+ */
+export function hasProblemOrEmergenceSignal(message: string): boolean {
+  if (!message || typeof message !== 'string') return false;
+
+  // English problem / negation / damage predicates
+  const en = /\b(not|no|never|n't|fail|failed|failing|dying|dead|damage|damaged|poor|wilt|wilting|yellow|stunt|stunted|rot|rotting|disease|pest|attack|burn|burnt|missing|empty|gap|sparse|patchy|emerge|emergence|germinat|sprout|sprouted|did\s*not|hasn't|hasnt|haven't|havent)\b/i;
+  if (en.test(message)) return true;
+
+  // Marathi / Hindi (Devanagari) — negation, damage, emergence/germination
+  const dev = /(नाही|नही|नहीं|उगवले|उगवल|उगवली|उगवलं|उगाव|अंकुर|अंकुरण|उगणे|उगत|पेरणी|पेरले|सुकल|सुकली|सुकत|सुकले|मेली|मेले|मरत|मरण|खराब|कमी|पिवळ|पीला|पीली|जळ|जळल|जळली|जळले|करपल|करपली|करपले|कुजल|कुजली|कुजले|नष्ट|नुकसान|रोग|कीड|कीडे|डाग|वाळ|वाळल|वाळली|गायब)/i;
+  if (dev.test(message)) return true;
+
+  return false;
+}
+
 export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateOutput {
   const startTime = performance.now();
   
@@ -252,14 +274,25 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
   
   const message = input.farmer_message.trim();
   const lang = input.language;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P0 PROBLEM/NEGATION/EMERGENCE GUARD (2026-06-23):
+  // If the message contains any negation, damage/symptom predicate, or an
+  // emergence/germination signal, the static gate MUST bypass ALL branches
+  // — these are diagnostic queries (e.g. "या शेतातील पिक अजून उगवले नाही")
+  // that the CROP_NAME regex (/या\s*शेतात.*पिक/i) would otherwise hijack
+  // and answer as a generic "what crop is in this field" lookup. Pass to
+  // the symbolic brain so EMERGENCE_FAILURE / diagnosis rules can fire.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (hasProblemOrEmergenceSignal(message)) {
+    console.log('🚫 [StaticGate] Problem/negation/emergence predicate detected — bypassing static branches (→ AI pipeline)');
+    return { handled: false, processing_time_ms: performance.now() - startTime, confidence: 0 };
+  }
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: CROP NAME QUERY
-  // Phase 2 (P0): skip the CROP_NAME branch entirely when the orchestrator
-  // has pre-classified this message as a next-crop recommendation request.
-  // Without this guard, patterns like /या\s*शेतात.*पीक/i match advisory
-  // queries ("which new crop should I grow in this field?") and the gate
-  // returns last-harvest info instead of routing to the symbolic brain.
+  // Phase 2 (P0): skip CROP_NAME when message is pre-classified as a
+  // next-crop recommendation request.
   // ═══════════════════════════════════════════════════════════════════════════
   if (input.is_recommendation_query) {
     console.log('⏭️ [StaticGate] CROP_NAME branch SKIPPED — message classified as NEXT_CROP_RECOMMENDATION; routing to symbolic brain');

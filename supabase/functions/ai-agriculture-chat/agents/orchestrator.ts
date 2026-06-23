@@ -2050,10 +2050,19 @@ export class AIAgentOrchestrator {
         //   - does NOT match any option (via improved matcher)
         // Then: CLEAR stale clarification and proceed to NLU pipeline
         // ========================================
-        const isLikelyNewQuery = !isNumericOnly && 
-                                  !hasEmbeddedObsKeys && 
-                                  !matchResult.matched && 
-                                  safeFarmerMessage.length > 10; // Minimum length for a real question
+        // P0 FIX (2026-06-23): Treat the farmer's text as a NEW query only when
+        // it carries a clear problem / negation / damage / emergence predicate.
+        // Plain selection labels like "पाणी कमी आहे" or short echoes of an
+        // option must NOT re-enter NLU (which mis-routes "पाणी"/"water" tokens
+        // to IRRIGATION instead of resolving the open diagnosis). Keep the
+        // existing structural checks (numeric / obs_keys / matcher), but also
+        // require a problem predicate AND a longer free-text length.
+        const NEW_QUERY_PROBLEM_RE = /(नाही|नही|नहीं|सुकल|सुकली|मेली|मरत|खराब|पिवळ|पीला|जळ|करपल|कुजल|रोग|कीड|डाग|नुकसान|उगवले\s*नाही|उगाव|अंकुर|\b(not|no|fail|failed|dying|damage|poor|wilt|yellow|stunt|rot|disease|pest|attack|burn|missing|empty|gap|sparse|emerge|emergence|germinat)\b)/i;
+        const isLikelyNewQuery = !isNumericOnly &&
+                                  !hasEmbeddedObsKeys &&
+                                  !matchResult.matched &&
+                                  safeFarmerMessage.length > 30 &&
+                                  NEW_QUERY_PROBLEM_RE.test(safeFarmerMessage);
         
         if (isLikelyNewQuery) {
           console.log('🆕 [NewQueryDetector v2] FREE TEXT detected - clearing stale clarification (FAIL-OPEN)');
@@ -2262,6 +2271,37 @@ export class AIAgentOrchestrator {
           if (visualSymptom && visualSymptom !== 'UNKNOWN' && visualSymptom !== mappedObservationKey) {
             allObservations.push(visualSymptom);
           }
+
+          // ─── P0 EVIDENCE MERGE (2026-06-23) ─────────────────────────────────
+          // Carry the prior turn's confirmed observations forward instead of
+          // rebuilding canonical state from only the selected option. This
+          // preserves the EMERGENCE_FAILURE diagnosis evidence the farmer
+          // already provided and prevents the "primary_decision exists but
+          // symbolic_confidence=0" invariant from tripping after an answer.
+          try {
+            const priorSymbols: any[] = Array.isArray(existingSymbols) ? existingSymbols : [];
+            const priorObsArr: any[] = Array.isArray((options.sessionState as any)?.confirmed_observations)
+              ? (options.sessionState as any).confirmed_observations
+              : Array.isArray((options.sessionState as any)?.confirmedObservations)
+                ? (options.sessionState as any).confirmedObservations
+                : [];
+            const canon = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+            const carried: string[] = [];
+            for (const sym of priorSymbols) {
+              const k = canon((sym as any)?.observation_key || (sym as any)?.id || sym);
+              if (k && !allObservations.includes(k)) { allObservations.push(k); carried.push(k); }
+            }
+            for (const o of priorObsArr) {
+              const k = canon(o);
+              if (k && !allObservations.includes(k)) { allObservations.push(k); carried.push(k); }
+            }
+            if (carried.length > 0) {
+              console.log(`   🧬 [EvidenceMerge] Carried ${carried.length} prior-turn observation(s) into selection state: [${carried.join(', ')}]`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [EvidenceMerge] failed: ${(e as Error).message}`);
+          }
+          // ────────────────────────────────────────────────────────────────────
           
           // ═══════════════════════════════════════════════════════════════════════════
           // FIX #3: OBSERVATION KEY EXPANSION - DB-DRIVEN via observation_aliases
@@ -2419,11 +2459,23 @@ export class AIAgentOrchestrator {
           });
           
           // LOGGING: Post-clarification confidence
+          // P0 FIX (2026-06-23): Carry the PRE-clarification confidence
+          // forward as the base. Answering a clarification must never lower
+          // confidence and must never reset symbolic_confidence to 0 (the
+          // "primary_decision exists but symbolic_confidence=0" invariant).
+          const confidenceBase = Math.max(
+            Number(preClarificationConfidence) || 0,
+            Number(ruleResult.confidence_in_result) || 0
+          );
           const postClarificationConfidence = calculateConfidenceWithTiming(
-            ruleResult.confidence_in_result,
+            confidenceBase,
             true, // clarification completed
             0.15  // boost from clarification
           );
+          // Mutate ruleResult.confidence_in_result so every downstream surface
+          // (UnifiedGate / response builder / decision-log) sees the carried
+          // confidence, not the raw rule-engine value.
+          (ruleResult as any).confidence_in_result = postClarificationConfidence.post_clarification_confidence;
           
           logClarificationEvent(
             traceId,
@@ -2645,7 +2697,48 @@ export class AIAgentOrchestrator {
                 return stages.some((s: string) => expected.includes(s));
               };
 
-              const eligible = safeMatchedResponses.filter(r => r && r.rule_id && r.action_type);
+              // ─── DIAGNOSIS-POOL FILTER (2026-06-23 P0) ─────────────────────────
+              // Non-diagnostic rule categories (crop_rotation, proactive advisory,
+              // post_harvest, etc.) must NEVER become the primary decision during a
+              // DIAGNOSIS / CROP_DAMAGE turn — they require an explicit rotation/
+              // recommendation intent. Also enforce the rule's crop_age_days window
+              // (or conditions_json.das_range) against the current DAS so e.g. a
+              // post-harvest rotation rule cannot fire during NURSERY emergence.
+              // ────────────────────────────────────────────────────────────────────
+              const NON_DIAGNOSTIC_CATEGORIES = new Set([
+                'crop_rotation', 'rotation', 'post_harvest', 'post-harvest',
+                'advisory', 'recommendation', 'proactive', 'marketing'
+              ]);
+              const currentDas: number | null =
+                typeof (landContextForOptionSelection as any)?.days_since_sowing === 'number'
+                  ? (landContextForOptionSelection as any).days_since_sowing
+                  : (typeof (stateWithQuery as any)?.days_since_sowing === 'number'
+                      ? (stateWithQuery as any).days_since_sowing
+                      : null);
+              const ruleCategoryOf = (r: any): string =>
+                String(r?.category || r?.rule_category || r?.conditions_json?.category || '')
+                  .toLowerCase().trim();
+              const ruleIsDiagnosticCandidate = (r: any): boolean => {
+                const cat = ruleCategoryOf(r);
+                if (cat && NON_DIAGNOSTIC_CATEGORIES.has(cat)) return false;
+                // crop_age window gate
+                if (currentDas != null) {
+                  const minA = r?.crop_age_days_min ?? r?.conditions_json?.crop_age_days_min ?? r?.conditions_json?.das_range?.min;
+                  const maxA = r?.crop_age_days_max ?? r?.conditions_json?.crop_age_days_max ?? r?.conditions_json?.das_range?.max;
+                  if (typeof minA === 'number' && currentDas < minA) return false;
+                  if (typeof maxA === 'number' && currentDas > maxA) return false;
+                }
+                return true;
+              };
+
+              const rawEligible = safeMatchedResponses.filter(r => r && r.rule_id && r.action_type);
+              const eligible = rawEligible.filter(ruleIsDiagnosticCandidate);
+              const filteredOut = rawEligible.length - eligible.length;
+              if (filteredOut > 0) {
+                console.log(`   🧹 [FallbackSelection] Filtered ${filteredOut} non-diagnostic / out-of-DAS rule(s) from candidate pool (das=${currentDas})`);
+              }
+
+              // Prefer observation-matched over stage-only (per user invariant).
               const tier1 = eligible.filter(r => ruleMatchesConfirmed(r) && ruleStageOk(r));
               const tier2 = tier1.length > 0 ? tier1 : eligible.filter(r => ruleMatchesConfirmed(r));
               const tier3 = tier2.length > 0 ? tier2 : eligible.filter(r => ruleStageOk(r));
@@ -2665,7 +2758,7 @@ export class AIAgentOrchestrator {
               if (selectionTier === 'first_match_unsafe') {
                 console.warn(`   ⚠️ [FallbackSelection] No matched_response aligns with confirmed observation OR current stage (${currentStageNorm}). Picking first match unsafely: ${firstMatch?.rule_id}. Confirmed obs: [${Array.from(confirmedSet).join(', ')}]`);
               } else {
-                console.log(`   🎯 [FallbackSelection] tier=${selectionTier} selected=${firstMatch?.rule_id} stage=${currentStageNorm} confirmed=[${Array.from(confirmedSet).join(', ')}] candidates=${eligible.length}`);
+                console.log(`   🎯 [FallbackSelection] tier=${selectionTier} selected=${firstMatch?.rule_id} stage=${currentStageNorm} das=${currentDas} confirmed=[${Array.from(confirmedSet).join(', ')}] eligible=${eligible.length}/${rawEligible.length}`);
               }
 
               if (firstMatch) {
