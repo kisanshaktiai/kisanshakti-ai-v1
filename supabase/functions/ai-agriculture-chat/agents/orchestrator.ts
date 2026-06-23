@@ -4507,13 +4507,16 @@ export class AIAgentOrchestrator {
         const injected: string[] = [];
         const blocked: string[] = [];
         crossCropSymptomsList.forEach(sym => {
-          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(sym)) {
+          // Terminal guard set is UPPER snake. Compare case-insensitively.
+          const symU = String(sym).toUpperCase().replace(/[\s-]+/g, '_');
+          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(symU)) {
             blocked.push(sym);
             console.log(`   🛡️ [TERMINAL GUARD] Blocked cross-crop terminal code: ${sym}`);
           } else {
-            allObservationsForPreAuth.add(sym);
-            authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
-            injected.push(sym);
+            const c = canonicalize(sym);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
+            injected.push(c);
           }
         });
         if (injected.length > 0) {
