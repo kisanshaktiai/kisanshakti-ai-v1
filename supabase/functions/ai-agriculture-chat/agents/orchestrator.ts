@@ -6431,16 +6431,20 @@ export class AIAgentOrchestrator {
         const queryForRuleEngine = directModeBypass 
           ? `[INTENT:${intentCode}] ${farmerMessage}` 
           : farmerMessage;
+        // WAVE-S CASING CONTRACT: ensure observations passed to the rule
+        // evaluator are lowercase canonical (defense in depth — already
+        // canonicalized at ingestion above).
+        const _lc = (xs: string[]) => xs.map(c => String(c).toLowerCase().replace(/[\s-]+/g, '_'));
         const canonicalStateWithQuery = {
           ...canonicalState,
           user_query: queryForRuleEngine,
           // BUG 5 FIX: Pass authority-separated observations for rule evaluator
-          confirmed_observations: confirmedObsCodes,
+          confirmed_observations: _lc(confirmedObsCodes),
           // CONTAMINATION FIX (2026-06-22): expose candidate lane separately so
           // hypothesis evaluator / clarification generator can read it without
           // it ever entering the confirmed/rule-firing path.
-          candidate_observations: candidateObsCodes,
-          synthetic_observations: syntheticObsCodes
+          candidate_observations: _lc(candidateObsCodes),
+          synthetic_observations: _lc(syntheticObsCodes)
         };
         
         // PRODUCTION FIX: Pass PrescriptionGate override signal to confidence gate
