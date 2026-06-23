@@ -1,115 +1,104 @@
 
-# Wave-R…V — From Rule-Retrieval Engine to Neuro-Symbolic Agricultural Diagnostician
+# Wave-S (Revised) — Canonical Vocabulary Consolidation, Not Parallelization
 
-Roadmap rewrite. Wave-R stays as the safety shield. Four new waves (S/T/U/V) convert the system from `Query → Rule → Recommendation` to `Query → Intent → Observation → Hypothesis → Evidence Gap → Clarification → Canonical State → Symbolic Evaluation → Confidence → Recommendation`, working for **any crop, any language, any stage, any farmer** with no per-crop code.
+## Why this revision
 
-## Forensic Audit Recap (what the logs prove)
+The previous Wave-S draft would have created `observation_canonical` and `observation_vocabulary_alias` as **net-new** stores, leaving the project with **5 parallel vocabulary tables** instead of consolidating the 3 it already has. A fresh forensic check of the live DB confirms the auditor's claim:
 
-For `पिक अद्याप उगवले नाही`: 201 rules evaluated, 0 matched, gate logged BLOCKED — yet farmer received `RICE_GERMINATION_RESOW_DECISION_001` (Carbendazim, Trichoderma, resow). Five leak paths confirmed in code:
+- `public.observation_master` — **2,540 rows**, already has `observation_code` (unique), `semantic_class` (10 values: disease, pest, nutrient, phenology, weed, physiology, weather_damage, management, …), `observation_category` (57 values), `description`, `is_active`, `severity_level`, `canonical_group`, `affected_plant_part`, `applicable_crop_groups`, `is_farmer_observable`.
+- `public.observation_aliases` — **2,919 rows**, code→code only (no free-text, no language, no confidence).
+- `public.observation_translations` — **5,145 rows**, code→display-text (outbound only, en/hi/mr).
 
-- `index.ts::hydrateDecisionOutputRichText` (~L3338) copies `action_text` from `primary_decision` / `matched_responses` with no rules-fired precondition.
-- `unified-decision-gate.ts` suppression guard (L184–213) uses an OR-chain counter (`rules_applied || matched_responses || candidate_rules`) so candidates inflate "fired".
-- `llm-response-formatter.ts` (L1572, L1783) reads `application_details.action_text` directly.
-- `observation-rule-lookup.ts::lookupSafeRuleForObservations` returns `{source:'rule_action_text'}` from an independent SQL lookup, bypassing the symbolic engine.
-- Vocabulary divergence: state emits `crop_not_germinated`; `decision_rules.conditions_json.observations` ships legacy `UPPER_SNAKE_CASE` enums (`GERMINATION_FAILURE`). Wave-Q substring comparator handles shape, not vocabulary.
+Net-new fields actually missing on `observation_master`: **`polarity`** and **`applies_to_stages`**. Everything else proposed is duplication.
 
-Architectural root cause: the pipeline is **rule retrieval**, not **diagnosis**. There is no hypothesis layer, no evidence-gap layer, no canonical observation registry — so the first DB hit becomes the prescription.
+The real failure mode (260 orphaned discriminators, 117 unfireable hypotheses, soft full-scope fallback leaking treatment) is a **data-integrity + wiring problem**, not a missing-schema problem.
 
-## Wave-R (v2) — Symbolic Safety Shield  (UNCHANGED, mandatory, deploy first)
+## Goal
 
-Universal invariant: **`rules_fired === 0` ⇒ no treatment text anywhere**. Plus the 4 reviewer modifications:
+End Wave-S with **one** canonical observation registry (`observation_master`), **one** alias store (extended `observation_aliases`), an **orphan gap tracker**, all 260 orphan tokens reconciled, and the hypothesis gate converted from soft fallback to hard invariant ("no diagnosis → no treatment").
 
-1. **SSOT counter** `runtime/rules-fired.ts::rulesActuallyFired()` = `rules_applied.length` only.
-2. **Symbolic Invariant Gate** `decision/symbolic-invariant-gate.ts` scrubs `response_payload` but **preserves** `matched_responses`/`candidate_rules`/`primary_decision` under `decisionOutput.internal_candidates` for forensics.
-3. **Rule Identity Verification** — `emitted_rule_id ∈ rules_applied.rule_ids` else `RULE_EMISSION_MISMATCH_HARD_GATE`. Filters `secondary_recommendations` and `matched_responses` to only rule_ids that actually fired.
-4. **Violation metrics** — DB migration `public.ai_safety_violations` (trace_id, tenant_id, farmer_id, crop_code, reason, emitted_rule_id, fired_rule_ids[], candidate_rule_ids[], intent, observations, language) + `runtime/safety-metrics.ts` emits `safety_violation_count{reason,crop,tenant}` for dashboards (violations/day, /crop, /rule, /tenant). Standard `CREATE TABLE` → GRANT (anon none, authenticated select, service_role all) → RLS ENABLE → service-role-only policy. Indexes on `(occurred_at desc)`, `(reason, occurred_at)`, `(tenant_id, occurred_at)`.
-5. Gate `hydrateDecisionOutputRichText` on rules_fired; lock suppression counter to SSOT; formatter reads `response_payload` only and asserts identity; mark `observation-rule-lookup` as `advisory` under `internal_candidates`; DB-only hypothesis fallback in `diagnosis-first-generator`; logger persists `safety_violations` and inserts rows into `ai_safety_violations`.
-6. Regression: `wave_r_no_rule_no_treatment_test.ts` (7 cases) + `wave_r_rule_emission_integrity_test.ts` (3 cases incl. `rule_emission_mismatch_blocks_narration`).
+## Scope (in order)
 
-## Wave-S — Canonical Observation & Symbol Vocabulary Registry
+### 1. Extend `observation_master` in place
+Migration adds two columns — no new table:
+- `polarity text` CHECK in (`positive`, `negative`, `neutral`), default `neutral`.
+- `applies_to_stages text[]` default `'{}'::text[]`, GIN-indexed.
 
-**Invariant:** one vocabulary across every rule, hypothesis, observation, crop. No code-level aliases.
+Backfill `polarity` deterministically from existing `semantic_class` / `observation_category` (disease/pest/weather_damage/weed → `negative`; phenology/management → `neutral`; explicit "healthy"/"vigorous" categories → `positive`). No agronomic logic in code — derivation is a single SQL UPDATE driven only by existing columns.
 
-DB:
-- New `public.observation_canonical` (canonical_key text PK, domain, polarity, severity_axis, applies_to_stages text[], description, language-neutral). Seeded from `observation_master`.
-- New `public.observation_vocabulary_alias` (alias text PK, canonical_key fk, source text — 'legacy_enum'|'vernacular'|'romanized'|'llm_extract', language text, confidence numeric). Replaces the in-code alias maps.
-- Backfill job: every distinct token in `decision_rules.conditions_json.observations`, `hypothesis_conditions.observation_code`, `observation_aliases`, `intent_observation_mapping.observation_key` → alias row (auto-canonicalized via Levenshtein + curator review queue `public.observation_alias_review`).
-- Lint cron `governance_cron_jobs`: any rule/hypothesis token absent from `observation_canonical` opens a curation ticket; rule is auto-quarantined (`is_active=false`) until resolved.
+### 2. Extend `observation_aliases` in place (do not create a parallel table)
+Migration adds:
+- `alias_text text` (nullable; lets us store free-text/vernacular phrases alongside the existing code-pair rows).
+- `alias_normalized text GENERATED ALWAYS AS (lower(btrim(coalesce(alias_text, alias_code)))) STORED`.
+- `language text NOT NULL DEFAULT 'und'`.
+- `source text NOT NULL DEFAULT 'legacy'` CHECK in (`legacy`, `rule_token`, `hypothesis_token`, `observation_master`, `farmer_utterance`, `curated`, `backfill`).
+- `confidence numeric(4,3) NOT NULL DEFAULT 1.000`.
+- `active boolean NOT NULL DEFAULT true`.
+- Trigram index on `alias_normalized` (pg_trgm) — actually used by the resolver (LIKE / `%` operator), not just declared.
+- Composite unique on `(alias_normalized, language, source)`.
 
-Code:
-- `agents/layered-rule-evaluator.ts::matchesConditions` resolves through `observation_vocabulary_alias` (no string heuristics, no UPPER/lower comparators).
-- `canonical-observation-loader.ts` loads `observation_canonical` (paginated, respects PostgREST cap per memory).
+### 3. Add `observation_vocabulary_gaps` (the only genuinely new table)
+Lightweight orphan logger. Loader + NLU + rule/hypothesis ingest write any token that fails resolution. Turns the manual orphan hunt into a standing alarm. Upsert-on-conflict to bump `occurrences` and `last_seen_at`.
 
-No new agronomy. Closes the 201-evaluated/0-matched gap structurally.
+### 4. Single resolver — TS-side, calling DB
+- Consolidate the eight competing TS normalizers behind **one** entrypoint `resolveObservationCanonical(raw, {language})` in `supabase/functions/ai-agriculture-chat/runtime/observation-resolver.ts`.
+- It calls a single SQL function `public.resolve_observation_canonical(_raw, _language)` that:
+  1. Exact match on `observation_aliases.alias_normalized` (filtered by language with `und` fallback, ordered by confidence).
+  2. Falls back to trigram fuzzy match (`alias_normalized % normalized_input`) with a similarity threshold of 0.55 — this is what justifies the GIN/trgm index.
+  3. Returns `(canonical_code, match_type, similarity)`.
+- On miss, the TS wrapper writes the token to `observation_vocabulary_gaps` (fire-and-forget, never blocks the request).
+- Existing normalizers (`code-normalizer.ts`, `crop-code-normalizer.ts`, `entity-normalizer.ts`, `dialect-normalizer.ts`, `observation-code-mapper.ts`, `observation-key-mapper.ts`, `language-normalizer.ts`, `regional-translator.ts`) are reduced to thin shims that delegate to the single resolver; their internal alias tables are dropped over the next two waves.
 
-## Wave-T — Universal Hypothesis Engine  (`No Diagnosis ⇒ No Recommendation`)
+### 5. Backfill (the step the previous draft skipped)
+A single idempotent migration block:
+- INSERT INTO `observation_aliases` (`alias_text`, `canonical_code`, `language`, `source`, `confidence`) — backfill from `observation_translations` (5,145 rows, language-tagged, confidence=1.0, source=`observation_master`).
+- INSERT all distinct rule-side discriminator tokens found in `decision_rules` + `hypothesis_conditions` that currently resolve to a known canonical code into `observation_aliases` with source=`rule_token` / `hypothesis_token`.
+- The remaining **260 unresolved discriminator tokens** are written into `observation_vocabulary_gaps` with `resolved=false`. A follow-up curated SQL (separate insert, reviewed) maps them to either a new canonical row or an existing alias — no agronomy invented in code.
+- Collapse the duplicate emergence/germination canonical-group family by updating `observation_master.canonical_group` via a single mapping SQL (mapping is data, not code).
 
-**Invariant:** rule evaluation runs **only against hypotheses** whose `posterior_confidence ≥ min_diagnostic_confidence` (per crop_group/stage from `confidence_thresholds`). Rules are recommendation generators, not diagnosers.
+### 6. Harden hypothesis gating — no diagnosis → no treatment
+- `decision/unified-decision-gate.ts`: replace the soft "full-scope fallback" with a hard invariant. If `eligible_hypotheses_after_gating.length === 0`, the gate returns `SUPPRESSED_NO_HYPOTHESIS` and writes a `RULE_EMISSION_MISMATCH`-style violation to `ai_safety_violations` (already exists from Wave-R).
+- Threshold (`min_hypothesis_confidence`) reads from `hypothesis_master` column — already present from earlier waves — not hardcoded.
+- This is the change that actually unblocks the leaking treatment text; Waves T/U/V then refine it but don't gate on it.
 
-DB (extend existing tables, no new schemas where possible):
-- `hypothesis_master` already exists — add columns: `required_observations text[]`, `supporting_observations text[]`, `contradicting_observations text[]`, `prior_probability numeric`, `min_confidence_for_action numeric`, `applies_to_stage_family text[]`.
-- `hypothesis_conditions` — already has observation_code; add `weight numeric` (Bayesian evidence weight) and `polarity` (supporting|contradicting|necessary|sufficient).
-- `hypothesis_rule_mapping` — used to gate which rules a confirmed hypothesis unlocks. Add `min_hypothesis_confidence numeric default 0.6`.
+### 7. Regression tests
+Add `supabase/functions/ai-agriculture-chat/_tests/wave_s_vocabulary_and_gate_test.ts`:
+- Resolver returns canonical code for raw farmer text in mr/hi/en across all 10 `semantic_class` values.
+- Unknown token writes a row to `observation_vocabulary_gaps`.
+- Hard gate: zero eligible hypotheses → response carries no `application_details`/`action_text` and a `SUPPRESSED_NO_HYPOTHESIS` violation is recorded.
+- The original failing query `पिक अद्याप उगवले नाही` now resolves to a canonical phenology code (after backfill) and either emits a rule-backed response or clarification — never a treatment with `rules_fired = 0`.
 
-Code (new):
-- `decision/hypothesis-engine.ts` — pure function: `(intent, observations, stage, crop_group) → ranked H[] with posterior`. Bayesian update using `hypothesis_conditions.weight`. No crop-specific code.
-- `agents/orchestrator.ts` rewires: after observation extraction, call hypothesis-engine **before** rule-engine. Rules only consulted for hypotheses passing `min_hypothesis_confidence`. If none pass → route to Wave-U.
-- Memory rule: every rule must declare `hypothesis_id` in `hypothesis_rule_mapping` or it cannot fire (lint job + symbolic-invariant-gate enforces).
+## Out of scope (kept for Waves T/U/V)
+- Universal hypothesis ranking engine (T).
+- Evidence-gap chip selection refactor (U).
+- Diagnostic confidence histogram + hard NO_DIAGNOSIS gate observability (V).
+- Deprecating/dropping `observation_translations` (left intact until consumers migrate — read-only).
 
-## Wave-U — Evidence Gap & Clarification Engine
+## Files
 
-**Invariant:** the next farmer question is always the highest-information observation in the top-ranked open hypothesis.
+**New**
+- `supabase/functions/ai-agriculture-chat/runtime/observation-resolver.ts`
+- `supabase/functions/ai-agriculture-chat/_tests/wave_s_vocabulary_and_gate_test.ts`
 
-DB:
-- `observation_differential_questions` already exists — extend with `expected_info_gain numeric` (precomputed per hypothesis) and `stage_family text[]`.
-- New view `v_evidence_gaps` per session: `required_observations − confirmed_observations` from the top-K hypotheses.
+**Modified (thin shim conversions only)**
+- `supabase/functions/ai-agriculture-chat/runtime/code-normalizer.ts`
+- `supabase/functions/ai-agriculture-chat/runtime/crop-code-normalizer.ts`
+- `supabase/functions/ai-agriculture-chat/runtime/observation-code-mapper.ts`
+- `supabase/functions/ai-agriculture-chat/runtime/observation-key-mapper.ts`
+- `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts` (hard gate)
+- `supabase/functions/ai-agriculture-chat/index.ts` (wire gap-logger)
 
-Code (new):
-- `decision/evidence-gap-engine.ts` — computes gap set, picks the single most discriminative observation (highest `expected_info_gain × (H1.posterior − H2.posterior)`).
-- `decision/diagnosis-first-generator.ts` rewired to emit clarification chips **only** from gap-engine output. Chip labels come from `observation_translations` only — never `cause`, never treatment vocabulary (existing TREATMENT_TOKENS_RE retained).
-- Conversation memory: confirmed observations and dismissed hypotheses persist on `ai_chat_sessions` so turns 2…N continue the same diagnosis, not a new query.
+**Migrations (3, in order)**
+1. `ALTER observation_master` add `polarity`, `applies_to_stages` + GIN index + backfill `polarity`.
+2. `ALTER observation_aliases` add `alias_text`, `alias_normalized` (generated), `language`, `source`, `confidence`, `active` + trigram index + composite unique + `pg_trgm` extension guard; backfill from `observation_translations` and rule/hypothesis tokens.
+3. `CREATE observation_vocabulary_gaps` + GRANT + RLS + service-role policy; `CREATE FUNCTION resolve_observation_canonical()` (SECURITY DEFINER, search_path=public, exact+trgm fallback).
 
-## Wave-V — Confidence-Based Diagnosis Engine
+## Non-goals (explicit)
+- No `observation_canonical` table.
+- No new alias table parallel to `observation_aliases`.
+- No hardcoded crop / language / agronomic rules in TS.
+- No edits to `auth`, `storage`, `realtime`, `supabase_functions`, `vault`.
+- No drop/rename of existing public columns or tables in this wave.
 
-**Invariant:** treatment is emitted **only** when:
-- `rules_fired > 0` (Wave-R)
-- emitted rule_id ∈ fired_rule_ids (Wave-R)
-- the rule's `hypothesis_id` has `posterior_confidence ≥ hypothesis_rule_mapping.min_hypothesis_confidence` (Wave-T/V)
-- `data_completeness ≥ decision_rules.min_data_completeness` (already in schema, currently under-enforced)
-
-Code:
-- `decision/confidence-calculator.ts` extended to expose `diagnosticConfidence(hypothesis_id, state)`.
-- `symbolic-invariant-gate` adds a 4th check: `NO_DIAGNOSIS_HARD_GATE` (scrub + `safety_violation_count{reason='no_diagnosis'}`).
-- Metric: `diagnostic_confidence_histogram{crop_group,stage,intent}` for observability.
-
-## Files Touched (overall)
-
-| Wave | New | Edited |
-|---|---|---|
-| R | `runtime/rules-fired.ts`, `runtime/safety-metrics.ts`, `decision/symbolic-invariant-gate.ts`, 2 tests, migration `ai_safety_violations` | `index.ts`, `unified-decision-gate.ts`, `llm-response-formatter.ts`, `observation-rule-lookup.ts`, `diagnosis-first-generator.ts`, `decision-logger.ts` |
-| S | migrations `observation_canonical`, `observation_vocabulary_alias`, `observation_alias_review` + lint cron | `layered-rule-evaluator.ts`, `canonical-observation-loader.ts` |
-| T | `decision/hypothesis-engine.ts`, migration adding cols to `hypothesis_master`/`hypothesis_conditions`/`hypothesis_rule_mapping` | `orchestrator.ts`, `rule-engine-executor.ts` |
-| U | `decision/evidence-gap-engine.ts`, view `v_evidence_gaps`, migration extending `observation_differential_questions` | `diagnosis-first-generator.ts`, `clarification-generator.ts`, `context-manager.ts` |
-| V | extend `confidence-calculator.ts`, extend `symbolic-invariant-gate.ts`, metric emitter | `index.ts` (final gate) |
-
-No new agronomy strings anywhere. No crop-specific branches. Every DB migration ends with the standard `GRANT` → `ENABLE RLS` → service-role policy block (per project rules).
-
-## Validation Matrix (works for every crop)
-
-| Query | Pre-Wave-R | Post-Wave-R | Post-Wave-S | Post-Wave-T+U | Post-Wave-V |
-|---|---|---|---|---|---|
-| Rice "पिक अद्याप उगवले नाही" | Resow + Carbendazim | OBSERVATION (safe, no treatment) | Rule actually matches | Asks `days_after_sowing`, `seedling_count`, `soil_moisture`, `sowing_depth` | Treats only when 1 hypothesis ≥ confidence |
-| Cotton "पाने पिवळी" | Random N rec | OBSERVATION | Matches `leaf_yellowing` canonical | Disambiguates N-def vs water vs virus | Treats only after diagnosis |
-| Wheat / Sugarcane / Onion / Grape / Mango / Banana | same defect class | same shield | same vocab | same hypothesis flow | same gate |
-
-## Rollout Order (mandatory)
-1. **Wave-R** — deploy now. Safety. Watch `safety_violation_count` for 24 h.
-2. **Wave-S** — vocabulary first; without it Wave-T fires on empty conditions.
-3. **Wave-T** — hypothesis layer; expect "please share more details" spike — that is the engine asking *the right* questions, not failing.
-4. **Wave-U** — evidence-gap reduces clarifications to high-value ones.
-5. **Wave-V** — final diagnosis gate.
-
-## Out of Scope
-- LLM agronomy generation (forbidden by core memory).
-- Per-crop branches, hard-coded thresholds, rule-text in code.
-- Editing `auth`/`storage`/`realtime` schemas. No edits to `src/integrations/supabase/types.ts`.
+## Rollout
+Migrations 1→2→3 (each independently reversible), then code changes, then regression tests. Wave-S deploys behind the existing Wave-R safety gate, so any vocabulary regression surfaces as `SUPPRESSED_NO_HYPOTHESIS` rather than leaked treatment text.
