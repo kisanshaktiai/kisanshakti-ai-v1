@@ -685,39 +685,22 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   // PROACTIVE bypass: skip the young-crop suppression when an authoritative
   // URGENT_ACTION plan with treatment payload is already in hand.
   if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators && !isProactiveUrgent) {
-    // ── BYPASS: confirmed observation has a SAFE/CAUTION rule for this stage.
-    // The caller (index.ts) precomputes this via lookupSafeRuleForObservations.
-    // The rule's farmer_safety_level + growth_stage match is a stronger signal
-    // than the gate's heuristic, so we let the OBSERVATION-mode response
-    // generator surface the rule's action_text directly.
+    // ─────────────────────────────────────────────────────────────────────
+    // WAVE-Q FIX (P0-C): The previous `confirmed_observation_has_safe_rule`
+    // bypass returned PASS + OBSERVATION mode and then index.ts emitted the
+    // rule's stored action_text directly (source=rule_action_text), even
+    // though `rules_fired === 0`. That violates the symbolic invariant
+    // "NO RULE FIRED → NO RECOMMENDATION".
+    //
+    // The observation→rule lookup result is now informational only
+    // (logged for telemetry below). The gate must fall through to the
+    // standard young-crop CLARIFICATION/ESCALATION path so the symbolic
+    // engine (not a stored-text bypass) decides what reaches the farmer.
+    // ─────────────────────────────────────────────────────────────────────
     if (input.confirmed_observation_has_safe_rule) {
-      console.log(`   ✅ YOUNG CROP BYPASS — confirmed observation has SAFE rule (${input.confirmed_observation_rule_id || '?'})`);
-      return {
-        gate_status: GateStatus.PASS,
-        gate_action: GateAction.PROVIDE_OBSERVATION_ONLY,
-        treatments_allowed: false,
-        allowed_actions: [...OBSERVATION_ACTIONS, 'PROVIDE_INFO', 'RECOMMEND'],
-        blocked_actions: [],
-        allowed_products: [],
-        allowed_dosages: [],
-        response_mode: ResponseMode.OBSERVATION,
-        authority_decision,
-        criteria_results: {
-          authority_resolved: { passed: authorityResolved, reason: authority_decision.reason },
-          crop_identified: { passed: !!input.crop_name, reason: input.crop_name ? `Crop: ${input.crop_name}` : 'Unknown' },
-          stage_determined: { passed: !!input.growth_stage, reason: `Stage: ${input.growth_stage || 'unknown'}` },
-          symptom_specific: { passed: true, reason: `Confirmed observation: ${(input.confirmed_observation_codes || []).join(', ')}` },
-          symbolic_decision_valid: { passed: true, reason: `Safe rule ${input.confirmed_observation_rule_id} matched` },
-        },
-        missing_criteria: [],
-        reason: `bypass:confirmed_safe_rule_exists rule=${input.confirmed_observation_rule_id || '?'}`,
-        confidence_level: 'HIGH',
-        decision_confidence: 75,
-        has_symptoms: true,
-        has_visual_ambiguity: false,
-        clarification_options: [],
-        gate_version: UNIFIED_GATE_VERSION,
-        checked_at: checkedAt,
+      console.log(`   ℹ️ [YoungCrop] Observation→rule lookup matched ${input.confirmed_observation_rule_id || '?'} — informational only; symbolic engine still required to fire (no rule_action_text bypass).`);
+    }
+
       };
     }
 
