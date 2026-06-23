@@ -2645,7 +2645,48 @@ export class AIAgentOrchestrator {
                 return stages.some((s: string) => expected.includes(s));
               };
 
-              const eligible = safeMatchedResponses.filter(r => r && r.rule_id && r.action_type);
+              // ─── DIAGNOSIS-POOL FILTER (2026-06-23 P0) ─────────────────────────
+              // Non-diagnostic rule categories (crop_rotation, proactive advisory,
+              // post_harvest, etc.) must NEVER become the primary decision during a
+              // DIAGNOSIS / CROP_DAMAGE turn — they require an explicit rotation/
+              // recommendation intent. Also enforce the rule's crop_age_days window
+              // (or conditions_json.das_range) against the current DAS so e.g. a
+              // post-harvest rotation rule cannot fire during NURSERY emergence.
+              // ────────────────────────────────────────────────────────────────────
+              const NON_DIAGNOSTIC_CATEGORIES = new Set([
+                'crop_rotation', 'rotation', 'post_harvest', 'post-harvest',
+                'advisory', 'recommendation', 'proactive', 'marketing'
+              ]);
+              const currentDas: number | null =
+                typeof (landContextForOptionSelection as any)?.days_since_sowing === 'number'
+                  ? (landContextForOptionSelection as any).days_since_sowing
+                  : (typeof (stateWithQuery as any)?.days_since_sowing === 'number'
+                      ? (stateWithQuery as any).days_since_sowing
+                      : null);
+              const ruleCategoryOf = (r: any): string =>
+                String(r?.category || r?.rule_category || r?.conditions_json?.category || '')
+                  .toLowerCase().trim();
+              const ruleIsDiagnosticCandidate = (r: any): boolean => {
+                const cat = ruleCategoryOf(r);
+                if (cat && NON_DIAGNOSTIC_CATEGORIES.has(cat)) return false;
+                // crop_age window gate
+                if (currentDas != null) {
+                  const minA = r?.crop_age_days_min ?? r?.conditions_json?.crop_age_days_min ?? r?.conditions_json?.das_range?.min;
+                  const maxA = r?.crop_age_days_max ?? r?.conditions_json?.crop_age_days_max ?? r?.conditions_json?.das_range?.max;
+                  if (typeof minA === 'number' && currentDas < minA) return false;
+                  if (typeof maxA === 'number' && currentDas > maxA) return false;
+                }
+                return true;
+              };
+
+              const rawEligible = safeMatchedResponses.filter(r => r && r.rule_id && r.action_type);
+              const eligible = rawEligible.filter(ruleIsDiagnosticCandidate);
+              const filteredOut = rawEligible.length - eligible.length;
+              if (filteredOut > 0) {
+                console.log(`   🧹 [FallbackSelection] Filtered ${filteredOut} non-diagnostic / out-of-DAS rule(s) from candidate pool (das=${currentDas})`);
+              }
+
+              // Prefer observation-matched over stage-only (per user invariant).
               const tier1 = eligible.filter(r => ruleMatchesConfirmed(r) && ruleStageOk(r));
               const tier2 = tier1.length > 0 ? tier1 : eligible.filter(r => ruleMatchesConfirmed(r));
               const tier3 = tier2.length > 0 ? tier2 : eligible.filter(r => ruleStageOk(r));
@@ -2665,7 +2706,7 @@ export class AIAgentOrchestrator {
               if (selectionTier === 'first_match_unsafe') {
                 console.warn(`   ⚠️ [FallbackSelection] No matched_response aligns with confirmed observation OR current stage (${currentStageNorm}). Picking first match unsafely: ${firstMatch?.rule_id}. Confirmed obs: [${Array.from(confirmedSet).join(', ')}]`);
               } else {
-                console.log(`   🎯 [FallbackSelection] tier=${selectionTier} selected=${firstMatch?.rule_id} stage=${currentStageNorm} confirmed=[${Array.from(confirmedSet).join(', ')}] candidates=${eligible.length}`);
+                console.log(`   🎯 [FallbackSelection] tier=${selectionTier} selected=${firstMatch?.rule_id} stage=${currentStageNorm} das=${currentDas} confirmed=[${Array.from(confirmedSet).join(', ')}] eligible=${eligible.length}/${rawEligible.length}`);
               }
 
               if (firstMatch) {
