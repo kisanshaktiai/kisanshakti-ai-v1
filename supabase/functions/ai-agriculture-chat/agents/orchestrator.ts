@@ -4480,7 +4480,7 @@ export class AIAgentOrchestrator {
             'WEED_PROBLEM': 'WEED_PRESENT'
           };
           
-          const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
+          const fallbackSymptom = canonicalize(intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM');
           allObservationsForPreAuth.add(fallbackSymptom);
           authoredObservations.add(fallbackSymptom, ObservationAuthority.INFERRED, 'LLM_INTENT_FALLBACK');
           agentsUsed.push('LLM_INTENT_FALLBACK');
@@ -4488,8 +4488,9 @@ export class AIAgentOrchestrator {
         } else if (advisoryIntents.includes(intentCode) && directModeBypass) {
           // FIX 3: For advisory intents with DIRECT mode, inject the INTENT CODE itself
           console.log(`\n🎯 [ADVISORY DIRECT] Intent ${intentCode} is advisory — injecting intent as observation for rule engine`);
-          allObservationsForPreAuth.add(intentCode);
-          authoredObservations.add(intentCode, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
+          const cIntent = canonicalize(intentCode);
+          allObservationsForPreAuth.add(cIntent);
+          authoredObservations.add(cIntent, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
           agentsUsed.push('ADVISORY_DIRECT_ROUTE');
         }
       }
