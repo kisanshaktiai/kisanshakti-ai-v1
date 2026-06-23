@@ -163,32 +163,33 @@ function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string
 }
 
 /**
- * 2026-06-21 FIX: DB-first cause label resolver.
- * Prefer `decision_rules_translations_archive.response_{mr,hi}` keyed by rule_id
- * (the SSOT translation table) before falling back to i18n-key cache.
+ * 2026-06-21 FIX (REVERTED 2026-06-23 — WAVE-S CAUSE/ACTION SEPARATION):
+ *
+ * `decision_rules_translations_archive.response_{mr,hi}` stores the translation
+ * of `decision_rules.action_text` (the TREATMENT prescription text — e.g. the
+ * reseed/spray instructions). It is NOT a translation of `decision_rules.cause`.
+ *
+ * Using it as the cause label leaked the treatment prescription into the
+ * diagnosis-first clarification slot ("🔬 Your crop may be affected by
+ * <reseed instructions>. Which of these do you see?") — the farmer was asked
+ * to confirm a treatment as if it were a symptom.
+ *
+ * The cause slot must resolve via:
+ *   1. translateCause(h.cause, language)   [i18n_key / FALLBACK_TRANSLATIONS]
+ *   2. observation_label as the displayable subject (preferred farmer-facing)
+ *   3. humanized cause code
+ *
+ * This function is preserved as a no-op so callers don't need a coordinated
+ * change; it now always returns '' which forces the cause-from-i18n path.
  */
 async function getCauseLabelFromArchive(
-  supabaseClient: any,
-  ruleId: string | null | undefined,
-  language: SupportedLanguage,
+  _supabaseClient: any,
+  _ruleId: string | null | undefined,
+  _language: SupportedLanguage,
 ): Promise<string> {
-  if (!supabaseClient || !ruleId) return '';
-  const lang = String(language || '').toLowerCase();
-  if (lang !== 'mr' && lang !== 'hi') return '';
-  try {
-    const { data, error } = await supabaseClient
-      .from('decision_rules_translations_archive')
-      .select('response_mr, response_hi')
-      .eq('rule_id', ruleId)
-      .maybeSingle();
-    if (error || !data) return '';
-    const candidate = lang === 'mr' ? data.response_mr : data.response_hi;
-    if (candidate && typeof candidate === 'string' && candidate.trim().length > 0) {
-      return candidate.trim();
-    }
-  } catch (e) {
-    console.warn(`   ⚠️ [getCauseLabelArchive] lookup failed for rule_id=${ruleId}: ${(e as Error).message}`);
-  }
+  // Intentionally empty — see comment above. The archive table holds the
+  // action_text translation, not a cause-label translation. Returning it here
+  // caused the cause slot to render the reseed / spray prescription.
   return '';
 }
 
