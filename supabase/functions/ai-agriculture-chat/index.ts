@@ -2842,6 +2842,30 @@ serve(async (req) => {
         computedDecisionState = 'no_action_needed';
       }
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // WAVE-S: ORPHAN VOCABULARY TRACKER
+    // If no rules actually fired AND no canonical observation resolved from
+    // the farmer's utterance, log the raw token to
+    // `observation_vocabulary_gaps` so unmapped vernacular terms surface
+    // automatically. Fire-and-forget; never blocks the response.
+    // ─────────────────────────────────────────────────────────────────────
+    try {
+      if (rulesActuallyFired(orchestratorResponse) === 0 && userMessageContent && userMessageContent.length <= 500) {
+        const lang = (detectedLanguage || language || 'und').toString().slice(0, 5).toLowerCase();
+        const matches = await resolveObservationCanonical(userMessageContent, { language: lang, source: 'farmer_utterance' });
+        if (matches.length === 0) {
+          // resolveObservationCanonical already logged the gap on miss; this
+          // block is defensive in case the RPC path failed silently.
+          recordVocabularyGap(userMessageContent, lang, 'farmer_utterance', {
+            decision_state: computedDecisionState,
+            intent_code: currentIntentCode || undefined,
+          }).catch(() => {});
+        }
+      }
+    } catch (_e) {
+      // never block the response on vocabulary telemetry
+    }
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT CHECK: Clarification answered but still awaiting_clarification = BUG
