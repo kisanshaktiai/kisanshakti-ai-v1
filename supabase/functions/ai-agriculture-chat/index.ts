@@ -1990,14 +1990,31 @@ serve(async (req) => {
           // have been downgraded to OBSERVATION by the Wave-P invariant.
           // Fall through to the OBSERVATION / fallback branches below.
           if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
-            // OBSERVATION mode: prefer the action_text of a SAFE rule keyed on
-            // a confirmed observation. Only fall back to the generic monitoring
-            // template when no such rule exists.
-            if (observationRuleHit) {
+            // ─────────────────────────────────────────────────────────────
+            // WAVE-Q INVARIANT (P0-C): "NO RULE FIRED → NO RECOMMENDATION".
+            // Only consume observationRuleHit.text (which is a rule's stored
+            // action_text) when the symbolic engine actually fired ≥1 rule.
+            // Otherwise the farmer is shown a treatment narrative that was
+            // never approved by rule evaluation. Fall back to the neutral
+            // young-crop monitoring template instead.
+            // ─────────────────────────────────────────────────────────────
+            const dec: any = (orchestratorResponse.decision_output as any) || {};
+            const rulesFiredCount = Array.isArray(dec.rules_applied)
+              ? dec.rules_applied.length
+              : Array.isArray(dec.layered_rule_result?.rules_applied)
+                ? dec.layered_rule_result.rules_applied.length
+                : Array.isArray(orchestratorResponse.metadata?.rulesFired)
+                  ? orchestratorResponse.metadata.rulesFired.length
+                  : 0;
+
+            if (observationRuleHit && rulesFiredCount > 0) {
               responseContent = observationRuleHit.text;
               aiModelUsed = `rule:${observationRuleHit.rule_id}`;
-              console.log(`   📜 [ObservationResponse] using rule=${observationRuleHit.rule_id} source=${observationRuleHit.source} lang=${detectedLanguage}`);
+              console.log(`   📜 [ObservationResponse] using rule=${observationRuleHit.rule_id} source=${observationRuleHit.source} rules_fired=${rulesFiredCount} lang=${detectedLanguage}`);
             } else {
+              if (observationRuleHit && rulesFiredCount === 0) {
+                console.warn(`   🚫 [SymbolicInvariant] observationRuleHit=${observationRuleHit.rule_id} suppressed — rules_fired=0; serving monitoring template instead of rule_action_text.`);
+              }
               // Young crop - use monitoring response with authority-reconciled values
               responseContent = generateYoungCropMonitoringResponse(
                 detectedLanguage,
