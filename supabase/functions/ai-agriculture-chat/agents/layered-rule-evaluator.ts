@@ -373,7 +373,40 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
   if (conditions.custom && !conditions.custom(state)) return false;
   if (conditions.crop_type?.length && !conditions.crop_type.includes(state.crop_type as CropType)) return false;
   if (conditions.crop_stage?.length && !conditions.crop_stage.includes(state.crop_stage as CropStage)) return false;
-  if (conditions.visual_symptom?.length && !conditions.visual_symptom.includes(state.visual_symptom as VisualSymptom)) return false;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WAVE-Q FIX (P0-A): Observation→Rule bridge.
+  // The legacy gate only inspected the typed VisualSymptom enum. After the
+  // lower_snake_case migration, observation codes flow as OBS_* strings via
+  // state.confirmed_observations / state.visual_symptoms and never resolve
+  // into the enum, so `state.visual_symptom = UNKNOWN` blocks every rule
+  // that declared a visual_symptom requirement → 0 matches.
+  //
+  // Build a state symbol set (confirmed + plural visual_symptoms + singular
+  // visual_symptom if real) and treat the visual_symptom gate as satisfied
+  // when ANY required enum value normalizes-equals (or substring-matches)
+  // ANY state symbol. Pure normalization — no agronomy, no rule-id lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (conditions.visual_symptom?.length) {
+    const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[\s-]/g, '_');
+    const stateSet = new Set<string>();
+    for (const s of ((state as any).confirmed_observations as unknown[] | undefined) || []) {
+      const n = norm(s); if (n) stateSet.add(n);
+    }
+    for (const s of ((state as any).visual_symptoms as unknown[] | undefined) || []) {
+      const n = norm(s); if (n) stateSet.add(n);
+    }
+    const vs = norm(state.visual_symptom);
+    if (vs && vs !== 'NONE' && vs !== 'UNKNOWN') stateSet.add(vs);
+
+    const required = conditions.visual_symptom.map(norm).filter(Boolean);
+    const enumHit = !!(state.visual_symptom && conditions.visual_symptom.includes(state.visual_symptom as VisualSymptom));
+    const obsHit = required.some(r =>
+      stateSet.has(r) || [...stateSet].some(s => s.includes(r) || r.includes(s))
+    );
+    if (!enumHit && !obsHit) return false;
+  }
+
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STRICT: Contextual data conditions FAIL if data is missing/UNKNOWN
