@@ -16572,21 +16572,39 @@ export type Database = {
       }
       observation_aliases: {
         Row: {
+          active: boolean
           alias_code: string
+          alias_normalized: string | null
+          alias_text: string | null
           canonical_code: string
+          confidence: number
           created_at: string | null
+          language: string
+          source: string
           updated_at: string
         }
         Insert: {
+          active?: boolean
           alias_code: string
+          alias_normalized?: string | null
+          alias_text?: string | null
           canonical_code: string
+          confidence?: number
           created_at?: string | null
+          language?: string
+          source?: string
           updated_at?: string
         }
         Update: {
+          active?: boolean
           alias_code?: string
+          alias_normalized?: string | null
+          alias_text?: string | null
           canonical_code?: string
+          confidence?: number
           created_at?: string | null
+          language?: string
+          source?: string
           updated_at?: string
         }
         Relationships: [
