@@ -4631,34 +4631,69 @@ export class AIAgentOrchestrator {
         const realConfirmedSymptoms = confirmedObsCodes.filter(
           (c: string) => !SENTINEL_RE.test(c)
         );
-        const realDamageObs = (cropDamageResult.damage_observations || []).filter(
-          (c: string) => !SENTINEL_RE.test(c)
-        );
-        // WAVE A.5d FIX (RC-26): removed `isRiceEmergenceFailure` per-crop
-        // carve-out. It violated the core memory rule "no per-crop intent
-        // guards or hardcoded observation lists" and was the direct cause
-        // of the reported emergence-failure clarification bypass.
+
+        // WAVE O FIX (RC-evidence-undercount): the v5.1 cross-crop terminal
+        // guard strips inferred terminals (e.g. GERMINATION_FAILURE) BEFORE
+        // they reach `cropDamageResult.damage_observations`. Counting only
+        // the post-strip set caused clear terminal reports backed by one
+        // EXTRACTED damage code + N INFERRED corroborators to be classified
+        // as "insufficient" and bounced back into a yes/no clarification.
         //
-        // Authority to skip the evidence-insufficiency check now lives
-        // exclusively in DB-driven `intent_observation_mapping.assertion_strength`
-        // (PATHOGNOMONIC entries), which is crop-agnostic and curated.
-        const isRiceEmergenceFailure = false;
+        // Real-evidence counter now unions:
+        //   - the post-strip detector list (EXTRACTED truth)
+        //   - INFERRED damage codes from the AuthoredObservationSet that
+        //     map to known TERMINAL / CROP damage taxonomies (alias-expanded
+        //     corroborators of the same EXTRACTED parent)
+        //   - the detector's reported severity_indicators
+        // SENTINEL codes are still excluded.
+        const damageTaxonomy = new Set<string>([
+          ...TERMINAL_CODES_BLOCKED_FROM_INJECTION,
+          'POOR_GERMINATION', 'POOR_GERMINATION_PERCENT',
+          'SEED_NOT_GERMINATED', 'DELAYED_GERMINATION', 'GERMINATION_CONCERN',
+          'GAPS_IN_FIELD', 'PATCHY_DEATH', 'AFFECTED_PATCHES',
+          'PATCHY_GROWTH', 'AFFECTED_PART_WHOLE', 'WILTING_SEVERE',
+          'STEM_ROT_PRESENT', 'CROWN_ROT', 'PLANT_DEATH_PATCHES',
+          'STUNTED_GROWTH', 'OVERALL_WEAK'
+        ]);
+        const inferredDamageObs = (allObservationsForPreAuth ? [...allObservationsForPreAuth] : [])
+          .filter((c: string) => damageTaxonomy.has(c) && !SENTINEL_RE.test(c));
+        const realDamageObs = Array.from(new Set([
+          ...((cropDamageResult.damage_observations || []).filter((c: string) => !SENTINEL_RE.test(c))),
+          ...inferredDamageObs,
+          ...((cropDamageResult.severity_indicators || []).filter((c: string) => !SENTINEL_RE.test(c)))
+        ]));
+
+        // WAVE A.5d FIX (RC-26): no per-crop carve-outs. Authority to
+        // bypass the evidence-insufficiency check is crop-agnostic and
+        // derives from the detector's structured verdict instead.
+        const isTerminalOrSignificantWithLandContext =
+          (cropDamageResult.damage_type === 'TERMINAL' || cropDamageResult.damage_type === 'SIGNIFICANT') &&
+          (cropDamageResult.severity_level === 'HIGH' || cropDamageResult.severity_level === 'CRITICAL') &&
+          hasLandContext;
+
         const evidenceInsufficient =
           understandingResult.clarification_required === true &&
           realConfirmedSymptoms.length < 2 &&
           realDamageObs.length < 2 &&
-          !photoForcedDiagnosis;
+          !photoForcedDiagnosis &&
+          !isTerminalOrSignificantWithLandContext;
 
         if (evidenceInsufficient) {
           console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence for hypothesis-driven options`);
           console.log(`   realConfirmedSymptoms=${realConfirmedSymptoms.length} (${realConfirmedSymptoms.join(',') || 'none'})`);
           console.log(`   realDamageObs=${realDamageObs.length} (${realDamageObs.join(',') || 'none'})`);
+          console.log(`   damage_type=${cropDamageResult.damage_type}, severity=${cropDamageResult.severity_level}, hasLandContext=${hasLandContext}`);
           console.log(`   clarification_required=${understandingResult.clarification_required}, score=${understandingResult.understanding_confidence}`);
           console.log(`   → Falling through to scope-aware OBSERVATION clarification (not diagnoses)`);
           agentsUsed.push('DIAGNOSIS_FIRST_SKIPPED_LOW_EVIDENCE');
           // Do not set bypass flags; fall through to the understanding-based
           // clarification gate below so we collect observations first.
         } else {
+          if (isTerminalOrSignificantWithLandContext && (realConfirmedSymptoms.length < 2 && (cropDamageResult.damage_observations || []).length < 2)) {
+            console.log(`\n✅ [WAVE-O BYPASS] Evidence-insufficiency bypassed: damage_type=${cropDamageResult.damage_type}, severity=${cropDamageResult.severity_level}, land context locked`);
+            console.log(`   Real damage obs (pre-strip + inferred): ${realDamageObs.join(', ')}`);
+            agentsUsed.push('WAVE_O_TERMINAL_EVIDENCE_BYPASS');
+          }
         console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
