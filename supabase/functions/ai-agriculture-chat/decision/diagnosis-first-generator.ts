@@ -755,36 +755,54 @@ export function formatForClarificationUI(
     return union > 0 && (intersection / union) > 0.7;
   };
 
-  // Convert diagnoses to clarification options format
-  // FIX: Avoid duplication when cause_label and observation_label are similar
-  // v1.3.0: CLEAN labels - NO embedded [obs_keys:...] metadata in display
-  // Frontend uses observation_key field for routing when farmer selects option
-  const options = output.diagnoses.map(d => {
-    let displayLabel: string;
-    
-    // If cause_label already contains observation_label or they're very similar, use only cause_label
-    if (areLabelsSimilar(d.cause_label, d.observation_label)) {
-      // Only use cause_label (with icon) - CLEAN, no metadata
-      displayLabel = `${d.icon} ${d.cause_label}`;
-    } else {
-      // Combine both (no duplication) - CLEAN, no metadata
-      displayLabel = `${d.icon} ${d.cause_label} (${d.observation_label})`;
-    }
-    
-    // v2.1.0: Return CLEAN label for farmer UI
-      // FIX #1: Embed cause + rule_id in observation_key metadata so orchestrator
-      // can bypass generic observation matching when farmer confirms a diagnosis
-      // Frontend (ClarificationOptionsUI) will use observation_key when sending selection
+  // Convert diagnoses to clarification options format.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WAVE-Q FIX (P0-B): Clarification chip labels MUST originate ONLY from
+  // observation_label (the farmer-observable symptom text). The hypothesis
+  // `cause`/`cause_label` is a decision narrative and the regional fallback
+  // expands it into a full prescription (resow / Carbendazim / Trichoderma)
+  // — which is what was leaking onto the chip before any diagnosis.
+  //
+  // Contract: label = observation_label only. cause is preserved on the
+  // payload for the symbolic backend (routing/audit) but never displayed.
+  // If observation_label is unsafe (looks like a treatment narrative) or
+  // missing, fall back to a humanized observation_key. NEVER fall back to
+  // cause_label.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const TREATMENT_TOKENS_RE = /(carbendazim|trichoderma|mancozeb|chlorpyrifos|imidacloprid|resow|पुनर्पेरण|कार्बेन्डाझ|ट्रायकोडर्मा|कार्बेंडाज|बीज ?उपचार|seed ?treatment|spray|दवा|drench|कीटनाशक|फफूंदनाशक|बुरशीनाशक|किलो|ग्रॅम|ग्रॅम\/|kg\/|g\/kg|ml\/|एकर|hectare|डोस|dose)/i;
+  const looksLikeTreatment = (s: string): boolean => !!s && TREATMENT_TOKENS_RE.test(s);
+  const humanizeKey = (k: string): string =>
+    String(k || '')
+      .replace(/^OBS_/i, '')
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim();
+
+  const options = output.diagnoses
+    .map((d) => {
+      let safeLabel = d.observation_label;
+      if (!safeLabel || looksLikeTreatment(safeLabel)) {
+        safeLabel = humanizeKey(d.observation_key || d.id);
+      }
+      // Defensive: also strip embedded treatment phrases from the safe label.
+      if (looksLikeTreatment(safeLabel)) {
+        safeLabel = humanizeKey(d.observation_key || d.id);
+      }
+      const displayLabel = `${d.icon} ${safeLabel}`.trim();
+
       return {
         id: d.id,
-        label: displayLabel,  // CLEAN: Farmer sees only readable text
-        observation_key: d.observation_key,  // ROUTING: Backend uses this for rule matching
+        label: displayLabel,                 // OBSERVATION-ONLY chip text
+        observation_key: d.observation_key,  // routing key for symbolic engine
         rule_id: d.rule_id,
-        confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
+        confidence_boost: 0.20,
         icon: d.icon,
-        cause: d.cause
+        cause: d.cause                       // backend-only; never rendered
       };
-  });
+    })
+    // Final safety net: drop any chip whose label still reads like treatment.
+    .filter((o) => !looksLikeTreatment(o.label));
   
   // Add photo option at end - CLEAN label, observation_key for routing
   options.push({
