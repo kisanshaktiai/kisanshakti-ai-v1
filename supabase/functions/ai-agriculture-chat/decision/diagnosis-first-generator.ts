@@ -227,9 +227,13 @@ function getObservationLabelFromMap(
 
 const PHOTO_LABEL = { label: '📷 Send Photo', description: 'Send a crop photo for more accurate diagnosis' };
 
+// WAVE-S CAUSE/ACTION SEPARATION (2026-06-23):
+// The confirm slot must show what the FARMER CAN SEE (the observation), never
+// the underlying cause name or — worse — the treatment prescription. The cause
+// is reserved for AFTER the farmer confirms the visible symptom.
 const DIAGNOSIS_QUESTION_TEMPLATE = {
-  single: '🔬 Your crop may be affected by {cause}. Which of these do you see?',
-  multiple: '🔬 Your crop may have one of these issues. Select the closest match:'
+  single: '🔬 Do you see this in your crop: {observation}?',
+  multiple: '🔬 Which of these do you see in your crop? Select the closest match:'
 };
 
 function getQuestionText(
@@ -237,9 +241,9 @@ function getQuestionText(
   _language: string
 ): string {
   if (diagnoses.length === 1) {
-    return DIAGNOSIS_QUESTION_TEMPLATE.single.replace('{cause}', diagnoses[0].cause_label);
+    const subject = diagnoses[0].observation_label || diagnoses[0].cause_label;
+    return DIAGNOSIS_QUESTION_TEMPLATE.single.replace('{observation}', subject);
   }
-  
   return DIAGNOSIS_QUESTION_TEMPLATE.multiple;
 }
 
