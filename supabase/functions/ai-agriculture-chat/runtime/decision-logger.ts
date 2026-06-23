@@ -52,6 +52,34 @@ function getClient() {
   return _client;
 }
 
+const ALLOWED_DECISION_TYPES = new Set([
+  'schedule_generation', 'schedule_refinement', 'alert_generation', 'marketing_prediction',
+  'pest_detection', 'disease_detection', 'diagnosis', 'advisory', 'clarification',
+  'observation_response', 'safety_block', 'prescription', 'monitoring', 'unknown',
+]);
+
+function normalizeDecisionType(raw: unknown, outputData: Record<string, unknown>): string {
+  const value = String(raw ?? '').trim();
+  const lower = value.toLowerCase();
+  if (ALLOWED_DECISION_TYPES.has(lower)) return lower;
+
+  const responseType = String((outputData as any)?.response_type || '').toLowerCase();
+  const responseSource = String((outputData as any)?.response_source || '').toLowerCase();
+  const clarificationRequired = (outputData as any)?.clarification_required === true;
+  const actionsCount = Number((outputData as any)?.actions_count ?? 0);
+  const recommendationsCount = Number((outputData as any)?.recommendations_count ?? 0);
+
+  if (clarificationRequired || lower.includes('clarification') || responseType.includes('clarification')) return 'clarification';
+  if (lower.includes('safety') || lower.includes('block') || responseType.includes('block')) return 'safety_block';
+  if (lower.includes('observation') || responseSource.includes('observation')) return 'observation_response';
+  if (actionsCount > 0 || recommendationsCount > 0 || lower.includes('prescription') || lower.includes('treatment')) return 'prescription';
+  if (lower.includes('diagnos') || lower.includes('pest') || lower.includes('disease') || lower.includes('symptom') || lower.includes('emergence')) return 'diagnosis';
+  if (lower.includes('monitor')) return 'monitoring';
+  if (lower.includes('advis') || lower === 'decision_provided') return 'advisory';
+
+  return 'unknown';
+}
+
 /**
  * Insert one ai_decision_log row. Fire-and-forget by default.
  */
@@ -70,12 +98,17 @@ export async function logDecisionTurn(turn: DecisionLogTurn): Promise<void> {
     // forensic audit requires reasoning to always be present. Coerce any
     // missing field to a safe, non-empty value so a logging failure can
     // never break the farmer response path.
-    const safeDecisionType =
-      (typeof turn.decision_type === 'string' && turn.decision_type.trim()) || 'UNKNOWN';
     const safeInputData =
       turn.input_data && typeof turn.input_data === 'object' ? turn.input_data : {};
     const safeOutputData =
       turn.output_data && typeof turn.output_data === 'object' ? turn.output_data : {};
+    const rawDecisionType =
+      (typeof turn.decision_type === 'string' && turn.decision_type.trim()) || 'UNKNOWN';
+    const safeDecisionType = normalizeDecisionType(rawDecisionType, safeOutputData);
+    if (safeDecisionType !== rawDecisionType.toLowerCase()) {
+      console.warn(`[DecisionLogger] decision_type normalized: raw="${rawDecisionType}" → "${safeDecisionType}"`);
+      (safeOutputData as any).raw_decision_type = rawDecisionType;
+    }
 
     let safeReasoning: string;
     if (typeof turn.reasoning === 'string' && turn.reasoning.trim().length > 0) {

@@ -41,7 +41,7 @@ const baseAuthority = {
   gate_action: GateAction.ALLOW_TREATMENT,
 } as any;
 
-Deno.test('young-crop bypass: confirmed observation + safe rule → gate PASS, OBSERVATION mode', () => {
+Deno.test('young-crop observation-rule hit is informational only; no PASS/rule_action_text bypass', () => {
   const result = evaluateUnifiedGate({
     authority_decision: baseAuthority,
     symbolic_decision: { decision_brain_source: true } as any,
@@ -55,11 +55,11 @@ Deno.test('young-crop bypass: confirmed observation + safe rule → gate PASS, O
     confirmed_observation_codes: ['OBS_RICE_NO_EMERGENCE'],
   } as UnifiedGateInput);
 
-  assertEquals(result.gate_status, GateStatus.PASS);
-  assertEquals(result.response_mode, ResponseMode.OBSERVATION);
+  assertEquals(result.gate_status, GateStatus.PARTIAL);
+  assertEquals(result.response_mode, ResponseMode.DIAGNOSTIC_ESCALATION);
   assert(
-    result.reason.startsWith('bypass:confirmed_safe_rule_exists'),
-    `expected bypass reason, got "${result.reason}"`,
+    result.reason.toLowerCase().includes('diagnostic escalation'),
+    `expected diagnostic escalation reason, got "${result.reason}"`,
   );
   assertEquals((result as any).confirmed_observation_codes ?? undefined, undefined); // not echoed back
 });
@@ -176,7 +176,7 @@ Deno.test('lookupSafeRuleForObservations picks lowest-priority SAFE rule and use
 
   assert(hit !== null, 'expected a rule hit');
   assertEquals(hit!.rule_id, 'RICE_GERMINATION_DIAGNOSTIC_001');
-  assertEquals(hit!.source, 'rule_action_text');
+  assertEquals(hit!.source, 'rule_action_text_advisory');
   assert(hit!.text.includes('५ ठिकाणी'), `expected Marathi text, got "${hit!.text}"`);
   assertEquals(stage, 2);
 });

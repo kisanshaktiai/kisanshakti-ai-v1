@@ -1455,12 +1455,32 @@ export class AIAgentOrchestrator {
       // ========================================
       // Static import at top of file
       
-      const queryRoute = routeQuery(farmerMessage, {
-        lastPest: options.sessionState?.previousPest,
-        lastDisease: options.sessionState?.previousDisease,
-        lastCrop: options.sessionState?.previousCrop || landContext?.current_crop,
-        turnCount: options.sessionState?.turnCount || 0
-      });
+      // If the frontend echoes an embedded obs_key while a clarification is
+      // active, this turn is a structured option selection, not a new free-text
+      // question. Do not re-route on translated label words like "पाणी"/water.
+      const isStructuredClarificationSelection = pendingOptionsCount > 0 && hasTextInput &&
+        (/\[obs_keys?:[^\]]+\]/i.test(safeFarmerMessage) || /^[१२३४1-4]$/.test(safeFarmerMessage.trim()));
+
+      const queryRoute = isStructuredClarificationSelection
+        ? {
+            route: 'PEST_DISEASE_TREATMENT' as const,
+            confidence: 1,
+            detected_entities: {},
+            requires_decision_brain: true,
+            requires_weather_api: false,
+            requires_market_api: false,
+            is_follow_up: true,
+            context_hints: ['STRUCTURED_CLARIFICATION_SELECTION'],
+          }
+        : routeQuery(farmerMessage, {
+            lastPest: options.sessionState?.previousPest,
+            lastDisease: options.sessionState?.previousDisease,
+            lastCrop: options.sessionState?.previousCrop || landContext?.current_crop,
+            turnCount: options.sessionState?.turnCount || 0
+          });
+      if (isStructuredClarificationSelection) {
+        console.log(`🛤️ [${traceId}] Query Route bypassed: structured clarification obs_key selection`);
+      }
       
       console.log(`🛤️ [${traceId}] Query Route: ${queryRoute.route} (confidence: ${(queryRoute.confidence * 100).toFixed(0)}%)`);
       console.log(`   Detected entities: ${JSON.stringify(queryRoute.detected_entities)}`);

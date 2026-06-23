@@ -26,7 +26,7 @@ export const STAGE_NORMALIZER_VERSION = '1.0.0';
 export type StageCategory = 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURITY' | 'UNKNOWN';
 
 const SEEDLING_STAGES = [
-  'germination', 'seedling', 'establishment', 'sprouting', 'emergence',
+  'germination', 'nursery', 'seedling', 'establishment', 'sprouting', 'emergence',
   'planting', 'sowing', 'transplanting', 'post_planting', 'pre_sowing',
   'early_growth', 'land_preparation', 'pre_planting', 'transplant_establishment',
   'd0_7', 'd8_15', 'd16_30'
@@ -62,6 +62,8 @@ const MATURITY_STAGES = [
 
 const STAGE_DB_MAP: Record<string, string> = {
   // Seedling variants
+  'nursery': 'germination',
+  'nursery_stage': 'germination',
   'seedling': 'germination',
   'sprouting': 'germination',
   'emergence': 'germination',
@@ -209,8 +211,10 @@ export function getStageQueryVariants(stage: string | undefined | null): string[
   // Add category-based stages for broader matching
   if (category === 'SEEDLING') {
     variants.add('germination');
+    variants.add('nursery');
     variants.add('seedling');
     variants.add('establishment');
+    variants.add('emergence');
     variants.add('planting');
     variants.add('early_growth');
     variants.add('transplant_establishment');

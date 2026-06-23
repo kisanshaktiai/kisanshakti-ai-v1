@@ -507,6 +507,7 @@ export function mapCropNameToEnum(cropName: string | undefined): CropType {
   // Use unified normalizer to get canonical English name, then map to enum
   const shortCode = unifiedNormalizeCropCode(cropName);
   const fullName = getFullCropName(shortCode);
+  const enumKey = String(fullName || '').toUpperCase();
   
   // Map full English name to CropType enum
   const enumMap: Record<string, CropType> = {
@@ -519,7 +520,7 @@ export function mapCropNameToEnum(cropName: string | undefined): CropType {
     'TUR': CropType.PIGEON_PEA, 'MUSTARD': CropType.MUSTARD, 'SUNFLOWER': CropType.SUNFLOWER,
   };
   
-  return enumMap[fullName] || CropType.UNKNOWN;
+  return enumMap[enumKey] || CropType.UNKNOWN;
 }
 
 export function mapStageToEnum(stage: string | undefined): CropStage {

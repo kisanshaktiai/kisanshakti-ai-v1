@@ -424,11 +424,11 @@ export async function generateDiagnosisFirstResponse(
         return false;
       };
 
-      // STEP 1: Try DB-driven labels FIRST (SSOT)
-      // 2026-06-21 FIX: prefer SSOT translation table (decision_rules_translations_archive)
-      // keyed on rule_id; fall back to i18n-key cache when no archive row exists.
-      const archiveLabel = await getCauseLabelFromArchive(supabaseClient, h.rule_id, language);
-      causeLabel = archiveLabel || getCauseLabelFromDB(h.cause, language);
+      // STEP 1: Cause labels must NEVER use decision_rules_translations_archive:
+      // that archive stores translated action_text, not translated causes.
+      // Keep the cause path on the cause/i18n cache only; the displayed subject
+      // is observationLabel below.
+      causeLabel = getCauseLabelFromDB(h.cause, language);
       observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       
       const dbCauseGood = !isUntranslated(causeLabel);
