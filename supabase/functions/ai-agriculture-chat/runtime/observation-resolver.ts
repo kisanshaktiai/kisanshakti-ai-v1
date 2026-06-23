@@ -115,12 +115,6 @@ export async function recordVocabularyGap(
   const norm = normalize(raw);
   if (!norm) return;
   try {
-    // Try INSERT; on conflict bump occurrences + last_seen_at.
-    await (client as any).rpc('exec_sql', undefined); // placeholder no-op call removed below
-  } catch (_e) {
-    // ignored — replaced by direct call below
-  }
-  try {
     const { error } = await (client.from('observation_vocabulary_gaps') as any).upsert(
       {
         token_raw: raw,
