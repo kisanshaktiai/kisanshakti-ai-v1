@@ -2102,11 +2102,11 @@ serve(async (req) => {
           // ───────────────────────────────────────────────────────────────
           try {
             const _gateRes = await enforceNoRuleNoTreatment(decisionOutputForFormatting, {
-              trace_id: requestId,
-              tenant_id: tenantId ?? null,
+              trace_id: traceId,
+              tenant_id: finalTenantId ?? null,
               farmer_id: finalFarmerId ?? null,
               session_id: (orchestratorResponse as any)?.metadata?.session_id ?? null,
-              crop_code: (landContext as any)?.crop_code ?? null,
+              crop_code: ((landContext as any)?.crop_code ?? (landContext as any)?.current_crop?.crop_code ?? null),
               language: detectedLanguage,
               intent: (orchestratorResponse as any)?.metadata?.intent_code ?? null,
               observations: {
