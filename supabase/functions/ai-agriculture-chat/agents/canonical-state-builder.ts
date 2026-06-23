@@ -1034,9 +1034,13 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     ...(input.farmerObservations || []),
     ...(input.imageAnalysisSymptoms || [])
   ];
+  // WAVE-S CASING CONTRACT: canonical observation codes are LOWERCASE in the DB
+  // (observation_master, observation_aliases, decision_rules.conditions_json).
+  // Normalize to lowercase here so symptom_count / membership checks line up
+  // with everything else in the pipeline.
   const normalizedObservationSet = new Set(
     allObservations
-      .map(obs => String(obs || '').trim().toUpperCase())
+      .map(obs => String(obs || '').trim().toLowerCase().replace(/[\s-]+/g, '_'))
       .filter(Boolean)
   );
   const symptomCount = normalizedObservationSet.size;
