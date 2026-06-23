@@ -968,7 +968,13 @@ export function evaluateConditionsJson(
           const matchesOneObservation = (obs: string) => {
             const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
             for (const inputObs of expandedObs) {
-              if (inputObs === obsNorm || inputObs.includes(obsNorm) || obsNorm.includes(inputObs)) return true;
+              if (inputObs === obsNorm) return true;
+              // Canonical observation codes (`obs_*`) must match by exact token
+              // (or alias-expanded exact token) only. Substring/root matching made
+              // mutually exclusive alternatives such as obs_rice_no_emergence and
+              // obs_rice_patchy_emergence look identical under `match_all`.
+              if (obsNorm.startsWith('obs_') || inputObs.startsWith('obs_')) continue;
+              if (inputObs.includes(obsNorm) || obsNorm.includes(inputObs)) return true;
               // Root-word matching for related codes
               // stunted_plants ↔ stunted_growth (share 'stunted')
               const obsWords = obsNorm.split('_');
