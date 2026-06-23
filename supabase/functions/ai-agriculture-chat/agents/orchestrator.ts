@@ -4315,9 +4315,23 @@ export class AIAgentOrchestrator {
       const authoredObservations = new AuthoredObservationSet();
       const allObservationsForPreAuth = new Set<string>(); // backward-compat flat set
       
-      // BUG-3 FIX: Canonical code filter - only UPPERCASE_CODE symbols enter rule engine
+      // BUG-3 FIX + WAVE-S CASING CONTRACT (2026-06-23):
+      // Canonical observation codes are stored LOWERCASE in observation_master,
+      // observation_aliases, decision_rules.conditions_json, hypothesis_conditions.
+      // The orchestrator/LLM/induction layers may emit either case — accept BOTH
+      // and normalize to lowercase canonical on entry so downstream evaluators
+      // (which compare against lowercase DB rows) match consistently.
+      //
+      // Old gate: /^[A-Z][A-Z0-9_]+$/ — REJECTED every DB-canonical lowercase
+      // observation (obs_rice_no_emergence, plant_death, etc.) as "non-canonical",
+      // and silently let UPPERCASE through unchanged so it bypassed lowercase rule
+      // conditions. That mismatch is what produced "Rules matched: 0 / leaked
+      // rule_action_text" on emergence/germination intents.
       function isCanonicalCode(s: string): boolean {
-        return /^[A-Z][A-Z0-9_]+$/.test(s);
+        return typeof s === 'string' && /^[A-Za-z][A-Za-z0-9_]+$/.test(s.trim());
+      }
+      function canonicalize(s: string): string {
+        return String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
       }
       
       let filteredOutCount = 0;
