@@ -58,7 +58,7 @@ Deno.test('young-crop observation-rule hit is informational only; no PASS/rule_a
   assertEquals(result.gate_status, GateStatus.PARTIAL);
   assertEquals(result.response_mode, ResponseMode.DIAGNOSTIC_ESCALATION);
   assert(
-    result.reason.includes('diagnostic escalation'),
+    result.reason.toLowerCase().includes('diagnostic escalation'),
     `expected diagnostic escalation reason, got "${result.reason}"`,
   );
   assertEquals((result as any).confirmed_observation_codes ?? undefined, undefined); // not echoed back
