@@ -73,6 +73,10 @@ import {
   applySuppressionGuard,
   type UnifiedGateInput
 } from './decision/unified-decision-gate.ts';
+
+// WAVE-R: Symbolic safety invariants — "no rule fired → no treatment text".
+import { firedRuleIds, rulesActuallyFired } from './runtime/rules-fired.ts';
+import { enforceNoRuleNoTreatment } from './decision/symbolic-invariant-gate.ts';
 import { runSafetyGates, type SafetyGateInput, type SafetyGateResult } from './decision/safety-gates.ts';
 import { buildDifferentialQuestionLookup } from './services/observation-question-resolver.ts';
 import {
