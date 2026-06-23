@@ -1,77 +1,81 @@
+## Wave P — Neuro-symbolic decision brain: differential + feedback loop fix
 
-# KisanShakti Neuro-Symbolic Brain — Forensic Audit v2 (Read-Only, Phase 1)
+### Root cause (deep audit findings)
 
-## CRITICAL INSTRUCTION (top-level)
-**Do NOT begin proposing fixes.** Phase 1 is forensic investigation only.
-For every finding, the report MUST contain, in order:
-1. **Proof the defect exists** (file:line, table+row, log entry, or trace ID)
-2. **Quantified impact** (count, %, farmers affected, $/risk)
-3. **Evidence artifact** (SQL output, log dump, rg hit, replay trace — saved under `/mnt/documents/audit/evidence/`)
-4. **Root cause** (which layer, which contract violation)
+Recent trace `trace_mqq7c04q_5rgdhp` (Rice, NURSERY, DAS 15, confidence 0.55):
 
-Any recommendation without all four is invalid and must be removed. No fixes, no migrations, no edge redeploys, no `mem://` writes. Refactor proposals are deferred to Phase 2 (separate plan).
+```
+UnifiedGate → PARTIAL → DIAGNOSTIC_ESCALATION
+generateDiagnosticEscalationData({ ..., matched_rules: [] })   ← line 738
+                          ↓
+index.ts → matched_rules: orchestratorResponse.metadata?.matchedRules || []   ← line 1874
+                          ↓
+hypotheses = []  → response = intro + "current 55% / threshold 70%" + expert note
+                          ↓
+Farmer sees ONE generic yes/no question. No causes. No chips. No way to advance.
+```
 
-## Mandate
-Independently verify every layer. DB is single source of truth. LLM is restricted to translation/narration. Existing implementation is suspect until proven correct. Scope: all 12 crops, all gates, all rules, all hypotheses, all observations.
+Five concrete defects:
 
-## Audit Workstreams (run in parallel via subagents where possible)
+1. **Hypothesis pipe is dead.** `matched_rules` is hard-coded `[]` in `unified-decision-gate.ts:738`, and the orchestrator only populates `metadata.matchedRules` inside the `DIAGNOSIS_ONLY` early-return branch (orchestrator.ts:6810). The escalation path never receives candidates.
+2. **No environmental priors.** `generateDiagnosticEscalationData` ignores NDVI / weather / DAS-band / variety priors when ranking causes. DB has `disease_risk_model`, `hypothesis_conditions`, `land_weather_metrics`, `ndvi_data`, `crop_baseline_guidelines_v2` — none consulted.
+3. **No selectable observation chips.** Escalation emits plain markdown. `dynamic-clarification-generator.ts` + `clarification-renderer.ts` (chip UI contract) exist but are not wired into the DIAGNOSTIC_ESCALATION response.
+4. **No feedback loop.** When farmer taps a candidate cause, there's no orchestrator path that asserts the chosen `observation_code`, boosts symbolic confidence, and re-runs the hypothesis evaluator + rule engine for a final diagnosis.
+5. **Threshold gate is symptom-blind.** `current_confidence: 0.4` hard-coded at line 739 — should be the real symbolic confidence so chip-driven boosts can cross the 0.7 treatment threshold deterministically.
 
-### Tier A — Structural Audits
-- **WS1 — Database Integrity & Coverage.** Tables: `observation_master`, `observation_aliases/translations/differential_questions`, `observation_intent_master`, `intent_observation_mapping`, `intent_assertion_pattern`, `hypothesis_master/conditions/rule_mapping/contradictions`, `decision_rules`, `crop_stage_master`, `crops`, `crop_baseline_guidelines_v2`, `lands`, `land_crops`, `soil_health`, weather_*, ndvi_*, `proactive_rules`, `ai_chat_*`, `master_products`, `chemical_regulatory_status`. Checks: orphan FKs, dead rows, duplicate/contradictory mappings, missing translations, coverage matrix (crop × stage × zone × intent), `_fa_*` residue.
-- **WS2 — Symbolic Reasoning Graph Reconstruction.** Trace Query → Intent → Observation Extraction → Validation → Observation Graph → Hypothesis Gen → Scoring → Differential → Rule Match → Gate → Safety → Recommendation → Narration across `supabase/functions/ai-agriculture-chat/**`. Output drop-point + gate-override + contradiction maps.
-- **WS3 — Neuro-Symbolic Architecture Benchmark.** Score 0–10 vs gold-standard NS systems on KR, Observation Graph, Hypothesis Graph, Rule Graph, Contradiction Handling, Confidence Propagation, Explainability, Causal, Temporal, Multi-turn.
-- **WS4 — Land Intelligence Flow.** Land → Crop → Variety → Sowing → DAS → Soil → NDVI → Weather → Schedule → History. Per input: source table, retrieval file:line, transformation, consumption, decision impact. Flag unused fields.
-- **WS5 — Observation System Reachability.** Per `observation_master` row: alias/translation/diff-question/intent/hypothesis/rule linkage + production usage (`ai_chat_messages`, `ai_decision_log`). Dead/unreachable/unused lists.
-- **WS6 — Hypothesis Engine.** Per hypothesis: conditions, observation links, rule mappings, contradiction mappings, confidence model. Ranked dead/unreachable/duplicate/weak/contradictory lists.
-- **WS7 — Decision Rules.** Per rule: executable, reachable, agronomically valid, ICAR-compliant, stage/crop/weather/soil-aware. Cross-check `decision_rules.category` ↔ `mapBundledCategory` (per core memory) + `rule_quality_metrics`, `rule_conflict_matrix`, `rule_lineage`.
-- **WS8 — AI Chat Trace Analysis.** From `ai_chat_messages` + `ai_decision_log` + `ai_chat_audit_logs` + `hallucination_detection_logs`: reconstruct Query → Intent → Observations → Hypotheses → Rules → Gate → Response for recent failures. Symbolic pipeline blamed first, LLM last.
-- **WS9 — Proactive Alert Engine.** Verify alerts derive from Land+Weather+Stage+NDVI+Soil+Schedule+Rule engine. Scan `proactive_rules`, `proactive_evaluation_log`, `proactive_events`, `proactive_alerts`, `supabase/functions/proactive-*/**` for hardcoded thresholds/text.
-- **WS10 — Hardcoded Logic Sweep.** `rg` across `supabase/functions/**` + `src/**` for hardcoded crop/disease/pest/fertilizer names, weather/NDVI/stage thresholds, hardcoded advisory copy. Every hit = defect.
-- **WS11 — World-Class Gap Analysis.** Score KG completeness, Observation/Hypothesis/Rule graph quality, Explainability, Multi-turn, Temporal, Proactive, Confidence, Contradiction.
+### What we build
 
-### Tier B — Behavioural & Runtime Audits (NEW — added per v2 feedback)
-- **WS13 — Runtime Reachability Audit.** For every observation/hypothesis/rule/contradiction/gate measure the funnel:
-  ```text
-  Exists in DB → Loaded into memory → Participates in reasoning → Produces decision impact → Appears in farmer response
-  ```
-  Cross-join DB inventory against `ai_decision_log`, edge-function logs, and orchestrator instrumentation over last 30–90 days. Output: **Observation/Hypothesis/Rule/Gate Reachability %** + per-entity funnel-drop table. This is the single most important audit — many DB rows never execute.
-- **WS14 — Confidence Propagation Audit.** Trace `Intent Conf → Observation Conf → Hypothesis Conf → Differential Conf → Rule Conf → Decision Conf → Response Conf` across a sampled set of real traces. Detect **inflation, collapse, reset, override** events at each boundary. Output: **Top 20 confidence-corruption points** with file:line + trace IDs. Cross-reference with `mem://logic/confidence-scoring-and-migration-standard` and `mem://architecture/symbolic-confidence-ssot-authority`.
-- **WS15 — Crop Coverage & Bias Audit.** Per crop (all 12): counts of observations, hypotheses, rules, proactive alerts, schedules, varieties, NDVI models, soil logic. Compute **Crop Readiness Score 0–10** and surface dominance/bias (e.g., sugarcane over-indexing, wheat under-indexing). Output crop-readiness CSV + heatmap.
-- **WS16 — Gate Dominance Analysis.** For every gate (`decision-readiness-gate`, `unified-decision-gate`, `prescription-gate`, `etl-gate`, `weather-gate`, `safety-gate`, `clarification-invariant-gate` if present): count rules allowed / blocked / downgraded / overridden, plus false-positive and false-negative rates derived from WS19 golden cases. Output: **Gate Impact Matrix**.
-- **WS17 — Knowledge Graph Connectivity Audit.** Treat the brain as a graph: Observation → Hypothesis → Rule → Rule → Gate → Action. Build adjacency from `intent_observation_mapping`, `hypothesis_conditions`, `hypothesis_rule_mapping`, `hypothesis_contradictions`, `rule_conflict_matrix`. Compute orphan nodes, weakly-connected nodes, dead clusters, isolated subgraphs, single-point-of-failure nodes (high betweenness). Output: **Knowledge Graph Health Score** + Mermaid + `.graphml` artifact.
-- **WS18 — Proactive Intelligence Validation.** Replay last 90 days of weather/NDVI/soil/stage against `proactive_rules`. For each (land × day): should-have-alerted vs did-alert. Output **Precision, Recall, False-Alert Rate, Missed-Alert Rate** per rule and per crop. Cross-check `proactive_evaluation_log` for silent failures.
-- **WS19 — Golden Dataset Construction.** Build **200–500 verified farmer cases** spanning all 12 crops × all stages × all major intents (emergence-failure, nutrient, biotic, abiotic, harvest, market). Each case: query (multilingual), authoritative observations, expected hypothesis, expected rule, expected decision, expected clarification path. Source from real `ai_chat_messages` + agronomist-curated synthetic cases. Persist to `/mnt/documents/audit/golden-corpus/` as JSONL. Becomes the permanent regression benchmark.
-- **WS20 — Reference Architecture Comparison.** Score the brain against five explicit reference architectures: Clinical Decision Support (e.g., DXplain/Isabel), IBM Watson-style evidence graphs, Industrial Fault Diagnosis engines, Causal Bayesian networks, classical Knowledge Graph expert systems. Dimensions: Reasoning Depth, Explainability, Temporal Logic, Contradiction Resolution, Scalability.
+**Stage 1 — Populate the differential (server)**
+- New `agents/differential-builder.ts`:
+  - Inputs: `crop_name`, `growth_stage`, `DAS`, `symptom_keys`, `ndvi_value`, `weather_window`, `variety`, `soil_class`.
+  - Pulls candidate causes from: matched-but-sub-threshold `decision_rules`, `hypothesis_master` joined to `hypothesis_conditions`, `disease_risk_model` (env-conditional), and `observation_intent_master` (symptom→cause).
+  - Re-ranks via weighted prior: `0.45·symbolic_match + 0.20·env_fit(NDVI+weather) + 0.15·stage_fit(DAS band) + 0.10·variety_resistance + 0.10·base_prevalence`.
+  - Returns top-5 `DifferentialCandidate[]` with `cause_code`, `cause_name`, `confidence`, `supporting_evidence[]`, `confirming_observation_codes[]` (the chip values).
+- `unified-decision-gate.ts:732-741`: pass real `current_confidence` (from `input.symbolic_confidence`) and call `differentialBuilder` before constructing `escalationData`. Populate `matched_rules`.
+- `index.ts:1868-1882`: stop reading the empty `metadata.matchedRules` — read the differential from `unifiedGateResult.diagnostic_escalation.hypotheses`.
 
-### Tier C — Synthesis
-- **WS12 — Root Cause Synthesis.** Merge WS1–WS11 + WS13–WS20 into **Top 20 Root Causes**, ranked by Farmer Impact × Agronomic Risk × Frequency × Production Severity. Each entry carries the mandatory four-part evidence packet. No generic refactors. No solution mode.
+**Stage 2 — Observation chips in the response (server + frontend contract)**
+- Extend `DiagnosticEscalationData` with `clarification_chips: ClarificationOption[]` — each chip is `{ id, observation_code, label_i18n, hypothesis_id, confidence_lift, icon }`.
+- New renderer `decision/diagnostic-escalation-renderer.ts`: produces the structured payload the chat UI already consumes (same contract as `clarification-renderer.ts` so the existing `OptionChips` component renders it without UI changes).
+- `index.ts` response assembly: attach `metadata.clarification_options = escalation.clarification_chips` and set `orchestratorResponse.type = 'CLARIFICATION_DIAGNOSTIC'` so the frontend renders chips + markdown together.
 
-## Tooling
-- `supabase--read_query` — coverage matrices, orphan joins, dead-rule/hypothesis/observation detection, reachability funnels.
-- `supabase--analytics_query` + `supabase--edge_function_logs` — runtime reachability (WS13), confidence propagation (WS14), gate dominance (WS16), proactive validation (WS18).
-- `supabase--linter` — security/config flags.
-- `rg` — hardcoded-logic sweep (WS10).
-- `acp_subagent--explore` — parallelize WS2, WS4–WS7, WS10, WS13, WS14, WS17.
-- Python (networkx) under `/mnt/documents/audit/scripts/` — WS17 graph metrics + WS19 corpus generation.
+**Stage 3 — Confidence-boost feedback loop**
+- New orchestrator intent `INTENT_ASSERT_OBSERVATION`:
+  - Triggered when the next user turn carries `metadata.selected_observation_code` from a chip tap.
+  - Adds the asserted observation with `assertion_strength: USER_CONFIRMED, weight: 0.85` into `allObservationsForPreAuth`.
+  - Re-enters the symbolic brain with the boost. If new confidence ≥ 0.70 → `DIAGNOSIS_ONLY` branch returns full prescription. If still below → re-emit a narrower differential (max 3 chips) targeting the runner-up.
+- DB: insert `intent_observation_mapping` rows so the orchestrator routes chip taps deterministically (no LLM re-classification).
 
-## Deliverables (`/mnt/documents/audit/`)
-1. `01-current-architecture.md` (+ `.mmd`)
-2. `02-data-flow.md` (+ `.mmd`)
-3. `03-knowledge-graph.md` (+ `.mmd`, + `.graphml` from WS17)
-4. `04-root-cause-analysis.md` (Top 20, evidence-backed)
-5. `05-gap-analysis.md` (WS11 + WS20 scores 0–10)
-6. `06-top-20-defects.md`
-7. `07-agronomic-risk-assessment.md`
-8. `08-production-readiness-score.md` — Agronomic Accuracy, NS Architecture, Explainability, Reliability, Scalability, AI Chat Quality, Proactive Alert Quality, **Runtime Reachability % (WS13)**, **Confidence Integrity (WS14)**, **Crop Readiness per-crop (WS15)**, **Gate Health (WS16)**, **Graph Health (WS17)**, **Proactive Precision/Recall (WS18)**, Overall.
-9. `09-refactor-blueprint.md` — proposal only, deferred to Phase 2 approval.
-10. `10-target-architecture.md` — future-state brain for 1M+ farmers.
+**Stage 4 — Telemetry + invariants**
+- Log per turn: `differential_size`, `top_cause`, `confidence_pre`, `confidence_post_chip`, `chips_rendered`, `chip_selected`, `final_disposition`.
+- Add gate invariant: `escalationData.hypotheses.length >= 1` whenever `response_mode === DIAGNOSTIC_ESCALATION` AND `symptom_keys.length > 0`. Violations → SYMBOLIC_CONTRACT_VIOLATION log + fall back to OBSERVATION mode (never emit a zero-hypothesis escalation again).
+- Memory update: new `mem://logic/differential-builder-contract.md` core rule.
 
-**Evidence appendix (`/mnt/documents/audit/evidence/`)**: SQL outputs, trace dumps, rg hit lists, coverage CSVs, reachability funnels, confidence-trace JSON, gate matrices, graph metrics, proactive replay results, golden corpus JSONL.
+### Files to touch
 
-## Out of Scope (Phase 1)
-- No file edits, no migrations, no edge redeploys, no `mem://` writes.
-- No fix proposals outside `09-refactor-blueprint.md`, and even those are proposals — never executed in Phase 1.
-- No solution-mode commentary anywhere in WS1–WS20 outputs.
+```
+NEW  supabase/functions/ai-agriculture-chat/agents/differential-builder.ts
+NEW  supabase/functions/ai-agriculture-chat/decision/diagnostic-escalation-renderer.ts
+EDIT supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts          (~L720-770)
+EDIT supabase/functions/ai-agriculture-chat/decision/diagnostic-escalation-generator.ts (add chips + env priors hook)
+EDIT supabase/functions/ai-agriculture-chat/decision/authority-types.ts                 (DiagnosticEscalationData.clarification_chips)
+EDIT supabase/functions/ai-agriculture-chat/index.ts                                    (~L1860-1900 + chip-tap routing ~L1100-1200)
+EDIT supabase/functions/ai-agriculture-chat/agents/orchestrator.ts                      (INTENT_ASSERT_OBSERVATION handler)
+NEW  docs/ws13/wave-p-differential-and-feedback-loop.md
+NEW  mem://logic/differential-builder-contract.md  + index update
+SQL  migration: 1 row in intent_assertion_pattern + N rows in intent_observation_mapping for chip-tap routing
+```
 
-## Acceptance
-You receive all 10 reports + complete evidence appendix + golden corpus. Production Readiness Score includes the seven new dimensions (Runtime Reachability, Confidence Integrity, Crop Readiness, Gate Health, Graph Health, Proactive Precision/Recall, Reference-Architecture Parity). You then approve Phase 2 refactors in a separate plan.
+### Validation
+
+1. Replay trace `trace_mqq7c04q_5rgdhp` (Marathi, "पिक अद्याप उगवले नाही", Rice/NURSERY/DAS 15) — must return ≥3 ranked causes + chips, not a generic question.
+2. Tap top chip in dev → second turn must enter `DIAGNOSIS_ONLY` and return full prescription with confidence ≥ 0.70.
+3. SQL audit: zero new `DIAGNOSTIC_ESCALATION` rows in `ai_chat_messages` with `metadata.hypotheses_count = 0` after deploy.
+4. Confidence telemetry: median `confidence_post_chip - confidence_pre ≥ 0.20`.
+
+### Out of scope (next waves)
+- Vision-AI fusion into the chip set (Wave Q).
+- Voice chip-tap via STT (Wave R).
+- Photo-after-chip confirmation when category=DISEASE (Wave S).
+
+Shall I ship Stage 1+2 first (server-side differential + chips render) and then Stage 3 (feedback loop) as a follow-up, or all four stages in one go?

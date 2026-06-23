@@ -101,8 +101,10 @@ import { resolveCropTimeline } from './utils/resolveCropTimeline.ts';
 import { getSiteDisposition } from './utils/clarification-site-tag.ts';
 import {
   generateDiagnosticEscalationResponse,
+  generateDiagnosticEscalationData,
   type DiagnosticEscalationInput
 } from './decision/diagnostic-escalation-generator.ts';
+import { enrichDiagnosticDifferential } from './decision/diagnostic-differential-enricher.ts';
 
 // PHASE 11.1: Context Authority Reconciliation
 import { 
@@ -1862,33 +1864,132 @@ serve(async (req) => {
           console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
           
           if (unifiedGateResult.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION) {
-            // NEW: Expert-quality diagnostic escalation response
-            console.log(`   🔬 DIAGNOSTIC_ESCALATION - generating expert response with hypotheses`);
-            
-            const escalationInput: DiagnosticEscalationInput = {
-              language: detectedLanguage,
-              crop_name: finalCropName || 'Unknown',
-              growth_stage: finalGrowthStage || 'Unknown',
-              days_since_sowing: finalDaysSinceSowing,
-              symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
-              matched_rules: orchestratorResponse.metadata?.matchedRules || [],
-              current_confidence: unifiedGateResult.diagnostic_escalation?.current_confidence || 0.4,
-              treatment_threshold: unifiedGateResult.diagnostic_escalation?.threshold_for_treatment || 0.7
-            };
-            
-            responseContent = generateDiagnosticEscalationResponse(
-              unifiedGateResult.diagnostic_escalation!,
-              escalationInput
-            );
-            
-            // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend
-            orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
-            orchestratorResponse.metadata = {
-              ...orchestratorResponse.metadata,
-              diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
-              orchestrator_type: 'DIAGNOSTIC_ESCALATION'
-            };
-          } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
+            // ═══════════════════════════════════════════════════════════════
+            // Wave-P (Stage 1+2): Differential enrichment + chips
+            // The pre-Wave-P path passed matched_rules=[] which collapsed the
+            // farmer response to a single tautological yes/no question. We
+            // now call the symbolic hypothesis evaluator inline to derive a
+            // ranked differential AND a selectable chip set.
+            // ═══════════════════════════════════════════════════════════════
+            console.log(`   🔬 DIAGNOSTIC_ESCALATION - enriching differential via hypothesis evaluator`);
+
+            const symptomKeysForEscalation: string[] = orchestratorResponse.metadata?.symptomKeys
+              || mergedSymptomKeys
+              || [];
+
+            // Best-effort enrichment. If the evaluator throws (DB down,
+            // missing crop, etc.) we still emit the legacy escalation rather
+            // than a hard error.
+            let enrichment: Awaited<ReturnType<typeof enrichDiagnosticDifferential>> | null = null;
+            try {
+              if (finalCropName && finalGrowthStage) {
+                enrichment = await enrichDiagnosticDifferential({
+                  supabase,
+                  crop_code: String(finalCropName).toUpperCase(),
+                  growth_stage: String(finalGrowthStage).toUpperCase(),
+                  days_since_sowing: typeof finalDaysSinceSowing === 'number' ? finalDaysSinceSowing : null,
+                  observations: [...new Set([...(observationCodesForBypass || []), ...symptomKeysForEscalation])],
+                  ndvi_level: (orchestratorResponse.metadata as any)?.ndvi?.level,
+                  ndvi_trend: (orchestratorResponse.metadata as any)?.ndvi?.trend,
+                  user_query: lastUserMessage?.content || '',
+                  language: detectedLanguage,
+                  trace_id: orchestratorResponse.metadata?.trace_id || `esc_${Date.now()}`,
+                });
+                console.log(`   📊 [DifferentialEnricher] candidates=${enrichment.candidate_count} chips=${enrichment.clarification_chips.length} top_conf=${enrichment.top_confidence.toFixed(2)}`);
+              } else {
+                console.warn(`   ⚠️ [DifferentialEnricher] skipped — missing crop/stage`);
+              }
+            } catch (e) {
+              console.error(`   ❌ [DifferentialEnricher] failed: ${(e as Error).message}`);
+            }
+
+            // Wave-P Stage 4 invariant: a DIAGNOSTIC_ESCALATION with symptoms
+            // MUST carry ≥1 hypothesis. If the enricher returned nothing AND
+            // the legacy escalation also has nothing, downgrade to OBSERVATION
+            // rather than emit a hollow yes/no question.
+            const legacyHypotheses = unifiedGateResult.diagnostic_escalation?.hypotheses?.length || 0;
+            const enrichedHypotheses = enrichment?.matched_rules?.length || 0;
+            const totalHypotheses = legacyHypotheses + enrichedHypotheses;
+
+            if (totalHypotheses === 0 && symptomKeysForEscalation.length > 0) {
+              console.warn(`   🚨 [SYMBOLIC_CONTRACT_VIOLATION] DIAGNOSTIC_ESCALATION emitted with zero hypotheses — downgrading to OBSERVATION mode`);
+              unifiedGateResult.response_mode = ResponseMode.OBSERVATION;
+              unifiedGateResult.reason = `${unifiedGateResult.reason} | wave-p:zero_hypotheses_downgrade`;
+              // Fall through to the OBSERVATION branch below by skipping the rest of this block
+            } else {
+              // Build the canonical escalation payload from enriched data
+              // when available; otherwise use the gate's data as-is.
+              const matchedRulesForEscalation = enrichment?.matched_rules
+                ?? (orchestratorResponse.metadata?.matchedRules || []);
+
+              const escalationInput: DiagnosticEscalationInput = {
+                language: detectedLanguage,
+                crop_name: finalCropName || 'Unknown',
+                growth_stage: finalGrowthStage || 'Unknown',
+                days_since_sowing: finalDaysSinceSowing,
+                symptom_keys: symptomKeysForEscalation,
+                matched_rules: matchedRulesForEscalation,
+                current_confidence: symbolicConfidence
+                  || unifiedGateResult.diagnostic_escalation?.current_confidence
+                  || 0.4,
+                treatment_threshold: unifiedGateResult.diagnostic_escalation?.threshold_for_treatment || 0.7,
+              };
+
+              // Rebuild escalation data with the populated matched_rules so
+              // hypotheses[] is no longer empty.
+              const rebuiltEscalation = generateDiagnosticEscalationData(escalationInput);
+
+              // Attach Stage-2 chip payload + localized question
+              if (enrichment && enrichment.clarification_chips.length > 0) {
+                rebuiltEscalation.clarification_chips = enrichment.clarification_chips;
+                rebuiltEscalation.clarification_question = enrichment.clarification_question;
+              }
+
+              responseContent = generateDiagnosticEscalationResponse(
+                rebuiltEscalation,
+                escalationInput
+              );
+
+              // Stage-3 frontend contract: surface chips through the same
+              // metadata.clarification_options shape the chip renderer
+              // already consumes (label/value/description/observation_key).
+              const clarificationOptionsForUi = (enrichment?.clarification_chips || []).length > 0
+                ? {
+                    question: enrichment!.clarification_question,
+                    options: enrichment!.clarification_chips.map(c => ({
+                      label: c.label,
+                      value: c.value,
+                      description: c.description,
+                      observation_key: c.observation_key,
+                    })),
+                    selectionType: 'SINGLE_CHOICE' as const,
+                  }
+                : undefined;
+
+              // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend
+              orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
+              orchestratorResponse.metadata = {
+                ...orchestratorResponse.metadata,
+                diagnostic_escalation: rebuiltEscalation,
+                orchestrator_type: 'DIAGNOSTIC_ESCALATION',
+                clarification_options: clarificationOptionsForUi,
+                wave_p_enrichment: enrichment
+                  ? {
+                      candidate_count: enrichment.candidate_count,
+                      top_confidence: enrichment.top_confidence,
+                      chips_rendered: enrichment.clarification_chips.length,
+                      enricher_version: enrichment.enricher_version,
+                    }
+                  : null,
+                hypotheses_count: rebuiltEscalation.hypotheses.length,
+              };
+            }
+          }
+
+          // After the DIAGNOSTIC_ESCALATION block above, response_mode may
+          // have been downgraded to OBSERVATION by the Wave-P invariant.
+          // Fall through to the OBSERVATION / fallback branches below.
+          if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // OBSERVATION mode: prefer the action_text of a SAFE rule keyed on
             // a confirmed observation. Only fall back to the generic monitoring
             // template when no such rule exists.
@@ -1905,8 +2006,9 @@ serve(async (req) => {
                 finalDaysSinceSowing
               );
             }
-          } else {
+          } else if (unifiedGateResult.response_mode !== ResponseMode.DIAGNOSTIC_ESCALATION) {
             // No confirmed diagnosis or authority block - use observation response
+            // (Wave-P guard: never overwrite a successfully built DIAGNOSTIC_ESCALATION response)
             responseContent = generateObservationOnlyResponse(
               detectedLanguage,
               finalCropName,
