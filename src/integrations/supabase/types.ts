@@ -16847,6 +16847,51 @@ export type Database = {
         }
         Relationships: []
       }
+      observation_vocabulary_gaps: {
+        Row: {
+          first_seen_at: string
+          id: string
+          language: string
+          last_seen_at: string
+          metadata: Json
+          occurrences: number
+          resolved: boolean
+          resolved_at: string | null
+          resolved_canonical_code: string | null
+          source: string
+          token_normalized: string
+          token_raw: string
+        }
+        Insert: {
+          first_seen_at?: string
+          id?: string
+          language?: string
+          last_seen_at?: string
+          metadata?: Json
+          occurrences?: number
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_canonical_code?: string | null
+          source?: string
+          token_normalized: string
+          token_raw: string
+        }
+        Update: {
+          first_seen_at?: string
+          id?: string
+          language?: string
+          last_seen_at?: string
+          metadata?: Json
+          occurrences?: number
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_canonical_code?: string | null
+          source?: string
+          token_normalized?: string
+          token_raw?: string
+        }
+        Relationships: []
+      }
       offline_sync_queue: {
         Row: {
           action_type: string
@@ -31899,6 +31944,14 @@ export type Database = {
         Returns: Json
       }
       resolve_farmer_features: { Args: { _farmer: string }; Returns: Json }
+      resolve_observation_canonical: {
+        Args: { _language?: string; _raw: string }
+        Returns: {
+          canonical_code: string
+          match_type: string
+          similarity: number
+        }[]
+      }
       resolve_tenant_by_slug: { Args: { p_slug: string }; Returns: Json }
       resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
       sanitize_white_label_config: {
