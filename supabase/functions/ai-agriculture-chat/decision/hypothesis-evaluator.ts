@@ -1006,14 +1006,28 @@ export async function evaluateCandidateHypotheses(
         // Try to extract observations from conditions_json
         const condObs = rule.conditions_json?.observations;
         if (condObs && Array.isArray(condObs) && condObs.length > 0) {
-          effectiveObsChars = condObs.map((obs: string, idx: number) => ({
-            id: obs.toUpperCase(),
-            observation_key: obs.toUpperCase(),
-            label_en: obs.replace(/_/g, ' ').toLowerCase(),
-            is_visual: true,
-            diagnostic_power: 'MEDIUM' as const,
-            confidence_boost: 0.12
-          }));
+          // FARMER-OBSERVABLE GATE: reject action/gate/check codes that are
+          // not real observable symptoms. A farmer must be able to answer
+          // "yes I see this" — codes like *_check, *_gate, etl_*, phi_*,
+          // safety_*, *_authority_* are workflow signals, not symptoms.
+          const NON_OBSERVABLE_RE = /(^|_)(check|gate|authority|threshold|verify|verification)(_|$)|^etl_|^phi_|^safety_|_check$/i;
+          effectiveObsChars = condObs
+            .filter((obs: string) => typeof obs === 'string' && obs.length > 0 && !NON_OBSERVABLE_RE.test(obs))
+            .map((obs: string, idx: number) => ({
+              id: obs.toUpperCase(),
+              observation_key: obs.toUpperCase(),
+              // Leave label_en blank so the enricher's observation_translations
+              // overlay can fill in farmer-friendly text. Falling back to the
+              // raw code here produces action-phrase chips ("water stress check").
+              label_en: undefined,
+              is_visual: true,
+              diagnostic_power: 'MEDIUM' as const,
+              confidence_boost: 0.12
+            }));
+          if (effectiveObsChars.length === 0) {
+            console.log(`   ⏭️ Skipping rule ${rule.rule_id}: only non-observable gate codes in conditions_json`);
+            continue;
+          }
         } else {
           // ═══════════════════════════════════════════════════════════════
           // FIX: Do NOT generate synthetic observation keys from `cause`.
