@@ -4337,12 +4337,14 @@ export class AIAgentOrchestrator {
       let filteredOutCount = 0;
       
       // Add from observation keys - tagged as EXTRACTED (pattern-matched from farmer text)
+      // WAVE-S CASING CONTRACT: store lowercase canonical so DB-condition compare matches.
       if (observationKeys) {
         observationKeys.forEach(key => {
           const strKey = String(key);
           if (isCanonicalCode(strKey)) {
-            allObservationsForPreAuth.add(strKey);
-            authoredObservations.add(strKey, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
+            const c = canonicalize(strKey);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical observation key: "${strKey.substring(0, 30)}"`);
@@ -4354,8 +4356,9 @@ export class AIAgentOrchestrator {
       if (mappedCodes?.observation_codes) {
         mappedCodes.observation_codes.forEach((code: string) => {
           if (isCanonicalCode(code)) {
-            allObservationsForPreAuth.add(code);
-            authoredObservations.add(code, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
+            const c = canonicalize(code);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical mapped code: "${code.substring(0, 30)}"`);
@@ -4367,12 +4370,13 @@ export class AIAgentOrchestrator {
       if (inductionResult?.symptoms) {
         inductionResult.symptoms.forEach((s: any) => {
           if (s.symbol && isCanonicalCode(s.symbol)) {
-            allObservationsForPreAuth.add(s.symbol);
+            const c = canonicalize(s.symbol);
+            allObservationsForPreAuth.add(c);
             // Tag based on induction source
             const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
               ? ObservationAuthority.INFERRED 
               : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
-            authoredObservations.add(s.symbol, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
+            authoredObservations.add(c, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical symptom: "${String(s.symbol).substring(0, 30)}"`);
@@ -4390,8 +4394,9 @@ export class AIAgentOrchestrator {
         photoMappedCodes.observation_codes.forEach((code: any) => {
           const strCode = String(code);
           if (isCanonicalCode(strCode)) {
-            allObservationsForPreAuth.add(strCode);
-            authoredObservations.add(strCode, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
+            const c = canonicalize(strCode);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
           }
         });
       }
