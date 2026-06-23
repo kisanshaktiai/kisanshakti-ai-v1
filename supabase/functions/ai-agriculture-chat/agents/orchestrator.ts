@@ -2459,11 +2459,23 @@ export class AIAgentOrchestrator {
           });
           
           // LOGGING: Post-clarification confidence
+          // P0 FIX (2026-06-23): Carry the PRE-clarification confidence
+          // forward as the base. Answering a clarification must never lower
+          // confidence and must never reset symbolic_confidence to 0 (the
+          // "primary_decision exists but symbolic_confidence=0" invariant).
+          const confidenceBase = Math.max(
+            Number(preClarificationConfidence) || 0,
+            Number(ruleResult.confidence_in_result) || 0
+          );
           const postClarificationConfidence = calculateConfidenceWithTiming(
-            ruleResult.confidence_in_result,
+            confidenceBase,
             true, // clarification completed
             0.15  // boost from clarification
           );
+          // Mutate ruleResult.confidence_in_result so every downstream surface
+          // (UnifiedGate / response builder / decision-log) sees the carried
+          // confidence, not the raw rule-engine value.
+          (ruleResult as any).confidence_in_result = postClarificationConfidence.post_clarification_confidence;
           
           logClarificationEvent(
             traceId,
