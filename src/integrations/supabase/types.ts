@@ -1607,7 +1607,7 @@ export type Database = {
           ndvi_data: Json | null
           output_data: Json
           prompt_version: string | null
-          reasoning: string
+          reasoning: string | null
           schedule_id: string | null
           soil_data: Json | null
           success: boolean | null
@@ -1637,7 +1637,7 @@ export type Database = {
           ndvi_data?: Json | null
           output_data: Json
           prompt_version?: string | null
-          reasoning: string
+          reasoning?: string | null
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
@@ -1667,7 +1667,7 @@ export type Database = {
           ndvi_data?: Json | null
           output_data?: Json
           prompt_version?: string | null
-          reasoning?: string
+          reasoning?: string | null
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
