@@ -2089,6 +2089,38 @@ serve(async (req) => {
           // Ensure decision_output includes rich SSOT fields (action_text/reason_text/knowledge_text)
           // so narration can always be generated from decision_rules, not templates.
           const decisionOutputForFormatting = orchestratorResponse.decision_output;
+
+          // ───────────────────────────────────────────────────────────────
+          // WAVE-R: SYMBOLIC INVARIANT GATE — universal safety contract.
+          // Runs BEFORE hydrate and BEFORE the LLM formatter so that:
+          //   • rules_fired===0 ⇒ primary_decision is nulled out, all
+          //     candidate evidence preserved under `internal_candidates`.
+          //   • emitted rule_id ∉ fired rule_ids ⇒ same scrub.
+          // The gate also writes `decisionOutput.response_payload` as the
+          // single farmer-visible surface for downstream consumers.
+          // Crop-agnostic, language-agnostic, no agronomy logic.
+          // ───────────────────────────────────────────────────────────────
+          try {
+            const _gateRes = await enforceNoRuleNoTreatment(decisionOutputForFormatting, {
+              trace_id: requestId,
+              tenant_id: tenantId ?? null,
+              farmer_id: finalFarmerId ?? null,
+              session_id: (orchestratorResponse as any)?.metadata?.session_id ?? null,
+              crop_code: (landContext as any)?.crop_code ?? null,
+              language: detectedLanguage,
+              intent: (orchestratorResponse as any)?.metadata?.intent_code ?? null,
+              observations: {
+                confirmed: (orchestratorResponse as any)?.metadata?.confirmed_observations ?? [],
+              },
+              observation_rule_hit: typeof observationRuleHit !== 'undefined' ? observationRuleHit : null,
+            });
+            console.log(
+              `🛡️ [SymbolicInvariantGate] action=${_gateRes.gate_action} rules_fired=${_gateRes.rules_fired_count} emitted=${_gateRes.emitted_rule_id ?? 'none'} scrubbed=[${_gateRes.scrubbed_rule_ids.join(',')}]`,
+            );
+          } catch (e) {
+            console.warn(`[SymbolicInvariantGate] non-fatal: ${(e as Error).message}`);
+          }
+
           hydrateDecisionOutputRichText(decisionOutputForFormatting);
 
           // ── Load farmer profile + respectful addressing (presentation-only)
