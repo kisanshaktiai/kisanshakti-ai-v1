@@ -4569,7 +4569,7 @@ export class AIAgentOrchestrator {
       // confirmedObsCodes / terminal-gate / decision_output.symptom_keys.
       if (candidateObservationCodes && candidateObservationCodes.size > 0) {
         for (const code of candidateObservationCodes) {
-          authoredObservations.add(code, ObservationAuthority.HYPOTHESIS_CANDIDATE, 'INTENT_OBSERVATION_MAPPING_DB');
+          authoredObservations.add(canonicalize(code), ObservationAuthority.HYPOTHESIS_CANDIDATE, 'INTENT_OBSERVATION_MAPPING_DB');
         }
         console.log(`   🧪 [HYPOTHESIS_CANDIDATES] Registered ${candidateObservationCodes.size} candidate observations (lane=candidate, NOT confirmed)`);
       }
