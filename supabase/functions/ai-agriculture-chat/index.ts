@@ -101,8 +101,10 @@ import { resolveCropTimeline } from './utils/resolveCropTimeline.ts';
 import { getSiteDisposition } from './utils/clarification-site-tag.ts';
 import {
   generateDiagnosticEscalationResponse,
+  generateDiagnosticEscalationData,
   type DiagnosticEscalationInput
 } from './decision/diagnostic-escalation-generator.ts';
+import { enrichDiagnosticDifferential } from './decision/diagnostic-differential-enricher.ts';
 
 // PHASE 11.1: Context Authority Reconciliation
 import { 
