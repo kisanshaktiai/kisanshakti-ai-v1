@@ -1945,6 +1945,63 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_safety_violations: {
+        Row: {
+          candidate_rule_ids: string[]
+          created_at: string
+          crop_code: string | null
+          details: Json
+          emitted_rule_id: string | null
+          farmer_id: string | null
+          fired_rule_ids: string[]
+          id: string
+          intent: string | null
+          language: string | null
+          observations: Json
+          occurred_at: string
+          reason: string
+          session_id: string | null
+          tenant_id: string | null
+          trace_id: string
+        }
+        Insert: {
+          candidate_rule_ids?: string[]
+          created_at?: string
+          crop_code?: string | null
+          details?: Json
+          emitted_rule_id?: string | null
+          farmer_id?: string | null
+          fired_rule_ids?: string[]
+          id?: string
+          intent?: string | null
+          language?: string | null
+          observations?: Json
+          occurred_at?: string
+          reason: string
+          session_id?: string | null
+          tenant_id?: string | null
+          trace_id: string
+        }
+        Update: {
+          candidate_rule_ids?: string[]
+          created_at?: string
+          crop_code?: string | null
+          details?: Json
+          emitted_rule_id?: string | null
+          farmer_id?: string | null
+          fired_rule_ids?: string[]
+          id?: string
+          intent?: string | null
+          language?: string | null
+          observations?: Json
+          occurred_at?: string
+          reason?: string
+          session_id?: string | null
+          tenant_id?: string | null
+          trace_id?: string
+        }
+        Relationships: []
+      }
       ai_schedule_refinements: {
         Row: {
           ai_reasoning: string

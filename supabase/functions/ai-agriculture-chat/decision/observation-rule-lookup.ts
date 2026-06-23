@@ -34,7 +34,15 @@ export interface ObservationRuleHit {
   localized_text: string | null;
   /** Effective text the caller should display. */
   text: string;
-  source: 'rule_action_text';
+  /**
+   * WAVE-R: this lookup is an INDEPENDENT SQL probe and does NOT mean the
+   * symbolic engine fired this rule. It is an advisory candidate only.
+   * Callers MUST NOT narrate this text unless `rulesActuallyFired() > 0`
+   * AND `isRuleFired(decisionOutput, rule_id) === true`.
+   */
+  source: 'rule_action_text_advisory';
+  /** WAVE-R contract: consumers must check rules_fired before rendering. */
+  requires_rules_fired: true;
 }
 
 // Post-migration: decision_rules.farmer_safety_level is stored lowercase.
@@ -180,7 +188,8 @@ export async function lookupSafeRuleForObservations(
     priority: top.priority,
     localized_text: localized,
     text: localized ?? top.action_text,
-    source: 'rule_action_text',
+    source: 'rule_action_text_advisory',
+    requires_rules_fired: true,
   };
 }
 
