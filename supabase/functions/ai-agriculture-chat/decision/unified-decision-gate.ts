@@ -701,8 +701,6 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       console.log(`   ℹ️ [YoungCrop] Observation→rule lookup matched ${input.confirmed_observation_rule_id || '?'} — informational only; symbolic engine still required to fire (no rule_action_text bypass).`);
     }
 
-      };
-    }
 
     // Check if we have symptoms that warrant diagnostic escalation (not just observation)
     const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 && 
