@@ -16681,6 +16681,7 @@ export type Database = {
         Row: {
           affected_plant_part: string | null
           applicable_crop_groups: string[] | null
+          applies_to_stages: string[]
           canonical_group: string
           clarity_score: number | null
           created_at: string | null
@@ -16694,6 +16695,7 @@ export type Database = {
           observation_category: string | null
           observation_code: string
           observation_type: string | null
+          polarity: string
           semantic_class: string | null
           severity_level: string | null
           symptom_category: string | null
@@ -16705,6 +16707,7 @@ export type Database = {
         Insert: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
+          applies_to_stages?: string[]
           canonical_group: string
           clarity_score?: number | null
           created_at?: string | null
@@ -16718,6 +16721,7 @@ export type Database = {
           observation_category?: string | null
           observation_code: string
           observation_type?: string | null
+          polarity?: string
           semantic_class?: string | null
           severity_level?: string | null
           symptom_category?: string | null
@@ -16729,6 +16733,7 @@ export type Database = {
         Update: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
+          applies_to_stages?: string[]
           canonical_group?: string
           clarity_score?: number | null
           created_at?: string | null
@@ -16742,6 +16747,7 @@ export type Database = {
           observation_category?: string | null
           observation_code?: string
           observation_type?: string | null
+          polarity?: string
           semantic_class?: string | null
           severity_level?: string | null
           symptom_category?: string | null
