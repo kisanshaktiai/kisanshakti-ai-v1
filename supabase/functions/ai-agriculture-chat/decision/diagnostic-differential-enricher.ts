@@ -143,11 +143,13 @@ export async function enrichDiagnosticDifferential(
   // twice. Max 6 chips for mobile-friendly UX.
   const chips: DifferentialChip[] = [];
   const seen = new Set<string>();
+  const NON_OBSERVABLE_RE = /(^|_)(check|gate|authority|threshold|verify|verification)(_|$)|^etl_|^phi_|^safety_|_check$/i;
   for (const c of top) {
     const chars = (c.observable_characteristics || []).slice(0, 3);
     for (const oc of chars) {
       const key = (oc.observation_key || "").trim();
       if (!key || seen.has(key)) continue;
+      if (NON_OBSERVABLE_RE.test(key)) continue; // skip action/gate codes
       seen.add(key);
       chips.push({
         label: pickLabel(oc, input.language),
@@ -162,6 +164,100 @@ export async function enrichDiagnosticDifferential(
       if (chips.length >= 6) break;
     }
     if (chips.length >= 6) break;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FARMER-FRIENDLY LABEL OVERLAY
+  // The hypothesis evaluator produces chip keys (e.g. WATER_STRESS, WILTING)
+  // but its in-memory label_* fields are either undefined or a humanized
+  // version of the code ("water stress"). Real Marathi/Hindi symptom text
+  // lives in `observation_translations.display_text` and full confirmation
+  // questions live in `observation_differential_questions.question_text`.
+  // Overlay both so the farmer sees "पाने कोमेजलेली किंवा लटकलेली दिसत आहेत"
+  // instead of "water stress check".
+  // ─────────────────────────────────────────────────────────────────────────
+  if (chips.length > 0) {
+    try {
+      const lowerKeys = chips.map((ch) => ch.observation_key.toLowerCase());
+      const lang = (input.language || "en").toLowerCase();
+      const fallbackLangs = lang === "mr"
+        ? ["mr", "hi", "en"]
+        : lang === "hi" ? ["hi", "mr", "en"] : ["en", "hi", "mr"];
+
+      // Parallel: translations, differential questions, observability gate
+      const [trRes, dqRes, omRes] = await Promise.all([
+        input.supabase
+          .from("observation_translations")
+          .select("observation_code, language_code, display_text")
+          .in("observation_code", lowerKeys)
+          .in("language_code", fallbackLangs),
+        input.supabase
+          .from("observation_differential_questions")
+          .select("observation_code, language, question_text, crop_code")
+          .in("observation_code", lowerKeys)
+          .eq("language", lang),
+        input.supabase
+          .from("observation_master")
+          .select("observation_code, is_farmer_observable, description")
+          .in("observation_code", lowerKeys),
+      ]);
+
+      // Build best-language translation map (prefer requested lang)
+      const trMap: Record<string, Record<string, string>> = {};
+      for (const r of (trRes?.data || []) as any[]) {
+        const k = (r.observation_code || "").toLowerCase();
+        if (!trMap[k]) trMap[k] = {};
+        if (r.display_text) trMap[k][r.language_code] = r.display_text;
+      }
+
+      // Differential question map (crop-specific wins over generic)
+      const dqMap: Record<string, string> = {};
+      for (const r of (dqRes?.data || []) as any[]) {
+        const k = (r.observation_code || "").toLowerCase();
+        const isCropMatch = r.crop_code && input.crop_code &&
+          String(r.crop_code).toLowerCase() === String(input.crop_code).toLowerCase();
+        if (isCropMatch || !dqMap[k]) {
+          if (r.question_text) dqMap[k] = r.question_text;
+        }
+      }
+
+      // Farmer-observable gate
+      const observableMap: Record<string, boolean> = {};
+      const descMap: Record<string, string> = {};
+      for (const r of (omRes?.data || []) as any[]) {
+        const k = (r.observation_code || "").toLowerCase();
+        // Default to true when the field is null — be permissive, only
+        // exclude when the master explicitly marks the code as non-observable.
+        observableMap[k] = r.is_farmer_observable !== false;
+        if (r.description) descMap[k] = r.description;
+      }
+
+      const enriched: DifferentialChip[] = [];
+      for (const ch of chips) {
+        const k = ch.observation_key.toLowerCase();
+        if (observableMap[k] === false) continue; // hard-gate workflow codes
+        let label = ch.label;
+        const tr = trMap[k];
+        if (tr) {
+          for (const l of fallbackLangs) {
+            if (tr[l]) { label = tr[l]; break; }
+          }
+        }
+        // Last-resort: if label is still a raw code (contains underscores or
+        // matches observation_key), prefer master description, else humanize.
+        if (!label || label === ch.observation_key || /_/.test(label)) {
+          label = descMap[k] || ch.observation_key.replace(/_/g, " ").toLowerCase();
+        }
+        enriched.push({ ...ch, label, description: dqMap[k] || ch.description });
+      }
+      // Replace only when we actually got data; never empty out the chips.
+      if (enriched.length > 0) {
+        chips.length = 0;
+        chips.push(...enriched);
+      }
+    } catch (err) {
+      console.warn(`[DifferentialEnricher] Translation overlay failed (non-fatal):`, err);
+    }
   }
 
   return {
