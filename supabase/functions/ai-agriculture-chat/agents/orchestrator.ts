@@ -7733,10 +7733,30 @@ export class AIAgentOrchestrator {
           console.log(`   🔒 [SYMBOLIC_AUTHORITY] rules_applied projected from layered (${safeLayeredRulesApplied.length} rules)`);
         }
       }
-      
+
+      // Wave-S authority trace — prove on every turn that decisionOutput's
+      // primary_decision and rules_applied came from LayeredRuleEvaluator.
+      try {
+        const _layeredRid = layeredRuleResult?.primary_decision?.rule_id ?? null;
+        const _layeredCount = Array.isArray(layeredRuleResult?.rules_applied)
+          ? layeredRuleResult.rules_applied.length : 0;
+        const _outRid = decisionOutput?.primary_decision?.rule_id
+          ?? decisionOutput?.primary_decision?.application_details?.rule_id
+          ?? null;
+        const _outCount = Array.isArray(decisionOutput?.rules_applied)
+          ? decisionOutput.rules_applied.length : 0;
+        const _aligned = _layeredRid === _outRid && _layeredCount === _outCount;
+        console.log(
+          `🔒 [DECISION_AUTHORITY_TRACE] aligned=${_aligned} ` +
+          `layered.rule_id=${_layeredRid} layered.rules_applied=${_layeredCount} ` +
+          `out.rule_id=${_outRid} out.rules_applied=${_outCount}`
+        );
+      } catch (_e) { /* trace must never throw */ }
+
       console.log('   ✅ Decision generated:', decisionOutput.status);
       console.log('   ✅ Rules applied:', decisionOutput.rules_applied?.length || 0);
       console.log(`   ✅ Primary decision: ${decisionOutput.primary_decision?.action_type || 'NONE'} (rule: ${decisionOutput.primary_decision?.rule_id || decisionOutput.primary_decision?.application_details?.rule_id || 'NONE'})`);
+
       
       layerTimings.layer3_rules = Date.now() - layer3Start;
       console.log(`   ✅ Layer 3 complete (${layerTimings.layer3_rules}ms)`);
