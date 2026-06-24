@@ -4916,8 +4916,72 @@ export class AIAgentOrchestrator {
           !photoForcedDiagnosis &&
           !isTerminalOrSignificantWithLandContext;
 
-        if (evidenceInsufficient) {
-          console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence for hypothesis-driven options`);
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE-23 ARCHITECTURAL FIX: Hypothesis-first Decision Readiness Gate
+        //
+        // BEFORE the Understanding Gate can demand generic clarification
+        // (severity/photo/affected_part), run the hypothesis evaluator. If the
+        // symbolic brain can already compete causes with ≥1 strong candidate or
+        // a mapped decision rule, BYPASS the Understanding Gate and let the
+        // downstream hypothesis arbitration (Phase 2.5.5) + rule engine produce
+        // a real diagnostic answer or a TARGETED clarification.
+        // ═══════════════════════════════════════════════════════════════════════════
+        let readinessProbeReady = false;
+        let readinessProbeReason = 'NOT_RUN';
+        try {
+          const probeCrop = canonicalContext?.crop_code || landContext?.current_crop?.toUpperCase() || 'UNKNOWN';
+          const probeStage = canonicalContext?.growth_stage || landContext?.growth_stage || 'UNKNOWN';
+          const probeDAS = canonicalContext?.days_since_sowing
+            ?? landContext?.days_since_sowing
+            ?? lockedCropContext?.days_since_sowing
+            ?? null;
+          const probeObservations = [...allObservationsForPreAuth].map(o => String(o));
+          const probeVarietyProfile = (landContext as any)?.variety_profile || null;
+
+          const probe = await runHypothesisReadinessProbe({
+            crop_code: probeCrop,
+            growth_stage: probeStage,
+            days_since_sowing: probeDAS,
+            ndvi_level: landContext?.ndvi?.level,
+            ndvi_trend: landContext?.ndvi?.trend,
+            known_observations: probeObservations,
+            user_query: farmerMessage,
+            supabaseClient: this.supabase,
+            trace_id: traceId,
+            variety_id: probeVarietyProfile?.variety_id ?? null,
+            variety_resistance: probeVarietyProfile?.resistance ?? undefined,
+          });
+
+          readinessProbeReady = probe.ready;
+          readinessProbeReason = probe.reason;
+
+          logBrainTrace({
+            trace_id: traceId,
+            intent_code: intentCode || 'UNKNOWN',
+            intent_confidence: typeof intentConf === 'number' ? intentConf : 0,
+            observations_confirmed: realConfirmedSymptoms.length,
+            observations_extracted: probeObservations.length,
+            observations_inferred: realDamageObs.length,
+            probe,
+            decision: probe.ready ? 'RESPOND' : (evidenceInsufficient ? 'CLARIFY_GENERIC' : 'RESPOND'),
+            gate_reason: probe.reason,
+          });
+        } catch (probeErr) {
+          console.warn(`   ⚠️ [ReadinessGate v${READINESS_GATE_VERSION}] Probe failed (non-fatal):`, probeErr);
+          readinessProbeReason = `PROBE_THREW:${(probeErr as Error).message}`;
+        }
+
+        if (readinessProbeReady) {
+          console.log(`\n✅ [ReadinessGate v${READINESS_GATE_VERSION}] Hypothesis-first BYPASS — ${readinessProbeReason}`);
+          console.log(`   → Skipping Understanding Gate. Symbolic brain (hypothesis + rules) will produce decision.`);
+          agentsUsed.push('HYPOTHESIS_FIRST_READINESS_BYPASS');
+          // Bypass the Understanding Gate at line ~5143; let flow continue to
+          // the full hypothesis arbitration + rule evaluator at Phase 2.5.5.
+          bypassClarification = true;
+        }
+
+        if (evidenceInsufficient && !readinessProbeReady) {
+          console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence AND hypothesis probe not ready (${readinessProbeReason})`);
           console.log(`   realConfirmedSymptoms=${realConfirmedSymptoms.length} (${realConfirmedSymptoms.join(',') || 'none'})`);
           console.log(`   realDamageObs=${realDamageObs.length} (${realDamageObs.join(',') || 'none'})`);
           console.log(`   damage_type=${cropDamageResult.damage_type}, severity=${cropDamageResult.severity_level}, hasLandContext=${hasLandContext}`);
@@ -4926,6 +4990,11 @@ export class AIAgentOrchestrator {
           agentsUsed.push('DIAGNOSIS_FIRST_SKIPPED_LOW_EVIDENCE');
           // Do not set bypass flags; fall through to the understanding-based
           // clarification gate below so we collect observations first.
+        } else if (evidenceInsufficient && readinessProbeReady) {
+          // Probe overrode evidenceInsufficient; do not enter DIAGNOSIS-FIRST
+          // (we already set bypassClarification=true above). Skip the
+          // try-block but keep the outer else-branch closed correctly.
+          console.log(`   [ReadinessGate] evidenceInsufficient overridden by hypothesis probe`);
         } else {
           if (isTerminalOrSignificantWithLandContext && (realConfirmedSymptoms.length < 2 && (cropDamageResult.damage_observations || []).length < 2)) {
             console.log(`\n✅ [WAVE-O BYPASS] Evidence-insufficiency bypassed: damage_type=${cropDamageResult.damage_type}, severity=${cropDamageResult.severity_level}, land context locked`);
