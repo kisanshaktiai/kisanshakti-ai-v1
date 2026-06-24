@@ -139,6 +139,18 @@ export async function runHypothesisReadinessProbe(
     evaluation,
   };
 
+  // Phase-24: diagnostic-entry observations FORCE ready=true so the symbolic
+  // brain (hypothesis arbitration + rule engine + targeted clarifier) runs
+  // even when hypothesis_master coverage for the GERMINATION/EMERGENCE
+  // canonical group is sparse and the evaluator returns weak scores.
+  if (hasDiagnosticEntry) {
+    return {
+      ...result,
+      ready: true,
+      reason: 'DIAGNOSTIC_ENTRY_OBSERVATION',
+    };
+  }
+
   // Readiness rules (any one suffices)
   if (topScore >= READY_TOP_SCORE && spread >= READY_SPREAD) {
     return { ...result, ready: true, reason: 'STRONG_TOP_AND_SPREAD' };
