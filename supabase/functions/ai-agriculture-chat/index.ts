@@ -3095,6 +3095,129 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    // SSOT — DiagnosticDecisionAuthority (single writer of response_mode,
+    // clarification_required, recommendation_allowed, diagnostic_state).
+    // Reads the orchestrator's accumulated signals and overrides any earlier
+    // bypasses ("rules matched ⇒ certainty") that violate the invariants.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const _resp: any = responsePayload;
+      const _meta: any = _resp?.metadata || {};
+      const _dec: any = (orchestratorResponse as any).decision_output || {};
+      const _hyp: any = _dec.hypothesis_result || {};
+
+      const confirmedObs: string[] = Array.isArray(_meta.observations)
+        ? _meta.observations.map((o: any) => String(o)).filter(Boolean)
+        : Array.isArray(_dec.confirmed_observations)
+          ? _dec.confirmed_observations
+          : [];
+
+      const requiredMissing: string[] = Array.isArray(_hyp.required_observations_missing)
+        ? _hyp.required_observations_missing
+        : Array.isArray(_dec.required_observations_missing)
+          ? _dec.required_observations_missing
+          : [];
+
+      const rawHyps: any[] = Array.isArray(_hyp.candidates)
+        ? _hyp.candidates
+        : Array.isArray(_dec.hypotheses)
+          ? _dec.hypotheses
+          : Array.isArray(_hyp.ranked)
+            ? _hyp.ranked
+            : [];
+
+      const hypotheses = rawHyps
+        .map((h: any) => ({
+          id: String(h.id ?? h.hypothesis_id ?? h.canonical_group ?? h.rule_id ?? 'unknown'),
+          confidence: typeof h.confidence === 'number'
+            ? h.confidence
+            : typeof h.posterior === 'number'
+              ? h.posterior
+              : typeof h.score === 'number' ? h.score : 0,
+        }))
+        .filter(h => h.id && Number.isFinite(h.confidence));
+
+      const rulesFiredCount = Array.isArray(_meta.rules_applied)
+        ? _meta.rules_applied.length
+        : 0;
+
+      const ruleConfidence = typeof _dec?.primary_decision?.weighted_confidence === 'number'
+        ? _dec.primary_decision.weighted_confidence
+        : typeof _dec?.confidence === 'number' ? _dec.confidence : 0;
+
+      const obsConfidence = typeof _meta.confidence === 'number'
+        ? Math.max(0, Math.min(1, _meta.confidence > 1 ? _meta.confidence / 100 : _meta.confidence))
+        : 0;
+
+      const visualConfidence = typeof _meta?.photo?.confidence === 'number'
+        ? _meta.photo.confidence
+        : 0;
+
+      const hasSymptoms = (
+        confirmedObs.length > 0
+        || rawHyps.length > 0
+        || _resp?.type === 'CLARIFICATION_QUESTION'
+        || _resp?.type === 'DIAGNOSTIC_ESCALATION'
+      );
+
+      const signals: AuthoritySignals = {
+        trace_id: traceId,
+        has_symptoms: !!hasSymptoms,
+        has_photo: !!_meta?.photo?.observations_count,
+        visual_confirmation_required: !!_dec?.visual_confirmation_required,
+        confirmed_observations: confirmedObs,
+        required_observations_missing: requiredMissing,
+        hypotheses,
+        contradictions_count: Array.isArray(_dec?.contradictions) ? _dec.contradictions.length : 0,
+        observation_confidence: obsConfidence,
+        visual_confidence: visualConfidence,
+        rule_confidence: ruleConfidence,
+        rules_fired_count: rulesFiredCount,
+        upstream_clarification_required:
+          _resp?.clarification_required === true
+          || _resp?.type === 'CLARIFICATION_QUESTION',
+        upstream_has_recommendations: Array.isArray(_resp?.actions) && _resp.actions.length > 0,
+      };
+
+      const verdict = decideAuthority(signals);
+      const enforceResult = enforceAuthorityOnPayload(
+        responsePayload as Record<string, any>,
+        verdict,
+        'index.ts:diagnostic-decision-authority',
+      );
+
+      (responsePayload as any).metadata = (responsePayload as any).metadata || {};
+      (responsePayload as any).metadata.diagnostic_authority = {
+        version: verdict.version,
+        state: verdict.diagnostic_state,
+        response_mode: verdict.response_mode,
+        certainty: verdict.diagnostic_certainty,
+        reason: verdict.reason,
+        overridden_fields: enforceResult.overridden,
+        stripped_fields: enforceResult.stripped,
+        signals: {
+          competing_hypotheses: verdict.certainty_breakdown.competing_hypotheses,
+          required_observations_missing: verdict.certainty_breakdown.required_observations_missing,
+          rules_fired_count: rulesFiredCount,
+          confirmed_obs_count: confirmedObs.length,
+        },
+      };
+
+      if (enforceResult.overridden.length > 0 || enforceResult.stripped.length > 0) {
+        console.warn(
+          `🧭 [DiagnosticDecisionAuthority] trace=${traceId} state=${verdict.diagnostic_state} ` +
+          `mode=${verdict.response_mode} certainty=${verdict.diagnostic_certainty.toFixed(2)} ` +
+          `overrode=[${enforceResult.overridden.join(',')}] stripped=[${enforceResult.stripped.join(',')}] ` +
+          `reason="${verdict.reason}"`
+        );
+      }
+    } catch (authErr) {
+      console.error('[DiagnosticDecisionAuthority] enforcement failed — fail-open:', (authErr as Error).message);
+    }
+
+
+
+    // ═══════════════════════════════════════════════════════════════════════
     // WAVE B1 — Rule-source shadow diff (RULE_SOURCE=shadow, default)
     //   Compare the rule_ids that actually fired (in-memory bundled path)
     //   against the candidate set a SQL-pushdown query would have offered.
