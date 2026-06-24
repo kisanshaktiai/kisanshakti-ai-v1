@@ -3265,6 +3265,18 @@ export class AIAgentOrchestrator {
                   if (strength === 'LITERAL') promotedLiteral++;
                   else promotedStrong++;
                 }
+                // Tag the source so the authoredObservations assignment
+                // (≈ orchestrator.ts:4395) can preserve the DB-curated authority.
+                try {
+                  const canon = canonicalize(c);
+                  const tag = strength === 'LITERAL'
+                    ? 'DB_INTENT_OBSERVATIONS_LITERAL'
+                    : 'DB_INTENT_OBSERVATIONS_STRONG';
+                  // LITERAL wins over STRONG if both routes ever overlap.
+                  if (dbIntentPromotedSources.get(canon) !== 'DB_INTENT_OBSERVATIONS_LITERAL') {
+                    dbIntentPromotedSources.set(canon, tag as any);
+                  }
+                } catch { /* canonicalize tolerant */ }
               } else if (!candidateObservationCodes.has(c)) {
                 candidateObservationCodes.add(c);
                 addedCandidate++;
