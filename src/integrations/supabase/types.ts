@@ -6427,6 +6427,69 @@ export type Database = {
           },
         ]
       }
+      crop_stage_knowledge: {
+        Row: {
+          aliases: string[]
+          avoid_actions: string[]
+          created_at: string
+          critical_actions: string[]
+          crop_code: string
+          disease_watch: string[]
+          fertilizer: string
+          growth_stage: string
+          id: string
+          ndvi_max: number | null
+          ndvi_min: number | null
+          pest_watch: string[]
+          reviewed_at: string | null
+          reviewed_by_agronomist: boolean
+          source: string
+          updated_at: string
+          water: string
+          yield_impact_if_stressed: string | null
+        }
+        Insert: {
+          aliases?: string[]
+          avoid_actions?: string[]
+          created_at?: string
+          critical_actions?: string[]
+          crop_code: string
+          disease_watch?: string[]
+          fertilizer: string
+          growth_stage: string
+          id?: string
+          ndvi_max?: number | null
+          ndvi_min?: number | null
+          pest_watch?: string[]
+          reviewed_at?: string | null
+          reviewed_by_agronomist?: boolean
+          source?: string
+          updated_at?: string
+          water: string
+          yield_impact_if_stressed?: string | null
+        }
+        Update: {
+          aliases?: string[]
+          avoid_actions?: string[]
+          created_at?: string
+          critical_actions?: string[]
+          crop_code?: string
+          disease_watch?: string[]
+          fertilizer?: string
+          growth_stage?: string
+          id?: string
+          ndvi_max?: number | null
+          ndvi_min?: number | null
+          pest_watch?: string[]
+          reviewed_at?: string | null
+          reviewed_by_agronomist?: boolean
+          source?: string
+          updated_at?: string
+          water?: string
+          yield_impact_if_stressed?: string | null
+        }
+        Relationships: []
+      }
       crop_stage_master: {
         Row: {
           created_at: string | null
