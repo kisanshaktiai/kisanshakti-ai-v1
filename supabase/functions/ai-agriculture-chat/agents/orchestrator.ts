@@ -3535,10 +3535,19 @@ export class AIAgentOrchestrator {
           // Check if symptom already exists in inductionResult
           const existingSymptom = inductionResult.symptoms.find(s => s.symbol === code);
           if (!existingSymptom) {
+            // P0 AUTHORITY FIX (2026-06-24): preserve DB-intent provenance for
+            // LITERAL / STRONG_HYPOTHESIS promoted codes so the authority
+            // assignment block does not collapse them to INFERRED.
+            let promotedSource: string = 'LLM_SEMANTIC_EXTRACTOR';
+            try {
+              const canon = canonicalize(code);
+              const tag = dbIntentPromotedSources.get(canon);
+              if (tag) promotedSource = tag;
+            } catch { /* tolerant */ }
             inductionResult.symptoms.push({
               symbol: code,
               confidence: safeConfidence,
-              source: 'LLM_SEMANTIC_EXTRACTOR'
+              source: promotedSource
             });
             inductionResult.total_symbols_extracted++;
           }
