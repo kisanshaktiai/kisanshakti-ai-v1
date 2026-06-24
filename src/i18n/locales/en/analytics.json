@@ -94,6 +94,16 @@
       "generating": "Generating…",
       "empty": "No AI forecast yet. Tap Generate to create one."
     },
-    "loading": { "message": "Loading analytics..." }
+    "loading": { "message": "Loading analytics..." },
+    "harvest_history": {
+      "title": "Harvest history",
+      "empty": "No completed harvests yet. Confirm a harvest to start tracking yields.",
+      "total_yield": "Total yield",
+      "avg_per_acre": "Avg / acre",
+      "avg_days": "Avg days",
+      "sov": "{{a}} vs {{b}}",
+      "auto": "auto",
+      "share": "Share on WhatsApp"
+    }
   }
 }

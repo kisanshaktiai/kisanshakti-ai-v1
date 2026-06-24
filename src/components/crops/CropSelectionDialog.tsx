@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Check, Wheat, Sprout, TreePine, Flower, Apple, Carrot, Bean, ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
@@ -51,6 +52,7 @@ export function CropSelectionDialog({
   selectedCropId,
   title = "Select Crop"
 }: CropSelectionDialogProps) {
+  const tRef = useLocalizedRef();
   const [cropGroups, setCropGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -170,8 +172,9 @@ export function CropSelectionDialog({
     if (selectedCrop) {
       const crop = crops.find(c => c.id === selectedCrop);
       if (crop) {
+        const localized = tRef(crop as any, 'label') || crop.label;
         console.log('Confirming crop selection:', crop);
-        onSelect(crop.id, crop.label);
+        onSelect(crop.id, localized);
         handleClose();
       }
     }
@@ -217,7 +220,7 @@ export function CropSelectionDialog({
             {title}
             {step === 'crops' && selectedGroup && (
               <Badge variant="secondary" className="ml-2">
-                {cropGroups.find(g => g.id === selectedGroup)?.group_name}
+                {(() => { const g = cropGroups.find(g => g.id === selectedGroup); return g ? (tRef(g as any, 'group_name') || g.group_name) : ''; })()}
               </Badge>
             )}
           </DialogTitle>
@@ -277,11 +280,11 @@ export function CropSelectionDialog({
                           "text-sm font-medium text-center",
                           isSelected ? "text-primary" : "text-foreground"
                         )}>
-                          {group.group_name}
+                          {tRef(group as any, 'group_name') || group.group_name}
                         </p>
-                        {group.description && (
+                        {(tRef(group as any, 'description') || group.description) && (
                           <p className="text-xs text-muted-foreground text-center line-clamp-2">
-                            {group.description}
+                            {tRef(group as any, 'description') || group.description}
                           </p>
                         )}
                       </div>
@@ -301,7 +304,7 @@ export function CropSelectionDialog({
               <div className="grid grid-cols-2 gap-2">
                 {crops.map((crop) => {
                   const isSelected = selectedCrop === crop.id;
-                  
+                  const localized = tRef(crop as any, 'label') || crop.label;
                   return (
                     <Card
                       key={crop.id}
@@ -319,11 +322,11 @@ export function CropSelectionDialog({
                             "text-sm font-medium truncate",
                             isSelected ? "text-primary" : "text-foreground"
                           )}>
-                            {crop.label}
+                            {localized}
                           </p>
-                          {crop.label_local && (
+                          {localized !== crop.label && (
                             <p className="text-xs text-muted-foreground truncate">
-                              {crop.label_local}
+                              {crop.label}
                             </p>
                           )}
                           {crop.season && (

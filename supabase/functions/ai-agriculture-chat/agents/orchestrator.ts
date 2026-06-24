@@ -9,6 +9,10 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
+import { resolveCropTimeline } from '../utils/resolveCropTimeline.ts';
+import { tagClarificationSite, CLARIFICATION_SITES } from '../utils/clarification-site-tag.ts';
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from '../../_shared/variety-context.ts';
+
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
@@ -20,6 +24,8 @@ import { RuleEngineExecutor } from './rule-engine-executor.ts';
 import { CommunicationGenerator } from './communication-generator.ts';
 import { FeedbackLearningEngine } from './feedback-learning.ts';
 import { SafetyGuardian } from './safety-guardian.ts';
+import { recommendNextCrop, renderRecommendationMessage, cropLabel } from './next-crop-recommender.ts';
+import { ObservationSurvivalMatrix } from '../_telemetry/observation-survival.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-16: NEW SYMBOLIC DECISION BRAIN IMPORTS
@@ -27,9 +33,11 @@ import { SafetyGuardian } from './safety-guardian.ts';
 // ═══════════════════════════════════════════════════════════════════════════
 import { 
   SymbolicReasoner,
+  buildSymbolicReasoner,
   type SymbolicFact,
   type InferenceResult 
 } from '../decision/symbolic-reasoner.ts';
+
 
 import { 
   FactExtractor,
@@ -95,7 +103,69 @@ export const ADVISORY_DIRECT_INTENTS = new Set<string>([
   'VARIETY_SELECTION_QUERY',
   'SEASONAL_TRANSITION_ALERT',
   'WEATHER_ADVISORY',
+  // Phase 1 (P0): next-crop recommendation for post-harvest / fallow fields
+  'NEXT_CROP_RECOMMENDATION',
 ]);
+
+/**
+ * ADVISORY_ON_EMPTY_FIELD_INTENTS — intents that MUST be answered even when
+ * canonical context has status='NO_ACTIVE_CROP'. Asking "which crop next?"
+ * on an empty field is meaningful; the NO_ACTIVE_CROP short-circuit must
+ * NOT intercept these. The symbolic brain handles them with last-harvest +
+ * soil + weather + season as inputs.
+ */
+export const ADVISORY_ON_EMPTY_FIELD_INTENTS = new Set<string>([
+  'NEXT_CROP_RECOMMENDATION',
+  'CROP_ROTATION_QUERY',
+  'SEED_SELECTION',
+  'VARIETY_SELECTION_QUERY',
+  'SEASONAL_TRANSITION_ALERT',
+  'SOIL_TESTING_QUERY',
+  'SOIL_HEALTH_RESTORATION',
+]);
+
+/**
+ * Language-agnostic pre-classifier regex for "should I grow X next?" style
+ * queries. Used BEFORE LLM intent classification by:
+ *   (a) static-data-gate.ts — to refuse intercepting these as CROP_NAME lookups
+ *   (b) the NO_ACTIVE_CROP short-circuit — to fall through to the symbolic brain
+ *
+ * Covers Marathi, Hindi, English (Devanagari + romanized). Conservative —
+ * only matches when an explicit recommendation/future-tense marker is present.
+ */
+export const NEXT_CROP_RECOMMENDATION_PATTERNS: RegExp[] = [
+  // Marathi
+  /नवीन\s*(पीक|पिक)/i,                                   // "नवीन पीक"
+  /(पीक|पिक)\s*(घ्यावे|घेवू|घेऊ|लावावे|लावू|पेरू|पेरावे|सुचवा|सुचव)/i,
+  /(कोणते|कोणतं|कोणती)\s*(नवीन\s*)?(पीक|पिक).*(घेवू|घ्यावे|लावावे|पेरू|पेरावे|योग्य|फायदेशीर|सुचव)/i,
+  /पुढील\s*(पीक|पिक)/i,                                  // "next crop"
+  /आता\s*(काय|कोणते)\s*(पेरू|पेरावे|लावावे|घेवू)/i,
+  /फायदेशीर\s*(पीक|पिक)/i,
+  // Hindi
+  /(कौन\s*सी?|क्या)\s*(नई\s*)?फसल\s*(लगाऊं|बोऊं|उगाऊं|लगाएं|बोएं|सुझाव|सुझाओ|बताओ)/i,
+  /अगली\s*फसल/i,
+  /नई\s*फसल/i,
+  /क्या\s*(बोऊं|बोएं|लगाऊं|उगाऊं)/i,
+  // English
+  /\b(what|which|recommend(ed)?|suggest|best)\b[^?.!\n]{0,40}\b(crop|plant)\b[^?.!\n]{0,40}\b(grow|plant|sow|next|after|recommend|suggest|best)\b/i,
+  /\bnext\s+crop\b/i,
+  /\bwhat\s+(should\s+i|to)\s+(plant|sow|grow)\b/i,
+  /\brecommend\s+(a\s+)?crop\b/i,
+  // Romanized Marathi/Hindi
+  /\b(navin|nava|nayi)\s+(pik|pīk|fasal|fasl)\b/i,
+  /\b(kon|kaun)\s*(sa|si|te|ta|t[ií])\s+(pik|fasal)\b[^?.!\n]{0,30}\b(ghyave|ghevu|lavave|peru|lagau|boyu|bou)/i,
+];
+
+/**
+ * Returns true if the farmer message asks for a next-crop / crop-selection
+ * recommendation. Pure regex — no LLM call. Safe to call in hot paths.
+ */
+export function isNextCropRecommendationQuery(message: string | null | undefined): boolean {
+  if (!message || typeof message !== 'string') return false;
+  const m = message.trim();
+  if (!m) return false;
+  return NEXT_CROP_RECOMMENDATION_PATTERNS.some((re) => re.test(m));
+}
 
 export function isAdvisoryRoute(intentCode: string | null | undefined): boolean {
   return !!intentCode && ADVISORY_DIRECT_INTENTS.has(intentCode);
@@ -217,6 +287,14 @@ import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstan
 import { getAuditLogger } from './audit-logger.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
+// SSOT WIRING (2026-06-07): pull observation codes from intent_observation_mapping
+// table instead of relying solely on the local intent→observation dict.
+import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
+
+// Task 7b (2026-06-13): per-request scope threading begins here. Imported
+// type-only to avoid touching runtime cost when scope is absent (legacy paths).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
 
 // STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
 import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
@@ -340,13 +418,14 @@ import {
 } from './photoperiod-calculator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SHARED CONSTANT: Emergency observation codes (used in both return paths)
+// Phase 3 SSOT: emergency observation codes + direct advisory routes now
+// live in the DB (`emergency_observation_codes` / `direct_advisory_routes`).
+// Loaders are imported from decision/db-lookups.ts and called per turn.
 // ═══════════════════════════════════════════════════════════════════════════
-const EMERGENCY_OBS_CODES = new Set([
-  'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
-  'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-]);
+import {
+  loadEmergencyObservationCodes,
+  loadDirectAdvisoryRoutes,
+} from '../decision/db-lookups.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
@@ -664,10 +743,24 @@ async function translateClarificationOptions(
 
   try {
     if (codesToLookup.length > 0) {
+      // ═══════════════════════════════════════════════════════════════════════
+      // CASE-INSENSITIVE LOOKUP (2026-06-17 bug fix):
+      // observation_master / observation_translations store observation_code
+      // in LOWERCASE (e.g. `germination_failure`). The clarification pipeline
+      // emits UPPERCASE codes (`GERMINATION_FAILURE`). The previous strict
+      // `.in('observation_code', UPPER_CODES)` query returned zero rows so the
+      // farmer saw the raw symbolic code instead of the Marathi description.
+      // We now query both casings and key the returned map by UPPERCASE so the
+      // downstream rewrite (which normalizes to UPPERCASE) still matches.
+      // ═══════════════════════════════════════════════════════════════════════
+      const dualCaseCodes = Array.from(new Set([
+        ...codesToLookup,
+        ...codesToLookup.map(c => c.toLowerCase()),
+      ]));
       const { data, error } = await supabaseClient
         .from('observation_translations')
         .select('observation_code, display_text, description_text')
-        .in('observation_code', codesToLookup)
+        .in('observation_code', dualCaseCodes)
         .eq('language_code', lang);
 
       if (!error && data) {
@@ -679,6 +772,9 @@ async function translateClarificationOptions(
             row.description_text.length > (row.display_text?.length || 0);
           labelMap.set(code, hasGoodDesc ? row.description_text : row.display_text);
         }
+        console.log(`🌐 [ClarificationTranslation] DB lookup matched ${labelMap.size}/${codesToLookup.length} codes (lang=${lang})`);
+      } else if (error) {
+        console.warn(`⚠️ [ClarificationTranslation] DB lookup error: ${error.message}`);
       }
     }
   } catch (err) {
@@ -997,16 +1093,16 @@ export class AIAgentOrchestrator {
   // PHASE-14: Stage-Aware Fallback - Returns symbolic structure
   // Text generation delegated to narration layer
   // ═══════════════════════════════════════════════════════════════════════════
-  private generateStageAwareFallback(
+  private async generateStageAwareFallback(
     cropCode: string,
     stage: string,
     symptomContext: string,
     daysSinceSowing: number,
     language: string = 'mr'
-  ): { i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> } {
+  ): Promise<{ i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> }> {
     console.log(`[STAGE_FALLBACK] ${cropCode}/${stage} (${daysSinceSowing} DAS)`);
-    
-    const stageAdvice = getStageSpecificAdvice(cropCode, stage);
+
+    const stageAdvice = await getStageSpecificAdvice(this.supabase, cropCode, stage);
     
     if (!stageAdvice) {
       console.log(`[STAGE_FALLBACK] No advice for ${cropCode}/${stage}, using generic`);
@@ -1068,6 +1164,14 @@ export class AIAgentOrchestrator {
       language?: string;
       landId?: string;
       traceId?: string;  // PHASE A: Accept trace_id for observability
+      /**
+       * Task 7b (2026-06-13): per-request RequestScope. Optional during the
+       * staged rollout so cron/legacy callers keep working, but the index.ts
+       * entry-point always supplies one. When present, it overrides traceId
+       * (via scope.traceId) and is forwarded to scope-aware DB loaders so
+       * they can reuse the JWT-validated client and emit causal trace events.
+       */
+      scope?: RequestScope;
       // PHASE 8: Session context for follow-up awareness
       conversationHistory?: Array<{ role: string; content: string }>;
       sessionState?: {
@@ -1090,7 +1194,21 @@ export class AIAgentOrchestrator {
     
     const startTime = Date.now();
     const agentsUsed: string[] = [];
-    const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    const scope = options.scope;
+    const traceId = scope?.traceId || options.traceId || `trace_${Date.now().toString(36)}`;
+    scope?.emit({ stage: 'orchestrator', kind: 'derive', payload: { event: 'orchestrate_start', traceId } });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // OBSERVATION SURVIVAL MATRIX — one structured log line per request, emitted
+    // in the finally block below so every code path (success, early-return,
+    // throw) produces a matrix that pinpoints where observations died.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const survival = new ObservationSurvivalMatrix(traceId);
+    survival.record('raw_text', (farmerMessage || '').length);
+    survival.setMeta('session_id', sessionId);
+    survival.setMeta('has_photo', !!options.photoUrl);
+    survival.setMeta('language', options.language || null);
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
@@ -1169,6 +1287,47 @@ export class AIAgentOrchestrator {
         console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
         if (landContext) {
           console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
+
+          // ═══════════════════════════════════════════════════════════════════════════
+          // SSOT OVERLAY (pre-UnifiedGate): derive DAS + growth_stage from
+          // crop_schedules.sowing_date → crop_stage_master so every downstream
+          // gate (UnifiedGate, clarification, rule lookup) reads the canonical
+          // stage. Without this, fetchComprehensiveLandContext may surface a
+          // stale/cached stage label (e.g. NURSERY) that the farmer never
+          // confirmed, polluting the entire turn.
+          // ═══════════════════════════════════════════════════════════════════════════
+          try {
+            const timeline = await resolveCropTimeline({
+              landId: options.landId,
+              supabase: this.supabase,
+              scope: scope as any,
+            });
+            if (timeline.schedule_source === 'crop_schedules') {
+              const prevStage = landContext.growth_stage;
+              const prevDas = landContext.days_since_sowing;
+              if (timeline.days_since_sowing !== null) {
+                landContext.days_since_sowing = timeline.days_since_sowing;
+              }
+              if (timeline.growth_stage && timeline.growth_stage !== 'UNKNOWN') {
+                landContext.growth_stage = timeline.growth_stage;
+                // Persist SSOT origin so downstream advisors (GDD, calendar lookup)
+                // cannot silently overwrite the authoritative stage.
+                (landContext as any).stage_source = timeline.stage_source;
+              }
+              (landContext as any).sowing_date = timeline.sowing_date;
+              (landContext as any).expected_harvest_date = timeline.expected_harvest_date;
+              (landContext as any).maturity_days = timeline.maturity_days;
+              if (timeline.crop_code) (landContext as any).crop_code = timeline.crop_code;
+              console.log(
+                `   📅 [CropTimeline SSOT pre-orchestrator] stage ${prevStage} → ${landContext.growth_stage} ` +
+                `(src=${timeline.stage_source}), DAS ${prevDas} → ${landContext.days_since_sowing}`,
+              );
+            } else {
+              console.log(`   📅 [CropTimeline SSOT pre-orchestrator] no active crop_schedule — keeping landContext values`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [CropTimeline SSOT pre-orchestrator] failed: ${(e as Error).message}`);
+          }
           
           // ═══════════════════════════════════════════════════════════════════════════
           // PHASE-20: STAGE-LOCKED CLARIFICATION
@@ -1176,13 +1335,18 @@ export class AIAgentOrchestrator {
           // ═══════════════════════════════════════════════════════════════════════════
           if (landContext.growth_stage && landContext.current_crop) {
             const stageSource = landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT';
-            lockStageForTurn(
-              landContext.current_crop,
-              landContext.growth_stage,
-              landContext.days_since_sowing || 0,
-              stageSource
-            );
-            
+            if (scope) {
+              lockStageForTurn(
+                scope,
+                landContext.current_crop,
+                landContext.growth_stage,
+                landContext.days_since_sowing || 0,
+                stageSource
+              );
+            } else {
+              console.warn('⚠️ [Orchestrator] Skipping stage lock — no RequestScope on this call path');
+            }
+
             logClarificationEvent(
               traceId,
               'STAGE_LOCK',
@@ -1291,12 +1455,32 @@ export class AIAgentOrchestrator {
       // ========================================
       // Static import at top of file
       
-      const queryRoute = routeQuery(farmerMessage, {
-        lastPest: options.sessionState?.previousPest,
-        lastDisease: options.sessionState?.previousDisease,
-        lastCrop: options.sessionState?.previousCrop || landContext?.current_crop,
-        turnCount: options.sessionState?.turnCount || 0
-      });
+      // If the frontend echoes an embedded obs_key while a clarification is
+      // active, this turn is a structured option selection, not a new free-text
+      // question. Do not re-route on translated label words like "पाणी"/water.
+      const isStructuredClarificationSelection = pendingOptionsCount > 0 && hasTextInput &&
+        (/\[obs_keys?:[^\]]+\]/i.test(safeFarmerMessage) || /^[१२३४1-4]$/.test(safeFarmerMessage.trim()));
+
+      const queryRoute = isStructuredClarificationSelection
+        ? {
+            route: 'PEST_DISEASE_TREATMENT' as const,
+            confidence: 1,
+            detected_entities: {},
+            requires_decision_brain: true,
+            requires_weather_api: false,
+            requires_market_api: false,
+            is_follow_up: true,
+            context_hints: ['STRUCTURED_CLARIFICATION_SELECTION'],
+          }
+        : routeQuery(farmerMessage, {
+            lastPest: options.sessionState?.previousPest,
+            lastDisease: options.sessionState?.previousDisease,
+            lastCrop: options.sessionState?.previousCrop || landContext?.current_crop,
+            turnCount: options.sessionState?.turnCount || 0
+          });
+      if (isStructuredClarificationSelection) {
+        console.log(`🛤️ [${traceId}] Query Route bypassed: structured clarification obs_key selection`);
+      }
       
       console.log(`🛤️ [${traceId}] Query Route: ${queryRoute.route} (confidence: ${(queryRoute.confidence * 100).toFixed(0)}%)`);
       console.log(`   Detected entities: ${JSON.stringify(queryRoute.detected_entities)}`);
@@ -1321,10 +1505,21 @@ export class AIAgentOrchestrator {
           const combinedVocab = [...allVocab, ...cropVocab];
           
           for (const entry of combinedVocab) {
-            if (!entry.recommended_intent_bias) continue;
-            // Word boundary match for phrase_pattern in farmer message
-            const pattern = new RegExp(`\\b${entry.phrase_pattern}\\b`, 'i');
-            if (pattern.test(msgLower)) {
+            if (!entry.recommended_intent_bias || !entry.phrase_pattern) continue;
+            // SSOT FIX (2026-06-07): \b word-boundary regex does NOT match
+            // Devanagari script, so DB rows for खत/तण/तन/खरपतवार never fired.
+            // Use Unicode-safe substring matching with a regex-escaped pattern
+            // so the override works for Marathi, Hindi and English alike.
+            const phraseLower = String(entry.phrase_pattern).toLowerCase();
+            const matchesDevanagari = /[\u0900-\u097F]/.test(phraseLower);
+            let isMatch = false;
+            if (matchesDevanagari) {
+              isMatch = msgLower.includes(phraseLower);
+            } else {
+              const escaped = phraseLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              isMatch = new RegExp(`(^|\\W)${escaped}(\\W|$)`, 'i').test(msgLower);
+            }
+            if (isMatch) {
               const bias = entry.recommended_intent_bias;
               // Map intent bias to appropriate route
               const SYMPTOM_INTENTS = ['WEED_PROBLEM', 'REPORT_SYMPTOM', 'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN'];
@@ -1500,9 +1695,31 @@ export class AIAgentOrchestrator {
       // ========================================
       // Check if query is about static land attributes - answer WITHOUT AI (static import at top)
       
+      // Phase 2/3 (P0): pre-classify next-crop recommendation intent via
+      // language-agnostic regex BEFORE the static gate fires. The flag is
+      // used both to (a) prevent the gate's CROP_NAME branch from
+      // intercepting advisory queries, and (b) bypass the NO_ACTIVE_CROP
+      // short-circuit so the symbolic brain can produce a recommendation.
+      const isRecommendationQuery = isNextCropRecommendationQuery(farmerMessage);
+      if (isRecommendationQuery) {
+        console.log(`🌱 [${traceId}] NEXT_CROP_RECOMMENDATION pre-classified — static gate + NO_ACTIVE_CROP guard will be bypassed`);
+        // PHASE 7 — structured audit tag (machine-parsable)
+        console.log(JSON.stringify({
+          audit_tag: 'NEXT_CROP_ROUTING',
+          trace_id: traceId,
+          stage: 'PRE_CLASSIFY',
+          intent: 'NEXT_CROP_RECOMMENDATION',
+          static_gate_bypass: true,
+          no_active_crop_bypass: true,
+          message_preview: (farmerMessage || '').slice(0, 120),
+        }));
+        agentsUsed.push('NEXT_CROP_RECOMMENDATION_PRECLASSIFIED');
+      }
+
       const staticGateResult = checkStaticDataGate({
         farmer_message: farmerMessage,
         language: options.language || 'mr',
+        is_recommendation_query: isRecommendationQuery,
         land_context: landContext ? {
           land_id: landContext.land_id,
           land_name: landContext.land_name,
@@ -1510,6 +1727,7 @@ export class AIAgentOrchestrator {
           soil_type: landContext.soil_type,
           current_crop: landContext.current_crop,
           crop_schedule: landContext.crop_schedule,
+          last_harvested_schedule: landContext.last_harvested_schedule || null,
           growth_stage: landContext.growth_stage,
           days_since_sowing: landContext.days_since_sowing,
           irrigation_type: landContext.irrigation_type,
@@ -1586,13 +1804,242 @@ export class AIAgentOrchestrator {
       }
       
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // NO_ACTIVE_CROP SHORT-CIRCUIT
+      // If the canonical context flagged this land as having no active crop
+      // (e.g. just harvested), the diagnostic pipeline has nothing to work on.
+      // Return a friendly localized message instead of throwing or producing a
+      // generic clarification with literal {symptom} placeholders.
+      // ═══════════════════════════════════════════════════════════════════════
+      if (canonicalContext && canonicalContext.status === 'NO_ACTIVE_CROP' && !isRecommendationQuery) {
+        const lang = (options.language || 'mr').toLowerCase();
+        const lastCrop = canonicalContext.last_harvest?.crop_name || null;
+        const noCropMsg = {
+          mr: lastCrop
+            ? `🌱 या शेतात सध्या कोणतेही सक्रिय पीक नाही. मागील हंगामात **${lastCrop}** हे पीक होते. नवीन पीक नोंदवण्यासाठी "पीक नोंदणी" वापरा.`
+            : `🌱 या शेतात सध्या कोणतेही सक्रिय पीक नाही. नवीन पीक नोंदवण्यासाठी "पीक नोंदणी" वापरा.`,
+          hi: lastCrop
+            ? `🌱 इस खेत में अभी कोई सक्रिय फसल नहीं है। पिछले मौसम में **${lastCrop}** फसल थी। नई फसल जोड़ने के लिए "फसल पंजीकरण" का उपयोग करें।`
+            : `🌱 इस खेत में अभी कोई सक्रिय फसल नहीं है। नई फसल जोड़ने के लिए "फसल पंजीकरण" का उपयोग करें।`,
+          en: lastCrop
+            ? `🌱 This field currently has no active crop. The previous crop was **${lastCrop}**. Use "Crop Registration" to add a new one.`
+            : `🌱 This field currently has no active crop. Use "Crop Registration" to add a new one.`
+        }[lang] || `🌱 This field currently has no active crop.`;
+
+        console.log(`🛑 [${traceId}] NO_ACTIVE_CROP short-circuit fired (lastCrop=${lastCrop || 'none'})`);
+        agentsUsed.push('NO_ACTIVE_CROP_GUARD');
+
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `no_crop_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: options.language || 'mr',
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: { mr: noCropMsg, hi: noCropMsg, en: noCropMsg }
+            },
+            quick_actions: [],
+            metadata: {
+              word_count: noCropMsg.split(/\s+/).length,
+              reading_time_seconds: 5,
+              confidence_score: 1.0,
+              source: 'NO_ACTIVE_CROP_GUARD',
+              response_type: 'NO_ACTIVE_CROP'
+            }
+          } as any,
+          decision_output: {
+            decision_id: `no_crop_${Date.now()}`,
+            session_id: sessionId,
+            status: 'INFORMATION_PROVIDED',
+            decision_brain_source: false,
+            actions_returned: [],
+            metadata: {
+              confidence: 1.0,
+              trace_id: traceId,
+              agents_used: agentsUsed,
+              template_type: 'NO_ACTIVE_CROP',
+              last_harvest: canonicalContext.last_harvest || null
+            }
+          } as any
+        };
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // NEXT_CROP_RECOMMENDATION DEDICATED LANE
+      // The diagnostic stack downstream (G2 CONTEXT_COMPLETENESS @ ~5306,
+      // hypothesis arbitration FATAL @ ~5457, etc.) all assume a CURRENT crop
+      // exists, and crash/clarify with "Which crop are you asking about?" when
+      // it does not. For NEXT_CROP_RECOMMENDATION, the *absence* of a current
+      // crop is the entire premise — so we short-circuit here with a
+      // deterministic, localized response built from authoritative landContext
+      // (last harvest + soil snapshot + rotation history). Rule-engine seeded
+      // rotation rules can be layered in by the agronomy team later without
+      // touching this lane.
+      // ═══════════════════════════════════════════════════════════════════════
+      if (isRecommendationQuery) {
+        const lang = (options.language || 'mr').toLowerCase();
+        const lastCrop = canonicalContext?.last_harvest?.crop_name || null;
+        const lastVariety = canonicalContext?.last_harvest?.crop_variety || null;
+        const harvestDate = canonicalContext?.last_harvest?.actual_harvest_date || null;
+        const soilN = canonicalContext?.soil?.nitrogen ?? null;
+        const soilP = canonicalContext?.soil?.phosphorus ?? null;
+        const soilK = canonicalContext?.soil?.potassium ?? null;
+        const rotationDepth = (canonicalContext as any)?.rotation_history?.length || 0;
+
+        const lastCropLabel = lastCrop
+          ? (lastVariety ? `${lastCrop} (${lastVariety})` : lastCrop)
+          : null;
+
+        // ───────────────────────────────────────────────────────────────
+        // SYMBOLIC NEXT-CROP ENGINE: load `crop_rotation` rules from DB,
+        // score against canonicalContext, return top candidates each with
+        // DB-sourced scientific_basis. The LLM only narrates — it never
+        // invents a crop or a reason.
+        // ───────────────────────────────────────────────────────────────
+        let engineResult: any = null;
+        try {
+          engineResult = await recommendNextCrop({
+            canonicalContext,
+            language: lang,
+            traceId,
+          });
+        } catch (err) {
+          console.error(`[${traceId}] NEXT_CROP engine failed:`, (err as Error)?.message);
+          engineResult = { candidates: [], matched_rule_count: 0, fallback_used: true };
+        }
+
+        const hasCandidates = engineResult && engineResult.candidates && engineResult.candidates.length > 0;
+        const topConfidence = hasCandidates
+          ? Math.min(1, engineResult.candidates[0].score)
+          : 1.0;
+
+        let messages: { mr: string; hi: string; en: string };
+        if (hasCandidates) {
+          messages = renderRecommendationMessage(engineResult, lang, lastCropLabel);
+        } else {
+          // Deterministic stub — same as before — when no rule matched
+          const soilLine = (soilN != null || soilP != null || soilK != null)
+            ? ` N:${soilN ?? '—'} P:${soilP ?? '—'} K:${soilK ?? '—'}`
+            : '';
+          messages = {
+            mr: [
+              `🌱 **पुढील पीक सुचवण्यासाठी मदत**`,
+              lastCropLabel
+                ? `📜 मागील हंगाम: **${lastCropLabel}**${harvestDate ? ` (कापणी: ${harvestDate})` : ''}`
+                : `📜 या शेताचा मागील पीक रेकॉर्ड उपलब्ध नाही.`,
+              soilLine ? `🧪 मातीची स्थिती:${soilLine}` : '',
+              rotationDepth > 1 ? `🔁 मागील ${rotationDepth} हंगामांची नोंद उपलब्ध आहे.` : '',
+              `\nयोग्य पीक फेरबदल सुचवण्यासाठी कृपया तुमचा हंगाम, सिंचनाची सोय आणि लागवडीची तारीख कळवा.`
+            ].filter(Boolean).join('\n'),
+            hi: [
+              `🌱 **अगली फसल का सुझाव**`,
+              lastCropLabel
+                ? `📜 पिछला मौसम: **${lastCropLabel}**${harvestDate ? ` (कटाई: ${harvestDate})` : ''}`
+                : `📜 इस खेत का पिछला फसल रिकॉर्ड उपलब्ध नहीं है।`,
+              soilLine ? `🧪 मिट्टी की स्थिति:${soilLine}` : '',
+              rotationDepth > 1 ? `🔁 पिछले ${rotationDepth} मौसमों का रिकॉर्ड उपलब्ध है।` : '',
+              `\nउपयुक्त फसल चक्र के लिए कृपया अपना मौसम, सिंचाई और बुवाई तारीख बताएं।`
+            ].filter(Boolean).join('\n'),
+            en: [
+              `🌱 **Next crop recommendation**`,
+              lastCropLabel
+                ? `📜 Last season: **${lastCropLabel}**${harvestDate ? ` (harvested ${harvestDate})` : ''}`
+                : `📜 No prior crop record is available for this field.`,
+              soilLine ? `🧪 Soil snapshot:${soilLine}` : '',
+              rotationDepth > 1 ? `🔁 ${rotationDepth} prior seasons on record.` : '',
+              `\nPlease share your target season, irrigation type, and planned sowing date so a precise recommendation can be generated.`
+            ].filter(Boolean).join('\n')
+          };
+        }
+        const msg = (messages as any)[lang] || messages.en;
+
+        console.log(`🌱 [${traceId}] NEXT_CROP_RECOMMENDATION lane fired (lastCrop=${lastCrop || 'none'}, rotationDepth=${rotationDepth}, candidates=${engineResult?.candidates?.length || 0})`);
+        agentsUsed.push(hasCandidates ? 'NEXT_CROP_ENGINE_HIT' : 'NEXT_CROP_FALLBACK_STUB');
+        console.log(JSON.stringify({
+          audit_tag: hasCandidates ? 'NEXT_CROP_ENGINE_HIT' : 'NEXT_CROP_NO_RULE_MATCH',
+          trace_id: traceId,
+          stage: 'LANE_RETURN',
+          intent: 'NEXT_CROP_RECOMMENDATION',
+          last_harvest: lastCrop,
+          rotation_depth: rotationDepth,
+          matched_rule_count: engineResult?.matched_rule_count || 0,
+          top_candidates: (engineResult?.candidates || []).map((c: any) => ({
+            crop: c.crop_code, rule: c.rule_id, score: +c.score.toFixed(3)
+          })),
+        }));
+
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `next_crop_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: lang,
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: { mr: messages.mr, hi: messages.hi, en: messages.en }
+            },
+            quick_actions: [],
+            metadata: {
+              word_count: msg.split(/\s+/).length,
+              reading_time_seconds: 8,
+              confidence_score: topConfidence,
+              source: hasCandidates ? 'NEXT_CROP_RECOMMENDATION_ENGINE' : 'NEXT_CROP_RECOMMENDATION_FALLBACK',
+              response_type: 'NEXT_CROP_RECOMMENDATION'
+            }
+          } as any,
+          decision_output: {
+            decision_id: `next_crop_${Date.now()}`,
+            session_id: sessionId,
+            status: hasCandidates ? 'DECISION_PROVIDED' : 'INFORMATION_PROVIDED',
+            decision_brain_source: hasCandidates,
+            actions_returned: hasCandidates
+              ? engineResult.candidates.map((c: any, idx: number) => ({
+                  action_id: `next_crop_action_${idx + 1}`,
+                  action_type: 'RECOMMEND_CROP',
+                  crop_code: c.crop_code,
+                  crop_label: cropLabel(c.crop_code, lang),
+                  rule_id: c.rule_id,
+                  scientific_basis: c.scientific_basis,
+                  farmer_reason: c.farmer_reason,
+                  scientific_source: c.scientific_source,
+                  confidence: c.score,
+                  priority: idx === 0 ? 'PRIMARY' : 'ALTERNATIVE',
+                }))
+              : [],
+            metadata: {
+              confidence: topConfidence,
+              trace_id: traceId,
+              agents_used: agentsUsed,
+              template_type: 'NEXT_CROP_RECOMMENDATION',
+              last_harvest: lastCrop,
+              rotation_depth: rotationDepth,
+              matched_rule_count: engineResult?.matched_rule_count || 0,
+              fallback_used: !hasCandidates,
+            }
+          } as any
+        };
+      }
+
+
       
       // ========================================
       // PHASE 9.1-FIX PATCH 1+2: CLARIFICATION RESPONSE HARD GATE
       // When pending_options > 0, COMPLETELY SKIP NLU pipeline - only process option selection
       // This is the CRITICAL FIX to prevent infinite clarification loops
       // ========================================
-      let pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
+      let gatePendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
       const clarificationTurnCount = options.sessionState?.turnCount || 0;
       
       // ========================================
@@ -1600,7 +2047,7 @@ export class AIAgentOrchestrator {
       // Language-agnostic detection of NEW question vs option selection
       // If farmer types free text that doesn't match any option, treat as NEW query
       // ========================================
-      if (pendingOptionsCount > 0) {
+      if (gatePendingOptionsCount > 0) {
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
         
         // ========================================
@@ -1623,19 +2070,28 @@ export class AIAgentOrchestrator {
         //   - does NOT match any option (via improved matcher)
         // Then: CLEAR stale clarification and proceed to NLU pipeline
         // ========================================
-        const isLikelyNewQuery = !isNumericOnly && 
-                                  !hasEmbeddedObsKeys && 
-                                  !matchResult.matched && 
-                                  safeFarmerMessage.length > 10; // Minimum length for a real question
+        // P0 FIX (2026-06-23): Treat the farmer's text as a NEW query only when
+        // it carries a clear problem / negation / damage / emergence predicate.
+        // Plain selection labels like "पाणी कमी आहे" or short echoes of an
+        // option must NOT re-enter NLU (which mis-routes "पाणी"/"water" tokens
+        // to IRRIGATION instead of resolving the open diagnosis). Keep the
+        // existing structural checks (numeric / obs_keys / matcher), but also
+        // require a problem predicate AND a longer free-text length.
+        const NEW_QUERY_PROBLEM_RE = /(नाही|नही|नहीं|सुकल|सुकली|मेली|मरत|खराब|पिवळ|पीला|जळ|करपल|कुजल|रोग|कीड|डाग|नुकसान|उगवले\s*नाही|उगाव|अंकुर|\b(not|no|fail|failed|dying|damage|poor|wilt|yellow|stunt|rot|disease|pest|attack|burn|missing|empty|gap|sparse|emerge|emergence|germinat)\b)/i;
+        const isLikelyNewQuery = !isNumericOnly &&
+                                  !hasEmbeddedObsKeys &&
+                                  !matchResult.matched &&
+                                  safeFarmerMessage.length > 30 &&
+                                  NEW_QUERY_PROBLEM_RE.test(safeFarmerMessage);
         
         if (isLikelyNewQuery) {
           console.log('🆕 [NewQueryDetector v2] FREE TEXT detected - clearing stale clarification (FAIL-OPEN)');
           console.log(`   Message preview: "${safeFarmerMessage.slice(0, 50)}..."`);
           console.log(`   Length: ${safeFarmerMessage.length}, Match confidence: ${matchResult.match_confidence}`);
-          console.log(`   Clearing ${pendingOptionsCount} pending options to proceed with fresh NLU`);
+          console.log(`   Clearing ${gatePendingOptionsCount} pending options to proceed with fresh NLU`);
           
           // CLEAR pending options - this is a NEW query, not an option selection
-          pendingOptionsCount = 0;
+          gatePendingOptionsCount = 0;
           if (options.sessionState) {
             options.sessionState.pendingClarificationOptions = undefined;
             options.sessionState.pendingClarificationScope = undefined;
@@ -1646,9 +2102,9 @@ export class AIAgentOrchestrator {
         }
       }
       
-      if (pendingOptionsCount > 0) {
+      if (gatePendingOptionsCount > 0) {
         console.log('🔒 [Phase9.1-Fix] Clarification HARD GATE active - NLU pipeline BLOCKED');
-        console.log(`   📋 Pending options: ${pendingOptionsCount}, Turn count: ${clarificationTurnCount}`);
+        console.log(`   📋 Pending options: ${gatePendingOptionsCount}, Turn count: ${clarificationTurnCount}`);
         
         // PHASE-9.1-FIX: Retrieve locked crop context FIRST - this is authoritative
         const lockedCropContext = options.sessionState?.lockedCropContext;
@@ -1685,15 +2141,54 @@ export class AIAgentOrchestrator {
           // CRITICAL: Clear pending options and continue with ONLY the selected option
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
-          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping
+          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping.
+          // ARCHITECTURAL HARDENING (post lower_snake_case migration):
+          // Legacy clarification-option emitter assigned `value: String(idx + 1)` (a position index)
+          // when no observation_code was attached to the option. The frontend then echoes that
+          // numeric value back as `[obs_keys:3]`, which the rule engine cannot match against any
+          // canonical observation_code → STAGE_FALLBACK → "monitoring" canned response.
+          // Treat purely-numeric embedded keys as stale indices and resolve via label mapping
+          // or via the pending options array (which may carry true codes).
           let mappedObservationKey: string | null = null;
-          if (embeddedObservationKeys.length > 0) {
-            mappedObservationKey = embeddedObservationKeys[0];
+          const firstEmbedded = embeddedObservationKeys[0]?.trim();
+          const embeddedIsStaleIndex = !!firstEmbedded && /^\d+$/.test(firstEmbedded);
+          if (firstEmbedded && !embeddedIsStaleIndex) {
+            mappedObservationKey = firstEmbedded;
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
           } else {
-            // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
-            mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-            console.log(`   📋 Mapped to ObservationKey (fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            if (embeddedIsStaleIndex) {
+              // Try to recover the real code from sessionState.pendingClarificationOptions
+              // if it was persisted as an object array carrying `observation_code`/`observation_key`.
+              const idxNum = parseInt(firstEmbedded!, 10) - 1;
+              const pendingOpt = Array.isArray(pendingOptions) ? (pendingOptions as any[])[idxNum] : null;
+              const recovered = (pendingOpt && typeof pendingOpt === 'object')
+                ? (pendingOpt.observation_code || pendingOpt.observation_key || null)
+                : null;
+              if (recovered && typeof recovered === 'string' && !/^\d+$/.test(recovered)) {
+                mappedObservationKey = recovered;
+                console.log(`   📋 Recovered ObservationKey from pending[${idxNum}]: "${mappedObservationKey}"`);
+              } else {
+                console.warn(`   ⚠️ Embedded obs_keys="${firstEmbedded}" looks like a stale option index; falling back to label-based mapping`);
+              }
+            }
+            if (!mappedObservationKey) {
+              // P0 FIX (system-audit 2026-06-22): Before falling back to the
+              // English-keyword label mapper (which fails on Marathi/Hindi/Tamil
+              // labels), try to extract [obs_keys:CANONICAL_CODE] from the
+              // matched pending option string itself. The clarification emitter
+              // and index.ts now persist options as "<label> [obs_keys:<code>]".
+              const matchedStr = String(matchResult.matched_option ?? '');
+              const embedInMatched = matchedStr.match(/\[obs_keys:([^\]]+)\]/i);
+              const codeFromMatchedOption = embedInMatched?.[1]?.trim();
+              if (codeFromMatchedOption && !/^\d+$/.test(codeFromMatchedOption)) {
+                mappedObservationKey = codeFromMatchedOption;
+                console.log(`   📋 Recovered ObservationKey from matched_option embed: "${mappedObservationKey}"`);
+              } else {
+                // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+                mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
+                console.log(`   📋 Mapped to ObservationKey (label-fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+              }
+            }
           }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
@@ -1712,7 +2207,7 @@ export class AIAgentOrchestrator {
           
           // P0-2 FIX: Determine crop and stage with source tracking
           // CLARIFICATION-FIRST: Use locked stage from clarification-strategy if available
-          const lockedStageFromStrategy = getLockedStage();
+          const lockedStageFromStrategy = scope ? getLockedStage(scope) : null;
           const cropName = lockedStageFromStrategy?.crop_code || 
                           lockedCropContext?.crop_name || 
                           landContextForOptionSelection?.current_crop || 'UNKNOWN';
@@ -1796,6 +2291,37 @@ export class AIAgentOrchestrator {
           if (visualSymptom && visualSymptom !== 'UNKNOWN' && visualSymptom !== mappedObservationKey) {
             allObservations.push(visualSymptom);
           }
+
+          // ─── P0 EVIDENCE MERGE (2026-06-23) ─────────────────────────────────
+          // Carry the prior turn's confirmed observations forward instead of
+          // rebuilding canonical state from only the selected option. This
+          // preserves the EMERGENCE_FAILURE diagnosis evidence the farmer
+          // already provided and prevents the "primary_decision exists but
+          // symbolic_confidence=0" invariant from tripping after an answer.
+          try {
+            const priorSymbols: any[] = Array.isArray(existingSymbols) ? existingSymbols : [];
+            const priorObsArr: any[] = Array.isArray((options.sessionState as any)?.confirmed_observations)
+              ? (options.sessionState as any).confirmed_observations
+              : Array.isArray((options.sessionState as any)?.confirmedObservations)
+                ? (options.sessionState as any).confirmedObservations
+                : [];
+            const canon = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+            const carried: string[] = [];
+            for (const sym of priorSymbols) {
+              const k = canon((sym as any)?.observation_key || (sym as any)?.id || sym);
+              if (k && !allObservations.includes(k)) { allObservations.push(k); carried.push(k); }
+            }
+            for (const o of priorObsArr) {
+              const k = canon(o);
+              if (k && !allObservations.includes(k)) { allObservations.push(k); carried.push(k); }
+            }
+            if (carried.length > 0) {
+              console.log(`   🧬 [EvidenceMerge] Carried ${carried.length} prior-turn observation(s) into selection state: [${carried.join(', ')}]`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [EvidenceMerge] failed: ${(e as Error).message}`);
+          }
+          // ────────────────────────────────────────────────────────────────────
           
           // ═══════════════════════════════════════════════════════════════════════════
           // FIX #3: OBSERVATION KEY EXPANSION - DB-DRIVEN via observation_aliases
@@ -1806,29 +2332,40 @@ export class AIAgentOrchestrator {
           // FIX #1: If cause was confirmed, add cause-specific observations from the confirmed rule
           if (confirmedRuleId && confirmedRuleId !== 'UNKNOWN_FALLBACK' && confirmedRuleId !== 'PHOTO_FALLBACK') {
             try {
-              const { data: confirmedRule } = await this.supabase
-                .from('decision_rules')
-                .select('observable_characteristics, conditions_json')
-                .eq('rule_id', confirmedRuleId)
-                .eq('is_active', true)
-                .single();
+              // Dual-read by canonical rule_id OR generated rule_id_lc so this
+              // lookup is forward-compatible with the Stage-4 lowercase flip.
+              // See supabase/functions/ai-agriculture-chat/utils/id-normalizer.ts.
+              const { selectRuleByAnyId } = await import('../utils/id-normalizer.ts');
+              const confirmedRule = await selectRuleByAnyId(
+                this.supabase,
+                confirmedRuleId,
+                'observable_characteristics, conditions_json',
+                (q: any) => q.eq('is_active', true),
+              );
               
               if (confirmedRule) {
+                // 2026-06-21 FIX: DB is lower_snake_case. Canonicalise to lower
+                // so set membership tests against decision_rules.conditions_json
+                // (also lower) match, instead of stale UPPER from legacy code.
+                const canonicalObs = (s: unknown): string =>
+                  String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
                 // Add ALL observable characteristics from the confirmed rule
                 const ruleObs = confirmedRule.observable_characteristics || [];
                 if (Array.isArray(ruleObs)) {
                   for (const obs of ruleObs) {
-                    const obsKey = typeof obs === 'string' ? obs : obs?.observation_key;
-                    if (obsKey && !allObservations.includes(obsKey.toUpperCase())) {
-                      allObservations.push(obsKey.toUpperCase());
+                    const raw = typeof obs === 'string' ? obs : obs?.observation_key;
+                    const obsKey = canonicalObs(raw);
+                    if (obsKey && !allObservations.includes(obsKey)) {
+                      allObservations.push(obsKey);
                     }
                   }
                 }
                 // Also add observations from conditions_json
                 const condObs = confirmedRule.conditions_json?.observations || [];
                 for (const obs of condObs) {
-                  if (typeof obs === 'string' && !allObservations.includes(obs.toUpperCase())) {
-                    allObservations.push(obs.toUpperCase());
+                  const obsKey = canonicalObs(obs);
+                  if (obsKey && !allObservations.includes(obsKey)) {
+                    allObservations.push(obsKey);
                   }
                 }
                 console.log(`   🎯 [FIX#1] Loaded ${allObservations.length} observations from confirmed rule ${confirmedRuleId}`);
@@ -1850,24 +2387,30 @@ export class AIAgentOrchestrator {
               }
             }
           } catch (e) {
-            console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed, using static fallback: ${e}`);
-            // Minimal static fallback for critical paths only
-            const criticalFallback: Record<string, string[]> = {
-              'DEAD_HEART': ['DEAD_HEART_PRESENT', 'BORER_DAMAGE', 'SHOOT_BORER_DAMAGE'],
-              'DEAD_HEART_PRESENT': ['DEAD_HEART', 'BORER_DAMAGE'],
-              'BORER_DAMAGE': ['DEAD_HEART', 'TUNNELS_IN_STEM', 'BORER_HOLES'],
-              'INSECTS_VISIBLE': ['PEST_DAMAGE', 'INSECT_PRESENCE_CONFIRMED'],
-              'PEST_CHECK': ['PEST_DAMAGE', 'INSECT_PRESENT', 'BORER_DAMAGE'],
-              'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'CHLOROSIS'],
-              'WATER_STRESS_CHECK': ['WATER_STRESS', 'WILTING', 'LEAF_CURLING'],
-            };
-            if (mappedObservationKey && criticalFallback[mappedObservationKey]) {
-              const fallbackCodes = criticalFallback[mappedObservationKey].filter(c => !allObservations.includes(c));
-              allObservations.push(...fallbackCodes);
-              console.log(`   🔍 [ObservationExpansion] Static fallback: +${fallbackCodes.length} codes`);
+            // SSOT: alias expansion MUST come from observation_aliases (DB).
+            // No hardcoded fallback — failing safe means the rule matcher
+            // only sees the confirmed observations the farmer actually gave us.
+            console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed (no static fallback): ${e}`);
+          }
+          // 2026-06-21 FIX: canonicalise once more before rule matching.
+          // Any legacy UPPER code that slipped in from upstream merges or
+          // alias expansion is forced lower so set comparisons against the
+          // lower_snake_case DB succeed.
+          {
+            const seen = new Set<string>();
+            const canonicalised: string[] = [];
+            for (const c of allObservations) {
+              const lc = String(c ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+              if (lc && !seen.has(lc)) {
+                seen.add(lc);
+                canonicalised.push(lc);
+              }
             }
+            allObservations.length = 0;
+            allObservations.push(...canonicalised);
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
+          survival.record('expanded', allObservations.length);
           
           const canonicalState = buildCanonicalState({
             // CRITICAL FIX: Pass landContext to preserve all land data
@@ -1905,9 +2448,13 @@ export class AIAgentOrchestrator {
             ...canonicalState, 
             user_query: farmerMessage,
             visual_symptoms: allObservations,
+            // SSOT DAS so rules with conditions_json.das_range can evaluate
+            // correctly (e.g. RICE_GERMINATION_DIAGNOSTIC_001 at DAS 0–7).
+            days_since_sowing: landContextForOptionSelection?.days_since_sowing ?? null,
+            confirmed_observations: allObservations,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
-          const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);
+          const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any, { scope });
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
           console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}, Responses: ${ruleResult.matched_responses?.length || 0}`);
@@ -1932,11 +2479,23 @@ export class AIAgentOrchestrator {
           });
           
           // LOGGING: Post-clarification confidence
+          // P0 FIX (2026-06-23): Carry the PRE-clarification confidence
+          // forward as the base. Answering a clarification must never lower
+          // confidence and must never reset symbolic_confidence to 0 (the
+          // "primary_decision exists but symbolic_confidence=0" invariant).
+          const confidenceBase = Math.max(
+            Number(preClarificationConfidence) || 0,
+            Number(ruleResult.confidence_in_result) || 0
+          );
           const postClarificationConfidence = calculateConfidenceWithTiming(
-            ruleResult.confidence_in_result,
+            confidenceBase,
             true, // clarification completed
             0.15  // boost from clarification
           );
+          // Mutate ruleResult.confidence_in_result so every downstream surface
+          // (UnifiedGate / response builder / decision-log) sees the carried
+          // confidence, not the raw rule-engine value.
+          (ruleResult as any).confidence_in_result = postClarificationConfidence.post_clarification_confidence;
           
           logClarificationEvent(
             traceId,
@@ -2105,8 +2664,123 @@ export class AIAgentOrchestrator {
               
               console.log(`   ✅ PRIMARY_DECISION built from layered_rule_result: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
             } else if (safeMatchedResponses.length > 0) {
-              // Fallback: Build from first eligible matched response
-              const firstMatch = safeMatchedResponses.find(r => r.rule_id && r.action_type);
+              // ═══════════════════════════════════════════════════════════════════════════
+              // P0 SAFETY FIX (2026-06-22): Crop-agnostic fallback selection.
+              // Previously picked the FIRST matched_response regardless of whether it
+              // pertained to the farmer's CONFIRMED observation or the current crop
+              // stage. That allowed off-topic rules (e.g., post-harvest crop-rotation
+              // rules) to fire during NURSERY emergence emergencies.
+              //
+              // New selection hierarchy (all DB-driven, no hardcoded crop lists):
+              //   1) Rules whose condition_code / conditions_json.observations
+              //      overlap with farmer-confirmed observations (`allObservations`).
+              //   2) Among those, rules whose `stage_applicable` includes the
+              //      current canonical `growthStage` (or is empty/wildcard).
+              //   3) Sort by priority (lower number = higher urgency).
+              //   4) Only fall back to first-match if NOTHING aligns — and even then,
+              //      block crop-rotation / post-harvest categories from firing during
+              //      vegetative/nursery stages (stage_applicable mismatch).
+              // ═══════════════════════════════════════════════════════════════════════════
+              const normObs = (s: unknown) =>
+                String(s ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+              const confirmedSet = new Set(
+                (Array.isArray(allObservations) ? allObservations : []).map(normObs).filter(Boolean)
+              );
+              const currentStageNorm = String(growthStage || '').toUpperCase().trim();
+
+              const ruleMatchesConfirmed = (r: any): boolean => {
+                if (confirmedSet.size === 0) return false;
+                const codes = new Set<string>();
+                const cc = normObs((r as any).condition_code || r.conditions_json?.condition_code);
+                if (cc) codes.add(cc);
+                const obs = Array.isArray(r.conditions_json?.observations) ? r.conditions_json.observations : [];
+                for (const o of obs) { const n = normObs(o); if (n) codes.add(n); }
+                for (const c of codes) if (confirmedSet.has(c)) return true;
+                return false;
+              };
+
+              const ruleStageOk = (r: any): boolean => {
+                if (!currentStageNorm) return true;
+                const sa = (r as any).stage_applicable || r.conditions_json?.stage_applicable;
+                if (!sa) return true;
+                const arr = Array.isArray(sa) ? sa : [sa];
+                if (arr.length === 0) return true;
+                const stages = arr.map((s: unknown) => String(s).toUpperCase().trim());
+                if (stages.includes('ALL') || stages.includes('*') || stages.includes('ANY')) return true;
+                // Equivalence family for early-season stages
+                const family: Record<string, string[]> = {
+                  GERMINATION: ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
+                  NURSERY: ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
+                  SEEDLING: ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
+                };
+                const expected = family[currentStageNorm] || [currentStageNorm];
+                return stages.some((s: string) => expected.includes(s));
+              };
+
+              // ─── DIAGNOSIS-POOL FILTER (2026-06-23 P0) ─────────────────────────
+              // Non-diagnostic rule categories (crop_rotation, proactive advisory,
+              // post_harvest, etc.) must NEVER become the primary decision during a
+              // DIAGNOSIS / CROP_DAMAGE turn — they require an explicit rotation/
+              // recommendation intent. Also enforce the rule's crop_age_days window
+              // (or conditions_json.das_range) against the current DAS so e.g. a
+              // post-harvest rotation rule cannot fire during NURSERY emergence.
+              // ────────────────────────────────────────────────────────────────────
+              const NON_DIAGNOSTIC_CATEGORIES = new Set([
+                'crop_rotation', 'rotation', 'post_harvest', 'post-harvest',
+                'advisory', 'recommendation', 'proactive', 'marketing'
+              ]);
+              const currentDas: number | null =
+                typeof (landContextForOptionSelection as any)?.days_since_sowing === 'number'
+                  ? (landContextForOptionSelection as any).days_since_sowing
+                  : (typeof (stateWithQuery as any)?.days_since_sowing === 'number'
+                      ? (stateWithQuery as any).days_since_sowing
+                      : null);
+              const ruleCategoryOf = (r: any): string =>
+                String(r?.category || r?.rule_category || r?.conditions_json?.category || '')
+                  .toLowerCase().trim();
+              const ruleIsDiagnosticCandidate = (r: any): boolean => {
+                const cat = ruleCategoryOf(r);
+                if (cat && NON_DIAGNOSTIC_CATEGORIES.has(cat)) return false;
+                // crop_age window gate
+                if (currentDas != null) {
+                  const minA = r?.crop_age_days_min ?? r?.conditions_json?.crop_age_days_min ?? r?.conditions_json?.das_range?.min;
+                  const maxA = r?.crop_age_days_max ?? r?.conditions_json?.crop_age_days_max ?? r?.conditions_json?.das_range?.max;
+                  if (typeof minA === 'number' && currentDas < minA) return false;
+                  if (typeof maxA === 'number' && currentDas > maxA) return false;
+                }
+                return true;
+              };
+
+              const rawEligible = safeMatchedResponses.filter(r => r && r.rule_id && r.action_type);
+              const eligible = rawEligible.filter(ruleIsDiagnosticCandidate);
+              const filteredOut = rawEligible.length - eligible.length;
+              if (filteredOut > 0) {
+                console.log(`   🧹 [FallbackSelection] Filtered ${filteredOut} non-diagnostic / out-of-DAS rule(s) from candidate pool (das=${currentDas})`);
+              }
+
+              // Prefer observation-matched over stage-only (per user invariant).
+              const tier1 = eligible.filter(r => ruleMatchesConfirmed(r) && ruleStageOk(r));
+              const tier2 = tier1.length > 0 ? tier1 : eligible.filter(r => ruleMatchesConfirmed(r));
+              const tier3 = tier2.length > 0 ? tier2 : eligible.filter(r => ruleStageOk(r));
+              const ranked = (tier3.length > 0 ? tier3 : eligible).slice().sort(
+                (a, b) => (a.priority ?? 50) - (b.priority ?? 50)
+              );
+              const firstMatch = ranked[0];
+
+              const selectionTier = tier1.length > 0
+                ? 'confirmed_obs+stage'
+                : tier2.length > 0
+                  ? 'confirmed_obs_only'
+                  : tier3.length > 0
+                    ? 'stage_only'
+                    : 'first_match_unsafe';
+
+              if (selectionTier === 'first_match_unsafe') {
+                console.warn(`   ⚠️ [FallbackSelection] No matched_response aligns with confirmed observation OR current stage (${currentStageNorm}). Picking first match unsafely: ${firstMatch?.rule_id}. Confirmed obs: [${Array.from(confirmedSet).join(', ')}]`);
+              } else {
+                console.log(`   🎯 [FallbackSelection] tier=${selectionTier} selected=${firstMatch?.rule_id} stage=${currentStageNorm} das=${currentDas} confirmed=[${Array.from(confirmedSet).join(', ')}] eligible=${eligible.length}/${rawEligible.length}`);
+              }
+
               if (firstMatch) {
                 primaryDecisionObject = {
                   action_type: firstMatch.action_type,
@@ -2119,7 +2793,7 @@ export class AIAgentOrchestrator {
                     recommended_start: new Date().toISOString(),
                     recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                     weather_dependency: false,
-                    reason: 'Built from matched_responses fallback in OPTION_SELECTED path'
+                    reason: `Built from matched_responses fallback (tier=${selectionTier}) in OPTION_SELECTED path`
                   },
                   application_details: {
                     product_name: (firstMatch as any).active_ingredient || (firstMatch.action_text?.split(' ').slice(1, 3).join(' ')) || 'IPM',
@@ -2136,8 +2810,8 @@ export class AIAgentOrchestrator {
                     success_indicators: []
                   }
                 };
-                
-                console.log(`   ✅ PRIMARY_DECISION built from matched_responses: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
+
+                console.log(`   ✅ PRIMARY_DECISION built from matched_responses: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}, tier=${selectionTier}`);
               }
             }
             
@@ -2178,6 +2852,10 @@ export class AIAgentOrchestrator {
                 session_id: sessionId,
                 status: statusToUse,
                 decision_brain_source: true,
+                // SSOT: surface selected observations so index.ts's
+                // observation-rule-lookup bypass + UnifiedGate symptom checks
+                // can find the DB rule for the farmer's clarification choice.
+                symptom_keys: Array.from(allObservations || []),
                 // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
                 authority_decision: authorityDecision,
                 // ═══════════════════════════════════════════════════════════════════════════
@@ -2219,6 +2897,8 @@ export class AIAgentOrchestrator {
                 processing_time_ms: Date.now() - startTime,
                 agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'LAYERED_RULE_EVALUATOR'],
                 trace_id: traceId,
+                // SSOT: mirror selected observations onto top-level metadata
+                symptomKeys: Array.from(allObservations || []),
                 // CRITICAL: Clear pending options after successful selection
                 pendingClarificationOptions: undefined,
                 pendingClarificationScope: undefined,
@@ -2247,7 +2927,7 @@ export class AIAgentOrchestrator {
           };
           
           // PHASE-14: Generate stage-aware fallback response
-          const stageFallback = this.generateStageAwareFallback(
+          const stageFallback = await this.generateStageAwareFallback(
             cropName || 'UNKNOWN',
             growthStage || 'UNKNOWN',
             matchResult.matched_option || farmerMessage,
@@ -2280,6 +2960,9 @@ export class AIAgentOrchestrator {
               session_id: sessionId,
               status: 'STAGE_FALLBACK',
               decision_brain_source: true,
+              // SSOT symptom propagation so index.ts can still invoke the
+              // observation→safe-rule lookup even on the no-rules-matched path.
+              symptom_keys: Array.from(allObservations || []),
               // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
               authority_decision: authorityDecision,
               // PHASE-14: Include stage-aware fallback message
@@ -2312,6 +2995,7 @@ export class AIAgentOrchestrator {
               processing_time_ms: Date.now() - startTime,
               agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
               trace_id: traceId,
+              symptomKeys: Array.from(allObservations || []),
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
               lockedCropContext: finalLockedCropContextNoRules,
@@ -2343,6 +3027,7 @@ export class AIAgentOrchestrator {
               }))
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.HARD_GATE_OPTION_REMINDER,
               confidence: 0.5,
               safety_status: 'CLARIFICATION_PENDING',
               rules_applied: 0,
@@ -2474,20 +3159,143 @@ export class AIAgentOrchestrator {
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
 
-      // STEP 2b: Vocabulary bridge expansion (generic ↔ specific)
-      // Adds canonical codes for any aliases and also adds aliases for any canonical codes.
+      // STEP 2a: Vocabulary normalization (alias → canonical ONLY).
+      // CRITICAL: the confirmed-observation lane must never trigger canonical→alias
+      // fan-out because that promotes hypothesis-space codes into confirmed.
+      // Bidirectional expansion is reserved for the candidate lane below.
       let expandedObservationCodes: string[] = (mappedCodes?.observation_codes || []) as unknown as string[];
+      // CANDIDATE LANE — observations sourced from DB intent_observation_mapping,
+      // hypothesis fan-out, or canonical→alias expansion. NEVER merged into
+      // expandedObservationCodes / inductionResult.symptoms / confirmedObservations.
+      const candidateObservationCodes: Set<string> = new Set<string>();
       try {
-        const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase);
+        const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase, 'alias_to_canonical');
         if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
-          console.log(`      🔁 Alias expansion: ${expandedObservationCodes.length} → ${expanded.expanded_codes.length} codes`);
+          console.log(`      🔁 Alias normalization (alias→canonical): ${expandedObservationCodes.length} → ${expanded.expanded_codes.length} codes`);
         }
         expandedObservationCodes = expanded.expanded_codes;
         if (expanded.trace.length > 0) {
-          agentsUsed.push('OBSERVATION_ALIAS_EXPANDER');
+          agentsUsed.push('OBSERVATION_ALIAS_NORMALIZER');
         }
       } catch (e) {
         console.warn(`      ⚠️ Alias expansion failed, continuing without it: ${(e as Error)?.message || String(e)}`);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STEP 2b (SSOT, 2026-06-07): DB-DRIVEN INTENT → OBSERVATION RESOLUTION
+      // Calls intent_observation_mapping for the (intent_code, crop, DAS) tuple
+      // so advisory intents like FERTILIZER_SCHEDULE / WEED_PROBLEM /
+      // IRRIGATION_QUERY get their real observation_codes from the DB
+      // instead of falling back to the local intentToSymptom dict.
+      // Previously this resolver existed but was never called, so the rule
+      // engine matched only on crop+stage and produced the same generic
+      // stage-monitoring answer for very different farmer questions.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const _intentForDb = (semanticExtraction?.intent_code || '').trim();
+        const _cropForDb =
+          (landContext as any)?.current_crop ||
+          (canonicalContext as any)?.crop_code ||
+          (canonicalContext as any)?.crop ||
+          '';
+        const _dasForDb = Number(
+          (landContext as any)?.days_since_sowing ??
+          (canonicalContext as any)?.days_since_sowing ??
+          0
+        ) || 0;
+        const _stageForDb =
+          (landContext as any)?.growth_stage ||
+          (canonicalContext as any)?.growth_stage ||
+          undefined;
+
+        if (_intentForDb && _intentForDb !== 'UNKNOWN_OBSERVATION' && _cropForDb) {
+          const dbIntentResolution = await resolveIntentToObservations({
+            intent_code: _intentForDb,
+            crop_code: String(_cropForDb).toUpperCase(),
+            days_since_sowing: _dasForDb,
+            growth_stage: _stageForDb,
+            // Task 7b: thread scope so the resolver reuses scope.db and emits
+            // structured trace events instead of spinning up its own client.
+            scope,
+          });
+
+
+          if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
+            // ═════════════════════════════════════════════════════════════════
+            // P1 SYSTEM-WIDE FIX (2026-06-22): assertion-strength-driven lane
+            // routing. Cross-crop, DB-curated via `intent_assertion_pattern` →
+            // `intent_observation_mapping.assertion_strength`. No hardcoded
+            // per-crop lists, no rice-specific guard.
+            //   LITERAL           → confirmed lane (farmer literally said this)
+            //   STRONG_HYPOTHESIS → confirmed only when intent_confidence ≥ 0.85
+            //   DIFFERENTIAL      → candidate lane (current default behavior)
+            // ═════════════════════════════════════════════════════════════════
+            const codes = dbIntentResolution.observation_codes;
+            const strengths = (dbIntentResolution as any).assertion_strengths || [];
+            const intentConfidence = Number(
+              (semanticExtraction as any)?.intent_confidence ??
+              (semanticExtraction as any)?.confidence ??
+              0
+            );
+            const STRONG_HYPOTHESIS_PROMOTION_THRESHOLD = 0.85;
+
+            let promotedLiteral = 0;
+            let promotedStrong = 0;
+            let addedCandidate = 0;
+            const cap = Math.min(codes.length, 25);
+            for (let i = 0; i < cap; i++) {
+              const c = codes[i];
+              if (!c) continue;
+              const strength = String(strengths[i] || 'DIFFERENTIAL').toUpperCase();
+              const shouldPromote =
+                strength === 'LITERAL' ||
+                (strength === 'STRONG_HYPOTHESIS' && intentConfidence >= STRONG_HYPOTHESIS_PROMOTION_THRESHOLD);
+
+              if (shouldPromote) {
+                if (!expandedObservationCodes.includes(c)) {
+                  expandedObservationCodes.push(c);
+                  if (strength === 'LITERAL') promotedLiteral++;
+                  else promotedStrong++;
+                }
+              } else if (!candidateObservationCodes.has(c)) {
+                candidateObservationCodes.add(c);
+                addedCandidate++;
+              }
+            }
+            console.log(
+              `      🔗 [DB_INTENT_OBSERVATIONS] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
+              `→ +${promotedLiteral} LITERAL +${promotedStrong} STRONG_HYPOTHESIS(@conf=${intentConfidence.toFixed(2)}) → confirmed; ` +
+              `+${addedCandidate} → candidate ` +
+              `(confirmed_total=${expandedObservationCodes.length}, candidate_total=${candidateObservationCodes.size})`
+            );
+            agentsUsed.push('INTENT_OBSERVATION_RESOLVER_DB');
+          } else {
+            console.log(
+              `      ℹ️ [DB_INTENT_OBSERVATIONS] no mappings for intent=${_intentForDb} crop=${_cropForDb} ` +
+              `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
+            );
+          }
+          // NOTE: RICE_EMERGENCE_GUARD removed 2026-06-22. Cross-crop literal
+          // promotion now driven by DB column `assertion_strength` (curated
+          // via the agronomist-editable `intent_assertion_pattern` table).
+        }
+      } catch (intentResolverErr) {
+        // Fail-soft: advisory observation-code enrichment must never block the
+        // main symbolic path. DB faults are surfaced via scope.emit so they
+        // remain observable in traces even though the request continues.
+        const msg = (intentResolverErr as Error)?.message || String(intentResolverErr);
+        scope?.emit({
+          stage: 'intent-resolver',
+          kind: 'error',
+          payload: {
+            event: 'enrichment_failed_non_blocking',
+            intent: _intentForDb,
+            crop: _cropForDb,
+            das: _dasForDb,
+            error: msg,
+          },
+        });
+        console.warn(`      ⚠️ [DB_INTENT_OBSERVATIONS] resolution failed (non-blocking): ${msg}`);
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -2506,12 +3314,34 @@ export class AIAgentOrchestrator {
       // Fix 7: also exempt when the canonical intent code is advisory.
       const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route) || isAdvisoryRoute(currentIntentForGate);
 
-      
-      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt) {
+      // ─────────────────────────────────────────────────────────────────────
+      // WAVE M BYPASS (NLU_LOW_CONFIDENCE / ZERO_CODE_GATE):
+      //   The zero-code gate originally only inspected `mappedCodes`. When
+      //   DB intent resolution had already promoted observation codes into
+      //   `expandedObservationCodes` (LITERAL / STRONG_HYPOTHESIS lanes),
+      //   forcing clarification here threw away real symbolic evidence and
+      //   produced an `orch.nlu_low_confidence` DEFECT_SUSPECT drop. Skip
+      //   the gate whenever ≥1 expanded/candidate observation code exists.
+      // ─────────────────────────────────────────────────────────────────────
+      const waveM_hasExpandedEvidence =
+        (Array.isArray(expandedObservationCodes) && expandedObservationCodes.length > 0) ||
+        (candidateObservationCodes && candidateObservationCodes.size > 0);
+
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && waveM_hasExpandedEvidence) {
+        console.warn(
+          `\n✅ [WAVE_M_ZERO_CODE_BYPASS] intent=${currentIntentForGate} ` +
+          `mappedCodes=0 BUT expanded=${expandedObservationCodes.length} ` +
+          `candidate=${candidateObservationCodes.size} → entering symbolic brain ` +
+          `(would have dropped to orch.nlu_low_confidence pre-Wave-M)`
+        );
+        agentsUsed.push('WAVE_M_ZERO_CODE_BYPASS');
+      }
+
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && !waveM_hasExpandedEvidence) {
         console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
         console.log(`   → Forcing CLARIFICATION path, will NOT enter symbolic brain`);
         agentsUsed.push('ZERO_CODE_CLARIFICATION_GATE');
-        
+
         // Generate clarification using crop/stage context
         const clarificationLandCtx = landContext ? {
           crop: landContext.current_crop || landContext.crop,
@@ -2519,19 +3349,34 @@ export class AIAgentOrchestrator {
           das: landContext.days_since_sowing
         } : null;
         
-        // English-only clarification — LLM narration layer translates at runtime
+        // WAVE A.5g FIX (RC-30): provide Marathi + Hindi alongside English instead
+        // of relying on downstream LLM translation, which historically dropped the
+        // structured bullet list and surfaced English-only text to farmers.
+        // The three languages are stage-aware; the orchestrator's downstream
+        // narration layer still has the final translation pass for any other lang.
         let clarificationMessage: string;
-        
+        let clarificationMr: string;
+        let clarificationHi: string;
+        let clarificationEn: string;
+
         if (clarificationLandCtx) {
           const cropName = clarificationLandCtx.crop || 'crop';
           const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} days)` : '';
-          clarificationMessage = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
+          const dasMr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिवस)` : '';
+          const dasHi = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिन)` : '';
+          clarificationEn = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
+          clarificationMr = `तुमच्या ${cropName} पिकात${dasMr} अडचण आहे असे कळते. कृपया लक्षणे सांगा:\n• पानांचा रंग बदलला आहे का?\n• पानांवर डाग किंवा भोक आहेत का?\n• कीड दिसते का?\n• खोड किंवा मुळांची समस्या?\n• वाढ खुंटली आहे का?`;
+          clarificationHi = `आपकी ${cropName} फसल${dasHi} में समस्या के बारे में बताइए। कृपया लक्षण बताएं:\n• पत्तों का रंग बदला है?\n• पत्तों पर धब्बे या छेद हैं?\n• कीड़े दिख रहे हैं?\n• तने या जड़ की समस्या?\n• विकास रुक गया है?`;
         } else {
-          clarificationMessage = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          clarificationEn = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          clarificationMr = `कृपया तुम्ही पाहत असलेली लक्षणे सांगा? उदा. पानांचा रंग बदलणे, पानांवर/खोडावर भोक, सुकणे, डाग, किंवा कीड दिसणे.`;
+          clarificationHi = `कृपया आप जो लक्षण देख रहे हैं वो बताएं? जैसे: पत्तों का रंग बदलना, पत्तों/तने में छेद, मुरझाना, धब्बे, या कीड़े दिखना.`;
         }
-        const clarificationMr = clarificationMessage;
-        const clarificationHi = clarificationMessage;
-        const clarificationEn = clarificationMessage;
+        // Pick the user's language for the top-level `response` string
+        const _lang = String(userLang || 'en').toLowerCase();
+        clarificationMessage = _lang.startsWith('mr') ? clarificationMr
+          : _lang.startsWith('hi') ? clarificationHi
+          : clarificationEn;
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
@@ -2569,6 +3414,7 @@ export class AIAgentOrchestrator {
             actions_returned: [],
             quick_actions: [],
             metadata: {
+              clarification_site: CLARIFICATION_SITES.NLU_LOW_CONFIDENCE,
               confidence: 0.3,
               trace_id: traceId,
               processing_time_ms: Date.now() - startTime,
@@ -2635,7 +3481,10 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
-      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage);
+      // FORENSIC AUDIT v9.0: pass the upstream canonical language so the
+      // induction layer's lightweight detector does not flip mr → hi when
+      // the input lacks the small set of Marathi common words it checks for.
+      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage, normalizedInput.detected_language);
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
       
       console.log(`      ${getInductionSummary(inductionResult)}`);
@@ -2828,13 +3677,31 @@ export class AIAgentOrchestrator {
         const { data: intentRow } = await supabaseClient
           .from('observation_intent_master')
           .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode')
-          .eq('intent_code', intentCode)
+          .eq('intent_code', String(intentCode || '').toUpperCase())
           .eq('is_active', true)
           .maybeSingle();
         
         if (intentRow) {
           intentMetaFromDB = intentRow;
           console.log(`   📋 [PATCH 2] Intent metadata loaded: stage_required=${intentRow.requires_stage_context}, routing=${intentRow.routing_target}`);
+        } else if (intentCode) {
+          // Task 4: NLU emitted an intent_code that is NOT in observation_intent_master.
+          // Log it and force a generic re-prompt path rather than feeding an
+          // unknown intent into the rule engine (which would return 0 rows silently).
+          console.warn(`   🚨 [INTENT_ALLOWLIST] unknown_intent_emitted: '${intentCode}' not found in observation_intent_master (is_active=true). Falling through to generic clarification.`);
+          try {
+            await supabaseClient.from('ai_chat_audit_logs').insert({
+              tenant_id: (this as any).tenantId ?? null,
+              farmer_id: (this as any).farmerId ?? null,
+              session_id: (this as any).sessionId ?? null,
+              event_type: 'unknown_intent_emitted',
+              event_data: {
+                emitted_intent: intentCode,
+                source: 'NLU',
+                stage: 'orchestrator.intent_metadata_lookup',
+              },
+            });
+          } catch (_logErr) { /* non-fatal */ }
         }
       } catch (metaErr) {
         console.warn(`   ⚠️ [PATCH 2] Failed to load intent metadata: ${metaErr}`);
@@ -2847,15 +3714,10 @@ export class AIAgentOrchestrator {
       // harvest) don't need symptom clarification — they go straight to the rule engine.
       // ═══════════════════════════════════════════════════════════════════════════
       let directModeBypass = false;
-      // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
-      // fires whenever any layer of context (canonical, land record, or crop schedule) knows the crop.
-      const ADVISORY_DIRECT_ROUTES = new Set([
-        'FERTILIZER_NUTRITION',
-        'IRRIGATION_SCHEDULING',
-        'WEATHER_SPRAY_TIMING',
-        'CROP_HEALTH',
-        'GENERAL_INFO'
-      ]);
+      // Phase 3 SSOT: advisory routes that skip clarification are loaded from
+      // public.direct_advisory_routes (was hardcoded ADVISORY_DIRECT_ROUTES set).
+      // NOTE: 'GENERAL_INFO' is intentionally NOT seeded — see git history.
+      const ADVISORY_DIRECT_ROUTES = await loadDirectAdvisoryRoutes(this.supabase);
       const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
       // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
       const intentAdvisoryBypass = isAdvisoryRoute(intentCode);
@@ -2864,12 +3726,24 @@ export class AIAgentOrchestrator {
         (canonicalContext as any)?.crop ||
         (landContext as any)?.crop_schedule?.crop_name ||
         (landContext as any)?.crop_name;
-      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
+      // SUPPRESSOR-1 FIX (2026-06-19): DIRECT_MODE must NOT pre-empt the brain when the
+      // farmer is reporting symptoms. A misclassified `GENERAL_CROP_INFO` (e.g. "rice hasn't
+      // germinated" → advisory route at 90%) would otherwise lock the pipeline into a generic
+      // advisory and skip every clarification, producing the same template response for every
+      // symptom-bearing query. Symptom evidence (induction or observation mapper) wins.
+      const symptomEvidencePresent =
+        (inductionResult?.symptoms?.length ?? 0) > 0 ||
+        hasMeaningfulCodes(mappedCodes) ||
+        isSymptomBasedIntent;
+      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer && !symptomEvidencePresent) {
         directModeBypass = true;
         bypassClarification = true;
         console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass})`);
         console.log(`   Crop: ${cropFromAnyLayer}, Stage: ${(landContext as any)?.growth_stage || (canonicalContext as any)?.stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
+      } else if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer && symptomEvidencePresent) {
+        console.log(`   🚧 [DIRECT_MODE BLOCKED] Intent ${intentCode} would bypass clarification, but symptom evidence is present — falling through to symbolic brain (symptoms=${inductionResult?.symptoms?.length ?? 0}, mappedCodes=${hasMeaningfulCodes(mappedCodes)}, symptomIntent=${isSymptomBasedIntent})`);
+        agentsUsed.push('DIRECT_MODE_BLOCKED_BY_SYMPTOMS');
       }
 
       
@@ -2883,7 +3757,16 @@ export class AIAgentOrchestrator {
         'PEST_OBSERVATION', 'DISEASE_OBSERVATION', 'REPORT_SYMPTOM',
         'GROWTH_ANOMALY', 'WILTING_DRYING', 'YELLOWING', 'NUTRIENT_DEFICIENCY',
         'BORER_DAMAGE', 'DEAD_HEART', 'INSECT_DAMAGE', 'FUNGAL_INFECTION',
-        'UNKNOWN_OBSERVATION'
+        'UNKNOWN_OBSERVATION',
+        // 2026-06-19: missing diagnostic intents that were forcing the stage-clarification path
+        // to a STAGE_CONTEXT_REQUIRED dead-end. These are symptom reports — proceed with default
+        // stage so symbolic brain can match rules.
+        'EMERGENCE_FAILURE', 'POOR_GERMINATION', 'CROP_PROBLEM_REPORT',
+        'COLOR_CHANGE', 'LEAF_DAMAGE_VISIBLE', 'LEAF_MARKS_OR_SPOTS',
+        'WATER_STRESS_SIGNAL', 'NUTRIENT_STRESS_SIGNAL',
+        'UNEVEN_FIELD_PATTERN', 'YIELD_OR_OUTPUT_ISSUE',
+        'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN', 'WILTING_OR_DROOPING',
+        'ROOT_OR_BASE_PROBLEM'
       ]);
       
       if (intentMetaFromDB?.requires_stage_context && !landContext?.growth_stage) {
@@ -2909,6 +3792,7 @@ export class AIAgentOrchestrator {
               reason: 'STAGE_CONTEXT_REQUIRED'
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.STAGE_CLARIFICATION,
               confidence: intentConf,
               safety_status: 'SAFE',
               rules_applied: 0,
@@ -2926,9 +3810,13 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       if (intentMetaFromDB?.routing_target === 'INFO_MODULE') {
         console.log(`   📚 [PATCH 6] INFO_MODULE route: Intent ${intentCode} → LLM direct response (no rule engine)`);
+        // WAVE A.5f (RC-24): mark bypass for observability — ai_decision_log will record bypass_reason
         agentsUsed.push('INFO_MODULE_ROUTE');
+        agentsUsed.push('BYPASS_SYMBOLIC:INFO_MODULE');
         
         // Generate direct LLM response for info-only queries
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'INFO_MODULE', intent: intentCode } });
+        const _infoStart = Date.now();
         const infoResponse = await generateLLMResponse({
           farmer_message: safeFarmerMessage,
            language: options.language || 'mr',
@@ -2938,6 +3826,7 @@ export class AIAgentOrchestrator {
             days_since_sowing: landContext.days_since_sowing
           } : undefined
         });
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_complete', path: 'INFO_MODULE', duration_ms: Date.now() - _infoStart } });
         
         return {
           type: 'DECISION_PROVIDED',
@@ -2994,11 +3883,15 @@ export class AIAgentOrchestrator {
         } else {
           console.log(`   🔀 [PATCH 6] HYBRID route without crop → routing to LLM info response`);
           agentsUsed.push('HYBRID_ROUTE_INFO');
+          agentsUsed.push('BYPASS_SYMBOLIC:HYBRID_NO_CROP'); // Wave A.5f observability
           
+          scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'HYBRID_INFO', intent: intentCode } });
+          const _hybridStart = Date.now();
           const hybridResponse = await generateLLMResponse({
             farmer_message: safeFarmerMessage,
             language: options.language || 'mr'
           });
+          scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_complete', path: 'HYBRID_INFO', duration_ms: Date.now() - _hybridStart } });
           
           return {
             type: 'DECISION_PROVIDED',
@@ -3346,6 +4239,7 @@ export class AIAgentOrchestrator {
         // STEP 1: Import and use the photo-to-ObservationKey mapper
         const { mapPhotoToObservationKeys, photoProvidesSufficientData } = await import('../photo/photo-observation-mapper.ts');
         photoMappedCodes = mapPhotoToObservationKeys(photoAnalysisResult);
+        survival.record('photo_observations', photoMappedCodes?.observation_codes?.length || 0);
         
         console.log(`   ✅ Mapped ${photoMappedCodes.observation_codes.length} ObservationKeys from photo`);
         console.log(`   Keys: ${photoMappedCodes.observation_codes.slice(0, 5).join(', ')}${photoMappedCodes.observation_codes.length > 5 ? '...' : ''}`);
@@ -3441,20 +4335,36 @@ export class AIAgentOrchestrator {
       const authoredObservations = new AuthoredObservationSet();
       const allObservationsForPreAuth = new Set<string>(); // backward-compat flat set
       
-      // BUG-3 FIX: Canonical code filter - only UPPERCASE_CODE symbols enter rule engine
+      // BUG-3 FIX + WAVE-S CASING CONTRACT (2026-06-23):
+      // Canonical observation codes are stored LOWERCASE in observation_master,
+      // observation_aliases, decision_rules.conditions_json, hypothesis_conditions.
+      // The orchestrator/LLM/induction layers may emit either case — accept BOTH
+      // and normalize to lowercase canonical on entry so downstream evaluators
+      // (which compare against lowercase DB rows) match consistently.
+      //
+      // Old gate: /^[A-Z][A-Z0-9_]+$/ — REJECTED every DB-canonical lowercase
+      // observation (obs_rice_no_emergence, plant_death, etc.) as "non-canonical",
+      // and silently let UPPERCASE through unchanged so it bypassed lowercase rule
+      // conditions. That mismatch is what produced "Rules matched: 0 / leaked
+      // rule_action_text" on emergence/germination intents.
       function isCanonicalCode(s: string): boolean {
-        return /^[A-Z][A-Z0-9_]+$/.test(s);
+        return typeof s === 'string' && /^[A-Za-z][A-Za-z0-9_]+$/.test(s.trim());
+      }
+      function canonicalize(s: string): string {
+        return String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
       }
       
       let filteredOutCount = 0;
       
       // Add from observation keys - tagged as EXTRACTED (pattern-matched from farmer text)
+      // WAVE-S CASING CONTRACT: store lowercase canonical so DB-condition compare matches.
       if (observationKeys) {
         observationKeys.forEach(key => {
           const strKey = String(key);
           if (isCanonicalCode(strKey)) {
-            allObservationsForPreAuth.add(strKey);
-            authoredObservations.add(strKey, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
+            const c = canonicalize(strKey);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical observation key: "${strKey.substring(0, 30)}"`);
@@ -3466,8 +4376,9 @@ export class AIAgentOrchestrator {
       if (mappedCodes?.observation_codes) {
         mappedCodes.observation_codes.forEach((code: string) => {
           if (isCanonicalCode(code)) {
-            allObservationsForPreAuth.add(code);
-            authoredObservations.add(code, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
+            const c = canonicalize(code);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical mapped code: "${code.substring(0, 30)}"`);
@@ -3479,12 +4390,13 @@ export class AIAgentOrchestrator {
       if (inductionResult?.symptoms) {
         inductionResult.symptoms.forEach((s: any) => {
           if (s.symbol && isCanonicalCode(s.symbol)) {
-            allObservationsForPreAuth.add(s.symbol);
+            const c = canonicalize(s.symbol);
+            allObservationsForPreAuth.add(c);
             // Tag based on induction source
             const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
               ? ObservationAuthority.INFERRED 
               : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
-            authoredObservations.add(s.symbol, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
+            authoredObservations.add(c, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical symptom: "${String(s.symbol).substring(0, 30)}"`);
@@ -3502,8 +4414,9 @@ export class AIAgentOrchestrator {
         photoMappedCodes.observation_codes.forEach((code: any) => {
           const strCode = String(code);
           if (isCanonicalCode(strCode)) {
-            allObservationsForPreAuth.add(strCode);
-            authoredObservations.add(strCode, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
+            const c = canonicalize(strCode);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
           }
         });
       }
@@ -3587,7 +4500,7 @@ export class AIAgentOrchestrator {
             'WEED_PROBLEM': 'WEED_PRESENT'
           };
           
-          const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
+          const fallbackSymptom = canonicalize(intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM');
           allObservationsForPreAuth.add(fallbackSymptom);
           authoredObservations.add(fallbackSymptom, ObservationAuthority.INFERRED, 'LLM_INTENT_FALLBACK');
           agentsUsed.push('LLM_INTENT_FALLBACK');
@@ -3595,8 +4508,9 @@ export class AIAgentOrchestrator {
         } else if (advisoryIntents.includes(intentCode) && directModeBypass) {
           // FIX 3: For advisory intents with DIRECT mode, inject the INTENT CODE itself
           console.log(`\n🎯 [ADVISORY DIRECT] Intent ${intentCode} is advisory — injecting intent as observation for rule engine`);
-          allObservationsForPreAuth.add(intentCode);
-          authoredObservations.add(intentCode, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
+          const cIntent = canonicalize(intentCode);
+          allObservationsForPreAuth.add(cIntent);
+          authoredObservations.add(cIntent, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
           agentsUsed.push('ADVISORY_DIRECT_ROUTE');
         }
       }
@@ -3613,13 +4527,16 @@ export class AIAgentOrchestrator {
         const injected: string[] = [];
         const blocked: string[] = [];
         crossCropSymptomsList.forEach(sym => {
-          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(sym)) {
+          // Terminal guard set is UPPER snake. Compare case-insensitively.
+          const symU = String(sym).toUpperCase().replace(/[\s-]+/g, '_');
+          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(symU)) {
             blocked.push(sym);
             console.log(`   🛡️ [TERMINAL GUARD] Blocked cross-crop terminal code: ${sym}`);
           } else {
-            allObservationsForPreAuth.add(sym);
-            authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
-            injected.push(sym);
+            const c = canonicalize(sym);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
+            injected.push(c);
           }
         });
         if (injected.length > 0) {
@@ -3642,6 +4559,9 @@ export class AIAgentOrchestrator {
       
       // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
+      survival.record('pre_auth', allObservationsForPreAuth.size);
+      survival.setMeta('intent', intentCode);
+      survival.setMeta('intent_conf', intentConf);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
@@ -3663,14 +4583,26 @@ export class AIAgentOrchestrator {
       
       // BUG 5 FIX: Pass authority metadata into canonical state for rule evaluator
       // Separate confirmed/extracted observations from inferred/synthetic
+      // CONTAMINATION FIX (2026-06-22): register candidate observations from
+      // intent_observation_mapping into authoredObservations as HYPOTHESIS_CANDIDATE.
+      // These are kept OUT of allObservationsForPreAuth so they never reach
+      // confirmedObsCodes / terminal-gate / decision_output.symptom_keys.
+      if (candidateObservationCodes && candidateObservationCodes.size > 0) {
+        for (const code of candidateObservationCodes) {
+          authoredObservations.add(canonicalize(code), ObservationAuthority.HYPOTHESIS_CANDIDATE, 'INTENT_OBSERVATION_MAPPING_DB');
+        }
+        console.log(`   🧪 [HYPOTHESIS_CANDIDATES] Registered ${candidateObservationCodes.size} candidate observations (lane=candidate, NOT confirmed)`);
+      }
       const confirmedObsCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      const candidateObsCodes = authoredObservations.getCandidateCodes();
       const syntheticObsCodes = [...allObservationsForPreAuth].filter(
-        code => !confirmedObsCodes.includes(code)
+        code => !confirmedObsCodes.includes(code) && !candidateObsCodes.includes(code)
       );
-      console.log(`   📊 [AuthoritySplit] Confirmed+Extracted: ${confirmedObsCodes.length}, Synthetic: ${syntheticObsCodes.length}`);
-      
+      console.log(`   📊 [AuthoritySplit] Confirmed+Extracted: ${confirmedObsCodes.length}, Candidates: ${candidateObsCodes.length}, Synthetic: ${syntheticObsCodes.length}`);
+
       // Log authority breakdown
       console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
+
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
       const cropDamageResult = detectCropDamageWithAuthority(
@@ -3824,6 +4756,80 @@ export class AIAgentOrchestrator {
         understandingResult.clarification_required = false;
         bypassClarification = true;
       } else if (diagnosisWithOptionalClarification) {
+        // ═══════════════════════════════════════════════════════════════════════════
+        // EVIDENCE SUFFICIENCY GUARD (v4.1.1 hotfix)
+        // Do NOT jump to DIAGNOSIS_FIRST (showing diagnoses as clarification options)
+        // when the Understanding Checker says clarification is required AND we have
+        // only a single real symptom. In that case, gather OBSERVATION clarifications
+        // first via the scope-aware clarification path below.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const SENTINEL_RE = /_(UNKNOWN|NONE|NOT_PROVIDED|IDENTIFIED)$/;
+        const realConfirmedSymptoms = confirmedObsCodes.filter(
+          (c: string) => !SENTINEL_RE.test(c)
+        );
+
+        // WAVE O FIX (RC-evidence-undercount): the v5.1 cross-crop terminal
+        // guard strips inferred terminals (e.g. GERMINATION_FAILURE) BEFORE
+        // they reach `cropDamageResult.damage_observations`. Counting only
+        // the post-strip set caused clear terminal reports backed by one
+        // EXTRACTED damage code + N INFERRED corroborators to be classified
+        // as "insufficient" and bounced back into a yes/no clarification.
+        //
+        // Real-evidence counter now unions:
+        //   - the post-strip detector list (EXTRACTED truth)
+        //   - INFERRED damage codes from the AuthoredObservationSet that
+        //     map to known TERMINAL / CROP damage taxonomies (alias-expanded
+        //     corroborators of the same EXTRACTED parent)
+        //   - the detector's reported severity_indicators
+        // SENTINEL codes are still excluded.
+        const damageTaxonomy = new Set<string>([
+          ...TERMINAL_CODES_BLOCKED_FROM_INJECTION,
+          'POOR_GERMINATION', 'POOR_GERMINATION_PERCENT',
+          'SEED_NOT_GERMINATED', 'DELAYED_GERMINATION', 'GERMINATION_CONCERN',
+          'GAPS_IN_FIELD', 'PATCHY_DEATH', 'AFFECTED_PATCHES',
+          'PATCHY_GROWTH', 'AFFECTED_PART_WHOLE', 'WILTING_SEVERE',
+          'STEM_ROT_PRESENT', 'CROWN_ROT', 'PLANT_DEATH_PATCHES',
+          'STUNTED_GROWTH', 'OVERALL_WEAK'
+        ]);
+        const inferredDamageObs = (allObservationsForPreAuth ? [...allObservationsForPreAuth] : [])
+          .filter((c: string) => damageTaxonomy.has(c) && !SENTINEL_RE.test(c));
+        const realDamageObs = Array.from(new Set([
+          ...((cropDamageResult.damage_observations || []).filter((c: string) => !SENTINEL_RE.test(c))),
+          ...inferredDamageObs,
+          ...((cropDamageResult.severity_indicators || []).filter((c: string) => !SENTINEL_RE.test(c)))
+        ]));
+
+        // WAVE A.5d FIX (RC-26): no per-crop carve-outs. Authority to
+        // bypass the evidence-insufficiency check is crop-agnostic and
+        // derives from the detector's structured verdict instead.
+        const isTerminalOrSignificantWithLandContext =
+          (cropDamageResult.damage_type === 'TERMINAL' || cropDamageResult.damage_type === 'SIGNIFICANT') &&
+          (cropDamageResult.severity_level === 'HIGH' || cropDamageResult.severity_level === 'CRITICAL') &&
+          hasLandContext;
+
+        const evidenceInsufficient =
+          understandingResult.clarification_required === true &&
+          realConfirmedSymptoms.length < 2 &&
+          realDamageObs.length < 2 &&
+          !photoForcedDiagnosis &&
+          !isTerminalOrSignificantWithLandContext;
+
+        if (evidenceInsufficient) {
+          console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence for hypothesis-driven options`);
+          console.log(`   realConfirmedSymptoms=${realConfirmedSymptoms.length} (${realConfirmedSymptoms.join(',') || 'none'})`);
+          console.log(`   realDamageObs=${realDamageObs.length} (${realDamageObs.join(',') || 'none'})`);
+          console.log(`   damage_type=${cropDamageResult.damage_type}, severity=${cropDamageResult.severity_level}, hasLandContext=${hasLandContext}`);
+          console.log(`   clarification_required=${understandingResult.clarification_required}, score=${understandingResult.understanding_confidence}`);
+          console.log(`   → Falling through to scope-aware OBSERVATION clarification (not diagnoses)`);
+          agentsUsed.push('DIAGNOSIS_FIRST_SKIPPED_LOW_EVIDENCE');
+          // Do not set bypass flags; fall through to the understanding-based
+          // clarification gate below so we collect observations first.
+        } else {
+          if (isTerminalOrSignificantWithLandContext && (realConfirmedSymptoms.length < 2 && (cropDamageResult.damage_observations || []).length < 2)) {
+            console.log(`\n✅ [WAVE-O BYPASS] Evidence-insufficiency bypassed: damage_type=${cropDamageResult.damage_type}, severity=${cropDamageResult.severity_level}, land context locked`);
+            console.log(`   Real damage obs (pre-strip + inferred): ${realDamageObs.join(', ')}`);
+            agentsUsed.push('WAVE_O_TERMINAL_EVIDENCE_BYPASS');
+          }
         console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
@@ -3856,6 +4862,7 @@ export class AIAgentOrchestrator {
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
           console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
           
+          const varietyProfileForHypo = (landContext as any)?.variety_profile || null;
           const hypothesisResult = await evaluateCandidateHypotheses({
             crop_code: cropCode,
             growth_stage: growthStage,
@@ -3865,7 +4872,10 @@ export class AIAgentOrchestrator {
             known_observations: currentObservations,
             user_query: farmerMessage,
             supabaseClient: this.supabase,
-            trace_id: traceId
+            trace_id: traceId,
+            // PHASE-4: variety-aware confidence modifier
+            variety_id: varietyProfileForHypo?.variety_id ?? null,
+            variety_resistance: varietyProfileForHypo?.resistance ?? undefined,
           });
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
@@ -3945,7 +4955,7 @@ export class AIAgentOrchestrator {
               diagnosisOptions = await translateClarificationOptions(
                 diagnosisOptions, 
                 options.language || 'mr', 
-                supabase
+                this.supabase
               );
             } catch (transErr) {
               console.warn(`⚠️ [DIAG_FIRST] Translation failed, using raw labels: ${transErr}`);
@@ -3983,6 +4993,7 @@ export class AIAgentOrchestrator {
                 // CRITICAL: Also add options here for fallback extraction
                 options: diagnosisOptions,
                 metadata: {
+                  clarification_site: CLARIFICATION_SITES.DIAGNOSIS_FIRST_OPTIONS,
                   word_count: diagnosisFirstOutput.question_text.split(/\s+/).length,
                   reading_time_seconds: 5,
                   complexity_score: 0.5,
@@ -4013,6 +5024,7 @@ export class AIAgentOrchestrator {
           console.error(`   ❌ Diagnosis-first generation failed:`, diagnosisFirstError);
           // Fall through to standard clarification flow
         }
+        } // end else (evidence sufficient → DIAGNOSIS_FIRST executed)
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -4049,7 +5061,9 @@ export class AIAgentOrchestrator {
           understandingResult: understandingResult,
           canonicalContext: canonicalContext, // PHASE-21: Single canonical context (read-only)
           diagnosisRulesFired: false, // No diagnosis rules have fired yet
-          farmerMessage: farmerMessage // Farmer message for LLM context
+          farmerMessage: farmerMessage, // Farmer message for LLM context
+          intentCode: intentCode,            // v3.1: enable INTENT_DRIVEN scope
+          intentConfidence: intentConf       // v3.1
         };
         
         // P0 FIX: Properly await the async function (was causing Promise leak)
@@ -4215,11 +5229,17 @@ export class AIAgentOrchestrator {
             text_hi: responseText,
             text_en: responseText,
             options: await Promise.all(safeOptions.map(async (opt, idx) => {
-              const rawLabel = typeof opt === 'string' ? opt : (opt.label || String(opt));
-              return {
-                value: String(idx + 1),
-                label: rawLabel
-              };
+              const isObj = opt && typeof opt === 'object';
+              const rawLabel = isObj ? ((opt as any).label || String(opt)) : String(opt);
+              // ARCHITECTURAL CONTRACT: chip `value` MUST be the canonical observation_code
+              // when one is known. Frontend echoes the value back as `[obs_keys:<value>]`, and
+              // the orchestrator's option-selection handler hands it straight to the rule engine.
+              // A position-index `value` (legacy bug) leaks back as `[obs_keys:3]` and breaks
+              // ALL clarification flows post lower_snake_case migration. Fall back to the LABEL
+              // (not an integer index) so the orchestrator's label→observation mapper can recover.
+              const code = isObj ? ((opt as any).observation_code || (opt as any).observation_key) : undefined;
+              const chipValue = (typeof code === 'string' && code.trim().length > 0) ? code : rawLabel;
+              return { value: chipValue, label: rawLabel };
             })).then(async (opts) => {
               // Translate raw observation codes to farmer language
               const translated = await translateClarificationOptions(
@@ -4229,6 +5249,7 @@ export class AIAgentOrchestrator {
               );
               return opts.map((o, i) => ({ ...o, label: typeof translated[i] === 'string' ? translated[i] as string : (translated[i] as any).label || o.label }));
             })
+
           },
           // ✅ CRITICAL FIX: Always include communication object with safe options
           communication: {
@@ -4240,6 +5261,7 @@ export class AIAgentOrchestrator {
             options: safeOptions
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.IDENTIFY_LOCATION_INVARIANT,
             confidence: understandingResult.completeness_score / 100,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -4272,7 +5294,7 @@ export class AIAgentOrchestrator {
       let nluOutput: NLUOutput | null = null;
       try {
         // Use processed message (could be matched option text) for NLU
-        nluOutput = await this.processNLU(processedFarmerMessage, sessionId, options.language, landContext);
+        nluOutput = await this.processNLU(processedFarmerMessage, sessionId, options.language, landContext, scope);
         agentsUsed.push('NLU');
         console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
       } catch (nluError) {
@@ -4398,8 +5420,17 @@ export class AIAgentOrchestrator {
           console.log(`   Accumulated GDD: ${phenologyResult.accumulated_gdd.toFixed(0)} (source: ${phenologyResult.gdd_source})`);
           console.log(`   Critical irrigation: ${phenologyResult.critical_irrigation_needed}, Critical nutrition: ${phenologyResult.critical_nutrition_needed}`);
           
-          // Override growth_stage in landContext with GDD-calculated stage
-          landContext.growth_stage = phenologyResult.current_stage;
+          // STAGE AUTHORITY LOCK (Bug B fix):
+          // crop_stage_master via CropTimeline SSOT is the single source of truth.
+          // The GDD engine is advisory only — never overwrite SSOT stage.
+          const ssotStageSource = (landContext as any).stage_source;
+          const ssotLocked = ssotStageSource === 'crop_stage_master';
+          if (ssotLocked) {
+            console.log(`   🔒 [StageAuthority] LOCKED stage=${landContext.growth_stage} source=SSOT(crop_stage_master) — GDD result (${phenologyResult.current_stage}) kept as advisory only`);
+          } else {
+            landContext.growth_stage = phenologyResult.current_stage;
+            (landContext as any).stage_source = 'gdd';
+          }
           landContext.gdd_phenology = phenologyResult;
         } catch (gddError) {
           console.error('   ❌ GDD calculation failed, using DAS fallback:', gddError);
@@ -4529,9 +5560,11 @@ export class AIAgentOrchestrator {
       }
       
       // CRITICAL FIX 4: Check if clarification should be BYPASSED
-      // Skip clarification when farmer already selected an option
+      // FORENSIC AUDIT v9.0: the previous log message hard-coded "farmer already
+      // selected option" even when the bypass cause was DIRECT_MODE / advisory
+      // intent. Use a neutral message that accurately describes the bypass.
       if (bypassClarification) {
-        console.log(`   🚫 BYPASSING clarification - farmer already selected option, proceeding to Decision Brain`);
+        console.log(`   🚫 BYPASSING clarification (cause: ${directModeBypass ? 'DIRECT_MODE/advisory intent' : 'option-selected or symbol-induction'}) - proceeding to Decision Brain`);
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -4574,7 +5607,7 @@ export class AIAgentOrchestrator {
       // If crop+stage known but symptoms partial → clarify BEFORE rules
       // ═══════════════════════════════════════════════════════════════════════════
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
-      const lockedStage = getLockedStage();
+      const lockedStage = scope ? getLockedStage(scope) : null;
       
       const clarificationTriggerInput: ClarificationTriggerInput = {
         crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
@@ -4582,7 +5615,7 @@ export class AIAgentOrchestrator {
         symptom_count: inductionResult.symptoms.length,
         symptom_coverage: inductionResult.symbol_coverage,
         is_ambiguous: inductionResult.aggregated_confidence < 0.5 && inductionResult.symptoms.length > 0,
-        has_pending_clarification: pendingOptionsCount > 0,
+        has_pending_clarification: gatePendingOptionsCount > 0,
         clarification_completed: clarificationCompleted
       };
       
@@ -4619,12 +5652,16 @@ export class AIAgentOrchestrator {
         // ═══════════════════════════════════════════════════════════════════════════
         let ruleDrivenClarification = null;
         if (lockedStage && this.supabase) {
+          const varietyProfileForClarif = (landContext as any)?.variety_profile || null;
           const ruleDrivenInput: RuleDrivenClarificationInput = {
             crop_code: lockedStage.crop_code,
             stage: lockedStage.growth_stage,
             current_symptoms: inductionResult.symptoms.map(s => s.symbol),
             language: options.language || 'mr',
-            supabaseClient: this.supabase
+            supabaseClient: this.supabase,
+            // PHASE-4: variety-aware ranking
+            variety_id: varietyProfileForClarif?.variety_id ?? null,
+            variety_resistance: varietyProfileForClarif?.resistance ?? undefined,
           };
           
           ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);
@@ -4760,7 +5797,10 @@ export class AIAgentOrchestrator {
           } : undefined
         };
         
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'LLM_DIRECT' } });
+        const _llmStart = Date.now();
         const llmResponse = await generateLLMResponse(llmInput);
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_complete', path: 'LLM_DIRECT', duration_ms: Date.now() - _llmStart } });
         
         // Build data audit for LLM-direct path too
         const weatherData = await this.fetchWeatherData(sessionId, options.landId);
@@ -5127,7 +6167,18 @@ export class AIAgentOrchestrator {
             : undefined  // Don't pass { crop_name: 'UNKNOWN' } - let farmer_mentioned_crop be used
         });
         
-        if (contextValidation.status === 'NEEDS_CLARIFICATION') {
+        // Defense-in-depth: NEXT_CROP_RECOMMENDATION queries have no current crop
+        // by design and must never trip G2's "Which crop are you asking about?"
+        // clarification. The dedicated lane upstream (~line 1743) should already
+        // have returned; this guard catches any path that escapes pre-classification.
+        const isNextCropIntent =
+          (nluOutput?.primary_intent === 'NEXT_CROP_RECOMMENDATION') ||
+          (nluOutput?.intent === 'NEXT_CROP_RECOMMENDATION') ||
+          isNextCropRecommendationQuery(safeFarmerMessage);
+        if (isNextCropIntent) {
+          console.log('   ⏭️ G2 CONTEXT_COMPLETENESS skipped — NEXT_CROP_RECOMMENDATION intent has no current crop by design');
+          agentsUsed.push('G2_BYPASS_NEXT_CROP');
+        } else if (contextValidation.status === 'NEEDS_CLARIFICATION') {
           console.log(`   ⚠️ G2 CONTEXT_COMPLETENESS: NEEDS_CLARIFICATION`);
           console.log(`      Reason: ${contextValidation.clarification_prompt || 'Missing critical context'}`);
           agentsUsed.push('G2_CONTEXT_VALIDATION_FAILED');
@@ -5159,6 +6210,7 @@ export class AIAgentOrchestrator {
               })()
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.G2_CONTEXT_COMPLETENESS,
               confidence: 0.5,
               safety_status: 'CONTEXT_VALIDATION_REQUIRED',
               rules_applied: 0,
@@ -5287,7 +6339,9 @@ export class AIAgentOrchestrator {
             canonical_state: canonicalState,
             observations: [...(allObservationsForPreAuth || [])],
             supabase_client: this.supabase,
-            trace_id: traceId
+            trace_id: traceId,
+            // Task 7c: scope-aware causal trace for Phase 2 arbitration.
+            scope,
           });
 
           if (hypothesisResult.needs_clarification && hypothesisResult.decision_path === 'CLARIFICATION_REQUIRED') {
@@ -5307,7 +6361,16 @@ export class AIAgentOrchestrator {
           }
         } catch (hypothesisError) {
           console.error(`   ⚠️ Hypothesis arbitration failed, falling back to full scope:`, hypothesisError);
+          scope?.emit({
+            stage: 'hypothesis',
+            kind: 'error',
+            payload: {
+              event: 'arbitration_failed',
+              message: hypothesisError instanceof Error ? hypothesisError.message : String(hypothesisError),
+            },
+          });
         }
+
         } // end of coverage gate else block
 
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
@@ -5388,12 +6451,20 @@ export class AIAgentOrchestrator {
         const queryForRuleEngine = directModeBypass 
           ? `[INTENT:${intentCode}] ${farmerMessage}` 
           : farmerMessage;
+        // WAVE-S CASING CONTRACT: ensure observations passed to the rule
+        // evaluator are lowercase canonical (defense in depth — already
+        // canonicalized at ingestion above).
+        const _lc = (xs: string[]) => xs.map(c => String(c).toLowerCase().replace(/[\s-]+/g, '_'));
         const canonicalStateWithQuery = {
           ...canonicalState,
           user_query: queryForRuleEngine,
           // BUG 5 FIX: Pass authority-separated observations for rule evaluator
-          confirmed_observations: confirmedObsCodes,
-          synthetic_observations: syntheticObsCodes
+          confirmed_observations: _lc(confirmedObsCodes),
+          // CONTAMINATION FIX (2026-06-22): expose candidate lane separately so
+          // hypothesis evaluator / clarification generator can read it without
+          // it ever entering the confirmed/rule-firing path.
+          candidate_observations: _lc(candidateObsCodes),
+          synthetic_observations: _lc(syntheticObsCodes)
         };
         
         // PRODUCTION FIX: Pass PrescriptionGate override signal to confidence gate
@@ -5427,9 +6498,12 @@ export class AIAgentOrchestrator {
         
         layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
           prescriptionGateOverride: isPrescriptionGateOverride,
-          traceId: traceId
+          traceId: traceId,
+          // Task 7d: scope-aware Phase 3 trace events.
+          scope,
         });
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
+
         
         // PHASE-16: Safe array access with null checks
         const safeRulesApplied = Array.isArray(layeredRuleResult.rules_applied) ? layeredRuleResult.rules_applied : [];
@@ -5445,6 +6519,51 @@ export class AIAgentOrchestrator {
         console.log(`      Diagnoses: ${safeDiagnoses.map(d => `${d?.cause || 'unknown'}(${((d?.confidence || 0) * 100).toFixed(0)}%)`).join(', ') || 'none'}`);
         console.log(`      Final Diagnosis: ${layeredRuleResult.final_diagnosis?.cause || 'none'}`);
         console.log(`      Prescription Allowed: ${layeredRuleResult.prescription_allowed}`);
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // OBSERVATION SURVIVAL TRACE (2026-06-20) — single structured line per turn
+        // so the matrix (intent → mapped → alias → canonical → layered → primary)
+        // can be reconstructed from edge logs without code changes.
+        // ═══════════════════════════════════════════════════════════════════════════
+        try {
+          const _obsSurvival = {
+            trace_id: traceId,
+            intent: semanticExtraction?.intent_code,
+            intent_conf: semanticExtraction?.intent_confidence,
+            crop: canonicalState?.crop_type,
+            stage: canonicalState?.crop_stage,
+            das: (canonicalState as any)?.days_after_sowing_exact,
+            mapped_codes: (mappedCodes?.observation_codes || []).length,
+            expanded_codes: (expandedObservationCodes || []).length,
+            pre_auth_codes: allObservationsForPreAuth ? allObservationsForPreAuth.size : 0,
+            canonical_visual: (canonicalState as any)?.visual_symptoms?.length || 0,
+            confirmed_obs: confirmedObsCodes?.length || 0,
+            synthetic_obs: syntheticObsCodes?.length || 0,
+            rules_evaluated: layeredRuleResult?.rules_evaluated || 0,
+            rules_matched: layeredRuleResult?.rules_matched || 0,
+            matched_responses: layeredRuleResult?.matched_responses?.length || 0,
+            primary_rule_id: layeredRuleResult?.primary_decision?.rule_id || null,
+            primary_action_type: layeredRuleResult?.primary_decision?.action_type || null,
+          };
+          console.log(`📊 [OBS_SURVIVAL] ${JSON.stringify(_obsSurvival)}`);
+
+          // Feed the survival matrix (emitted once per request in the finally block).
+          survival.record('nlu_extracted', inductionResult?.symptoms?.length || 0);
+          survival.record('semantic_mapped', _obsSurvival.mapped_codes);
+          survival.record('alias_resolved', _obsSurvival.expanded_codes);
+          survival.record('confirmed', _obsSurvival.confirmed_obs);
+          survival.record('synthetic', _obsSurvival.synthetic_obs);
+          survival.record('canonical_visual', _obsSurvival.canonical_visual);
+          survival.record('rules_evaluated', _obsSurvival.rules_evaluated);
+          survival.record('rules_matched', _obsSurvival.rules_matched);
+          survival.record('matched_responses', _obsSurvival.matched_responses);
+          survival.record('primary_decision', _obsSurvival.primary_rule_id ? 1 : 0);
+          survival.setMeta('crop', _obsSurvival.crop);
+          survival.setMeta('stage', _obsSurvival.stage);
+          survival.setMeta('das', _obsSurvival.das);
+          survival.setMeta('primary_rule_id', _obsSurvival.primary_rule_id);
+          survival.setMeta('primary_action_type', _obsSurvival.primary_action_type);
+        } catch (_e) { /* trace must never throw */ }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures
@@ -5460,6 +6579,28 @@ export class AIAgentOrchestrator {
           console.error(`   Matched Responses: ${layeredRuleResult.matched_responses?.length || 0}`);
           console.error(`   ACTION: Check condition_code and observable_characteristics in decision_rules table`);
         }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // FORENSIC AUDIT v9.0: NUTRITION/IRRIGATION INTENT FIRING GUARANTEE
+        // When farmer asks "which fertilizer to apply now?" at a stage flagged
+        // critical_nutrition/critical_irrigation, returning zero rules is a
+        // correctness bug. Surface a SYMBOLIC_CONTRACT_VIOLATION so it's caught
+        // in logs and add a deterministic fallback hint pointing to the gap.
+        // ═══════════════════════════════════════════════════════════════════════════
+        try {
+          const _nutrientIntents = new Set(['FERTILIZER_SCHEDULE','NUTRIENT_DEFICIENCY','APPLY_FERTILIZER','FERTILIZE']);
+          const _irrigationIntents = new Set(['IRRIGATION_SCHEDULE','IRRIGATE','WATER_NEED']);
+          const _intent = String(intentCode || '').toUpperCase();
+          const _criticalNutrition = !!(phenologyResult as any)?.critical_nutrition_needed;
+          const _criticalIrrigation = !!(phenologyResult as any)?.critical_irrigation_needed;
+          if (layeredRuleResult.rules_matched === 0 && (
+              (_nutrientIntents.has(_intent) && _criticalNutrition) ||
+              (_irrigationIntents.has(_intent) && _criticalIrrigation)
+          )) {
+            console.error(`🚨 [SYMBOLIC_CONTRACT_VIOLATION] intent=${_intent} at critical_nutrition=${_criticalNutrition}/critical_irrigation=${_criticalIrrigation} but ZERO rules fired. Crop=${canonicalState.crop_type} Stage=${canonicalState.crop_stage}. ACTION: seed a stage-applicable PRESCRIPTION rule or relax condition_code on existing nutrition rules; do NOT let this fall through to no_action_needed.`);
+          }
+        } catch (_e) { /* non-fatal logging guard */ }
+
         
         if (safeSafetyBlocks.length > 0) {
           console.warn(`   ⚠️ Safety Blocks: ${safeSafetyBlocks.map(b => b?.message || 'unknown').join(', ')}`);
@@ -5538,81 +6679,100 @@ export class AIAgentOrchestrator {
         if (shouldRunSymbolicReasoner) {
           console.log('\n🧠 PHASE 2.7: Running Symbolic Reasoner (PRIMARY PATH)...');
           console.log(`   📊 Current rules_matched: ${layeredRuleResult?.rules_matched || 0}`);
+          const symbolicStart = Date.now();
+          scope?.emit({
+            stage: 'symbolic-reasoner',
+            kind: 'derive',
+            payload: {
+              event: 'reasoner_start',
+              prior_rules_matched: layeredRuleResult?.rules_matched || 0,
+              observation_count: allObservationsForPreAuth?.size ?? 0,
+            },
+          });
           try {
-            const symbolicReasoner = new SymbolicReasoner();
+            // Task 7d: when scope is present, use the scope-aware factory so
+            // the reasoner instance is cached on scope.turnCache.engineState
+            // and reuses scope.db instead of constructing its own client.
+            const symbolicReasoner = scope ? buildSymbolicReasoner(scope) : new SymbolicReasoner();
             const factExtractor = new FactExtractor();
+
             
             // ═══════════════════════════════════════════════════════════════════════════
-            // BUG FIX #2: Build NESTED AuthoritativeLandState matching interface
-            // The interface expects nested crop/soil/ndvi/weather objects, not flat fields
+            // [SSOT] AUTHORITATIVE LAND STATE - load from DB via the canonical loader
+            // The orchestrator previously hand-built a fake AuthoritativeLandState here
+            // with null timestamps and a hardcoded completeness_score=50, which made
+            // every rule that references soil/ndvi/weather/derived freshness silently
+            // fail to fire. We now call the SSOT loader once per turn and use its
+            // result everywhere. Variety profile (master_products + variety_resistance
+            // + variety_translations) is already resolved on landContext.variety_profile
+            // by fetchComprehensiveLandContext — attach it onto the SSOT snapshot.
+            // No defaults, no climatology, no fabrication for missing weather/NDVI.
             // ═══════════════════════════════════════════════════════════════════════════
-            const authoritativeLandState = landContext ? {
-              land_id: landContext.land_id,
-              tenant_id: tenantId,
-              farmer_id: farmerId,
-              land_name: landContext.land_name || '',
-              area_hectares: (landContext.area_acres || 0) * 0.404686,
-              area_acres: landContext.area_acres || 0,
-              latitude: landContext.center_lat || null,
-              longitude: landContext.center_lon || null,
-              district: landContext.district || null,
-              state: landContext.state || null,
-              // CRITICAL: Nested crop object matching AuthoritativeLandState interface
-              crop: {
-                current_crop: landContext.current_crop || null,
-                crop_code: landContext.current_crop?.toUpperCase() || null,
-                growth_stage: landContext.growth_stage || null,
-                days_since_sowing: landContext.days_since_sowing || null,
-                sowing_date: landContext.sowing_date || null,
-                expected_harvest_date: null,
-                schedule_status: 'active'
-              },
-              // CRITICAL: Nested soil object
-              soil: {
-                ph: landContext.soil_health?.ph_level || null,
-                organic_carbon: landContext.soil_health?.organic_carbon || null,
-                nitrogen_kg_per_ha: landContext.soil_health?.nitrogen_kg_per_ha || null,
-                phosphorus_kg_per_ha: landContext.soil_health?.phosphorus_kg_per_ha || null,
-                potassium_kg_per_ha: landContext.soil_health?.potassium_kg_per_ha || null,
-                texture: landContext.soil_health?.texture || null,
-                test_date: null,
-                test_age_days: null,
-                data_fresh: !!landContext.soil_health
-              },
-              // CRITICAL: Nested ndvi object
-              ndvi: {
-                latest_value: landContext.ndvi?.value || null,
-                latest_date: landContext.ndvi?.measurement_date || null,
-                trend: landContext.ndvi?.ndvi_trend || 'unknown',
-                age_days: null,
-                history: landContext.ndvi_history || [],
-                data_fresh: !!landContext.ndvi
-              },
-              // CRITICAL: Nested weather object
-              weather: {
-                temperature: fusedIntelligence.weather_data?.temperature || null,
-                humidity: fusedIntelligence.weather_data?.humidity || null,
-                rainfall_last_24h: fusedIntelligence.weather_data?.rainfall_mm || null,
-                rain_probability: null,
-                wind_speed: fusedIntelligence.weather_data?.wind_speed || null,
-                data_timestamp: null,
-                data_age_hours: null,
-                data_fresh: !!fusedIntelligence.weather_data
-              },
-              // Optional GDD phenology
-              gdd_phenology: phenologyResult || null,
-              // Derived metrics (placeholder)
-              derived: {
-                water_stress_level: 'unknown' as const,
-                crop_health_status: 'unknown' as const,
-                data_completeness_score: 50,
-                data_freshness_score: 50,
-                critical_missing: []
-              },
-              loaded_at: new Date().toISOString(),
-              sources_available: ['land_context'],
-              sources_missing: []
-            } : null;
+            let authoritativeLandState: any = null;
+            if (options.landId) {
+              try {
+                const ssotResult = await loadAuthoritativeLandState(options.landId, farmerId, tenantId);
+                if (ssotResult?.success && ssotResult.state) {
+                  authoritativeLandState = ssotResult.state as any;
+                  // Attach optional GDD phenology (computed earlier this turn)
+                  if (phenologyResult) {
+                    authoritativeLandState.gdd_phenology = phenologyResult;
+                  }
+                  // Attach variety SSOT (master_products / variety_resistance / variety_translations)
+                  // already loaded onto landContext by fetchComprehensiveLandContext.
+                  const varietyProfile = (landContext as any)?.variety_profile || null;
+                  if (varietyProfile) {
+                    (authoritativeLandState as any).variety = varietyProfile;
+                    if (!authoritativeLandState.sources_available?.includes('master_products')) {
+                      authoritativeLandState.sources_available = [
+                        ...(authoritativeLandState.sources_available || []),
+                        'master_products',
+                        ...(Array.isArray(varietyProfile.resistance) && varietyProfile.resistance.length ? ['variety_resistance'] : []),
+                        ...((varietyProfile.label_hi || varietyProfile.label_mr) ? ['variety_translations'] : []),
+                      ];
+                    }
+                  } else {
+                    authoritativeLandState.sources_missing = [
+                      ...(authoritativeLandState.sources_missing || []),
+                      'master_products'
+                    ];
+                  }
+                  console.log(
+                    `[SSOT] AuthoritativeLandState loaded: ` +
+                    `sources=[${(authoritativeLandState.sources_available || []).join(',')}] ` +
+                    `missing=[${(authoritativeLandState.sources_missing || []).join(',')}] ` +
+                    `completeness=${authoritativeLandState.derived?.data_completeness_score} ` +
+                    `weather_age_h=${authoritativeLandState.weather?.data_age_hours ?? 'null'} ` +
+                    `ndvi_age_d=${authoritativeLandState.ndvi?.age_days ?? 'null'} ` +
+                    `soil_age_d=${authoritativeLandState.soil?.test_age_days ?? 'null'} ` +
+                    `variety=${varietyProfile?.name ?? 'none'}`
+                  );
+                  // Weather honesty: if loader returned no observation_date and no temperature,
+                  // null the weather block so the predicate evaluator treats weather as missing
+                  // (rather than substituting zeros / "no rain" defaults).
+                  if (
+                    authoritativeLandState.weather &&
+                    authoritativeLandState.weather.data_timestamp == null &&
+                    authoritativeLandState.weather.temperature == null &&
+                    authoritativeLandState.weather.humidity == null &&
+                    authoritativeLandState.weather.rainfall_last_24h == null
+                  ) {
+                    authoritativeLandState.weather = null;
+                    if (!authoritativeLandState.sources_missing?.includes('weather')) {
+                      authoritativeLandState.sources_missing = [
+                        ...(authoritativeLandState.sources_missing || []),
+                        'weather'
+                      ];
+                    }
+                    console.log('[SSOT] weather=null (no live observation) → predicates referencing weather will be skipped');
+                  }
+                } else {
+                  console.warn(`[SSOT] AuthoritativeLandState load failed: ${ssotResult?.error || 'unknown'} — symbolic brain will run with land_state=null`);
+                }
+              } catch (ssotErr) {
+                console.error('[SSOT] AuthoritativeLandState loader threw:', (ssotErr as Error).message);
+              }
+            }
             
             // Extract symbolic facts from observations
             const observations = {
@@ -5913,6 +7073,7 @@ export class AIAgentOrchestrator {
                         )
                       },
                       metadata: {
+                        clarification_site: CLARIFICATION_SITES.MULTIMATCH_COMPETITION,
                         confidence: multiMatchResult.competing_matches[0]?.confidence || 0,
                         safety_status: 'DIFFERENTIAL_DIAGNOSIS_REQUIRED',
                         reason: 'MULTIPLE_COMPETING_DIAGNOSES',
@@ -5931,10 +7092,30 @@ export class AIAgentOrchestrator {
                 }
               }
             }
+            scope?.emit({
+              stage: 'symbolic-reasoner',
+              kind: 'decide',
+              payload: {
+                event: 'reasoner_complete',
+                duration_ms: Date.now() - symbolicStart,
+                rules_matched: layeredRuleResult?.rules_matched || 0,
+                primary_decision: layeredRuleResult?.primary_decision?.rule_id ?? null,
+              },
+            });
           } catch (symbolicError) {
             console.warn('   ⚠️ Symbolic Reasoner failed (non-blocking):', symbolicError);
+            scope?.emit({
+              stage: 'symbolic-reasoner',
+              kind: 'error',
+              payload: {
+                event: 'reasoner_failed',
+                duration_ms: Date.now() - symbolicStart,
+                message: symbolicError instanceof Error ? symbolicError.message : String(symbolicError),
+              },
+            });
           }
         }
+
         
       } catch (canonicalError) {
         console.error('   ❌ Canonical State Builder failed (non-blocking):', canonicalError);
@@ -5999,6 +7180,7 @@ export class AIAgentOrchestrator {
             }))
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.DYNAMIC_OPTIONS,
             confidence: intentConfidence,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -6094,6 +7276,7 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             question: diagnosticState.next_question,
           metadata: {
+            clarification_site: CLARIFICATION_SITES.DIAGNOSTIC_STATE_NEXT_QUESTION,
             confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
             safety_status: 'PENDING',
             rules_applied: 0,
@@ -6331,15 +7514,26 @@ export class AIAgentOrchestrator {
         // Complete audit trail
         await auditLogger.completeTurn(Date.now() - startTime);
         
-        // Wire symptomKeys + isEmergency into IMMEDIATE return path
-        const obsArray = Array.from(allObservationsForPreAuth || []);
-        const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
-        
+        // Wire symptomKeys + isEmergency into IMMEDIATE return path.
+        // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
+        // CONTAMINATION FIX (2026-06-22): symptom_keys / symptomKeys downstream are
+        // interpreted as CONFIRMED observations by index.ts and the rule-lookup
+        // bypass. Use authority-filtered confirmed+extracted lane only.
+        const confirmedForReturn = authoredObservations.getConfirmedAndExtractedCodes();
+        const candidateForReturn = authoredObservations.getCandidateCodes();
+        const obsArray = confirmedForReturn;
+        const emergencyCodesImmediate = await loadEmergencyObservationCodes(this.supabase);
+        const isEmergencyImmediate = obsArray.some(code => emergencyCodesImmediate.has(code));
+
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         decisionOutput.symptom_keys = obsArray;
+        decisionOutput.confirmed_observation_codes = obsArray;
+        decisionOutput.candidate_observation_codes = candidateForReturn;
         if (!decisionOutput.metadata) decisionOutput.metadata = {};
         decisionOutput.metadata.has_symptoms = obsArray.length > 0;
         decisionOutput.metadata.symptomKeys = obsArray;
+        decisionOutput.metadata.confirmed_observation_codes = obsArray;
+        decisionOutput.metadata.candidate_observation_codes = candidateForReturn;
         decisionOutput.metadata.decision_confidence = layeredRuleResult?.primary_decision?.weighted_confidence || 0;
         decisionOutput.metadata.isEmergency = isEmergencyImmediate;
         
@@ -6403,6 +7597,8 @@ export class AIAgentOrchestrator {
         
         // SafetyGuardian verification
         try {
+          scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_start', path: 'IMMEDIATE' } });
+          const _safetyStart = Date.now();
           const immediateSafetyVerification = await this.safetyGuardian.verifySafety(
             decisionOutput,
             {
@@ -6417,6 +7613,7 @@ export class AIAgentOrchestrator {
             layeredRuleResult?.primary_decision?.weighted_confidence || 0.7
           );
           agentsUsed.push('Safety');
+          scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_complete', path: 'IMMEDIATE', approved: immediateSafetyVerification.approved, status: immediateSafetyVerification.safety_check?.overall_safety_status, emergency: !!immediateSafetyVerification.emergency_protocol?.emergency_detected, duration_ms: Date.now() - _safetyStart } });
           
           if (immediateSafetyVerification.emergency_protocol?.emergency_detected) {
             return {
@@ -6519,7 +7716,7 @@ export class AIAgentOrchestrator {
         const stageName = landContext.growth_stage || 'current stage';
         const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
         const userLanguage = options.language || 'mr';
-        const stageFallback = this.generateStageAwareFallback(
+        const stageFallback = await this.generateStageAwareFallback(
           cropName,
           stageName,
           'stage_advisory',
@@ -6610,6 +7807,14 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       if (hasNoRecommendations && !hasNoPhoto) {
         console.warn(`\n⚠️ [MANDATORY_FALLBACK] No rules matched with photo present - generating SSOT clarification`);
+        console.warn(
+          `🛰️ [WAVE_M_MANDATORY_FALLBACK_DIAG] ` +
+          `photo_success=${!!(photoAnalysisResult as any)?.success} ` +
+          `photo_conf=${(photoAnalysisResult as any)?.confidence ?? 'n/a'} ` +
+          `photo_obs_count=${Array.isArray((photoAnalysisResult as any)?.observations) ? (photoAnalysisResult as any).observations.length : 0} ` +
+          `expanded_obs=${Array.isArray(expandedObservationCodes) ? expandedObservationCodes.length : 0} ` +
+          `→ orch.mandatory_fallback_observations`
+        );
         
         const cropCode = landContext?.current_crop?.toUpperCase() || landContext?.crop_code?.toUpperCase() || 'SC';
         const growthStage = (landContext?.growth_stage || 'TILLERING').toUpperCase();
@@ -6668,6 +7873,7 @@ export class AIAgentOrchestrator {
             source: 'DECISION_RULES_SSOT'
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.MANDATORY_FALLBACK_OBS,
             confidence: 0.3,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -6760,36 +7966,59 @@ export class AIAgentOrchestrator {
         // If ALL actions were filtered, return farmer-friendly clarification
         // CRITICAL FIX: Never expose internal intent names like "GENERAL_QUERY" to farmers
         if (lockValidation.filtered_actions.length === 0 && allActions.length > 0) {
-          console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning farmer-friendly clarification`);
-          
-          await auditLogger.completeTurn(Date.now() - startTime);
-          
-          // Use farmer-friendly clarification instead of exposing internal intent names
-          const clarification = this.generateIntentMismatchClarification(
-            options.language || 'mr',
-            landContext?.current_crop
-          );
-          
-          return {
-            type: 'CLARIFICATION_QUESTION',
-            session_id: sessionId,
-            question: {
-              question_id: `intent_mismatch_${Date.now()}`,
-              text_en: 'Could you describe your problem in more detail so I can help you better?',
-              i18n_key: clarification.i18n_key,
-              options: clarification.option_codes.map(code => ({ code, label: code }))
-            },
-            metadata: {
-              confidence: intentConfidence,
-              safety_status: 'PENDING',
-              rules_applied: decisionOutput.rules_applied?.length || 0,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed,
-              trace_id: traceId,
-              symptomKeys: Array.from(allObservationsForPreAuth || []),
-              isEmergency: false
-            }
-          };
+          // ═══════════════════════════════════════════════════════════════════
+          // WAVE J: PRE-BRAIN CLARIFICATION BYPASS
+          // ───────────────────────────────────────────────────────────────────
+          // Wave I audit attributed 42/42 surviving "matched-but-clarified"
+          // rice turns to this site (or peers): rules matched on observations,
+          // but the intent classifier disagreed and intent-lock blanked the
+          // decision before the brain could assemble it. When the intent
+          // classifier is uncertain (< 0.6) AND rules clearly matched on
+          // observation evidence, prefer the symbolic rule match — the
+          // intent classifier is the weaker signal here. Logged as
+          // WAVE_J_INTENT_LOCK_BYPASS for attribution in Wave I view.
+          const symbolicRuleCount = decisionOutput.rules_applied?.length || 0;
+          const intentConfNumber = typeof intentConfidence === 'number' ? intentConfidence : 0;
+          if (symbolicRuleCount > 0 && intentConfNumber < 0.6) {
+            console.warn(`   ✅ [WAVE_J_INTENT_LOCK_BYPASS] Intent classifier uncertain (${intentConfNumber.toFixed(2)}) but ${symbolicRuleCount} rule(s) matched on observation evidence — bypassing intent lock and forwarding to decision brain.`);
+            lockValidation.filtered_actions = allActions;
+            agentsUsed.push('WAVE_J_INTENT_LOCK_BYPASS');
+            // Fall through to the brain — do NOT return clarification here.
+          } else {
+            console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning farmer-friendly clarification`);
+
+            await auditLogger.completeTurn(Date.now() - startTime);
+
+            // Use farmer-friendly clarification instead of exposing internal intent names
+            const clarification = this.generateIntentMismatchClarification(
+              options.language || 'mr',
+              landContext?.current_crop
+            );
+
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              question: {
+                question_id: `intent_mismatch_${Date.now()}`,
+                text_en: 'Could you describe your problem in more detail so I can help you better?',
+                i18n_key: clarification.i18n_key,
+                options: clarification.option_codes.map(code => ({ code, label: code }))
+              },
+              metadata: {
+                clarification_site: CLARIFICATION_SITES.INTENT_LOCK_ALL_FILTERED,
+                confidence: intentConfidence,
+                safety_status: 'PENDING',
+                rules_applied: symbolicRuleCount,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed,
+                trace_id: traceId,
+                symptomKeys: Array.from(allObservationsForPreAuth || []),
+                isEmergency: false,
+                wave_j_bypass_eligible: false,
+                wave_j_intent_confidence: intentConfNumber
+              }
+            };
+          }
         }
       } else {
         console.log(`   ✅ P0-E: All ${allActions.length} actions passed intent lock filter`);
@@ -6869,6 +8098,8 @@ export class AIAgentOrchestrator {
       }
       
       // Continue with standard Safety Guardian verification
+      scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_start', path: 'STANDARD' } });
+      const _stdSafetyStart = Date.now();
       const safetyVerification = await this.safetyGuardian.verifySafety(
         decisionOutput,
         {
@@ -6885,6 +8116,7 @@ export class AIAgentOrchestrator {
       
       agentsUsed.push('Safety');
       console.log('   ✅ Safety status:', safetyVerification.safety_check.overall_safety_status);
+      scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_complete', path: 'STANDARD', approved: safetyVerification.approved, status: safetyVerification.safety_check?.overall_safety_status, emergency: !!safetyVerification.emergency_protocol?.emergency_detected, duration_ms: Date.now() - _stdSafetyStart } });
       
       // Handle emergency
       if (safetyVerification.emergency_protocol?.emergency_detected) {
@@ -7098,10 +8330,15 @@ export class AIAgentOrchestrator {
         // Don't fail the request for audit issues
       }
       
-      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
+      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path.
+      // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
-      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
+      const emergencyCodesMain = await loadEmergencyObservationCodes(this.supabase);
+      const isEmergencyMain = obsArrayMain.some(code => emergencyCodesMain.has(code));
+      survival.record('response_obs', obsArrayMain.length);
+      survival.setMeta('is_emergency', isEmergencyMain);
+      survival.setMeta('response_type', 'DECISION_PROVIDED');
+
       
       return {
         type: 'DECISION_PROVIDED',
@@ -7136,6 +8373,10 @@ export class AIAgentOrchestrator {
         options.language || 'mr',
         landContext
       );
+    } finally {
+      // OBSERVATION SURVIVAL MATRIX — emit exactly once per request, on every
+      // path (success, early-return, exception). Idempotent.
+      survival.emit({ duration_total_ms: Date.now() - startTime });
     }
   }
   
@@ -7157,29 +8398,68 @@ export class AIAgentOrchestrator {
     message: string,
     sessionId: string,
     language?: string,
-    landContext?: any
+    landContext?: any,
+    scope?: RequestScope,
   ): Promise<NLUOutput> {
-    return await processNLUAgent({
-      raw_input: message,
-      conversation_context: {
-        previous_turns: [],
-        session_state: 'NEW'
+    // Task 7b (2026-06-13): emit Phase 1 NLU trace boundaries so the per-turn
+    // causal trace surfaces NLU latency without us having to refactor the
+    // entire nlu-agent.ts (deferred to a later sub-stage).
+    scope?.emit({
+      stage: 'nlu',
+      kind: 'derive',
+      payload: {
+        event: 'nlu_start',
+        language: language || 'en',
+        has_land_context: !!landContext,
+        message_chars: message?.length ?? 0,
       },
-      input_metadata: {
-        language_detected: language || 'en',
-        input_method: 'TEXT',
-        timestamp: new Date().toISOString(),
-        session_id: sessionId
-      },
-      // CRITICAL FIX: Pass land context to NLU for crop/stage inference
-      land_context: landContext ? {
-        crop_code: this.normalizeCropCode(landContext.current_crop),
-        crop_stage: landContext.growth_stage,
-        land_id: landContext.land_id,
-        days_after_sowing: landContext.days_since_sowing
-      } : undefined
     });
+    const nluStart = performance.now();
+    try {
+      const out = await processNLUAgent({
+        raw_input: message,
+        conversation_context: {
+          previous_turns: [],
+          session_state: 'NEW'
+        },
+        input_metadata: {
+          language_detected: language || 'en',
+          input_method: 'TEXT',
+          timestamp: new Date().toISOString(),
+          session_id: sessionId
+        },
+        // CRITICAL FIX: Pass land context to NLU for crop/stage inference
+        land_context: landContext ? {
+          crop_code: this.normalizeCropCode(landContext.current_crop),
+          crop_stage: landContext.growth_stage,
+          land_id: landContext.land_id,
+          days_after_sowing: landContext.days_since_sowing
+        } : undefined
+      });
+      scope?.emit({
+        stage: 'nlu',
+        kind: 'derive',
+        payload: {
+          event: 'nlu_complete',
+          duration_ms: Math.round(performance.now() - nluStart),
+          intent: (out as any)?.detected_intent || (out as any)?.intent || null,
+        },
+      });
+      return out;
+    } catch (err) {
+      scope?.emit({
+        stage: 'nlu',
+        kind: 'error',
+        payload: {
+          event: 'nlu_failed',
+          duration_ms: Math.round(performance.now() - nluStart),
+          message: err instanceof Error ? err.message : String(err),
+        },
+      });
+      throw err;
+    }
   }
+
   
   /**
    * Normalize crop name to crop code
@@ -7277,7 +8557,7 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       
       // PARALLEL FETCHING: Fetch all data simultaneously for speed
-      const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult] = await Promise.all([
+      const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult, latestScheduleResult] = await Promise.all([
         // Fetch land details - CRITICAL: Must validate farmer_id ownership
         this.supabase
           .from('lands')
@@ -7322,6 +8602,16 @@ export class AIAgentOrchestrator {
           .eq('is_active', true)
           .order('sowing_date', { ascending: false })
           .limit(1)
+          .maybeSingle(),
+        // Fetch MOST RECENT crop schedule (any status) for harvested-land
+        // fallback when there is no active schedule.
+        this.supabase
+          .from('crop_schedules')
+          .select('crop_name, crop_variety, sowing_date, expected_harvest_date, actual_harvest_date, status, is_active')
+          .eq('land_id', landId)
+          .order('actual_harvest_date', { ascending: false, nullsFirst: false })
+          .order('sowing_date', { ascending: false })
+          .limit(1)
           .maybeSingle()
       ]);
       
@@ -7330,6 +8620,7 @@ export class AIAgentOrchestrator {
       const { data: ndviData } = ndviLatestResult;
       const { data: ndviHistory } = ndviHistoryResult;
       const { data: cropSchedule } = cropScheduleResult;
+      const { data: latestSchedule } = (latestScheduleResult as any) || { data: null };
       
       if (landError || !land) {
         // SECURITY: If land not found OR farmer doesn't own this land, return null
@@ -7467,9 +8758,64 @@ export class AIAgentOrchestrator {
           expected_harvest_date: cropSchedule.expected_harvest_date,
           status: cropSchedule.status,
           is_active: cropSchedule.is_active
+        } : null,
+        // Harvested-land fallback: most recent crop_schedule (any status).
+        // Used by static-data-gate when current_crop is null so we can tell
+        // the farmer what was previously grown. Never mutates current_crop.
+        last_harvested_schedule: (!cropSchedule && latestSchedule) ? {
+          crop_name: latestSchedule.crop_name,
+          crop_variety: latestSchedule.crop_variety ?? null,
+          sowing_date: latestSchedule.sowing_date ?? null,
+          actual_harvest_date: latestSchedule.actual_harvest_date ?? null,
+          expected_harvest_date: latestSchedule.expected_harvest_date ?? null
         } : null
       };
-      
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // VARIETY PROFILE INJECTION
+      // ───────────────────────────────────────────────────────────────────────
+      // Resolves master_products variety row from the land's authoritative
+      // variety pointer (current_crop_variety_id / variety_id) OR free-text
+      // variety name from the schedule. Attaches `variety_profile` to land
+      // context so it flows into the canonical context, the LLM prompt, and
+      // the symbolic decision brain (resistance-aware reasoning).
+      //
+      // SAFE: silent null on failure — preserves backward compatibility with
+      // the 89 crops that have no varieties seeded yet.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const landVarietyId =
+          (land as any).current_crop_variety_id ||
+          (land as any).variety_id ||
+          null;
+        if (effectiveCropName && (landVarietyId || effectiveCropVariety)) {
+          const varietyProfile: VarietyProfile | null = await loadVarietyProfile(
+            this.supabase,
+            {
+              cropName: effectiveCropName,
+              cropVariety: effectiveCropVariety,
+              stateName: land.state,
+              landVarietyId,
+            }
+          );
+          if (varietyProfile) {
+            (context as any).variety_profile = varietyProfile;
+            console.log(
+              `🌱 [Variety] Attached profile: ${varietyProfile.name} ` +
+              `(source=${varietyProfile.source}, state_match=${varietyProfile.state_match}, ` +
+              `resistance_rows=${varietyProfile.resistance?.length || 0})`
+            );
+          } else {
+            console.log(
+              `🌱 [Variety] No profile found for crop=${effectiveCropName} ` +
+              `variety=${effectiveCropVariety || landVarietyId || 'none'}`
+            );
+          }
+        }
+      } catch (vErr) {
+        console.warn('🌱 [Variety] Profile load failed (non-fatal):', (vErr as Error).message);
+      }
+
       console.log('📊 [Orchestrator] COMPREHENSIVE Land context built:', {
         land_name: context.land_name,
         current_crop: context.current_crop,
@@ -7481,15 +8827,18 @@ export class AIAgentOrchestrator {
         has_ndvi: !!context.ndvi,
         ndvi_value: context.ndvi?.value,
         ndvi_trend: context.ndvi?.ndvi_trend,
-        ndvi_history_count: context.ndvi_history?.length || 0
+        ndvi_history_count: context.ndvi_history?.length || 0,
+        has_variety_profile: !!(context as any).variety_profile,
+        variety_name: (context as any).variety_profile?.name || null,
       });
-      
+
       return context;
     } catch (error) {
       console.error('⚠️ [Orchestrator] Failed to fetch comprehensive land context:', error);
       return null;
     }
   }
+
   
   /**
    * Calculate NDVI trend from historical data
@@ -8410,7 +9759,10 @@ export class AIAgentOrchestrator {
     }
     
     if (followUps.length > 0) {
-      await this.supabase.from('scheduled_followups').insert(followUps);
+      const { error: fuErr } = await this.supabase.from('scheduled_followups').insert(followUps);
+      if (fuErr) {
+        console.error('[Orchestrator] scheduled_followups insert failed:', fuErr.message, fuErr.code);
+      }
     }
   }
   

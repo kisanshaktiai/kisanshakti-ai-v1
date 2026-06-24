@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,7 @@ interface Land {
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  ownership_type?: string;
   current_crop?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
@@ -90,6 +91,7 @@ export default function Schedule() {
         soil_type: land.soil_type || undefined,
         water_source: land.water_source || undefined,
         irrigation_type: land.irrigation_type || undefined,
+        ownership_type: (land as any).ownership_type || undefined,
         current_crop: land.current_crop || undefined,
         soil_ph: (land as any).soil_ph || undefined,
         organic_carbon_percent: (land as any).organic_carbon_percent || undefined,
@@ -97,6 +99,35 @@ export default function Schedule() {
       setLands(mappedLands);
     }
   }, [fetchedLands]);
+
+  // Step 8 — post-harvest "Plan next crop" handoff.
+  // PostHarvestSuggestionDialog navigates here with router state. We auto-select
+  // the previously-harvested land, jump to crop-input, and show a hint toast.
+  const routerLocation = useRouterLocation();
+  useEffect(() => {
+    const st = (routerLocation.state || {}) as {
+      preselectedLandId?: string;
+      suggestedCrop?: string;
+      source?: string;
+    };
+    if (st.source !== 'post-harvest' || !st.preselectedLandId || lands.length === 0) return;
+    const land = lands.find((l) => l.id === st.preselectedLandId);
+    if (!land) return;
+    setSelectedLand(land);
+    setFlowStep('crop-input');
+    if (st.suggestedCrop) {
+      toast({
+        title: t('schedule.harvest.next.toast_title', 'Planning {{crop}}', { crop: st.suggestedCrop }),
+        description: t(
+          'schedule.harvest.next.toast_desc',
+          'Pre-selected from your last harvest. Adjust as needed.',
+        ),
+      });
+    }
+    // Clear navigation state so a refresh doesn't re-trigger.
+    window.history.replaceState({}, '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lands.length, routerLocation.state]);
 
   const handleLandSelect = (land: Land) => {
     setSelectedLand(land);
@@ -119,7 +150,7 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, varietyId?: string | null) => {
     if (!selectedLand) return;
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
@@ -131,6 +162,18 @@ export default function Schedule() {
     setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
     try {
+
+      // Persist the selected variety on the land so the variety-aware planner
+      // (ai-smart-schedule) and proactive evaluator pick it up.
+      if (varietyId !== undefined) {
+        try {
+          await landsApi.updateLand(selectedLand.id, {
+            current_crop_variety_id: varietyId,
+          } as any);
+        } catch (e) {
+          console.warn('[Schedule] could not persist variety_id on land', e);
+        }
+      }
 
       // First, deactivate any existing active schedules for this land
       const { error: deactivateError } = await supabase
@@ -184,6 +227,7 @@ export default function Schedule() {
           landId: selectedLand.id,
           cropName,
           cropVariety,
+          varietyId: varietyId ?? null,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant: isReadyMadePlant || false,
           nurseryDays: nurseryDays || 0,

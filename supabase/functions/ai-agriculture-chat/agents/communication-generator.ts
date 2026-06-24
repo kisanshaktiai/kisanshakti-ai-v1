@@ -1245,8 +1245,12 @@ export class CommunicationGenerator {
   
   private generateFollowUp(decision: DecisionOutput, lang: SupportedLanguage): FollowUpPlan {
     // EXTRACT follow-up schedule using extractor
-    const extractedSchedule = extractFollowUpSchedule(decision);
-    const repeatInfo = extractRepeatApplicationInfo(decision);
+    // Coerce both extractor returns with explicit nullish fallbacks. Declared
+    // return types may be non-nullable, which allows bundlers/optimizers to
+    // eliminate downstream `&&` guards as dead code — `??` and `?.` are spec
+    // runtime checks no bundler will strip.
+    const extractedSchedule = extractFollowUpSchedule(decision) ?? {} as ReturnType<typeof extractFollowUpSchedule>;
+    const repeatInfo = extractRepeatApplicationInfo(decision) ?? null;
     
     const schedule = decision.follow_up_schedule;
     const items = [];
@@ -1255,9 +1259,9 @@ export class CommunicationGenerator {
     items.push({
       day: 3,
       check: {
-        mr: extractedSchedule.day_3 || schedule?.day_3?.check_mr || 'किड्यांची संख्या तपासा',
-        hi: extractedSchedule.day_3 || schedule?.day_3?.check_hi || 'कीटों की संख्या जांचें',
-        en: extractedSchedule.day_3 || schedule?.day_3?.check || 'Check pest population'
+        mr: extractedSchedule?.day_3 || schedule?.day_3?.check_mr || 'किड्यांची संख्या तपासा',
+        hi: extractedSchedule?.day_3 || schedule?.day_3?.check_hi || 'कीटों की संख्या जांचें',
+        en: extractedSchedule?.day_3 || schedule?.day_3?.check || 'Check pest population'
       },
       method: {
         mr: '10 पाने यादृच्छिक तपासा',
@@ -1275,9 +1279,9 @@ export class CommunicationGenerator {
     items.push({
       day: 7,
       check: {
-        mr: extractedSchedule.day_7 || schedule?.day_7?.check_mr || 'उपचाराची प्रभावीता तपासा',
-        hi: extractedSchedule.day_7 || schedule?.day_7?.check_hi || 'उपचार की प्रभावशीलता जांचें',
-        en: extractedSchedule.day_7 || schedule?.day_7?.check || 'Assess treatment effectiveness'
+        mr: extractedSchedule?.day_7 || schedule?.day_7?.check_mr || 'उपचाराची प्रभावीता तपासा',
+        hi: extractedSchedule?.day_7 || schedule?.day_7?.check_hi || 'उपचार की प्रभावशीलता जांचें',
+        en: extractedSchedule?.day_7 || schedule?.day_7?.check || 'Assess treatment effectiveness'
       },
       method: {
         mr: '20 पाने तपासा, फोटो काढा',
@@ -1295,9 +1299,9 @@ export class CommunicationGenerator {
     items.push({
       day: 14,
       check: {
-        mr: extractedSchedule.day_14 || 'अंतिम मूल्यांकन करा',
-        hi: extractedSchedule.day_14 || 'अंतिम मूल्यांकन करें',
-        en: extractedSchedule.day_14 || 'Final evaluation'
+        mr: extractedSchedule?.day_14 || 'अंतिम मूल्यांकन करा',
+        hi: extractedSchedule?.day_14 || 'अंतिम मूल्यांकन करें',
+        en: extractedSchedule?.day_14 || 'Final evaluation'
       },
       method: {
         mr: 'संपूर्ण क्षेत्र तपासा',
@@ -1311,13 +1315,16 @@ export class CommunicationGenerator {
       }
     });
     
-    // Build repeat application note if needed
+    // Build repeat application note if needed (extractor may return null for monitoring-only flows)
     let repeatNote: TrilingualText | undefined;
-    if (repeatInfo.may_need_repeat) {
+    // Optional chaining (?.) is preserved by every bundler — never strip-eliminated
+    // like `repeatInfo && repeatInfo.x` can be when the declared type is non-nullable.
+    if (repeatInfo?.may_need_repeat) {
+      const intervalDays = repeatInfo.interval_days ?? 7;
       repeatNote = {
-        mr: `📅 ${repeatInfo.interval_days} दिवसांनी पुन्हा फवारणी आवश्यक असू शकते`,
-        hi: `📅 ${repeatInfo.interval_days} दिनों बाद फिर से छिड़काव जरूरी हो सकता है`,
-        en: `📅 Repeat spray may be needed after ${repeatInfo.interval_days} days`
+        mr: `📅 ${intervalDays} दिवसांनी पुन्हा फवारणी आवश्यक असू शकते`,
+        hi: `📅 ${intervalDays} दिनों बाद फिर से छिड़काव जरूरी हो सकता है`,
+        en: `📅 Repeat spray may be needed after ${intervalDays} days`
       };
     }
     

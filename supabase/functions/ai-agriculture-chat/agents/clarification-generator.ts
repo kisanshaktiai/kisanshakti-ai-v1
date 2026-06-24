@@ -104,29 +104,45 @@ export interface ScopedClarificationInput {
   
   // ═══════════════════════════════════════════════════════════════════════════
   // v6.0: SINGLE CANONICAL CONTEXT (IMMUTABLE, BUILT IN PHASE-1)
-  // This replaces: hasLandContext, landContext, hasCropContext, cropContext
   // ═══════════════════════════════════════════════════════════════════════════
-  /** 
-   * The SINGLE canonical context object built in orchestrator Phase-1.
-   * This is IMMUTABLE and passed by reference. Do NOT rebuild or infer.
-   * If null, this is a general chat without land context.
-   */
   canonicalContext: CanonicalContext | null;
   
   /** PHASE-8.1: Crop context for stage-aware framing (DEPRECATED - use canonicalContext) */
   cropContext?: CropContextAuthority | null;
   /** PHASE-15: Farmer message for LLM context */
   farmerMessage?: string;
+  /** v3.1: Resolved intent code from intent classifier (for INTENT_DRIVEN scope) */
+  intentCode?: string | null;
+  /** v3.1: Confidence (0..1) of the resolved intent */
+  intentConfidence?: number | null;
+}
+
+/**
+ * ClarificationOption — option payload that ALWAYS carries the canonical observation_code
+ * when one exists. Frontend renders `label`; orchestrator's option-selection handler reads
+ * `observation_code` (set as the chip `value`) so the rule engine receives a real canonical
+ * code (e.g. `obs_rice_no_emergence`), not a stale option index.
+ */
+export interface ClarificationOption {
+  label: string;
+  observation_code?: string;
 }
 
 export interface ClarificationOutput {
   response_text: string;
-  options: string[];
+  /**
+   * Options may be plain strings (legacy template path with no DB-resolved code) OR objects
+   * carrying `{label, observation_code}`. Downstream consumers (orchestrator question builder)
+   * MUST handle both shapes and prefer `observation_code` when present.
+   */
+  options: Array<string | ClarificationOption>;
   photo_requested: boolean;
   clarification_prompt: string;
   scope?: ClarificationScope;
   validation_passed?: boolean;
 }
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ACKNOWLEDGMENT TEMPLATES (Simple, No Diagnosis)
@@ -151,11 +167,10 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 export async function generateScopedClarification(
   input: ScopedClarificationInput
 ): Promise<ClarificationOutput> {
-  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage } = input;
+  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage, intentCode, intentConfidence } = input;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // v6.0: USE PASSED CANONICAL CONTEXT (NEVER REBUILD)
-  // The context was built in orchestrator Phase-1 and is IMMUTABLE
   // ═══════════════════════════════════════════════════════════════════════════
   
   // Determine effective context state
@@ -174,6 +189,7 @@ export async function generateScopedClarification(
   
   console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
   console.log(`   hasLandContext: ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
+  console.log(`   intentCode: ${intentCode || 'none'}, intentConfidence: ${intentConfidence ?? 'none'}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Map observations to ObservationKeys (with cropContext)
@@ -193,6 +209,7 @@ export async function generateScopedClarification(
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Resolve clarification plan (ObservationKey-based, deterministic)
   // v6.0: Pass canonicalContext directly to scope resolver
+  // v3.1: Pass intent context so INTENT_DRIVEN can preempt generic buckets
   // ═══════════════════════════════════════════════════════════════════════════
   
   const clarificationPlan = resolveClarificationPlan(
@@ -200,7 +217,8 @@ export async function generateScopedClarification(
     turnCount,
     clarificationState?.previous_scopes || [],
     hasCropContext,
-    canonicalContext // v6.0: Pass canonical context directly
+    canonicalContext, // v6.0: Pass canonical context directly
+    { intent_code: intentCode ?? null, intent_confidence: intentConfidence ?? null } // v3.1
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -271,16 +289,22 @@ export async function generateScopedClarification(
         ndvi_level: agronomicContext.ndvi_trend || 'unknown'
       });
       
-      // Return dynamic result
+      // Return dynamic result — PRESERVE per-option observation_code so the orchestrator
+      // can populate the chip `value` with the canonical code (not a position index).
       const acknowledgment = '🌾 Understood.';
+      const optionsWithCodes: ClarificationOption[] = dynamicResult.options.map(o => ({
+        label: o.label,
+        observation_code: o.observation_key || undefined,
+      }));
       return {
         response_text: `${acknowledgment}\n\n${dynamicResult.question}`,
-        options: optionLabels,
+        options: optionsWithCodes,
         photo_requested: false,
         clarification_prompt: dynamicResult.question,
         scope: clarificationPlan.scope,
         validation_passed: true
       };
+
     } catch (dynamicError) {
       console.error(`   ⚠️ Dynamic clarification failed, falling back to templates:`, dynamicError);
       // Fall through to template-based rendering
@@ -320,7 +344,9 @@ export async function generateScopedClarification(
       no_treatment: true,
       no_assumptions: true
     },
-    cropContext: cropContext // PHASE-8.1: For stage-aware framing
+    cropContext: cropContext, // PHASE-8.1: For stage-aware framing
+    intentCode: intentCode ?? null // v3.1: INTENT_DRIVEN scope
+
   });
   
   console.log(`   Rendered: validation_passed=${renderResult.validation_passed}, source=DB+Template`);

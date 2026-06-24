@@ -14,6 +14,9 @@ import { useTranslation } from 'react-i18next';
 import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
 import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
+import { VarietySelector } from '@/components/crops/VarietySelector';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface CropDateInputProps {
   land: {
@@ -25,6 +28,8 @@ interface CropDateInputProps {
     district?: string;
     soil_type?: string;
     water_source?: string;
+    irrigation_type?: string;
+    ownership_type?: string;
   };
   onSubmit: (
     cropName: string, 
@@ -35,7 +40,8 @@ interface CropDateInputProps {
     nurseryDays: number, 
     localizedCropName: string,
     intercrops?: IntercropData[],
-    backdatedConsent?: boolean
+    backdatedConsent?: boolean,
+    varietyId?: string | null,
   ) => void;
   onBack: () => void;
   loading?: boolean;
@@ -49,10 +55,13 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 }) => {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
+  const [varietyId, setVarietyId] = useState<string | null>(null);
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
   const [nurseryDays, setNurseryDays] = useState<number>(0);
@@ -136,7 +145,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         nurseryDays, 
         localizedCropName,
         intercrops,
-        backdatedConsent
+        backdatedConsent,
+        varietyId,
       );
     }
   };
@@ -156,22 +166,22 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     setSowingDate(new Date());
   };
 
-  const handleCropSelect = (id: string, name: string, localized: string, english: string) => {
+  const handleCropSelect = (id: string, name: string, localized: string, _english: string) => {
     setCropId(id);
     setCropName(name);
     setLocalizedCropName(localized || name);
-    
-    // Reset intercrops when major crop changes
+
+    // Reset crop-scoped state when the crop changes
     setIntercrops([]);
-    
-    // Auto-suggest variety based on crop
-    if (english.toLowerCase().includes('rice')) setCropVariety('IR-64');
-    if (english.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
-    if (english.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
+    setCropVariety('');
+    setVarietyId(null);
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5 pt-14 pb-16 overflow-hidden">
+    <div
+      className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5 pt-14 overflow-hidden"
+      style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
+    >
       {/* Full Screen Container with Modern Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -197,57 +207,112 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {land.soil_type && (
-                <span className="text-xs px-2 py-1 rounded-full bg-white/50 dark:bg-black/30 backdrop-blur-sm">
-                  {land.soil_type}
-                </span>
-              )}
-              {land.water_source && (
-                <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20">
-                  <Droplets className="h-3 w-3 text-info" />
-                  <span className="text-info dark:text-info">Water</span>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {land.soil_type && (() => {
+                const d = refLabels.display(land.soil_type, 'soil');
+                return (
+                  <span className={`text-xs px-2 py-1 rounded-full bg-white/50 dark:bg-black/30 backdrop-blur-sm ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </span>
+                );
+              })()}
+              {land.water_source && (() => {
+                const d = refLabels.display(land.water_source, 'water');
+                return (
+                  <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                    <Droplets className="h-3 w-3 text-info" />
+                    <span className={`text-info dark:text-info ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                  </span>
+                );
+              })()}
+              {land.irrigation_type && (() => {
+                const d = refLabels.display(land.irrigation_type, 'irrigation');
+                return (
+                  <span className={`text-xs px-2 py-1 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </span>
+                );
+              })()}
+              {land.ownership_type && (
+                <span className={`text-xs px-2 py-1 rounded-full border font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
+                  {ownershipLabel(land.ownership_type)}
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        {/* Full Height Crop Selection */}
-        <div className="flex-1 overflow-hidden bg-background/40 backdrop-blur-sm">
-          <CentralizedCropSelector
-            selectedCropId={cropId}
-            onSelect={handleCropSelect}
-            className="h-full"
-            showHeader={false}
-            variant="compact"
-            showSearch={true}
-          />
-        </div>
-        
-        {/* Bottom Fixed Panel for Variety & Date (Shows when crop selected) */}
+        {/* Crop Selection – full screen when no crop chosen, collapsed chip after */}
+        {!cropName ? (
+          <div className="flex-1 overflow-hidden bg-background/40 backdrop-blur-sm">
+            <CentralizedCropSelector
+              selectedCropId={cropId}
+              onSelect={handleCropSelect}
+              className="h-full"
+              showHeader={false}
+              variant="compact"
+              showSearch={true}
+            />
+          </div>
+        ) : (
+          <div className="px-3 py-2 bg-background/80 border-b border-border/40 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Wheat className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">
+                  {t('schedule.crop_input.selected_crop', 'Selected crop')}
+                </p>
+                <p className="text-sm font-semibold truncate leading-tight">
+                  {localizedCropName || cropName}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs shrink-0"
+              onClick={() => {
+                setCropId('');
+                setCropName('');
+                setLocalizedCropName('');
+                setVarietyId(null);
+                setCropVariety('');
+                setIntercrops([]);
+              }}
+            >
+              <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+              {t('schedule.crop_input.change_crop', 'Change crop')}
+            </Button>
+          </div>
+        )}
+
+        {/* Variety + date + submit panel — takes all remaining height when crop selected */}
         {cropName && (
           <motion.div
-            initial={{ y: 100, opacity: 0 }}
+            initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 space-y-0 max-h-[55vh] flex flex-col shrink-0"
+            exit={{ y: 40, opacity: 0 }}
+            className="bg-background flex-1 min-h-0 flex flex-col shrink-0"
           >
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-              {/* Variety Input */}
-              <div className="space-y-2">
-                <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
-                  {t('schedule.crop_input.variety_label')}
-                </Label>
-                <Input
-                  id="variety"
-                  placeholder={t('schedule.crop_input.variety_placeholder')}
-                  value={cropVariety}
-                  onChange={(e) => setCropVariety(e.target.value)}
-                  className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
-                />
-              </div>
+              {/* Variety Selector — DB-driven, with rich details + "add missing" CTA */}
+              <VarietySelector
+                cropId={cropId}
+                value={varietyId}
+                cropName={localizedCropName || cropName}
+                onChange={(v) => {
+                  setVarietyId(v?.id ?? null);
+                  setCropVariety(v?.name ?? '');
+                }}
+                onManualSubmit={(proposedName) => {
+                  setVarietyId(null);
+                  setCropVariety(proposedName);
+                }}
+              />
+
 
               {/* Multi-Intercrop Selector - 2030 Ready UI */}
               <div className="space-y-2">
@@ -376,22 +441,25 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               </div>
             </div>
 
-            {/* Fixed Submit Button at Bottom */}
-            <div className="p-4 pt-2 border-t border-border/30 bg-background/90 backdrop-blur-sm shrink-0">
+            {/* Fixed Submit Button at Bottom — sits above the global bottom nav */}
+            <div
+              className="px-4 pt-2 border-t border-border/30 bg-background shrink-0"
+              style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+            >
               <Button
                 onClick={handleSubmit}
                 disabled={!cropName || !sowingDate || loading}
-                className="w-full h-14 rounded-xl text-base font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
+                className="w-full h-12 rounded-xl text-sm font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
               >
                 {loading ? (
                   <>
-                    <Sparkles className="mr-2 h-5 w-5 animate-spin" />
+                    <Sparkles className="mr-2 h-4 w-4 animate-spin" />
                     {t('schedule.crop_input.generating')}
                   </>
                 ) : (
                   <>
                     {t('schedule.crop_input.generate_ai_schedule')}
-                    <Sparkles className="ml-2 h-5 w-5" />
+                    <Sparkles className="ml-2 h-4 w-4" />
                   </>
                 )}
               </Button>

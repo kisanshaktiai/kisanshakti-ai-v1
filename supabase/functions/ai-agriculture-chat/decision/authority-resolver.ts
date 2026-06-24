@@ -78,6 +78,16 @@ export interface AuthorityInput {
     soil_ec?: number;           // Electrical conductivity (dS/m)
     waterlogging?: boolean;
   };
+
+  /**
+   * Bug D fix: explicit hint when the active rule is a pre-vetted PROACTIVE_*
+   * rule (e.g. PROACTIVE_FLOOD_PREPAREDNESS_001, PROACTIVE_WEATHER_*,
+   * PROACTIVE_IRRIGATION_*, PROACTIVE_CLIMATE_*). These rules carry their own
+   * safety/agronomic vetting in the DB. Authority must be CLIMATE-CONFIRMED
+   * with treatments_allowed=true so the downstream Unified Gate does not
+   * collapse a valid URGENT_ACTION into NONE / DIAGNOSTIC_ESCALATION.
+   */
+  rule_category?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -226,6 +236,44 @@ export function resolveDecisionAuthority(
     }
   }
   
+  // ═══════════════════════════════════════════════════════════════════════
+  // BUG D FIX: PROACTIVE RULE SHORT-CIRCUIT
+  // Pre-vetted proactive rules (FLOOD/DROUGHT/FROST/WEATHER/IRRIGATION/CLIMATE
+  // preparedness) carry their own actionable payload validated by the DB.
+  // They MUST resolve to CLIMATE authority CONFIRMED with treatments_allowed,
+  // otherwise the Unified Gate sees NONE / UNCONFIRMED and collapses a valid
+  // URGENT_ACTION into DIAGNOSTIC_ESCALATION → no_action_needed.
+  // ═══════════════════════════════════════════════════════════════════════
+  const ruleCat = (input.rule_category || '').toUpperCase();
+  if (
+    ruleCat.startsWith('PROACTIVE_WEATHER') ||
+    ruleCat.startsWith('PROACTIVE_FLOOD') ||
+    ruleCat.startsWith('PROACTIVE_DROUGHT') ||
+    ruleCat.startsWith('PROACTIVE_FROST') ||
+    ruleCat.startsWith('PROACTIVE_CLIMATE') ||
+    ruleCat.startsWith('PROACTIVE_IRRIGATION') ||
+    ruleCat.startsWith('PROACTIVE_HEAT') ||
+    ruleCat.startsWith('PROACTIVE_HAIL') ||
+    ruleCat.startsWith('PROACTIVE_WIND')
+  ) {
+    console.log(`\n🌤️ [AuthorityResolver] PROACTIVE rule short-circuit: ${ruleCat} → CLIMATE/CONFIRMED (treatments allowed)`);
+    return {
+      authority: DecisionAuthority.CLIMATE,
+      authority_status: AuthorityStatus.CONFIRMED,
+      blocked_domains: [DecisionAuthority.CROP],
+      allowed_domains: [
+        DecisionAuthority.CLIMATE,
+        DecisionAuthority.LAND,
+        DecisionAuthority.SAFETY
+      ],
+      reason: `Pre-vetted proactive rule (${ruleCat}) — actionable payload authorized`,
+      treatments_allowed: true,
+      response_mode: ResponseMode.TREATMENT,
+      resolver_version: AUTHORITY_RESOLVER_VERSION,
+      resolved_at: resolvedAt
+    };
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // RULE 0: NO CAUSES = NONE AUTHORITY (Observation/Information Only)
   // BUT NOT if terminal damage exists (checked above)

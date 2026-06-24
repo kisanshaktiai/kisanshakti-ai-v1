@@ -26,6 +26,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CropManagementDialog } from './CropManagementDialog';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 import { format } from 'date-fns';
 
 interface LandCardProps {
@@ -57,6 +59,8 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const { apiKey, isLoaded } = useGoogleMapsApi();
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
@@ -120,8 +124,8 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
             </div>
             <div className="flex items-center gap-1">
               {land.ownership_type && (
-                <Badge variant="secondary" className="text-xs">
-                  {land.ownership_type}
+                <Badge variant="outline" className={`text-xs font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
+                  {ownershipLabel(land.ownership_type)}
                 </Badge>
               )}
               <DropdownMenu>
@@ -161,7 +165,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               <p className="font-medium">{land.village || t('lands.wizard.form.location_details')}</p>
               {(land.district || land.state) && (
                 <p className="text-muted-foreground">
-                  {[land.district, land.state].filter(Boolean).join(', ')}
+                  {refLabels.location({ district: land.district, state: land.state })}
                 </p>
               )}
             </div>
@@ -169,20 +173,27 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
           
           {/* Land Details */}
           <div className="grid grid-cols-2 gap-3 text-sm">
-            {land.soil_type && (
-              <div className="flex items-center gap-1.5">
-                <div className="h-2 w-2 bg-warning rounded-full" />
-                <span className="text-muted-foreground">Soil:</span>
-                <span className="font-medium capitalize">{land.soil_type.replace('_', ' ')}</span>
-              </div>
-            )}
-            {land.water_source && (
-              <div className="flex items-center gap-1.5">
-                <Droplets className="h-3 w-3 text-info" />
-                <span className="text-muted-foreground">Water:</span>
-                <span className="font-medium capitalize">{land.water_source.replace('_', ' ')}</span>
-              </div>
-            )}
+            {land.soil_type && (() => {
+              const d = refLabels.display(land.soil_type, 'soil');
+              return (
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 bg-warning rounded-full" />
+                  <span className="text-muted-foreground">Soil:</span>
+                  <span className={`font-medium capitalize ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>{d.text}</span>
+                </div>
+              );
+            })()}
+            {land.water_source && (() => {
+              const d = refLabels.display(land.water_source, 'water');
+              return (
+                <div className="flex items-center gap-1.5">
+                  <Droplets className="h-3 w-3 text-info" />
+                  <span className="text-muted-foreground">Water:</span>
+                  <span className={`font-medium capitalize ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>{d.text}</span>
+                </div>
+              );
+            })()}
+
           </div>
           
           {/* Crop Information Section */}
@@ -194,9 +205,15 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                     <Wheat className="h-4 w-4 text-primary" />
                     <span className="text-sm font-medium">{t('lands.wizard.form.current_crop')}</span>
                   </div>
-                  <Badge variant="default" className="text-xs">
-                    {land.current_crop}
-                  </Badge>
+                  {(() => {
+                    const d = refLabels.display(land.current_crop, 'crop');
+                    return (
+                      <Badge variant={d.isFallback ? 'outline' : 'default'} className={`text-xs ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>
+                        {d.text}
+                      </Badge>
+                    );
+                  })()}
+
                 </div>
                 {land.planting_date && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">

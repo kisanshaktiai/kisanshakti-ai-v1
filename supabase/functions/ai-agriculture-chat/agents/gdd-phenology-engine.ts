@@ -594,6 +594,12 @@ export function calculatePhenologicalStage(
   else {
     gddSource = 'FALLBACK_DAS';
     warnings.push('No temperature data available - using DAS-based stage estimation');
+    // FORENSIC AUDIT P2: Emit machine-readable data-quality code so downstream
+    // gates can mark gdd_min/gdd_max conditions as soft (non-required) and
+    // surface a degraded-mode flag in the response envelope. See
+    // .lovable/plan.md §P2 GDD wiring + degraded-mode label.
+    warnings.push('DATA_QUALITY:gdd_unwired');
+    console.warn(`⚠️ [GDD] DATA_QUALITY:gdd_unwired — weather feed not wired into GDD engine; rule conditions on gdd_min/gdd_max should be treated as soft.`);
   }
   
   // Find current stage based on GDD or DAS fallback

@@ -15,6 +15,11 @@
 
 export interface BundledRule {
   rule_id: string;
+  // Stage-1 migration sidecars (additive; populated by loader from generated
+  // columns + version_hash trigger). Optional so legacy fixtures still type-check.
+  rule_id_lc?: string;
+  version_hash?: string;
+  updated_at?: string;
   category: string;
   crop_code: string;
   crop_group?: string;
@@ -89,6 +94,14 @@ export interface BundledRule {
   required_plant_part?: string[] | null;            // STEM, LEAF, ROOT, WHOLE, etc.
   
   is_active?: boolean;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1 SYSTEM-WIDE FIX (2026-06-22): Minimum context completeness required
+  // for this rule to be eligible as primary decision. DB-curated; defaults to
+  // 0.0 (no behavior change). Agronomy team raises per rule as curation
+  // proceeds, replacing "loud silence" fallthrough.
+  // ═══════════════════════════════════════════════════════════════════════════
+  min_data_completeness?: number;
 }
 
 export interface BundleMetadata {

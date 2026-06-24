@@ -275,6 +275,9 @@ export async function getProductsByIPMLevel(
     // IPM level filtering done in-memory below (JSONB arrow path uses text comparison)
     .order('effectiveness_rating', { ascending: false });
 
+  // FAIL-OPEN BY DESIGN (Task 6): product recommendations augment a rule's
+  // action_text; an empty repo just means no branded product is suggested,
+  // and the safety/PHI gates still run on whatever the rule already returned.
   if (error || !data) return [];
 
   const matched = data.filter((p: any) => {

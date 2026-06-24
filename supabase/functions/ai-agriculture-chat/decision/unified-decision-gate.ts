@@ -122,10 +122,43 @@ export function validateRecommendationSuppression(
 
 /**
  * applySuppressionGuard
- * 
+ *
  * Applies the suppression guard to a gate result, potentially upgrading
  * the response mode if silent suppression is detected.
+ *
+ * WAVE A.5a HARDENING (Phase 2 / RC-21):
+ * The unconditional FAIL→PASS reversal is the biggest gate-integrity defect
+ * in the system (forensic audit WS16). It silently overrides every gate
+ * decision the moment any symbolic rule "fired", even when downstream gates
+ * (safety, clarification, weather) have legitimate FAIL reasons.
+ *
+ * New contract:
+ *   - `override_token` MUST be provided to actually reverse a FAIL.
+ *     The only legitimate caller path that should mint a token is the
+ *     symbolic decision layer when it has explicitly verified that NO
+ *     downstream safety gate has yet fired.
+ *   - In `shadow` mode (default) we preserve current behaviour for backward
+ *     compatibility but emit a loud audit log on every reversal so the
+ *     dashboard surface the impact.
+ *   - In `enforce` mode and no token → reversal refused, FAIL preserved.
  */
+import { shouldEnforceSuppressionGuardLockdown } from '../runtime/feature-flags.ts';
+
+export interface SuppressionGuardOptions {
+  /**
+   * Opaque token issued by an upstream layer that explicitly authorises
+   * a FAIL→PASS reversal. Without this token, in `enforce` mode the
+   * reversal is refused.
+   */
+  override_token?: string;
+  trace_id?: string;
+  source?: string;
+}
+
+const VALID_OVERRIDE_TOKENS = new Set<string>([
+  'SYMBOLIC_DECISION_PRE_SAFETY_v1',
+]);
+
 export function applySuppressionGuard(
   gateResult: UnifiedGateResult,
   symbolicDecision: {
@@ -133,35 +166,54 @@ export function applySuppressionGuard(
     rules_fired?: string[];
     actions_returned?: Array<{ action_type?: string; product_name?: string }>;
     matched_responses?: string[];
-  } | null
+  } | null,
+  opts: SuppressionGuardOptions = {}
 ): UnifiedGateResult {
   const guardResult = validateRecommendationSuppression(gateResult, symbolicDecision);
-  
-  if (guardResult.suppression_prevented) {
-    // Upgrade the gate result to allow treatments
-    const products = (symbolicDecision?.actions_returned ?? [])
-      .filter(a => a.product_name)
-      .map(a => a.product_name!.toLowerCase());
-    
+
+  if (!guardResult.suppression_prevented) {
+    return gateResult;
+  }
+
+  const enforce = shouldEnforceSuppressionGuardLockdown();
+  const tokenValid = !!opts.override_token && VALID_OVERRIDE_TOKENS.has(opts.override_token);
+
+  // AUDIT LOG — always emit so dashboards can count reversals
+  console.warn(
+    `🚦 [SuppressionGuard:Audit] trace=${opts.trace_id ?? 'n/a'} source=${opts.source ?? 'n/a'} ` +
+    `rules=${guardResult.rules_fired_count} reversal_requested=true ` +
+    `mode=${enforce ? 'enforce' : 'shadow'} token_valid=${tokenValid}`
+  );
+
+  if (enforce && !tokenValid) {
+    // Lockdown: keep the gate's original FAIL, do NOT reverse.
     return {
       ...gateResult,
-      gate_status: GateStatus.PASS,
-      gate_action: GateAction.ALLOW_TREATMENT,
-      treatments_allowed: true,
-      allowed_products: products.length > 0 ? products : gateResult.allowed_products,
-      response_mode: ResponseMode.TREATMENT,
-      reason: `Suppression guard: ${guardResult.rules_fired_count} rules fired with valid treatments - gate upgraded`,
-      criteria_results: {
-        ...gateResult.criteria_results,
-        symbolic_decision_valid: { 
-          passed: true, 
-          reason: `Suppression guard: ${guardResult.rules_fired_count} rules with treatments` 
-        }
-      }
+      reason: `${gateResult.reason} | SUPPRESSION_GUARD_LOCKDOWN: reversal refused (no override_token)`,
     };
   }
-  
-  return gateResult;
+
+  // Shadow OR enforce-with-token → perform the legacy reversal.
+  const products = (symbolicDecision?.actions_returned ?? [])
+    .filter(a => a.product_name)
+    .map(a => a.product_name!.toLowerCase());
+
+  return {
+    ...gateResult,
+    gate_status: GateStatus.PASS,
+    gate_action: GateAction.ALLOW_TREATMENT,
+    treatments_allowed: true,
+    allowed_products: products.length > 0 ? products : gateResult.allowed_products,
+    response_mode: ResponseMode.TREATMENT,
+    reason: `Suppression guard (${enforce ? 'enforce+token' : 'shadow'}): ${guardResult.rules_fired_count} rules fired with valid treatments - gate upgraded`,
+    criteria_results: {
+      ...gateResult.criteria_results,
+      symbolic_decision_valid: {
+        passed: true,
+        reason: `Suppression guard (${enforce ? 'enforce+token' : 'shadow'}): ${guardResult.rules_fired_count} rules with treatments`
+      }
+    }
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -248,6 +300,17 @@ export interface UnifiedGateInput {
     wind_speed_kmph?: number;
     temperature_celsius?: number;
   } | null;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONFIRMED-OBSERVATION SAFE-RULE BYPASS
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Set to true when a confirmed observation (e.g. OBS_RICE_NO_EMERGENCE) has
+  // a matching SAFE/CAUTION rule in decision_rules for this crop+stage.
+  // The presence of such a rule is a stronger safety signal than the gate's
+  // young-crop heuristic, so the young-crop block is bypassed.
+  confirmed_observation_has_safe_rule?: boolean;
+  confirmed_observation_rule_id?: string;
+  confirmed_observation_codes?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -258,13 +321,19 @@ export interface UnifiedGateInput {
 // These come from the decision_rules table action_type column
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 3: Strict action_type classification using DB canonical types
-// Database uses 5 types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
-// Legacy types kept for backward compatibility during transition
+// WAVE 1 FIX (P0-2): DB uses 8 canonical types — RECOMMEND, MONITOR, BLOCK,
+// NO_ACTION_REQUIRED, URGENT_ACTION, APPLY_TREATMENT, IMMEDIATE_ACTION,
+// RELEASE_BIOCONTROL. All treatment-class actions are first-class here so
+// loader pass-through (see loader.ts normalizeActionType) is honored.
+// Legacy types kept for backward compatibility during transition.
 // ═══════════════════════════════════════════════════════════════════════════
 const TREATMENT_ACTIONS = new Set([
   // DB canonical types that indicate treatment/prescription
   'RECOMMEND',
+  'APPLY_TREATMENT',
   'URGENT_ACTION',
+  'IMMEDIATE_ACTION',
+  'RELEASE_BIOCONTROL',
   'BLOCK',
   // Legacy lowercase variants (backward compatibility)
   'treatment', 'urgent_treatment', 'safety_gate', 'prevention',
@@ -273,7 +342,7 @@ const TREATMENT_ACTIONS = new Set([
   'APPLY_PESTICIDE', 'APPLY_FUNGICIDE', 'APPLY_INSECTICIDE',
   'APPLY_HERBICIDE', 'APPLY_BIOLOGICAL', 'APPLY_SPRAY',
   'APPLY_FERTILIZER', 'FOLIAR_SPRAY', 'SOIL_APPLICATION',
-  'SEED_TREATMENT', 'IMMEDIATE_ACTION',
+  'SEED_TREATMENT',
 ]);
 
 // Actions that are observation/monitoring only (NOT treatment)
@@ -587,12 +656,52 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   const stageIsDefault = input.stage_source === 'DEFAULT';
   const hasConfirmedDiagnosis = hasConfirmedPestOrDisease(symbolic_decision);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROACTIVE-URGENT BYPASS (Bug A fix)
+  // The Decision Brain may produce a complete URGENT_ACTION / IMMEDIATE_ACTION
+  // plan for a proactive rule (flood preparedness, drought, frost, irrigation,
+  // sowing window) on a young crop. Those rules are not "pest/disease
+  // diagnoses" so hasConfirmedPestOrDisease() is false, yet the action plan IS
+  // authoritative DB-driven advice. Suppressing it as DIAGNOSTIC_ESCALATION
+  // discards a valid URGENT_ACTION and collapses session state to
+  // 'no_action_needed'. Detect this case and let the gate fall through to the
+  // product/dosage validation + GATE PASSED branches instead.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const primaryActionType = (symbolic_decision?.primary_decision?.action_type || '').toUpperCase();
+  const primaryAppDetails = symbolic_decision?.primary_decision?.application_details as
+    | { action_text?: string; product_name?: string; dosage?: string; dosage_per_acre?: string }
+    | undefined;
+  const primaryRuleId = (symbolic_decision?.primary_decision as { rule_id?: string } | undefined)?.rule_id;
+  const isUrgentActionType = primaryActionType === 'URGENT_ACTION' || primaryActionType === 'IMMEDIATE_ACTION';
+  const hasActionablePayload = products.length > 0 || dosages.length > 0 || !!primaryAppDetails?.action_text;
+  const isProactiveUrgent = isUrgentActionType && hasTreatmentActions && hasActionablePayload;
+  
   console.log(`   Is Young Crop: ${isYoungCrop}`);
   console.log(`   Stage Source: ${input.stage_source}`);
   console.log(`   Has Confirmed Diagnosis: ${hasConfirmedDiagnosis}`);
+  console.log(`   Is Proactive Urgent: ${isProactiveUrgent} (action_type=${primaryActionType}, rule_id=${primaryRuleId || '?'})`);
   
   // If young crop without confirmed diagnosis → check for DIAGNOSTIC_ESCALATION
-  if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators) {
+  // PROACTIVE bypass: skip the young-crop suppression when an authoritative
+  // URGENT_ACTION plan with treatment payload is already in hand.
+  if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators && !isProactiveUrgent) {
+    // ─────────────────────────────────────────────────────────────────────
+    // WAVE-Q FIX (P0-C): The previous `confirmed_observation_has_safe_rule`
+    // bypass returned PASS + OBSERVATION mode and then index.ts emitted the
+    // rule's stored action_text directly (source=rule_action_text), even
+    // though `rules_fired === 0`. That violates the symbolic invariant
+    // "NO RULE FIRED → NO RECOMMENDATION".
+    //
+    // The observation→rule lookup result is now informational only
+    // (logged for telemetry below). The gate must fall through to the
+    // standard young-crop CLARIFICATION/ESCALATION path so the symbolic
+    // engine (not a stored-text bypass) decides what reaches the farmer.
+    // ─────────────────────────────────────────────────────────────────────
+    if (input.confirmed_observation_has_safe_rule) {
+      console.log(`   ℹ️ [YoungCrop] Observation→rule lookup matched ${input.confirmed_observation_rule_id || '?'} — informational only; symbolic engine still required to fire (no rule_action_text bypass).`);
+    }
+
+
     // Check if we have symptoms that warrant diagnostic escalation (not just observation)
     const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 && 
       !input.symptom_keys.every(s => VAGUE_SYMPTOM_PATTERNS.has(s.toUpperCase()));

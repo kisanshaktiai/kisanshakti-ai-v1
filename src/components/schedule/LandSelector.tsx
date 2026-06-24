@@ -39,6 +39,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface Land {
   id: string;
@@ -53,6 +55,7 @@ interface Land {
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  ownership_type?: string;
   current_crop?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
@@ -99,6 +102,8 @@ const getCropIcon = (crop?: string) => {
 export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEditSchedule }: LandSelectorProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const { user } = useAuthStore();
   const { t } = useTranslation();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
@@ -401,57 +406,75 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                     <div className="flex items-start gap-2">
                       <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
                       <div className="text-sm text-muted-foreground">
-                        {land.village && <span>{land.village}</span>}
-                        {land.village && land.district && ', '}
-                        {land.district && <span>{land.district}</span>}
-                        {land.state && (
-                          <>
-                            {(land.village || land.district) && ', '}
-                            <span>{land.state}</span>
-                          </>
-                        )}
+                        {refLabels.location({
+                          village: land.village,
+                          taluka: land.taluka,
+                          district: land.district,
+                          state: land.state,
+                        })}
                       </div>
                     </div>
                   )}
 
                   {/* Pills for attributes */}
                   <div className="flex flex-wrap gap-2">
-                    {land.soil_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
-                        <SoilIcon className="h-3.5 w-3.5 text-secondary" />
-                        <span className="text-xs font-medium text-foreground">
-                          {land.soil_type}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.water_source && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20">
-                        <WaterIcon className="h-3.5 w-3.5 text-info" />
-                        <span className="text-xs font-medium text-foreground">
-                          {land.water_source}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.irrigation_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
-                        <Droplets className="h-3.5 w-3.5 text-accent" />
-                        <span className="text-xs font-medium text-foreground">
-                          {land.irrigation_type}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.current_crop && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20">
-                        <CropIcon className="h-3.5 w-3.5 text-success" />
-                        <span className="text-xs font-medium text-foreground">
-                          {land.current_crop}
-                        </span>
-                      </div>
-                    )}
+                    {land.soil_type && (() => {
+                      const d = refLabels.display(land.soil_type, 'soil');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <SoilIcon className="h-3.5 w-3.5 text-secondary" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.water_source && (() => {
+                      const d = refLabels.display(land.water_source, 'water');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <WaterIcon className="h-3.5 w-3.5 text-info" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.irrigation_type && (() => {
+                      const d = refLabels.display(land.irrigation_type, 'irrigation');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <Droplets className="h-3.5 w-3.5 text-accent" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.current_crop && (() => {
+                      const d = refLabels.display(land.current_crop, 'crop');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <CropIcon className="h-3.5 w-3.5 text-success" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.ownership_type && (() => {
+                      const key = String(land.ownership_type).toLowerCase().trim();
+                      const styles: Record<string, string> = {
+                        owned: 'bg-success/15 border-success/30 text-success',
+                        leased: 'bg-info/15 border-info/30 text-info',
+                        shared: 'bg-warning/15 border-warning/30 text-warning',
+                        contract: 'bg-accent/20 border-accent/40 text-accent-foreground',
+                      };
+                      const cls = styles[key] || 'bg-muted/40 border-border/40 text-foreground';
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${cls}`}>
+                          <span className="text-xs font-semibold">{ownershipLabel(land.ownership_type)}</span>
+                        </div>
+                      );
+                    })()}
                    </div>
+
 
                    {/* Schedule Actions */}
                    {hasSchedule && (

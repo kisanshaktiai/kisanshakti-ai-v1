@@ -7,6 +7,7 @@ import { landsApi } from '@/services/landsApi';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWeatherStore } from '@/stores/weatherStore';
 import { cn } from '@/lib/utils';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
 
 interface LandSpecificChatTabProps {
   landId: string;
@@ -15,6 +16,7 @@ interface LandSpecificChatTabProps {
 
 export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatTabProps) {
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
   const [landData, setLandData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -84,7 +86,7 @@ export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatT
             <div>
               <h3 className="text-sm font-bold text-foreground leading-tight">{landData.name}</h3>
               <span className="text-[10px] text-muted-foreground">
-                {landData.area_acres} {t('common.acres')} {landData.soil_type && `• ${landData.soil_type}`}
+                {landData.area_acres} {t('common.acres')} {landData.soil_type && `• ${refLabels.soil(landData.soil_type)}`}
               </span>
             </div>
           </div>

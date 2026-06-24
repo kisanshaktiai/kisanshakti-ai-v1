@@ -26,26 +26,32 @@ export const STAGE_NORMALIZER_VERSION = '1.0.0';
 export type StageCategory = 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURITY' | 'UNKNOWN';
 
 const SEEDLING_STAGES = [
-  'germination', 'seedling', 'establishment', 'sprouting', 'emergence',
+  'germination', 'nursery', 'seedling', 'establishment', 'sprouting', 'emergence',
   'planting', 'sowing', 'transplanting', 'post_planting', 'pre_sowing',
-  'early_growth', 'd0_7', 'd8_15', 'd16_30'
+  'early_growth', 'land_preparation', 'pre_planting', 'transplant_establishment',
+  'd0_7', 'd8_15', 'd16_30'
 ];
 
 const VEGETATIVE_STAGES = [
   'vegetative', 'tillering', 'early_tillering', 'grand_growth', 'cane_formation',
   'rosette', 'leaf_development', 'stem_elongation', 'canopy', 
-  'post_irrigation', 'd31_60', 'd61_90'
+  'post_irrigation', 'early_vegetative', 'late_vegetative', 'knee_high',
+  'jointing', 'cri', 'cri_stage', 'tuber_initiation', 'bulb_initiation',
+  'd31_60', 'd61_90'
 ];
 
 const REPRODUCTIVE_STAGES = [
   'flowering', 'fruiting', 'grain_filling', 'pod_formation', 'boll_formation',
   'boll_development', 'boll_opening', 'heading', 'booting', 'ear_emergence',
-  'squaring', 'd91_120'
+  'squaring', 'flowering_initiation', 'fruit_setting', 'fruit_set',
+  'fruit_development', 'tuber_bulking', 'bulb_development', 'tasseling',
+  'silking', 'seed_fill', 'd91_120'
 ];
 
 const MATURITY_STAGES = [
   'maturity', 'ripening', 'harvest', 'pre_harvest', 'drying', 'senescence',
-  'post_harvest', 'ratoon', 'ratoon_init', 'early_ratoon',
+  'post_harvest', 'ratoon', 'ratoon_init', 'early_ratoon', 'maturation_harvest',
+  'first_picking', 'successive_harvest', 'red_ripe_dry', 'begin_maturity',
   'd121_180', 'd180_plus'
 ];
 
@@ -56,6 +62,8 @@ const MATURITY_STAGES = [
 
 const STAGE_DB_MAP: Record<string, string> = {
   // Seedling variants
+  'nursery': 'germination',
+  'nursery_stage': 'germination',
   'seedling': 'germination',
   'sprouting': 'germination',
   'emergence': 'germination',
@@ -64,11 +72,22 @@ const STAGE_DB_MAP: Record<string, string> = {
   'transplanting': 'germination',
   'post_planting': 'planting',
   'pre_sowing': 'pre_sowing',
+  'land_preparation': 'pre_sowing',
+  'pre_planting': 'pre_sowing',
+  'transplant_establishment': 'germination',
   
   // Vegetative variants  
   'vegetative': 'tillering',
   'tillering': 'tillering',
   'early_tillering': 'tillering',
+  'early_vegetative': 'tillering',
+  'late_vegetative': 'tillering',
+  'knee_high': 'tillering',
+  'jointing': 'tillering',
+  'cri': 'tillering',
+  'cri_stage': 'tillering',
+  'tuber_initiation': 'tillering',
+  'bulb_initiation': 'tillering',
   'leaf_development': 'tillering',
   'stem_elongation': 'tillering',
   'early_growth': 'germination',
@@ -92,12 +111,26 @@ const STAGE_DB_MAP: Record<string, string> = {
   'heading': 'heading',
   'booting': 'booting',
   'squaring': 'squaring',
+  'flowering_initiation': 'flowering',
+  'fruit_setting': 'fruiting',
+  'fruit_set': 'fruiting',
+  'fruit_development': 'fruiting',
+  'tuber_bulking': 'pod_formation',
+  'bulb_development': 'pod_formation',
+  'tasseling': 'flowering',
+  'silking': 'flowering',
+  'seed_fill': 'grain_filling',
   
   // Maturity variants
   'maturation': 'maturity',
   'maturity': 'maturity',
   'ripening': 'maturity',
   'pre_harvest': 'maturity',
+  'maturation_harvest': 'maturity',
+  'first_picking': 'harvest',
+  'successive_harvest': 'harvest',
+  'red_ripe_dry': 'maturity',
+  'begin_maturity': 'maturity',
   'harvesting': 'harvest',
   'harvest': 'harvest',
   'drying': 'harvest',
@@ -178,14 +211,22 @@ export function getStageQueryVariants(stage: string | undefined | null): string[
   // Add category-based stages for broader matching
   if (category === 'SEEDLING') {
     variants.add('germination');
+    variants.add('nursery');
     variants.add('seedling');
     variants.add('establishment');
+    variants.add('emergence');
     variants.add('planting');
     variants.add('early_growth');
+    variants.add('transplant_establishment');
+    variants.add('land_preparation');
   } else if (category === 'VEGETATIVE') {
     variants.add('vegetative');
     variants.add('tillering');
     variants.add('early_tillering');
+    variants.add('early_vegetative');
+    variants.add('late_vegetative');
+    variants.add('knee_high');
+    variants.add('jointing');
     variants.add('grand_growth');
     variants.add('cane_formation');
   } else if (category === 'REPRODUCTIVE') {
@@ -193,12 +234,21 @@ export function getStageQueryVariants(stage: string | undefined | null): string[
     variants.add('reproductive');
     variants.add('squaring');
     variants.add('boll_development');
+    variants.add('fruit_setting');
+    variants.add('fruit_set');
+    variants.add('fruit_development');
+    variants.add('tuber_bulking');
+    variants.add('bulb_development');
+    variants.add('tasseling');
+    variants.add('silking');
   } else if (category === 'MATURITY') {
     variants.add('maturity');
     variants.add('harvest');
     variants.add('pre_harvest');
     variants.add('ratoon');
     variants.add('post_harvest');
+    variants.add('first_picking');
+    variants.add('successive_harvest');
   }
   
   return Array.from(variants);

@@ -111,6 +111,9 @@ export interface RuleDrivenClarificationInput {
   // New: NDVI context for intelligent option ranking
   ndvi_level?: string;
   ndvi_trend?: string;
+  // PHASE-4: planted-variety resistance profile for variety-aware hypothesis ranking
+  variety_id?: string | null;
+  variety_resistance?: any[];
   weather?: {
     temp?: number;
     humidity?: number;
@@ -180,53 +183,82 @@ function isVisuallyObservable(optionId: string, label: string): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. STAGE-LOCKED CLARIFICATION
 // Once crop stage is derived from crop_schedules (DOS), lock it for entire turn
+//
+// W1 HARDENING (2026-06-13): module-level `let _lockedStageContext` deleted.
+// Per-turn lock now lives on RequestScope.turnCache.engineState under
+// key 'clarification:stage_lock'. See runtime/request-scope.ts.
 // ═══════════════════════════════════════════════════════════════════════════
 
-let _lockedStageContext: LockedStageContext | null = null;
+import { type RequestScope, InvariantViolation } from '../runtime/request-scope.ts';
+
+const STAGE_LOCK_KEY = 'clarification:stage_lock';
 
 /**
  * Lock the growth stage for the current turn based on crop_schedules data.
  * This prevents downstream overrides and ensures consistent clarification.
  */
 export function lockStageForTurn(
+  scope: RequestScope,
   cropCode: string,
   growthStage: string,
   daysSinceSowing: number,
   source: LockedStageContext['source']
 ): LockedStageContext {
-  _lockedStageContext = {
-    crop_code: cropCode.toUpperCase(),
+  // Fail loudly on signature drift instead of silently in .toUpperCase().
+  // Prior to this guard, a mis-ordered caller passed a number into
+  // `growthStage` and the resulting TypeError was swallowed by the
+  // orchestrator's try/catch, falling back to a generic template response.
+  if (typeof cropCode !== 'string' || typeof growthStage !== 'string') {
+    throw new InvariantViolation('lockStageForTurn_invalid_args', {
+      cropCode_type: typeof cropCode,
+      growthStage_type: typeof growthStage,
+      cropCode_value: cropCode,
+      growthStage_value: growthStage,
+    });
+  }
+
+  const ctx: LockedStageContext = {
+    // Crop codes are canonical lower_snake_case (DB SSOT). Stages are an
+    // intentionally separate UPPER vocabulary used by safety-gates and
+    // stage-normalizer — keep them UPPER.
+    crop_code: cropCode.toLowerCase(),
     growth_stage: growthStage.toUpperCase(),
     days_since_sowing: daysSinceSowing,
     locked_at: Date.now(),
-    source
+    source,
   };
-  
-  console.log(`🔒 [ClarificationStrategy] Stage LOCKED: ${_lockedStageContext.growth_stage} for ${_lockedStageContext.crop_code} (DAS: ${daysSinceSowing}, source: ${source})`);
-  
-  return _lockedStageContext;
+  scope.turnCache.engineState.set(STAGE_LOCK_KEY, ctx);
+
+  console.log(`🔒 [ClarificationStrategy] Stage LOCKED: ${ctx.growth_stage} for ${ctx.crop_code} (DAS: ${daysSinceSowing}, source: ${source})`);
+  scope.emit({
+    stage: 'clarification',
+    kind: 'decide',
+    payload: { event: 'stage_locked', crop: ctx.crop_code, stage: ctx.growth_stage, das: daysSinceSowing, source },
+  });
+
+  return ctx;
 }
 
 /**
  * Get the currently locked stage context.
  * Returns null if no stage has been locked for this turn.
  */
-export function getLockedStage(): LockedStageContext | null {
-  return _lockedStageContext;
+export function getLockedStage(scope: RequestScope): LockedStageContext | null {
+  return (scope.turnCache.engineState.get(STAGE_LOCK_KEY) as LockedStageContext | undefined) ?? null;
 }
 
 /**
- * Clear the locked stage (call at end of turn).
+ * Clear the locked stage (rarely needed — scope itself dies at request end).
  */
-export function clearLockedStage(): void {
-  _lockedStageContext = null;
+export function clearLockedStage(scope: RequestScope): void {
+  scope.turnCache.engineState.delete(STAGE_LOCK_KEY);
 }
 
 /**
- * Check if a stage is currently locked.
+ * Check if a stage is currently locked for this turn.
  */
-export function isStageLockedForTurn(): boolean {
-  return _lockedStageContext !== null;
+export function isStageLockedForTurn(scope: RequestScope): boolean {
+  return scope.turnCache.engineState.has(STAGE_LOCK_KEY);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -414,7 +446,10 @@ export async function fetchRuleDrivenClarificationOptions(
     known_observations: current_symptoms,
     user_query: input.user_query || '',
     supabaseClient,
-    trace_id: traceId
+    trace_id: traceId,
+    // PHASE-4: forward variety-resistance for variety-aware ranking
+    variety_id: input.variety_id ?? null,
+    variety_resistance: input.variety_resistance,
   });
   
   const candidates = hypothesisResult.candidates;
@@ -461,7 +496,7 @@ export async function fetchRuleDrivenClarificationOptions(
   
   for (const candidate of candidates) {
     for (const char of candidate.observable_characteristics) {
-      const optionKey = char.observation_key.toUpperCase();
+      const optionKey = String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_");
       
       // Skip duplicates
       if (seenOptions.has(optionKey)) continue;
@@ -479,7 +514,7 @@ export async function fetchRuleDrivenClarificationOptions(
       }
       
       // Skip if already known
-      if (current_symptoms.some(s => s.toUpperCase() === optionKey)) continue;
+      if (current_symptoms.some(s => String(s).toLowerCase().replace(/[\s-]+/g, '_') === optionKey)) continue;
       
       seenOptions.add(optionKey);
       
@@ -536,8 +571,8 @@ export async function fetchRuleDrivenClarificationOptions(
       for (const char of candidate.observable_characteristics) {
         // Only apply stage filter (mandatory)
         if (!isObservationStageCompatible(char.observation_key, stage)) continue;
-        if (seenOptions.has(char.observation_key.toUpperCase())) continue;
-        if (current_symptoms.some(s => s.toUpperCase() === char.observation_key.toUpperCase())) continue;
+        if (seenOptions.has(String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_"))) continue;
+        if (current_symptoms.some(s => String(s).toLowerCase().replace(/[\s-]+/g, '_') === String(char.observation_key).toLowerCase().replace(/[\s-]+/g, '_'))) continue;
         
         const label = char[`label_${language}` as keyof typeof char] as string || 
                       char.label_en || 
@@ -555,7 +590,7 @@ export async function fetchRuleDrivenClarificationOptions(
           total_score: 0.5
         });
         
-        seenOptions.add(char.observation_key.toUpperCase());
+        seenOptions.add(String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_"));
         
         // Stop after getting 3 options
         if (allOptions.length >= 3) break;
@@ -799,18 +834,20 @@ export function mapClarificationSelectionToSymbols(
   // MERGE: Start with ALL existing symbols (never discard)
   const mergedSymbols = [...existingSymbols];
   
-  // Add the observation key from the selected option if not already present
+  // Add the observation key from the selected option if not already present.
+  // CANONICAL CASE: push lower_snake_case so the rule engine and
+  // observation_aliases / hypothesis_conditions resolve on direct equality.
   if (selectedOption.observation_key) {
-    const normalizedKey = selectedOption.observation_key.toUpperCase().replace(/[\s-]/g, '_');
-    const alreadyExists = mergedSymbols.some(s => 
-      s.toUpperCase().replace(/[\s-]/g, '_') === normalizedKey
+    const normalizedKey = String(selectedOption.observation_key).toLowerCase().replace(/[\s-]+/g, '_');
+    const alreadyExists = mergedSymbols.some(s =>
+      String(s).toLowerCase().replace(/[\s-]+/g, '_') === normalizedKey
     );
-    
+
     if (!alreadyExists) {
-      mergedSymbols.push(selectedOption.observation_key);
-      console.log(`   ➕ [ClarificationMerge] Merged symbol: ${selectedOption.observation_key} (total: ${mergedSymbols.length})`);
+      mergedSymbols.push(normalizedKey);
+      console.log(`   ➕ [ClarificationMerge] Merged symbol: ${normalizedKey} (total: ${mergedSymbols.length})`);
     } else {
-      console.log(`   ℹ️ [ClarificationMerge] Symbol already exists: ${selectedOption.observation_key}`);
+      console.log(`   ℹ️ [ClarificationMerge] Symbol already exists: ${normalizedKey}`);
     }
   }
   

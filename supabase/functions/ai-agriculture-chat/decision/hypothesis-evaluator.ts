@@ -26,7 +26,7 @@
 
 // Supabase client is passed via input, no import needed
 
-export const HYPOTHESIS_EVALUATOR_VERSION = '1.2.0'; // Added temporal constraint filtering
+export const HYPOTHESIS_EVALUATOR_VERSION = '1.3.0'; // PHASE-4: variety-resistance confidence modifier
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: TEMPORAL CONSTRAINT VALIDATOR IMPORT
@@ -43,6 +43,14 @@ import {
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+export interface VarietyResistanceEntry {
+  pathogen: string;
+  threat_type?: string | null;
+  level: string;            // HR | R | MR | MS | S | unknown
+  observation_code?: string | null;
+  canonical_observation_code?: string | null;
+}
+
 export interface HypothesisEvaluationInput {
   crop_code: string;
   growth_stage: string;
@@ -58,6 +66,10 @@ export interface HypothesisEvaluationInput {
   user_query: string;
   supabaseClient: any;
   trace_id?: string;
+  // PHASE-4: Variety-aware reasoning — adjusts candidate confidence based on
+  // the planted variety's catalogued resistance/susceptibility profile.
+  variety_id?: string | null;
+  variety_resistance?: VarietyResistanceEntry[];
 }
 
 export interface CandidateHypothesis {
@@ -72,6 +84,10 @@ export interface CandidateHypothesis {
   differentiating_questions: any[];
   matched_conditions: string[];
   conditions_json: any;
+  // PHASE-4: Variety resistance influence on score
+  variety_modifier?: number;            // multiplicative factor actually applied
+  variety_resistance_level?: string;    // matched level (HR/R/MR/MS/S)
+  variety_resistance_match?: string;    // pathogen / observation that matched
 }
 
 export interface ObservableCharacteristic {
@@ -100,10 +116,17 @@ export interface HypothesisEvaluationOutput {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const HYPOTHESIS_CANONICAL_GROUPS = [
-  'pest', 'disease', 'stress', 'germination', 'irrigation',
-  'nutrition', 'deficiency', 'insect', 'fungal', 'bacterial',
-  'viral', 'establishment', 'soil_borne', 'borer', 'mite',
-  'weed', '06_weed', 'harvest', '11_harvest', 'economics'
+  '01_physiology', '02_disease', '03_pest', '04_disease',
+  '04_irrigation', '05_nutrient', '05_nutrition', '05_soil',
+  '06_abiotic', '06_irrigation', '06_soil', '06_stress', '06_weed',
+  '07_diagnosis', '07_monitoring', '07_soil', '08_remote_sensing',
+  '08_stress', '08_weed', '10_stress_weather', '10_weather',
+  '13_diagnosis', '15_deficiency', '15_soil', '16_stress',
+  '00_decision_gate', '01_crop_identity', '01_safety', '01_seed_quality',
+  '02_land', '02_stage_awareness', '03_observation', '07_climate_water',
+  '07_organic', '08_recommendation', '09_best_practice', '10_stress',
+  '11_economics', '11_harvest', '12_safety', '13_system',
+  '17_management', '18_gate', '19_economics'
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -207,6 +230,107 @@ function normalizeCauseForDedup(cause: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE-4: VARIETY-RESISTANCE CONFIDENCE MODIFIER
+// Adjusts a candidate hypothesis score using the planted variety's catalogued
+// resistance/susceptibility profile (from variety_resistance table).
+//
+//   HR / R   → cause is unlikely → lower score (variety is resistant)
+//   MR       → mild down-weight
+//   MS / S   → variety is susceptible → boost score
+//
+// SAFETY: This NEVER hard-filters a candidate. Treatment safety gates and
+// downstream prescription rules remain authoritative. The modifier only
+// re-ranks hypotheses so the most plausible biology surfaces first.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VARIETY_RESISTANCE_MULTIPLIER: Record<string, number> = {
+  HR: 0.55,    // highly resistant — strong down-weight
+  R: 0.70,     // resistant
+  MR: 0.88,    // moderately resistant — mild down-weight
+  MS: 1.10,    // moderately susceptible — mild boost
+  S: 1.25,     // susceptible — boost
+};
+
+function normalizeForVarietyMatch(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+interface VarietyMatchResult {
+  multiplier: number;
+  level: string;
+  matchedOn: string;
+}
+
+function computeVarietyResistanceMatch(
+  candidate: { cause: string; canonical_group: string; observable_characteristics: ObservableCharacteristic[]; matched_conditions: string[] },
+  resistance: VarietyResistanceEntry[] | undefined,
+): VarietyMatchResult | null {
+  if (!resistance || resistance.length === 0) return null;
+
+  // Build candidate fingerprint
+  const upperCodes = new Set<string>();
+  const normalizedTokens = new Set<string>();
+
+  upperCodes.add(String(candidate.cause || '').toUpperCase());
+  upperCodes.add(String(candidate.canonical_group || '').toUpperCase());
+  for (const oc of candidate.observable_characteristics || []) {
+    if (oc?.observation_key) upperCodes.add(String(oc.observation_key).toUpperCase());
+  }
+  for (const mc of candidate.matched_conditions || []) {
+    upperCodes.add(String(mc).toUpperCase());
+  }
+  normalizedTokens.add(normalizeForVarietyMatch(candidate.cause));
+  normalizedTokens.add(normalizeForVarietyMatch(candidate.canonical_group));
+  for (const oc of candidate.observable_characteristics || []) {
+    if (oc?.label_en) normalizedTokens.add(normalizeForVarietyMatch(oc.label_en));
+  }
+  const causeNorm = normalizeForVarietyMatch(candidate.cause);
+
+  let best: VarietyMatchResult | null = null;
+  for (const entry of resistance) {
+    const level = String(entry.level || '').toUpperCase();
+    const mult = VARIETY_RESISTANCE_MULTIPLIER[level];
+    if (!mult || mult === 1) continue;
+
+    const codeKeys = [entry.observation_code, entry.canonical_observation_code]
+      .filter(Boolean)
+      .map((c) => String(c).toUpperCase());
+
+    let matchedOn: string | null = null;
+
+    for (const ck of codeKeys) {
+      if (upperCodes.has(ck)) { matchedOn = ck; break; }
+    }
+
+    if (!matchedOn) {
+      const pathNorm = normalizeForVarietyMatch(entry.pathogen);
+      if (pathNorm && pathNorm.length >= 4) {
+        if (causeNorm.includes(pathNorm) || pathNorm.includes(causeNorm)) {
+          matchedOn = entry.pathogen;
+        } else {
+          for (const tok of normalizedTokens) {
+            if (tok && (tok.includes(pathNorm) || pathNorm.includes(tok)) && tok.length >= 4) {
+              matchedOn = entry.pathogen;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (matchedOn) {
+      // Keep the entry with the strongest effect (max distance from 1.0)
+      if (!best || Math.abs(mult - 1) > Math.abs(best.multiplier - 1)) {
+        best = { multiplier: mult, level, matchedOn };
+      }
+    }
+  }
+
+  return best;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PARTIAL CONDITION MATCHING
 // Evaluate how well a rule's conditions match available facts
 // ═══════════════════════════════════════════════════════════════════════════
@@ -238,24 +362,29 @@ function evaluatePartialConditionMatch(
     }
   }
   
-  // Check observations match
+  // Check observations match (CASE-NORMALIZED — DB stores lower_snake_case,
+  // in-memory symbolic contract is UPPER_SNAKE_CASE).
+  let observationsConditionPresent = false;
+  let observationsConditionMatched = false;
   if (conditionsJson.observations && Array.isArray(conditionsJson.observations)) {
     totalConditions++;
+    observationsConditionPresent = true;
+    const knownUpper = input.known_observations.map(k => String(k || '').toUpperCase());
     const obsMatch = conditionsJson.observations.some((obs: string) => {
-      const obsLower = obs.toLowerCase();
-      return input.known_observations.some(known => 
-        known.toLowerCase().includes(obsLower) || obsLower.includes(known.toLowerCase())
-      );
+      const obsUpper = String(obs || '').toUpperCase();
+      if (!obsUpper) return false;
+      return knownUpper.some(known => known === obsUpper);
     });
     if (obsMatch) {
       matchedCount++;
       matchedConditions.push('observations');
+      observationsConditionMatched = true;
     }
   }
-  
+
   // SSOT: trigger_keywords column was DROPPED per architecture audit
   // No keyword matching - conditions_json.observations is the sole source
-  
+
   // Check NDVI conditions if available
   if (conditionsJson.ndvi_level && input.ndvi_level) {
     totalConditions++;
@@ -264,10 +393,22 @@ function evaluatePartialConditionMatch(
       matchedConditions.push('ndvi_level');
     }
   }
-  
+
+  // EVIDENCE GATE (post lower_snake_case migration fix):
+  // If a rule declares `conditions_json.observations` but NONE of them match the
+  // farmer's known observations, the rule has no diagnostic evidence. Returning
+  // a positive base score here is what let advisory/safety rules like
+  // "Personal Protective Equipment for spraying" (condition_observations:
+  // [management_planning]) tie the real rice emergence rule on stage score
+  // alone and hijack DIAGNOSIS_FIRST options. Force score=0 so the candidate
+  // is dropped before deduplication / top-N selection.
+  if (observationsConditionPresent && !observationsConditionMatched) {
+    return { score: 0, matchedConditions };
+  }
+
   // Calculate score (0-1)
   const score = totalConditions > 0 ? matchedCount / (totalConditions + 1) : 0.3;
-  
+
   return { score: Math.min(1, score), matchedConditions };
 }
 
@@ -505,6 +646,8 @@ export async function evaluateCandidateHypotheses(
 ): Promise<HypothesisEvaluationOutput> {
   const traceId = input.trace_id || `hyp_${Date.now()}`;
   const { crop_code, growth_stage, supabaseClient } = input;
+  const normalizeObs = (code: string) => String(code || '').toLowerCase().replace(/[\s-]+/g, '_').trim();
+  let expandedKnownObservations = Array.from(new Set(input.known_observations.map(normalizeObs).filter(Boolean)));
   
   console.log(`🎯 [HypothesisEval v1.3] Pre-evaluating rules for ${crop_code}/${growth_stage}`);
   console.log(`   Known observations: ${input.known_observations.join(', ') || 'none'}`);
@@ -517,6 +660,26 @@ export async function evaluateCandidateHypotheses(
     // CRITICAL FIX: Use crop code variants (SC, SUGARCANE, etc.)
     // ═══════════════════════════════════════════════════════════════════════
     
+    if (expandedKnownObservations.length > 0) {
+      const originalObservationCount = expandedKnownObservations.length;
+      const { data: aliasRows, error: aliasErr } = await supabaseClient
+        .from('observation_aliases')
+        .select('alias_code, canonical_code')
+        .in('alias_code', expandedKnownObservations);
+      if (aliasErr) {
+        console.warn(`   ⚠️ [HypothesisEval] Alias expansion failed: ${aliasErr.message}`);
+      } else if (Array.isArray(aliasRows) && aliasRows.length > 0) {
+        const expanded = new Set(expandedKnownObservations);
+        for (const row of aliasRows) {
+          const canonical = normalizeObs(row.canonical_code);
+          if (canonical) expanded.add(canonical);
+        }
+        expandedKnownObservations = Array.from(expanded);
+        input.known_observations = expandedKnownObservations;
+        console.log(`   🔁 [HypothesisEval] DB alias expansion: ${originalObservationCount} → ${expandedKnownObservations.length}`);
+      }
+    }
+
     const cropVariants = getCropCodeVariantsForDB(crop_code);
     const stageVariants = getStageQueryVariants(growth_stage);
     const dbStage = normalizeStageForDB(growth_stage);
@@ -540,6 +703,19 @@ export async function evaluateCandidateHypotheses(
     // 184 rules (37.7%) were being excluded including nutrition, irrigation, pest rules
     // These rules have matching data in conditions_json instead
     // ═══════════════════════════════════════════════════════════════════════
+    // WAVE 3 FIX (P1-2): Compute dynamic limit from actual matching-rule count
+    // instead of the hardcoded 800 ceiling, which would silently truncate any
+    // crop that later crosses that threshold.
+    const { count: matchingCount, error: countErr } = await supabaseClient
+      .from('decision_rules')
+      .select('rule_id', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .in('canonical_group', HYPOTHESIS_CANONICAL_GROUPS)
+      .or(cropFilter);
+    if (countErr) {
+      console.warn(`   ⚠️ [HypothesisEval] Count query failed, using safety ceiling: ${countErr.message}`);
+    }
+    const dynamicLimit = Math.max(800, (matchingCount ?? 0) + 50);
     const { data: rulesRaw, error } = await supabaseClient
       .from('decision_rules')
       .select(`
@@ -560,8 +736,10 @@ export async function evaluateCandidateHypotheses(
         required_plant_part
       `)
       .eq('is_active', true)
+      .in('canonical_group', HYPOTHESIS_CANONICAL_GROUPS)
       .or(cropFilter)
-      .limit(800); // Safety headroom: 514+ SUGARCANE rules + multi-crop variants
+      .limit(dynamicLimit);
+
     
     if (error) {
       console.error(`   ❌ [HypothesisEval] Database error:`, error);
@@ -664,15 +842,23 @@ export async function evaluateCandidateHypotheses(
     
     if (input.known_observations.length > 0) {
       try {
+        // Phase 5 fix: observation_master.observation_code is lowercase canonical
+        // post-migration; in-memory contract is UPPER snake_case. Normalize at the
+        // DB ingress (.in() filter) and egress (map key) boundaries so that the
+        // diagnostic-power lookup in extractObservableCharacteristics() actually
+        // matches observation_master metadata.
+        const obsLcArray = expandedKnownObservations;
+
         // Load observation metadata
         const { data: obsMetaData } = await supabaseClient
           .from('observation_master')
           .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
-          .in('observation_code', input.known_observations);
+          .in('observation_code', obsLcArray);
         
         if (obsMetaData && obsMetaData.length > 0) {
           for (const obs of obsMetaData) {
-            obsMetadataMap.set(obs.observation_code, obs);
+            const upperCode = String(obs.observation_code || '').toUpperCase();
+            obsMetadataMap.set(upperCode, obs);
           }
           
           const obsCategories = new Set(obsMetaData.map((o: any) => o.observation_category).filter(Boolean));
@@ -766,7 +952,7 @@ export async function evaluateCandidateHypotheses(
       'PINK_LARVAE_VISIBLE', 'PLANT_DEATH', 'SUDDEN_WILT'
     ]);
     
-    const hasStrongSignal = input.known_observations.some(obs => 
+    const hasStrongSignal = expandedKnownObservations.some(obs => 
       STRONG_SIGNALS.has(obs.toUpperCase().replace(/[\s-]/g, '_'))
     );
     
@@ -798,7 +984,15 @@ export async function evaluateCandidateHypotheses(
         rule.conditions_json,
         input
       );
-      
+
+      // EVIDENCE GATE: if the rule declared observation conditions but none of
+      // them match the farmer's evidence, partialScore is 0 — skip it. This is
+      // the post lower_snake_case fix that prevents advisory/management rules
+      // (PPE / DSR / banned chemicals) from polluting DIAGNOSIS_FIRST options.
+      if (partialScore === 0) {
+        continue;
+      }
+
       // Extract observable characteristics
       const observableChars = extractObservableCharacteristics(rule.observable_characteristics, obsMetadataMap);
       
@@ -812,14 +1006,28 @@ export async function evaluateCandidateHypotheses(
         // Try to extract observations from conditions_json
         const condObs = rule.conditions_json?.observations;
         if (condObs && Array.isArray(condObs) && condObs.length > 0) {
-          effectiveObsChars = condObs.map((obs: string, idx: number) => ({
-            id: obs.toUpperCase(),
-            observation_key: obs.toUpperCase(),
-            label_en: obs.replace(/_/g, ' ').toLowerCase(),
-            is_visual: true,
-            diagnostic_power: 'MEDIUM' as const,
-            confidence_boost: 0.12
-          }));
+          // FARMER-OBSERVABLE GATE: reject action/gate/check codes that are
+          // not real observable symptoms. A farmer must be able to answer
+          // "yes I see this" — codes like *_check, *_gate, etl_*, phi_*,
+          // safety_*, *_authority_* are workflow signals, not symptoms.
+          const NON_OBSERVABLE_RE = /(^|_)(check|gate|authority|threshold|verify|verification)(_|$)|^etl_|^phi_|^safety_|_check$/i;
+          effectiveObsChars = condObs
+            .filter((obs: string) => typeof obs === 'string' && obs.length > 0 && !NON_OBSERVABLE_RE.test(obs))
+            .map((obs: string, idx: number) => ({
+              id: obs.toUpperCase(),
+              observation_key: obs.toUpperCase(),
+              // Leave label_en blank so the enricher's observation_translations
+              // overlay can fill in farmer-friendly text. Falling back to the
+              // raw code here produces action-phrase chips ("water stress check").
+              label_en: undefined,
+              is_visual: true,
+              diagnostic_power: 'MEDIUM' as const,
+              confidence_boost: 0.12
+            }));
+          if (effectiveObsChars.length === 0) {
+            console.log(`   ⏭️ Skipping rule ${rule.rule_id}: only non-observable gate codes in conditions_json`);
+            continue;
+          }
         } else {
           // ═══════════════════════════════════════════════════════════════
           // FIX: Do NOT generate synthetic observation keys from `cause`.
@@ -835,8 +1043,36 @@ export async function evaluateCandidateHypotheses(
       
       // Calculate total score
       const priorityScore = (rule.priority || 50) / 100;
-      const totalScore = (stageRelevance * 0.4) + (partialScore * 0.4) + (priorityScore * 0.2);
-      
+      let totalScore = (stageRelevance * 0.4) + (partialScore * 0.4) + (priorityScore * 0.2);
+
+      // PHASE-4: Apply variety-resistance modifier (post-base scoring).
+      // Down-weights causes the planted variety resists; up-weights
+      // susceptibility. No-op when no variety_resistance was supplied.
+      const varietyMatch = computeVarietyResistanceMatch(
+        {
+          cause: rule.cause || 'unknown',
+          canonical_group: rule.canonical_group || rule.category || 'general',
+          observable_characteristics: effectiveObsChars,
+          matched_conditions: matchedConditions,
+        },
+        input.variety_resistance,
+      );
+      let varietyModifier: number | undefined;
+      let varietyLevel: string | undefined;
+      let varietyMatchedOn: string | undefined;
+      if (varietyMatch) {
+        const before = totalScore;
+        totalScore = Math.max(0, Math.min(1, totalScore * varietyMatch.multiplier));
+        varietyModifier = varietyMatch.multiplier;
+        varietyLevel = varietyMatch.level;
+        varietyMatchedOn = varietyMatch.matchedOn;
+        console.log(
+          `   🧬 [VarietyResistance] ${rule.rule_id} (${rule.cause}) matched ${varietyMatch.matchedOn} ` +
+          `→ ${varietyMatch.level} ×${varietyMatch.multiplier.toFixed(2)} ` +
+          `score ${(before * 100).toFixed(0)}% → ${(totalScore * 100).toFixed(0)}%`
+        );
+      }
+
       scoredCandidates.push({
         rule_id: rule.rule_id,
         cause: rule.cause || 'unknown',
@@ -848,9 +1084,13 @@ export async function evaluateCandidateHypotheses(
         observable_characteristics: effectiveObsChars,
         differentiating_questions: rule.differentiating_questions || [],
         matched_conditions: matchedConditions,
-        conditions_json: rule.conditions_json || {}
+        conditions_json: rule.conditions_json || {},
+        variety_modifier: varietyModifier,
+        variety_resistance_level: varietyLevel,
+        variety_resistance_match: varietyMatchedOn,
       });
     }
+
     
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: DEDUPLICATE by normalized cause + Rank and return top 4 candidates
@@ -883,9 +1123,16 @@ export async function evaluateCandidateHypotheses(
     
     const topCandidates = deduplicatedCandidates.slice(0, 4);
     
+    const varietyAdjustedCount = scoredCandidates.filter((c) => c.variety_modifier !== undefined).length;
+    if (input.variety_resistance && input.variety_resistance.length > 0) {
+      console.log(`   🧬 [HypothesisEval] Variety profile applied: ${input.variety_resistance.length} resistance entries, ${varietyAdjustedCount}/${scoredCandidates.length} candidates re-weighted`);
+    }
     console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} unique candidates (from ${scoredCandidates.length} scored, ${rulesRaw.length} loaded):`);
     topCandidates.forEach((c, i) => {
-      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%`);
+      const varietyTag = c.variety_modifier
+        ? ` [variety ${c.variety_resistance_level}×${c.variety_modifier.toFixed(2)} via ${c.variety_resistance_match}]`
+        : '';
+      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%${varietyTag}`);
     });
     
     return {

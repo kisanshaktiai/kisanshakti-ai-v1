@@ -26,10 +26,11 @@ import {
   getClarificationOptions, 
   loadObservationKeysFromDB,
   getObservationKeyLabels,
+  loadIntentDrivenClarification,
   type ClarificationOption 
 } from './canonical-observation-loader.ts';
 
-export const CLARIFICATION_RENDERER_VERSION = '3.0.0'; // Phase-18: DB-driven canonical observation keys
+export const CLARIFICATION_RENDERER_VERSION = '3.1.0'; // v3.1: INTENT_DRIVEN scope (DB intent question + options)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION SCOPE ENUM (PHASE-8)
@@ -44,17 +45,21 @@ export enum ClarificationScope {
   IDENTIFY_INSECT_TYPE = 'IDENTIFY_INSECT_TYPE',  // PHASE-10: Before distribution for insects
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: Insect-First Clarification (Agronomically Correct Order)
-  // When farmer reports insect presence, ask about behavior and plant response
-  // BEFORE asking about field distribution (which is biologically premature)
   // ═══════════════════════════════════════════════════════════════════════════
   IDENTIFY_INSECT_BEHAVIOR = 'IDENTIFY_INSECT_BEHAVIOR',   // Flying vs crawling
   IDENTIFY_PLANT_RESPONSE = 'IDENTIFY_PLANT_RESPONSE',     // Curling, yellowing, sticky, holes
   // ═══════════════════════════════════════════════════════════════════════════
   // DIAGNOSTIC_CONFIRMATION (Trust-First Agronomist Mode)
-  // Activated when terminal/high-severity damage is reported (plant died, whole plant affected)
-  // Shows CAUSE-confirmation options (pest evidence, disease signs) NOT location questions
   // ═══════════════════════════════════════════════════════════════════════════
   DIAGNOSTIC_CONFIRMATION = 'DIAGNOSTIC_CONFIRMATION',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INTENT_DRIVEN (v3.1) — DB intent question + intent_observation_mapping options
+  // Activated when the intent classifier already resolved a high-confidence,
+  // non-generic intent (e.g. EMERGENCE_FAILURE). The renderer pulls
+  // intent_translations.question_text and intent_observation_mapping options
+  // for the current crop+stage instead of guessing from generic symptom buckets.
+  // ═══════════════════════════════════════════════════════════════════════════
+  INTENT_DRIVEN = 'INTENT_DRIVEN',
   REFINE_OBSERVATION = 'REFINE_OBSERVATION',
   PHOTO_ONLY = 'PHOTO_ONLY',
   STOP_ESCALATE = 'STOP_ESCALATE'
@@ -77,11 +82,29 @@ export interface ClarificationRenderInput {
   };
   /** PHASE-8.1: Optional crop context for stage-aware framing */
   cropContext?: CropContextAuthority | null;
+  /** v3.1: For INTENT_DRIVEN scope — resolved intent_code from intent classifier */
+  intentCode?: string | null;
+}
+
+/**
+ * Single clarification option carrying the canonical `observation_code` whenever the
+ * DB resolver knows one. Without this, the orchestrator's chip-value builder falls back
+ * to the label (e.g. "Drying/wilting") which is NOT a valid observation_code — the rule
+ * engine then matches zero rules and the response collapses to DIAGNOSTIC_ESCALATION /
+ * monitoring fallback (see edge log RULE_DATA_INTEGRITY_ERROR matched_responses=0).
+ */
+export interface RenderedClarificationOption {
+  label: string;
+  observation_code?: string;
 }
 
 export interface ClarificationRenderOutput {
   question: string;
-  options: string[];
+  /**
+   * Options are now ALWAYS objects so canonical `observation_code` (when known) survives
+   * the round trip to the frontend chip → echoed back as `[obs_keys:<code>]`.
+   */
+  options: RenderedClarificationOption[];
   photo_request: boolean;
   validation_passed: boolean;
   violations: string[];
@@ -204,6 +227,15 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
         '📷 Take Photo (for accurate identification)'
       ]
     }
+  },
+
+  // INTENT_DRIVEN: a structural placeholder — real content always comes from
+  // intent_translations + intent_observation_mapping via renderClarificationAsync.
+  [ClarificationScope.INTENT_DRIVEN]: {
+    en: {
+      question: '🌾 To help you better, please confirm what you are observing:',
+      options: []
+    }
   }
 };
 
@@ -211,10 +243,9 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
 // CROP-SPECIFIC TEMPLATES - Different options for different crops
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface CropSpecificTemplate {
-  [ClarificationScope.IDENTIFY_LOCATION]?: Record<string, { question: string; options: string[] }>;
-  [ClarificationScope.REFINE_OBSERVATION]?: Record<string, { question: string; options: string[] }>;
-}
+type CropSpecificTemplate = Partial<
+  Record<ClarificationScope, Record<string, { question: string; options: string[] }>>
+>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP-STAGE-SPECIFIC TEMPLATES
@@ -225,10 +256,10 @@ interface StageSpecificTemplates {
   [stage: string]: Partial<Record<ClarificationScope, Record<string, { question: string; options: string[] }>>>;
 }
 
-interface CropStageSpecificTemplate {
-  default: CropSpecificTemplate;
+type CropStageSpecificTemplate = CropSpecificTemplate & {
+  default?: CropSpecificTemplate;
   stages?: StageSpecificTemplates;
-}
+};
 
 const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> = {
   'SUGARCANE': {
@@ -503,11 +534,12 @@ export function validateClarificationSafety(
     }
   }
   
-  // Check each option
+  // Check each option (object shape: {label, observation_code?})
   for (const option of output.options) {
+    const optionText = typeof option === 'string' ? option : (option?.label ?? '');
     for (const pattern of FORBIDDEN_PATTERNS) {
-      if (pattern.test(option)) {
-        violations.push(`Forbidden pattern in option "${option.substring(0, 20)}...": ${pattern.source}`);
+      if (pattern.test(optionText)) {
+        violations.push(`Forbidden pattern in option "${optionText.substring(0, 20)}...": ${pattern.source}`);
       }
     }
   }
@@ -538,8 +570,12 @@ export function renderClarification(
   
   console.log(`   🎯 [Renderer] Scope: ${scope}, Crop: ${cropContext?.crop_name || 'none'}, Options: ${template.options.length}`);
   
-  // Limit options to max_options
-  const limitedOptions = template.options.slice(0, max_options);
+  // Limit options to max_options. Template options are plain strings (no canonical
+  // observation_code attached) — wrap as {label} only. Codes flow in only via the
+  // DB-driven path (renderClarificationAsync → getContextAwareTemplateFromDB).
+  const limitedOptions: RenderedClarificationOption[] = template.options
+    .slice(0, max_options)
+    .map((lbl) => ({ label: String(lbl) }));
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-8.1: Stage-Aware Framing (NO DIAGNOSIS)
@@ -599,7 +635,7 @@ export async function getContextAwareTemplateFromDB(
   scope: ClarificationScope,
   language: string,
   cropContext?: CropContextAuthority | null
-): Promise<{ question: string; options: string[] }> {
+): Promise<{ question: string; options: RenderedClarificationOption[] }> {
   const cropCode = cropContext?.crop_name?.toUpperCase() || '';
   const stage = cropContext?.growth_stage?.toUpperCase() || '';
 
@@ -610,22 +646,23 @@ export async function getContextAwareTemplateFromDB(
     try {
       // Pass language to get DB-resolved labels in the correct language
       const loaded = await loadObservationKeysFromDB(cropCode, stage, language);
-      const top = (loaded.keys || []).slice(0, 3).map((k) => {
-        // Use the language-resolved 'label' field (set by DB query)
-        return { key: k.key, label: k.label || k.key.replace(/_/g, ' ') };
-      });
+      const top = (loaded.keys || []).slice(0, 3).map((k) => ({
+        // `k.key` is the canonical observation_code (e.g. `leaf_wilting`) — preserve it
+        // so the orchestrator can attach it as the chip `value` and the rule engine
+        // receives a real observation_code instead of a UI label.
+        observation_code: k.key,
+        label: k.label || k.key.replace(/_/g, ' ')
+      }));
 
       if (top.length > 0) {
         console.log(
-          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage}/${language} (source=${loaded.loaded_from})`
+          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage}/${language} (source=${loaded.loaded_from}); first code=${top[0].observation_code}`
         );
 
         const templateQuestion = getTemplateQuestion(scope, language, cropContext);
-        const optionLabels = top.map((opt) => opt.label);
-
         return {
           question: templateQuestion,
-          options: optionLabels.slice(0, 3)
+          options: top
         };
       } else {
         console.log(
@@ -637,8 +674,12 @@ export async function getContextAwareTemplateFromDB(
     }
   }
 
-  // Fallback to hardcoded templates
-  return getContextAwareTemplate(scope, language, cropContext);
+  // Fallback to hardcoded templates → wrap as objects with no observation_code
+  const tmpl = getContextAwareTemplate(scope, language, cropContext);
+  return {
+    question: tmpl.question,
+    options: tmpl.options.map((lbl) => ({ label: String(lbl) }))
+  };
 }
 
 /**
@@ -695,36 +736,94 @@ function getTemplateQuestion(
 /**
  * PHASE-18: Async render clarification with DB lookup first.
  * Priority: DB rules > Templates > Fallback
+ *
+ * v3.1: INTENT_DRIVEN scope short-circuits to intent_translations +
+ *       intent_observation_mapping for question and options.
  */
 export async function renderClarificationAsync(
   input: ClarificationRenderInput
 ): Promise<ClarificationRenderOutput> {
-  const { scope, language_code, max_options, cropContext } = input;
-  
+  const { scope, language_code, max_options, cropContext, intentCode } = input;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v3.1: INTENT_DRIVEN path — DB question + DB options for the resolved intent
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (scope === ClarificationScope.INTENT_DRIVEN && intentCode) {
+    try {
+      const intentClarification = await loadIntentDrivenClarification(
+        intentCode,
+        cropContext?.crop_name || null,
+        cropContext?.growth_stage || null,
+        language_code,
+        max_options
+      );
+
+      if (intentClarification.question || intentClarification.options.length > 0) {
+        const renderedOptions: RenderedClarificationOption[] = intentClarification.options
+          .slice(0, max_options)
+          .map(o => ({ label: o.label, observation_code: o.observation_code }));
+
+        let finalQuestion = intentClarification.question
+          || BASE_TEMPLATES[ClarificationScope.INTENT_DRIVEN]?.[language_code]?.question
+          || BASE_TEMPLATES[ClarificationScope.INTENT_DRIVEN]?.en?.question
+          || '🌾 Please confirm what you are observing:';
+
+        let cropFramingApplied = false;
+        if (cropContext?.crop_name) {
+          const cropFrame = formatCropContextFrame(cropContext, language_code as string);
+          finalQuestion = `${cropFrame}\n\n${finalQuestion}`;
+          cropFramingApplied = true;
+        }
+
+        const safetyResult = validateClarificationSafety({
+          question: finalQuestion,
+          options: renderedOptions
+        });
+
+        console.log(`   🎯 [Renderer Async] INTENT_DRIVEN intent=${intentCode} options=${renderedOptions.length} (source=intent_observation_mapping)`);
+
+        return {
+          question: finalQuestion,
+          options: renderedOptions,
+          photo_request: false,
+          validation_passed: safetyResult.valid,
+          violations: safetyResult.violations,
+          scope,
+          rendered_by: 'TEMPLATE',
+          crop_framing_applied: cropFramingApplied
+        };
+      }
+
+      console.warn(`   ⚠️ INTENT_DRIVEN: no DB clarification for intent=${intentCode} crop=${cropContext?.crop_name} — falling through to template path`);
+    } catch (e) {
+      console.error(`   ⚠️ INTENT_DRIVEN renderer failed: ${(e as Error).message} — falling through to template path`);
+    }
+  }
+
   // Get DB-driven options first, then fall back to templates
   const template = await getContextAwareTemplateFromDB(scope, language_code, cropContext);
-  
+
   console.log(`   🎯 [Renderer Async] Scope: ${scope}, Crop: ${cropContext?.crop_name || 'none'}, Options: ${template.options.length}`);
-  
+
   // Limit options to max_options
   const limitedOptions = template.options.slice(0, max_options);
-  
+
   // Stage-Aware Framing
   let finalQuestion = template.question;
   let cropFramingApplied = false;
-  
+
   if (cropContext && cropContext.crop_name && scope !== ClarificationScope.IDENTIFY_CROP) {
     const cropFrame = formatCropContextFrame(cropContext, language_code as string);
     finalQuestion = `${cropFrame}\n\n${template.question}`;
     cropFramingApplied = true;
   }
-  
+
   // Safety validation
   const safetyResult = validateClarificationSafety({
     question: finalQuestion,
     options: limitedOptions
   });
-  
+
   return {
     question: finalQuestion,
     options: limitedOptions,

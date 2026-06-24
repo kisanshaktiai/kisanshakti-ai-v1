@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Cloud, Droplets, Thermometer, Leaf, Sprout } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
 
 interface LandContextCardProps {
   land: any;
@@ -17,6 +18,7 @@ interface LandContextCardProps {
 
 export function LandContextCard({ land, weather = { temperature: 28, humidity: 65, rainfall: 12 }, ndviScore = 0.72, onQuickAction }: LandContextCardProps) {
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
   
   const getNDVIStatus = (score: number) => {
     if (score > 0.7) return { label: t('chat.healthy'), color: 'bg-success' };
@@ -36,7 +38,10 @@ export function LandContextCard({ land, weather = { temperature: 28, humidity: 6
             {land.area_acres} {t('common.acres')}
           </span>
           {land.soil_type && (
-            <span className="text-xs text-muted-foreground">• {land.soil_type}</span>
+            <span className="text-xs text-muted-foreground">• {refLabels.soil(land.soil_type)}</span>
+          )}
+          {land.current_crop && (
+            <span className="text-xs text-muted-foreground">• {refLabels.crop(land.current_crop)}</span>
           )}
         </div>
         <Badge className={`${ndviStatus.color} text-white text-xs px-2 py-0.5`}>

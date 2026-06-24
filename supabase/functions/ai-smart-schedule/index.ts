@@ -12,6 +12,8 @@ import {
   getProviderFromModel 
 } from "../_shared/aiConfig.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from "../_shared/variety-context.ts";
+import { applyVarietyOverrides } from "./variety-aware-planner.ts";
 
 // ═══════════════════════════════════════════════════════════════════════
 // FARMING STAGES - 9 Sequential Stages (fetched from DB at runtime)
@@ -2461,19 +2463,21 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════
     let translatedCropName = localizedCropName || "";
     
-    // Try to fetch from crops table for accurate translation
+    // Try to fetch from crops table for accurate translation — supports every
+    // language for which the DB has a label_<lang> column (hi, mr, pa, ta, te,
+    // bn, gu, kn, ml, or, as, ur, sa). Falls back to English `label`.
     const { data: cropData, error: cropError } = await supabase
       .from('crops')
-      .select('label, label_hi, label_mr')
-      .or(`label.ilike.%${cropName}%,label_hi.ilike.%${cropName}%,label_mr.ilike.%${cropName}%`)
+      .select('label, label_hi, label_mr, label_pa, label_ta, label_te, label_bn, label_gu, label_kn, label_ml, label_or, label_as, label_ur, label_sa')
+      .or(`label.ilike.%${cropName}%,label_hi.ilike.%${cropName}%,label_mr.ilike.%${cropName}%,label_pa.ilike.%${cropName}%,label_ta.ilike.%${cropName}%,label_te.ilike.%${cropName}%,label_bn.ilike.%${cropName}%,label_gu.ilike.%${cropName}%,label_kn.ilike.%${cropName}%,label_ml.ilike.%${cropName}%,label_or.ilike.%${cropName}%,label_as.ilike.%${cropName}%,label_ur.ilike.%${cropName}%,label_sa.ilike.%${cropName}%`)
       .limit(1)
       .single();
-    
+
     if (cropData && !cropError) {
-      if (language === 'mr' && cropData.label_mr) {
-        translatedCropName = cropData.label_mr;
-      } else if (language === 'hi' && cropData.label_hi) {
-        translatedCropName = cropData.label_hi;
+      const langKey = `label_${(language || 'en').toLowerCase().split('-')[0]}` as keyof typeof cropData;
+      const localized = (cropData as any)[langKey];
+      if (localized) {
+        translatedCropName = localized;
       } else if (cropData.label) {
         translatedCropName = cropData.label;
       }
@@ -2530,6 +2534,32 @@ serve(async (req) => {
     const ruralTerms = RURAL_TERMS[language] || RURAL_TERMS["hi"];
     const state = land.state || land.district?.split(",").pop()?.trim() || "Maharashtra";
     const laborRate = STATE_LABOR_RATES[state] || STATE_LABOR_RATES["default"];
+
+    // ═══════════════════════════════════════════════════════════════════
+    // VARIETY CONTEXT (DB-authoritative — Phase 3 variety-aware scheduling)
+    // ═══════════════════════════════════════════════════════════════════
+    let varietyProfile: VarietyProfile | null = null;
+    try {
+      varietyProfile = await loadVarietyProfile(supabase, {
+        cropName,
+        cropVariety,
+        stateName: state,
+        // Land's canonical variety column is `current_crop_variety_id` (UUID → master_products.id, seed only).
+        landVarietyId: (land as any).current_crop_variety_id || (land as any).variety_id || null,
+      });
+      if (varietyProfile) {
+        console.log(
+          `🌾 [Variety] Resolved "${cropVariety}" → ${varietyProfile.name} ` +
+          `[${varietyProfile.source}] state_match=${varietyProfile.state_match} ` +
+          `conf=${varietyProfile.data_confidence_score}`
+        );
+      } else if (cropVariety) {
+        console.log(`🌾 [Variety] No registry match for "${cropVariety}" — falling back to generic crop defaults`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Variety] loader failed: ${(e as Error).message}`);
+    }
+    const varietyPromptBlock = formatVarietyProfileForPrompt(varietyProfile, language);
     
     // ═══════════════════════════════════════════════════════════════════
     // CRITICAL: ACCURATE LAND AREA CALCULATION
@@ -2678,8 +2708,19 @@ serve(async (req) => {
     // Long duration crops like Sugarcane still get good coverage with fewer, more comprehensive tasks
     const rawMinTasks = Math.max(totalStages * 2, Math.min(cropTaskConfig.minTasks, 20));
     const minTaskCount = Math.min(rawMinTasks, 20);
-    const cropDurationDays = cropTaskConfig.durationDays;
-    console.log(`📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop`);
+    // VARIETY-FIRST DURATION: variety.maturity_days_max wins over crop default.
+    // Per consumer contract (mem://database/variety-master-schema-v1 §2) and the
+    // user-spec ("Rice Ambemohar 130d → sowing+130d"), the variety profile is
+    // the authoritative source for total crop duration. The hard-coded
+    // CROP_TASK_MULTIPLIERS value is only used when no variety is resolved.
+    const cropDurationDays =
+      varietyProfile?.maturity_days_max ||
+      varietyProfile?.maturity_days_min ||
+      cropTaskConfig.durationDays;
+    console.log(
+      `📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop ` +
+      `(source: ${varietyProfile?.maturity_days_max ? 'variety.maturity_days_max' : varietyProfile?.maturity_days_min ? 'variety.maturity_days_min' : 'crop_default'})`
+    );
 
     // OPTIMIZED: Force a compact output size (prevents JSON truncation)
     const tasksPerStage = Math.ceil(minTaskCount / totalStages);
@@ -3247,6 +3288,40 @@ ${intercropListStr}
       console.log(`🌱 [AI-Schedule] Intercrop context added: ${intercropDetails.map(ic => `${ic.name} (${ic.areaPercent}%)`).join(', ')}`);
     }
 
+    // ── Pre-compute rice sowing method for prompt injection (deterministic).
+    // The same logic runs again in applyVarietyOverrides() for persistence.
+    let ricePromptBlock = "";
+    const _cl = (cropName || "").toLowerCase();
+    if (_cl.includes("rice") || _cl.includes("paddy") || _cl.includes("भात") || _cl.includes("धान") || _cl.includes("चावल")) {
+      const _irr = (land.irrigation_type || "").toLowerCase();
+      const _rainfed = _irr.includes("rainfed") || _irr === "" || _irr === "manual";
+      const _micro = _irr.includes("drip") || _irr.includes("sprinkler");
+      let _method = "TRANSPLANT", _note = "";
+      if (_micro) { _method = "AEROBIC_DSR"; _note = "Aerobic DSR (drip/sprinkler). No nursery, no puddling. 8-10 kg seed/acre, line-sown 20cm."; }
+      else if (_rainfed) { _method = "DSR"; _note = "Direct-Seeded Rice (DSR) — rainfed. Dry seeding 10-12 kg/acre with pre-emergent herbicide."; }
+      else if (landAreaAcres < 1.0) { _method = "SRI"; _note = "System of Rice Intensification — small plot, assured water. Single 8-12 day seedlings, 25×25 cm, 2 kg seed/acre."; }
+      else if (landAreaAcres <= 5.0) { _method = "TRANSPLANT"; _note = "Puddled Transplanting — assured water. Nursery 21-25 days, 2-3 seedlings/hill 20×15 cm, 6-8 kg seed/acre."; }
+      else { _method = "MECH_DSR"; _note = "Mechanised DSR — large plot. Drum seeder / seed drill, 10-12 kg/acre."; }
+      ricePromptBlock = `
+🌾 RICE SOWING METHOD (AREA-WISE, MANDATORY): ${_method}
+${_note}
+Generate sowing/land-preparation tasks for "${_method}" — do NOT default to puddled transplanting unless method == TRANSPLANT.`;
+    }
+
+    // ── Sowing-date semantics block — eliminates the date-interpretation bug.
+    const sowingSemantics = isReadyMadePlant && nurseryDays > 0
+      ? `📅 SOWING DATE SEMANTICS (NURSERY MODE):
+- Farmer-selected date ${sowingDate} = TRANSPLANTING day (day 0).
+- Seed sowing happened ${nurseryDays} days earlier in the nursery.
+- All days_from_sowing are counted from the TRANSPLANTING day.
+- Total seed-to-harvest = ${cropDurationDays} days → field horizon = ${Math.max(15, cropDurationDays - nurseryDays)} days from transplanting.
+- Harvest expected ~${Math.max(15, cropDurationDays - nurseryDays)} days after ${sowingDate}.`
+      : `📅 SOWING DATE SEMANTICS:
+- Farmer-selected date ${sowingDate} IS the REAL SOWING DATE (day 0). Do NOT shift it.
+- Variety ${varietyProfile?.name || cropVariety || cropName} maturity = ${cropDurationDays} days.
+- Harvest must be scheduled exactly ${cropDurationDays} days after ${sowingDate}.
+- All task days_from_sowing are counted from ${sowingDate}.`;
+
     const taskSection = `
 ${taskSectionHeader}
 Generate crop schedule for ${translatedCropName} (${cropName}) cultivation.
@@ -3255,6 +3330,9 @@ Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landA
 
 CROP: ${translatedCropName} ${cropVariety ? `(${cropVariety})` : ""}
 Sowing: ${sowingDate} | Location: ${district}, ${state}
+${sowingSemantics}
+${ricePromptBlock}
+${varietyPromptBlock ? "\n" + varietyPromptBlock + "\n" : ""}
 Soil: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"} | Irrigation: ${land.irrigation_type || "manual"}
 ${intercropSection}
 ${soilReportLabel}:
@@ -4198,12 +4276,52 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
     const correctedTotalCost = totalLaborCost + totalMaterialCost;
 
     // ═══════════════════════════════════════════════════════════════════
+    // VARIETY-AWARE OVERRIDES (deterministic, DB-driven)
+    // Clamps LLM-drafted maturity / yield / irrigation to variety facts and
+    // surfaces climate/soil/regional fit warnings. No-op when no variety.
+    // ═══════════════════════════════════════════════════════════════════
+    const plannerOut = applyVarietyOverrides({
+      varietyProfile,
+      scheduleData,
+      landAreaAcres,
+      irrigationType: (land as any).irrigation_type || null,
+      soilType: (land as any).soil_type || soilData?.soil_type || null,
+      soilPh: soilPh,
+      state,
+      language,
+      cropName,
+      isReadyMadePlant,
+      nurseryDays,
+    });
+    if (Object.keys(plannerOut.applied_overrides).length) {
+      console.log(`🌱 [Variety-Planner] Applied overrides:`, plannerOut.applied_overrides);
+    }
+    if (plannerOut.sowing_method) {
+      console.log(`🌾 [Rice-Method] ${plannerOut.sowing_method}: ${plannerOut.sowing_method_note}`);
+    }
+    // Merge variety warnings into the suitability warnings surface.
+    suitabilityCheck.warnings = [
+      ...(suitabilityCheck.warnings || []),
+      ...plannerOut.warnings,
+    ];
+
     // SAVE TO DATABASE
     // ═══════════════════════════════════════════════════════════════════
-    // Calculate actual harvest date from sowing + total_duration_days
+    // HARVEST DATE — farmer-selected `sowingDate` IS the real anchor day.
+    //   • Regular sowing : harvest = sowingDate + variety.maturity_days
+    //   • Nursery mode   : sowingDate = transplanting day; the seed was
+    //                      sown nurseryDays ago, so the remaining field
+    //                      horizon is (maturity - nurseryDays).
+    // No more silent crop-default override — duration comes from variety.
     const sowingDateObj = new Date(sowingDate);
-    const harvestDate = new Date(sowingDateObj.getTime() + (scheduleData.total_duration_days || 120) * 24 * 60 * 60 * 1000);
+    const fieldDays = plannerOut.effective_field_days || plannerOut.total_duration_days;
+    const harvestDate = new Date(sowingDateObj.getTime() + fieldDays * 24 * 60 * 60 * 1000);
     const harvestDateStr = harvestDate.toISOString().split("T")[0];
+    console.log(
+      `📅 [Harvest] sowingDate=${sowingDate} + ${fieldDays}d field horizon ` +
+      `(seed-to-harvest=${plannerOut.total_duration_days}d, nurseryDays=${nurseryDays}, ` +
+      `isReadyMadePlant=${isReadyMadePlant}) → harvest=${harvestDateStr}`
+    );
     
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from("crop_schedules")
@@ -4213,6 +4331,7 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         tenant_id: tenantId,
         crop_name: cropName,
         crop_variety: cropVariety || cropName,
+        variety_id: varietyProfile?.variety_id || null,
         sowing_date: sowingDate,
         expected_harvest_date: harvestDateStr, // CRITICAL: Set actual harvest date
         regional_dialect_zone: region,
@@ -4221,15 +4340,15 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         total_estimated_cost: correctedTotalCost,
         total_labor_cost: totalLaborCost,
         total_material_cost: totalMaterialCost,
-        expected_yield_quintals: scheduleData.expected_yield_quintals,
+        expected_yield_quintals: plannerOut.expected_yield_quintals,
         expected_profit:
-          scheduleData.expected_profit || scheduleData.expected_yield_quintals * 2500 - correctedTotalCost,
+          scheduleData.expected_profit || plannerOut.expected_yield_quintals * 2500 - correctedTotalCost,
         ai_model: currentModel,
         is_active: true,
         status: "active",
         generation_language: language,
         calculated_for_area_acres: landAreaAcres,
-        total_duration_days: scheduleData.total_duration_days,
+        total_duration_days: plannerOut.total_duration_days,
         seed_quantity_kg: exactSeedQty,
         fertilizer_n_kg: ureaKg * 0.46,
         fertilizer_p_kg: dapKg * 0.46,
@@ -4250,9 +4369,10 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           0,
         ),
         farming_type: farmingType,
-        water_requirement_liters_total: landAreaAcres * 50000 * (land.irrigation_type === "drip" ? 0.6 : 1),
-        water_per_irrigation_liters: landAreaAcres * 5000 * (land.irrigation_type === "drip" ? 0.6 : 1),
-        irrigation_count_total: Math.round(scheduleData.total_duration_days / 7),
+        // Variety-aware irrigation plan
+        water_requirement_liters_total: plannerOut.water_requirement_liters_total,
+        water_per_irrigation_liters: plannerOut.water_per_irrigation_liters,
+        irrigation_count_total: plannerOut.irrigation_count_total,
         tasks_total_count: processedTasks.length,
         tasks_completed_count: 0,
         // NEW: Multi-intercrop support (up to 3 intercrops)
@@ -4282,6 +4402,18 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           harvest_date: harvestDateStr,
           intercrops: intercropArray,
           backdated_consent: backdatedConsent || false,
+          variety: varietyProfile ? {
+            id: varietyProfile.variety_id,
+            name: varietyProfile.name,
+            code: varietyProfile.variety_code,
+            source: varietyProfile.source,
+            state_match: varietyProfile.state_match,
+            data_confidence_score: varietyProfile.data_confidence_score,
+            maturity_window: varietyProfile.maturity_days_min && varietyProfile.maturity_days_max
+              ? `${varietyProfile.maturity_days_min}-${varietyProfile.maturity_days_max}d` : null,
+            yield_potential_qtl_per_acre: varietyProfile.yield_potential_qtl_per_acre,
+          } : null,
+          variety_overrides: plannerOut.applied_overrides,
         },
       })
       .select()

@@ -64,7 +64,12 @@ async function loadValidIntentCodes(supabase: any): Promise<Set<string>> {
         return intentCache.entry?.data || new Set<string>();
       }
       
-      const codes = new Set<string>((data || []).map((r: any) => r.intent_code));
+      // observation_intent_master.intent_code is UPPER snake_case in DB; normalize defensively.
+      const codes = new Set<string>(
+        (data || [])
+          .map((r: any) => (r?.intent_code ? String(r.intent_code).toUpperCase() : ''))
+          .filter((s: string) => s.length > 0)
+      );
       // Always allow fallback intents
       codes.add('UNKNOWN');
       codes.add('UNKNOWN_OBSERVATION');
@@ -102,19 +107,34 @@ async function loadValidObservationCodes(supabase: any): Promise<Set<string>> {
 
   const loadPromise = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('observation_master')
-        .select('observation_code')
-        .eq('is_active', true)
-        .limit(2000);
-      
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load observation codes: ${error.message}`);
-        return observationCache.entry?.data || new Set<string>();
+      // FORENSIC FIX v9.0: PostgREST caps responses at the server max-rows
+      // setting (often 1000). observation_master has ~1982 active rows, so
+      // a single .limit(2000) call still got truncated. Paginate explicitly.
+      const allCodes: string[] = [];
+      const PAGE = 1000;
+      let fromIdx = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('observation_master')
+          .select('observation_code')
+          .eq('is_active', true)
+          .range(fromIdx, fromIdx + PAGE - 1);
+        if (error) {
+          console.error(`[LLM_VALIDATOR] Page ${fromIdx} failed: ${error.message}`);
+          break;
+        }
+        const rows = data || [];
+        for (const r of rows) {
+          // Egress normalize to UPPER snake_case to match the in-memory symbolic contract
+          // (DB stores lowercase post-migration; callers compare against UPPER codes).
+          if (r?.observation_code) allCodes.push(String(r.observation_code).toUpperCase());
+        }
+        if (rows.length < PAGE) break;
+        fromIdx += PAGE;
+        if (fromIdx > 50_000) break;
       }
-      
-      const codes = new Set<string>((data || []).map((r: any) => r.observation_code));
-      console.log(`[LLM_VALIDATOR] Loaded ${codes.size} valid observation codes`);
+      const codes = new Set<string>(allCodes);
+      console.log(`[LLM_VALIDATOR] Loaded ${codes.size} valid observation codes (paginated)`);
       observationCache.entry = { data: codes, loadedAt: Date.now() };
       return codes;
     } catch (e) {
@@ -147,48 +167,91 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
 
   const loadPromise = (async () => {
     try {
-      // Get observations that have rules for this crop
-      const { data, error } = await supabase
+      // Post-migration: DB stores observation/crop/condition codes as lower_snake_case.
+      // In-memory symbolic contract is UPPER_SNAKE_CASE. Normalize at egress so
+      // a DB value of `obs_rice_no_emergence` matches the in-memory
+      // `OBS_RICE_NO_EMERGENCE` produced by the symbolic brain.
+      const cropLc = String(cropCode || '').toLowerCase();
+
+      const applicableCodes = new Set<string>();
+      const addCode = (v: unknown) => {
+        if (typeof v === 'string' && v.length > 0) {
+          applicableCodes.add(v.toUpperCase());
+        }
+      };
+
+      // SOURCE 1: decision_rules — condition_code + conditions_json.observations
+      //                            + observable_characteristics (legacy)
+      const { data: ruleRows, error: ruleErr } = await supabase
         .from('decision_rules')
-        .select('observable_characteristics')
-        .eq('crop_code', cropCode)
+        .select('condition_code, conditions_json, observable_characteristics')
+        .eq('crop_code', cropLc)
         .eq('is_active', true)
         .limit(2000);
-      
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load crop-applicable observations for ${cropCode}: ${error.message}`);
-        return cached?.data || new Set<string>();
+
+      if (ruleErr) {
+        console.error(`[LLM_VALIDATOR] decision_rules load failed for ${cropCode}: ${ruleErr.message}`);
       }
-      
-      const applicableCodes = new Set<string>();
-      for (const rule of (data || [])) {
-        const obs = rule.observable_characteristics;
+      for (const rule of (ruleRows || [])) {
+        addCode((rule as any).condition_code);
+        const cj = (rule as any).conditions_json;
+        if (cj && typeof cj === 'object') {
+          const obsArr = (cj as any).observations;
+          if (Array.isArray(obsArr)) for (const v of obsArr) addCode(v);
+        }
+        const obs = (rule as any).observable_characteristics;
         if (obs && typeof obs === 'object') {
-          // Extract observation codes from rule conditions
-          for (const [key, value] of Object.entries(obs)) {
-            if (Array.isArray(value)) {
-              for (const v of value) {
-                if (typeof v === 'string') applicableCodes.add(v);
-              }
-            } else if (typeof value === 'string') {
-              applicableCodes.add(value);
-            }
+          for (const [k, value] of Object.entries(obs)) {
+            if (Array.isArray(value)) for (const v of value) addCode(v);
+            else if (typeof value === 'string') addCode(value);
+            else if (value === true) addCode(k); // legacy {dead_heart: true}
           }
         }
       }
 
-      // Also pull from intent_observation_mapping for this crop
+      // SOURCE 2: intent_observation_mapping (crop-specific + 'all')
       const { data: mappingData } = await supabase
         .from('intent_observation_mapping')
         .select('observation_code')
-        .eq('crop_code', cropCode)
+        .in('crop_code', [cropLc, 'all'])
         .eq('is_active', true);
-      
-      for (const row of (mappingData || [])) {
-        if (row.observation_code) applicableCodes.add(row.observation_code);
+      for (const row of (mappingData || [])) addCode((row as any).observation_code);
+
+      // SOURCE 3: observation_master — applicable_crop_groups contains this crop
+      //                                 or is universal/all. This is the canonical
+      //                                 SSOT for which observations are valid for
+      //                                 a crop, independent of whether a rule
+      //                                 currently references them.
+      const { data: obsRows, error: obsErr } = await supabase
+        .from('observation_master')
+        .select('observation_code, applicable_crop_groups, crop_group')
+        .eq('is_active', true)
+        .or(
+          `applicable_crop_groups.cs.{${cropLc}},applicable_crop_groups.cs.{universal},applicable_crop_groups.cs.{all},crop_group.eq.${cropLc},crop_group.eq.universal`
+        )
+        .limit(5000);
+      if (obsErr) {
+        console.warn(`[LLM_VALIDATOR] observation_master filter failed (${obsErr.message}); falling back to unfiltered universal scan`);
+        const { data: fallbackRows } = await supabase
+          .from('observation_master')
+          .select('observation_code, applicable_crop_groups, crop_group')
+          .eq('is_active', true)
+          .limit(5000);
+        for (const r of (fallbackRows || [])) {
+          const grp = String((r as any).crop_group || '').toLowerCase();
+          const groups = Array.isArray((r as any).applicable_crop_groups)
+            ? ((r as any).applicable_crop_groups as string[]).map(g => String(g).toLowerCase())
+            : [];
+          if (grp === cropLc || grp === 'universal' || grp === 'all' ||
+              groups.includes(cropLc) || groups.includes('universal') || groups.includes('all')) {
+            addCode((r as any).observation_code);
+          }
+        }
+      } else {
+        for (const r of (obsRows || [])) addCode((r as any).observation_code);
       }
-      
-      console.log(`[LLM_VALIDATOR] Loaded ${applicableCodes.size} crop-applicable observations for ${cropCode}`);
+
+      console.log(`[LLM_VALIDATOR] Loaded ${applicableCodes.size} crop-applicable observations for ${cropCode} (rules+mapping+master)`);
       cropApplicabilityCache.set(cropCode, { data: applicableCodes, loadedAt: Date.now() });
       return applicableCodes;
     } catch (e) {
@@ -238,6 +301,16 @@ export async function validateLLMOutputAgainstDB(params: {
   const crop_applicable_rejections: string[] = [];
   const reasons: string[] = [];
 
+  // Phase 5 fix: caches are keyed by UPPER snake_case (in-memory contract);
+  // normalize every comparand at the boundary so casing drift can't silently
+  // reject valid codes.
+  const intentUpper = String(intent_code || '').toUpperCase();
+  const observationsUpper = observation_codes.map((c) => String(c || '').toUpperCase());
+  const cropUpper =
+    canonical_crop && canonical_crop !== 'UNKNOWN'
+      ? String(canonical_crop).toUpperCase()
+      : canonical_crop;
+
   // Load caches in parallel
   const [validIntents, validObservations] = await Promise.all([
     loadValidIntentCodes(supabase),
@@ -245,32 +318,35 @@ export async function validateLLMOutputAgainstDB(params: {
   ]);
   
   // 1. Validate intent code
-  if (intent_code && !validIntents.has(intent_code)) {
+  if (intentUpper && !validIntents.has(intentUpper)) {
     rejected_intents.push(intent_code);
     reasons.push(`Intent '${intent_code}' not found in observation_intent_master`);
   }
   
   // 2. Validate observation codes exist
-  for (const code of observation_codes) {
-    if (!validObservations.has(code)) {
-      rejected_observations.push(code);
-      reasons.push(`Observation '${code}' not found in observation_master`);
+  for (let i = 0; i < observationsUpper.length; i++) {
+    const upper = observationsUpper[i];
+    if (!validObservations.has(upper)) {
+      rejected_observations.push(observation_codes[i]);
+      reasons.push(`Observation '${observation_codes[i]}' not found in observation_master`);
     }
   }
   
   // 3. Crop-applicability check (only if we have a canonical crop)
-  if (canonical_crop && canonical_crop !== 'UNKNOWN') {
-    const applicableObs = await loadCropApplicableObservations(supabase, canonical_crop);
+  if (cropUpper && cropUpper !== 'UNKNOWN') {
+    const applicableObs = await loadCropApplicableObservations(supabase, cropUpper);
     
     // Only reject if we have a populated applicability set (otherwise skip check gracefully)
     if (applicableObs.size > 0) {
-      for (const code of observation_codes) {
+      for (let i = 0; i < observationsUpper.length; i++) {
+        const upper = observationsUpper[i];
+        const orig = observation_codes[i];
         // Skip codes already rejected as non-existent
-        if (rejected_observations.includes(code)) continue;
+        if (rejected_observations.includes(orig)) continue;
         
-        if (!applicableObs.has(code)) {
-          crop_applicable_rejections.push(code);
-          reasons.push(`'${code}' not applicable to crop ${canonical_crop}`);
+        if (!applicableObs.has(upper)) {
+          crop_applicable_rejections.push(orig);
+          reasons.push(`'${orig}' not applicable to crop ${canonical_crop}`);
         }
       }
     }

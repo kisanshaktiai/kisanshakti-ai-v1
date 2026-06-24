@@ -18,6 +18,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
+import { getStageCategory, getStageQueryVariants } from '../utils/stage-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NUTRITION CONFLICT ARBITRATION
@@ -260,6 +261,7 @@ function setCachedObsMetadata(cacheKey: string, data: Map<string, ObservationMet
 
 export class SymbolicReasoner {
   private supabase: any;
+  private bioticCodesPromise: Promise<Set<string>> | null = null;
   
   /**
    * GAP #1 FIX: Accept external Supabase client to prevent connection exhaustion.
@@ -270,6 +272,18 @@ export class SymbolicReasoner {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+  }
+
+  /**
+   * Phase 3 SSOT: pest/disease observation codes come from
+   * observation_master.semantic_class via db-lookups.ts (cached per instance).
+   */
+  private async getBioticObservationCodes(): Promise<Set<string>> {
+    if (!this.bioticCodesPromise) {
+      const { loadBioticObservationCodes } = await import('./db-lookups.ts');
+      this.bioticCodesPromise = loadBioticObservationCodes(this.supabase);
+    }
+    return this.bioticCodesPromise;
   }
   
   /**
@@ -323,14 +337,12 @@ export class SymbolicReasoner {
           continue;
         }
         
-        // Check if biotic observations exist in all_observations
-        const BIOTIC_OBS_KEYS = ['BORE_HOLES', 'DEAD_HEART', 'INSECT_PRESENCE', 'FRASS', 'WEBBING', 
-          'STEM_BORING_MARKS', 'LEAF_CHEWING', 'DEAD_HEART_PRESENT', 'INSECT_PRESENCE_CONFIRMED',
-          'FRASS_VISIBLE', 'WEBBING_PRESENT', 'BORER_SUSPECTED'];
-        const hasBioticObs = (facts.all_observations || []).some(obs => 
-          BIOTIC_OBS_KEYS.some(key => obs.includes(key))
-        );
-        
+        // Check if biotic observations exist in all_observations.
+        // SSOT: observation_master.semantic_class IN ('pest','disease') via DB lookup.
+        // Loaded once per turn / warm isolate and cached in db-lookups.ts.
+        const bioticCodes = await this.getBioticObservationCodes();
+        const hasBioticObs = (facts.all_observations || []).some((obs) => bioticCodes.has(obs));
+
         if (isAbioticRule && hasBioticObs) {
           console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} - biotic observations detected in all_observations`);
           continue;
@@ -660,8 +672,18 @@ export class SymbolicReasoner {
       .limit(500);
     
     if (error) {
+      // Task 6: fail-closed. A DB fault while loading rules MUST NOT silently
+      // produce a zero-rule decision (that previously surfaced as "no advice
+      // available" or, worse, an LLM-narrated fallback that violated the
+      // database-only invariant). The orchestrator boundary in index.ts
+      // converts this to a 500 with the causal trace.
       console.error('❌ Failed to load rules:', error);
-      return [];
+      const { EngineDataError } = await import('../runtime/request-scope.ts');
+      throw new EngineDataError('RULE_LOAD_DB_ERROR', {
+        cropCode: dbCode,
+        variants: [...variants],
+        dbError: error.message,
+      });
     }
     
     const allRules = data || [];
@@ -691,11 +713,18 @@ export class SymbolicReasoner {
     }
     
     try {
+      // Phase 5 fix: observation_master.observation_code is lowercase canonical
+      // post-migration. The in-memory contract is UPPER snake_case, so normalize
+      // at the DB ingress (query) and egress (map key) boundaries.
+      const obsLcArray = Array.from(
+        new Set(observationCodes.map((c) => String(c || '').toLowerCase()).filter(Boolean))
+      );
+
       // Query observation_master for metadata
       const { data: obsData, error: obsError } = await this.supabase
         .from('observation_master')
         .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
-        .in('observation_code', observationCodes);
+        .in('observation_code', obsLcArray);
       
       if (obsError) {
         console.error('❌ [ObsMeta] Failed to load observation metadata:', obsError.message);
@@ -724,8 +753,10 @@ export class SymbolicReasoner {
           .filter((m: any) => m.biological_group === obs.canonical_group)
           .map((m: any) => ({ engine_group: m.engine_group, confidence: m.confidence }));
         
-        result.set(obs.observation_code, {
-          observation_code: obs.observation_code,
+        // Egress to UPPER snake_case to match in-memory symbolic contract.
+        const upperCode = String(obs.observation_code || '').toUpperCase();
+        result.set(upperCode, {
+          observation_code: upperCode,
           observation_category: obs.observation_category,
           affected_plant_part: obs.affected_plant_part,
           canonical_group: obs.canonical_group,
@@ -829,12 +860,20 @@ export class SymbolicReasoner {
    * Filter rules by growth stage
    */
   private filterByStage(rules: any[], stage: string): any[] {
+    const stageKey = String(stage || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const variants = new Set(getStageQueryVariants(stageKey).map(s => String(s).toLowerCase()));
+    const currentCategory = getStageCategory(stageKey);
+
     return rules.filter(rule => {
       const stageApplicable = rule.stage_applicable || [];
       if (stageApplicable.length === 0) return true;
-      return stageApplicable.some((s: string) => 
-        s.toLowerCase() === stage || s === '*' || s === 'all'
-      );
+      return stageApplicable.some((s: string) => {
+        const ruleStage = String(s || '').toLowerCase().replace(/[\s-]+/g, '_');
+        if (ruleStage === '*' || ruleStage === 'all' || ruleStage === 'any') return true;
+        if (ruleStage === stageKey || variants.has(ruleStage)) return true;
+        const ruleCategory = getStageCategory(ruleStage);
+        return currentCategory !== 'UNKNOWN' && ruleCategory === currentCategory;
+      });
     });
   }
   
@@ -921,14 +960,31 @@ export class SymbolicReasoner {
     const stageValue = cond.crop_stage || cond.stage || cond.growth_stage;
     if (stageValue) {
       totalConditions++;
-      const stages = Array.isArray(stageValue) ? stageValue : [stageValue];
+      const stages = [
+        ...(Array.isArray(stageValue) ? stageValue : [stageValue]),
+        ...(Array.isArray((cond as any).stage_applicable) ? (cond as any).stage_applicable : []),
+      ];
+      const stageVariants = new Set(getStageQueryVariants(factStageUpper).map(s => String(s).toUpperCase().replace(/[\s-]+/g, '_')));
       const stageMatch = stages.some((s: string) => {
         const upper = String(s).toUpperCase();
-        return upper === factStageUpper || upper === '*' || upper === 'ALL';
+        return upper === factStageUpper || upper === '*' || upper === 'ALL' ||
+          stageVariants.has(upper.replace(/[\s-]+/g, '_'));
       });
       if (stageMatch) {
         metConditions++;
         matchedConditions.push('crop_stage');
+      }
+    }
+
+    const dasRange = cond.das_range;
+    if (dasRange && typeof dasRange === 'object') {
+      totalConditions++;
+      const min = Number(dasRange.min ?? dasRange.from ?? Number.NEGATIVE_INFINITY);
+      const max = Number(dasRange.max ?? dasRange.to ?? Number.POSITIVE_INFINITY);
+      const das = Number(facts.dos);
+      if (Number.isFinite(das) && das >= min && das <= max) {
+        metConditions++;
+        matchedConditions.push('das_range');
       }
     }
     
@@ -940,8 +996,10 @@ export class SymbolicReasoner {
       totalConditions++;
       const obsList = Array.isArray(obsValue) ? obsValue : [obsValue];
       if (obsList.length > 0) {
+        const requiresAllObservations = (cond as any).match_all === true ||
+          String((cond as any).observation_match || '').toLowerCase() === 'all';
         // P1-3 Fix: Exact token match instead of substring containment
-        const obsMatch = obsList.some((obs: string) => {
+        const matchesOneObservation = (obs: string) => {
           const upperObs = String(obs).toUpperCase().replace(/[\s-]/g, '_');
           // Exact match OR token-boundary match (not substring containment)
           const exactMatch = (s: string) => s === upperObs;
@@ -959,7 +1017,10 @@ export class SymbolicReasoner {
           return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
                  exactMatch(factQuery) || tokenMatch(factQuery) ||
                  allObsUpper.some(ao => exactMatch(ao) || tokenMatch(ao));
-        });
+        };
+        const obsMatch = requiresAllObservations
+          ? obsList.every((obs: string) => matchesOneObservation(obs))
+          : obsList.some((obs: string) => matchesOneObservation(obs));
         if (obsMatch) {
           metConditions++;
           matchedConditions.push('observations');
@@ -1030,7 +1091,7 @@ export class SymbolicReasoner {
       'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
       'ndvi_level', 'ndvi_trend', 'severity', 'trigger_keywords',
       'all', 'any', 'fact', 'operator', 'value',
-      'crop_code', 'crop_type', // Already filtered at query level
+      'crop_code', 'crop_type', 'das_range', // Already filtered/evaluated elsewhere
       ...Object.keys(BOOLEAN_FLAG_MAP),
       // ═══════════════════════════════════════════════════════════════════
       // P1 Fix: ROI metadata keys — NOT matching conditions, just metadata
@@ -1613,24 +1674,40 @@ export class SymbolicReasoner {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// SCOPE-AWARE FACTORY  +  LEGACY SHIM
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// `SymbolicReasoner` is a **Type A** singleton: it holds a Supabase client.
+// A warm isolate previously reused the same client across tenants which
+// risked stale connections and cross-tenant rule-cache contamination.
+//
+// Canonical API: `buildSymbolicReasoner(scope)` — per-request instance cached
+// on `scope.turnCache.engineState['reasoner:instance']`. Use this in new code.
+//
+// The legacy `getSymbolicReasoner(client?)` shim now ALWAYS returns a fresh
+// instance (no module-level singleton) and survives only for orchestrator.ts
+// call sites pending Task 7.
 
-let reasonerInstance: SymbolicReasoner | null = null;
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+const REASONER_SLOT = 'reasoner:instance';
+
+export function buildSymbolicReasoner(scope: RequestScope): SymbolicReasoner {
+  const cached = scope.turnCache.engineState.get(REASONER_SLOT) as
+    | SymbolicReasoner
+    | undefined;
+  if (cached) return cached;
+  const instance = new SymbolicReasoner(scope.db);
+  scope.turnCache.engineState.set(REASONER_SLOT, instance);
+  return instance;
+}
 
 /**
- * GAP #1 FIX: Accept optional Supabase client for connection reuse.
+ * @deprecated Use `buildSymbolicReasoner(scope)`. Legacy shim returns a fresh
+ * instance per call to eliminate cross-tenant leakage during Task 7 migration.
  */
 export function getSymbolicReasoner(supabaseClient?: any): SymbolicReasoner {
-  // P3 Fix: Always pass fresh client per request to prevent stale connections
-  // in edge functions where the Supabase client changes per request
-  if (!reasonerInstance) {
-    reasonerInstance = new SymbolicReasoner(supabaseClient);
-  } else if (supabaseClient) {
-    // Update the client on existing instance to prevent stale connections
-    (reasonerInstance as any).supabase = supabaseClient;
-  }
-  return reasonerInstance;
+  return new SymbolicReasoner(supabaseClient);
 }
 
 // Export convenience function with urgency support
@@ -1648,3 +1725,4 @@ export async function executeSymbolicReasoning(
   const reasoner = getSymbolicReasoner();
   return reasoner.executeRules(facts, landState, options);
 }
+

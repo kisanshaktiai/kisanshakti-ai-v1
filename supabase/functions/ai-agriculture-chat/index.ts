@@ -16,11 +16,22 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
+import { getMaxDASForCrop } from './utils/baseline-guidelines-cache.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
+
+// Task 7a: per-request scope + typed engine errors
+import {
+  createRequestScope,
+  EngineDataError,
+  IntentResolutionError,
+  InvariantViolation,
+  type RequestScope,
+} from './runtime/request-scope.ts';
+
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
@@ -30,6 +41,12 @@ import type { WeatherContext, CropContext } from './agents/deterministic-respons
 // PHASE 5: Import LLM Response Formatter for natural language generation
 import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
+
+// Deterministic variety SSOT assertion (pre + post LLM gate)
+import {
+  assertVarietyInjected,
+  assertResponseHonorsVariety,
+} from '../_shared/variety-assertion.ts';
 
 // Legacy helpers removed - dead code cleanup
 
@@ -56,6 +73,14 @@ import {
   applySuppressionGuard,
   type UnifiedGateInput
 } from './decision/unified-decision-gate.ts';
+
+// WAVE-R: Symbolic safety invariants — "no rule fired → no treatment text".
+import { firedRuleIds, rulesActuallyFired } from './runtime/rules-fired.ts';
+import { enforceNoRuleNoTreatment } from './decision/symbolic-invariant-gate.ts';
+// WAVE-S: Single canonical vocabulary resolver + orphan gap tracker.
+import { resolveObservationCanonical, recordVocabularyGap } from './runtime/observation-resolver.ts';
+import { runSafetyGates, type SafetyGateInput, type SafetyGateResult } from './decision/safety-gates.ts';
+import { buildDifferentialQuestionLookup } from './services/observation-question-resolver.ts';
 import {
   ResponseMode,
   GateStatus,
@@ -65,10 +90,27 @@ import {
   generateObservationOnlyResponse,
   generateYoungCropMonitoringResponse
 } from './decision/prescription-gate-enforcer.ts';
+
+// WAVE A.5 / Phase 2: defence-in-depth gate + observability
+import { enforceClarificationInvariant } from './decision/clarification-invariant-gate.ts';
+import { logDecisionTurn, logOrchestratorMetrics } from './runtime/decision-logger.ts';
+import { getRuleSource } from './runtime/feature-flags.ts';
+import { selectCandidateRuleIdsFromDb } from './bundled-rules/db-rule-executor.ts';
+import { computeRuleSourceDiff, type RuleSourceDiff } from './bundled-rules/rule-source-diff.ts';
+import { funnelStart, funnelEnd, type FunnelSnapshot } from './runtime/funnel-tracker.ts';
+import {
+  lookupSafeRuleForObservations,
+  extractObservationCodes,
+  type ObservationRuleHit
+} from './decision/observation-rule-lookup.ts';
+import { resolveCropTimeline } from './utils/resolveCropTimeline.ts';
+import { getSiteDisposition } from './utils/clarification-site-tag.ts';
 import {
   generateDiagnosticEscalationResponse,
+  generateDiagnosticEscalationData,
   type DiagnosticEscalationInput
 } from './decision/diagnostic-escalation-generator.ts';
+import { enrichDiagnosticDifferential } from './decision/diagnostic-differential-enricher.ts';
 
 // PHASE 11.1: Context Authority Reconciliation
 import { 
@@ -197,14 +239,16 @@ function buildRichApplicationDetails(source: any, productName: string | null, pr
   };
 }
 
-let orchestrator: AIAgentOrchestrator | null = null;
-
-function getOrchestrator(): AIAgentOrchestrator {
-  if (!orchestrator) {
-    orchestrator = new AIAgentOrchestrator();
-  }
-  return orchestrator;
+// Per-request orchestrator construction (Task 7a, 2026-06-13).
+// The previous module-level `let orchestrator` was a warm-isolate
+// cross-tenant leakage vector — any per-turn state captured by the
+// orchestrator survived between requests in the same Deno isolate.
+// Construction is cheap; the orchestrator's own dependencies are now
+// expected to receive `scope` and stop caching per-tenant state internally.
+function buildOrchestrator(): AIAgentOrchestrator {
+  return new AIAgentOrchestrator();
 }
+
 
 // Generate unique trace_id for request tracing
 function generateTraceId(): string {
@@ -221,6 +265,7 @@ serve(async (req) => {
 
   const startTime = Date.now();
   const traceId = generateTraceId();
+  funnelStart(traceId); // Wave C — per-turn pipeline-drop attribution
   let dedupeKey: string | null = null;
   
   console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
@@ -503,14 +548,64 @@ serve(async (req) => {
     
     // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
     let conversationHistory: Array<{ role: string; content: string }> = [];
-    
+
+    // Task 6: ConversationContext lives on ai_chat_sessions.conversation_state (top-level jsonb).
+    // Reloaded at turn start, mutated request-scope, written back at turn end.
+    type ConversationContext = {
+      intent_code: string | null;
+      confirmed_observations: string[];
+      ruled_out_observations: string[];
+      active_rule_candidates: string[];
+      round_counter: number;
+      max_rounds: number;
+      last_updated: string | null;
+    };
+    let conversationContext: ConversationContext = {
+      intent_code: null,
+      confirmed_observations: [],
+      ruled_out_observations: [],
+      active_rule_candidates: [],
+      round_counter: 0,
+      max_rounds: 2,
+      last_updated: null,
+    };
+
     if (currentSessionId) {
-      // Fetch session metadata - land_id already validated in P0-A above
+      // Fetch session metadata + conversation_state - land_id already validated in P0-A above
       const { data: existingSession } = await supabase
         .from('ai_chat_sessions')
-        .select('metadata, land_id')
+        .select('metadata, land_id, conversation_state')
         .eq('id', currentSessionId)
         .single();
+
+      // Load top-level ConversationContext (Task 6)
+      const cs = (existingSession as any)?.conversation_state;
+      if (cs && typeof cs === 'object') {
+        conversationContext = {
+          intent_code: cs.intent_code ?? null,
+          confirmed_observations: Array.isArray(cs.confirmed_observations) ? cs.confirmed_observations : [],
+          ruled_out_observations: Array.isArray(cs.ruled_out_observations) ? cs.ruled_out_observations : [],
+          active_rule_candidates: Array.isArray(cs.active_rule_candidates) ? cs.active_rule_candidates : [],
+          round_counter: Number.isFinite(cs.round_counter) ? Number(cs.round_counter) : 0,
+          max_rounds: Number.isFinite(cs.max_rounds) ? Number(cs.max_rounds) : 2,
+          last_updated: cs.last_updated ?? null,
+        };
+        // Max-rounds reset: clarification flow gives up after N rounds.
+        if (conversationContext.round_counter >= conversationContext.max_rounds) {
+          console.log(`🧹 [ConversationContext] max_rounds=${conversationContext.max_rounds} reached, clearing context`);
+          conversationContext = {
+            intent_code: null,
+            confirmed_observations: [],
+            ruled_out_observations: [],
+            active_rule_candidates: [],
+            round_counter: 0,
+            max_rounds: conversationContext.max_rounds,
+            last_updated: null,
+          };
+        }
+        console.log(`📥 [ConversationContext] Loaded: intent=${conversationContext.intent_code} confirmed=${conversationContext.confirmed_observations.length} round=${conversationContext.round_counter}/${conversationContext.max_rounds}`);
+      }
+
       
       // ═══════════════════════════════════════════════════════════════════════════
       // P0-A ENFORCEMENT: Session is ALREADY validated to match this land
@@ -794,6 +889,7 @@ serve(async (req) => {
               decision_brain_source: true,
               ai_model: 'proactive-narration',
               actions_returned: 1,
+              response_source: 'symbolic_rule_fired',
               metadata: {
                 proactive_alert_id: proactiveAlert.id,
                 alert_category: proactiveAlert.alert_category,
@@ -839,41 +935,93 @@ serve(async (req) => {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
+    //
+    // Task 7a (2026-06-13): per-request scope + focused engine try/catch.
+    // The scope reuses the JWT-validated `supabase` client so privileges and
+    // headers stay consistent. Typed engine errors (EngineDataError,
+    // IntentResolutionError, InvariantViolation) are converted to a
+    // structured 500 with { error, code, trace_id } — never silently
+    // swallowed. Sub-stages 7b–7e will thread `scope` deeper into the
+    // orchestrator's phases.
     // ═══════════════════════════════════════════════════════════════════════════
-    const orch = getOrchestrator();
-    
-    
-    const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
-      userMessageContent,
-      currentSessionId,
-      finalFarmerId,
-      finalTenantId,
-      {
-        photoUrl: imageUrl,
-        language: detectedLanguage,
-        landId: landId,
-        traceId: traceId,
-        // CRITICAL FIX: Pass conversation history for context continuity
-        conversationHistory: conversationHistory,
-        // Pass session state for follow-up awareness
-        sessionState: sessionState ? {
-          hasPreviousRecommendations: sessionState.pending_user_action || false,
-          previousPest: sessionState.last_pest,
-          previousDisease: sessionState.last_disease,
-          previousCrop: sessionState.last_crop,
-          turnCount: sessionState.turn_count || 0,
-          decisionState: sessionState.decision_state,
-          // CRITICAL FIX 2: Pass pending clarification options for option matching
-          pendingClarificationOptions: sessionState.pending_clarification_options || [],
-          // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
-          lockedCropContext: sessionState.lockedCropContext,
-          // PART 10: Pass problems_discussed for session continuity
-          problems_discussed: sessionState.problems_discussed || [],
-          last_query_hash: sessionState.last_query_hash,
-          last_query_timestamp: sessionState.last_query_timestamp
-        } : undefined
+    const scope: RequestScope = createRequestScope({
+      tenantId: finalTenantId,
+      farmerId: finalFarmerId,
+      sessionId: currentSessionId ?? 'pre-session',
+      turnId: traceId,
+      traceId,
+      db: supabase,
+    });
+
+    const orch = buildOrchestrator();
+
+    let orchestratorResponse: OrchestratorResponse;
+    try {
+      orchestratorResponse = await orch.orchestrate(
+        userMessageContent,
+        currentSessionId,
+        finalFarmerId,
+        finalTenantId,
+        {
+          photoUrl: imageUrl,
+          language: detectedLanguage,
+          landId: landId,
+          traceId: traceId,
+          // Task 7a: scope is passed through options so downstream sub-stages
+          // can pick it up without coordinated breaking changes to the
+          // orchestrator's positional signature.
+          scope,
+          // CRITICAL FIX: Pass conversation history for context continuity
+          conversationHistory: conversationHistory,
+          // Pass session state for follow-up awareness
+          sessionState: sessionState ? {
+            hasPreviousRecommendations: sessionState.pending_user_action || false,
+            previousPest: sessionState.last_pest,
+            previousDisease: sessionState.last_disease,
+            previousCrop: sessionState.last_crop,
+            turnCount: sessionState.turn_count || 0,
+            decisionState: sessionState.decision_state,
+            // CRITICAL FIX 2: Pass pending clarification options for option matching
+            pendingClarificationOptions: sessionState.pending_clarification_options || [],
+            // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
+            lockedCropContext: sessionState.lockedCropContext,
+            // PART 10: Pass problems_discussed for session continuity
+            problems_discussed: sessionState.problems_discussed || [],
+            last_query_hash: sessionState.last_query_hash,
+            last_query_timestamp: sessionState.last_query_timestamp
+          } : undefined
+        } as any
+      );
+    } catch (engineErr) {
+      const isTyped =
+        engineErr instanceof EngineDataError ||
+        engineErr instanceof IntentResolutionError ||
+        engineErr instanceof InvariantViolation;
+
+      if (isTyped) {
+        const typed = engineErr as EngineDataError | IntentResolutionError | InvariantViolation;
+        console.error(`🚨 [${traceId}] ENGINE_FAULT ${typed.name}/${typed.code}`, {
+          details: typed.details,
+          events: scope.events.slice(-20),
+        });
+        if (dedupeKey) inFlightRequests.delete(dedupeKey);
+        return new Response(
+          JSON.stringify({
+            error: 'engine_fault',
+            code: typed.code,
+            kind: typed.name,
+            trace_id: traceId,
+            details: typed.details ?? null,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
       }
-    );
+
+      // Unknown error — re-throw so the existing outer catch logs and responds.
+      console.error(`🚨 [${traceId}] ORCHESTRATOR_UNHANDLED`, engineErr);
+      throw engineErr;
+    }
+
 
     console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
 
@@ -1091,38 +1239,31 @@ serve(async (req) => {
                   console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
                   console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
                 }
-                console.error(`   generating SYSTEM_FALLBACK`);
-                
-                rawDecisionOutput.status = 'SYSTEM_FALLBACK';
-                rawDecisionOutput.primary_decision = {
-                  action_type: 'MONITOR_ONLY',
-                  rule_id: 'INVARIANT_FALLBACK',
-                  specific_action: 'CONTINUE_MONITORING',
-                  target: {},
-                  urgency: 'NON_URGENT',
-                  timing: {
-                    recommended_start: new Date().toISOString(),
-                    recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    weather_dependency: false,
-                    reason: 'System fallback - primary decision invariant violated'
-                  },
-                  application_details: {
-                    product_name: 'Continue monitoring',
-                    product_type: 'CULTURAL',
-                    concentration: 'Daily observation',
-                    coverage_instructions: 'Monitor crop health and look for symptoms',
-                    action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
-                    reason_text: 'Insufficient information to provide specific recommendation.',
-                    rule_id: 'INVARIANT_FALLBACK'
-                  },
-                  expected_outcomes: {
-                    efficacy_percent: 100,
-                    time_to_visible_effect_days: 'Ongoing',
-                    success_indicators: ['Early detection of issues']
-                  }
+                console.error(`   marking status=SYSTEM_ERROR (no fabricated MONITOR_ONLY)`);
+
+                // ─────────────────────────────────────────────────────────────
+                // SSOT FIX: Do NOT fabricate a MONITOR_ONLY decision with
+                // hardcoded English action_text / reason_text. Per core
+                // architecture invariant, 100% of agronomic advice must
+                // originate from the database. A fake "Continue monitoring"
+                // recommendation here is an Agronomic-Safety-Negligence risk
+                // (it could mask a high-urgency pest emergency).
+                //
+                // Instead: surface SYSTEM_ERROR so the response pipeline
+                // emits the orchestrator's own (DB-sourced) fallback_advice,
+                // or logs SYMBOLIC_CONTRACT_VIOLATION when that is also
+                // missing.
+                // ─────────────────────────────────────────────────────────────
+                rawDecisionOutput.status = 'SYSTEM_ERROR';
+                rawDecisionOutput.primary_decision = null;
+                rawDecisionOutput.invariant_violation = {
+                  reason: 'NO_ELIGIBLE_MATCHED_RESPONSES',
+                  raw_matched_count: rawMatchedCount,
+                  layered_matched_count: layeredMatchedCount,
+                  trace_id: traceId,
                 };
-                
-                console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+
+                console.log(`   📋 SYSTEM_ERROR surfaced (no fabricated decision)`);
               }
             }
           }
@@ -1216,19 +1357,85 @@ serve(async (req) => {
     console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Check if Static Data Gate already handled this query
-    // Static Gate responses should NOT go through LLM formatting
+    // CRITICAL FIX (2026-06-07 RCA #16): Generalised short-circuit bypass.
+    //
+    // The orchestrator has multiple short-circuit lanes — Static Gate,
+    // NO_ACTIVE_CROP guard, NEXT_CROP_RECOMMENDATION engine, Greeting, Stage
+    // Fallback — that each build a complete, localized, deterministic payload
+    // (full_text in mr/hi/en, confidence_score, source). Previously ONLY
+    // STATIC_DIRECT was honored; every other short-circuit fell through into
+    // filtering → confidence-bridge → unified-gate → safety-gate → LLM template
+    // formatter, which (a) wiped actions_returned, (b) overwrote the 1.0
+    // confidence with 0, and (c) emitted a generic clarification template
+    // with literal `{symptom}` placeholders.
+    //
+    // We now recognise the full set and route them straight to delivery.
     // ═══════════════════════════════════════════════════════════════════════════
-    const isStaticGateResponse = 
-      orchestratorResponse.decision_output?.metadata?.template_type === 'STATIC_DIRECT' ||
-      orchestratorResponse.communication?.metadata?.source === 'STATIC_DATA_GATE';
-    
-    if (isStaticGateResponse) {
-      // Static Gate already generated the response - use it directly
-      console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
-      responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage] ||
-                        orchestratorResponse.communication?.main_message?.full_text?.en ||
-                        'Information not available';
+    const SHORT_CIRCUIT_TEMPLATE_TYPES = new Set([
+      'STATIC_DIRECT',
+      'NO_ACTIVE_CROP',
+      'NEXT_CROP_RECOMMENDATION',
+      'GREETING',
+      'STAGE_FALLBACK',
+    ]);
+    const SHORT_CIRCUIT_SOURCES = new Set([
+      'STATIC_DATA_GATE',
+      'NO_ACTIVE_CROP_GUARD',
+      'NEXT_CROP_RECOMMENDATION_ENGINE',
+      'NEXT_CROP_RECOMMENDATION_FALLBACK',
+    ]);
+    const shortCircuitTemplateType = (orchestratorResponse.decision_output as any)?.metadata?.template_type as string | undefined;
+    const shortCircuitSource = (orchestratorResponse.communication as any)?.metadata?.source as string | undefined;
+    const isShortCircuitResponse =
+      (shortCircuitTemplateType && SHORT_CIRCUIT_TEMPLATE_TYPES.has(shortCircuitTemplateType)) ||
+      (shortCircuitSource && SHORT_CIRCUIT_SOURCES.has(shortCircuitSource));
+    // Backwards-compat alias retained for any reader of this name downstream.
+    const isStaticGateResponse = isShortCircuitResponse;
+
+    if (isShortCircuitResponse) {
+      // Orchestrator already produced the localized, deterministic response.
+      // Use it verbatim; do NOT run filtering, confidence-bridge, unified-gate,
+      // safety-gate, or LLM/template formatting.
+      const fullText = (orchestratorResponse.communication as any)?.main_message?.full_text || {};
+      responseContent =
+        fullText[detectedLanguage] ||
+        fullText.en ||
+        fullText.mr ||
+        fullText.hi ||
+        'Information not available';
+
+      // Choose a clear sentinel for traces / persistence.
+      const aiModelByTemplate: Record<string, string> = {
+        STATIC_DIRECT: 'template-static-gate',
+        NO_ACTIVE_CROP: 'template-no-active-crop',
+        NEXT_CROP_RECOMMENDATION: 'next-crop-engine',
+        GREETING: 'template-greeting',
+        STAGE_FALLBACK: 'template-stage-fallback',
+      };
+      aiModelUsed = aiModelByTemplate[shortCircuitTemplateType || ''] ||
+        (shortCircuitSource === 'STATIC_DATA_GATE' ? 'template-static-gate' : 'template-short-circuit');
+
+      // Defensive placeholder guard — never leak unfilled `{token}` to farmers.
+      if (responseContent && /\{[a-zA-Z_]+\}/.test(responseContent)) {
+        console.error(`🚨 [ShortCircuit] Unfilled placeholder detected in response — falling back to safe text`);
+        responseContent = detectedLanguage === 'mr'
+          ? 'कृपया अधिक माहिती द्या जेणेकरून योग्य सल्ला देता येईल.'
+          : detectedLanguage === 'hi'
+            ? 'कृपया अधिक जानकारी दें ताकि सही सलाह दी जा सके।'
+            : 'Please share a bit more detail so we can give precise advice.';
+      }
+
+      // Preserve orchestrator-supplied confidence so persistence + UI builder
+      // read the authoritative value (not the confidence-bridge's 0).
+      const scConfidence =
+        (orchestratorResponse.decision_output as any)?.metadata?.confidence ??
+        (orchestratorResponse.communication as any)?.metadata?.confidence_score ??
+        1.0;
+      orchestratorResponse.metadata = orchestratorResponse.metadata || {};
+      (orchestratorResponse.metadata as any).confidence = scConfidence;
+      (orchestratorResponse.metadata as any).confidence_score = scConfidence;
+
+      console.log(`   ⚡ [ShortCircuit] template=${shortCircuitTemplateType} source=${shortCircuitSource} model=${aiModelUsed} confidence=${scConfidence} length=${responseContent.length}`);
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
@@ -1292,6 +1499,39 @@ serve(async (req) => {
         if (landContext) {
           console.log(`      Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, Days: ${landContext.days_since_sowing}`);
         }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SSOT OVERLAY: derive DAS + growth_stage from crop_schedules.sowing_date
+        // (date of sowing) and crop_stage_master (DB stage windows). This is the
+        // single authoritative source — overrides any earlier heuristic value.
+        // Never invents a stage from code; missing rows surface as 'UNKNOWN'.
+        // ═══════════════════════════════════════════════════════════════════════════
+        try {
+          const timeline = await resolveCropTimeline({
+            landId: landId || null,
+            supabase,
+            scope: (orchestratorResponse.metadata?.scope as any) || undefined,
+          });
+          if (timeline.schedule_source === 'crop_schedules') {
+            if (landContext) {
+              if (typeof timeline.days_since_sowing === 'number') {
+                landContext.days_since_sowing = timeline.days_since_sowing;
+              }
+              if (timeline.growth_stage && timeline.growth_stage !== 'UNKNOWN') {
+                landContext.growth_stage = timeline.growth_stage;
+              }
+              (landContext as any).sowing_date = timeline.sowing_date;
+              (landContext as any).expected_harvest_date = timeline.expected_harvest_date;
+              (landContext as any).maturity_days = timeline.maturity_days;
+              (landContext as any).crop_code = timeline.crop_code;
+            }
+            console.log(`   📅 [CropTimeline SSOT] sow=${timeline.sowing_date} DAS=${timeline.days_since_sowing} stage=${timeline.growth_stage} (stage_src=${timeline.stage_source}, maturity_src=${timeline.maturity_source})`);
+          } else {
+            console.log(`   📅 [CropTimeline SSOT] no active crop_schedule for land — keeping prior landContext values`);
+          }
+        } catch (e) {
+          console.warn(`   ⚠️ [CropTimeline SSOT] resolveCropTimeline failed: ${(e as Error).message}`);
+        }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 11.1: CONTEXT AUTHORITY RECONCILIATION
@@ -1326,24 +1566,68 @@ serve(async (req) => {
         // The orchestrator stores symptom info in decision_output, not just metadata
         // ═══════════════════════════════════════════════════════════════════════════
         const decisionOutput = orchestratorResponse.decision_output as Record<string, any> || {};
-        const symptomKeysFromDecision = decisionOutput.symptom_keys || 
-                                        decisionOutput.observation_keys ||
-                                        decisionOutput.canonical_observations ||
-                                        [];
-        const symptomKeysFromMetadata = orchestratorResponse.metadata?.symptomKeys || [];
+        const symptomKeysFromDecision = [
+          ...(Array.isArray(decisionOutput.symptom_keys) ? decisionOutput.symptom_keys : []),
+          ...(Array.isArray(decisionOutput.observation_keys) ? decisionOutput.observation_keys : []),
+          ...(Array.isArray(decisionOutput.canonical_observations) ? decisionOutput.canonical_observations : []),
+          ...(Array.isArray(decisionOutput.confirmed_observations) ? decisionOutput.confirmed_observations : []),
+          ...(Array.isArray(decisionOutput.confirmed_observation_codes) ? decisionOutput.confirmed_observation_codes : []),
+        ];
+        const symptomKeysFromMetadata = [
+          ...(Array.isArray(orchestratorResponse.metadata?.symptomKeys) ? orchestratorResponse.metadata.symptomKeys : []),
+          ...(Array.isArray(orchestratorResponse.metadata?.confirmed_observations) ? orchestratorResponse.metadata.confirmed_observations : []),
+          ...(Array.isArray(orchestratorResponse.metadata?.confirmed_observation_codes) ? orchestratorResponse.metadata.confirmed_observation_codes : []),
+        ];
         const mergedSymptomKeys = [...new Set([...symptomKeysFromDecision, ...symptomKeysFromMetadata])];
         
         // ═══════════════════════════════════════════════════════════════════════════
         // CONFIDENCE BRIDGE: Extract symbolic confidence as SSOT for decision_confidence
         // ═══════════════════════════════════════════════════════════════════════════
-        const rawSymbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
-          ?.primary_decision?.weighted_confidence
-          ?? orchestratorResponse.decision_output?.layered_rule_result
-            ?.primary_decision?.confidence_score
-          ?? 0;
-        // BUG FIX: Guard against NaN from division-by-zero in rule evaluator
-        const symbolicConfidence = isNaN(rawSymbolicConfidence) ? 0.5 : rawSymbolicConfidence;
-        
+        // CONFIDENCE BRIDGE v2 (RCA audit 2026-06-07): widened fallback chain
+        // so missing `weighted_confidence` / `confidence_score` no longer collapses
+        // the entire pipeline to 0. Order: layered → primary → hypothesis → 0.
+        const decisionOutputForConf: any = orchestratorResponse.decision_output || {};
+        const layered: any = decisionOutputForConf.layered_rule_result || {};
+        const primary: any = decisionOutputForConf.primary_decision || {};
+        const hypothesis: any = decisionOutputForConf.hypothesis_result || {};
+        const rawSymbolicConfidence: number =
+          layered?.primary_decision?.weighted_confidence ??
+          layered?.primary_decision?.confidence_score ??
+          layered?.primary_decision?.rule_confidence ??
+          primary?.weighted_confidence ??
+          primary?.confidence_score ??
+          primary?.rule_confidence ??
+          primary?.score ??
+          hypothesis?.hypothesis_score ??
+          orchestratorResponse.metadata?.confidence ??
+          0;
+        // Guard NaN / out-of-range; normalize 0-100 inputs to 0-1.
+        let symbolicConfidence = isNaN(rawSymbolicConfidence) ? 0.5 : rawSymbolicConfidence;
+        if (symbolicConfidence > 1) symbolicConfidence = symbolicConfidence / 100;
+        if (symbolicConfidence < 0) symbolicConfidence = 0;
+        if (symbolicConfidence > 1) symbolicConfidence = 1;
+
+        // ── Observation → SAFE-rule precheck (drives young-crop bypass + OBSERVATION text)
+        const observationCodesForBypass = extractObservationCodes(mergedSymptomKeys);
+        let observationRuleHit: ObservationRuleHit | null = null;
+        if (observationCodesForBypass.length > 0 && finalCropName && finalGrowthStage) {
+          try {
+            observationRuleHit = await lookupSafeRuleForObservations(supabase, {
+              confirmedObservations: observationCodesForBypass,
+              cropCode: String(finalCropName).toUpperCase(),
+              growthStage: String(finalGrowthStage).toUpperCase(),
+              language: detectedLanguage,
+              // SSOT DAS from resolveCropTimeline → renderContext
+              daysSinceSowing: typeof finalDaysSinceSowing === 'number' ? finalDaysSinceSowing : null,
+            });
+            if (observationRuleHit) {
+              console.log(`   🎯 [ObservationRuleLookup] hit rule=${observationRuleHit.rule_id} safety=${observationRuleHit.farmer_safety_level} lang_localized=${!!observationRuleHit.localized_text}`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [ObservationRuleLookup] failed: ${(e as Error).message}`);
+          }
+        }
+
         const unifiedGateInput: UnifiedGateInput = {
           authority_decision: orchestratorResponse.decision_output?.authority_decision || {
             authority: 'NONE',
@@ -1363,21 +1647,32 @@ serve(async (req) => {
           has_emergency_indicators: orchestratorResponse.metadata?.isEmergency || false,
           land_id: landId,
           decision_confidence: Math.round(symbolicConfidence * 100),  // Convert 0-1 to 0-100
-          hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined
+          hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined,
+          confirmed_observation_has_safe_rule: !!observationRuleHit,
+          confirmed_observation_rule_id: observationRuleHit?.rule_id,
+          confirmed_observation_codes: observationCodesForBypass,
         } as any;
-        
+
         // INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
         const primaryDecisionExists = !!(orchestratorResponse.decision_output?.primary_decision?.rule_id ||
           orchestratorResponse.decision_output?.layered_rule_result?.primary_decision?.rule_id);
-        
+
         if (primaryDecisionExists && symbolicConfidence === 0) {
           console.error(`🚨 [INVARIANT] Confidence pipeline inconsistency: primary_decision exists but symbolic_confidence=0`);
           console.error(`   Forcing minimum confidence of 0.5 to prevent decision suppression`);
-          unifiedGateInput.decision_confidence = 50;  // Safe floor
+          symbolicConfidence = 0.5;                          // mutate SSOT, not just gate input
+          unifiedGateInput.decision_confidence = 50;
         }
-        
+
+        // Propagate the resolved confidence back into metadata so every downstream
+        // surface (UI builder, persistence, audit log) reads the same value.
+        orchestratorResponse.metadata = orchestratorResponse.metadata || {};
+        orchestratorResponse.metadata.confidence = symbolicConfidence;
+        orchestratorResponse.metadata.confidence_score = symbolicConfidence;
+
         console.log(`   📊 [ConfidenceBridge] symbolic_confidence=${symbolicConfidence.toFixed(3)} -> decision_confidence=${unifiedGateInput.decision_confidence}`);
         console.log(`   🔍 [UnifiedGate] Input: crop=${finalCropName}, stage=${finalGrowthStage}, DAS=${finalDaysSinceSowing}, symptoms=${mergedSymptomKeys.length}`);
+
         
         // FIX 1: Read gate result from orchestrator if already evaluated there (avoid duplicate gate)
         const orchestratorGateResult = orchestratorResponse.metadata?.gate_result;
@@ -1397,18 +1692,24 @@ serve(async (req) => {
           // decision_output contains the actual rules/actions from symbolic brain
           // ═══════════════════════════════════════════════════════════════════════════
           const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
+          // ───────────────────────────────────────────────────────────────
+          // WAVE-R: SSOT counter is `firedRuleIds()` ONLY. matched_responses
+          // and candidate_rules are NOT fired rules; using them inflated the
+          // counter and re-opened the suppression gate. Identity-verified.
+          // ───────────────────────────────────────────────────────────────
+          const _firedRids = firedRuleIds(decisionOutputSsot);
           const symbolicDecisionForGuard = {
             decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
-            // SSOT: Use decision_output fields first, fallback to metadata
-            rules_fired: decisionOutputSsot.rules_applied || 
-                         decisionOutputSsot.layered_rule_result?.rules_applied || 
-                         orchestratorResponse.metadata?.rulesFired || [],
-            actions_returned: decisionOutputSsot.actions_returned || 
+            rules_fired: _firedRids,
+            actions_returned: decisionOutputSsot.actions_returned ||
                               orchestratorResponse.metadata?.actionsReturned || [],
-            matched_responses: decisionOutputSsot.matched_responses || 
-                               orchestratorResponse.metadata?.matchedResponses || []
+            // Filter matched_responses to only entries whose rule_id actually fired.
+            matched_responses: (Array.isArray(decisionOutputSsot.matched_responses)
+              ? decisionOutputSsot.matched_responses
+              : []
+            ).filter((r: any) => r?.rule_id && _firedRids.includes(r.rule_id))
           };
-          
+
           console.log(`   🔍 [SuppressionGuard] SSOT check: rules=${symbolicDecisionForGuard.rules_fired?.length || 0}, actions=${symbolicDecisionForGuard.actions_returned?.length || 0}, responses=${symbolicDecisionForGuard.matched_responses?.length || 0}`);
           
           unifiedGateResult = applySuppressionGuard(rawGateResult, symbolicDecisionForGuard);
@@ -1421,55 +1722,336 @@ serve(async (req) => {
         if (unifiedGateResult.reason?.includes('Suppression guard')) {
           console.log(`      ✅ SUPPRESSION GUARD ACTIVATED - recommendations preserved`);
         }
-        
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // P0 HOTFIX: SAFETY GATES (Confidence/Clarification/NDVI/Stage/Foliar)
+        // Runs AFTER unified gate; can downgrade to CLARIFY or BLOCK and override
+        // unified gate's treatments_allowed. Result is persisted into the audit log.
+        // ═══════════════════════════════════════════════════════════════════════════
+        let safetyGateResult: SafetyGateResult | null = null;
+        try {
+          const candidateRulesForGate = (
+            (orchestratorResponse.decision_output as any)?.layered_rule_result?.candidates ||
+            (orchestratorResponse.decision_output as any)?.candidates ||
+            []
+          ).map((c: any) => ({
+            rule_id: c.rule_id || c.rule?.rule_id,
+            category: c.category ?? c.rule?.category ?? null,
+            canonical_group: c.canonical_group ?? c.rule?.canonical_group ?? null,
+            crop_age_days_max: c.crop_age_days_max ?? c.rule?.crop_age_days_max ?? null,
+            crop_age_days_min: c.crop_age_days_min ?? c.rule?.crop_age_days_min ?? null,
+            application_method: c.application_method ?? c.rule?.application_method ?? null,
+            active_ingredient: c.active_ingredient ?? c.rule?.active_ingredient ?? null,
+            water_volume_per_acre: c.water_volume_per_acre ?? c.rule?.water_volume_per_acre ?? null,
+            // WAVE 2 FIX (P1-4): dosage_per_acre gates the foliar safety check
+            dosage_per_acre: c.dosage_per_acre ?? c.rule?.dosage_per_acre ?? null,
+            action_type: c.action_type ?? c.rule?.action_type ?? null,
+          })).filter((c: any) => !!c.rule_id);
+
+          // Add the primary decision as a candidate too
+          const pd: any = (orchestratorResponse.decision_output as any)?.primary_decision
+            || (orchestratorResponse.decision_output as any)?.layered_rule_result?.primary_decision;
+          if (pd?.rule_id && !candidateRulesForGate.some((c: any) => c.rule_id === pd.rule_id)) {
+            candidateRulesForGate.unshift({
+              rule_id: pd.rule_id,
+              category: pd.category ?? null,
+              canonical_group: pd.canonical_group ?? null,
+              crop_age_days_max: pd.crop_age_days_max ?? null,
+              crop_age_days_min: pd.crop_age_days_min ?? null,
+              application_method: pd.application_method ?? pd.application_details?.application_method ?? null,
+              active_ingredient: pd.active_ingredient ?? pd.application_details?.active_ingredient ?? null,
+              water_volume_per_acre: pd.water_volume_per_acre ?? pd.application_details?.water_volume_per_acre ?? null,
+              dosage_per_acre: pd.dosage_per_acre ?? pd.application_details?.dosage_per_acre ?? null,
+              action_type: pd.action_type ?? null,
+            });
+          }
+
+          // Pull discriminator scores from observation_master snapshot if present
+          const obsScores: Record<string, number> = (orchestratorResponse.metadata?.observationDiscriminatorScores
+            || (orchestratorResponse.decision_output as any)?.observation_discriminator_scores
+            || {}) as Record<string, number>;
+
+          const soilK = (landContext as any)?.soil_health?.potassium_kg_per_ha ?? null;
+          const soilKBand: 'LOW' | 'MEDIUM' | 'HIGH' | null = soilK === null || soilK === undefined
+            ? null
+            : (soilK >= 200 ? 'HIGH' : soilK >= 120 ? 'MEDIUM' : 'LOW');
+          const ndviVal: number | null = (landContext as any)?.ndvi?.value ?? null;
+
+          // SSOT FIX (2026-06-07): Differential clarification questions are
+          // derived from the rich, already-populated SSOT tables
+          // (observation_translations + intent_translations via
+          // intent_observation_mapping). The previously-queried
+          // `observation_differential_questions` table is effectively empty
+          // and is now deprecated. See
+          // services/observation-question-resolver.ts for the fallback chain.
+          let diffLookup: Record<string, string> = {};
+          if (mergedSymptomKeys.length > 0) {
+            try {
+              diffLookup = await buildDifferentialQuestionLookup(
+                supabase,
+                mergedSymptomKeys,
+                detectedLanguage,
+                finalCropName
+              );
+            } catch (e) {
+              console.warn(`[SafetyGates] differential question resolver failed: ${(e as Error).message}`);
+              diffLookup = {};
+            }
+          }
+
+          const safetyInput: SafetyGateInput = {
+            trace_id: traceId,
+            crop_name: finalCropName,
+            growth_stage: finalGrowthStage,
+            days_since_sowing: finalDaysSinceSowing ?? null,
+            symptom_keys: mergedSymptomKeys,
+            symptom_discriminator_scores: obsScores,
+            number_of_distinct_observations: mergedSymptomKeys.length,
+            photo_present: !!imageUrl,
+            soil_potassium_kg_ha: soilK,
+            soil_potassium_band: soilKBand,
+            soil_nitrogen_band: null,
+            ndvi: ndviVal,
+            primary_hypothesis_id: (orchestratorResponse.decision_output as any)?.hypothesis_result?.primary_hypothesis_id
+              ?? (orchestratorResponse.decision_output as any)?.primary_hypothesis_id
+              ?? null,
+            primary_decision_rule_id: pd?.rule_id ?? null,
+            candidate_rules: candidateRulesForGate,
+            current_confidence: symbolicConfidence,
+            differential_questions: diffLookup,
+            confirmed_safe_rule_bypass: unifiedGateResult?.gate_action === GateAction.PROVIDE_OBSERVATION_ONLY
+              && unifiedGateResult?.response_mode === ResponseMode.OBSERVATION,
+            response_mode: unifiedGateResult?.response_mode,
+          };
+
+
+          safetyGateResult = runSafetyGates(safetyInput, detectedLanguage);
+
+          // 2026-06-21 FIX: when unified gate has already approved a SAFE rule
+          // via the confirmed_safe_rule_exists bypass (e.g. YOUNG_CROP_RESOW),
+          // do NOT let the safety-gate's clarify override throw away that rule
+          // and bounce the farmer back into another question loop.
+          const safeBypassActive = safetyInput.confirmed_safe_rule_bypass === true;
+
+          if (safetyGateResult.override_mode !== 'NONE' && !safeBypassActive) {
+            console.warn(`🛡️ [SafetyGates] OVERRIDE=${safetyGateResult.override_mode} - downgrading unified gate to CLARIFY`);
+            unifiedGateResult.treatments_allowed = false;
+            unifiedGateResult.response_mode = ResponseMode.CLARIFICATION;
+            (unifiedGateResult as any).reason =
+              `Safety-gate override (${safetyGateResult.override_mode}): ` +
+              Object.entries(safetyGateResult.gate_decisions)
+                .filter(([, v]) => !v.passed)
+                .map(([k, v]) => `${k}: ${v.reason}`)
+                .join(' | ');
+          } else if (safetyGateResult.override_mode !== 'NONE' && safeBypassActive) {
+            console.log(`🛡️ [SafetyGates] OVERRIDE=${safetyGateResult.override_mode} IGNORED — confirmed_safe_rule bypass active; preserving unified gate ALLOW path`);
+            safetyGateResult.override_mode = 'NONE';
+          }
+
+          // Persist gate_decisions into the audit row (best-effort, by trace_id)
+          try {
+            const payload = {
+              version: safetyGateResult.version,
+              override_mode: safetyGateResult.override_mode,
+              effective_confidence: safetyGateResult.effective_confidence,
+              rejected_rule_ids: safetyGateResult.rejected_rule_ids,
+              decisions: safetyGateResult.gate_decisions,
+              evaluated_at: new Date().toISOString(),
+            };
+            // Fire-and-forget update keyed by trace_id; column exists per migration.
+            // @ts-ignore - generated types may not yet include gate_decisions
+            await supabase
+              .from('ai_chat_audit_logs')
+              .update({ gate_decisions: payload, actions_filtered_out: { rejected_by_safety_gates: safetyGateResult.rejected_rule_ids } })
+              .eq('trace_id', traceId);
+          } catch (e) {
+            console.warn(`🛡️ [SafetyGates] audit persist failed:`, (e as Error).message);
+          }
+        } catch (e) {
+          console.error(`🛡️ [SafetyGates] runtime error:`, (e as Error).message);
+        }
+
         // If unified gate blocks treatments, use appropriate fallback response
         if (!unifiedGateResult.treatments_allowed) {
           console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
           
           if (unifiedGateResult.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION) {
-            // NEW: Expert-quality diagnostic escalation response
-            console.log(`   🔬 DIAGNOSTIC_ESCALATION - generating expert response with hypotheses`);
-            
-            const escalationInput: DiagnosticEscalationInput = {
-              language: detectedLanguage,
-              crop_name: finalCropName || 'Unknown',
-              growth_stage: finalGrowthStage || 'Unknown',
-              days_since_sowing: finalDaysSinceSowing,
-              symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
-              matched_rules: orchestratorResponse.metadata?.matchedRules || [],
-              current_confidence: unifiedGateResult.diagnostic_escalation?.current_confidence || 0.4,
-              treatment_threshold: unifiedGateResult.diagnostic_escalation?.threshold_for_treatment || 0.7
-            };
-            
-            responseContent = generateDiagnosticEscalationResponse(
-              unifiedGateResult.diagnostic_escalation!,
-              escalationInput
-            );
-            
-            // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend
-            orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
-            orchestratorResponse.metadata = {
-              ...orchestratorResponse.metadata,
-              diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
-              orchestrator_type: 'DIAGNOSTIC_ESCALATION'
-            };
-          } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
-            // Young crop - use monitoring response with authority-reconciled values
-            responseContent = generateYoungCropMonitoringResponse(
-              detectedLanguage,
-              finalCropName,
-              finalGrowthStage,
-              finalDaysSinceSowing
-            );
-          } else {
+            // ═══════════════════════════════════════════════════════════════
+            // Wave-P (Stage 1+2): Differential enrichment + chips
+            // The pre-Wave-P path passed matched_rules=[] which collapsed the
+            // farmer response to a single tautological yes/no question. We
+            // now call the symbolic hypothesis evaluator inline to derive a
+            // ranked differential AND a selectable chip set.
+            // ═══════════════════════════════════════════════════════════════
+            console.log(`   🔬 DIAGNOSTIC_ESCALATION - enriching differential via hypothesis evaluator`);
+
+            const symptomKeysForEscalation: string[] = orchestratorResponse.metadata?.symptomKeys
+              || mergedSymptomKeys
+              || [];
+
+            // Best-effort enrichment. If the evaluator throws (DB down,
+            // missing crop, etc.) we still emit the legacy escalation rather
+            // than a hard error.
+            let enrichment: Awaited<ReturnType<typeof enrichDiagnosticDifferential>> | null = null;
+            try {
+              if (finalCropName && finalGrowthStage) {
+                enrichment = await enrichDiagnosticDifferential({
+                  supabase,
+                  crop_code: String(finalCropName).toUpperCase(),
+                  growth_stage: String(finalGrowthStage).toUpperCase(),
+                  days_since_sowing: typeof finalDaysSinceSowing === 'number' ? finalDaysSinceSowing : null,
+                  observations: [...new Set([...(observationCodesForBypass || []), ...symptomKeysForEscalation])],
+                  ndvi_level: (orchestratorResponse.metadata as any)?.ndvi?.level,
+                  ndvi_trend: (orchestratorResponse.metadata as any)?.ndvi?.trend,
+                  user_query: lastUserMessage?.content || '',
+                  language: detectedLanguage,
+                  trace_id: orchestratorResponse.metadata?.trace_id || `esc_${Date.now()}`,
+                });
+                console.log(`   📊 [DifferentialEnricher] candidates=${enrichment.candidate_count} chips=${enrichment.clarification_chips.length} top_conf=${enrichment.top_confidence.toFixed(2)}`);
+              } else {
+                console.warn(`   ⚠️ [DifferentialEnricher] skipped — missing crop/stage`);
+              }
+            } catch (e) {
+              console.error(`   ❌ [DifferentialEnricher] failed: ${(e as Error).message}`);
+            }
+
+            // Wave-P Stage 4 invariant: a DIAGNOSTIC_ESCALATION with symptoms
+            // MUST carry ≥1 hypothesis. If the enricher returned nothing AND
+            // the legacy escalation also has nothing, downgrade to OBSERVATION
+            // rather than emit a hollow yes/no question.
+            const legacyHypotheses = unifiedGateResult.diagnostic_escalation?.hypotheses?.length || 0;
+            const enrichedHypotheses = enrichment?.matched_rules?.length || 0;
+            const totalHypotheses = legacyHypotheses + enrichedHypotheses;
+
+            if (totalHypotheses === 0 && symptomKeysForEscalation.length > 0) {
+              console.warn(`   🚨 [SYMBOLIC_CONTRACT_VIOLATION] DIAGNOSTIC_ESCALATION emitted with zero hypotheses — downgrading to OBSERVATION mode`);
+              unifiedGateResult.response_mode = ResponseMode.OBSERVATION;
+              unifiedGateResult.reason = `${unifiedGateResult.reason} | wave-p:zero_hypotheses_downgrade`;
+              // Fall through to the OBSERVATION branch below by skipping the rest of this block
+            } else {
+              // Build the canonical escalation payload from enriched data
+              // when available; otherwise use the gate's data as-is.
+              const matchedRulesForEscalation = enrichment?.matched_rules
+                ?? (orchestratorResponse.metadata?.matchedRules || []);
+
+              const escalationInput: DiagnosticEscalationInput = {
+                language: detectedLanguage,
+                crop_name: finalCropName || 'Unknown',
+                growth_stage: finalGrowthStage || 'Unknown',
+                days_since_sowing: finalDaysSinceSowing,
+                symptom_keys: symptomKeysForEscalation,
+                matched_rules: matchedRulesForEscalation,
+                current_confidence: symbolicConfidence
+                  || unifiedGateResult.diagnostic_escalation?.current_confidence
+                  || 0.4,
+                treatment_threshold: unifiedGateResult.diagnostic_escalation?.threshold_for_treatment || 0.7,
+              };
+
+              // Rebuild escalation data with the populated matched_rules so
+              // hypotheses[] is no longer empty.
+              const rebuiltEscalation = generateDiagnosticEscalationData(escalationInput);
+
+              // Attach Stage-2 chip payload + localized question
+              if (enrichment && enrichment.clarification_chips.length > 0) {
+                rebuiltEscalation.clarification_chips = enrichment.clarification_chips;
+                rebuiltEscalation.clarification_question = enrichment.clarification_question;
+              }
+
+              responseContent = generateDiagnosticEscalationResponse(
+                rebuiltEscalation,
+                escalationInput
+              );
+
+              // Stage-3 frontend contract: surface chips through the same
+              // metadata.clarification_options shape the chip renderer
+              // already consumes (label/value/description/observation_key).
+              const clarificationOptionsForUi = (enrichment?.clarification_chips || []).length > 0
+                ? {
+                    question: enrichment!.clarification_question,
+                    options: enrichment!.clarification_chips.map(c => ({
+                      label: c.label,
+                      value: c.value,
+                      description: c.description,
+                      observation_key: c.observation_key,
+                    })),
+                    selectionType: 'SINGLE_CHOICE' as const,
+                  }
+                : undefined;
+
+              // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend
+              orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
+              orchestratorResponse.metadata = {
+                ...orchestratorResponse.metadata,
+                diagnostic_escalation: rebuiltEscalation,
+                orchestrator_type: 'DIAGNOSTIC_ESCALATION',
+                clarification_options: clarificationOptionsForUi,
+                wave_p_enrichment: enrichment
+                  ? {
+                      candidate_count: enrichment.candidate_count,
+                      top_confidence: enrichment.top_confidence,
+                      chips_rendered: enrichment.clarification_chips.length,
+                      enricher_version: enrichment.enricher_version,
+                    }
+                  : null,
+                hypotheses_count: rebuiltEscalation.hypotheses.length,
+              };
+            }
+          }
+
+          // After the DIAGNOSTIC_ESCALATION block above, response_mode may
+          // have been downgraded to OBSERVATION by the Wave-P invariant.
+          // Fall through to the OBSERVATION / fallback branches below.
+          if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
+            // ─────────────────────────────────────────────────────────────
+            // WAVE-Q INVARIANT (P0-C): "NO RULE FIRED → NO RECOMMENDATION".
+            // Only consume observationRuleHit.text (which is a rule's stored
+            // action_text) when the symbolic engine actually fired ≥1 rule.
+            // Otherwise the farmer is shown a treatment narrative that was
+            // never approved by rule evaluation. Fall back to the neutral
+            // young-crop monitoring template instead.
+            // ─────────────────────────────────────────────────────────────
+            const dec: any = (orchestratorResponse.decision_output as any) || {};
+            const rulesFiredCount = Array.isArray(dec.rules_applied)
+              ? dec.rules_applied.length
+              : Array.isArray(dec.layered_rule_result?.rules_applied)
+                ? dec.layered_rule_result.rules_applied.length
+                : Array.isArray(orchestratorResponse.metadata?.rulesFired)
+                  ? orchestratorResponse.metadata.rulesFired.length
+                  : 0;
+
+            if (observationRuleHit && rulesFiredCount > 0) {
+              responseContent = observationRuleHit.text;
+              aiModelUsed = `rule:${observationRuleHit.rule_id}`;
+              console.log(`   📜 [ObservationResponse] using rule=${observationRuleHit.rule_id} source=${observationRuleHit.source} rules_fired=${rulesFiredCount} lang=${detectedLanguage}`);
+            } else {
+              if (observationRuleHit && rulesFiredCount === 0) {
+                console.warn(`   🚫 [SymbolicInvariant] observationRuleHit=${observationRuleHit.rule_id} suppressed — rules_fired=0; serving monitoring template instead of rule_action_text.`);
+              }
+              // Young crop - use monitoring response with authority-reconciled values
+              responseContent = generateYoungCropMonitoringResponse(
+                detectedLanguage,
+                finalCropName,
+                finalGrowthStage,
+                finalDaysSinceSowing
+              );
+            }
+          } else if (unifiedGateResult.response_mode !== ResponseMode.DIAGNOSTIC_ESCALATION) {
             // No confirmed diagnosis or authority block - use observation response
+            // (Wave-P guard: never overwrite a successfully built DIAGNOSTIC_ESCALATION response)
             responseContent = generateObservationOnlyResponse(
               detectedLanguage,
               finalCropName,
               unifiedGateResult.reason
             );
           }
-          
+
+
+          // P0 HOTFIX: prefer safety-gate clarification text when present
+          if (safetyGateResult?.clarification_text) {
+            responseContent = safetyGateResult.clarification_text;
+            console.log(`   🛡️ Safety-gate clarification text used (override_mode=${safetyGateResult.override_mode})`);
+          }
+
           // Skip LLM formatting - use gate-generated response
           console.log(`   📋 Using unified gate fallback response (no LLM)`);
           if (renderContext.authority_override_applied) {
@@ -1509,6 +2091,38 @@ serve(async (req) => {
           // Ensure decision_output includes rich SSOT fields (action_text/reason_text/knowledge_text)
           // so narration can always be generated from decision_rules, not templates.
           const decisionOutputForFormatting = orchestratorResponse.decision_output;
+
+          // ───────────────────────────────────────────────────────────────
+          // WAVE-R: SYMBOLIC INVARIANT GATE — universal safety contract.
+          // Runs BEFORE hydrate and BEFORE the LLM formatter so that:
+          //   • rules_fired===0 ⇒ primary_decision is nulled out, all
+          //     candidate evidence preserved under `internal_candidates`.
+          //   • emitted rule_id ∉ fired rule_ids ⇒ same scrub.
+          // The gate also writes `decisionOutput.response_payload` as the
+          // single farmer-visible surface for downstream consumers.
+          // Crop-agnostic, language-agnostic, no agronomy logic.
+          // ───────────────────────────────────────────────────────────────
+          try {
+            const _gateRes = await enforceNoRuleNoTreatment(decisionOutputForFormatting, {
+              trace_id: traceId,
+              tenant_id: finalTenantId ?? null,
+              farmer_id: finalFarmerId ?? null,
+              session_id: (orchestratorResponse as any)?.metadata?.session_id ?? null,
+              crop_code: ((landContext as any)?.crop_code ?? (landContext as any)?.current_crop?.crop_code ?? null),
+              language: detectedLanguage,
+              intent: (orchestratorResponse as any)?.metadata?.intent_code ?? null,
+              observations: {
+                confirmed: (orchestratorResponse as any)?.metadata?.confirmed_observations ?? [],
+              },
+              observation_rule_hit: typeof observationRuleHit !== 'undefined' ? observationRuleHit : null,
+            });
+            console.log(
+              `🛡️ [SymbolicInvariantGate] action=${_gateRes.gate_action} rules_fired=${_gateRes.rules_fired_count} emitted=${_gateRes.emitted_rule_id ?? 'none'} scrubbed=[${_gateRes.scrubbed_rule_ids.join(',')}]`,
+            );
+          } catch (e) {
+            console.warn(`[SymbolicInvariantGate] non-fatal: ${(e as Error).message}`);
+          }
+
           hydrateDecisionOutputRichText(decisionOutputForFormatting);
 
           // ── Load farmer profile + respectful addressing (presentation-only)
@@ -1536,7 +2150,27 @@ serve(async (req) => {
             supabase_client: supabase,
             farmer_addressing: farmerAddressing,
           };
-          
+
+          // ═══════════════════════════════════════════════════════════════════
+          // VARIETY INJECTION GATE (pre-LLM, deterministic)
+          // Hard-asserts the resolved variety_profile on the land context
+          // actually reaches the symbolic brain / LLM input. If it silently
+          // dropped, we log a SYMBOLIC_CONTRACT_VIOLATION but do NOT block —
+          // narration still proceeds; the post-LLM gate catches omission.
+          // ═══════════════════════════════════════════════════════════════════
+          const landVarietyProfile = (landContext as any)?.variety_profile || null;
+          const preGate = assertVarietyInjected({
+            land_context_variety_profile: landVarietyProfile,
+            formatter_variety_profile: (formatterInput.land_context as any)?.variety_profile || null,
+            decision_context_variety: (decisionOutputForFormatting as any)?.canonical_context?.variety || null,
+          });
+          if (!preGate.passed) {
+            console.error(`🚫 [VARIETY-ASSERT/pre] SYMBOLIC_CONTRACT_VIOLATION trace=${traceId}`);
+            for (const v of preGate.violations) console.error(`   - ${v}`);
+          } else if (landVarietyProfile) {
+            console.log(`🌱 [VARIETY-ASSERT/pre] variety SSOT injected: ${landVarietyProfile.name}`);
+          }
+
           // Call LLM formatter with timeout protection
           const formatterPromise = formatRecommendationsWithLLM(formatterInput);
           const timeoutPromise = new Promise<LLMFormatterOutput>((_, reject) => {
@@ -1569,6 +2203,54 @@ serve(async (req) => {
               ));
             } else {
               responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+            }
+          }
+
+          // ═══════════════════════════════════════════════════════════════════════════
+          // VARIETY HONOUR GATE (post-LLM, deterministic)
+          // Blocks any response that omits the variety name when a variety
+          // SSOT is attached, or that contradicts maturity windows /
+          // resistance flags from variety_resistance. Falls back to the
+          // template renderer (which the LLM-prompt build always seeds with
+          // the variety block) so the farmer still gets the SSOT.
+          // ═══════════════════════════════════════════════════════════════════════════
+          if (landVarietyProfile) {
+            const postGate = assertResponseHonorsVariety(responseContent, landVarietyProfile);
+            if (!postGate.passed) {
+              console.error(`🚫 [VARIETY-ASSERT/post] BLOCKED trace=${traceId} ` +
+                `name_mentioned=${postGate.checked.name_mentioned} ` +
+                `maturity=${postGate.checked.maturity_consistent} ` +
+                `resistance=${postGate.checked.resistance_consistent}`);
+              for (const v of postGate.violations) console.error(`   - ${v}`);
+
+              // Deterministic remediation: render from symbolic SSOT directly.
+              // buildFormattedRecommendationsList consumes decision_output and
+              // (via the formatter contract) preserves variety facts verbatim.
+              try {
+                if (orchestratorResponse.decision_output?.primary_decision) {
+                  const fallbackText = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
+                    orchestratorResponse.decision_output,
+                    detectedLanguage,
+                    supabase,
+                  ));
+                  const revalidate = assertResponseHonorsVariety(fallbackText, landVarietyProfile);
+                  if (revalidate.passed) {
+                    responseContent = fallbackText;
+                    console.log(`   ✅ [VARIETY-ASSERT/post] template fallback honours variety SSOT`);
+                  } else {
+                    // Last-resort: append a deterministic variety footer so the
+                    // SSOT is never silently dropped to the farmer.
+                    const lbl = landVarietyProfile.label_mr || landVarietyProfile.label_hi || landVarietyProfile.name;
+                    const code = landVarietyProfile.variety_code ? ` [${landVarietyProfile.variety_code}]` : '';
+                    responseContent = `${fallbackText}\n\n— ${lbl}${code}`;
+                    console.warn(`   ⚠️ [VARIETY-ASSERT/post] template still violated; appended variety footer`);
+                  }
+                }
+              } catch (fallbackErr) {
+                console.error(`   ❌ [VARIETY-ASSERT/post] fallback failed:`, (fallbackErr as Error).message);
+              }
+            } else {
+              console.log(`   ✅ [VARIETY-ASSERT/post] response honours variety SSOT`);
             }
           }
         } // End of prescription gate allowed block
@@ -1624,6 +2306,52 @@ serve(async (req) => {
         responseContent = responseContent.replace(dosagePattern, '[dosage removed]');
       }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // RCA #17 DEFENSIVE GUARD (2026-06-07): Universal "fake symptom" leak guard.
+    // No farmer should ever see the literal token `{symptom}`, the literal word
+    // `"symptom"`, or its force-translated quoted variants (e.g. `"लक्षण"`,
+    // `"लक्षणा"`, `"लक्षण"`) when there were NO actual reported symptoms.
+    // If any of these leak through (any code path: LLM template, safety-gate
+    // clarification, fallback), replace with a stage-aware safe message built
+    // from the canonical context we already have.
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (responseContent) {
+      const PLACEHOLDER_RE = /\{[a-zA-Z_]+\}|"\s*(symptom|लक्षण|लक्षणा|लक्षणे|लक्षण्|लक्षणं|लक्षणा)\s*"|'\s*symptom\s*'/i;
+      if (PLACEHOLDER_RE.test(responseContent)) {
+        console.error(`🚨 [LeakGuard] Fake-symptom / unfilled-placeholder leak detected — substituting safe stage-aware fallback`);
+        console.error(`   Original (truncated): ${responseContent.slice(0, 160)}`);
+        const ctxCrop =
+          (orchestratorResponse as any)?.dataAudit?.land?.current_crop ||
+          (orchestratorResponse as any)?.decision_output?.metadata?.lockedCropContext?.current_crop ||
+          '';
+        const ctxStage =
+          (orchestratorResponse as any)?.dataAudit?.land?.growth_stage ||
+          (orchestratorResponse as any)?.decision_output?.metadata?.lockedCropContext?.growth_stage ||
+          '';
+        const ctxDas =
+          (orchestratorResponse as any)?.dataAudit?.land?.days_since_sowing ??
+          (orchestratorResponse as any)?.decision_output?.metadata?.lockedCropContext?.days_since_sowing ??
+          null;
+        const dasText = ctxDas !== null ? ` (${ctxDas} DAS)` : '';
+        if (detectedLanguage === 'mr') {
+          responseContent = ctxCrop
+            ? `तुमचे ${ctxCrop} पीक सध्या ${ctxStage || 'सध्याच्या'} अवस्थेत${dasText} आहे. सध्या स्पष्ट कीड/रोगाची लक्षणे नोंदवलेली नाहीत. कृपया कोणत्या भागावर (पाने/खोड/मूळ) काही दिसत असेल तर सांगा, किंवा फोटो पाठवा — म्हणजे योग्य सल्ला देता येईल.`
+            : `कृपया तुम्हाला पिकात नक्की काय दिसत आहे ते सांगा (पाने, खोड, मूळ) किंवा एक स्पष्ट फोटो पाठवा.`;
+        } else if (detectedLanguage === 'hi') {
+          responseContent = ctxCrop
+            ? `आपकी ${ctxCrop} फसल अभी ${ctxStage || 'मौजूदा'} अवस्था${dasText} में है। अभी कोई स्पष्ट कीट/रोग लक्षण दर्ज नहीं हैं। कृपया बताएं कि पौधे के किस भाग (पत्ते/तना/जड़) पर कुछ दिख रहा है, या एक साफ फोटो भेजें।`
+            : `कृपया बताएं कि फसल में आपको क्या दिख रहा है (पत्ते/तना/जड़) या एक साफ फोटो भेजें।`;
+        } else {
+          responseContent = ctxCrop
+            ? `Your ${ctxCrop} crop is currently at ${ctxStage || 'its current'} stage${dasText}. No clear pest/disease symptoms have been reported yet. Please tell me which part (leaves/stem/root) shows something, or share a clear photo for an accurate recommendation.`
+            : `Please tell me what exactly you are seeing on the crop (leaves/stem/root) or share a clear photo.`;
+        }
+        aiModelUsed = aiModelUsed || 'leak-guard-stage-aware';
+      }
+    }
+
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATION GATE: Prevent silent failures before saving response
@@ -1693,101 +2421,261 @@ serve(async (req) => {
     }
     
     // Store user message with preprocessed_content (English normalized)
+    // Persist + capture {id, created_at} so the client can replace its
+    // optimistic LocalDB rows with server-authoritative ones (fixes
+    // chat-reopen sequence drift caused by client-side timestamps).
+    let persistedUserMessage: { id: string; created_at: string; role: 'user' } | null = null;
+    let persistedAssistantMessage: { id: string; created_at: string; role: 'assistant' } | null = null;
+    let messageStorageStatus: 'ok' | 'partial' | 'failed' = 'ok';
     try {
-      await supabase.from('ai_chat_messages').insert({
-        session_id: currentSessionId,
-        tenant_id: finalTenantId,
-        farmer_id: finalFarmerId,
-        role: 'user',
-        content: userMessageContent, // Original in user's language
-        preprocessed_content: preprocessedContent, // Normalized to English for NLU
-        language: detectedLanguage,
-        message_type: imageUrl ? 'image_analysis' : 'text',
-        image_urls: imageUrl ? [imageUrl] : null,
-        is_training_candidate: true,
-        inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
-        conversation_turn_number: messages.length,
-        metadata: {
-          source: 'orchestrator_v1',
-          has_image: !!imageUrl,
-          land_id: landId,
-          language_detected: detectedLanguage,
-          preprocessed: true
-        }
-      });
-      
+      const { data: userRow, error: userErr } = await supabase
+        .from('ai_chat_messages')
+        .insert({
+          session_id: currentSessionId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
+          role: 'user',
+          content: userMessageContent,
+          preprocessed_content: preprocessedContent,
+          language: detectedLanguage,
+          message_type: imageUrl ? 'image_analysis' : 'text',
+          image_urls: imageUrl ? [imageUrl] : null,
+          is_training_candidate: true,
+          inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
+          conversation_turn_number: messages.length,
+          metadata: {
+            source: 'orchestrator_v1',
+            has_image: !!imageUrl,
+            land_id: landId,
+            language_detected: detectedLanguage,
+            preprocessed: true
+          }
+        })
+        .select('id, created_at')
+        .single();
+      if (userErr) {
+        messageStorageStatus = 'failed';
+        console.warn(`⚠️ [Storage] user-row insert failed: ${userErr.message}`);
+      } else if (userRow) {
+        persistedUserMessage = { id: userRow.id, created_at: userRow.created_at, role: 'user' };
+      }
+
       // Store assistant response with language-appropriate content
-      // FIXED: Now includes tokens_used tracking for cost monitoring
       const tokensUsed = llmFormatterOutput?.tokens_used || null;
-      
-      await supabase.from('ai_chat_messages').insert({
-        session_id: currentSessionId,
-        tenant_id: finalTenantId,
-        farmer_id: finalFarmerId,
-        role: 'assistant',
-        content: responseContent, // In user's language (translated if needed)
-        language: detectedLanguage,
-        message_type: 'orchestrator',
-        response_time_ms: responseTime,
-        decision_brain_source: true,
-        ai_model: aiModelUsed || 'template', // PHASE 5: Track LLM model used
-        tokens_used: tokensUsed,  // NEW: Track token usage for cost monitoring
-        is_training_candidate: true,
-        conversation_turn_number: messages.length + 1,
-        // Store actions with explicit filter reasons
-        actions_returned: actions_returned,
-        actions_filtered_out: actions_filtered_out,
-        metadata: {
-          orchestrator_type: orchestratorResponse.type,
-          confidence: orchestratorResponse.metadata?.confidence,
-          safety_status: orchestratorResponse.metadata?.safety_status,
-          rules_applied: orchestratorResponse.metadata?.rules_applied,
-          agents_used: orchestratorResponse.metadata?.agents_used,
-          decision_id: orchestratorResponse.decision_id,
-          trace_id: traceId,
-          actions_returned_count: actions_returned?.length || 0,
-          actions_filtered_count: actions_filtered_out?.length || 0,
-          all_actions_filtered: allActionsFiltered,
-          filter_categories: audit_log.filter_categories,
-          // PHASE 5: LLM formatter tracking
-          llm_formatter_used: !!llmFormatterOutput,
-          llm_formatter_source: llmFormatterOutput?.source,
-          llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
-          tokens_used: tokensUsed,
-          // VALIDATION GATE
-          response_validation_passed: validationResult.passed,
-          validation_errors: validationResult.passed ? undefined : validationResult.errors,
-          language_pipeline: {
-            input_language: detectedLanguage,
-            output_language: detectedLanguage,
-            translation_applied: !responseHasTargetLanguage
-          },
-          // P0 FIX: Persist clarification options for reload after app restart
-          clarification_options: (orchestratorResponse.type === 'CLARIFICATION_QUESTION' || orchestratorResponse.type === 'CLARIFICATION_NEEDED')
-            ? {
-                question: responseContent,
-                options: orchestratorResponse.question?.options || [],
-                selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
-              }
-            : undefined,
-          // P0 FIX: Persist structured decision data for rich card reload
-          decision_brain_data: orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output
-            ? {
-                primary_decision: orchestratorResponse.decision_output.primary_decision,
-                secondary_decisions: orchestratorResponse.decision_output.secondary_decisions,
-                blocked_actions: orchestratorResponse.decision_output.blocked_actions,
-                land_context: orchestratorResponse.dataAudit?.land,
-                confidence: orchestratorResponse.metadata?.confidence,
-                risk_level: orchestratorResponse.decision_output.risk_level
-              }
-            : undefined,
-          // P0 FIX: Persist diagnostic escalation data
-          diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
+
+      // Task 7: classify response_source for symbolic-vs-LLM dashboards.
+      const _oType = String(orchestratorResponse.type || '').toUpperCase();
+      const _meta: any = orchestratorResponse.metadata || {};
+      const _rulesFired = Array.isArray(_meta.rules_applied) ? _meta.rules_applied.length : 0;
+      const _sourceTag = String(_meta.source || '').toLowerCase();
+      const _confirmedObs: string[] = Array.isArray(_meta.confirmed_observation_codes)
+        ? _meta.confirmed_observation_codes
+        : Array.isArray(_meta.observations)
+          ? _meta.observations
+          : [];
+      const responseSource: string = (() => {
+        if (_sourceTag === 'symbolic_empty_fallback') return 'symbolic_empty_fallback';
+        if (_oType.includes('CLARIFICATION')) return 'symbolic_clarification';
+        if (_rulesFired > 0) return llmFormatterOutput ? 'llm_translation_only' : 'symbolic_rule_fired';
+        // Task 3: symbolic produced ZERO rules even though the farmer confirmed
+        // observations → reclassify as symbolic_empty_fallback and audit-log.
+        if (_confirmedObs.length > 0) {
+          (async () => {
+            try {
+              await supabase.from('ai_chat_audit_logs').insert({
+                tenant_id: finalTenantId,
+                farmer_id: finalFarmerId,
+                session_id: currentSessionId,
+                event_type: 'symbolic_empty_after_confirmed_observations',
+                event_data: {
+                  trace_id: traceId,
+                  intent_code: _meta.intent_code ?? null,
+                  crop_code: _meta.crop_code ?? null,
+                  growth_stage: _meta.growth_stage ?? null,
+                  das: _meta.das ?? null,
+                  confirmed_observation_codes: _confirmedObs,
+                  candidate_rule_ids: _meta.candidate_rule_ids ?? null,
+                  orchestrator_type: orchestratorResponse.type,
+                },
+              });
+            } catch (_e) { /* non-fatal */ }
+          })();
+          return 'symbolic_empty_fallback';
         }
-      });
-      
-      console.log('💾 [Storage] Messages saved with language consistency');
+        return 'llm_general_knowledge';
+      })();
+
+      // WAVE F: Clarification-origin classifier.
+      // Wave E telemetry showed 42/47 silent matches (89%) were
+      // CLARIFICATION_QUESTION — rules matched but the orchestrator forced a
+      // clarification instead of returning the decision. Bucketing by
+      // *whether rules matched before clarification was forced* tells us
+      // whether to fix the pre-rule clarifier (no symptoms yet) or the
+      // post-match clarifier (matched rules suppressed = real defect).
+      //
+      // Buckets:
+      //   post_match_clarification  : rules fired AND confidence ≥ threshold
+      //                               yet clarification was forced → WS13 bug
+      //   post_match_low_confidence : rules fired but confidence < threshold
+      //                               (expected; not a defect)
+      //   hypothesis_differential   : multiple equally-likely hypotheses
+      //   pre_rule_clarification    : no rules fired (legitimate symptom
+      //                               collection)
+      //   emergency_triage          : emergency observation path
+      //   non_clarification         : not a clarification response
+      const clarificationOrigin: string = (() => {
+        if (!_oType.includes('CLARIFICATION')) return 'non_clarification';
+        const meta: any = _meta;
+        const isEmergency =
+          String(meta.escalation_reason || '').toLowerCase().includes('emergency') ||
+          String(meta.diagnostic_escalation_data?.escalation_type || '').toLowerCase().includes('emergency');
+        if (isEmergency) return 'emergency_triage';
+        const isDifferential =
+          meta.differential_diagnosis === true ||
+          (Array.isArray(meta.competing_hypotheses) && meta.competing_hypotheses.length > 1) ||
+          String(meta.clarification_strategy || '').toLowerCase().includes('differential');
+        if (isDifferential) return 'hypothesis_differential';
+        if (_rulesFired > 0) {
+          const conf = Number(meta.confidence ?? 0);
+          const threshold = Number(meta.confidence_threshold ?? 0.5);
+          return conf < threshold ? 'post_match_low_confidence' : 'post_match_clarification';
+        }
+        // WAVE J: distinguish pre_brain (rules matched, brain never assembled
+        // primary_decision) from pre_rule (no rules ever matched). The Wave I
+        // attribution view uses this bucket to surface the orchestrator paths
+        // that strand matched rules. Without this split, both fall under
+        // pre_rule_clarification and the real defect (matched-but-clarified)
+        // stays invisible.
+        if (_rulesFired > 0) return 'pre_brain_clarification';
+        return 'pre_rule_clarification';
+      })();
+
+      // WAVE J: structured warning so log scans can surface the exact emission
+      // site of every pre_brain_clarification turn (paired with metadata.
+      // clarification_site set at the emission). The Wave I dashboard is
+      // queryable post-hoc; this is the real-time signal.
+      if (clarificationOrigin === 'pre_brain_clarification') {
+        console.warn(
+          `[WAVE_J_PRE_BRAIN_CLARIFICATION] site=${(orchestratorResponse as any).metadata?.clarification_site ?? 'unknown'} rules_fired=${_rulesFired} agents=${JSON.stringify((orchestratorResponse as any).metadata?.agents_used ?? [])}`
+        );
+      }
+
+      const { data: assistantRow, error: assistantErr } = await supabase
+        .from('ai_chat_messages')
+        .insert({
+          session_id: currentSessionId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
+          role: 'assistant',
+          content: responseContent,
+          language: detectedLanguage,
+          message_type: 'orchestrator',
+          response_time_ms: responseTime,
+          decision_brain_source: true,
+          ai_model: aiModelUsed || 'template',
+          tokens_used: tokensUsed,
+          is_training_candidate: true,
+          conversation_turn_number: messages.length + 1,
+          actions_returned: actions_returned,
+          actions_filtered_out: actions_filtered_out,
+          response_source: responseSource,
+          metadata: {
+            orchestrator_type: orchestratorResponse.type,
+            confidence: orchestratorResponse.metadata?.confidence,
+            safety_status: orchestratorResponse.metadata?.safety_status,
+            rules_applied: orchestratorResponse.metadata?.rules_applied,
+            agents_used: orchestratorResponse.metadata?.agents_used,
+            decision_id: orchestratorResponse.decision_id,
+            trace_id: traceId,
+            actions_returned_count: actions_returned?.length || 0,
+            actions_filtered_count: actions_filtered_out?.length || 0,
+            all_actions_filtered: allActionsFiltered,
+            filter_categories: audit_log.filter_categories,
+            llm_formatter_used: !!llmFormatterOutput,
+            llm_formatter_source: llmFormatterOutput?.source,
+            llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
+            tokens_used: tokensUsed,
+            response_validation_passed: validationResult.passed,
+            validation_errors: validationResult.passed ? undefined : validationResult.errors,
+            language_pipeline: {
+              input_language: detectedLanguage,
+              output_language: detectedLanguage,
+              translation_applied: !responseHasTargetLanguage
+            },
+            clarification_options: (orchestratorResponse.type === 'CLARIFICATION_QUESTION' || orchestratorResponse.type === 'CLARIFICATION_NEEDED')
+              ? {
+                  question: responseContent,
+                  options: orchestratorResponse.question?.options || [],
+                  selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
+                }
+              : undefined,
+            // WAVE E: top-level attribution columns so SQL aggregation is trivial
+            // (no need to traverse decision_brain_data->funnel->largest_drop). These
+            // mirror values already present in nested brain data — adding them at
+            // the top level unblocks `GROUP BY crop_context, drop_stage` queries
+            // that the WS13 audit needs to localize the 73% match→decision drop.
+            crop_context: (
+              _meta?.crop_code
+              ?? orchestratorResponse.dataAudit?.land?.current_crop
+              ?? orchestratorResponse.decision_output?.input_context?.crop?.code
+              ?? orchestratorResponse.decision_output?.input_context?.crop?.name
+              ?? null
+            ),
+            growth_stage: _meta?.growth_stage ?? orchestratorResponse.dataAudit?.land?.growth_stage ?? null,
+            intent_code: _meta?.intent_code ?? null,
+            response_source: responseSource,
+            funnel_largest_drop: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.stage ?? null,
+            funnel_largest_drop_count: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.lost ?? null,
+            clarification_origin: clarificationOrigin,
+            // WAVE J: per-emission-site identifier so dashboards can attribute
+            // the surviving pre_brain_clarification drops to the precise code
+            // path that produced them. Set inside metadata at every CLARIFICATION
+            // return site by `CLARIFICATION_SITES`.
+            clarification_site: (orchestratorResponse as any).metadata?.clarification_site ?? null,
+            // WAVE K: disposition (INTENTIONAL_DIFFERENTIAL / INTENTIONAL_FOLLOWUP /
+            // INTENTIONAL_GATE / DEFECT_SUSPECT) so the attribution view can
+            // separate by-design clarifications from real defects. Resolved from
+            // SITE_DISPOSITIONS in utils/clarification-site-tag.ts so the SQL
+            // view and runtime stay in sync from a single source of truth.
+            clarification_site_disposition: getSiteDisposition(
+              (orchestratorResponse as any).metadata?.clarification_site ?? null
+            ),
+            // WAVE D: ALWAYS persist decision_brain_data regardless of response type.
+            // Previously this was gated to type === 'DECISION_PROVIDED', which silently
+            // dropped brain state for 73% (47/64) of matched turns — making the
+            // match→decision attribution impossible. Now every turn carries the
+            // brain snapshot (primary if available, plus gate/clarification/funnel
+            // attribution so drop points are queryable post-hoc).
+            decision_brain_data: {
+              response_type: orchestratorResponse.type,
+              primary_decision: orchestratorResponse.decision_output?.primary_decision ?? null,
+              secondary_decisions: orchestratorResponse.decision_output?.secondary_decisions ?? null,
+              blocked_actions: orchestratorResponse.decision_output?.blocked_actions ?? null,
+              land_context: orchestratorResponse.dataAudit?.land ?? null,
+              confidence: orchestratorResponse.metadata?.confidence ?? null,
+              risk_level: orchestratorResponse.decision_output?.risk_level ?? null,
+              // Drop-point attribution surface (Wave C/D)
+              gate_decision: (orchestratorResponse as any).metadata?.gate_decision ?? null,
+              clarification: (orchestratorResponse as any).metadata?.clarification ?? null,
+              funnel: (orchestratorResponse as any).metadata?.funnel ?? null,
+              rule_source_diff: (orchestratorResponse as any).metadata?.rule_source_diff ?? null,
+              dropped_reason: (orchestratorResponse as any).metadata?.dropped_reason ?? null
+            },
+            diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
+          }
+        })
+        .select('id, created_at')
+        .single();
+      if (assistantErr) {
+        messageStorageStatus = messageStorageStatus === 'failed' ? 'failed' : 'partial';
+        console.warn(`⚠️ [Storage] assistant-row insert failed: ${assistantErr.message}`);
+      } else if (assistantRow) {
+        persistedAssistantMessage = { id: assistantRow.id, created_at: assistantRow.created_at, role: 'assistant' };
+      }
+
+      console.log(`💾 [Storage] Messages saved status=${messageStorageStatus} user=${!!persistedUserMessage} assistant=${!!persistedAssistantMessage}`);
     } catch (storageError) {
+      messageStorageStatus = 'failed';
       console.warn('⚠️ [Storage] Failed to save messages:', storageError);
       // Continue - don't fail the request for storage issues
     }
@@ -1807,6 +2695,17 @@ serve(async (req) => {
       traceId,
       aiModelUsed
     );
+
+    // Bug 2 fix: surface persisted-row identifiers so the client can replace
+    // its optimistic LocalDB records (and avoid clock-skew sequence drift on
+    // chat reopen). storage_status is explicit so the UI can mark the turn
+    // as 'failed' when the DB write didn't actually land.
+    (responsePayload as any).persisted_messages = {
+      user: persistedUserMessage,
+      assistant: persistedAssistantMessage,
+      session_id: currentSessionId,
+      storage_status: messageStorageStatus,
+    };
 
     // ═══════════════════════════════════════════════════════════════════════════
     // SESSION-LEVEL DECISION TRACKING
@@ -1855,8 +2754,23 @@ serve(async (req) => {
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
     const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
                                     orchestratorResponse.type === 'CLARIFICATION_NEEDED';
-    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
-                                  orchestratorResponse.metadata?.pendingClarificationOptions || [];
+    // P0 FIX (system-audit 2026-06-22): Preserve canonical observation_code on each
+    // pending option so the next-turn option-selected path can map the farmer's
+    // selection back to a real symbolic code. Previously we persisted o.label only,
+    // which dropped the per-option observation_code — on multilingual labels
+    // (Marathi/Hindi/Tamil) the label-keyword fallback in mapOptionToObservation()
+    // returned null/default, no observation reached the rule engine, 0 rules fired,
+    // and the response collapsed to DIAGNOSTIC_ESCALATION → no_action_needed.
+    // Format: "<label> [obs_keys:<CANONICAL_CODE>]" — matchFarmerResponseToOption
+    // and the orchestrator already parse [obs_keys:...] from pending options.
+    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => {
+      const label = String(o?.label ?? '').trim();
+      const code = (o?.observation_code || o?.observation_key || '').toString().trim();
+      // Don't double-embed if label already carries [obs_keys:...]
+      if (!label) return label;
+      if (/\[obs_keys:[^\]]+\]/i.test(label)) return label;
+      return code ? `${label} [obs_keys:${code}]` : label;
+    }) || orchestratorResponse.metadata?.pendingClarificationOptions || [];
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
@@ -1899,7 +2813,57 @@ serve(async (req) => {
     } else if (isClarificationResponse) {
       computedDecisionState = 'awaiting_clarification';
     } else {
-      computedDecisionState = 'no_action_needed';
+      // ─────────────────────────────────────────────────────────────────────
+      // SUPPRESSOR-5 FIX (2026-06-19): the bare catch-all used to emit
+      // `no_action_needed` whenever orchestrator returned `DECISION_PROVIDED`
+      // with zero actions. For a symptom-bearing query that left the farmer
+      // staring at a generic 277-char template every turn.
+      //
+      // If the brain produced no actions but the request clearly carried
+      // symptom evidence (intent flagged as symptomatic, or observation/
+      // induction set non-empty), surface `awaiting_clarification` so the
+      // session loop will ask one targeted clarifying question instead of
+      // closing the turn as resolved.
+      // ─────────────────────────────────────────────────────────────────────
+      const orchestratorMeta = orchestratorResponse?.metadata || {};
+      const decisionMeta = orchestratorResponse?.decision_output?.metadata || {};
+      const symptomEvidence = Boolean(
+        orchestratorMeta.symptom_evidence_present ||
+        decisionMeta.symptom_evidence_present ||
+        orchestratorMeta.induction_symptom_count > 0 ||
+        decisionMeta.induction_symptom_count > 0 ||
+        (Array.isArray(orchestratorMeta.observation_codes) && orchestratorMeta.observation_codes.length > 0) ||
+        (Array.isArray(decisionMeta.observation_codes) && decisionMeta.observation_codes.length > 0)
+      );
+      if (orchestratorResponse?.type === 'DECISION_PROVIDED' && (!actions_returned || actions_returned.length === 0) && symptomEvidence) {
+        computedDecisionState = 'awaiting_clarification';
+        console.warn(`⚠️ [Session] DECISION_PROVIDED with 0 actions + symptom evidence → forcing 'awaiting_clarification' (was 'no_action_needed')`);
+      } else {
+        computedDecisionState = 'no_action_needed';
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // WAVE-S: ORPHAN VOCABULARY TRACKER
+    // If no rules actually fired AND no canonical observation resolved from
+    // the farmer's utterance, log the raw token to
+    // `observation_vocabulary_gaps` so unmapped vernacular terms surface
+    // automatically. Fire-and-forget; never blocks the response.
+    // ─────────────────────────────────────────────────────────────────────
+    try {
+      if (rulesActuallyFired(orchestratorResponse) === 0 && userMessageContent && userMessageContent.length <= 500) {
+        const lang = (detectedLanguage || language || 'und').toString().slice(0, 5).toLowerCase();
+        const matches = await resolveObservationCanonical(userMessageContent, { language: lang, source: 'farmer_utterance' });
+        if (matches.length === 0) {
+          // resolveObservationCanonical already logged the gap on miss; this
+          // block is defensive in case the RPC path failed silently.
+          recordVocabularyGap(userMessageContent, lang, 'farmer_utterance', {
+            decision_state: computedDecisionState,
+          }).catch(() => {});
+        }
+      }
+    } catch (_e) {
+      // never block the response on vocabulary telemetry
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -2014,11 +2978,51 @@ serve(async (req) => {
     };
     
     try {
+      // Task 6: derive next ConversationContext from this turn's outcome.
+      const _meta2: any = orchestratorResponse.metadata || {};
+      const _isClarification = String(orchestratorResponse.type || '').toUpperCase().includes('CLARIFICATION');
+      const _rulesFiredNow = Array.isArray(_meta2.rules_applied) ? _meta2.rules_applied.length : 0;
+      const _newConfirmed: string[] = Array.isArray(_meta2.confirmed_observation_codes)
+        ? _meta2.confirmed_observation_codes
+        : Array.isArray(_meta2.observations) ? _meta2.observations : [];
+      const _newRuledOut: string[] = Array.isArray(_meta2.ruled_out_observation_codes)
+        ? _meta2.ruled_out_observation_codes : [];
+      const _candidates: string[] = Array.isArray(_meta2.candidate_rule_ids) ? _meta2.candidate_rule_ids : [];
+
+      const mergedConfirmed = Array.from(new Set([...conversationContext.confirmed_observations, ..._newConfirmed]));
+      const mergedRuledOut  = Array.from(new Set([...conversationContext.ruled_out_observations,  ..._newRuledOut]));
+
+      const nextConversationContext: ConversationContext = (() => {
+        // Terminal outcomes clear the context.
+        if (_rulesFiredNow > 0 || (!_isClarification && conversationContext.intent_code === null && _newConfirmed.length === 0)) {
+          return {
+            intent_code: null,
+            confirmed_observations: [],
+            ruled_out_observations: [],
+            active_rule_candidates: [],
+            round_counter: 0,
+            max_rounds: conversationContext.max_rounds,
+            last_updated: new Date().toISOString(),
+          };
+        }
+        // Clarification turn → advance round counter & merge observations.
+        return {
+          intent_code: _meta2.intent_code ?? conversationContext.intent_code ?? null,
+          confirmed_observations: mergedConfirmed,
+          ruled_out_observations: mergedRuledOut,
+          active_rule_candidates: _candidates.length > 0 ? _candidates : conversationContext.active_rule_candidates,
+          round_counter: _isClarification ? conversationContext.round_counter + 1 : conversationContext.round_counter,
+          max_rounds: conversationContext.max_rounds,
+          last_updated: new Date().toISOString(),
+        };
+      })();
+
       // CRITICAL: Include tenant_id and farmer_id in update filter for security isolation
       await supabase
         .from('ai_chat_sessions')
         .update({ 
           updated_at: new Date().toISOString(),
+          conversation_state: nextConversationContext as unknown as Record<string, unknown>,
           metadata: {
             language,
             source: 'orchestrator_v1',
@@ -2031,7 +3035,7 @@ serve(async (req) => {
             recommendations_count: actions_returned?.length || 0,
             // CRITICAL: Decision tracking for session memory
             decision_tracking: decisionTracking,
-            // Persist conversation state for continuity
+            // Legacy nested conversation_state (kept for back-compat with dashboards)
             conversation_state: {
               turn_count: decisionTracking.turn_count,
               has_photo: !!imageUrl,
@@ -2044,6 +3048,8 @@ serve(async (req) => {
         .eq('id', currentSessionId)
         .eq('tenant_id', finalTenantId)  // CRITICAL: Tenant isolation
         .eq('farmer_id', finalFarmerId); // CRITICAL: Farmer isolation
+
+      console.log(`📤 [ConversationContext] Persisted: intent=${nextConversationContext.intent_code} confirmed=${nextConversationContext.confirmed_observations.length} round=${nextConversationContext.round_counter}/${nextConversationContext.max_rounds}`);
       
       console.log(`💾 [Session] Decision tracking persisted:`, {
         state: decisionTracking.decision_state,
@@ -2054,6 +3060,155 @@ serve(async (req) => {
       });
     } catch (sessionUpdateError) {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WAVE A.5 / PHASE 2 — CLARIFICATION INVARIANT (final, defence-in-depth)
+    // If clarification_required is true anywhere in the payload, STRIP every
+    // treatment-carrying field. This is the production-bug fix for the
+    // reported emergence-failure flow where DiagnosisOnlyMode was bypassing
+    // clarification.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const invariantResult = enforceClarificationInvariant(
+        responsePayload as Record<string, any>,
+        { trace_id: traceId, source: 'index.ts:final-response' }
+      );
+      if (invariantResult.invariant_violated) {
+        (responsePayload as any).metadata = (responsePayload as any).metadata || {};
+        (responsePayload as any).metadata.clarification_invariant = {
+          violated: true,
+          fields_stripped: invariantResult.fields_stripped,
+        };
+      }
+    } catch (invErr) {
+      console.warn('[ClarificationInvariant] gate threw — fail-open:', (invErr as Error).message);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WAVE B1 — Rule-source shadow diff (RULE_SOURCE=shadow, default)
+    //   Compare the rule_ids that actually fired (in-memory bundled path)
+    //   against the candidate set a SQL-pushdown query would have offered.
+    //   Logged into ai_decision_log.output_data.rule_source_diff for forensic
+    //   review. NO behavior change — pure observability.
+    // ═══════════════════════════════════════════════════════════════════════
+    let _ruleSourceDiff: RuleSourceDiff | null = null;
+    try {
+      if (getRuleSource() === 'shadow') {
+        const _resp: any = responsePayload;
+        const _meta: any = _resp?.metadata || {};
+        const bundledFired: string[] = Array.isArray(_meta?.rules_applied)
+          ? _meta.rules_applied.map((r: any) => (typeof r === 'string' ? r : r?.rule_id)).filter(Boolean)
+          : Array.isArray(_meta?.matchedRules)
+            ? _meta.matchedRules.map((r: any) => (typeof r === 'string' ? r : r?.rule_id)).filter(Boolean)
+            : [];
+        const dbSelection = await selectCandidateRuleIdsFromDb({
+          crop_code: _meta?.crop_code || _resp?.crop_code,
+          crop_stage: _meta?.crop_stage || _meta?.stage,
+          observations: Array.isArray(_meta?.observations) ? _meta.observations : [],
+        }, { timeout_ms: 2000 });
+        _ruleSourceDiff = computeRuleSourceDiff(bundledFired, dbSelection.rule_ids, {
+          db_elapsed_ms: dbSelection.elapsed_ms,
+          db_error: dbSelection.error,
+        });
+        if (_ruleSourceDiff.divergence_alert) {
+          console.warn(
+            `[RuleSourceShadow] divergence: bundled=${_ruleSourceDiff.bundled_count} db=${_ruleSourceDiff.db_candidate_count} ` +
+            `ratio=${_ruleSourceDiff.bundled_in_db_ratio} only_bundled=${_ruleSourceDiff.only_bundled_count} only_db=${_ruleSourceDiff.only_db_count}`
+          );
+        }
+      }
+    } catch (diffErr) {
+      console.warn('[RuleSourceShadow] diff failed — non-fatal:', (diffErr as Error).message);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WAVE C — Funnel snapshot (per-stage pipeline drops)
+    // ═══════════════════════════════════════════════════════════════════════
+    let _funnelSnapshot: FunnelSnapshot | null = null;
+    try {
+      // record actions_returned now so the snapshot below sees it
+      const _resp: any = responsePayload;
+      const actionsCount = Array.isArray(_resp?.actions) ? _resp.actions.length : 0;
+      // funnelRecord is internal; re-import dynamically via funnelEnd which captures all prior writes.
+      // We attribute actions_returned through evaluation_trace below.
+      _funnelSnapshot = funnelEnd(traceId);
+      if (_funnelSnapshot) {
+        _funnelSnapshot.counters.actions_returned = actionsCount;
+        if (_funnelSnapshot.largest_drop) {
+          console.warn(
+            `[Funnel ${traceId}] largest drop: ${_funnelSnapshot.largest_drop.from}=${_funnelSnapshot.largest_drop.from_n} → ${_funnelSnapshot.largest_drop.to}=${_funnelSnapshot.largest_drop.to_n}`
+          );
+        }
+        if (_resp && _resp.metadata) _resp.metadata.funnel = _funnelSnapshot.counters;
+      }
+    } catch (fnlErr) {
+      console.warn('[Funnel] snapshot failed — non-fatal:', (fnlErr as Error).message);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WAVE A1 — ai_decision_log insert (fire-and-forget)
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const _resp: any = responsePayload;
+      const _meta: any = _resp?.metadata || {};
+      logDecisionTurn({
+        trace_id: traceId,
+        tenant_id: finalTenantId ?? null,
+        farmer_id: finalFarmerId ?? null,
+        land_id: _meta?.land_id ?? _resp?.land_id ?? null,
+        decision_type: String(_meta?.intent_code || _resp?.type || 'UNKNOWN'),
+        model_version: 'orchestrator-v1',
+        prompt_version: _meta?.prompt_version ?? null,
+        input_data: {
+          query: typeof _meta?.query === 'string' ? _meta.query.slice(0, 500) : undefined,
+          observations: Array.isArray(_meta?.observations) ? _meta.observations.slice(0, 30) : undefined,
+          intent: _meta?.intent_code,
+          language: _meta?.language,
+        },
+        output_data: {
+          response_type: _resp?.type,
+          clarification_required:
+            _resp?.clarification_required === true ||
+            _resp?.type === 'CLARIFICATION_QUESTION',
+          actions_count: Array.isArray(_resp?.actions) ? _resp.actions.length : 0,
+          recommendations_count: Array.isArray(_meta?.actions_returned)
+            ? _meta.actions_returned.length
+            : 0,
+          rules_fired_count: Array.isArray(_meta?.rules_applied)
+            ? _meta.rules_applied.length
+            : 0,
+          response_source: _meta?.source || _resp?.source,
+          clarification_invariant: _meta?.clarification_invariant,
+          rule_source_diff: _ruleSourceDiff,
+        },
+        reasoning: typeof _meta?.reasoning === 'string' ? _meta.reasoning.slice(0, 2000) : null,
+        confidence_score: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
+        execution_time_ms: typeof _meta?.processing_time_ms === 'number' ? _meta.processing_time_ms : null,
+        success: true,
+        evaluation_trace: {
+          agents_used: _meta?.agents_used ?? null,
+          funnel: _funnelSnapshot ? {
+            counters: _funnelSnapshot.counters,
+            largest_drop: _funnelSnapshot.largest_drop ?? null,
+            event_count: _funnelSnapshot.events.length,
+          } : null,
+        },
+      }).catch(() => {});
+
+      logOrchestratorMetrics({
+        session_id: currentSessionId ?? null,
+        tenant_id: finalTenantId ?? null,
+        total_processing_time_ms: typeof _meta?.processing_time_ms === 'number' ? _meta.processing_time_ms : null,
+        success: true,
+        phase_timings: _meta?.phase_timings || {},
+        agent_performance: { agents_used: _meta?.agents_used || [] },
+        safety_status: _meta?.safety_status,
+        final_confidence: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
+        rules_applied_count: Array.isArray(_meta?.rules_applied) ? _meta.rules_applied.length : 0,
+      }).catch(() => {});
+    } catch (logErr) {
+      console.warn('[DecisionLog] insert failed — non-fatal:', (logErr as Error).message);
     }
 
     return new Response(
@@ -2250,9 +3405,30 @@ ${content}`;
 function hydrateDecisionOutputRichText(decisionOutput: any): void {
   if (!decisionOutput?.primary_decision) return;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // WAVE-R SYMBOLIC INVARIANT: hydration of treatment text (action_text /
+  // reason_text / knowledge_text) is allowed ONLY when at least one rule
+  // actually fired AND the primary_decision's rule_id is in the fired set.
+  // Without this guard, candidates surfaced in `matched_responses` (e.g. by
+  // observation-rule-lookup or hypothesis enrichers) are narrated as if they
+  // had been validated by the symbolic engine — the very leak Wave-R seals.
+  // ─────────────────────────────────────────────────────────────────────────
+  const fired = firedRuleIds(decisionOutput);
+  if (fired.length === 0) {
+    console.log('🚫 [SymbolicInvariant] hydrate skipped — rules_fired=0');
+    return;
+  }
+  const firedSet = new Set(fired);
   const primary = decisionOutput.primary_decision;
-  primary.application_details = primary.application_details || {};
+  const primaryRid = (primary as any)?.rule_id ?? null;
+  if (!primaryRid || !firedSet.has(primaryRid)) {
+    console.log(
+      `🚫 [SymbolicInvariant] hydrate skipped — primary rule_id=${primaryRid} not in fired=[${fired.join(',')}]`,
+    );
+    return;
+  }
 
+  primary.application_details = primary.application_details || {};
   const app = primary.application_details as Record<string, any>;
 
   // 1) Prefer direct fields on primary_decision (some executors place them here)
@@ -2262,10 +3438,13 @@ function hydrateDecisionOutputRichText(decisionOutput: any): void {
   app.i18n_key ??= (primary as any).i18n_key;
   app.rule_id ??= primary.rule_id;
 
-  // 2) If still missing, hydrate from matched_responses by rule_id
+  // 2) If still missing, hydrate from matched_responses BUT only entries whose
+  //    rule_id is in the fired set (Wave-R rule-identity verification).
   const ruleId = primary.rule_id || app.rule_id;
-  if (ruleId && Array.isArray(decisionOutput.matched_responses)) {
-    const resp = decisionOutput.matched_responses.find((r: any) => r?.rule_id === ruleId);
+  if (ruleId && firedSet.has(ruleId) && Array.isArray(decisionOutput.matched_responses)) {
+    const resp = decisionOutput.matched_responses.find(
+      (r: any) => r?.rule_id === ruleId && firedSet.has(r.rule_id),
+    );
     if (resp) {
       app.action_text ??= resp.action_text;
       app.reason_text ??= resp.reason_text;
@@ -2392,12 +3571,13 @@ function validateResponseBeforeSave(params: {
     // ═══════════════════════════════════════════════════════════════════════════
     const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
     
-    // Use crop-specific minimum harvest age instead of blanket 120 days
-    const MIN_HARVEST_AGE: Record<string, number> = {
-      'SUGARCANE': 270, 'COTTON': 150, 'RICE': 120, 'WHEAT': 120,
-      'MAIZE': 90, 'SOYBEAN': 95, 'GROUNDNUT': 110, 'ONION': 120
-    };
-    const cropMinAge = MIN_HARVEST_AGE[crop] || 120;
+    // Use crop-specific minimum harvest age sourced from crop_baseline_guidelines_v2
+    // (max das_end across stages). Falls back to 120 only when baseline cache misses.
+    const baselineMaxDas = crop ? getMaxDASForCrop(crop) : null;
+    const cropMinAge = baselineMaxDas ?? 120;
+    if (crop && baselineMaxDas === null) {
+      console.log(`   ℹ️ Check 5: No baseline DAS found for crop "${crop}" — defaulting cropMinAge=120`);
+    }
     
     const hasValidCropData = (effectiveDays !== null && effectiveDays > 0) || effectiveStage;
     const isYoungCrop = hasValidCropData && (
@@ -2498,9 +3678,17 @@ function validateResponseBeforeSave(params: {
 }
 
 /**
- * Generate fallback response when validation fails
- * CRITICAL FIX: Use available actions if present instead of generic "technical issue"
- * Ensures user always gets helpful feedback even on failures
+ * SSOT-COMPLIANT FALLBACK: renders ONLY DB-sourced product/dosage data.
+ * NO hardcoded greetings, prose, or agronomic claims. If the symbolic brain
+ * provided no usable actions, returns the orchestrator's own `fallback_advice`
+ * (DB-sourced) or empty string after logging SYMBOLIC_CONTRACT_VIOLATION.
+ *
+ * Removed (was hardcoded English):
+ *   - "🌾 Hello farmer friend!" greeting
+ *   - "📌 **What to do now:**" header (UI label, not DB)
+ *   - "I encountered a technical issue..." prose
+ *   - "📞 For urgent help: Contact your nearest KVK" prose
+ *   - "✅ Best wishes! 🙏" closing
  */
 function generateValidationFailureFallback(
   lang: string,
@@ -2508,160 +3696,87 @@ function generateValidationFailureFallback(
   orchestratorResponse: OrchestratorResponse,
   actionsReturned?: any[] | null
 ): string {
-  // CRITICAL FIX: If we have actions, build a minimal response from them
-  // This prevents "technical issue" messages when we actually have recommendations
+  const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
+  const isValidProductName = (name: string | null | undefined): boolean => {
+    if (!name) return false;
+    const cleanName = name.toLowerCase().trim();
+    return cleanName.length > 2 && !invalidNames.includes(cleanName);
+  };
+
   if (actionsReturned && actionsReturned.length > 0) {
-    console.log(`   🔄 Validation fallback: Building response from ${actionsReturned.length} available actions`);
-    
     const parts: string[] = [];
-    
-    // Greeting
-    parts.push('🌾 Hello farmer friend!');
-    
-    // Header
-    parts.push('📌 **What to do now:**');
-    
-    // Extract actions - with STRICT validation to prevent placeholder content
-    const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
-    
-    const isValidProductName = (name: string | null | undefined): boolean => {
-      if (!name) return false;
-      const cleanName = name.toLowerCase().trim();
-      return cleanName.length > 2 && !invalidNames.includes(cleanName);
-    };
-    
+    let recNumber = 1;
+
     const primaryAction = actionsReturned.find(a => a.type === 'primary');
-    let hasValidPrimaryAction = false;
-    
     if (primaryAction) {
-      const rawProductName = primaryAction.product_name || 
-                             primaryAction.application_details?.product_name || 
+      const rawProductName = primaryAction.product_name ||
+                             primaryAction.application_details?.product_name ||
                              primaryAction.title;
-      
-      // CRITICAL: Validate product name is meaningful
       if (isValidProductName(rawProductName)) {
-        hasValidPrimaryAction = true;
-        
-        // CRITICAL FIX: Translate chemical name to farmer-friendly language
         const translatedProductName = getProductName(rawProductName, lang);
-        
         const rawDosage = primaryAction.dosage || primaryAction.application_details?.dosage;
-        const isValidDosage = rawDosage && 
-                              rawDosage !== 'N/A' && 
-                              rawDosage !== 'See product label' &&
-                              rawDosage.length > 0;
-        
-        let actionText = `1. **${translatedProductName}**`;
-        // Only add dosage if not already included in translation
-        if (isValidDosage && !translatedProductName.includes('/')) actionText += ` - ${rawDosage}`;
-        parts.push(actionText);
+        const isValidDosage = rawDosage && rawDosage !== 'N/A' && rawDosage !== 'See product label' && rawDosage.length > 0;
+        let line = `${recNumber}. **${translatedProductName}**`;
+        if (isValidDosage && !translatedProductName.includes('/')) line += ` — ${rawDosage}`;
+        parts.push(line);
+        recNumber++;
       }
     }
-    
-    // If no valid primary action, check secondary actions
-    if (!hasValidPrimaryAction) {
-      console.log(`   ⚠️ Primary action invalid, checking secondary actions...`);
-      
-      // Check if any secondary action has valid data
-      const validSecondaryActions = actionsReturned.filter(a => {
-        if (a.type === 'primary') return false;
-        const name = a.action || a.title || a.product_name;
-        return isValidProductName(name);
-      });
-      
-      if (validSecondaryActions.length === 0) {
-        // NO valid actions at all - use technical issue fallback
-        console.log(`   ⚠️ No valid actions found in actionsReturned, using technical fallback`);
-        const fallbackText = `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`;
-        return fallbackText;
-      }
-      
-      // Use valid secondary actions - TRANSLATE to farmer-friendly language
-      validSecondaryActions.slice(0, 3).forEach((action, idx) => {
-        const rawActionName = action.action || action.title || action.product_name;
+
+    const secondaryActions = actionsReturned.filter(a => a.type !== 'primary');
+    for (const action of secondaryActions.slice(0, 3)) {
+      const rawActionName = action.action || action.title || action.product_name;
+      if (isValidProductName(rawActionName)) {
         const translatedName = getProductName(rawActionName, lang);
-        parts.push(`${idx + 1}. **${translatedName}**`);
-      });
-    } else {
-      // Add secondary actions (only if primary was valid) - TRANSLATE names
-      const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
-      let actionIdx = 2;
-      for (const action of secondaryActions.slice(0, 2)) {
-        const rawActionName = action.action || action.title;
-        if (isValidProductName(rawActionName)) {
-          const translatedName = getProductName(rawActionName, lang);
-          parts.push(`${actionIdx}. **${translatedName}**`);
-          actionIdx++;
-        }
+        parts.push(`${recNumber}. **${translatedName}**`);
+        recNumber++;
       }
     }
-    
-    // Closing
-    parts.push('\n✅ Best wishes! 🙏');
-    
-    return parts.join('\n\n');
+
+    if (parts.length > 0) return parts.join('\n');
   }
-  
-  // Original fallback when no actions available
-  // English-only fallback — forceTranslateResponse() handles localization at runtime
-  return `🌾 **Hello Farmer Friend!**
 
-I encountered a technical issue while preparing recommendations. Please provide the following information:
+  // No DB-sourced actions available — surface the orchestrator's own fallback_advice (also DB-sourced)
+  // or log a contract violation and return empty so upstream can decide what to do.
+  const advice = orchestratorResponse?.error?.fallback_advice?.trim() || '';
+  if (advice) return advice;
 
-1. What is your crop?
-2. What is the current problem?
-3. What is the crop stage?
-
-With this information, I can provide you proper guidance.
-
-📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`;
+  console.error(`[SYMBOLIC_CONTRACT_VIOLATION] generateValidationFailureFallback called with no DB-sourced actions and no fallback_advice. validationErrors=${JSON.stringify(validationErrors)}`);
+  return '';
 }
 
 /**
  * Generate response when ALL actions were filtered
  */
 function generateAllActionsFilteredResponse(
-  filteredActions: any[], 
+  filteredActions: any[],
   lang: string
 ): string {
+  // SSOT-COMPLIANT: render ONLY DB-sourced reasons grouped by their canonical
+  // category code. NO hardcoded greetings, NO English category labels, NO
+  // "what to do next" prose. The category code is a stable enum value the
+  // narration layer can localize via i18n; here we only emit the raw code so
+  // it never masks a missing DB string.
   const parts: string[] = [];
-  
-  // Greeting
-  parts.push('Hello farmer friend! 🌾');
-  
-  // Explanation
-  parts.push('⚠️ Unable to provide recommendations at this time. Here\'s why:');
-  
-  // List filtered reasons by category
+
   const categoryReasons: Record<string, string[]> = {};
   filteredActions.forEach(action => {
     const category = action.filter_category || 'UNKNOWN';
     if (!categoryReasons[category]) categoryReasons[category] = [];
-    categoryReasons[category].push(action.reason || action.action);
+    const reason = (action.reason || action.action || '').toString().trim();
+    if (reason) categoryReasons[category].push(reason);
   });
-  
-  // English-only category labels — forceTranslateResponse() handles localization
-  const categoryLabels: Record<string, string> = {
-    REGULATORY: '📋 Regulatory Restrictions',
-    SAFETY: '🛡️ Safety Reasons',
-    SEASONAL: '📅 Seasonal Restrictions',
-    WEATHER: '🌧️ Weather Conditions',
-    ECONOMIC: '💰 Economic Factors',
-    COMPATIBILITY: '⚗️ Compatibility Issues',
-    UNKNOWN: 'ℹ️ Other Reasons'
-  };
-  
-  Object.entries(categoryReasons).forEach(([category, reasons]) => {
-    const label = categoryLabels[category] || category;
-    parts.push(`\n${label}:`);
-    reasons.slice(0, 2).forEach(reason => {
-      parts.push(`  • ${reason}`);
-    });
-  });
-  
-  // Suggestion
-  parts.push('\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer');
-  
+
+  for (const [category, reasons] of Object.entries(categoryReasons)) {
+    if (reasons.length === 0) continue;
+    parts.push(`[${category}]`);
+    for (const reason of reasons.slice(0, 2)) parts.push(`• ${reason}`);
+  }
+
+  if (parts.length === 0) {
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] generateAllActionsFilteredResponse called with no DB-sourced reasons');
+    return '';
+  }
   return parts.join('\n');
 }
 
@@ -3049,94 +4164,97 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
 }
 
 /**
- * FALLBACK: When decision brain runs but produces no recommendations
- * Generates explanatory message asking for more information
+ * SSOT-COMPLIANT NO-RECOMMENDATIONS FALLBACK
+ *
+ * The symbolic brain is contractually required to attach `error.fallback_advice`
+ * (DB-sourced) whenever it produces no recommendations. This function emits
+ * that text verbatim. If it is missing we log SYMBOLIC_CONTRACT_VIOLATION and
+ * return empty — we DO NOT invent greetings, clarification questions, or
+ * encouragement prose here.
+ *
+ * Removed (was hardcoded English):
+ *   - "Hello farmer friend! 🌾" greeting
+ *   - "I understand you're dealing with X..." prose
+ *   - "What is the crop name? / growth stage? / symptoms? / send a photo" template
+ *   - "Once I have this information..." closing
  */
 function generateNoRecommendationsFallback(response: OrchestratorResponse, lang: string): string {
-  const parts: string[] = [];
-  
-  // Greeting
-  parts.push('Hello farmer friend! 🌾');
-  
-  // Extract context clues from response
-  const nluIntent = response.metadata?.nlu_output?.primary_intent;
-  const detectedPest = response.metadata?.nlu_output?.pest_mentions?.[0];
-  const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
-  const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
-  
-  // Build context-aware message — English-only, forceTranslateResponse() handles localization
-  if (detectedPest || detectedDisease) {
-    const target = detectedPest || detectedDisease;
-    parts.push(`I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`);
-  } else {
-    parts.push('To properly answer your question, I need some more information:');
-  }
-  
-  // Numbered list of required information — English-only
-  parts.push('\n1. What is the crop name?\n2. What is the current growth stage?\n3. What symptoms are you seeing?\n4. If possible, send a photo of the affected leaves/plants');
-  
-  // Encouragement
-  parts.push('\nOnce I have this information, I can give you the right recommendation! 🙏');
-  
-  return parts.join('\n\n');
+  const advice = response?.error?.fallback_advice?.trim() || '';
+  if (advice) return advice;
+  console.error(`[SYMBOLIC_CONTRACT_VIOLATION] generateNoRecommendationsFallback: response.error.fallback_advice missing for type=${response?.type}`);
+  return '';
 }
 
 /**
- * Build formatted numbered list from decision output
+ * SSOT-COMPLIANT RECOMMENDATIONS RENDERER
+ *
+ * Renders ONLY DB-sourced fields from the DecisionOutput:
+ *   - active_ingredient + dosage_per_acre (from rule rich data)
+ *   - application_details.method
+ *   - timing.best_time_of_day (raw code only — no hardcoded English window)
+ *   - application_details.action_text / reason_text / knowledge_text
+ *   - secondary_actions[].action + .reason
+ *   - blocked_actions[].reason (BLOCKED status)
+ *
+ * Removed (was hardcoded English / fabricated agronomic content):
+ *   - "Hello farmer friend! 🌾" greeting
+ *   - "⚠️ Stop: Safety check required" default
+ *   - "⏱️ Postpone spray — Spray when weather clears. Continue crop monitoring for now."
+ *   - "👀 No action required at this time. Continue monitoring."
+ *   - "📌 Recommendations:" header label
+ *   - timingLabels map (Morning 6-10 AM / Evening 4-6 PM / Any time)
+ *   - richLabels map (Action / Reason / Knowledge English labels)
+ *   - "✅ Best wishes! 🙏" closing
  */
 async function buildFormattedRecommendationsList(decision: any, lang: string, supabaseClient?: any): Promise<string> {
   const parts: string[] = [];
-  
-  // Greeting
-  parts.push('Hello farmer friend! 🌾');
-  
   const primary = decision.primary_decision;
-  
-  // Status handling
+
+  // BLOCKED — emit DB-sourced reason verbatim or log violation
   if (decision.status === 'BLOCKED') {
-    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    parts.push(`⚠️ **Stop:** ${blockedReason}`);
-    return parts.join('\n\n');
+    const blockedReason = decision.blocked_actions?.[0]?.reason?.trim() || '';
+    if (blockedReason) return blockedReason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: BLOCKED status with no blocked_actions[0].reason');
+    return '';
   }
-  
+
+  // WEATHER_DELAYED — must come from DB (decision.weather_delay_reason or rule text). No hardcoded prose.
   if (decision.status === 'WEATHER_DELAYED') {
-    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
-    return parts.join('\n\n');
+    const weatherReason = (decision.weather_delay_reason || decision.primary_decision?.application_details?.reason_text || '').toString().trim();
+    if (weatherReason) return weatherReason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: WEATHER_DELAYED status with no DB-sourced reason text');
+    return '';
   }
-  
-  // Action type - NO ACTION / MONITOR
+
+  // NO_ACTION / MONITOR_ONLY — render rich texts only (no fabricated "No action required" prose)
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    parts.push('👀 **No action required at this time.** Continue monitoring.');
-
-    // If decision_rules provided rich text, include it so response stays SSOT-based
     const app = primary?.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
-
-    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
-    if (knowledgeText) parts.push(`\n📚 **Knowledge:** ${knowledgeText}`);
-
+    const actionText = (app.action_text as string | undefined)?.trim();
+    const reasonText = (app.reason_text as string | undefined)?.trim();
+    const knowledgeText = (app.knowledge_text as string | undefined)?.trim();
+    if (actionText) parts.push(actionText);
+    if (reasonText) parts.push(reasonText);
+    if (knowledgeText) parts.push(knowledgeText);
+    if (parts.length === 0) {
+      console.error(`[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: ${primary.action_type} with no action_text/reason_text/knowledge_text`);
+      return '';
+    }
     return parts.join('\n\n');
   }
-  
-  // Primary recommendation as numbered list
+
+  // Primary recommendation
   if (primary) {
-    parts.push('📌 **Recommendations:**');
-    
     let recNumber = 1;
     const recParts: string[] = [];
-    
-    // Primary action - CRITICAL FIX: Validate through extractRichRuleData to prevent contaminated data
+
     const appDetails = primary.application_details || {};
     const richData = extractRichRuleData(primary, appDetails);
-    const productName = richData.active_ingredient ? getProductName(richData.active_ingredient, lang) : 'Recommended product';
-    const dosage = richData.dosage_per_acre || '';
-    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const rawIngredient = richData.active_ingredient || '';
+    const productName = rawIngredient ? getProductName(rawIngredient, lang) : '';
+    const dosage = (richData.dosage_per_acre || '').toString().trim();
+    const timing = primary.timing?.best_time_of_day || '';
     const method = appDetails.method || appDetails.application_method || '';
 
-    // PRODUCT MAPPING: Look up market brand names for the active ingredient
     let marketProductLine = '';
     if (richData.active_ingredient && supabaseClient) {
       try {
@@ -3148,84 +4266,73 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
       }
     }
 
-    // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
-    const app = primary.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
+    const actionText = (appDetails.action_text as string | undefined)?.trim();
+    const reasonText = (appDetails.reason_text as string | undefined)?.trim();
+    const knowledgeText = (appDetails.knowledge_text as string | undefined)?.trim();
 
-    // English-only labels — forceTranslateResponse() handles localization
-    const richLabels = { action: 'Action', reason: 'Reason', knowledge: 'Knowledge' };
+    if (!productName && !actionText && !reasonText) {
+      console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: primary decision has no active_ingredient and no action_text/reason_text');
+    }
 
-    let primaryText = `**${recNumber}. ${productName}**`;
+    let primaryText = productName ? `${recNumber}. ${productName}` : `${recNumber}.`;
     if (dosage) primaryText += ` @ ${dosage}`;
 
-    // Add method - translated
     if (method) {
       const methodText = getMethodTranslation(method, lang);
-      primaryText += `\n   📍 ${methodText}`;
+      if (methodText) primaryText += `\n   ${methodText}`;
     }
 
-    // Add timing
-    const timingLabels: Record<string, string> = {
-      MORNING: 'Morning 6-10 AM',
-      EVENING: 'Evening 4-6 PM',
-      ANY: 'Any time'
-    };
-    const timingText = timingLabels[timing] || timingLabels.MORNING;
-    primaryText += `\n   ⏰ ${timingText}`;
+    // Timing: emit raw DB enum code only; narration/i18n layer must localize it.
+    if (timing) primaryText += `\n   [${timing}]`;
 
-    // PRODUCT MAPPING: Append market product brand names
-    if (marketProductLine) {
-      primaryText += `\n   ${marketProductLine}`;
-    }
+    if (marketProductLine) primaryText += `\n   ${marketProductLine}`;
 
-    if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
-    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${reasonText}`;
-    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge}:** ${knowledgeText}`;
+    if (actionText) primaryText += `\n   ${actionText}`;
+    if (reasonText) primaryText += `\n   ${reasonText}`;
+    if (knowledgeText) primaryText += `\n   ${knowledgeText}`;
 
-    // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
-    if (efficacy) {
-      primaryText += ` | 📊 ${efficacy}% effective`;
-    }
+    if (efficacy) primaryText += `\n   ${efficacy}%`;
 
     recParts.push(primaryText);
     recNumber++;
-    
-    // Secondary actions - CRITICAL FIX: Translate action names
+
     if (decision.secondary_actions && decision.secondary_actions.length > 0) {
       decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
         if (alt.action && alt.action !== 'N/A' && alt.action !== 'None') {
-          // Translate action type to farmer language
           const translatedAction = getActionTranslation(alt.action, lang);
-          // Also translate reason if it contains technical terms
-          const reason = alt.reason || '';
-          recParts.push(`**${recNumber}. ${translatedAction}** ${reason ? `- ${reason}` : ''}`);
+          const reason = (alt.reason || '').toString().trim();
+          recParts.push(`${recNumber}. ${translatedAction}${reason ? ` — ${reason}` : ''}`);
           recNumber++;
         }
       });
     }
-    
+
     parts.push(recParts.join('\n'));
   }
-  
-  // Closing
-  parts.push('\n✅ Best wishes! 🙏');
-  
+
   return parts.join('\n\n');
 }
 
 /**
- * Generate clarification prompt when question text is missing
+ * SSOT-COMPLIANT CLARIFICATION PROMPT
+ *
+ * The orchestrator must supply `response.question.text_*` for every
+ * CLARIFICATION_QUESTION branch. If absent we log a contract violation and
+ * return empty — never invent a generic English clarification.
+ *
+ * Removed (was hardcoded English):
+ *   - "Please provide more details about your question..." template
  */
 function generateClarificationPrompt(response: OrchestratorResponse, lang: string): string {
-  // English-only — forceTranslateResponse() handles localization at runtime
-  return 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.';
+  const q = response.question as any;
+  const text = (q?.[`text_${lang}`] || q?.text_en || '').toString().trim();
+  if (text) return text;
+  console.error(`[SYMBOLIC_CONTRACT_VIOLATION] generateClarificationPrompt: response.question.text_* missing for session=${response?.session_id}`);
+  return '';
 }
 
 /**
- * Generic acknowledgment for unknown response types
  * @deprecated Use generateHelpfulErrorResponse instead
  */
 function generateGenericAcknowledgment(lang: string): string {
@@ -3233,84 +4340,90 @@ function generateGenericAcknowledgment(lang: string): string {
 }
 
 /**
- * PRODUCTION FIX: Generate helpful error response with actionable guidance
- * Instead of "we will respond shortly", provide immediate value
+ * SSOT-COMPLIANT ERROR RESPONSE
+ *
+ * Emits the orchestrator-supplied `fallback_advice` verbatim. No hardcoded
+ * greetings, quick tips, or fabricated agronomic guidance.
+ *
+ * Removed (was hardcoded English / fabricated agronomic claims):
+ *   - "🙏 Hello Farmer Friend!" greeting
+ *   - "📋 Tell me: crop / age / problem" template
+ *   - "💡 Quick tips: Monitor your crop regularly / water management / Report new pest signs"
  */
 function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
-  // English-only — forceTranslateResponse() handles localization at runtime
-  return `🙏 Hello Farmer Friend!
-
-${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please provide:
-
-📋 **Tell me:**
-• What is your crop?
-• How old is the crop (days)?
-• What problem are you seeing?
-
-📸 If possible, send a photo of the affected area - I can give more accurate advice!
-
-💡 **Quick tips:**
-• Monitor your crop regularly
-• Maintain proper water management
-• Report any new pest/disease signs`;
+  const advice = (fallbackAdvice || '').trim();
+  if (advice) return advice;
+  console.error('[SYMBOLIC_CONTRACT_VIOLATION] generateHelpfulErrorResponse called with empty fallbackAdvice');
+  return '';
 }
 
 /**
- * Fallback: Build natural language response directly from DecisionOutput
- * Used when CommunicationGenerator fails or returns incomplete data
+ * SSOT-COMPLIANT FALLBACK BUILDER (used when CommunicationGenerator returns
+ * incomplete data). Renders ONLY DB-sourced fields.
+ *
+ * Removed (was hardcoded English / fabricated agronomic claims):
+ *   - "Hello farmer friend! 🌾"
+ *   - "⚠️ Stop: Safety check required" default
+ *   - "⏱️ Postpone spray - Spray when weather clears. Continue crop monitoring for now."
+ *   - "👀 No action required at this time. Continue monitoring."
+ *   - "📌 What to do now:" header label
+ *   - "Recommended treatment" placeholder product name
+ *   - timingLabels map ("Spray in the morning 6-10 AM" / "Evening 4-6 PM" / "Any time of day")
+ *   - English labels "Action:" / "Reason:" / "Knowledge:" / "Alternative measures:" / "Expected efficacy:"
+ *   - "✅ Best wishes! 🙏" closing
  */
 async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
   }
-  
+
   const parts: string[] = [];
-  
-  // English-only — forceTranslateResponse() handles localization at runtime
-  parts.push('Hello farmer friend! 🌾');
-  
   const primary = decision.primary_decision;
-  
-  // Status handling
+
   if (decision.status === 'BLOCKED') {
-    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    parts.push(`⚠️ **Stop:** ${blockedReason}`);
-    return parts.join('\n\n');
+    const blockedReason = (decision.blocked_actions?.[0]?.reason || '').toString().trim();
+    if (blockedReason) return blockedReason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: BLOCKED with no blocked_actions[0].reason');
+    return '';
   }
-  
+
   if (decision.status === 'WEATHER_DELAYED') {
-    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
-    return parts.join('\n\n');
+    const reason = (decision.weather_delay_reason || decision.primary_decision?.application_details?.reason_text || '').toString().trim();
+    if (reason) return reason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: WEATHER_DELAYED with no DB-sourced reason');
+    return '';
   }
-  
-  // Action type
+
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    parts.push('👀 **No action required at this time.** Continue monitoring.');
-
     const app = primary?.application_details || {};
-    if (app.action_text) parts.push(`\n🧾 **Action:** ${app.action_text}`);
-    if (app.reason_text) parts.push(`\n🔍 **Reason:** ${app.reason_text}`);
-    if (app.knowledge_text) parts.push(`\n📚 **Knowledge:** ${app.knowledge_text}`);
-
+    if (app.action_text) parts.push(String(app.action_text).trim());
+    if (app.reason_text) parts.push(String(app.reason_text).trim());
+    if (app.knowledge_text) parts.push(String(app.knowledge_text).trim());
+    if (parts.length === 0) {
+      console.error(`[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: ${primary.action_type} with no rich texts`);
+      return '';
+    }
     return parts.join('\n\n');
   }
-  
-  // Primary recommendation
+
   if (primary) {
     const appDetails = primary.application_details || {};
     const richData = extractRichRuleData(primary, appDetails);
     const rawProductName = richData.active_ingredient || appDetails.product_name || '';
-    const productName = rawProductName ? getProductName(rawProductName, language) : 'Recommended treatment';
-    const dosage = richData.dosage_per_acre || appDetails.concentration || '';
-    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const productName = rawProductName ? getProductName(rawProductName, language) : '';
+    const dosage = (richData.dosage_per_acre || appDetails.concentration || '').toString().trim();
+    const timing = primary.timing?.best_time_of_day || '';
     const method = richData.application_method || appDetails.method || '';
-    
-    parts.push('📌 **What to do now:**');
-    
-    const productLine = dosage ? `${productName} @ ${dosage}` : productName;
-    parts.push(productLine);
 
-    // PRODUCT MAPPING: Append market brand names
+    if (!productName) {
+      console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: primary decision missing active_ingredient/product_name');
+    }
+
+    const productLine = productName
+      ? (dosage ? `${productName} @ ${dosage}` : productName)
+      : (dosage ? `@ ${dosage}` : '');
+    if (productLine) parts.push(productLine);
+
     if (richData.active_ingredient && supabaseClient) {
       try {
         const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
@@ -3321,53 +4434,46 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
         console.warn(`[ProductMapping] Lookup failed in fallback builder:`, err);
       }
     }
-    
+
     if (method) {
       const methodText = getMethodTranslation(method, language);
-      parts.push(`📍 ${methodText}`);
+      if (methodText) parts.push(methodText);
     }
-    
-    const timingLabels: Record<string, string> = {
-      MORNING: 'Spray in the morning 6-10 AM',
-      EVENING: 'Spray in the evening 4-6 PM',
-      ANY: 'Any time of day'
-    };
-    parts.push(`⏰ ${timingLabels[timing] || timingLabels.MORNING}`);
-    
-    // Rich SSOT texts
-    const actionText = appDetails.action_text as string | undefined;
-    const reasonText = appDetails.reason_text as string | undefined;
-    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
-    
+
+    // Timing: emit raw enum code only — narration/i18n layer localizes.
+    if (timing) parts.push(`[${timing}]`);
+
+    const actionText = (appDetails.action_text as string | undefined)?.trim();
+    const reasonText = (appDetails.reason_text as string | undefined)?.trim();
+    if (actionText) parts.push(actionText);
+    if (reasonText) parts.push(reasonText);
+
     const efficacy = primary.expected_outcomes?.efficacy_percent;
-    if (efficacy) {
-      parts.push(`📊 Expected efficacy: ${efficacy}%`);
-    }
+    if (efficacy) parts.push(`${efficacy}%`);
   }
-  
-  // Secondary actions
+
   if (decision.secondary_actions && decision.secondary_actions.length > 0) {
-    parts.push('\n🔄 **Alternative measures:**');
     decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
       if (alt.action) {
         const translatedAction = getActionTranslation(alt.action, language);
-        parts.push(`• ${translatedAction}`);
+        if (translatedAction) parts.push(`• ${translatedAction}`);
       }
     });
   }
-  
-  parts.push('\n✅ Best wishes! 🙏');
-  
+
   return parts.join('\n');
 }
 
 /**
- * Get generic monitoring message when no decision output is available
+ * SSOT-COMPLIANT: when no decision output is available we have nothing to
+ * say. Returning a hardcoded "continue monitoring" sentence violates
+ * Agronomic-Safety-Negligence (e.g., it would suppress urgent-pest treatment).
+ *
+ * Removed: "Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues."
  */
 function getGenericMonitoringMessage(_language: string): string {
-  // English-only — forceTranslateResponse() handles localization at runtime
-  return 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.';
+  console.error('[SYMBOLIC_CONTRACT_VIOLATION] getGenericMonitoringMessage called — no DB-sourced text available');
+  return '';
 }
 
 /**
@@ -3415,7 +4521,8 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
     const urgency = getText(immediate.urgency_indicator?.text);
     
     if (heading || summary) {
-      parts.push(`\n${emoji} ${heading || 'What to do now:'}`);
+      // SSOT: only emit the DB-sourced heading. Do not invent "What to do now:" when missing.
+      if (heading) parts.push(`\n${emoji} ${heading}`);
       if (summary) parts.push(summary);
       if (urgency) parts.push(`⏰ ${urgency}`);
     }
@@ -3427,9 +4534,10 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
     const heading = getText(howTo.heading);
     if (heading) parts.push(`\n🔧 ${heading}`);
     
-    // Materials
+    // Materials — DB-sourced items only; no hardcoded "Materials:" English label.
     if (howTo.materials_needed?.items?.length > 0) {
-      parts.push('🛒 Materials:');
+      const materialsHeading = getText(howTo.materials_needed?.heading);
+      if (materialsHeading) parts.push(`🛒 ${materialsHeading}`);
       howTo.materials_needed.items.forEach((item: any) => {
         const name = getText(item.name);
         if (name && name !== 'Unknown product') parts.push(`• ${name} - ${item.quantity || ''}`);
@@ -3626,8 +4734,30 @@ function transformOrchestratorResponseWithContent(
     };
   }
 
-  // For other types, delegate to the original function
-  return transformOrchestratorResponse(response, language, sessionId, startTime);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LANGUAGE INTEGRITY FIX (2026-06-17): For non-DECISION types (clarification,
+  // photo_request, safety_blocked, escalation, llm_response, system_error) the
+  // legacy transform re-reads `question.text_<lang>` / `blocked_reason.reason_<lang>`
+  // etc. and silently falls back to `text_en` when the lang-specific field is
+  // missing. That bypasses the force-translate pass we ran on `responseContent`
+  // upstream — the DB row is saved in Marathi but the API returns English.
+  //
+  // Authoritative rule: `preGeneratedContent` is the SSOT for what the farmer
+  // sees. The legacy transform still builds the metadata/quickReplies/options
+  // envelope, but we ALWAYS overwrite `response` with the localized content
+  // we already produced and saved to DB.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const legacyPayload = transformOrchestratorResponse(response, language, sessionId, startTime);
+  if (preGeneratedContent && typeof preGeneratedContent === 'string' && preGeneratedContent.trim().length > 0) {
+    if (legacyPayload.response !== preGeneratedContent) {
+      console.log(`🌐 [LangIntegrity] Overriding ${response.type} response with force-translated content (was ${legacyPayload.response?.length || 0} chars, now ${preGeneratedContent.length} chars, lang=${language})`);
+    }
+    legacyPayload.response = preGeneratedContent;
+    if (legacyPayload.metadata) {
+      legacyPayload.metadata.language_pipeline_override = true;
+    }
+  }
+  return legacyPayload;
 }
 
 function transformOrchestratorResponse(
@@ -3691,14 +4821,19 @@ function transformOrchestratorResponse(
           ? response.communication.options
           : [];
       
-      // ✅ CRITICAL FIX: Safe array mapping with null checks
+      // ✅ CRITICAL FIX: Safe array mapping with null checks +
+      // LANGUAGE INTEGRITY (2026-06-17): prefer `label_<lang>` / `text_<lang>`
+      // when the rule provides translated options, fall back to `label`.
+      const pickOptionLabel = (o: any): string => {
+        if (typeof o === 'string') return o;
+        if (o && typeof o === 'object') {
+          return o[`label_${language}`] || o[`text_${language}`] || o.label || o.text || String(o);
+        }
+        return String(o);
+      };
       const safeQuickReplies = rawOptions
         .filter((o: any) => o != null)
-        .map((o: any) => {
-          if (typeof o === 'string') return o;
-          if (typeof o === 'object' && o.label) return o.label;
-          return String(o);
-        });
+        .map(pickOptionLabel);
       
       return {
         response: questionText,
@@ -3715,10 +4850,10 @@ function transformOrchestratorResponse(
           // Now: Include observation_key, description, diagnostic_power for proper UI mapping
           // ═══════════════════════════════════════════════════════════════════════════
           options: rawOptions.map((o: any) => ({
-            label: typeof o === 'string' ? o : (o?.label || String(o)),
+            label: pickOptionLabel(o),
             value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
             observation_key: typeof o === 'object' ? (o?.observation_key || o?.value) : undefined,
-            description: typeof o === 'object' ? o?.description : undefined,
+            description: typeof o === 'object' ? (o?.[`description_${language}`] || o?.description) : undefined,
             diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
           })),
           selectionType: response.metadata?.selectionType || 'SINGLE_CHOICE',

@@ -507,6 +507,7 @@ export function mapCropNameToEnum(cropName: string | undefined): CropType {
   // Use unified normalizer to get canonical English name, then map to enum
   const shortCode = unifiedNormalizeCropCode(cropName);
   const fullName = getFullCropName(shortCode);
+  const enumKey = String(fullName || '').toUpperCase();
   
   // Map full English name to CropType enum
   const enumMap: Record<string, CropType> = {
@@ -519,7 +520,7 @@ export function mapCropNameToEnum(cropName: string | undefined): CropType {
     'TUR': CropType.PIGEON_PEA, 'MUSTARD': CropType.MUSTARD, 'SUNFLOWER': CropType.SUNFLOWER,
   };
   
-  return enumMap[fullName] || CropType.UNKNOWN;
+  return enumMap[enumKey] || CropType.UNKNOWN;
 }
 
 export function mapStageToEnum(stage: string | undefined): CropStage {
@@ -527,7 +528,12 @@ export function mapStageToEnum(stage: string | undefined): CropStage {
   
   const normalized = stage.toLowerCase().trim();
   
-  if (normalized.includes('germin') || normalized.includes('उगवण') || normalized.includes('अंकुरण')) return CropStage.GERMINATION;
+  // NURSERY_STAGE_FIX (2026-06-20): live crop_stage_master rows for rice
+  // DAS≤25 return "nursery" / "seedling"; previously "nursery" fell through
+  // to UNKNOWN, breaking every establishment-stage rule. Map nursery to
+  // GERMINATION (the closest enum for the 0-25 DAS establishment window).
+  if (normalized.includes('nursery') || normalized.includes('रोपवाटिका')) return CropStage.GERMINATION;
+  if (normalized.includes('germin') || normalized.includes('emergence') || normalized.includes('उगवण') || normalized.includes('अंकुरण')) return CropStage.GERMINATION;
   if (normalized.includes('seedling') || normalized.includes('रोप')) return CropStage.SEEDLING;
   if (normalized.includes('tiller') || normalized.includes('फुटवा') || normalized.includes('कल्ले')) return CropStage.TILLERING;
   if (normalized.includes('grand') || normalized.includes('वाढ') || normalized.includes('बढ़वार')) return CropStage.GRAND_GROWTH;
@@ -1029,9 +1035,13 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     ...(input.farmerObservations || []),
     ...(input.imageAnalysisSymptoms || [])
   ];
+  // WAVE-S CASING CONTRACT: canonical observation codes are LOWERCASE in the DB
+  // (observation_master, observation_aliases, decision_rules.conditions_json).
+  // Normalize to lowercase here so symptom_count / membership checks line up
+  // with everything else in the pipeline.
   const normalizedObservationSet = new Set(
     allObservations
-      .map(obs => String(obs || '').trim().toUpperCase())
+      .map(obs => String(obs || '').trim().toLowerCase().replace(/[\s-]+/g, '_'))
       .filter(Boolean)
   );
   const symptomCount = normalizedObservationSet.size;

@@ -15,6 +15,11 @@
  * All biological logic comes from database tables. Zero hardcoded rules.
  */
 
+// Task 7c (2026-06-13): per-request scope threading. Type-only import keeps
+// runtime cost zero for non-scope callers (e.g. proactive batch jobs).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -129,29 +134,80 @@ interface HypothesisRuleMappingRow {
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
-const ENGINE_VERSION = '1.1.0'; // v1.1.0: Fixed subquery bug + crop_group normalization
+const ENGINE_VERSION = '1.2.0'; // v1.2.0: DB-driven crop_group resolution (Wave 3 #7)
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CROP GROUP NORMALIZER
-// Maps short crop codes to canonical crop_group values used in hypothesis_master
-// DB crop_groups: SUGARCANE, COTTON, RICE, WHEAT
+// CROP GROUP NORMALIZER — DB-driven (Wave 3 P1-1)
+// Source of truth: public.crop_synonyms (canonical_crop ↔ variant_name).
+// Fallback static map retained ONLY for cold-start before hydration completes;
+// if a code resolves via fallback, a SYMBOLIC_CONTRACT_VIOLATION is logged so
+// the gap is detected and patched in the synonyms table — never silently.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CROP_CODE_TO_GROUP: Record<string, string> = {
-  'SC': 'SUGARCANE', 'SUGARCANE': 'SUGARCANE', 'sugarcane': 'SUGARCANE',
-  'CTN': 'COTTON', 'COTTON': 'COTTON', 'cotton': 'COTTON',
-  'RICE': 'RICE', 'rice': 'RICE', 'PADDY': 'RICE', 'paddy': 'RICE',
-  'WHEAT': 'WHEAT', 'wheat': 'WHEAT', 'WHT': 'WHEAT',
-  'SOYBEAN': 'SOYBEAN', 'soybean': 'SOYBEAN', 'SOY': 'SOYBEAN',
-  'MAIZE': 'MAIZE', 'maize': 'MAIZE', 'MZ': 'MAIZE',
-  'ONION': 'ONION', 'onion': 'ONION', 'ON': 'ONION',
-  'TOMATO': 'TOMATO', 'tomato': 'TOMATO', 'TM': 'TOMATO',
-  'TUR': 'TUR', 'tur': 'TUR', 'PIGEON_PEA': 'TUR',
+const FALLBACK_CROP_CODE_TO_GROUP: Record<string, string> = {
+  'SC': 'SUGARCANE', 'SUGARCANE': 'SUGARCANE',
+  'CTN': 'COTTON', 'COTTON': 'COTTON',
+  'RICE': 'RICE', 'PADDY': 'RICE',
+  'WHEAT': 'WHEAT', 'WHT': 'WHEAT',
+  'SOYBEAN': 'SOYBEAN', 'SOY': 'SOYBEAN',
+  'MAIZE': 'MAIZE', 'MZ': 'MAIZE',
+  'ONION': 'ONION', 'ON': 'ONION',
+  'TOMATO': 'TOMATO', 'TM': 'TOMATO',
+  'BRINJAL': 'BRINJAL', 'BR': 'BRINJAL', 'EGGPLANT': 'BRINJAL',
+  'CHILI': 'CHILI', 'CHILLI': 'CHILI', 'CH': 'CHILI',
+  'POTATO': 'POTATO', 'PT': 'POTATO',
 };
 
-function normalizeCropGroup(input: string): string {
-  return CROP_CODE_TO_GROUP[input] || CROP_CODE_TO_GROUP[input.toUpperCase()] || input.toUpperCase();
+// Module-scoped synonym cache (process lifetime, 1h TTL).
+let cropSynonymMap: Map<string, string> | null = null;
+let cropSynonymLoadedAt = 0;
+let cropSynonymLoading: Promise<void> | null = null;
+const SYNONYM_TTL_MS = 60 * 60 * 1000;
+
+async function hydrateCropSynonyms(supabase: any): Promise<void> {
+  if (cropSynonymMap && (Date.now() - cropSynonymLoadedAt) < SYNONYM_TTL_MS) return;
+  if (cropSynonymLoading) return cropSynonymLoading;
+  cropSynonymLoading = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('crop_synonyms')
+        .select('canonical_crop, variant_name')
+        .eq('is_active', true);
+      if (error) {
+        console.warn(`⚠️ [CausalHypothesis] crop_synonyms load failed: ${error.message}`);
+        return;
+      }
+      const map = new Map<string, string>();
+      // Seed with canonical→canonical identity for every crop_group in use.
+      for (const c of ['SUGARCANE','COTTON','RICE','WHEAT','SOYBEAN','MAIZE','ONION','TOMATO','BRINJAL','CHILI','POTATO']) {
+        map.set(c, c);
+      }
+      for (const row of (data || []) as Array<{canonical_crop: string; variant_name: string}>) {
+        if (!row?.variant_name || !row?.canonical_crop) continue;
+        map.set(row.variant_name.toUpperCase().trim(), row.canonical_crop.toUpperCase().trim());
+      }
+      cropSynonymMap = map;
+      cropSynonymLoadedAt = Date.now();
+      console.log(`✅ [CausalHypothesis] crop_synonyms hydrated: ${map.size} entries`);
+    } finally {
+      cropSynonymLoading = null;
+    }
+  })();
+  return cropSynonymLoading;
 }
+
+function normalizeCropGroup(input: string): string {
+  const key = (input || '').toUpperCase().trim();
+  if (cropSynonymMap && cropSynonymMap.has(key)) return cropSynonymMap.get(key)!;
+  const fallback = FALLBACK_CROP_CODE_TO_GROUP[input] || FALLBACK_CROP_CODE_TO_GROUP[key];
+  if (fallback) {
+    console.warn(`⚠️ SYMBOLIC_CONTRACT_VIOLATION [CausalHypothesis] crop_group="${input}" resolved via static fallback to "${fallback}" — add to crop_synonyms table`);
+    return fallback;
+  }
+  console.warn(`⚠️ SYMBOLIC_CONTRACT_VIOLATION [CausalHypothesis] crop_group="${input}" unknown — using uppercase passthrough`);
+  return key;
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE
@@ -176,7 +232,9 @@ async function loadHypothesesForCrop(
   cropGroup: string,
   supabase: any
 ): Promise<CachedHypothesisData> {
+  await hydrateCropSynonyms(supabase);
   const cacheKey = normalizeCropGroup(cropGroup);
+
   const cached = hypothesisCache.get(cacheKey);
   if (cached && (Date.now() - cached.loadedAt) < HYPOTHESIS_CACHE_TTL) {
     return cached;
@@ -202,9 +260,11 @@ async function _loadHypothesesImpl(
   // ═══════════════════════════════════════════════════════════════════════
   // PHASE 1: Load master hypotheses to extract IDs
   // ═══════════════════════════════════════════════════════════════════════
+  // Post-migration: hypothesis_master.crop_group is stored lowercase canonical.
+  const cropGroupLc = (cropGroup || '').toLowerCase();
   const masterRes = await supabase.from('hypothesis_master')
     .select('*')
-    .eq('crop_group', cropGroup)
+    .eq('crop_group', cropGroupLc)
     .eq('is_active', true);
 
   const hypotheses: HypothesisMasterRow[] = masterRes.data || [];
@@ -287,26 +347,72 @@ function evaluateCondition(
   observations: string[]
 ): HypothesisConditionStatus {
   const { condition_type, condition_key, operator, value_json } = condition;
+  const normalizeStageToken = (value: unknown) => String(value || '').toUpperCase().replace(/[\s-]+/g, '_');
+  const ESTABLISHMENT_STAGE_FAMILY = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
 
   switch (condition_type) {
     case 'OBSERVATION': {
-      const code = (value_json as any)?.code;
-      if (!code) return HypothesisConditionStatus.FAILED;
-      
-      if (operator === 'CONTAINS') {
-        const obsLower = observations.map(o => o.toLowerCase());
-        const codeLower = code.toLowerCase();
-        return obsLower.includes(codeLower) 
-          ? HypothesisConditionStatus.PASSED 
-          : HypothesisConditionStatus.FAILED;
+      // ─── Multi-format OBSERVATION resolver ────────────────────────────
+      // Hypothesis authors across crops use four different schemas:
+      //   1. sugarcane:    operator=CONTAINS, value_json={code:'…'}
+      //   2. brinjal/tom:  operator=EQUALS,   value_json={code:'…'}
+      //   3. rice/chilli/cotton/maize/soybean/wheat:
+      //                    operator=EQUALS,   value_json=true|false  (key = condition_key)
+      //   4. onion/potato: operator=EXISTS,   value_json=true|false  (key = condition_key)
+      //   5. rice (1 row): operator=CONTAINS, value_json=[code, code, …]
+      // Older code only handled (1)/CONTAINS+NOT_EXISTS, which silently
+      // FAILED every condition for 8 of 11 crops and zeroed out scores
+      // → no clarification card was ever surfaced. Resolve all five.
+      const obsLower = observations.map(o => String(o || '').toLowerCase());
+
+      // Resolve the code(s) this condition expects to find / forbid.
+      const vj: any = value_json;
+      let expectedCodes: string[] = [];
+      let expectedPresent = true; // false ⇒ condition asserts absence
+
+      if (Array.isArray(vj)) {
+        expectedCodes = vj.map((c: any) => String(c || '').toLowerCase()).filter(Boolean);
+      } else if (vj && typeof vj === 'object') {
+        if (vj.code) expectedCodes = [String(vj.code).toLowerCase()];
+        else if (Array.isArray(vj.codes)) {
+          expectedCodes = vj.codes.map((c: any) => String(c || '').toLowerCase()).filter(Boolean);
+        }
+        if (typeof vj.present === 'boolean') expectedPresent = vj.present;
+      } else if (typeof vj === 'boolean') {
+        // boolean schema: condition_key itself IS the observation code.
+        expectedCodes = [String(condition_key || '').toLowerCase()];
+        expectedPresent = vj;
       }
-      if (operator === 'NOT_EXISTS') {
-        const obsLower = observations.map(o => o.toLowerCase());
-        return !obsLower.includes(code.toLowerCase())
-          ? HypothesisConditionStatus.PASSED
-          : HypothesisConditionStatus.FAILED;
+
+      // condition_key=reported_codes is a wildcard that just enumerates
+      // candidate codes via value_json (array form above).
+      if (expectedCodes.length === 0) return HypothesisConditionStatus.FAILED;
+
+      const anyPresent = expectedCodes.some(c => obsLower.includes(c));
+
+      // Map operator → polarity (presence vs absence).
+      const op = String(operator || '').toUpperCase();
+      let wantPresent: boolean;
+      switch (op) {
+        case 'CONTAINS':
+        case 'EXISTS':
+        case 'EQUALS':
+        case 'IN':
+          wantPresent = expectedPresent;
+          break;
+        case 'NOT_EXISTS':
+        case 'NOT_CONTAINS':
+        case 'NOT_IN':
+        case 'NOT_EQUALS':
+          wantPresent = !expectedPresent;
+          break;
+        default:
+          return HypothesisConditionStatus.FAILED;
       }
-      return HypothesisConditionStatus.FAILED;
+
+      return (anyPresent === wantPresent)
+        ? HypothesisConditionStatus.PASSED
+        : HypothesisConditionStatus.FAILED;
     }
 
     case 'DAS_RANGE': {
@@ -345,11 +451,17 @@ function evaluateCondition(
       const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
       if (!currentStage) return HypothesisConditionStatus.SKIPPED_NO_DATA;
       
-      const stages = (value_json as any)?.stages;
+      const stages = Array.isArray(value_json) ? value_json : (value_json as any)?.stages;
       if (!Array.isArray(stages)) return HypothesisConditionStatus.FAILED;
       
-      const stageLower = currentStage.toLowerCase();
-      return stages.some((s: string) => s.toLowerCase() === stageLower)
+      const stageToken = normalizeStageToken(currentStage);
+      const currentIsEstablishment = ESTABLISHMENT_STAGE_FAMILY.has(stageToken);
+      return stages.some((s: string) => {
+        const expected = normalizeStageToken(s);
+        return expected === stageToken ||
+          stageToken.includes(expected) ||
+          (currentIsEstablishment && ESTABLISHMENT_STAGE_FAMILY.has(expected));
+      })
         ? HypothesisConditionStatus.PASSED
         : HypothesisConditionStatus.FAILED;
     }
@@ -786,20 +898,41 @@ export interface CausalHypothesisInput {
   observations: string[];
   supabase_client: any;
   trace_id?: string;
+  /**
+   * Task 7c: per-request scope. When provided, the arbiter emits structured
+   * trace events (`hypothesis:start`, `hypothesis:complete`, `hypothesis:failed`)
+   * onto the scope's causal trace. The supabase_client is still honored as
+   * SSOT for the DB connection since hypothesis-master loaders are not yet
+   * scope-aware; threading them is deferred to a focused later pass.
+   */
+  scope?: RequestScope;
 }
 
 export async function runCausalHypothesisArbitration(
   input: CausalHypothesisInput
 ): Promise<ArbitrationResult> {
-  const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
+  const { crop_group, canonical_state, observations, supabase_client, trace_id, scope } = input;
   const startTime = Date.now();
 
-  // CRITICAL FIX: Normalize crop code to crop_group used in hypothesis_master
-  // DB stores: SUGARCANE, COTTON, RICE, WHEAT. Orchestrator may pass: SC, CTN, etc.
+  // Normalize crop code to crop_group used in hypothesis_master (DB-driven via crop_synonyms).
+  await hydrateCropSynonyms(supabase_client);
   const normalizedCropGroup = normalizeCropGroup(crop_group);
+
+  scope?.emit({
+    stage: 'hypothesis',
+    kind: 'derive',
+    payload: {
+      event: 'arbitration_start',
+      crop_group: normalizedCropGroup,
+      raw_crop: crop_group,
+      observation_count: observations.length,
+      trace_id: trace_id ?? null,
+    },
+  });
 
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
   console.log(`   crop_group=${normalizedCropGroup} (raw=${crop_group}), observations=${observations.length}, trace=${trace_id || 'none'}`);
+
 
   // Load hypothesis data
   const data = await loadHypothesesForCrop(normalizedCropGroup, supabase_client);
@@ -807,6 +940,16 @@ export async function runCausalHypothesisArbitration(
 
   if (!cropHasHypotheses) {
     console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
+    scope?.emit({
+      stage: 'hypothesis',
+      kind: 'derive',
+      payload: {
+        event: 'arbitration_complete',
+        decision_path: 'FULL_RULE_SCOPE',
+        hypotheses_evaluated: 0,
+        duration_ms: Date.now() - startTime,
+      },
+    });
     return {
       best_hypothesis: null,
       competing: [],
@@ -817,6 +960,7 @@ export async function runCausalHypothesisArbitration(
       hypotheses_evaluated: 0
     };
   }
+
 
   // Score all hypotheses
   const scores: HypothesisScore[] = data.hypotheses.map(h => 
@@ -868,5 +1012,22 @@ export async function runCausalHypothesisArbitration(
   // Fire-and-forget metrics
   updateMetrics(result, supabase_client);
 
+  scope?.emit({
+    stage: 'hypothesis',
+    kind: 'decide',
+    payload: {
+      event: 'arbitration_complete',
+      decision_path: result.decision_path,
+      hypotheses_evaluated: scores.length,
+      hypotheses_eliminated: eliminated.length,
+      hypotheses_survived: survived.length,
+      best_hypothesis: result.best_hypothesis?.hypothesis_id ?? null,
+      best_score: result.best_hypothesis?.weighted_score ?? 0,
+      needs_clarification: !!result.needs_clarification,
+      duration_ms: elapsed,
+    },
+  });
+
   return result;
 }
+

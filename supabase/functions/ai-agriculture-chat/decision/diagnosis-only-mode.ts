@@ -809,6 +809,27 @@ export function shouldActivateDiagnosisOnlyMode(
 } {
   // v2.0: First detect terminal damage from observations
   const terminalResult = detectTerminalDamageForAuthority(observations);
+  const obsSet = observations instanceof Set ? observations : new Set(observations);
+  const explicitTerminalDamage = terminalResult.terminal_damage.filter((code) =>
+    TERMINAL_DAMAGE_OBSERVATION_KEYS.has(code) && code !== 'ESTABLISHMENT_FAILURE'
+  );
+  const establishmentClarificationOnly = terminalResult.detected &&
+    explicitTerminalDamage.length === 0 &&
+    (obsSet.has('POOR_GERMINATION') || obsSet.has('POOR_GERMINATION_PERCENT') ||
+      obsSet.has('SEED_NOT_GERMINATED') || obsSet.has('PATCHY_EMERGENCE'));
+
+  if (establishmentClarificationOnly) {
+    console.log(`\n🌱 [DiagnosisOnlyMode] Establishment symptom needs clarification, not terminal bypass`);
+    console.log(`   Observations: ${terminalResult.terminal_damage.join(', ')}`);
+    console.log(`   Clarification: REQUIRED before decision rules`);
+    return {
+      activate: false,
+      reason: 'ESTABLISHMENT_SYMPTOM_REQUIRES_CLARIFICATION',
+      terminal_damage: terminalResult.terminal_damage,
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: false
+    };
+  }
   
   // If no terminal damage, mode is not activated
   if (!terminalResult.detected) {

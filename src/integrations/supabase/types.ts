@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      _audit_manual_review: {
+        Row: {
+          audit_batch: string
+          category: string | null
+          created_at: string
+          crop_code: string | null
+          evidence: string | null
+          field_targeted: string
+          id: string
+          proposed_value: string | null
+          rejection_reason: string
+          resolution_notes: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_id: string
+          status: string
+        }
+        Insert: {
+          audit_batch: string
+          category?: string | null
+          created_at?: string
+          crop_code?: string | null
+          evidence?: string | null
+          field_targeted: string
+          id?: string
+          proposed_value?: string | null
+          rejection_reason: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id: string
+          status?: string
+        }
+        Update: {
+          audit_batch?: string
+          category?: string | null
+          created_at?: string
+          crop_code?: string | null
+          evidence?: string | null
+          field_targeted?: string
+          id?: string
+          proposed_value?: string | null
+          rejection_reason?: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       account_lockouts: {
         Row: {
           created_at: string | null
@@ -636,6 +687,7 @@ export type Database = {
           ai_adjustments: Json | null
           causes: string[]
           confidence: number
+          created_at: string
           engine_version: string
           execution_time_ms: number | null
           farmer_id: string | null
@@ -659,6 +711,7 @@ export type Database = {
           ai_adjustments?: Json | null
           causes: string[]
           confidence: number
+          created_at?: string
           engine_version: string
           execution_time_ms?: number | null
           farmer_id?: string | null
@@ -682,6 +735,7 @@ export type Database = {
           ai_adjustments?: Json | null
           causes?: string[]
           confidence?: number
+          created_at?: string
           engine_version?: string
           execution_time_ms?: number | null
           farmer_id?: string | null
@@ -1021,6 +1075,60 @@ export type Database = {
         }
         Relationships: []
       }
+      agricultural_decisions: {
+        Row: {
+          action_type: string | null
+          confidence: number | null
+          created_at: string
+          decision_id: string
+          decision_output: Json | null
+          diagnostic_state: Json | null
+          farmer_id: string | null
+          fused_intelligence: Json | null
+          id: string
+          land_id: string | null
+          nlu_output: Json | null
+          safety_verification: Json | null
+          session_id: string | null
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action_type?: string | null
+          confidence?: number | null
+          created_at?: string
+          decision_id: string
+          decision_output?: Json | null
+          diagnostic_state?: Json | null
+          farmer_id?: string | null
+          fused_intelligence?: Json | null
+          id?: string
+          land_id?: string | null
+          nlu_output?: Json | null
+          safety_verification?: Json | null
+          session_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action_type?: string | null
+          confidence?: number | null
+          created_at?: string
+          decision_id?: string
+          decision_output?: Json | null
+          diagnostic_state?: Json | null
+          farmer_id?: string | null
+          fused_intelligence?: Json | null
+          id?: string
+          land_id?: string | null
+          nlu_output?: Json | null
+          safety_verification?: Json | null
+          session_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       agro_climatic_zones: {
         Row: {
           avg_rainfall_mm: number | null
@@ -1159,6 +1267,7 @@ export type Database = {
           farmer_id: string
           farmer_message: string | null
           forbidden_actions: string[] | null
+          gate_decisions: Json
           growth_stage: string | null
           id: string
           intent_label: string | null
@@ -1191,6 +1300,7 @@ export type Database = {
           farmer_id: string
           farmer_message?: string | null
           forbidden_actions?: string[] | null
+          gate_decisions?: Json
           growth_stage?: string | null
           id?: string
           intent_label?: string | null
@@ -1223,6 +1333,7 @@ export type Database = {
           farmer_id?: string
           farmer_message?: string | null
           forbidden_actions?: string[] | null
+          gate_decisions?: Json
           growth_stage?: string | null
           id?: string
           intent_label?: string | null
@@ -1289,6 +1400,7 @@ export type Database = {
           partition_key: number | null
           preprocessed_content: string | null
           rainfall_zone: string | null
+          response_source: string | null
           response_time_ms: number | null
           role: string
           session_id: string
@@ -1344,6 +1456,7 @@ export type Database = {
           partition_key?: number | null
           preprocessed_content?: string | null
           rainfall_zone?: string | null
+          response_source?: string | null
           response_time_ms?: number | null
           role: string
           session_id: string
@@ -1399,6 +1512,7 @@ export type Database = {
           partition_key?: number | null
           preprocessed_content?: string | null
           rainfall_zone?: string | null
+          response_source?: string | null
           response_time_ms?: number | null
           role?: string
           session_id?: string
@@ -1431,6 +1545,7 @@ export type Database = {
       }
       ai_chat_sessions: {
         Row: {
+          conversation_state: Json
           created_at: string
           farmer_id: string
           id: string
@@ -1443,6 +1558,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          conversation_state?: Json
           created_at?: string
           farmer_id: string
           id?: string
@@ -1455,6 +1571,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          conversation_state?: Json
           created_at?: string
           farmer_id?: string
           id?: string
@@ -1490,12 +1607,13 @@ export type Database = {
           ndvi_data: Json | null
           output_data: Json
           prompt_version: string | null
-          reasoning: string
+          reasoning: string | null
           schedule_id: string | null
           soil_data: Json | null
           success: boolean | null
           tenant_id: string
           top_5_rejected_rules: Json | null
+          variety_resistance_applied: Json | null
           weather_data: Json | null
         }
         Insert: {
@@ -1519,12 +1637,13 @@ export type Database = {
           ndvi_data?: Json | null
           output_data: Json
           prompt_version?: string | null
-          reasoning: string
+          reasoning?: string | null
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
           tenant_id: string
           top_5_rejected_rules?: Json | null
+          variety_resistance_applied?: Json | null
           weather_data?: Json | null
         }
         Update: {
@@ -1548,12 +1667,13 @@ export type Database = {
           ndvi_data?: Json | null
           output_data?: Json
           prompt_version?: string | null
-          reasoning?: string
+          reasoning?: string | null
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
           tenant_id?: string
           top_5_rejected_rules?: Json | null
+          variety_resistance_applied?: Json | null
           weather_data?: Json | null
         }
         Relationships: []
@@ -1825,6 +1945,63 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_safety_violations: {
+        Row: {
+          candidate_rule_ids: string[]
+          created_at: string
+          crop_code: string | null
+          details: Json
+          emitted_rule_id: string | null
+          farmer_id: string | null
+          fired_rule_ids: string[]
+          id: string
+          intent: string | null
+          language: string | null
+          observations: Json
+          occurred_at: string
+          reason: string
+          session_id: string | null
+          tenant_id: string | null
+          trace_id: string
+        }
+        Insert: {
+          candidate_rule_ids?: string[]
+          created_at?: string
+          crop_code?: string | null
+          details?: Json
+          emitted_rule_id?: string | null
+          farmer_id?: string | null
+          fired_rule_ids?: string[]
+          id?: string
+          intent?: string | null
+          language?: string | null
+          observations?: Json
+          occurred_at?: string
+          reason: string
+          session_id?: string | null
+          tenant_id?: string | null
+          trace_id: string
+        }
+        Update: {
+          candidate_rule_ids?: string[]
+          created_at?: string
+          crop_code?: string | null
+          details?: Json
+          emitted_rule_id?: string | null
+          farmer_id?: string | null
+          fired_rule_ids?: string[]
+          id?: string
+          intent?: string | null
+          language?: string | null
+          observations?: Json
+          occurred_at?: string
+          reason?: string
+          session_id?: string | null
+          tenant_id?: string | null
+          trace_id?: string
+        }
+        Relationships: []
+      }
       ai_schedule_refinements: {
         Row: {
           ai_reasoning: string
@@ -1843,6 +2020,7 @@ export type Database = {
           task_id: string | null
           tenant_id: string
           trigger_data: Json
+          variety_id: string | null
         }
         Insert: {
           ai_reasoning: string
@@ -1861,6 +2039,7 @@ export type Database = {
           task_id?: string | null
           tenant_id: string
           trigger_data: Json
+          variety_id?: string | null
         }
         Update: {
           ai_reasoning?: string
@@ -1879,8 +2058,31 @@ export type Database = {
           task_id?: string | null
           tenant_id?: string
           trigger_data?: Json
+          variety_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_schedule_refinements_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_schedule_refinements_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "ai_schedule_refinements_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
       }
       ai_training_context: {
         Row: {
@@ -2595,45 +2797,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      backup_events: {
-        Row: {
-          created_at: string
-          finished_at: string | null
-          id: string
-          kind: string
-          metadata: Json
-          notes: string | null
-          size_bytes: number | null
-          started_at: string
-          status: string
-          triggered_by: string | null
-        }
-        Insert: {
-          created_at?: string
-          finished_at?: string | null
-          id?: string
-          kind: string
-          metadata?: Json
-          notes?: string | null
-          size_bytes?: number | null
-          started_at?: string
-          status: string
-          triggered_by?: string | null
-        }
-        Update: {
-          created_at?: string
-          finished_at?: string | null
-          id?: string
-          kind?: string
-          metadata?: Json
-          notes?: string | null
-          size_bytes?: number | null
-          started_at?: string
-          status?: string
-          triggered_by?: string | null
-        }
-        Relationships: []
       }
       billing_analytics: {
         Row: {
@@ -3795,6 +3958,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "communities_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
             foreignKeyName: "communities_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -4241,6 +4411,42 @@ export type Database = {
           },
         ]
       }
+      confidence_adjustments: {
+        Row: {
+          actual_accuracy: number | null
+          adjustment_direction: string | null
+          calibration_factor: number | null
+          created_at: string
+          effective_from: string
+          id: string
+          original_avg_confidence: number | null
+          pest_disease_code: string
+          sample_size: number | null
+        }
+        Insert: {
+          actual_accuracy?: number | null
+          adjustment_direction?: string | null
+          calibration_factor?: number | null
+          created_at?: string
+          effective_from?: string
+          id?: string
+          original_avg_confidence?: number | null
+          pest_disease_code: string
+          sample_size?: number | null
+        }
+        Update: {
+          actual_accuracy?: number | null
+          adjustment_direction?: string | null
+          calibration_factor?: number | null
+          created_at?: string
+          effective_from?: string
+          id?: string
+          original_avg_confidence?: number | null
+          pest_disease_code?: string
+          sample_size?: number | null
+        }
+        Relationships: []
+      }
       content_moderation: {
         Row: {
           content_id: string
@@ -4515,6 +4721,7 @@ export type Database = {
           id: string
           invoice_id: string | null
           metadata: Json | null
+          payment_intent_id: string | null
           redeemed_at: string
           subscription_id: string | null
           tenant_id: string | null
@@ -4526,6 +4733,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           redeemed_at?: string
           subscription_id?: string | null
           tenant_id?: string | null
@@ -4537,6 +4745,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           redeemed_at?: string
           subscription_id?: string | null
           tenant_id?: string | null
@@ -4718,6 +4927,7 @@ export type Database = {
           iron_optimal: number | null
           irrigation_interval_days: number | null
           is_active: boolean | null
+          ndvi_thresholds: Json | null
           nitrogen_max: number | null
           nitrogen_min: number | null
           nitrogen_optimal: number | null
@@ -4734,6 +4944,7 @@ export type Database = {
           source_reference: string | null
           sulphur_optimal: number | null
           updated_at: string | null
+          variety_id: string | null
           water_requirement_mm: number | null
           zinc_optimal: number | null
         }
@@ -4748,6 +4959,7 @@ export type Database = {
           iron_optimal?: number | null
           irrigation_interval_days?: number | null
           is_active?: boolean | null
+          ndvi_thresholds?: Json | null
           nitrogen_max?: number | null
           nitrogen_min?: number | null
           nitrogen_optimal?: number | null
@@ -4764,6 +4976,7 @@ export type Database = {
           source_reference?: string | null
           sulphur_optimal?: number | null
           updated_at?: string | null
+          variety_id?: string | null
           water_requirement_mm?: number | null
           zinc_optimal?: number | null
         }
@@ -4778,6 +4991,7 @@ export type Database = {
           iron_optimal?: number | null
           irrigation_interval_days?: number | null
           is_active?: boolean | null
+          ndvi_thresholds?: Json | null
           nitrogen_max?: number | null
           nitrogen_min?: number | null
           nitrogen_optimal?: number | null
@@ -4794,10 +5008,33 @@ export type Database = {
           source_reference?: string | null
           sulphur_optimal?: number | null
           updated_at?: string | null
+          variety_id?: string | null
           water_requirement_mm?: number | null
           zinc_optimal?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "crop_baseline_guidelines_v2_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_baseline_guidelines_v2_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "crop_baseline_guidelines_v2_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
       }
       crop_code_fix_mapping: {
         Row: {
@@ -4831,8 +5068,19 @@ export type Database = {
           group_icon: string
           group_key: string
           group_name: string
+          group_name_as: string | null
+          group_name_bn: string | null
+          group_name_gu: string | null
           group_name_hi: string | null
+          group_name_kn: string | null
+          group_name_ml: string | null
           group_name_mr: string | null
+          group_name_or: string | null
+          group_name_pa: string | null
+          group_name_sa: string | null
+          group_name_ta: string | null
+          group_name_te: string | null
+          group_name_ur: string | null
           id: string
           is_active: boolean
           updated_at: string
@@ -4844,8 +5092,19 @@ export type Database = {
           group_icon?: string
           group_key: string
           group_name: string
+          group_name_as?: string | null
+          group_name_bn?: string | null
+          group_name_gu?: string | null
           group_name_hi?: string | null
+          group_name_kn?: string | null
+          group_name_ml?: string | null
           group_name_mr?: string | null
+          group_name_or?: string | null
+          group_name_pa?: string | null
+          group_name_sa?: string | null
+          group_name_ta?: string | null
+          group_name_te?: string | null
+          group_name_ur?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -4857,8 +5116,19 @@ export type Database = {
           group_icon?: string
           group_key?: string
           group_name?: string
+          group_name_as?: string | null
+          group_name_bn?: string | null
+          group_name_gu?: string | null
           group_name_hi?: string | null
+          group_name_kn?: string | null
+          group_name_ml?: string | null
           group_name_mr?: string | null
+          group_name_or?: string | null
+          group_name_pa?: string | null
+          group_name_sa?: string | null
+          group_name_ta?: string | null
+          group_name_te?: string | null
+          group_name_ur?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -5507,6 +5777,7 @@ export type Database = {
           tenant_id: string
           updated_at: string
           variety: string | null
+          variety_id: string | null
           yield_kg_per_acre: number | null
         }
         Insert: {
@@ -5523,6 +5794,7 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           variety?: string | null
+          variety_id?: string | null
           yield_kg_per_acre?: number | null
         }
         Update: {
@@ -5539,6 +5811,7 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           variety?: string | null
+          variety_id?: string | null
           yield_kg_per_acre?: number | null
         }
         Relationships: [
@@ -5585,10 +5858,144 @@ export type Database = {
             referencedColumns: ["land_id"]
           },
           {
+            foreignKeyName: "crop_history_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_history_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "crop_history_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "crop_history_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_history_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "crop_history_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
             foreignKeyName: "fk_crop_history_tenant"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_lifecycle_events: {
+        Row: {
+          actor: string | null
+          created_at: string
+          event_type: string
+          farmer_id: string
+          from_status: string | null
+          id: string
+          land_id: string
+          payload: Json
+          schedule_id: string | null
+          tenant_id: string
+          to_status: string | null
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          event_type: string
+          farmer_id: string
+          from_status?: string | null
+          id?: string
+          land_id: string
+          payload?: Json
+          schedule_id?: string | null
+          tenant_id: string
+          to_status?: string | null
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          event_type?: string
+          farmer_id?: string
+          from_status?: string | null
+          id?: string
+          land_id?: string
+          payload?: Json
+          schedule_id?: string | null
+          tenant_id?: string
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
             referencedColumns: ["id"]
           },
         ]
@@ -5634,6 +6041,10 @@ export type Database = {
           generation_language: string | null
           generation_params: Json | null
           growth_regulators: Json | null
+          harvest_confirmed_at: string | null
+          harvest_confirmed_by: string | null
+          harvest_response: Json
+          harvest_status: Database["public"]["Enums"]["harvest_status"]
           herbicide_ml: number | null
           id: string
           input_land_coordinates: Json | null
@@ -5659,6 +6070,7 @@ export type Database = {
           land_id: string
           last_weather_check: string | null
           last_weather_update: string | null
+          lifecycle_status: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata: Json | null
           organic_fertilizer_kg: number | null
           organic_input_details: Json | null
@@ -5693,6 +6105,7 @@ export type Database = {
           training_excluded_reason: string | null
           training_processed: boolean | null
           updated_at: string | null
+          variety_id: string | null
           vermicompost_kg: number | null
           water_per_irrigation_liters: number | null
           water_requirement_liters_total: number | null
@@ -5741,6 +6154,10 @@ export type Database = {
           generation_language?: string | null
           generation_params?: Json | null
           growth_regulators?: Json | null
+          harvest_confirmed_at?: string | null
+          harvest_confirmed_by?: string | null
+          harvest_response?: Json
+          harvest_status?: Database["public"]["Enums"]["harvest_status"]
           herbicide_ml?: number | null
           id?: string
           input_land_coordinates?: Json | null
@@ -5766,6 +6183,7 @@ export type Database = {
           land_id: string
           last_weather_check?: string | null
           last_weather_update?: string | null
+          lifecycle_status?: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
@@ -5800,6 +6218,7 @@ export type Database = {
           training_excluded_reason?: string | null
           training_processed?: boolean | null
           updated_at?: string | null
+          variety_id?: string | null
           vermicompost_kg?: number | null
           water_per_irrigation_liters?: number | null
           water_requirement_liters_total?: number | null
@@ -5848,6 +6267,10 @@ export type Database = {
           generation_language?: string | null
           generation_params?: Json | null
           growth_regulators?: Json | null
+          harvest_confirmed_at?: string | null
+          harvest_confirmed_by?: string | null
+          harvest_response?: Json
+          harvest_status?: Database["public"]["Enums"]["harvest_status"]
           herbicide_ml?: number | null
           id?: string
           input_land_coordinates?: Json | null
@@ -5873,6 +6296,7 @@ export type Database = {
           land_id?: string
           last_weather_check?: string | null
           last_weather_update?: string | null
+          lifecycle_status?: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
@@ -5907,6 +6331,7 @@ export type Database = {
           training_excluded_reason?: string | null
           training_processed?: boolean | null
           updated_at?: string | null
+          variety_id?: string | null
           vermicompost_kg?: number | null
           water_per_irrigation_liters?: number | null
           water_requirement_liters_total?: number | null
@@ -5958,6 +6383,48 @@ export type Database = {
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
+          {
+            foreignKeyName: "crop_schedules_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
         ]
       }
       crop_stage_master: {
@@ -5969,6 +6436,7 @@ export type Database = {
           growth_stage: string
           id: string
           stage_description: string | null
+          updated_at: string
         }
         Insert: {
           created_at?: string | null
@@ -5978,6 +6446,7 @@ export type Database = {
           growth_stage: string
           id?: string
           stage_description?: string | null
+          updated_at?: string
         }
         Update: {
           created_at?: string | null
@@ -5987,6 +6456,7 @@ export type Database = {
           growth_stage?: string
           id?: string
           stage_description?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -5998,6 +6468,7 @@ export type Database = {
           is_active: boolean | null
           language_code: string
           region: string | null
+          updated_at: string
           variant_name: string
           variant_type: string
         }
@@ -6008,6 +6479,7 @@ export type Database = {
           is_active?: boolean | null
           language_code?: string
           region?: string | null
+          updated_at?: string
           variant_name: string
           variant_type?: string
         }
@@ -6018,6 +6490,7 @@ export type Database = {
           is_active?: boolean | null
           language_code?: string
           region?: string | null
+          updated_at?: string
           variant_name?: string
           variant_type?: string
         }
@@ -6085,6 +6558,7 @@ export type Database = {
           recommended_intent_bias: string | null
           recommended_observation_bias: string | null
           semantic_hint: string
+          updated_at: string
         }
         Insert: {
           created_at?: string | null
@@ -6096,6 +6570,7 @@ export type Database = {
           recommended_intent_bias?: string | null
           recommended_observation_bias?: string | null
           semantic_hint: string
+          updated_at?: string
         }
         Update: {
           created_at?: string | null
@@ -6107,6 +6582,7 @@ export type Database = {
           recommended_intent_bias?: string | null
           recommended_observation_bias?: string | null
           semantic_hint?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -6122,9 +6598,20 @@ export type Database = {
           is_active: boolean | null
           is_popular: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
           label_hi: string | null
+          label_kn: string | null
           label_local: string | null
+          label_ml: string | null
           label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           local_name: string | null
           metadata: Json | null
           season: string | null
@@ -6142,9 +6629,20 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
           label_hi?: string | null
+          label_kn?: string | null
           label_local?: string | null
+          label_ml?: string | null
           label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null
@@ -6162,9 +6660,20 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
           label_hi?: string | null
+          label_kn?: string | null
           label_local?: string | null
+          label_ml?: string | null
           label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null
@@ -6180,6 +6689,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cultural_strategies: {
+        Row: {
+          created_at: string
+          crop_code: string
+          id: string
+          priority: number
+          strategy: string
+        }
+        Insert: {
+          created_at?: string
+          crop_code: string
+          id?: string
+          priority?: number
+          strategy: string
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string
+          id?: string
+          priority?: number
+          strategy?: string
+        }
+        Relationships: []
       }
       currency_rates: {
         Row: {
@@ -7086,6 +7619,7 @@ export type Database = {
           max_temperature: number | null
           max_wind_speed: number | null
           measurement_method: string | null
+          min_data_completeness: number
           min_temperature: number | null
           mode_of_action: string | null
           mutually_exclusive_with: string[] | null
@@ -7119,6 +7653,7 @@ export type Database = {
           roi_yield_gain_pct: number | null
           roi_yield_risk_pct: number | null
           rule_id: string
+          rule_id_lc: string | null
           rule_intent: string | null
           rule_version: string | null
           scientific_basis: string | null
@@ -7152,6 +7687,7 @@ export type Database = {
           variety_applicable: string[] | null
           verification_status: string | null
           version: string | null
+          version_hash: string | null
           visual_markers: Json | null
           water_volume_per_acre: string | null
           weather_dependency: Json | null
@@ -7248,6 +7784,7 @@ export type Database = {
           max_temperature?: number | null
           max_wind_speed?: number | null
           measurement_method?: string | null
+          min_data_completeness?: number
           min_temperature?: number | null
           mode_of_action?: string | null
           mutually_exclusive_with?: string[] | null
@@ -7281,6 +7818,7 @@ export type Database = {
           roi_yield_gain_pct?: number | null
           roi_yield_risk_pct?: number | null
           rule_id: string
+          rule_id_lc?: string | null
           rule_intent?: string | null
           rule_version?: string | null
           scientific_basis?: string | null
@@ -7314,6 +7852,7 @@ export type Database = {
           variety_applicable?: string[] | null
           verification_status?: string | null
           version?: string | null
+          version_hash?: string | null
           visual_markers?: Json | null
           water_volume_per_acre?: string | null
           weather_dependency?: Json | null
@@ -7410,6 +7949,7 @@ export type Database = {
           max_temperature?: number | null
           max_wind_speed?: number | null
           measurement_method?: string | null
+          min_data_completeness?: number
           min_temperature?: number | null
           mode_of_action?: string | null
           mutually_exclusive_with?: string[] | null
@@ -7443,6 +7983,7 @@ export type Database = {
           roi_yield_gain_pct?: number | null
           roi_yield_risk_pct?: number | null
           rule_id?: string
+          rule_id_lc?: string | null
           rule_intent?: string | null
           rule_version?: string | null
           scientific_basis?: string | null
@@ -7476,6 +8017,7 @@ export type Database = {
           variety_applicable?: string[] | null
           verification_status?: string | null
           version?: string | null
+          version_hash?: string | null
           visual_markers?: Json | null
           water_volume_per_acre?: string | null
           weather_dependency?: Json | null
@@ -7490,498 +8032,6 @@ export type Database = {
             referencedColumns: ["observation_code"]
           },
         ]
-      }
-      decision_rules_backup_20260316: {
-        Row: {
-          action_text: string | null
-          action_type: string | null
-          active_ingredient: string | null
-          affected_crops: string[] | null
-          alternatives: Json | null
-          applicability_scope: string | null
-          application_method: string | null
-          approval_date: string | null
-          approved_by: string | null
-          aquatic_toxicity: string | null
-          backed_up_at: string | null
-          bee_toxicity: string | null
-          biological_group: string | null
-          blocks_rule_ids: string[] | null
-          botanical_name: string | null
-          canonical_group: string | null
-          canonical_status: string | null
-          category: string | null
-          cause: string | null
-          chemical_class: string | null
-          climate_zone_applicable: string[] | null
-          condition_code: string | null
-          conditions_json: Json | null
-          confidence_score: number | null
-          contraindications: string[] | null
-          created_at: string | null
-          crop_age_days_max: number | null
-          crop_age_days_min: number | null
-          crop_category: string | null
-          crop_code: string | null
-          crop_cycle: string | null
-          crop_family: string | null
-          crop_group: string | null
-          crop_tags: string[] | null
-          cycle_number_max: number | null
-          cycle_number_min: number | null
-          data_authority_rank: number | null
-          days_to_harvest_max: number | null
-          days_to_harvest_min: number | null
-          decision_trace_template: string | null
-          deprecated_at: string | null
-          deprecation_reason: string | null
-          derived_from: string | null
-          diagnostic_confidence_threshold: number | null
-          differentiating_questions: Json | null
-          dosage_per_acre: string | null
-          enables_rule_ids: string[] | null
-          engine_layer: number | null
-          equipment_cost_per_acre: number | null
-          equipment_required: string[] | null
-          etl_applicable: boolean | null
-          etl_threshold: string | null
-          etl_unit: string | null
-          etl_unit_type: string | null
-          etl_value_max: number | null
-          etl_value_min: number | null
-          expert_approved: boolean | null
-          expert_override_required: boolean | null
-          failure_indicators: string[] | null
-          farmer_safety_level: string | null
-          field_validated: boolean | null
-          forecast_horizon_days: number | null
-          gdd_max: number | null
-          gdd_min: number | null
-          growth_stage: string | null
-          humidity_max_pct: number | null
-          humidity_min_pct: number | null
-          i18n_key: string | null
-          icar_package: string | null
-          icar_package_ref: string | null
-          id: string | null
-          input_cost_per_acre_max: number | null
-          input_cost_per_acre_min: number | null
-          interaction_type: string | null
-          ipm_level: number | null
-          irrigation_method_applicable: string[] | null
-          is_active: boolean | null
-          is_proactive_rule: boolean | null
-          is_system_derived: boolean | null
-          knowledge_text: string | null
-          labor_cost_per_acre_max: number | null
-          labor_cost_per_acre_min: number | null
-          labor_hours_per_acre: number | null
-          last_backup_at: string | null
-          match_explanation_template: string | null
-          material_cost_per_acre_max: number | null
-          material_cost_per_acre_min: number | null
-          maturity_group: string | null
-          max_temperature: number | null
-          max_wind_speed: number | null
-          measurement_method: string | null
-          min_temperature: number | null
-          mode_of_action: string | null
-          mutually_exclusive_with: string[] | null
-          ndvi_change_rate: string | null
-          ndvi_max: number | null
-          ndvi_min: number | null
-          observable_characteristics: Json | null
-          observation_confidence_weight: number | null
-          organic_alternative: string | null
-          phi_days: number | null
-          prediction_type: string | null
-          prerequisite_rule_ids: string[] | null
-          priority: number | null
-          probability_threshold: number | null
-          rain_delay_hours: number | null
-          rainfall_probability_min_pct: number | null
-          reason_text: string | null
-          reentry_interval_hours: number | null
-          regulatory_status: string | null
-          required_observation_category: string[] | null
-          required_plant_part: string[] | null
-          requires_field_action: boolean | null
-          research_paper_ref: string | null
-          resistance_group: string | null
-          response_severity: string | null
-          risk_level: string | null
-          roi_confidence: number | null
-          roi_cost_saved_max: number | null
-          roi_cost_saved_min: number | null
-          roi_net_score: number | null
-          roi_yield_gain_pct: number | null
-          roi_yield_risk_pct: number | null
-          rule_id: string | null
-          rule_intent: string | null
-          rule_version: string | null
-          scientific_basis: string | null
-          scientific_source: string | null
-          season_applicable: string[] | null
-          sequence_after: string[] | null
-          soil_k_kg_ha_max: number | null
-          soil_k_kg_ha_min: number | null
-          soil_moisture_pct_max: number | null
-          soil_moisture_pct_min: number | null
-          soil_n_kg_ha_max: number | null
-          soil_n_kg_ha_min: number | null
-          soil_p_kg_ha_max: number | null
-          soil_p_kg_ha_min: number | null
-          soil_ph_max: number | null
-          soil_ph_min: number | null
-          soil_type_applicable: string[] | null
-          stage_applicable: string[] | null
-          success_indicators: string[] | null
-          supersedes_rule_id: string | null
-          target_pest_stage: string | null
-          temp_max_celsius: number | null
-          temp_min_celsius: number | null
-          total_cost_estimated: number | null
-          treatment_type: string | null
-          triggers_rule_ids: string[] | null
-          uncertainty_handling_mode: string | null
-          university_source: string | null
-          updated_at: string | null
-          validation_trials: number | null
-          variety_applicable: string[] | null
-          verification_status: string | null
-          version: string | null
-          visual_markers: Json | null
-          water_volume_per_acre: string | null
-          weather_dependency: Json | null
-          wind_speed_max_kmph: number | null
-        }
-        Insert: {
-          action_text?: string | null
-          action_type?: string | null
-          active_ingredient?: string | null
-          affected_crops?: string[] | null
-          alternatives?: Json | null
-          applicability_scope?: string | null
-          application_method?: string | null
-          approval_date?: string | null
-          approved_by?: string | null
-          aquatic_toxicity?: string | null
-          backed_up_at?: string | null
-          bee_toxicity?: string | null
-          biological_group?: string | null
-          blocks_rule_ids?: string[] | null
-          botanical_name?: string | null
-          canonical_group?: string | null
-          canonical_status?: string | null
-          category?: string | null
-          cause?: string | null
-          chemical_class?: string | null
-          climate_zone_applicable?: string[] | null
-          condition_code?: string | null
-          conditions_json?: Json | null
-          confidence_score?: number | null
-          contraindications?: string[] | null
-          created_at?: string | null
-          crop_age_days_max?: number | null
-          crop_age_days_min?: number | null
-          crop_category?: string | null
-          crop_code?: string | null
-          crop_cycle?: string | null
-          crop_family?: string | null
-          crop_group?: string | null
-          crop_tags?: string[] | null
-          cycle_number_max?: number | null
-          cycle_number_min?: number | null
-          data_authority_rank?: number | null
-          days_to_harvest_max?: number | null
-          days_to_harvest_min?: number | null
-          decision_trace_template?: string | null
-          deprecated_at?: string | null
-          deprecation_reason?: string | null
-          derived_from?: string | null
-          diagnostic_confidence_threshold?: number | null
-          differentiating_questions?: Json | null
-          dosage_per_acre?: string | null
-          enables_rule_ids?: string[] | null
-          engine_layer?: number | null
-          equipment_cost_per_acre?: number | null
-          equipment_required?: string[] | null
-          etl_applicable?: boolean | null
-          etl_threshold?: string | null
-          etl_unit?: string | null
-          etl_unit_type?: string | null
-          etl_value_max?: number | null
-          etl_value_min?: number | null
-          expert_approved?: boolean | null
-          expert_override_required?: boolean | null
-          failure_indicators?: string[] | null
-          farmer_safety_level?: string | null
-          field_validated?: boolean | null
-          forecast_horizon_days?: number | null
-          gdd_max?: number | null
-          gdd_min?: number | null
-          growth_stage?: string | null
-          humidity_max_pct?: number | null
-          humidity_min_pct?: number | null
-          i18n_key?: string | null
-          icar_package?: string | null
-          icar_package_ref?: string | null
-          id?: string | null
-          input_cost_per_acre_max?: number | null
-          input_cost_per_acre_min?: number | null
-          interaction_type?: string | null
-          ipm_level?: number | null
-          irrigation_method_applicable?: string[] | null
-          is_active?: boolean | null
-          is_proactive_rule?: boolean | null
-          is_system_derived?: boolean | null
-          knowledge_text?: string | null
-          labor_cost_per_acre_max?: number | null
-          labor_cost_per_acre_min?: number | null
-          labor_hours_per_acre?: number | null
-          last_backup_at?: string | null
-          match_explanation_template?: string | null
-          material_cost_per_acre_max?: number | null
-          material_cost_per_acre_min?: number | null
-          maturity_group?: string | null
-          max_temperature?: number | null
-          max_wind_speed?: number | null
-          measurement_method?: string | null
-          min_temperature?: number | null
-          mode_of_action?: string | null
-          mutually_exclusive_with?: string[] | null
-          ndvi_change_rate?: string | null
-          ndvi_max?: number | null
-          ndvi_min?: number | null
-          observable_characteristics?: Json | null
-          observation_confidence_weight?: number | null
-          organic_alternative?: string | null
-          phi_days?: number | null
-          prediction_type?: string | null
-          prerequisite_rule_ids?: string[] | null
-          priority?: number | null
-          probability_threshold?: number | null
-          rain_delay_hours?: number | null
-          rainfall_probability_min_pct?: number | null
-          reason_text?: string | null
-          reentry_interval_hours?: number | null
-          regulatory_status?: string | null
-          required_observation_category?: string[] | null
-          required_plant_part?: string[] | null
-          requires_field_action?: boolean | null
-          research_paper_ref?: string | null
-          resistance_group?: string | null
-          response_severity?: string | null
-          risk_level?: string | null
-          roi_confidence?: number | null
-          roi_cost_saved_max?: number | null
-          roi_cost_saved_min?: number | null
-          roi_net_score?: number | null
-          roi_yield_gain_pct?: number | null
-          roi_yield_risk_pct?: number | null
-          rule_id?: string | null
-          rule_intent?: string | null
-          rule_version?: string | null
-          scientific_basis?: string | null
-          scientific_source?: string | null
-          season_applicable?: string[] | null
-          sequence_after?: string[] | null
-          soil_k_kg_ha_max?: number | null
-          soil_k_kg_ha_min?: number | null
-          soil_moisture_pct_max?: number | null
-          soil_moisture_pct_min?: number | null
-          soil_n_kg_ha_max?: number | null
-          soil_n_kg_ha_min?: number | null
-          soil_p_kg_ha_max?: number | null
-          soil_p_kg_ha_min?: number | null
-          soil_ph_max?: number | null
-          soil_ph_min?: number | null
-          soil_type_applicable?: string[] | null
-          stage_applicable?: string[] | null
-          success_indicators?: string[] | null
-          supersedes_rule_id?: string | null
-          target_pest_stage?: string | null
-          temp_max_celsius?: number | null
-          temp_min_celsius?: number | null
-          total_cost_estimated?: number | null
-          treatment_type?: string | null
-          triggers_rule_ids?: string[] | null
-          uncertainty_handling_mode?: string | null
-          university_source?: string | null
-          updated_at?: string | null
-          validation_trials?: number | null
-          variety_applicable?: string[] | null
-          verification_status?: string | null
-          version?: string | null
-          visual_markers?: Json | null
-          water_volume_per_acre?: string | null
-          weather_dependency?: Json | null
-          wind_speed_max_kmph?: number | null
-        }
-        Update: {
-          action_text?: string | null
-          action_type?: string | null
-          active_ingredient?: string | null
-          affected_crops?: string[] | null
-          alternatives?: Json | null
-          applicability_scope?: string | null
-          application_method?: string | null
-          approval_date?: string | null
-          approved_by?: string | null
-          aquatic_toxicity?: string | null
-          backed_up_at?: string | null
-          bee_toxicity?: string | null
-          biological_group?: string | null
-          blocks_rule_ids?: string[] | null
-          botanical_name?: string | null
-          canonical_group?: string | null
-          canonical_status?: string | null
-          category?: string | null
-          cause?: string | null
-          chemical_class?: string | null
-          climate_zone_applicable?: string[] | null
-          condition_code?: string | null
-          conditions_json?: Json | null
-          confidence_score?: number | null
-          contraindications?: string[] | null
-          created_at?: string | null
-          crop_age_days_max?: number | null
-          crop_age_days_min?: number | null
-          crop_category?: string | null
-          crop_code?: string | null
-          crop_cycle?: string | null
-          crop_family?: string | null
-          crop_group?: string | null
-          crop_tags?: string[] | null
-          cycle_number_max?: number | null
-          cycle_number_min?: number | null
-          data_authority_rank?: number | null
-          days_to_harvest_max?: number | null
-          days_to_harvest_min?: number | null
-          decision_trace_template?: string | null
-          deprecated_at?: string | null
-          deprecation_reason?: string | null
-          derived_from?: string | null
-          diagnostic_confidence_threshold?: number | null
-          differentiating_questions?: Json | null
-          dosage_per_acre?: string | null
-          enables_rule_ids?: string[] | null
-          engine_layer?: number | null
-          equipment_cost_per_acre?: number | null
-          equipment_required?: string[] | null
-          etl_applicable?: boolean | null
-          etl_threshold?: string | null
-          etl_unit?: string | null
-          etl_unit_type?: string | null
-          etl_value_max?: number | null
-          etl_value_min?: number | null
-          expert_approved?: boolean | null
-          expert_override_required?: boolean | null
-          failure_indicators?: string[] | null
-          farmer_safety_level?: string | null
-          field_validated?: boolean | null
-          forecast_horizon_days?: number | null
-          gdd_max?: number | null
-          gdd_min?: number | null
-          growth_stage?: string | null
-          humidity_max_pct?: number | null
-          humidity_min_pct?: number | null
-          i18n_key?: string | null
-          icar_package?: string | null
-          icar_package_ref?: string | null
-          id?: string | null
-          input_cost_per_acre_max?: number | null
-          input_cost_per_acre_min?: number | null
-          interaction_type?: string | null
-          ipm_level?: number | null
-          irrigation_method_applicable?: string[] | null
-          is_active?: boolean | null
-          is_proactive_rule?: boolean | null
-          is_system_derived?: boolean | null
-          knowledge_text?: string | null
-          labor_cost_per_acre_max?: number | null
-          labor_cost_per_acre_min?: number | null
-          labor_hours_per_acre?: number | null
-          last_backup_at?: string | null
-          match_explanation_template?: string | null
-          material_cost_per_acre_max?: number | null
-          material_cost_per_acre_min?: number | null
-          maturity_group?: string | null
-          max_temperature?: number | null
-          max_wind_speed?: number | null
-          measurement_method?: string | null
-          min_temperature?: number | null
-          mode_of_action?: string | null
-          mutually_exclusive_with?: string[] | null
-          ndvi_change_rate?: string | null
-          ndvi_max?: number | null
-          ndvi_min?: number | null
-          observable_characteristics?: Json | null
-          observation_confidence_weight?: number | null
-          organic_alternative?: string | null
-          phi_days?: number | null
-          prediction_type?: string | null
-          prerequisite_rule_ids?: string[] | null
-          priority?: number | null
-          probability_threshold?: number | null
-          rain_delay_hours?: number | null
-          rainfall_probability_min_pct?: number | null
-          reason_text?: string | null
-          reentry_interval_hours?: number | null
-          regulatory_status?: string | null
-          required_observation_category?: string[] | null
-          required_plant_part?: string[] | null
-          requires_field_action?: boolean | null
-          research_paper_ref?: string | null
-          resistance_group?: string | null
-          response_severity?: string | null
-          risk_level?: string | null
-          roi_confidence?: number | null
-          roi_cost_saved_max?: number | null
-          roi_cost_saved_min?: number | null
-          roi_net_score?: number | null
-          roi_yield_gain_pct?: number | null
-          roi_yield_risk_pct?: number | null
-          rule_id?: string | null
-          rule_intent?: string | null
-          rule_version?: string | null
-          scientific_basis?: string | null
-          scientific_source?: string | null
-          season_applicable?: string[] | null
-          sequence_after?: string[] | null
-          soil_k_kg_ha_max?: number | null
-          soil_k_kg_ha_min?: number | null
-          soil_moisture_pct_max?: number | null
-          soil_moisture_pct_min?: number | null
-          soil_n_kg_ha_max?: number | null
-          soil_n_kg_ha_min?: number | null
-          soil_p_kg_ha_max?: number | null
-          soil_p_kg_ha_min?: number | null
-          soil_ph_max?: number | null
-          soil_ph_min?: number | null
-          soil_type_applicable?: string[] | null
-          stage_applicable?: string[] | null
-          success_indicators?: string[] | null
-          supersedes_rule_id?: string | null
-          target_pest_stage?: string | null
-          temp_max_celsius?: number | null
-          temp_min_celsius?: number | null
-          total_cost_estimated?: number | null
-          treatment_type?: string | null
-          triggers_rule_ids?: string[] | null
-          uncertainty_handling_mode?: string | null
-          university_source?: string | null
-          updated_at?: string | null
-          validation_trials?: number | null
-          variety_applicable?: string[] | null
-          verification_status?: string | null
-          version?: string | null
-          visual_markers?: Json | null
-          water_volume_per_acre?: string | null
-          weather_dependency?: Json | null
-          wind_speed_max_kmph?: number | null
-        }
-        Relationships: []
       }
       decision_rules_history: {
         Row: {
@@ -8151,6 +8201,24 @@ export type Database = {
           response_mr?: string | null
           rule_id?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      direct_advisory_routes: {
+        Row: {
+          created_at: string
+          notes: string | null
+          route_code: string
+        }
+        Insert: {
+          created_at?: string
+          notes?: string | null
+          route_code: string
+        }
+        Update: {
+          created_at?: string
+          notes?: string | null
+          route_code?: string
         }
         Relationships: []
       }
@@ -8359,6 +8427,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
+          name_as: string | null
+          name_bn: string | null
+          name_gu: string | null
+          name_hi: string | null
+          name_kn: string | null
+          name_ml: string | null
+          name_mr: string | null
+          name_or: string | null
+          name_pa: string | null
+          name_sa: string | null
+          name_ta: string | null
+          name_te: string | null
+          name_ur: string | null
           state_id: string
           updated_at: string | null
         }
@@ -8367,6 +8448,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
+          name_as?: string | null
+          name_bn?: string | null
+          name_gu?: string | null
+          name_hi?: string | null
+          name_kn?: string | null
+          name_ml?: string | null
+          name_mr?: string | null
+          name_or?: string | null
+          name_pa?: string | null
+          name_sa?: string | null
+          name_ta?: string | null
+          name_te?: string | null
+          name_ur?: string | null
           state_id: string
           updated_at?: string | null
         }
@@ -8375,6 +8469,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
+          name_as?: string | null
+          name_bn?: string | null
+          name_gu?: string | null
+          name_hi?: string | null
+          name_kn?: string | null
+          name_ml?: string | null
+          name_mr?: string | null
+          name_or?: string | null
+          name_pa?: string | null
+          name_sa?: string | null
+          name_ta?: string | null
+          name_te?: string | null
+          name_ur?: string | null
           state_id?: string
           updated_at?: string | null
         }
@@ -8435,6 +8542,33 @@ export type Database = {
           },
         ]
       }
+      dropped_tables_archive: {
+        Row: {
+          column_signature: Json | null
+          drop_reason: string | null
+          dropped_at: string
+          id: string
+          row_count: number | null
+          table_name: string
+        }
+        Insert: {
+          column_signature?: Json | null
+          drop_reason?: string | null
+          dropped_at?: string
+          id?: string
+          row_count?: number | null
+          table_name: string
+        }
+        Update: {
+          column_signature?: Json | null
+          drop_reason?: string | null
+          dropped_at?: string
+          id?: string
+          row_count?: number | null
+          table_name?: string
+        }
+        Relationships: []
+      }
       edge_invocation_logs: {
         Row: {
           function_name: string
@@ -8456,6 +8590,48 @@ export type Database = {
           invoked_at?: string | null
           payload?: Json | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      efficacy_updates: {
+        Row: {
+          confidence: string | null
+          created_at: string
+          crop_code: string | null
+          crop_stage: string | null
+          id: string
+          new_efficacy: number | null
+          pest_disease_code: string
+          previous_efficacy: number | null
+          sample_size: number | null
+          treatment_code: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: string | null
+          created_at?: string
+          crop_code?: string | null
+          crop_stage?: string | null
+          id?: string
+          new_efficacy?: number | null
+          pest_disease_code: string
+          previous_efficacy?: number | null
+          sample_size?: number | null
+          treatment_code: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: string | null
+          created_at?: string
+          crop_code?: string | null
+          crop_stage?: string | null
+          id?: string
+          new_efficacy?: number | null
+          pest_disease_code?: string
+          previous_efficacy?: number | null
+          sample_size?: number | null
+          treatment_code?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -8751,6 +8927,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      emergency_observation_codes: {
+        Row: {
+          created_at: string
+          notes: string | null
+          observation_code: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          notes?: string | null
+          observation_code: string
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          notes?: string | null
+          observation_code?: string
+          source?: string
+        }
+        Relationships: []
       }
       etl_standards: {
         Row: {
@@ -11140,6 +11337,113 @@ export type Database = {
         }
         Relationships: []
       }
+      harvest_confirmation_requests: {
+        Row: {
+          channel: Json
+          created_at: string
+          due_at: string | null
+          farmer_id: string
+          id: string
+          land_id: string
+          last_reminded_at: string | null
+          reminder_count: number
+          responded_at: string | null
+          response: Database["public"]["Enums"]["harvest_status"] | null
+          response_payload: Json
+          schedule_id: string
+          status: Database["public"]["Enums"]["harvest_confirmation_request_status"]
+          tenant_id: string
+          triggered_at: string
+          updated_at: string
+        }
+        Insert: {
+          channel?: Json
+          created_at?: string
+          due_at?: string | null
+          farmer_id: string
+          id?: string
+          land_id: string
+          last_reminded_at?: string | null
+          reminder_count?: number
+          responded_at?: string | null
+          response?: Database["public"]["Enums"]["harvest_status"] | null
+          response_payload?: Json
+          schedule_id: string
+          status?: Database["public"]["Enums"]["harvest_confirmation_request_status"]
+          tenant_id: string
+          triggered_at?: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: Json
+          created_at?: string
+          due_at?: string | null
+          farmer_id?: string
+          id?: string
+          land_id?: string
+          last_reminded_at?: string | null
+          reminder_count?: number
+          responded_at?: string | null
+          response?: Database["public"]["Enums"]["harvest_status"] | null
+          response_payload?: Json
+          schedule_id?: string
+          status?: Database["public"]["Enums"]["harvest_confirmation_request_status"]
+          tenant_id?: string
+          triggered_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hypothesis_conditions: {
         Row: {
           condition_key: string
@@ -11148,8 +11452,10 @@ export type Database = {
           hypothesis_id: string
           id: string
           is_discriminator: boolean | null
+          is_quarantined: boolean
           is_required: boolean | null
           operator: string
+          quarantine_reason: string | null
           value_json: Json
           weight: number | null
         }
@@ -11160,8 +11466,10 @@ export type Database = {
           hypothesis_id: string
           id?: string
           is_discriminator?: boolean | null
+          is_quarantined?: boolean
           is_required?: boolean | null
           operator: string
+          quarantine_reason?: string | null
           value_json: Json
           weight?: number | null
         }
@@ -11172,8 +11480,10 @@ export type Database = {
           hypothesis_id?: string
           id?: string
           is_discriminator?: boolean | null
+          is_quarantined?: boolean
           is_required?: boolean | null
           operator?: string
+          quarantine_reason?: string | null
           value_json?: Json
           weight?: number | null
         }
@@ -11300,11 +11610,13 @@ export type Database = {
           crop_group: string
           engine_min_version: string | null
           hypothesis_id: string
+          hypothesis_id_lc: string | null
           hypothesis_type: string
           is_active: boolean | null
           severity_model: string | null
           updated_at: string | null
           version: string | null
+          version_hash: string | null
         }
         Insert: {
           biological_basis?: string | null
@@ -11316,11 +11628,13 @@ export type Database = {
           crop_group: string
           engine_min_version?: string | null
           hypothesis_id: string
+          hypothesis_id_lc?: string | null
           hypothesis_type: string
           is_active?: boolean | null
           severity_model?: string | null
           updated_at?: string | null
           version?: string | null
+          version_hash?: string | null
         }
         Update: {
           biological_basis?: string | null
@@ -11332,41 +11646,49 @@ export type Database = {
           crop_group?: string
           engine_min_version?: string | null
           hypothesis_id?: string
+          hypothesis_id_lc?: string | null
           hypothesis_type?: string
           is_active?: boolean | null
           severity_model?: string | null
           updated_at?: string | null
           version?: string | null
+          version_hash?: string | null
         }
         Relationships: []
       }
       hypothesis_metrics: {
         Row: {
           avg_confidence: number | null
+          created_at: string
           hypothesis_id: string
           last_triggered: string | null
           times_confirmed: number | null
           times_contradicted: number | null
           times_eliminated_missing_data: number | null
           times_triggered: number | null
+          updated_at: string
         }
         Insert: {
           avg_confidence?: number | null
+          created_at?: string
           hypothesis_id: string
           last_triggered?: string | null
           times_confirmed?: number | null
           times_contradicted?: number | null
           times_eliminated_missing_data?: number | null
           times_triggered?: number | null
+          updated_at?: string
         }
         Update: {
           avg_confidence?: number | null
+          created_at?: string
           hypothesis_id?: string
           last_triggered?: string | null
           times_confirmed?: number | null
           times_contradicted?: number | null
           times_eliminated_missing_data?: number | null
           times_triggered?: number | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -11395,21 +11717,27 @@ export type Database = {
       hypothesis_rule_mapping: {
         Row: {
           context_notes: string | null
+          created_at: string
           hypothesis_id: string
           priority: number | null
           rule_id: string
+          updated_at: string
         }
         Insert: {
           context_notes?: string | null
+          created_at?: string
           hypothesis_id: string
           priority?: number | null
           rule_id: string
+          updated_at?: string
         }
         Update: {
           context_notes?: string | null
+          created_at?: string
           hypothesis_id?: string
           priority?: number | null
           rule_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -11670,8 +11998,42 @@ export type Database = {
         }
         Relationships: []
       }
+      intent_assertion_pattern: {
+        Row: {
+          assertion_strength: string
+          created_at: string
+          id: string
+          intent_code: string
+          is_active: boolean
+          notes: string | null
+          obs_code_regex: string
+          updated_at: string
+        }
+        Insert: {
+          assertion_strength: string
+          created_at?: string
+          id?: string
+          intent_code: string
+          is_active?: boolean
+          notes?: string | null
+          obs_code_regex: string
+          updated_at?: string
+        }
+        Update: {
+          assertion_strength?: string
+          created_at?: string
+          id?: string
+          intent_code?: string
+          is_active?: boolean
+          notes?: string | null
+          obs_code_regex?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       intent_observation_mapping: {
         Row: {
+          assertion_strength: string
           confidence_rank: number | null
           created_at: string | null
           crop_code: string
@@ -11682,8 +12044,10 @@ export type Database = {
           intent_code: string
           is_active: boolean | null
           observation_code: string
+          updated_at: string
         }
         Insert: {
+          assertion_strength?: string
           confidence_rank?: number | null
           created_at?: string | null
           crop_code: string
@@ -11694,8 +12058,10 @@ export type Database = {
           intent_code: string
           is_active?: boolean | null
           observation_code: string
+          updated_at?: string
         }
         Update: {
+          assertion_strength?: string
           confidence_rank?: number | null
           created_at?: string | null
           crop_code?: string
@@ -11706,6 +12072,7 @@ export type Database = {
           intent_code?: string
           is_active?: boolean | null
           observation_code?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -11724,42 +12091,63 @@ export type Database = {
           },
         ]
       }
-      intent_observation_mapping_backup_2026_03: {
+      intent_observation_mapping_audit: {
         Row: {
-          confidence_rank: number | null
-          created_at: string | null
-          crop_code: string | null
-          das_max: number | null
-          das_min: number | null
-          growth_stage: string | null
-          id: string | null
-          intent_code: string | null
-          is_active: boolean | null
-          observation_code: string | null
+          action: string
+          after_payload: Json | null
+          before_payload: Json | null
+          created_at: string
+          id: string
+          iom_id: string | null
+          performed_by: string | null
+          reason: string
+          sql_batch_id: string | null
         }
         Insert: {
-          confidence_rank?: number | null
-          created_at?: string | null
-          crop_code?: string | null
-          das_max?: number | null
-          das_min?: number | null
-          growth_stage?: string | null
-          id?: string | null
-          intent_code?: string | null
-          is_active?: boolean | null
-          observation_code?: string | null
+          action: string
+          after_payload?: Json | null
+          before_payload?: Json | null
+          created_at?: string
+          id?: string
+          iom_id?: string | null
+          performed_by?: string | null
+          reason: string
+          sql_batch_id?: string | null
         }
         Update: {
-          confidence_rank?: number | null
-          created_at?: string | null
-          crop_code?: string | null
-          das_max?: number | null
-          das_min?: number | null
-          growth_stage?: string | null
-          id?: string | null
-          intent_code?: string | null
-          is_active?: boolean | null
-          observation_code?: string | null
+          action?: string
+          after_payload?: Json | null
+          before_payload?: Json | null
+          created_at?: string
+          id?: string
+          iom_id?: string | null
+          performed_by?: string | null
+          reason?: string
+          sql_batch_id?: string | null
+        }
+        Relationships: []
+      }
+      intent_semantic_class_allowlist: {
+        Row: {
+          allowed_classes: string[]
+          created_at: string
+          intent_code: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          allowed_classes: string[]
+          created_at?: string
+          intent_code: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allowed_classes?: string[]
+          created_at?: string
+          intent_code?: string
+          notes?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -12044,63 +12432,71 @@ export type Database = {
       invoices: {
         Row: {
           amount: number
+          billing_period_end: string | null
+          billing_period_start: string | null
           created_at: string
           currency: string
           due_date: string
+          farmer_id: string | null
           id: string
           invoice_number: string
           line_items: Json
           metadata: Json | null
           paid_date: string | null
+          payment_intent_id: string | null
           paypal_invoice_id: string | null
           status: string
           stripe_invoice_id: string | null
           subscription_id: string | null
+          subscription_type: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
           amount: number
+          billing_period_end?: string | null
+          billing_period_start?: string | null
           created_at?: string
           currency?: string
           due_date: string
+          farmer_id?: string | null
           id?: string
           invoice_number: string
           line_items?: Json
           metadata?: Json | null
           paid_date?: string | null
+          payment_intent_id?: string | null
           paypal_invoice_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
           subscription_id?: string | null
+          subscription_type?: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
           amount?: number
+          billing_period_end?: string | null
+          billing_period_start?: string | null
           created_at?: string
           currency?: string
           due_date?: string
+          farmer_id?: string | null
           id?: string
           invoice_number?: string
           line_items?: Json
           metadata?: Json | null
           paid_date?: string | null
+          payment_intent_id?: string | null
           paypal_invoice_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
           subscription_id?: string | null
+          subscription_type?: string
           tenant_id?: string
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "invoices_subscription_id_fkey"
-            columns: ["subscription_id"]
-            isOneToOne: false
-            referencedRelation: "tenant_subscriptions"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "invoices_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -12117,6 +12513,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
+          label_hi: string | null
+          label_kn: string | null
+          label_ml: string | null
+          label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           value: string
         }
         Insert: {
@@ -12125,6 +12534,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value: string
         }
         Update: {
@@ -12133,6 +12555,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value?: string
         }
         Relationships: []
@@ -12300,6 +12735,7 @@ export type Database = {
           status: string | null
           tenant_id: string
           updated_at: string | null
+          variety_id: string | null
         }
         Insert: {
           actual_harvest_date?: string | null
@@ -12324,6 +12760,7 @@ export type Database = {
           status?: string | null
           tenant_id: string
           updated_at?: string | null
+          variety_id?: string | null
         }
         Update: {
           actual_harvest_date?: string | null
@@ -12348,6 +12785,7 @@ export type Database = {
           status?: string | null
           tenant_id?: string
           updated_at?: string | null
+          variety_id?: string | null
         }
         Relationships: [
           {
@@ -12398,6 +12836,48 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crop_schedules"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_crops_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_crops_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "land_crops_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "land_crops_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_crops_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "land_crops_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
         ]
       }
@@ -12676,6 +13156,7 @@ export type Database = {
       }
       lands: {
         Row: {
+          active_schedule_id: string | null
           area_acres: number
           area_guntas: number | null
           area_sqft: number | null
@@ -12693,6 +13174,7 @@ export type Database = {
           cultivation_date: string | null
           current_crop: string | null
           current_crop_id: string | null
+          current_crop_variety_id: string | null
           current_moisture_status: string | null
           deleted_at: string | null
           district: string | null
@@ -12717,6 +13199,8 @@ export type Database = {
           last_processed_at: string | null
           last_soil_test_date: string | null
           last_sowing_date: string | null
+          lifecycle_changed_at: string
+          lifecycle_status: Database["public"]["Enums"]["land_lifecycle_status"]
           location_context: Json | null
           location_coords: Json | null
           marketplace_enabled: boolean | null
@@ -12755,6 +13239,7 @@ export type Database = {
           water_source: string | null
         }
         Insert: {
+          active_schedule_id?: string | null
           area_acres: number
           area_guntas?: number | null
           area_sqft?: number | null
@@ -12772,6 +13257,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          current_crop_variety_id?: string | null
           current_moisture_status?: string | null
           deleted_at?: string | null
           district?: string | null
@@ -12796,6 +13282,8 @@ export type Database = {
           last_processed_at?: string | null
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
+          lifecycle_changed_at?: string
+          lifecycle_status?: Database["public"]["Enums"]["land_lifecycle_status"]
           location_context?: Json | null
           location_coords?: Json | null
           marketplace_enabled?: boolean | null
@@ -12834,6 +13322,7 @@ export type Database = {
           water_source?: string | null
         }
         Update: {
+          active_schedule_id?: string | null
           area_acres?: number
           area_guntas?: number | null
           area_sqft?: number | null
@@ -12851,6 +13340,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          current_crop_variety_id?: string | null
           current_moisture_status?: string | null
           deleted_at?: string | null
           district?: string | null
@@ -12875,6 +13365,8 @@ export type Database = {
           last_processed_at?: string | null
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
+          lifecycle_changed_at?: string
+          lifecycle_status?: Database["public"]["Enums"]["land_lifecycle_status"]
           location_context?: Json | null
           location_coords?: Json | null
           marketplace_enabled?: boolean | null
@@ -12942,11 +13434,67 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "lands_active_schedule_fk"
+            columns: ["active_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "lands_current_crop_id_fkey"
             columns: ["current_crop_id"]
             isOneToOne: false
             referencedRelation: "crops"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_id_fkey"
+            columns: ["current_crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_fk"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_fk"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_fk"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_id_fkey"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_id_fkey"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_id_fkey"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
           {
             foreignKeyName: "lands_farmer_id_fkey"
@@ -12975,6 +13523,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crops"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_previous_crop_id_fkey"
+            columns: ["previous_crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
           },
         ]
       }
@@ -13771,6 +14326,7 @@ export type Database = {
           unit: string
           updated_at: string | null
           variety: string | null
+          variety_id: string | null
         }
         Insert: {
           arrival?: number | null
@@ -13804,6 +14360,7 @@ export type Database = {
           unit?: string
           updated_at?: string | null
           variety?: string | null
+          variety_id?: string | null
         }
         Update: {
           arrival?: number | null
@@ -13837,6 +14394,7 @@ export type Database = {
           unit?: string
           updated_at?: string | null
           variety?: string | null
+          variety_id?: string | null
         }
         Relationships: [
           {
@@ -13859,6 +14417,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "states"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "market_prices_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "market_prices_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "market_prices_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
         ]
       }
@@ -14623,9 +15202,74 @@ export type Database = {
           },
         ]
       }
+      master_product_variety_crops: {
+        Row: {
+          created_at: string
+          crop_id: string
+          id: string
+          is_primary: boolean
+          notes: string | null
+          product_id: string
+        }
+        Insert: {
+          created_at?: string
+          crop_id: string
+          id?: string
+          is_primary?: boolean
+          notes?: string | null
+          product_id: string
+        }
+        Update: {
+          created_at?: string
+          crop_id?: string
+          id?: string
+          is_primary?: boolean
+          notes?: string | null
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "master_product_variety_crops_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_product_variety_crops_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "master_product_variety_crops_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_product_variety_crops_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "master_product_variety_crops_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
       master_products: {
         Row: {
           active_ingredients: Json | null
+          agro_climatic_zones: string[] | null
+          agro_ecological_suitability: Json | null
           ai_metadata: Json | null
           ai_recommendable: boolean | null
           application_method: string | null
@@ -14634,23 +15278,31 @@ export type Database = {
           approval_date: string | null
           approved_at: string | null
           approved_by: string | null
+          availability_status: string | null
           available_pack_sizes: Json | null
           barcode: string | null
           batch_number: string | null
           brand: string | null
+          breeder_institute_id: string | null
           cas_number: string | null
+          catalog_url: string | null
           category_id: string
+          climate_suitability: Json | null
           company_id: string
           compatibility_info: Json | null
           composition: string | null
           country_of_origin: string | null
           created_at: string | null
           created_by: string | null
+          crop_id: string | null
           crop_stages: Json | null
           currency: string | null
+          data_completeness_score: number | null
+          data_confidence_score: number | null
           description: string | null
           discount_applicable: boolean | null
           discount_details: Json | null
+          disease_resistance: Json | null
           disease_targets: Json | null
           disposal_instructions: string | null
           distributor_id: string | null
@@ -14666,22 +15318,31 @@ export type Database = {
           id: string
           images: Json | null
           import_license_required: boolean | null
+          irrigation_sensitivity: Json | null
           is_bestseller: boolean | null
           is_featured: boolean | null
           lab_test_reports: Json | null
+          label_hi: string | null
+          label_mr: string | null
           manufacturer_id: string | null
           manufacturing_date: string | null
           market_availability: string | null
+          maturity_days_max: number | null
+          maturity_days_min: number | null
           maximum_order_quantity: number | null
           metadata: Json | null
           minimum_order_quantity: number | null
           mixing_instructions: string | null
           name: string
+          notification_date: string | null
+          notification_number: string | null
           nutrient_analysis: Json | null
           organic_certified: boolean | null
           origin_country: string | null
           packaging_options: Json | null
+          parentage: string | null
           pest_targets: Json | null
+          pest_tolerance: Json | null
           ph_range: Json | null
           popularity_score: number | null
           pre_harvest_interval_days: number | null
@@ -14691,36 +15352,60 @@ export type Database = {
           purity_percentage: number | null
           quality_certifications: Json | null
           re_entry_interval_hours: number | null
+          recommendation_priority: number | null
+          recommended_regions: Json | null
           recommended_season: Json | null
           registration_number: string | null
+          release_year: number | null
+          released_by: string | null
           safety_data_sheet_url: string | null
           safety_level: string | null
           sales_count: number | null
+          season: string | null
+          seed_rate_kg_per_acre: number | null
           seed_variety_details: Json | null
           shelf_life_months: number | null
           sku: string
+          soil_suitability: Json | null
+          spacing: Json | null
           spray_volume_per_acre: Json | null
+          state_suitability: string[] | null
+          state_suitability_ids: string[] | null
           status: string | null
           storage_instructions: string | null
           storage_temperature_range: Json | null
           suitable_crops: Json | null
+          suitable_district_ids: string[] | null
           suitable_soil_types: Json | null
+          suitable_zone_ids: string[] | null
           tax_rate: number | null
           technical_data_sheet_url: string | null
+          tenant_scope_id: string | null
           translations: Json | null
           unit_of_measure: string | null
           updated_at: string | null
           usage_restrictions: string | null
           user_reviews_summary: Json | null
+          variety_class: string | null
+          variety_code: string | null
+          variety_completeness_score: number | null
           video_urls: Json | null
           view_count: number | null
+          visibility: string | null
           warnings: string | null
+          water_demand_category: string | null
+          water_demand_mm_per_season: number | null
           water_solubility: string | null
           weather_conditions: Json | null
           weed_targets: Json | null
+          yield_irrigated_qtl_per_acre: number | null
+          yield_potential_qtl_per_acre: number | null
+          yield_rainfed_qtl_per_acre: number | null
         }
         Insert: {
           active_ingredients?: Json | null
+          agro_climatic_zones?: string[] | null
+          agro_ecological_suitability?: Json | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
           application_method?: string | null
@@ -14729,23 +15414,31 @@ export type Database = {
           approval_date?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          availability_status?: string | null
           available_pack_sizes?: Json | null
           barcode?: string | null
           batch_number?: string | null
           brand?: string | null
+          breeder_institute_id?: string | null
           cas_number?: string | null
+          catalog_url?: string | null
           category_id: string
+          climate_suitability?: Json | null
           company_id: string
           compatibility_info?: Json | null
           composition?: string | null
           country_of_origin?: string | null
           created_at?: string | null
           created_by?: string | null
+          crop_id?: string | null
           crop_stages?: Json | null
           currency?: string | null
+          data_completeness_score?: number | null
+          data_confidence_score?: number | null
           description?: string | null
           discount_applicable?: boolean | null
           discount_details?: Json | null
+          disease_resistance?: Json | null
           disease_targets?: Json | null
           disposal_instructions?: string | null
           distributor_id?: string | null
@@ -14761,22 +15454,31 @@ export type Database = {
           id?: string
           images?: Json | null
           import_license_required?: boolean | null
+          irrigation_sensitivity?: Json | null
           is_bestseller?: boolean | null
           is_featured?: boolean | null
           lab_test_reports?: Json | null
+          label_hi?: string | null
+          label_mr?: string | null
           manufacturer_id?: string | null
           manufacturing_date?: string | null
           market_availability?: string | null
+          maturity_days_max?: number | null
+          maturity_days_min?: number | null
           maximum_order_quantity?: number | null
           metadata?: Json | null
           minimum_order_quantity?: number | null
           mixing_instructions?: string | null
           name: string
+          notification_date?: string | null
+          notification_number?: string | null
           nutrient_analysis?: Json | null
           organic_certified?: boolean | null
           origin_country?: string | null
           packaging_options?: Json | null
+          parentage?: string | null
           pest_targets?: Json | null
+          pest_tolerance?: Json | null
           ph_range?: Json | null
           popularity_score?: number | null
           pre_harvest_interval_days?: number | null
@@ -14786,36 +15488,60 @@ export type Database = {
           purity_percentage?: number | null
           quality_certifications?: Json | null
           re_entry_interval_hours?: number | null
+          recommendation_priority?: number | null
+          recommended_regions?: Json | null
           recommended_season?: Json | null
           registration_number?: string | null
+          release_year?: number | null
+          released_by?: string | null
           safety_data_sheet_url?: string | null
           safety_level?: string | null
           sales_count?: number | null
+          season?: string | null
+          seed_rate_kg_per_acre?: number | null
           seed_variety_details?: Json | null
           shelf_life_months?: number | null
           sku: string
+          soil_suitability?: Json | null
+          spacing?: Json | null
           spray_volume_per_acre?: Json | null
+          state_suitability?: string[] | null
+          state_suitability_ids?: string[] | null
           status?: string | null
           storage_instructions?: string | null
           storage_temperature_range?: Json | null
           suitable_crops?: Json | null
+          suitable_district_ids?: string[] | null
           suitable_soil_types?: Json | null
+          suitable_zone_ids?: string[] | null
           tax_rate?: number | null
           technical_data_sheet_url?: string | null
+          tenant_scope_id?: string | null
           translations?: Json | null
           unit_of_measure?: string | null
           updated_at?: string | null
           usage_restrictions?: string | null
           user_reviews_summary?: Json | null
+          variety_class?: string | null
+          variety_code?: string | null
+          variety_completeness_score?: number | null
           video_urls?: Json | null
           view_count?: number | null
+          visibility?: string | null
           warnings?: string | null
+          water_demand_category?: string | null
+          water_demand_mm_per_season?: number | null
           water_solubility?: string | null
           weather_conditions?: Json | null
           weed_targets?: Json | null
+          yield_irrigated_qtl_per_acre?: number | null
+          yield_potential_qtl_per_acre?: number | null
+          yield_rainfed_qtl_per_acre?: number | null
         }
         Update: {
           active_ingredients?: Json | null
+          agro_climatic_zones?: string[] | null
+          agro_ecological_suitability?: Json | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
           application_method?: string | null
@@ -14824,23 +15550,31 @@ export type Database = {
           approval_date?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          availability_status?: string | null
           available_pack_sizes?: Json | null
           barcode?: string | null
           batch_number?: string | null
           brand?: string | null
+          breeder_institute_id?: string | null
           cas_number?: string | null
+          catalog_url?: string | null
           category_id?: string
+          climate_suitability?: Json | null
           company_id?: string
           compatibility_info?: Json | null
           composition?: string | null
           country_of_origin?: string | null
           created_at?: string | null
           created_by?: string | null
+          crop_id?: string | null
           crop_stages?: Json | null
           currency?: string | null
+          data_completeness_score?: number | null
+          data_confidence_score?: number | null
           description?: string | null
           discount_applicable?: boolean | null
           discount_details?: Json | null
+          disease_resistance?: Json | null
           disease_targets?: Json | null
           disposal_instructions?: string | null
           distributor_id?: string | null
@@ -14856,22 +15590,31 @@ export type Database = {
           id?: string
           images?: Json | null
           import_license_required?: boolean | null
+          irrigation_sensitivity?: Json | null
           is_bestseller?: boolean | null
           is_featured?: boolean | null
           lab_test_reports?: Json | null
+          label_hi?: string | null
+          label_mr?: string | null
           manufacturer_id?: string | null
           manufacturing_date?: string | null
           market_availability?: string | null
+          maturity_days_max?: number | null
+          maturity_days_min?: number | null
           maximum_order_quantity?: number | null
           metadata?: Json | null
           minimum_order_quantity?: number | null
           mixing_instructions?: string | null
           name?: string
+          notification_date?: string | null
+          notification_number?: string | null
           nutrient_analysis?: Json | null
           organic_certified?: boolean | null
           origin_country?: string | null
           packaging_options?: Json | null
+          parentage?: string | null
           pest_targets?: Json | null
+          pest_tolerance?: Json | null
           ph_range?: Json | null
           popularity_score?: number | null
           pre_harvest_interval_days?: number | null
@@ -14881,35 +15624,71 @@ export type Database = {
           purity_percentage?: number | null
           quality_certifications?: Json | null
           re_entry_interval_hours?: number | null
+          recommendation_priority?: number | null
+          recommended_regions?: Json | null
           recommended_season?: Json | null
           registration_number?: string | null
+          release_year?: number | null
+          released_by?: string | null
           safety_data_sheet_url?: string | null
           safety_level?: string | null
           sales_count?: number | null
+          season?: string | null
+          seed_rate_kg_per_acre?: number | null
           seed_variety_details?: Json | null
           shelf_life_months?: number | null
           sku?: string
+          soil_suitability?: Json | null
+          spacing?: Json | null
           spray_volume_per_acre?: Json | null
+          state_suitability?: string[] | null
+          state_suitability_ids?: string[] | null
           status?: string | null
           storage_instructions?: string | null
           storage_temperature_range?: Json | null
           suitable_crops?: Json | null
+          suitable_district_ids?: string[] | null
           suitable_soil_types?: Json | null
+          suitable_zone_ids?: string[] | null
           tax_rate?: number | null
           technical_data_sheet_url?: string | null
+          tenant_scope_id?: string | null
           translations?: Json | null
           unit_of_measure?: string | null
           updated_at?: string | null
           usage_restrictions?: string | null
           user_reviews_summary?: Json | null
+          variety_class?: string | null
+          variety_code?: string | null
+          variety_completeness_score?: number | null
           video_urls?: Json | null
           view_count?: number | null
+          visibility?: string | null
           warnings?: string | null
+          water_demand_category?: string | null
+          water_demand_mm_per_season?: number | null
           water_solubility?: string | null
           weather_conditions?: Json | null
           weed_targets?: Json | null
+          yield_irrigated_qtl_per_acre?: number | null
+          yield_potential_qtl_per_acre?: number | null
+          yield_rainfed_qtl_per_acre?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "master_products_breeder_institute_id_fkey"
+            columns: ["breeder_institute_id"]
+            isOneToOne: false
+            referencedRelation: "master_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_products_breeder_institute_id_fkey"
+            columns: ["breeder_institute_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
+          },
           {
             foreignKeyName: "master_products_category_id_fkey"
             columns: ["category_id"]
@@ -14925,8 +15704,43 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "master_products_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "master_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
             foreignKeyName: "master_products_distributor_fkey"
             columns: ["distributor_id"]
+            isOneToOne: false
+            referencedRelation: "master_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_products_distributor_fkey"
+            columns: ["distributor_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "master_products_manufacturer_fkey"
+            columns: ["manufacturer_id"]
             isOneToOne: false
             referencedRelation: "master_companies"
             referencedColumns: ["id"]
@@ -14935,8 +15749,8 @@ export type Database = {
             foreignKeyName: "master_products_manufacturer_fkey"
             columns: ["manufacturer_id"]
             isOneToOne: false
-            referencedRelation: "master_companies"
-            referencedColumns: ["id"]
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
           },
         ]
       }
@@ -15758,19 +16572,40 @@ export type Database = {
       }
       observation_aliases: {
         Row: {
+          active: boolean
           alias_code: string
+          alias_normalized: string | null
+          alias_text: string | null
           canonical_code: string
+          confidence: number
           created_at: string | null
+          language: string
+          source: string
+          updated_at: string
         }
         Insert: {
+          active?: boolean
           alias_code: string
+          alias_normalized?: string | null
+          alias_text?: string | null
           canonical_code: string
+          confidence?: number
           created_at?: string | null
+          language?: string
+          source?: string
+          updated_at?: string
         }
         Update: {
+          active?: boolean
           alias_code?: string
+          alias_normalized?: string | null
+          alias_text?: string | null
           canonical_code?: string
+          confidence?: number
           created_at?: string | null
+          language?: string
+          source?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -15781,6 +16616,36 @@ export type Database = {
             referencedColumns: ["observation_code"]
           },
         ]
+      }
+      observation_differential_questions: {
+        Row: {
+          created_at: string
+          crop_code: string | null
+          id: string
+          language: string
+          observation_code: string
+          question_text: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          crop_code?: string | null
+          id?: string
+          language: string
+          observation_code: string
+          question_text: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string | null
+          id?: string
+          language?: string
+          observation_code?: string
+          question_text?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       observation_intent_master: {
         Row: {
@@ -15830,59 +16695,12 @@ export type Database = {
         }
         Relationships: []
       }
-      observation_intent_master_backup_2026_03: {
-        Row: {
-          allowed_observation_groups: string[] | null
-          clarification_mode: string | null
-          created_at: string | null
-          intent_category: string | null
-          intent_code: string | null
-          intent_description: string | null
-          is_active: boolean | null
-          is_biological: boolean | null
-          max_clarification_rounds: number | null
-          requires_crop_context: boolean | null
-          requires_stage_context: boolean | null
-          routing_target: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          allowed_observation_groups?: string[] | null
-          clarification_mode?: string | null
-          created_at?: string | null
-          intent_category?: string | null
-          intent_code?: string | null
-          intent_description?: string | null
-          is_active?: boolean | null
-          is_biological?: boolean | null
-          max_clarification_rounds?: number | null
-          requires_crop_context?: boolean | null
-          requires_stage_context?: boolean | null
-          routing_target?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          allowed_observation_groups?: string[] | null
-          clarification_mode?: string | null
-          created_at?: string | null
-          intent_category?: string | null
-          intent_code?: string | null
-          intent_description?: string | null
-          is_active?: boolean | null
-          is_biological?: boolean | null
-          max_clarification_rounds?: number | null
-          requires_crop_context?: boolean | null
-          requires_stage_context?: boolean | null
-          routing_target?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       observation_master: {
         Row: {
           affected_plant_part: string | null
           applicable_crop_groups: string[] | null
-          canonical_group: string | null
+          applies_to_stages: string[]
+          canonical_group: string
           clarity_score: number | null
           created_at: string | null
           crop_group: string | null
@@ -15895,16 +16713,20 @@ export type Database = {
           observation_category: string | null
           observation_code: string
           observation_type: string | null
+          polarity: string
+          semantic_class: string | null
           severity_level: string | null
           symptom_category: string | null
           symptom_pattern: string | null
           symptom_type: string | null
           updated_at: string | null
+          version_hash: string | null
         }
         Insert: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
-          canonical_group?: string | null
+          applies_to_stages?: string[]
+          canonical_group: string
           clarity_score?: number | null
           created_at?: string | null
           crop_group?: string | null
@@ -15917,16 +16739,20 @@ export type Database = {
           observation_category?: string | null
           observation_code: string
           observation_type?: string | null
+          polarity?: string
+          semantic_class?: string | null
           severity_level?: string | null
           symptom_category?: string | null
           symptom_pattern?: string | null
           symptom_type?: string | null
           updated_at?: string | null
+          version_hash?: string | null
         }
         Update: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
-          canonical_group?: string | null
+          applies_to_stages?: string[]
+          canonical_group?: string
           clarity_score?: number | null
           created_at?: string | null
           crop_group?: string | null
@@ -15939,140 +16765,14 @@ export type Database = {
           observation_category?: string | null
           observation_code?: string
           observation_type?: string | null
+          polarity?: string
+          semantic_class?: string | null
           severity_level?: string | null
           symptom_category?: string | null
           symptom_pattern?: string | null
           symptom_type?: string | null
           updated_at?: string | null
-        }
-        Relationships: []
-      }
-      observation_master_backup_2026_03: {
-        Row: {
-          affected_plant_part: string | null
-          canonical_group: string | null
-          created_at: string | null
-          description: string | null
-          is_active: boolean | null
-          is_diagnostic: boolean | null
-          is_farmer_observable: boolean | null
-          observation_category: string | null
-          observation_code: string | null
-          symptom_category: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          affected_plant_part?: string | null
-          canonical_group?: string | null
-          created_at?: string | null
-          description?: string | null
-          is_active?: boolean | null
-          is_diagnostic?: boolean | null
-          is_farmer_observable?: boolean | null
-          observation_category?: string | null
-          observation_code?: string | null
-          symptom_category?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          affected_plant_part?: string | null
-          canonical_group?: string | null
-          created_at?: string | null
-          description?: string | null
-          is_active?: boolean | null
-          is_diagnostic?: boolean | null
-          is_farmer_observable?: boolean | null
-          observation_category?: string | null
-          observation_code?: string | null
-          symptom_category?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      observation_master_backup_20260311: {
-        Row: {
-          affected_plant_part: string | null
-          canonical_group: string | null
-          created_at: string | null
-          description: string | null
-          is_active: boolean | null
-          is_diagnostic: boolean | null
-          is_farmer_observable: boolean | null
-          observation_category: string | null
-          observation_code: string | null
-          symptom_category: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          affected_plant_part?: string | null
-          canonical_group?: string | null
-          created_at?: string | null
-          description?: string | null
-          is_active?: boolean | null
-          is_diagnostic?: boolean | null
-          is_farmer_observable?: boolean | null
-          observation_category?: string | null
-          observation_code?: string | null
-          symptom_category?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          affected_plant_part?: string | null
-          canonical_group?: string | null
-          created_at?: string | null
-          description?: string | null
-          is_active?: boolean | null
-          is_diagnostic?: boolean | null
-          is_farmer_observable?: boolean | null
-          observation_category?: string | null
-          observation_code?: string | null
-          symptom_category?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      observation_master_backup_20260316: {
-        Row: {
-          affected_plant_part: string | null
-          backed_up_at: string | null
-          canonical_group: string | null
-          created_at: string | null
-          description: string | null
-          is_active: boolean | null
-          is_diagnostic: boolean | null
-          is_farmer_observable: boolean | null
-          observation_category: string | null
-          observation_code: string | null
-          symptom_category: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          affected_plant_part?: string | null
-          backed_up_at?: string | null
-          canonical_group?: string | null
-          created_at?: string | null
-          description?: string | null
-          is_active?: boolean | null
-          is_diagnostic?: boolean | null
-          is_farmer_observable?: boolean | null
-          observation_category?: string | null
-          observation_code?: string | null
-          symptom_category?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          affected_plant_part?: string | null
-          backed_up_at?: string | null
-          canonical_group?: string | null
-          created_at?: string | null
-          description?: string | null
-          is_active?: boolean | null
-          is_diagnostic?: boolean | null
-          is_farmer_observable?: boolean | null
-          observation_category?: string | null
-          observation_code?: string | null
-          symptom_category?: string | null
-          updated_at?: string | null
+          version_hash?: string | null
         }
         Relationships: []
       }
@@ -16114,39 +16814,6 @@ export type Database = {
           },
         ]
       }
-      observation_translations_backup_20260316: {
-        Row: {
-          backed_up_at: string | null
-          created_at: string | null
-          crop_code: string | null
-          description_text: string | null
-          display_text: string | null
-          id: string | null
-          language_code: string | null
-          observation_code: string | null
-        }
-        Insert: {
-          backed_up_at?: string | null
-          created_at?: string | null
-          crop_code?: string | null
-          description_text?: string | null
-          display_text?: string | null
-          id?: string | null
-          language_code?: string | null
-          observation_code?: string | null
-        }
-        Update: {
-          backed_up_at?: string | null
-          created_at?: string | null
-          crop_code?: string | null
-          description_text?: string | null
-          display_text?: string | null
-          id?: string | null
-          language_code?: string | null
-          observation_code?: string | null
-        }
-        Relationships: []
-      }
       observation_versions: {
         Row: {
           change_reason: string | null
@@ -16177,6 +16844,51 @@ export type Database = {
           observation_id?: string
           snapshot?: Json
           version_number?: number
+        }
+        Relationships: []
+      }
+      observation_vocabulary_gaps: {
+        Row: {
+          first_seen_at: string
+          id: string
+          language: string
+          last_seen_at: string
+          metadata: Json
+          occurrences: number
+          resolved: boolean
+          resolved_at: string | null
+          resolved_canonical_code: string | null
+          source: string
+          token_normalized: string
+          token_raw: string
+        }
+        Insert: {
+          first_seen_at?: string
+          id?: string
+          language?: string
+          last_seen_at?: string
+          metadata?: Json
+          occurrences?: number
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_canonical_code?: string | null
+          source?: string
+          token_normalized: string
+          token_raw: string
+        }
+        Update: {
+          first_seen_at?: string
+          id?: string
+          language?: string
+          last_seen_at?: string
+          metadata?: Json
+          occurrences?: number
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_canonical_code?: string | null
+          source?: string
+          token_normalized?: string
+          token_raw?: string
         }
         Relationships: []
       }
@@ -16944,56 +17656,95 @@ export type Database = {
       payment_intents: {
         Row: {
           amount: number
+          applied_coupon_id: string | null
+          billing_interval: string
+          client_ip: unknown
+          collected_by: string | null
+          collection_method: string | null
           created_at: string | null
           currency: string | null
+          discount_amount: number
           dummy_payment_data: Json | null
           error_message: string | null
           expires_at: string | null
           farmer_id: string | null
           id: string
+          idempotency_key: string | null
+          notes: string | null
+          original_amount: number | null
           payment_method: string | null
           plan_id: string
+          proof_url: string | null
+          reference_number: string | null
+          source: string
           status: string | null
           subscription_type: string
           tenant_id: string | null
           transaction_id: string | null
           updated_at: string | null
+          user_agent: string | null
           user_id: string | null
         }
         Insert: {
           amount: number
+          applied_coupon_id?: string | null
+          billing_interval?: string
+          client_ip?: unknown
+          collected_by?: string | null
+          collection_method?: string | null
           created_at?: string | null
           currency?: string | null
+          discount_amount?: number
           dummy_payment_data?: Json | null
           error_message?: string | null
           expires_at?: string | null
           farmer_id?: string | null
           id?: string
+          idempotency_key?: string | null
+          notes?: string | null
+          original_amount?: number | null
           payment_method?: string | null
           plan_id: string
+          proof_url?: string | null
+          reference_number?: string | null
+          source?: string
           status?: string | null
           subscription_type: string
           tenant_id?: string | null
           transaction_id?: string | null
           updated_at?: string | null
+          user_agent?: string | null
           user_id?: string | null
         }
         Update: {
           amount?: number
+          applied_coupon_id?: string | null
+          billing_interval?: string
+          client_ip?: unknown
+          collected_by?: string | null
+          collection_method?: string | null
           created_at?: string | null
           currency?: string | null
+          discount_amount?: number
           dummy_payment_data?: Json | null
           error_message?: string | null
           expires_at?: string | null
           farmer_id?: string | null
           id?: string
+          idempotency_key?: string | null
+          notes?: string | null
+          original_amount?: number | null
           payment_method?: string | null
           plan_id?: string
+          proof_url?: string | null
+          reference_number?: string | null
+          source?: string
           status?: string | null
           subscription_type?: string
           tenant_id?: string | null
           transaction_id?: string | null
           updated_at?: string | null
+          user_agent?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -17213,6 +17964,7 @@ export type Database = {
           id: string
           invoice_id: string | null
           metadata: Json | null
+          payment_intent_id: string | null
           payment_method_id: string | null
           processed_at: string | null
           status: string
@@ -17233,6 +17985,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           payment_method_id?: string | null
           processed_at?: string | null
           status: string
@@ -17253,6 +18006,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           payment_method_id?: string | null
           processed_at?: string | null
           status?: string
@@ -18473,6 +19227,7 @@ export type Database = {
           title_mr: string | null
           trigger_data: Json | null
           updated_at: string | null
+          variety_id: string | null
         }
         Insert: {
           acted_at?: string | null
@@ -18506,6 +19261,7 @@ export type Database = {
           title_mr?: string | null
           trigger_data?: Json | null
           updated_at?: string | null
+          variety_id?: string | null
         }
         Update: {
           acted_at?: string | null
@@ -18539,6 +19295,7 @@ export type Database = {
           title_mr?: string | null
           trigger_data?: Json | null
           updated_at?: string | null
+          variety_id?: string | null
         }
         Relationships: [
           {
@@ -18604,6 +19361,27 @@ export type Database = {
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
+          {
+            foreignKeyName: "proactive_alerts_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proactive_alerts_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "proactive_alerts_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
         ]
       }
       proactive_evaluation_log: {
@@ -18619,6 +19397,7 @@ export type Database = {
           rules_evaluated: number | null
           rules_fired: number | null
           tenant_id: string
+          variety_id: string | null
         }
         Insert: {
           alerts_generated?: number | null
@@ -18632,6 +19411,7 @@ export type Database = {
           rules_evaluated?: number | null
           rules_fired?: number | null
           tenant_id: string
+          variety_id?: string | null
         }
         Update: {
           alerts_generated?: number | null
@@ -18645,8 +19425,31 @@ export type Database = {
           rules_evaluated?: number | null
           rules_fired?: number | null
           tenant_id?: string
+          variety_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "proactive_eval_log_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proactive_eval_log_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "proactive_eval_log_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
       }
       proactive_events: {
         Row: {
@@ -19402,11 +20205,32 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "products_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "products_master_product_id_fkey"
             columns: ["master_product_id"]
             isOneToOne: false
             referencedRelation: "master_products"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_master_product_id_fkey"
+            columns: ["master_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "products_master_product_id_fkey"
+            columns: ["master_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
         ]
       }
@@ -20297,6 +21121,7 @@ export type Database = {
         Row: {
           conflict_details: Json
           conflict_type: string
+          created_at: string
           detected_at: string
           id: string
           resolution_notes: string | null
@@ -20306,10 +21131,12 @@ export type Database = {
           rule_a_id: string
           rule_b_id: string
           severity: string
+          updated_at: string
         }
         Insert: {
           conflict_details?: Json
           conflict_type: string
+          created_at?: string
           detected_at?: string
           id?: string
           resolution_notes?: string | null
@@ -20319,10 +21146,12 @@ export type Database = {
           rule_a_id: string
           rule_b_id: string
           severity?: string
+          updated_at?: string
         }
         Update: {
           conflict_details?: Json
           conflict_type?: string
+          created_at?: string
           detected_at?: string
           id?: string
           resolution_notes?: string | null
@@ -20332,6 +21161,7 @@ export type Database = {
           rule_a_id?: string
           rule_b_id?: string
           severity?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -20534,6 +21364,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "master_products"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
           {
             foreignKeyName: "rule_product_mapping_rule_id_fkey"
@@ -21782,6 +22626,7 @@ export type Database = {
           task_type: string
           tenant_id: string
           updated_at: string | null
+          variety_id: string | null
           water_required_liters: number | null
           weather_dependent: boolean | null
           weather_risk_level: string | null
@@ -21830,6 +22675,7 @@ export type Database = {
           task_type: string
           tenant_id?: string
           updated_at?: string | null
+          variety_id?: string | null
           water_required_liters?: number | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
@@ -21878,6 +22724,7 @@ export type Database = {
           task_type?: string
           tenant_id?: string
           updated_at?: string | null
+          variety_id?: string | null
           water_required_liters?: number | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
@@ -21893,7 +22740,70 @@ export type Database = {
             referencedRelation: "crop_schedules"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "schedule_tasks_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_tasks_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "schedule_tasks_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
         ]
+      }
+      scheduled_followups: {
+        Row: {
+          created_at: string
+          day: number
+          decision_id: string | null
+          delivered_at: string | null
+          farmer_id: string | null
+          id: string
+          response_payload: Json | null
+          scheduled_for: string
+          session_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          day: number
+          decision_id?: string | null
+          delivered_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          response_payload?: Json | null
+          scheduled_for: string
+          session_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          day?: number
+          decision_id?: string | null
+          delivered_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          response_payload?: Json | null
+          scheduled_for?: string
+          session_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       scheduled_reports: {
         Row: {
@@ -22848,6 +23758,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
+          label_hi: string | null
+          label_kn: string | null
+          label_ml: string | null
+          label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           value: string
         }
         Insert: {
@@ -22856,6 +23779,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value: string
         }
         Update: {
@@ -22864,6 +23800,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value?: string
         }
         Relationships: []
@@ -23211,10 +24160,12 @@ export type Database = {
       }
       subscription_coupons: {
         Row: {
+          applicable_billing_intervals: string[] | null
           applicable_plan_ids: string[] | null
           code: string
           coupon_type: string
           created_at: string
+          created_by: string | null
           currency: string | null
           description: string | null
           discount_amount: number | null
@@ -23224,11 +24175,13 @@ export type Database = {
           id: string
           is_active: boolean | null
           max_redemptions: number | null
+          max_redemptions_per_farmer: number | null
           metadata: Json | null
           minimum_amount: number | null
           name: string
           plan_category: string | null
           stripe_coupon_id: string | null
+          tenant_id: string | null
           times_redeemed: number | null
           trial_days_extension: number | null
           updated_at: string
@@ -23236,10 +24189,12 @@ export type Database = {
           valid_until: string | null
         }
         Insert: {
+          applicable_billing_intervals?: string[] | null
           applicable_plan_ids?: string[] | null
           code: string
           coupon_type: string
           created_at?: string
+          created_by?: string | null
           currency?: string | null
           description?: string | null
           discount_amount?: number | null
@@ -23249,11 +24204,13 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           max_redemptions?: number | null
+          max_redemptions_per_farmer?: number | null
           metadata?: Json | null
           minimum_amount?: number | null
           name: string
           plan_category?: string | null
           stripe_coupon_id?: string | null
+          tenant_id?: string | null
           times_redeemed?: number | null
           trial_days_extension?: number | null
           updated_at?: string
@@ -23261,10 +24218,12 @@ export type Database = {
           valid_until?: string | null
         }
         Update: {
+          applicable_billing_intervals?: string[] | null
           applicable_plan_ids?: string[] | null
           code?: string
           coupon_type?: string
           created_at?: string
+          created_by?: string | null
           currency?: string | null
           description?: string | null
           discount_amount?: number | null
@@ -23274,11 +24233,13 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           max_redemptions?: number | null
+          max_redemptions_per_farmer?: number | null
           metadata?: Json | null
           minimum_amount?: number | null
           name?: string
           plan_category?: string | null
           stripe_coupon_id?: string | null
+          tenant_id?: string | null
           times_redeemed?: number | null
           trial_days_extension?: number | null
           updated_at?: string
@@ -25973,6 +26934,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "trending_topics_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
             foreignKeyName: "trending_topics_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -26551,6 +27519,359 @@ export type Database = {
           },
         ]
       }
+      variety_resistance: {
+        Row: {
+          canonical_observation_code: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          observation_code: string | null
+          resistance_level: string
+          source: string | null
+          threat_name: string
+          threat_type: string
+          trial_score: number | null
+          updated_at: string
+          variety_id: string
+        }
+        Insert: {
+          canonical_observation_code?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          observation_code?: string | null
+          resistance_level: string
+          source?: string | null
+          threat_name: string
+          threat_type: string
+          trial_score?: number | null
+          updated_at?: string
+          variety_id: string
+        }
+        Update: {
+          canonical_observation_code?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          observation_code?: string | null
+          resistance_level?: string
+          source?: string | null
+          threat_name?: string
+          threat_type?: string
+          trial_score?: number | null
+          updated_at?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_resistance_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_resistance_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_resistance_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
+      variety_review_queue: {
+        Row: {
+          created_at: string
+          current_value: string | null
+          field_name: string
+          id: string
+          notes: string | null
+          priority: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          suggested_sources: string[] | null
+          updated_at: string
+          variety_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_value?: string | null
+          field_name: string
+          id?: string
+          notes?: string | null
+          priority?: string
+          reason: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_sources?: string[] | null
+          updated_at?: string
+          variety_id: string
+        }
+        Update: {
+          created_at?: string
+          current_value?: string | null
+          field_name?: string
+          id?: string
+          notes?: string | null
+          priority?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_sources?: string[] | null
+          updated_at?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_review_queue_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_review_queue_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_review_queue_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
+      variety_source_references: {
+        Row: {
+          authority: string | null
+          created_at: string
+          id: string
+          publication_year: number | null
+          ref_type: string
+          title: string
+          updated_at: string
+          url: string | null
+          variety_id: string
+        }
+        Insert: {
+          authority?: string | null
+          created_at?: string
+          id?: string
+          publication_year?: number | null
+          ref_type: string
+          title: string
+          updated_at?: string
+          url?: string | null
+          variety_id: string
+        }
+        Update: {
+          authority?: string | null
+          created_at?: string
+          id?: string
+          publication_year?: number | null
+          ref_type?: string
+          title?: string
+          updated_at?: string
+          url?: string | null
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_source_references_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_source_references_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_source_references_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
+      variety_submissions: {
+        Row: {
+          approved_variety_id: string | null
+          created_at: string
+          crop_id: string | null
+          id: string
+          local_name: string | null
+          maturity_days_max: number | null
+          maturity_days_min: number | null
+          notes: string | null
+          proposed_name: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          season: string | null
+          status: string
+          submitted_by: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_variety_id?: string | null
+          created_at?: string
+          crop_id?: string | null
+          id?: string
+          local_name?: string | null
+          maturity_days_max?: number | null
+          maturity_days_min?: number | null
+          notes?: string | null
+          proposed_name: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          season?: string | null
+          status?: string
+          submitted_by: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_variety_id?: string | null
+          created_at?: string
+          crop_id?: string | null
+          id?: string
+          local_name?: string | null
+          maturity_days_max?: number | null
+          maturity_days_min?: number | null
+          notes?: string | null
+          proposed_name?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          season?: string | null
+          status?: string
+          submitted_by?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_submissions_approved_variety_id_fkey"
+            columns: ["approved_variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_approved_variety_id_fkey"
+            columns: ["approved_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_approved_variety_id_fkey"
+            columns: ["approved_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      variety_translations: {
+        Row: {
+          created_at: string
+          detailed_description: string | null
+          display_name: string
+          id: string
+          language_code: string
+          local_synonyms: string[] | null
+          short_description: string | null
+          updated_at: string
+          variety_id: string
+        }
+        Insert: {
+          created_at?: string
+          detailed_description?: string | null
+          display_name: string
+          id?: string
+          language_code: string
+          local_synonyms?: string[] | null
+          short_description?: string | null
+          updated_at?: string
+          variety_id: string
+        }
+        Update: {
+          created_at?: string
+          detailed_description?: string | null
+          display_name?: string
+          id?: string
+          language_code?: string
+          local_synonyms?: string[] | null
+          short_description?: string | null
+          updated_at?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_translations_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_translations_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_translations_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
       video_tutorials: {
         Row: {
           category: string
@@ -27011,6 +28332,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
+          label_hi: string | null
+          label_kn: string | null
+          label_ml: string | null
+          label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           value: string
         }
         Insert: {
@@ -27019,6 +28353,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value: string
         }
         Update: {
@@ -27027,6 +28374,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value?: string
         }
         Relationships: []
@@ -28616,6 +29976,72 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ai_clarification_attribution_90d: {
+        Row: {
+          avg_top_confidence: number | null
+          clarification_origin: string | null
+          clarification_site: string | null
+          crop_context: string | null
+          disposition: string | null
+          first_seen: string | null
+          last_seen: string | null
+          reached_decision_brain: number | null
+          response_type: string | null
+          rules_matched_turns: number | null
+          turns: number | null
+        }
+        Relationships: []
+      }
+      v_ai_drop_attribution_90d: {
+        Row: {
+          clarification_origin: string | null
+          crop_context: string | null
+          drop_stage: string | null
+          primary_decision_turns: number | null
+          response_source: string | null
+          response_type: string | null
+          rules_lost_at_drop_stage: number | null
+          rules_matched_turns: number | null
+          turns: number | null
+        }
+        Relationships: []
+      }
+      v_crop_varieties: {
+        Row: {
+          company_id: string | null
+          company_logo_url: string | null
+          company_name: string | null
+          crop_code: string | null
+          crop_id: string | null
+          crop_label: string | null
+          crop_label_hi: string | null
+          crop_label_mr: string | null
+          disease_resistance: Json | null
+          images: Json | null
+          is_featured: boolean | null
+          label_hi: string | null
+          label_mr: string | null
+          maturity_days_max: number | null
+          maturity_days_min: number | null
+          name: string | null
+          parentage: string | null
+          pest_tolerance: Json | null
+          popularity_score: number | null
+          recommended_regions: Json | null
+          release_year: number | null
+          released_by: string | null
+          season: string | null
+          seed_rate_kg_per_acre: number | null
+          spacing: Json | null
+          status: string | null
+          tenant_scope_id: string | null
+          variety_code: string | null
+          variety_id: string | null
+          visibility: string | null
+          yield_potential_qtl_per_acre: number | null
+        }
+        Relationships: []
+      }
       v_decision_rules_admin: {
         Row: {
           action_type: string | null
@@ -28750,6 +30176,63 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agri_market_sources"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_variety_data_quality: {
+        Row: {
+          crop_id: string | null
+          maturity_inverted: boolean | null
+          missing_climate: boolean | null
+          missing_maturity: boolean | null
+          missing_soil: boolean | null
+          missing_water_demand: boolean | null
+          resistance_rows: number | null
+          resistance_unmapped: number | null
+          variety_completeness_score: number | null
+          variety_id: string | null
+          variety_name: string | null
+        }
+        Insert: {
+          crop_id?: string | null
+          maturity_inverted?: never
+          missing_climate?: never
+          missing_maturity?: never
+          missing_soil?: never
+          missing_water_demand?: never
+          resistance_rows?: never
+          resistance_unmapped?: never
+          variety_completeness_score?: number | null
+          variety_id?: string | null
+          variety_name?: string | null
+        }
+        Update: {
+          crop_id?: string | null
+          maturity_inverted?: never
+          missing_climate?: never
+          missing_maturity?: never
+          missing_soil?: never
+          missing_water_demand?: never
+          resistance_rows?: never
+          resistance_unmapped?: never
+          variety_completeness_score?: number | null
+          variety_id?: string | null
+          variety_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "master_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
           },
         ]
       }
@@ -29253,6 +30736,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      calc_variety_completeness: {
+        Args: { p_variety_id: string }
+        Returns: number
+      }
       calculate_area_km2: { Args: { geom: unknown }; Returns: number }
       calculate_engagement_score: { Args: { post_id: string }; Returns: number }
       calculate_evapotranspiration: {
@@ -29626,6 +31113,7 @@ export type Database = {
         Args: { resources: Json; task_type: string }
         Returns: number
       }
+      finalize_payment: { Args: { p_intent_id: string }; Returns: Json }
       find_intersecting_districts: {
         Args: { tile_geom: unknown }
         Returns: {
@@ -29659,6 +31147,17 @@ export type Database = {
           overlap_percent: number
           tile_area_sqm: number
           tile_id: string
+        }[]
+      }
+      fn_observations_for_intent_ci: {
+        Args: {
+          p_crop_code: string
+          p_growth_stage?: string
+          p_intent_code: string
+        }
+        Returns: {
+          confidence_rank: number
+          observation_code: string
         }[]
       }
       generate_credit_note_number: { Args: never; Returns: string }
@@ -30258,6 +31757,7 @@ export type Database = {
         Args: { p_community_id: string; p_farmer_id: string }
         Returns: Json
       }
+      jsonb_normalize_upper_tokens: { Args: { data: Json }; Returns: Json }
       leave_community: {
         Args: { p_community_id: string; p_farmer_id: string }
         Returns: Json
@@ -30409,6 +31909,10 @@ export type Database = {
         Args: { p_email: string; p_ip_address?: unknown }
         Returns: Json
       }
+      redeem_promo_code: {
+        Args: { p_code: string; p_intent_id: string }
+        Returns: Json
+      }
       reels_bump_counter: {
         Args: { _col: string; _delta: number; _reel_id: string }
         Returns: undefined
@@ -30440,6 +31944,14 @@ export type Database = {
         Returns: Json
       }
       resolve_farmer_features: { Args: { _farmer: string }; Returns: Json }
+      resolve_observation_canonical: {
+        Args: { _language?: string; _raw: string }
+        Returns: {
+          canonical_code: string
+          match_type: string
+          similarity: number
+        }[]
+      }
       resolve_tenant_by_slug: { Args: { p_slug: string }; Returns: Json }
       resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
       sanitize_white_label_config: {
@@ -31077,6 +32589,38 @@ export type Database = {
         Returns: Json
       }
       system_health_snapshot: { Args: never; Returns: Json }
+      tenant_assign_farmer_subscription:
+        | {
+            Args: {
+              p_billing_interval: string
+              p_collection_method: string
+              p_farmer_id: string
+              p_idempotency_key?: string
+              p_notes?: string
+              p_plan_id: string
+              p_promo_code?: string
+              p_proof_url?: string
+              p_reference_number?: string
+              p_tenant_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_billing_interval: string
+              p_collection_method: string
+              p_farmer_id: string
+              p_idempotency_key?: string
+              p_notes?: string
+              p_paid_by_tenant?: boolean
+              p_plan_id: string
+              p_promo_code?: string
+              p_proof_url?: string
+              p_reference_number?: string
+              p_tenant_id: string
+            }
+            Returns: Json
+          }
       test_lead_auto_assignment: { Args: never; Returns: Json }
       toggle_post_like: {
         Args: { p_farmer_id: string; p_post_id: string }
@@ -31219,6 +32763,15 @@ export type Database = {
           role: string
         }[]
       }
+      validate_iom_semantic_class: {
+        Args: { p_intent_code: string; p_observation_code: string }
+        Returns: {
+          allowed: string[]
+          is_valid: boolean
+          obs_class: string
+          reason: string
+        }[]
+      }
       validate_photo_location: {
         Args: {
           p_land_id: string
@@ -31231,6 +32784,17 @@ export type Database = {
           is_valid: boolean
           validation_level: string
         }[]
+      }
+      validate_promo_code: {
+        Args: {
+          p_base_amount?: number
+          p_billing_interval: string
+          p_code: string
+          p_farmer_id: string
+          p_plan_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       validate_registration_token_secure: {
         Args: { p_token: string }
@@ -31302,6 +32866,31 @@ export type Database = {
         | "practice"
         | "market"
         | "problem_solving"
+      crop_schedule_lifecycle_status:
+        | "PLANNED"
+        | "SOWN"
+        | "GROWING"
+        | "MATURITY_REACHED"
+        | "WAITING_HARVEST_CONFIRMATION"
+        | "HARVESTED"
+        | "ABANDONED"
+      harvest_confirmation_request_status:
+        | "PENDING"
+        | "RESPONDED"
+        | "EXPIRED"
+        | "CANCELLED"
+      harvest_status:
+        | "NOT_STARTED"
+        | "PARTIALLY_HARVESTED"
+        | "FULLY_HARVESTED"
+        | "ABANDONED"
+      land_lifecycle_status:
+        | "AVAILABLE"
+        | "PREPARING"
+        | "CROP_ACTIVE"
+        | "READY_FOR_HARVEST"
+        | "WAITING_HARVEST_CONFIRMATION"
+        | "HARVEST_COMPLETED"
       language_code:
         | "en"
         | "hi"
@@ -31561,6 +33150,35 @@ export const Constants = {
         "practice",
         "market",
         "problem_solving",
+      ],
+      crop_schedule_lifecycle_status: [
+        "PLANNED",
+        "SOWN",
+        "GROWING",
+        "MATURITY_REACHED",
+        "WAITING_HARVEST_CONFIRMATION",
+        "HARVESTED",
+        "ABANDONED",
+      ],
+      harvest_confirmation_request_status: [
+        "PENDING",
+        "RESPONDED",
+        "EXPIRED",
+        "CANCELLED",
+      ],
+      harvest_status: [
+        "NOT_STARTED",
+        "PARTIALLY_HARVESTED",
+        "FULLY_HARVESTED",
+        "ABANDONED",
+      ],
+      land_lifecycle_status: [
+        "AVAILABLE",
+        "PREPARING",
+        "CROP_ACTIVE",
+        "READY_FOR_HARVEST",
+        "WAITING_HARVEST_CONFIRMATION",
+        "HARVEST_COMPLETED",
       ],
       language_code: [
         "en",

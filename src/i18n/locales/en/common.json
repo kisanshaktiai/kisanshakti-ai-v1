@@ -79,6 +79,20 @@
       "expired_tap_renew": "Tap to renew"
     },
     "undo": "Undo",
-    "try_again": "Try again"
+    "try_again": "Try again",
+    "ref_fallback": {
+      "loading": "Loading…",
+      "not_set": "Not set",
+      "not_specified": "Not specified",
+      "unknown": "Unknown",
+      "soil_not_set": "Soil type not set",
+      "water_not_set": "Water source not set",
+      "irrigation_not_set": "Irrigation type not set",
+      "crop_not_set": "Crop not set",
+      "district_not_set": "District not set",
+      "taluka_not_set": "Taluka not set",
+      "state_not_set": "State not set",
+      "location_not_set": "Location not set"
+    }
   }
 }

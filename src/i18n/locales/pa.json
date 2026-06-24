@@ -421,5 +421,23 @@
     "stopListening": "ਸੁਣਨਾ ਬੰਦ",
     "tapToSpeak": "ਬੋਲਣ ਲਈ ਟੈਪ ਕਰੋ",
     "voiceInputActive": "ਆਵਾਜ਼ ਇਨਪੁੱਟ ਚਾਲੂ"
+  },
+  "lands": {
+    "wizard": {
+      "ownership": {
+        "label": "ਮਾਲਕੀ ਦੀ ਕਿਸਮ",
+        "owned": "ਮਾਲਕੀ",
+        "leased": "ਪੱਟੇ ਉੱਤੇ",
+        "shared": "ਸਾਂਝੀ",
+        "contract": "ਠੇਕਾ",
+        "unspecified": "ਨਿਰਧਾਰਤ ਨਹੀਂ"
+      }
+    },
+    "ownership": {
+      "owned": "ਮਾਲਕੀ",
+      "leased": "ਪੱਟੇ ਉੱਤੇ",
+      "shared": "ਸਾਂਝੀ",
+      "contract": "ਠੇਕਾ"
+    }
   }
 }

@@ -6,6 +6,52 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "variety": {
+      "label": "Seed variety",
+      "loading": "Loading varieties…",
+      "none_for_crop": "No varieties catalogued yet — add yours",
+      "choose_from": "Choose from {{count}} varieties",
+      "change": "Change variety",
+      "choose_crop_first": "Select a crop first to see its varieties.",
+      "search_placeholder": "Search by name, code or brand…",
+      "no_match": "No varieties match your search.",
+      "add_missing": "My variety isn't listed — add it",
+      "about": "About this variety",
+      "maturity": "Maturity",
+      "yield": "Yield",
+      "irrigation": "Water",
+      "seed_rate": "Seed rate",
+      "days": "days",
+      "released_by": "Released by",
+      "suitable_states": "Suitable for",
+      "resistance": "Pest & disease resistance",
+      "loading_resistance": "Loading…",
+      "loading_details": "Loading…",
+      "no_resistance": "No catalogued resistance data.",
+      "no_details": "Currently information not available. We'll update soon.",
+      "use_this": "Use this variety",
+      "selected": "Selected",
+      "selected_chip": "Selected variety",
+      "tap_to_view": "Tap any variety to see full details",
+      "featured": "Recommended",
+      "submit": {
+        "title": "Add your variety",
+        "desc": "Tell us about the variety you sowed. Our team will verify and add it to the catalogue.",
+        "desc_with_crop": "Tell us about the {{crop}} variety you sowed. Our team will verify and add it.",
+        "name": "Variety name",
+        "name_required": "Please enter the variety name",
+        "local_name": "Local / vernacular name",
+        "season": "Season",
+        "min_days": "Min days",
+        "max_days": "Max days",
+        "notes": "Notes (source, brand, seed origin…)",
+        "submit": "Submit for review",
+        "submitted_title": "Variety submitted",
+        "submitted_desc": "Your team will review and add it to the catalogue. We'll use this name for your schedule.",
+        "invalid_range": "Minimum days cannot exceed maximum days",
+        "auth_required": "Please sign in to submit a variety"
+      }
+    },
     "title": "Crop Schedule",
     "generate": "Generate Schedule",
     "ai_schedule": "AI Smart Schedule",
@@ -60,7 +106,14 @@
       "please_select_crop": "Please select a crop",
       "select_date": "Select Date",
       "please_select_date": "Please select the sowing date",
-      "water": "Water"
+      "water": "Water",
+      "intercrop_label": "Intercrops (Optional)",
+      "nursery_days_label": "Plant age (days from seed sowing)",
+      "nursery_days_placeholder": "e.g., 25, 30, 45 days",
+      "nursery_days_help": "Enter how many days old the nursery plant is. Schedule will start from transplanting.",
+      "backdated_warning": "Past date selected. You'll need to confirm consent for a backdated schedule.",
+      "change_crop": "Change crop",
+      "selected_crop": "Selected crop"
     },
     "schedule_view": {
       "no_active_schedule": "No Active Schedule",
@@ -307,6 +360,44 @@
       "काम पूर्ण म्हणून चिन्हांकित करा",
       "पीक वेळापत्रक तयार करा",
       "प्रलंबित कामे दाखवा"
-    ]
+    ],
+    "harvest": {
+      "crop_fallback": "your crop",
+      "banner": {
+        "title": "Ready for harvest — please confirm"
+      },
+      "land_badge": {
+        "ready": "Ready",
+        "confirm": "Confirm harvest"
+      },
+      "dialog": {
+        "title": "Confirm harvest",
+        "expected": "Expected",
+        "outcome_label": "Outcome",
+        "date_label": "Actual harvest date",
+        "pick_date": "Pick a date",
+        "yield_label": "Yield (quintals, optional)",
+        "notes_label": "Notes (optional)",
+        "notes_placeholder": "Anything you want to remember about this harvest",
+        "snooze": "Snooze 7 days",
+        "confirm": "Confirm",
+        "share": "Share on WhatsApp"
+      },
+      "outcomes": {
+        "full": "Fully harvested",
+        "partial": "Partially harvested",
+        "abandoned": "Abandoned / failed"
+      },
+      "toast": {
+        "confirmed": "Harvest confirmed",
+        "abandoned": "Season closed",
+        "snoozed": "Reminder snoozed for 7 days"
+      },
+      "errors": {
+        "date_required": "Please pick the harvest date",
+        "submit": "Could not save harvest",
+        "snooze": "Could not snooze"
+      }
+    }
   }
 }

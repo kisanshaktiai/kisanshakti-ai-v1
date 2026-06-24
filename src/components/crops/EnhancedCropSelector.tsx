@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface Crop {
   id: string;
@@ -51,6 +52,7 @@ const popularCropIds = [
 ];
 
 export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: EnhancedCropSelectorProps) {
+  const tRef = useLocalizedRef();
   const [searchQuery, setSearchQuery] = useState('');
   const [crops, setCrops] = useState<Crop[]>([]);
   const [cropGroups, setCropGroups] = useState<CropGroup[]>([]);
@@ -64,18 +66,18 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
       try {
         setLoading(true);
         
-        // Load crop groups
+        // Load crop groups (select * → picks up all *_<lang> columns)
         const { data: groupsData, error: groupsError } = await supabase
           .from('crop_groups')
-          .select('id, group_name, group_name_hi, group_name_mr, group_key, group_icon, description, display_order, is_active')
+          .select('*')
           .order('display_order', { ascending: true });
           
         if (groupsError) throw groupsError;
         
-        // Load all crops
+        // Load all crops (select * → picks up all label_<lang> columns)
         const { data: cropsData, error: cropsError } = await supabase
           .from('crops')
-          .select('id, value, label, label_hi, label_mr, local_name, season, duration_days, crop_group_id, is_active')
+          .select('*')
           .order('label', { ascending: true });
           
         if (cropsError) throw cropsError;
@@ -107,11 +109,15 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(crop => 
-        crop.label.toLowerCase().includes(query) ||
-        crop.value.toLowerCase().includes(query) ||
-        (crop.local_name && crop.local_name.toLowerCase().includes(query))
-      );
+      filtered = filtered.filter(crop => {
+        const localized = (tRef(crop as any, 'label') || crop.label || '').toLowerCase();
+        return (
+          crop.label.toLowerCase().includes(query) ||
+          crop.value.toLowerCase().includes(query) ||
+          localized.includes(query) ||
+          (crop.local_name && crop.local_name.toLowerCase().includes(query))
+        );
+      });
     }
     
     // Filter by tab
@@ -191,7 +197,7 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
           <TabsTrigger value="popular" className="text-xs">Popular</TabsTrigger>
           {cropGroups.slice(0, 2).map(group => (
             <TabsTrigger key={group.id} value={group.id} className="text-xs">
-              {group.group_name}
+              {tRef(group as any, 'group_name') || group.group_name}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -208,7 +214,7 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
                 className="text-xs whitespace-nowrap"
               >
                 {groupIcons[group.group_key]}
-                <span className="ml-1">{group.group_name}</span>
+                <span className="ml-1">{tRef(group as any, 'group_name') || group.group_name}</span>
               </Button>
             ))}
           </div>
@@ -232,7 +238,9 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-2">
-                  {filteredCrops.map(crop => (
+                  {filteredCrops.map(crop => {
+                    const localized = tRef(crop as any, 'label') || crop.label;
+                    return (
                     <Button
                       key={crop.id}
                       variant={selectedCropId === crop.id ? "default" : "outline"}
@@ -240,14 +248,14 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
                         "justify-start h-auto py-3 px-4",
                         selectedCropId === crop.id && "ring-2 ring-primary"
                       )}
-                      onClick={() => onSelect(crop.id, crop.label, crop.local_name)}
+                      onClick={() => onSelect(crop.id, localized, crop.local_name)}
                     >
                       <div className="flex items-start justify-between w-full">
                         <div className="text-left">
-                          <div className="font-medium">{crop.label}</div>
-                          {crop.local_name && (
+                          <div className="font-medium">{localized}</div>
+                          {localized !== crop.label && (
                             <div className="text-xs text-muted-foreground mt-0.5">
-                              {crop.local_name}
+                              {crop.label}
                             </div>
                           )}
                         </div>
@@ -265,7 +273,8 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
                         </div>
                       </div>
                     </Button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

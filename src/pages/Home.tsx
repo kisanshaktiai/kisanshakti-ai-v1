@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
+import { HarvestConfirmBanner } from '@/components/home/HarvestConfirmBanner';
 import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFeaturesGrid';
 import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
@@ -601,6 +602,9 @@ export default function Home() {
           currentWeatherTemp={currentWeather?.temp}
           reduceMotion={reduceMotion}
         />
+
+        {/* Harvest confirmation banner (shows only when there are matured schedules) */}
+        <HarvestConfirmBanner />
 
         {/* Alerts Summary Card */}
         <AlertsSummaryCard />

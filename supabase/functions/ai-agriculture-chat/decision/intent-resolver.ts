@@ -36,9 +36,11 @@
  * @version 2.0.0
  */
 
-import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
+import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
+import type { RequestScope } from '../runtime/request-scope.ts';
+import { IntentResolutionError } from '../runtime/request-scope.ts';
 
-export const INTENT_RESOLVER_VERSION = '2.0.0';
+export const INTENT_RESOLVER_VERSION = '2.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - PURE SYMBOLIC (NO LANGUAGE, NO UI TEXT)
@@ -52,6 +54,12 @@ export interface IntentResolverInput {
   crop_code: string;
   days_since_sowing: number;
   growth_stage?: string;
+  /**
+   * Optional per-request scope. When provided, the resolver uses
+   * `scope.db` and emits trace events instead of constructing its own
+   * Supabase client. Required for new code paths (Task 7 migration).
+   */
+  scope?: RequestScope;
 }
 
 /**
@@ -64,6 +72,11 @@ export interface IntentResolverOutput {
   growth_stage: string;
   observation_codes: string[];
   confidence_ranks: number[];
+  // P1 SYSTEM-WIDE FIX (2026-06-22): parallel array to observation_codes;
+  // values are 'LITERAL' | 'STRONG_HYPOTHESIS' | 'DIFFERENTIAL'. The
+  // orchestrator uses this to route literal farmer assertions into the
+  // confirmed lane and the rest into the candidate lane.
+  assertion_strengths: string[];
   error?: string;
 }
 
@@ -71,16 +84,16 @@ export interface IntentResolverOutput {
 // DATABASE CLIENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-function getSupabaseClient() {
+function resolveClient(scope?: RequestScope): SupabaseClient {
+  if (scope) return scope.db;
   const url = Deno.env.get('SUPABASE_URL');
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  
   if (!url || !key) {
-    throw new Error('Missing Supabase credentials');
+    throw new IntentResolutionError('MISSING_DB_CREDENTIALS');
   }
-  
   return createClient(url, key);
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE LOOKUP FROM DATABASE
@@ -91,24 +104,39 @@ function getSupabaseClient() {
  */
 export async function getStageFromDASDatabase(
   cropCode: string,
-  das: number
+  das: number,
+  scope?: RequestScope
 ): Promise<string> {
-  const supabase = getSupabaseClient();
-  
+  const supabase = resolveClient(scope);
+
+  // Post-migration: crop_stage_master.crop_code is lowercase canonical.
   const { data, error } = await supabase
     .from('crop_stage_master')
     .select('growth_stage')
-    .eq('crop_code', cropCode.toUpperCase())
+    .eq('crop_code', (cropCode || '').toLowerCase())
     .lte('das_min', das)
     .gte('das_max', das)
     .single();
-  
+
   if (error) {
-    console.warn(`[IntentResolver] Stage lookup error: ${error.message}`);
-    return 'UNKNOWN';
+    // PGRST116 = "no rows returned" → legitimately UNKNOWN, not a fault.
+    if ((error as { code?: string }).code === 'PGRST116') {
+      return 'UNKNOWN';
+    }
+    scope?.emit({
+      stage: 'intent-resolver',
+      kind: 'error',
+      payload: { fn: 'getStageFromDASDatabase', cropCode, das, message: error.message },
+    });
+    throw new IntentResolutionError('STAGE_LOOKUP_DB_ERROR', {
+      cropCode,
+      das,
+      dbError: error.message,
+    });
   }
-  
-  return data?.growth_stage || 'UNKNOWN';
+
+  // Egress translation: DB rows are lowercase post-migration; callers compare to UPPER.
+  return String(data?.growth_stage || 'UNKNOWN').toUpperCase();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -118,47 +146,127 @@ export async function getStageFromDASDatabase(
 interface ObservationMapping {
   observation_code: string;
   confidence_rank: number;
+  assertion_strength?: string;
 }
 
 /**
- * Get valid observation codes for an intent + crop + DAS from database
- * Returns ONLY codes and confidence ranks - NO translations
+ * Get valid observation codes for an intent + crop + DAS from database.
+ *
+ * v2.1 (Task 5): Restored the crop_code + das_min/das_max + growth_stage
+ * filters that the 2026-03 HOTFIX had disabled. The columns exist on
+ * `intent_observation_mapping` (verified via information_schema) and the
+ * filtered query returns healthy row counts across all common intents
+ * (dry-run: SUGARCANE @ DAS=90 → 30+ intents matched).
+ *
+ * `crop_code` is matched against `IN (cropCode, 'ALL')` so cross-crop
+ * mappings (the 23 'ALL' rows in production) continue to fire.
+ *
+ * DB errors now throw `IntentResolutionError` (fail-closed) instead of
+ * the previous silent `return []` (fail-open).
  */
 export async function getValidObservationCodes(
   intentCode: string,
   cropCode: string,
-  das: number
+  das: number,
+  growthStage?: string,
+  scope?: RequestScope
 ): Promise<ObservationMapping[]> {
-  const supabase = getSupabaseClient();
-  
-  console.log(`📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropCode}, DAS=${das}`);
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HOTFIX: Query by intent_code + is_active ONLY
-  // The crop_code, das_min, das_max columns do not exist yet in this table.
-  // Once migration adds them, re-enable crop/DAS filtering.
-  // ═══════════════════════════════════════════════════════════════════════════
-  const { data: mappings, error: mapError } = await supabase
+  const supabase = resolveClient(scope);
+  // Post-migration canonical casing on intent_observation_mapping:
+  //   intent_code  → UPPER   (legacy, unchanged)
+  //   crop_code    → lower
+  //   growth_stage → lower
+  //   observation_code → lower
+  const cropLc = (cropCode || '').toLowerCase();
+  const stageLc = growthStage ? growthStage.toLowerCase() : undefined;
+
+  console.log(
+    `📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropLc}, DAS=${das}, stage=${stageLc ?? '*'}`
+  );
+
+  let query = supabase
     .from('intent_observation_mapping')
-    .select('observation_code, confidence_rank')
+    .select('observation_code, confidence_rank, assertion_strength')
     .eq('intent_code', intentCode)
     .eq('is_active', true)
-    .order('confidence_rank', { ascending: true });
-  
+    .in('crop_code', [cropLc, 'all'])
+    .lte('das_min', das)
+    .gte('das_max', das);
+
+  if (stageLc && stageLc !== 'unknown') {
+    // 'all' is the wildcard convention used in this table (post lower-case migration).
+    // Early rice establishment can be labelled nursery/germination/seedling by
+    // different authoritative tables; treat those labels as one family.
+    const establishmentFamily = ['germination', 'nursery', 'seedling', 'emergence', 'establishment'];
+    const stageCandidates = establishmentFamily.includes(stageLc)
+      ? [...establishmentFamily, 'all']
+      : [stageLc, 'all'];
+    query = query.in('growth_stage', Array.from(new Set(stageCandidates)));
+  }
+
+  const { data: mappings, error: mapError } = await query.order('confidence_rank', {
+    ascending: true,
+  });
+
   if (mapError) {
-    console.error(`[IntentResolver] Mapping query error: ${mapError.message}`);
-    return [];
+    scope?.emit({
+      stage: 'intent-resolver',
+      kind: 'error',
+      payload: {
+        fn: 'getValidObservationCodes',
+        intentCode,
+        cropCode: cropLc,
+        das,
+        growthStage,
+        message: mapError.message,
+      },
+    });
+    throw new IntentResolutionError('MAPPING_DB_ERROR', {
+      intentCode,
+      cropCode: cropLc,
+      das,
+      growthStage,
+      dbError: mapError.message,
+    });
   }
-  
+
   if (!mappings || mappings.length === 0) {
-    console.log(`[IntentResolver] No mappings found for intent=${intentCode}`);
+    // Defensive fallback (Task 2): retry via case-insensitive RPC. Protects
+    // against any future casing drift on intent_observation_mapping that
+    // would silently kill the symbolic brain.
+    try {
+      const { data: rpcRows, error: rpcErr } = await supabase.rpc(
+        'fn_observations_for_intent_ci',
+        { p_intent_code: intentCode, p_crop_code: cropLc, p_growth_stage: stageLc ?? null }
+      );
+      if (!rpcErr && Array.isArray(rpcRows) && rpcRows.length > 0) {
+        console.log(
+          `[IntentResolver] RPC fallback recovered ${rpcRows.length} mappings for intent=${intentCode} crop=${cropLc}`
+        );
+        scope?.emit({
+          stage: 'intent-resolver',
+          kind: 'derive',
+          payload: { fn: 'rpc_ci_fallback_hit', intentCode, cropCode: cropLc, count: rpcRows.length },
+        });
+        return rpcRows as ObservationMapping[];
+      }
+    } catch (e) {
+      console.warn(`[IntentResolver] RPC fallback failed: ${(e as Error).message}`);
+    }
+
+    console.log(
+      `[IntentResolver] No mappings for intent=${intentCode} crop=${cropLc} DAS=${das} stage=${growthStage ?? '*'}`
+    );
     return [];
   }
-  
-  console.log(`✅ [IntentResolver] Found ${mappings.length} observation codes for intent=${intentCode}`);
-  
+
+  console.log(
+    `✅ [IntentResolver] Found ${mappings.length} observation codes for intent=${intentCode}`
+  );
+
   return mappings;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN RESOLVER FUNCTION - PURE SYMBOLIC OUTPUT
@@ -173,35 +281,43 @@ export async function getValidObservationCodes(
 export async function resolveIntentToObservations(
   input: IntentResolverInput
 ): Promise<IntentResolverOutput> {
-  const { intent_code, crop_code, days_since_sowing } = input;
-  
+  const { intent_code, crop_code, days_since_sowing, scope } = input;
+
   console.log(`\n🔍 [IntentResolver v${INTENT_RESOLVER_VERSION}] Resolving intent...`);
   console.log(`   Intent: ${intent_code}`);
   console.log(`   Crop: ${crop_code}, DAS: ${days_since_sowing}`);
-  
+
   try {
     // 1. Get growth stage from database
-    const growthStage = input.growth_stage || await getStageFromDASDatabase(crop_code, days_since_sowing);
-    
+    const growthStage =
+      input.growth_stage ||
+      (await getStageFromDASDatabase(crop_code, days_since_sowing, scope));
+
     console.log(`   Stage: ${growthStage}`);
-    
-    // 2. Get valid observation codes for this intent + crop + DAS
+
+    // 2. Get valid observation codes for this intent + crop + DAS + stage
     const mappings = await getValidObservationCodes(
       intent_code,
       crop_code,
-      days_since_sowing
+      days_since_sowing,
+      growthStage,
+      scope
     );
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // MANDATORY MAPPING GATE: If no mapping found, HALT pipeline
-    // Do NOT proceed with empty mapping — log explicit error
-    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ═════════════════════════════════════════════════════════════════════
+    // MANDATORY MAPPING GATE: empty result is a legitimate "no mapping"
+    // outcome (not a fault). Return success:false with a structured error
+    // so the caller can degrade gracefully.
+    // ═════════════════════════════════════════════════════════════════════
     if (!mappings || mappings.length === 0) {
-      const errorMsg = `MANDATORY_MAPPING_FAILED: No observation mappings found for intent=${intent_code}, crop=${crop_code}, DAS=${days_since_sowing}`;
+      const errorMsg = `MANDATORY_MAPPING_FAILED: No observation mappings found for intent=${intent_code}, crop=${crop_code}, DAS=${days_since_sowing}, stage=${growthStage}`;
       console.error(`🚨 [IntentResolver] ${errorMsg}`);
-      console.error(`   Pipeline HALTED — cannot proceed without observation mappings`);
-      console.error(`   Check intent_observation_mapping table for intent_code=${intent_code}`);
-      
+      scope?.emit({
+        stage: 'intent-resolver',
+        kind: 'block',
+        payload: { intent_code, crop_code, das: days_since_sowing, growthStage },
+      });
+
       return {
         success: false,
         intent_code,
@@ -209,80 +325,132 @@ export async function resolveIntentToObservations(
         growth_stage: growthStage,
         observation_codes: [],
         confidence_ranks: [],
-        error: errorMsg
+        assertion_strengths: [],
+        error: errorMsg,
       };
     }
-    
-    // 3. Extract codes and ranks into parallel arrays
-    const observation_codes = mappings.map(m => m.observation_code);
-    const confidence_ranks = mappings.map(m => m.confidence_rank);
-    
+
+    // Re-uppercase outputs to preserve the in-memory symbolic contract
+    // (downstream comparators use UPPER snake_case). DB stores lowercase
+    // canonical post-migration; this is the case-translation egress boundary.
+    const observation_codes = mappings.map((m) => String(m.observation_code).toUpperCase());
+    const confidence_ranks = mappings.map((m) => m.confidence_rank);
+    // P1 SYSTEM-WIDE FIX (2026-06-22): parallel to observation_codes.
+    // RPC fallback rows may not include assertion_strength → safe default.
+    const assertion_strengths = mappings.map((m) =>
+      (m as ObservationMapping).assertion_strength || 'DIFFERENTIAL'
+    );
+
     console.log(`   Found: ${observation_codes.length} observation codes`);
-    
+
     return {
       success: true,
       intent_code,
       crop_code: crop_code.toUpperCase(),
-      growth_stage: growthStage,
+      growth_stage: String(growthStage || '').toUpperCase() || 'UNKNOWN',
       observation_codes,
-      confidence_ranks
+      confidence_ranks,
+      assertion_strengths,
     };
-    
   } catch (error) {
-    console.error(`❌ [IntentResolver] Error: ${error}`);
-    
-    return {
-      success: false,
+    // DB-fault path: re-throw typed errors so the orchestrator boundary
+    // can convert them to `{ error, trace_id }` 500 (fail-closed). Unknown
+    // errors are wrapped in IntentResolutionError to preserve the contract.
+    if (error instanceof IntentResolutionError) throw error;
+    console.error(`❌ [IntentResolver] Unexpected error: ${error}`);
+    throw new IntentResolutionError('UNEXPECTED_RESOLVER_ERROR', {
       intent_code,
-      crop_code: crop_code.toUpperCase(),
-      growth_stage: 'UNKNOWN',
-      observation_codes: [],
-      confidence_ranks: [],
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
+      crop_code,
+      das: days_since_sowing,
+      cause: error instanceof Error ? error.message : String(error),
+    });
   }
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION HELPER - PURE SYMBOLIC
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Validate if an observation is biologically valid for crop/stage/DAS
- * Used by agronomic-observation-validator.ts
+ * Validate if an observation is biologically valid for crop/stage/DAS.
+ * Used by agronomic-observation-validator.ts.
+ *
+ * v2.1 (Task 5): Restored the crop_code + das_min/das_max filters; DB-fault
+ * now throws `IntentResolutionError` instead of fail-open `valid:false`.
  */
 export async function isObservationValidForCropStage(
   observationCode: string,
   cropCode: string,
-  das: number
+  das: number,
+  scope?: RequestScope
 ): Promise<{ valid: boolean; reason_code: string }> {
-  const supabase = getSupabaseClient();
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HOTFIX: Query by observation_code + is_active ONLY
-  // crop_code/das_min/das_max columns don't exist yet. Re-enable after migration.
-  // ═══════════════════════════════════════════════════════════════════════════
+  const supabase = resolveClient(scope);
+  const cropLc = (cropCode || '').toLowerCase();
+  const obsLc = (observationCode || '').toLowerCase();
+
   const { data, error } = await supabase
     .from('intent_observation_mapping')
     .select('id')
-    .eq('observation_code', observationCode)
+    .eq('observation_code', obsLc)
     .eq('is_active', true)
+    .in('crop_code', [cropLc, 'all'])
+    .lte('das_min', das)
+    .gte('das_max', das)
     .limit(1);
-  
+
   if (error) {
-    console.error(`[IntentResolver] Validation DB error: ${error.message}`);
-    return { valid: false, reason_code: 'VALIDATION_UNAVAILABLE' };
+    scope?.emit({
+      stage: 'intent-resolver',
+      kind: 'error',
+      payload: {
+        fn: 'isObservationValidForCropStage',
+        observationCode,
+        cropCode: cropLc,
+        das,
+        message: error.message,
+      },
+    });
+    throw new IntentResolutionError('VALIDATION_DB_ERROR', {
+      observationCode,
+      cropCode: cropLc,
+      das,
+      dbError: error.message,
+    });
   }
-  
+
   if (data && data.length > 0) {
     return { valid: true, reason_code: 'VALID_FOR_OBSERVATION' };
   }
-  
-  return {
-    valid: false,
-    reason_code: 'OBSERVATION_NOT_MAPPED'
-  };
+
+  const establishmentFamily = ['germination', 'nursery', 'seedling', 'emergence', 'establishment'];
+  const { data: familyData, error: familyError } = await supabase
+    .from('intent_observation_mapping')
+    .select('id')
+    .eq('observation_code', obsLc)
+    .eq('is_active', true)
+    .in('crop_code', [cropLc, 'all'])
+    .in('growth_stage', establishmentFamily)
+    .lte('das_min', das)
+    .gte('das_max', das)
+    .limit(1);
+
+  if (familyError) {
+    throw new IntentResolutionError('VALIDATION_DB_ERROR', {
+      observationCode,
+      cropCode: cropLc,
+      das,
+      dbError: familyError.message,
+    });
+  }
+
+  if (familyData && familyData.length > 0) {
+    return { valid: true, reason_code: 'VALID_FOR_ESTABLISHMENT_STAGE_FAMILY' };
+  }
+
+  return { valid: false, reason_code: 'OBSERVATION_NOT_MAPPED' };
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ALL VALID INTENTS
@@ -329,6 +497,13 @@ export const VALID_INTENT_CODES = [
   'FLOOD_DROUGHT_DAMAGE',
   'ANIMAL_DAMAGE',
   'RATOON_MANAGEMENT_QUERY',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEXT-CROP RECOMMENDATION (Phase 1 — P0 fix)
+  // Farmer asks "which new crop should I grow?" on a fallow/post-harvest field.
+  // Routes to symbolic decision brain for rotation-aware crop selection.
+  // Registered in observation_intent_master with requires_crop_context=false.
+  // ═══════════════════════════════════════════════════════════════════════════
+  'NEXT_CROP_RECOMMENDATION',
   'UNKNOWN_OBSERVATION'
 ] as const;
 

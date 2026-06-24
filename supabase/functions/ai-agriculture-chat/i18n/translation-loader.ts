@@ -217,7 +217,7 @@ export async function initializeTranslationCache(
     const { data: obsTranslations, error: obsError } = await supabaseClient
       .from('observation_translations')
       .select('observation_code, language_code, display_text, description_text')
-      .limit(5000);
+      .limit(10000); // 2026-06-17: bumped from 5000 — table currently has 5145 rows, was silently truncating
     
     if (obsError) {
       console.warn('⚠️ [I18N] Failed to load observation_translations:', obsError.message);

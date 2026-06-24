@@ -25,6 +25,7 @@ import { SeasonMonthPicker } from './SeasonMonthPicker';
 import { LandMapThumb } from './LandMapThumb';
 import { ReviewCard, type ReviewCardState } from './ReviewCard';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
+import { VarietySelector, type VarietyOption } from '@/components/crops/VarietySelector';
 
 interface LatLng { lat: number; lng: number; }
 interface Area { sqft: number; guntha: number; acres: number; }
@@ -55,6 +56,10 @@ interface FormState {
   current_crop?: string;
   current_crop_id?: string;
   current_crop_duration?: number | null;
+  // Seed-variety reference → master_products(id) where product_type='seed'.
+  // Enables variety-aware schedule / chat / proactive logic downstream.
+  current_crop_variety_id?: string | null;
+  current_crop_variety_label?: string | null;
   sowing_date?: string;
   land_prep_offset_days: number;
   previous_crop?: string;
@@ -239,7 +244,9 @@ export function SmartLandConfirmCard({
         irrigation_type: form.irrigation_type,
         current_crop: form.current_crop,
         current_crop_id: form.current_crop_id,
-        crop_stage: cycle.stage !== '—' ? cycle.stage : undefined,
+        // Seed-variety persistence — gated by the seed-only FK + trigger on lands.
+        current_crop_variety_id: form.current_crop_variety_id || null,
+        crop_stage: (cycle.stage && cycle.stage !== '—' && cycle.stage !== 'Unknown') ? cycle.stage : undefined,
         planting_date: cycle.plantingDate || undefined,
         last_sowing_date: cycle.lastSowingDate || undefined,
         cultivation_date: cycle.cultivationDate || undefined,
@@ -294,6 +301,12 @@ export function SmartLandConfirmCard({
         case 'water': next.water_source = item.value; break;
         case 'irrigation': next.irrigation_type = item.value; break;
         case 'crop':
+          // If farmer picks a different crop, the previously-selected variety
+          // (which is crop-scoped) is no longer valid → clear it.
+          if (next.current_crop_id !== item.id) {
+            next.current_crop_variety_id = null;
+            next.current_crop_variety_label = null;
+          }
           next.current_crop = item.value;
           next.current_crop_id = item.id;
           next.current_crop_duration = item.duration_days ?? null;
@@ -478,6 +491,25 @@ export function SmartLandConfirmCard({
             onClick={() => setPicker('crop')}
             required
           />
+
+          {/* Seed-variety picker — unlocks variety-aware schedule + chat advice.
+              Optional: schedule still works without it but falls back to generic crop defaults. */}
+          {form.current_crop_id && (
+            <div className="rounded-2xl border border-border bg-card p-3">
+              <VarietySelector
+                cropId={form.current_crop_id}
+                value={form.current_crop_variety_id || undefined}
+                onChange={(v: VarietyOption | null) =>
+                  setForm((f) => ({
+                    ...f,
+                    current_crop_variety_id: v?.id ?? null,
+                    current_crop_variety_label: v?.name ?? null,
+                  }))
+                }
+                label={t('lands.smartConfirm.seedVariety', { defaultValue: 'Seed variety (optional)' })}
+              />
+            </div>
+          )}
           <div className="rounded-2xl border border-border bg-card p-3 space-y-3">
             <div>
               <Label className="text-xs">

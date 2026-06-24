@@ -2,6 +2,10 @@
 // PHASE-17: Enhanced with graph control, temporal constraints, and ETL validation
 // Rules loaded from database at runtime to prevent bundle timeout
 
+// Task 7d (2026-06-13): per-request scope (type-only import, zero runtime cost).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 import { 
   CanonicalState, 
   DataConfidence,
@@ -36,6 +40,7 @@ import {
 } from '../bundled-rules/loader.ts';
 
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import { funnelRecord } from '../runtime/funnel-tracker.ts';
 
 // PHASE-16: Import SymbolicReasoner for proper JSON condition evaluation
 import {
@@ -81,14 +86,12 @@ import {
   checkMacronutrientDominance
 } from '../decision/nutrition-conflict-arbitrator.ts';
 
-// PHASE-16: Singleton instance for rule evaluation
-let symbolicReasonerInstance: SymbolicReasoner | null = null;
-
+// PHASE-16 / Task 3: no module-level singleton — returns a fresh reasoner
+// per call to prevent cross-tenant client/cache sharing in warm isolates.
+// Future Task 7 will thread `scope` through and switch this to
+// `buildSymbolicReasoner(scope)`.
 function getSymbolicReasoner(): SymbolicReasoner {
-  if (!symbolicReasonerInstance) {
-    symbolicReasonerInstance = new SymbolicReasoner();
-  }
-  return symbolicReasonerInstance;
+  return new SymbolicReasoner();
 }
 
 // ==================== TYPE DEFINITIONS ====================
@@ -144,6 +147,11 @@ export interface Rule {
   scientific_basis?: string;
   requires_confirmation?: boolean;
   active: boolean;
+  // P1 SYSTEM-WIDE FIX (2026-06-22): preserved from bundled rule so that
+  // post-selection invariants (stage gate, completeness gate) can re-check
+  // without rebuilding the bundled-rule lookup.
+  stage_applicable?: string[];
+  min_data_completeness?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -365,7 +373,40 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
   if (conditions.custom && !conditions.custom(state)) return false;
   if (conditions.crop_type?.length && !conditions.crop_type.includes(state.crop_type as CropType)) return false;
   if (conditions.crop_stage?.length && !conditions.crop_stage.includes(state.crop_stage as CropStage)) return false;
-  if (conditions.visual_symptom?.length && !conditions.visual_symptom.includes(state.visual_symptom as VisualSymptom)) return false;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WAVE-Q FIX (P0-A): Observation→Rule bridge.
+  // The legacy gate only inspected the typed VisualSymptom enum. After the
+  // lower_snake_case migration, observation codes flow as OBS_* strings via
+  // state.confirmed_observations / state.visual_symptoms and never resolve
+  // into the enum, so `state.visual_symptom = UNKNOWN` blocks every rule
+  // that declared a visual_symptom requirement → 0 matches.
+  //
+  // Build a state symbol set (confirmed + plural visual_symptoms + singular
+  // visual_symptom if real) and treat the visual_symptom gate as satisfied
+  // when ANY required enum value normalizes-equals (or substring-matches)
+  // ANY state symbol. Pure normalization — no agronomy, no rule-id lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (conditions.visual_symptom?.length) {
+    const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[\s-]/g, '_');
+    const stateSet = new Set<string>();
+    for (const s of ((state as any).confirmed_observations as unknown[] | undefined) || []) {
+      const n = norm(s); if (n) stateSet.add(n);
+    }
+    for (const s of ((state as any).visual_symptoms as unknown[] | undefined) || []) {
+      const n = norm(s); if (n) stateSet.add(n);
+    }
+    const vs = norm(state.visual_symptom);
+    if (vs && vs !== 'NONE' && vs !== 'UNKNOWN') stateSet.add(vs);
+
+    const required = conditions.visual_symptom.map(norm).filter(Boolean);
+    const enumHit = !!(state.visual_symptom && conditions.visual_symptom.includes(state.visual_symptom as VisualSymptom));
+    const obsHit = required.some(r =>
+      stateSet.has(r) || [...stateSet].some(s => s.includes(r) || r.includes(s))
+    );
+    if (!enumHit && !obsHit) return false;
+  }
+
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STRICT: Contextual data conditions FAIL if data is missing/UNKNOWN
@@ -417,11 +458,28 @@ export function evaluateRulesLayered(
     /** When PrescriptionGate overrides LOW confidence due to strong symptom evidence,
      *  this flag relaxes the pre-selection confidence gate from 0.60 → 0.40 */
     prescriptionGateOverride?: boolean;
+    /**
+     * Task 7d: per-request scope. Used purely for structured Phase 3 trace
+     * events — the evaluator itself is a pure function and does not touch DB.
+     */
+    scope?: RequestScope;
   }
 ): LayeredRuleResult {
   // PHASE-16: Safe initialization - prevent undefined errors
   const safeRules = Array.isArray(rules) ? rules : [];
   const traceId = options?.traceId || `eval_${Date.now()}`;
+  const scope = options?.scope;
+  const phase3Start = Date.now();
+  scope?.emit({
+    stage: 'rule-evaluator',
+    kind: 'derive',
+    payload: {
+      event: 'layered_eval_start',
+      rule_count: safeRules.length,
+      prescription_gate_override: !!options?.prescriptionGateOverride,
+    },
+  });
+
   
   const result: LayeredRuleResult = {
     rules_evaluated: 0,
@@ -450,8 +508,20 @@ export function evaluateRulesLayered(
   // PHASE-16: Early return if no rules to evaluate
   if (safeRules.length === 0) {
     console.warn('⚠️ [LayeredRuleEvaluator] No rules to evaluate - returning empty result');
+    scope?.emit({
+      stage: 'rule-evaluator',
+      kind: 'derive',
+      payload: {
+        event: 'layered_eval_complete',
+        rules_evaluated: 0,
+        rules_matched: 0,
+        reason: 'no_rules_to_evaluate',
+        duration_ms: Date.now() - phase3Start,
+      },
+    });
     return result;
   }
+
   
   // PHASE-17: Graph control context - track fired rules and their blocking relationships
   const firedRules = new Map<string, string[]>(); // rule_id -> blocks_rule_ids
@@ -459,6 +529,23 @@ export function evaluateRulesLayered(
   
   const diagnosisCandidates: Diagnosis[] = [];
   const rulesByCategory = groupRulesByCategory(safeRules);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1 SYSTEM-WIDE FIX (2026-06-22): per-rule metadata lookup used by the
+  // post-selection invariants (stage gate, completeness gate). Built once
+  // here from `safeRules` so the gates don't need to re-traverse bundled
+  // rules. Crop-agnostic; zero hardcoded lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ruleMetaById = new Map<string, { stage_applicable: string[]; min_data_completeness: number }>();
+  for (const r of safeRules) {
+    ruleMetaById.set(r.id, {
+      stage_applicable: Array.isArray((r as any).stage_applicable) ? (r as any).stage_applicable : [],
+      min_data_completeness: typeof (r as any).min_data_completeness === 'number'
+        ? (r as any).min_data_completeness
+        : 0.0,
+    });
+  }
+
   
   // PHASE 1: OBSERVATION
   for (const rule of rulesByCategory.get(RuleCategory.OBSERVATION) || []) {
@@ -762,10 +849,12 @@ export function evaluateRulesLayered(
         });
       } else if (prescriptionActionType) {
         // Rules with action_type but minimal content - still eligible
+        const prescriptionActionDetails = rule.then.action_details || {};
         result.matched_responses.push({
           rule_id: rule.id,
           cause: rule.then.possible_cause || 'TREATMENT',
-          action_type: prescriptionActionType
+          action_type: prescriptionActionType,
+          conditions_json: prescriptionActionDetails.conditions_json || null,
         });
       }
     }
@@ -775,6 +864,8 @@ export function evaluateRulesLayered(
     for (const rule of rulesByCategory.get(RuleCategory.PRESCRIPTION) || []) {
       result.rules_evaluated++;
       if (matchesConditions(rule, state)) {
+        result.rules_matched++;
+        result.rules_applied.push(rule.id);
         // Don't add to prescriptions (blocked), but collect responses for display
         // SSOT ARCHITECTURE: action_text + i18n_key only (response_mr/hi/en dropped)
         const blockedActionDetails = rule.then.action_details || {};
@@ -876,7 +967,47 @@ export function evaluateRulesLayered(
     r.action_type && 
     (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text)
   );
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1 INVARIANT A (2026-06-22): EMPTY-CONFIRMED GATE — crop-agnostic.
+  // If the farmer has confirmed zero observations AND any eligible rule
+  // declares observation conditions, primary selection is structurally
+  // unsafe. The orchestrator must route to CLARIFY instead of letting the
+  // highest-priority context-only rule win by tiebreak. This invariant
+  // replaces every per-crop empty-evidence fallback (rice cyclone-recovery
+  // bug, sugarcane K-deficiency bug, etc.). No hardcoded crop lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    const confirmedForGate = (state as any).confirmed_observations as string[] | undefined;
+    const hasConfirmed = Array.isArray(confirmedForGate) && confirmedForGate.length > 0;
+    if (!hasConfirmed && eligibleResponses.length > 0) {
+      const requiresObservation = eligibleResponses.some(r => {
+        const obs = (r.conditions_json as any)?.observations;
+        return Array.isArray(obs) && obs.length > 0;
+      });
+      if (requiresObservation) {
+        const blockedIds = eligibleResponses.slice(0, 5).map(r => r.rule_id).join(', ');
+        console.warn(
+          `🚫 [EmptyConfirmedGate] No confirmed observations + ${eligibleResponses.length} ` +
+          `eligible rules require observations → forcing CLARIFY (sample: ${blockedIds})`
+        );
+        scope?.emit({
+          stage: 'rule-evaluator',
+          kind: 'block',
+          payload: {
+            event: 'empty_confirmed_gate',
+            eligible_count: eligibleResponses.length,
+            sample_rule_ids: eligibleResponses.slice(0, 5).map(r => r.rule_id),
+          },
+        });
+        // Preserve matched_responses for trace / clarification generator;
+        // collapse primary_decision so the orchestrator routes to CLARIFY.
+        result.primary_decision = null;
+        return result;
+      }
+    }
+  }
+
   if (eligibleResponses.length > 0) {
     // ═══════════════════════════════════════════════════════════════════════════
     // Fix 1: NUTRITION CONFLICT ARBITRATION before primary selection
@@ -999,6 +1130,37 @@ export function evaluateRulesLayered(
       const finalScore = Math.min(1.0, normalizedScore + contentBonus);
       return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P1 INVARIANT C (2026-06-22): MIN_DATA_COMPLETENESS GATE — crop-agnostic.
+    // Reject scored candidates whose evidence ratio is below the rule's
+    // DB-curated `min_data_completeness`. Default is 0.0 (no behavior change);
+    // agronomy team raises per rule via the new `decision_rules.min_data_completeness`
+    // column. No hardcoded crop or rule lists.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const scoredBeforeCompletenessGate = scored.length;
+    const scoredFiltered = scored.filter(s => {
+      const meta = ruleMetaById.get(s.response.rule_id);
+      const mdc = meta?.min_data_completeness ?? 0;
+      if (mdc <= 0) return true;
+      const ratio = s.totalConditions > 0 ? (s.matchedConditions / s.totalConditions) : 0;
+      if (ratio + 1e-9 < mdc) {
+        console.log(
+          `🚫 [CompletenessGate] ${s.response.rule_id} blocked: ratio=${ratio.toFixed(2)} < min_data_completeness=${mdc.toFixed(2)}`
+        );
+        return false;
+      }
+      return true;
+    });
+    if (scoredFiltered.length < scoredBeforeCompletenessGate) {
+      console.log(
+        `🔬 [CompletenessGate] Filtered ${scoredBeforeCompletenessGate - scoredFiltered.length} rules below min_data_completeness`
+      );
+    }
+    // Replace `scored` in-place so the downstream sort/selection sees the filtered list.
+    scored.length = 0;
+    Array.prototype.push.apply(scored, scoredFiltered);
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // AUDIT FIX: Sort by data_authority_rank DESC first, then evidence score
@@ -1033,33 +1195,86 @@ export function evaluateRulesLayered(
       const rankA = (a.response as any).data_authority_rank ?? 50;
       const rankB = (b.response as any).data_authority_rank ?? 50;
       if (rankA !== rankB) return rankB - rankA;
-      // P2: evidence score
+      // P2: evidence score from actual DB condition ledger
       if (a.evidenceScore !== b.evidenceScore) return b.evidenceScore - a.evidenceScore;
-      // P3: priority field from rule
+      // P3: priority field from rule (lower number = higher urgency in decision_rules)
       const priA = a.response.priority ?? 50;
       const priB = b.response.priority ?? 50;
-      if (priA !== priB) return priB - priA;
+      if (priA !== priB) return priA - priB;
       // P4: confidence_score
       return (b.response.confidence_score ?? 0) - (a.response.confidence_score ?? 0);
     });
+    // P1 SYSTEM-WIDE FIX (2026-06-22): completeness gate may have emptied `scored`.
+    // Bail out cleanly → primary_decision stays null, orchestrator routes to CLARIFY.
+    if (scored.length === 0) {
+      console.warn(`🚫 [CompletenessGate] All eligible rules filtered out by min_data_completeness → no primary decision`);
+      result.primary_decision = null;
+      return result;
+    }
     const best = scored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
     // PRE-SELECTION CONFIDENCE GATE: If best rule score < threshold, trigger clarification
-    // PRODUCTION FIX: When PrescriptionGate overrides LOW confidence (strong symptom 
+    // PRODUCTION FIX: When PrescriptionGate overrides LOW confidence (strong symptom
     // evidence), relax threshold from 0.60 → 0.40 to allow rule selection.
+    //
+    // ROOT-CAUSE FIX (2026-06-21): Farmer-confirmed observation bypass.
+    // When the farmer EXPLICITLY selected an observation via clarification and
+    // the best candidate rule is keyed on that confirmed observation
+    // (condition_code or conditions_json.observations), the heuristic ledger
+    // ratio (passed_required / total_required) under-counts the farmer's
+    // authoritative evidence: das_range / soil_* / weather conditions with no
+    // runtime data resolve to SKIPPED_NO_DATA with required:true and drag the
+    // score below 0.60, collapsing primary_decision to NULL even though
+    // matched_responses and eligible_for_primary are both > 0. That mismatch
+    // is what surfaced as "Rules matched 0 / Primary decision NULL" →
+    // STAGE_FALLBACK → CLARIFICATION → Unified Gate Fallback. The farmer's
+    // selection IS the symbolic contract; skip the heuristic threshold for
+    // that rule and floor its weighted_confidence so safety-gates / unified-
+    // gate do not collapse it back to CLARIFY. Other competing rules still
+    // face the gate normally.
     // ═══════════════════════════════════════════════════════════════════════════
     const BASE_CONFIDENCE_GATE_THRESHOLD = 0.60;
     const OVERRIDE_CONFIDENCE_GATE_THRESHOLD = 0.40;
+    const FARMER_CONFIRMED_CONFIDENCE_FLOOR = 0.70;
     const hasOverride = !!options?.prescriptionGateOverride;
     const CONFIDENCE_GATE_THRESHOLD = hasOverride ? OVERRIDE_CONFIDENCE_GATE_THRESHOLD : BASE_CONFIDENCE_GATE_THRESHOLD;
     const computedConfidence = Math.min(1.0, scored[0].evidenceScore);
-    
+
     if (hasOverride) {
       console.log(`   🔓 [ConfidenceGate] PrescriptionGate override ACTIVE — threshold relaxed: ${(BASE_CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% → ${(OVERRIDE_CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}%`);
     }
-    
-    if (computedConfidence < CONFIDENCE_GATE_THRESHOLD) {
+
+    // Build canonical-lower set of farmer-confirmed observations and test
+    // whether the best rule is keyed on any of them.
+    const normalizeObsCode = (s: unknown): string =>
+      String(s ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+    const farmerConfirmedObs: string[] = (
+      Array.isArray((state as any).confirmed_observations)
+        ? (state as any).confirmed_observations
+        : []
+    ).map(normalizeObsCode).filter(Boolean);
+    const bestRuleObsSet = new Set<string>();
+    const bestCondCode = normalizeObsCode(
+      (best as any).condition_code
+      || (best as any).conditions_json?.condition_code,
+    );
+    if (bestCondCode) bestRuleObsSet.add(bestCondCode);
+    const bestCondObs = Array.isArray(best.conditions_json?.observations)
+      ? (best.conditions_json!.observations as unknown[])
+      : [];
+    for (const o of bestCondObs) {
+      const n = normalizeObsCode(o);
+      if (n) bestRuleObsSet.add(n);
+    }
+    const matchedConfirmedObs = farmerConfirmedObs.filter((o) => bestRuleObsSet.has(o));
+    const hasFarmerConfirmedEvidence = matchedConfirmedObs.length > 0;
+
+    if (hasFarmerConfirmedEvidence) {
+      console.log(`   🎯 [ConfidenceGate] FARMER-CONFIRMED BYPASS — rule=${best.rule_id} keyed on confirmed observation(s) [${matchedConfirmedObs.join(', ')}]; skipping ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% heuristic threshold (computed=${(computedConfidence * 100).toFixed(0)}%)`);
+    }
+
+    if (!hasFarmerConfirmedEvidence && computedConfidence < CONFIDENCE_GATE_THRESHOLD) {
       console.warn(`⚠️ [ConfidenceGate] Score ${(computedConfidence * 100).toFixed(0)}% < ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% threshold${hasOverride ? ' (override active)' : ''}`);
       console.warn(`   Best candidate: ${best.rule_id} (score=${scored[0].evidenceScore.toFixed(3)}, matched=${scored[0].matchedConditions}/${scored[0].totalConditions})`);
       console.warn(`   ACTION: Skipping primary selection → triggering clarification`);
@@ -1075,7 +1290,13 @@ export function evaluateRulesLayered(
       const matchedConds = scored[0].matchedConditions;
       const baseScore = totalConds > 0 ? matchedConds / totalConds : (scored[0].response.confidence_score ?? 0.5);
       const densityWeight = totalConds > 0 ? Math.min(1.0, Math.log(totalConds + 1) / Math.log(10)) : 0.3;
-      const weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
+      let weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
+      // Floor confidence when the farmer's explicit selection drove this rule,
+      // so safety-gates / unified-gate do not collapse it back to CLARIFY.
+      if (hasFarmerConfirmedEvidence && weightedConfidence < FARMER_CONFIRMED_CONFIDENCE_FLOOR) {
+        console.log(`   🎯 [ConfidenceFloor] Farmer-confirmed evidence: lifting weighted_confidence ${(weightedConfidence * 100).toFixed(0)}% → ${(FARMER_CONFIRMED_CONFIDENCE_FLOOR * 100).toFixed(0)}%`);
+        weightedConfidence = FARMER_CONFIRMED_CONFIDENCE_FLOOR;
+      }
       
       result.primary_decision = {
         rule_id: best.rule_id,
@@ -1140,7 +1361,54 @@ export function evaluateRulesLayered(
         response_hi: best.response_hi || null,
         response_en: best.response_en || null,
       };
-      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // P1 INVARIANT B (2026-06-22): POST-SELECTION STAGE GATE — crop-agnostic.
+      // The pre-evaluator stage gate (inside rule.when.custom) is bypassed
+      // when crop_stage is one of DEFAULT_STAGES (UNKNOWN/VEGETATIVE/...).
+      // This invariant re-checks `stage_applicable` against the canonical
+      // state at selection time, but ONLY when the stage is authoritative —
+      // so we don't tighten behavior when stage data is missing. Uses the
+      // ESTABLISHMENT_FAMILY equivalence already used elsewhere; no new
+      // hardcoded lists.
+      // ═══════════════════════════════════════════════════════════════════════
+      {
+        const meta = ruleMetaById.get(best.rule_id);
+        const ruleStagesRaw = meta?.stage_applicable || [];
+        const currentStage = (state.crop_stage || '').toUpperCase().replace(/[\s-]/g, '_');
+        const STAGE_GATE_DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
+        const STAGE_GATE_ESTABLISHMENT_FAMILY = new Set([
+          'GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'
+        ]);
+        const isAuthoritative = !!currentStage && !STAGE_GATE_DEFAULT_STAGES.has(currentStage);
+        if (isAuthoritative && ruleStagesRaw.length > 0) {
+          const normalized = ruleStagesRaw.map(s => String(s).toUpperCase().replace(/[\s-]/g, '_'));
+          const hasWildcard = normalized.some(s => s === '*' || s === 'ALL' || s === 'UNIVERSAL' || s === 'ANY');
+          if (!hasWildcard) {
+            const currentInEstablishment = STAGE_GATE_ESTABLISHMENT_FAMILY.has(currentStage);
+            const stageMatch = normalized.includes(currentStage) ||
+              (currentInEstablishment && normalized.some(s => STAGE_GATE_ESTABLISHMENT_FAMILY.has(s)));
+            if (!stageMatch) {
+              console.error(
+                `🚨 [STAGE_GATE_VIOLATION] rule=${best.rule_id} stage_applicable=[${normalized.join(',')}] ` +
+                `vs canonical_stage=${currentStage} → collapsing primary_decision`
+              );
+              scope?.emit({
+                stage: 'rule-evaluator',
+                kind: 'block',
+                payload: {
+                  event: 'stage_gate_violation_post_selection',
+                  rule_id: best.rule_id,
+                  rule_stages: normalized,
+                  canonical_stage: currentStage,
+                },
+              });
+              result.primary_decision = null;
+            }
+          }
+        }
+      }
+
       console.log(`📊 Decision Authority:`);
       console.log(`   rule_id: ${best.rule_id}`);
       console.log(`   base_score: ${scored[0].evidenceScore.toFixed(3)}`);
@@ -1182,8 +1450,47 @@ export function evaluateRulesLayered(
   console.log(`   Blocked by ETL: ${result.rules_blocked_by_etl.length}`);
   console.log(`   Safety warnings: ${result.safety_warnings.length}`);
   
+  scope?.emit({
+    stage: 'rule-evaluator',
+    kind: 'decide',
+    payload: {
+      event: 'layered_eval_complete',
+      rules_evaluated: result.rules_evaluated,
+      rules_matched: result.rules_matched,
+      matched_responses: result.matched_responses.length,
+      eligible_for_primary: eligibleResponses.length,
+      primary_decision: result.primary_decision?.rule_id ?? null,
+      safety_warnings: result.safety_warnings.length,
+      blocked_by_graph: result.rules_blocked_by_graph.length,
+      blocked_by_etl: result.rules_blocked_by_etl.length,
+      duration_ms: Date.now() - phase3Start,
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WAVE C — Funnel counters (per-trace, snapshot in index.ts on return)
+  // Surfaces the exact pipeline stage where rule matches die.
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    funnelRecord(traceId, 'rules_loaded', safeRules.length);
+    funnelRecord(traceId, 'rules_evaluated', result.rules_evaluated);
+    funnelRecord(traceId, 'rules_matched', result.rules_matched);
+    funnelRecord(traceId, 'matched_responses', result.matched_responses.length);
+    funnelRecord(traceId, 'eligible_for_primary', eligibleResponses.length);
+    funnelRecord(traceId, 'blocked_by_graph', result.rules_blocked_by_graph.length);
+    funnelRecord(traceId, 'blocked_by_etl', result.rules_blocked_by_etl.length);
+    if (result.primary_decision) {
+      funnelRecord(traceId, 'primary_built', 1, { rule_id: result.primary_decision.rule_id });
+    } else {
+      funnelRecord(traceId, 'primary_built', 0);
+    }
+  } catch (_funnelErr) {
+    // never block evaluation on instrumentation
+  }
+
   return result;
 }
+
 
 function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
   const grouped = new Map<RuleCategory, Rule[]>();
@@ -1257,6 +1564,13 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
           const isAuthoritativeStage = currentStage && !DEFAULT_STAGES.has(currentStage);
           
+          // ESTABLISHMENT_STAGE_EQUIVALENCE (2026-06-20): mirror the loader fix —
+          // GERMINATION / NURSERY / SEEDLING / EMERGENCE / ESTABLISHMENT are
+          // interchangeable for early-DAS rules so the live crop_stage_master
+          // value ('nursery'/'seedling') doesn't block rules tagged 'germination'.
+          const ESTABLISHMENT_FAMILY = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
+          const currentIsEstablishment = ESTABLISHMENT_FAMILY.has(currentStage);
+          
           if (stageApplicable.length > 0 && isAuthoritativeStage) {
             // Normalize all stage values for comparison
             const normalizedApplicableStages = stageApplicable.map((s: string) => 
@@ -1269,8 +1583,9 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             );
             
             if (!hasWildcard) {
-              // Strict stage matching - rule MUST be applicable to current stage
-              const stageMatch = normalizedApplicableStages.includes(currentStage);
+              // Strict stage matching with establishment-family equivalence
+              const stageMatch = normalizedApplicableStages.includes(currentStage) ||
+                (currentIsEstablishment && normalizedApplicableStages.some((s: string) => ESTABLISHMENT_FAMILY.has(s)));
               
               if (!stageMatch) {
                 if (bundled.priority && bundled.priority > 70) {
@@ -1405,10 +1720,17 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           const syntheticObs: string[] = (state as any).synthetic_observations || [];
           const secondarySyms: string[] = Array.isArray(state.secondary_symptoms) 
             ? state.secondary_symptoms.map((s: any) => String(s)) : [];
+          // P0 BRIDGE: option-selected clarifications inject visual_symptoms onto
+          // state; without this they never reach evaluateConditionsJson and the
+          // diagnostic rule (e.g. RICE_GERMINATION_DIAGNOSTIC_001) is skipped.
+          const explicitVisualSymptoms: string[] = Array.isArray((state as any).visual_symptoms)
+            ? ((state as any).visual_symptoms as any[]).map((s) => String(s))
+            : [];
           const allVisualSymptoms = [
             ...confirmedObs,
             ...syntheticObs,
             ...secondarySyms,
+            ...explicitVisualSymptoms,
             // Also include the primary visual_symptom if it's a real value
             ...(state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN' 
               ? [String(state.visual_symptom)] : [])
@@ -1441,7 +1763,13 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             // Data confidence
             data_confidence: state.data_confidence || '',
             // Extended context for strict constraint evaluation
-            days_since_sowing: (state as any).days_since_sowing,
+            // DAS_HANDOFF_FIX (2026-06-20): canonical-state-builder emits
+            // `days_after_sowing_exact`; loader's evaluateConditionsJson reads
+            // `days_since_sowing` for `das_range`. Without this fallback, every
+            // emergence/germination/seedling rule with das_range was failing as
+            // SKIPPED_NO_DATA → no rules ever matched the EMERGENCE_FAILURE intent.
+            days_since_sowing: (state as any).days_since_sowing ?? (state as any).days_after_sowing_exact,
+            days_after_sowing_exact: (state as any).days_after_sowing_exact ?? (state as any).days_since_sowing,
             soil_ph: (state as any).soil_ph,
             soil_type_name: (state as any).soil_type_name,
             soil_moisture_status: (state as any).soil_moisture_status,
@@ -1574,7 +1902,12 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       product_reference: bundled.rule_id
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
-    active: true
+    active: true,
+    // P1 SYSTEM-WIDE FIX (2026-06-22): expose for post-selection invariants
+    stage_applicable: Array.isArray(bundled.stage_applicable) ? bundled.stage_applicable : [],
+    min_data_completeness: typeof (bundled as any).min_data_completeness === 'number'
+      ? (bundled as any).min_data_completeness
+      : 0.0
   };
 }
 
@@ -1646,23 +1979,69 @@ function mapBundledCategory(category: string): RuleCategory {
     
     // ═══════════════════════════════════════════════════════════════════════
     // FORENSIC AUDIT FIX v8.0: 4 previously unmapped categories
-    // These were defaulting to DIAGNOSIS via the fallback, causing 7 warnings/request
     // ═══════════════════════════════════════════════════════════════════════
-    'governance': RuleCategory.SAFETY,              // Policy/regulatory rules
-    'resistance_mgmt': RuleCategory.PRESCRIPTION,   // Resistance management protocols
-    'weed_management': RuleCategory.PRESCRIPTION,   // Weed treatment rules
-    'physiology': RuleCategory.DIAGNOSIS,            // Physiological disorder identification
+    'governance': RuleCategory.SAFETY,
+    'resistance_mgmt': RuleCategory.PRESCRIPTION,
+    'weed_management': RuleCategory.PRESCRIPTION,
+    'physiology': RuleCategory.DIAGNOSIS,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC AUDIT FIX v9.0 (2026-06-04): categories actively present in
+    // decision_rules that were silently coerced to DIAGNOSIS — the single
+    // biggest reason FERTILIZER_SCHEDULE @ GRAND_GROWTH returned no_action_needed.
+    //   PRESCRIPTION → actionable advice, ranked + returned
+    //   WARNING      → informational / early-warning, surfaces but doesn't act
+    //   SAFETY       → gates / vetoes other rules
+    // ═══════════════════════════════════════════════════════════════════════
+    'nutrient_management':      RuleCategory.PRESCRIPTION,
+    'application_timing':       RuleCategory.PRESCRIPTION,
+    'best_practice':            RuleCategory.PRESCRIPTION,
+    'crop_management':          RuleCategory.PRESCRIPTION,
+    'planting_practice':        RuleCategory.PRESCRIPTION,
+    'planting_material':        RuleCategory.PRESCRIPTION,
+    'proactive_irrigation':     RuleCategory.PRESCRIPTION,
+    'proactive_nutrition':      RuleCategory.PRESCRIPTION,
+    'proactive_monitoring':     RuleCategory.WARNING,
+    'proactive_pest':           RuleCategory.WARNING,
+    'proactive_yield':          RuleCategory.WARNING,
+    'yield_risk_early_warning': RuleCategory.WARNING,
+    'data_quality':             RuleCategory.WARNING,
+    'ndvi_authority_gate':      RuleCategory.SAFETY,
+    'diagnostic_discipline':    RuleCategory.SAFETY,
+    'stress_guard':             RuleCategory.SAFETY,
+    'probable_diagnosis':       RuleCategory.DIAGNOSIS,
+    'system':                   RuleCategory.OBSERVATION,
+    'status':                   RuleCategory.OBSERVATION,
+    'system_calibration':       RuleCategory.OBSERVATION,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC AUDIT FIX v10.0 (2026-06-07): categories present in
+    // decision_rules but previously unmapped, plus new NEXT_CROP_RECOMMENDATION
+    // lane for the symbolic crop-selection brain.
+    //   PRESCRIPTION → actionable advice (rotation, mgmt, organic packages)
+    //   WARNING      → climate/stress contextual flags
+    //   SAFETY       → hard gates
+    // ═══════════════════════════════════════════════════════════════════════
+    'management':         RuleCategory.PRESCRIPTION,
+    'organic':            RuleCategory.PRESCRIPTION,
+    'stress_tolerance':   RuleCategory.PRESCRIPTION,
+    'gate':               RuleCategory.SAFETY,
+    'stress_weather':     RuleCategory.WARNING,
+    // NEXT-CROP RECOMMENDATION LANE
+    'crop_rotation':      RuleCategory.PRESCRIPTION,
+    'crop_selection':     RuleCategory.PRESCRIPTION,
+    'next_crop':          RuleCategory.PRESCRIPTION,
+    'rotation_advisory':  RuleCategory.PRESCRIPTION,
   };
-  
+
   const mapped = map[category?.toLowerCase()];
   if (!mapped) {
     // ═══════════════════════════════════════════════════════════════════════
-    // PRODUCTION FIX v7.5: Unknown categories default to DIAGNOSIS (not OBSERVATION)
-    // OBSERVATION phase does NOT collect matched_responses, causing rules to
-    // silently disappear from the decision pipeline. DIAGNOSIS phase collects
-    // responses and allows rules to compete for primary decision selection.
+    // FAIL-LOUD: Unknown categories now log SYMBOLIC_CONTRACT_VIOLATION so
+    // future category drift is triaged. We still return DIAGNOSIS so the
+    // pipeline does not crash, but the loud log requires action.
     // ═══════════════════════════════════════════════════════════════════════
-    console.warn(`⚠️ [mapBundledCategory] Unknown category '${category}' → defaulting to DIAGNOSIS (was OBSERVATION)`);
+    console.error(`🚨 [SYMBOLIC_CONTRACT_VIOLATION] mapBundledCategory: unknown category '${category}' — register it in layered-rule-evaluator.ts. Coercing to DIAGNOSIS as last resort.`);
     return RuleCategory.DIAGNOSIS;
   }
   return mapped;

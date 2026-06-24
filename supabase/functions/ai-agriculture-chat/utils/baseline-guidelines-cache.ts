@@ -135,3 +135,32 @@ export function getBaselineByDAS(
     das >= g.das_start && das <= g.das_end
   ) || null;
 }
+
+/**
+ * Get the maximum DAS (days after sowing) for a crop — the upper bound
+ * of the harvest stage as defined in crop_baseline_guidelines_v2.
+ * Case-insensitive lookup. Returns null when the crop has no baseline data.
+ *
+ * Used by validation checks (e.g. harvest-for-young-crop) instead of a
+ * hardcoded dictionary, keeping crop lifecycle data DB-driven.
+ */
+export function getMaxDASForCrop(cropCode: string): number | null {
+  if (!cache || !cropCode) return null;
+
+  const normalized = cropCode.trim();
+  const guidelines =
+    cache.entries.get(normalized) ||
+    cache.entries.get(normalized.toUpperCase()) ||
+    cache.entries.get(normalized.toLowerCase()) ||
+    [];
+
+  if (guidelines.length === 0) return null;
+
+  let maxDas: number | null = null;
+  for (const g of guidelines) {
+    if (g.das_end !== null && (maxDas === null || g.das_end > maxDas)) {
+      maxDas = g.das_end;
+    }
+  }
+  return maxDas;
+}

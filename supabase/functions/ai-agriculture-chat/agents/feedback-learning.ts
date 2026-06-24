@@ -127,6 +127,9 @@ export class FeedbackLearningEngine {
       .not('follow_up_data->day_14_check', 'is', null);
     
     if (error) {
+      // FAIL-OPEN BY DESIGN (Task 6): treatment outcomes power offline
+      // confidence-score tuning, not request-time decisions. A DB fault here
+      // must degrade silently so the live advisory pipeline keeps running.
       console.error('Failed to get outcomes:', error);
       return [];
     }
@@ -705,15 +708,25 @@ export class FeedbackLearningEngine {
   }
   
   private async saveConfidenceAdjustment(adjustment: ConfidenceAdjustment): Promise<void> {
-    await this.supabase.from('confidence_adjustments').insert(adjustment);
+    // [N10|Confidence] Surface drift records; failures used to be silent.
+    const { error } = await this.supabase.from('confidence_adjustments').insert(adjustment);
+    if (error) {
+      console.error('[FeedbackLearning] confidence_adjustments insert failed:', error.message, error.code);
+    }
   }
-  
+
   private async saveEfficacyUpdate(update: EfficacyUpdate): Promise<void> {
-    await this.supabase.from('efficacy_updates').insert(update);
+    const { error } = await this.supabase.from('efficacy_updates').insert(update);
+    if (error) {
+      console.error('[FeedbackLearning] efficacy_updates insert failed:', error.message, error.code);
+    }
   }
-  
+
   private async saveSuggestion(suggestion: LearningSuggestion): Promise<void> {
-    await this.supabase.from('learning_suggestions').insert(suggestion);
+    const { error } = await this.supabase.from('learning_suggestions').insert(suggestion);
+    if (error) {
+      console.error('[FeedbackLearning] learning_suggestions insert failed:', error.message, error.code);
+    }
   }
 }
 

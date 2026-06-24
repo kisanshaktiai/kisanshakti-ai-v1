@@ -3,9 +3,11 @@ import { motion } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Calendar, TrendingUp, Volume2, IndianRupee } from 'lucide-react';
+import { Sparkles, Calendar, TrendingUp, Volume2, IndianRupee, Droplets } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface ModernScheduleCardProps {
   schedule: {
@@ -24,6 +26,12 @@ interface ModernScheduleCardProps {
   completedTasks: number;
   onViewSchedule: () => void;
   onSpeak?: () => void;
+  land?: {
+    soil_type?: string;
+    water_source?: string;
+    irrigation_type?: string;
+    ownership_type?: string;
+  };
 }
 
 const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
@@ -32,8 +40,11 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
   completedTasks,
   onViewSchedule,
   onSpeak,
+  land,
 }) => {
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
   const daysToHarvest = schedule.expected_harvest_date 
     ? differenceInDays(new Date(schedule.expected_harvest_date), new Date())
@@ -85,6 +96,44 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
               </Badge>
             )}
           </div>
+
+          {/* Localized land-attribute chips */}
+          {land && (land.soil_type || land.water_source || land.irrigation_type || land.ownership_type) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {land.soil_type && (() => {
+                const d = refLabels.display(land.soil_type, 'soil');
+                return (
+                  <Badge variant="outline" className={`text-[10px] px-2 py-0.5 bg-card/60 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </Badge>
+                );
+              })()}
+              {land.water_source && (() => {
+                const d = refLabels.display(land.water_source, 'water');
+                return (
+                  <Badge variant="outline" className={`text-[10px] px-2 py-0.5 bg-info/10 border-info/30 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    <Droplets className="h-2.5 w-2.5 mr-1" />
+                    {d.text}
+                  </Badge>
+                );
+              })()}
+              {land.irrigation_type && (() => {
+                const d = refLabels.display(land.irrigation_type, 'irrigation');
+                return (
+                  <Badge variant="outline" className={`text-[10px] px-2 py-0.5 bg-accent/10 border-accent/30 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </Badge>
+                );
+              })()}
+              {land.ownership_type && (
+                <Badge variant="outline" className={`text-[10px] px-2 py-0.5 font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
+                  {ownershipLabel(land.ownership_type)}
+                </Badge>
+              )}
+            </div>
+          )}
+
+
 
           {/* Stats Grid - 2030 Ready */}
           <div className="grid grid-cols-2 gap-3">

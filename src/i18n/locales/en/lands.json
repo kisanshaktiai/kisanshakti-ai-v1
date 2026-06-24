@@ -51,7 +51,8 @@
     "ownership": {
       "owned": "Owned",
       "leased": "Leased",
-      "shared": "Shared"
+      "shared": "Shared",
+      "contract": "Contract"
     },
     "list_item": {
       "acres": "acres",
@@ -243,7 +244,9 @@
         "label": "Ownership Type",
         "owned": "Owned",
         "leased": "Leased",
-        "shared": "Shared"
+        "shared": "Shared",
+        "contract": "Contract",
+        "unspecified": "Not specified"
       },
       "placeholders": {
         "select_state": "Select State",

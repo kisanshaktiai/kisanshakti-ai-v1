@@ -28,12 +28,13 @@ import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
 import { CropSelectionCard } from '@/components/land/CropSelectionCard';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface LandFormData {
   // Basic Info
   name: string;
   survey_number: string;
-  ownership_type: 'owned' | 'leased' | 'shared';
+  ownership_type: 'owned' | 'leased' | 'shared' | 'contract';
   
   // Location
   state_id: string;
@@ -99,6 +100,7 @@ const initialFormData: LandFormData = {
 
 export function ModernLandWizard({ boundary, area, onComplete, onCancel }: ModernLandWizardProps) {
   const { t } = useTranslation();
+  const tRef = useLocalizedRef();
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { speak } = useTextToSpeech();
@@ -482,11 +484,12 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                       <Label className="text-base mb-3 block">
                         {t('lands.wizard.ownership.label')} <span className="text-destructive">*</span>
                       </Label>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-2 gap-3">
                         {[
                           { value: 'owned', label: t('lands.wizard.ownership.owned'), icon: '🏡' },
                           { value: 'leased', label: t('lands.wizard.ownership.leased'), icon: '📝' },
                           { value: 'shared', label: t('lands.wizard.ownership.shared'), icon: '🤝' },
+                          { value: 'contract', label: t('lands.wizard.ownership.contract'), icon: '📑' },
                         ].map((type) => (
                           <Card
                             key={type.value}
@@ -553,7 +556,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {states.map((state) => (
                             <SelectItem key={state.id} value={state.id}>
-                              {state.name}
+                              {tRef(state, 'name') || state.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -582,7 +585,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {districts.map((district) => (
                             <SelectItem key={district.id} value={district.id}>
-                              {district.name}
+                              {tRef(district, 'name') || district.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -609,7 +612,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {talukas.map((taluka) => (
                             <SelectItem key={taluka.id} value={taluka.id}>
-                              {taluka.name}
+                              {tRef(taluka, 'name') || taluka.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -633,7 +636,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {villages.map((village) => (
                             <SelectItem key={village.id} value={village.id}>
-                              {village.name}
+                              {tRef(village, 'name') || village.name}
                             </SelectItem>
                           ))}
                         </SelectContent>

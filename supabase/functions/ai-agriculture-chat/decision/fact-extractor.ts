@@ -160,22 +160,29 @@ export class FactExtractor {
       else ndviStatus = 'CRITICAL';
     }
     
-    // Estimate soil moisture from rainfall - with safe access
-    const rainfall = landState?.weather?.rainfall_last_24h || 0;
+    // Estimate soil moisture from rainfall - NO HALLUCINATION:
+    // when no live weather record exists, we must NOT pretend rainfall=0 or recent_rain=false.
+    // Predicates that depend on weather should be skipped, not silently matched against zeros.
+    const hasWeather = !!landState?.weather;
+    const rainfallRaw = landState?.weather?.rainfall_last_24h;
+    const rainfall = typeof rainfallRaw === 'number' ? rainfallRaw : null;
     let soilMoisture = 'UNKNOWN';
-    if (landState?.weather) {
+    if (hasWeather && rainfall !== null) {
       if (rainfall > 20) soilMoisture = 'WET';
       else if (rainfall > 5) soilMoisture = 'MOIST';
       else soilMoisture = 'DRY';
     }
-    
+
     return {
       ndvi: ndviValue,
       ndvi_trend: landState?.ndvi?.trend?.toUpperCase() || 'UNKNOWN',
       ndvi_status: ndviStatus,
       temperature: landState?.weather?.temperature ?? null,
       humidity: landState?.weather?.humidity ?? null,
-      recent_rain: rainfall > 5,
+      // recent_rain is only TRUE when we have a live observation AND it shows >5mm.
+      // When weather is missing, leave it FALSE but the predicate evaluator should
+      // treat weather-dependent rules as ungated via the SymbolicFact.weather_data_available flag below.
+      recent_rain: hasWeather && rainfall !== null ? rainfall > 5 : false,
       soil_moisture_estimated: soilMoisture
     };
   }
@@ -262,17 +269,13 @@ export class FactExtractor {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// FACTORY (Type B — stateless class, see context-validator.ts for rationale)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let extractorInstance: FactExtractor | null = null;
-
 export function getFactExtractor(): FactExtractor {
-  if (!extractorInstance) {
-    extractorInstance = new FactExtractor();
-  }
-  return extractorInstance;
+  return new FactExtractor();
 }
+
 
 // Export convenience function
 export function extractSymbolicFacts(

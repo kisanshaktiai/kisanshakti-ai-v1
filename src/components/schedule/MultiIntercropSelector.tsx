@@ -9,11 +9,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 import { Progress } from '@/components/ui/progress';
+import { VarietySelector } from '@/components/crops/VarietySelector';
 
 export interface IntercropData {
+  cropId?: string;
   cropName: string;
   localizedCropName: string;
   cropVariety: string;
+  varietyId?: string | null;
   areaPercent: number;
 }
 
@@ -99,7 +102,8 @@ export default function MultiIntercropSelector({
   const [selectedCropId, setSelectedCropId] = useState('');
   const [selectedCropName, setSelectedCropName] = useState('');
   const [selectedLocalizedName, setSelectedLocalizedName] = useState('');
-  const [variety, setVariety] = useState('');
+  const [varietyId, setVarietyIdState] = useState<string | null>(null);
+  const [varietyName, setVarietyName] = useState('');
   const [areaPercent, setAreaPercent] = useState(15);
 
   // Calculate total area used
@@ -114,15 +118,20 @@ export default function MultiIntercropSelector({
     setSelectedCropId(id);
     setSelectedCropName(name);
     setSelectedLocalizedName(localized || name);
+    // Reset variety when crop changes
+    setVarietyIdState(null);
+    setVarietyName('');
   };
 
   const handleConfirm = () => {
     if (selectedCropName && areaPercent > 0) {
       const clampedArea = Math.min(remainingArea, Math.max(5, areaPercent));
       const newIntercrop: IntercropData = {
+        cropId: selectedCropId || undefined,
         cropName: selectedCropName,
         localizedCropName: selectedLocalizedName,
-        cropVariety: variety,
+        cropVariety: varietyName,
+        varietyId: varietyId,
         areaPercent: clampedArea,
       };
       onIntercropsChange([...intercrops, newIntercrop]);
@@ -140,7 +149,8 @@ export default function MultiIntercropSelector({
     setSelectedCropId('');
     setSelectedCropName('');
     setSelectedLocalizedName('');
-    setVariety('');
+    setVarietyIdState(null);
+    setVarietyName('');
     setAreaPercent(15);
   };
 
@@ -298,28 +308,32 @@ export default function MultiIntercropSelector({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground font-medium">{t.variety}</Label>
-                      <Input
-                        placeholder={t.varietyPlaceholder}
-                        value={variety}
-                        onChange={(e) => setVariety(e.target.value)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground font-medium">{t.areaPercent}</Label>
-                      <Input
-                        type="number"
-                        min={5}
-                        max={remainingArea}
-                        placeholder={t.areaPlaceholder}
-                        value={areaPercent}
-                        onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
-                      />
-                    </div>
+                  {/* Variety Selector — same UI as main crop, DB-driven */}
+                  <VarietySelector
+                    cropId={selectedCropId}
+                    value={varietyId}
+                    cropName={selectedLocalizedName || selectedCropName}
+                    onChange={(v) => {
+                      setVarietyIdState(v?.id ?? null);
+                      setVarietyName(v?.name ?? '');
+                    }}
+                    onManualSubmit={(proposedName) => {
+                      setVarietyIdState(null);
+                      setVarietyName(proposedName);
+                    }}
+                  />
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground font-medium">{t.areaPercent}</Label>
+                    <Input
+                      type="number"
+                      min={5}
+                      max={remainingArea}
+                      placeholder={t.areaPlaceholder}
+                      value={areaPercent}
+                      onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
+                      className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
+                    />
                   </div>
 
                   {/* Area hint */}

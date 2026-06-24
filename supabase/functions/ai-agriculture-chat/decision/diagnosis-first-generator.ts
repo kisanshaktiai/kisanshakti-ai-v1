@@ -29,6 +29,7 @@
  */
 
 import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothesis-evaluator.ts';
+import { tagClarificationSite, CLARIFICATION_SITES } from '../utils/clarification-site-tag.ts';
 // STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
 import { translateToRegionalTerms, type FarmerLocation, type RegionalTranslation } from '../services/regional-translator.ts';
 // PHASE 4: DB-driven i18n - replaces hardcoded CAUSE_TRANSLATIONS dictionary
@@ -161,6 +162,37 @@ function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string
   return translated;
 }
 
+/**
+ * 2026-06-21 FIX (REVERTED 2026-06-23 — WAVE-S CAUSE/ACTION SEPARATION):
+ *
+ * `decision_rules_translations_archive.response_{mr,hi}` stores the translation
+ * of `decision_rules.action_text` (the TREATMENT prescription text — e.g. the
+ * reseed/spray instructions). It is NOT a translation of `decision_rules.cause`.
+ *
+ * Using it as the cause label leaked the treatment prescription into the
+ * diagnosis-first clarification slot ("🔬 Your crop may be affected by
+ * <reseed instructions>. Which of these do you see?") — the farmer was asked
+ * to confirm a treatment as if it were a symptom.
+ *
+ * The cause slot must resolve via:
+ *   1. translateCause(h.cause, language)   [i18n_key / FALLBACK_TRANSLATIONS]
+ *   2. observation_label as the displayable subject (preferred farmer-facing)
+ *   3. humanized cause code
+ *
+ * This function is preserved as a no-op so callers don't need a coordinated
+ * change; it now always returns '' which forces the cause-from-i18n path.
+ */
+async function getCauseLabelFromArchive(
+  _supabaseClient: any,
+  _ruleId: string | null | undefined,
+  _language: SupportedLanguage,
+): Promise<string> {
+  // Intentionally empty — see comment above. The archive table holds the
+  // action_text translation, not a cause-label translation. Returning it here
+  // caused the cause slot to render the reseed / spray prescription.
+  return '';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // v2.0.0: OBSERVATION LABELS - DB-DRIVEN via loadObservationLabels()
 // Replaces hardcoded OBSERVATION_LABELS dictionary (was ~45 entries, mr/hi/en only)
@@ -195,9 +227,13 @@ function getObservationLabelFromMap(
 
 const PHOTO_LABEL = { label: '📷 Send Photo', description: 'Send a crop photo for more accurate diagnosis' };
 
+// WAVE-S CAUSE/ACTION SEPARATION (2026-06-23):
+// The confirm slot must show what the FARMER CAN SEE (the observation), never
+// the underlying cause name or — worse — the treatment prescription. The cause
+// is reserved for AFTER the farmer confirms the visible symptom.
 const DIAGNOSIS_QUESTION_TEMPLATE = {
-  single: '🔬 Your crop may be affected by {cause}. Which of these do you see?',
-  multiple: '🔬 Your crop may have one of these issues. Select the closest match:'
+  single: '🔬 Do you see this in your crop: {observation}?',
+  multiple: '🔬 Which of these do you see in your crop? Select the closest match:'
 };
 
 function getQuestionText(
@@ -205,9 +241,9 @@ function getQuestionText(
   _language: string
 ): string {
   if (diagnoses.length === 1) {
-    return DIAGNOSIS_QUESTION_TEMPLATE.single.replace('{cause}', diagnoses[0].cause_label);
+    const subject = diagnoses[0].observation_label || diagnoses[0].cause_label;
+    return DIAGNOSIS_QUESTION_TEMPLATE.single.replace('{observation}', subject);
   }
-  
   return DIAGNOSIS_QUESTION_TEMPLATE.multiple;
 }
 
@@ -388,7 +424,10 @@ export async function generateDiagnosisFirstResponse(
         return false;
       };
 
-      // STEP 1: Try DB-driven labels FIRST (SSOT)
+      // STEP 1: Cause labels must NEVER use decision_rules_translations_archive:
+      // that archive stores translated action_text, not translated causes.
+      // Keep the cause path on the cause/i18n cache only; the displayed subject
+      // is observationLabel below.
       causeLabel = getCauseLabelFromDB(h.cause, language);
       observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       
@@ -698,6 +737,7 @@ export function formatForClarificationUI(
   selectionType: 'single_choice';
   maxSelections: 1;
   metadata: {
+    clarification_site?: string;
     source: string;
     mode: string;
     crop_code: string;
@@ -720,36 +760,54 @@ export function formatForClarificationUI(
     return union > 0 && (intersection / union) > 0.7;
   };
 
-  // Convert diagnoses to clarification options format
-  // FIX: Avoid duplication when cause_label and observation_label are similar
-  // v1.3.0: CLEAN labels - NO embedded [obs_keys:...] metadata in display
-  // Frontend uses observation_key field for routing when farmer selects option
-  const options = output.diagnoses.map(d => {
-    let displayLabel: string;
-    
-    // If cause_label already contains observation_label or they're very similar, use only cause_label
-    if (areLabelsSimilar(d.cause_label, d.observation_label)) {
-      // Only use cause_label (with icon) - CLEAN, no metadata
-      displayLabel = `${d.icon} ${d.cause_label}`;
-    } else {
-      // Combine both (no duplication) - CLEAN, no metadata
-      displayLabel = `${d.icon} ${d.cause_label} (${d.observation_label})`;
-    }
-    
-    // v2.1.0: Return CLEAN label for farmer UI
-      // FIX #1: Embed cause + rule_id in observation_key metadata so orchestrator
-      // can bypass generic observation matching when farmer confirms a diagnosis
-      // Frontend (ClarificationOptionsUI) will use observation_key when sending selection
+  // Convert diagnoses to clarification options format.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WAVE-Q FIX (P0-B): Clarification chip labels MUST originate ONLY from
+  // observation_label (the farmer-observable symptom text). The hypothesis
+  // `cause`/`cause_label` is a decision narrative and the regional fallback
+  // expands it into a full prescription (resow / Carbendazim / Trichoderma)
+  // — which is what was leaking onto the chip before any diagnosis.
+  //
+  // Contract: label = observation_label only. cause is preserved on the
+  // payload for the symbolic backend (routing/audit) but never displayed.
+  // If observation_label is unsafe (looks like a treatment narrative) or
+  // missing, fall back to a humanized observation_key. NEVER fall back to
+  // cause_label.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const TREATMENT_TOKENS_RE = /(carbendazim|trichoderma|mancozeb|chlorpyrifos|imidacloprid|resow|पुनर्पेरण|कार्बेन्डाझ|ट्रायकोडर्मा|कार्बेंडाज|बीज ?उपचार|seed ?treatment|spray|दवा|drench|कीटनाशक|फफूंदनाशक|बुरशीनाशक|किलो|ग्रॅम|ग्रॅम\/|kg\/|g\/kg|ml\/|एकर|hectare|डोस|dose)/i;
+  const looksLikeTreatment = (s: string): boolean => !!s && TREATMENT_TOKENS_RE.test(s);
+  const humanizeKey = (k: string): string =>
+    String(k || '')
+      .replace(/^OBS_/i, '')
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim();
+
+  const options = output.diagnoses
+    .map((d) => {
+      let safeLabel = d.observation_label;
+      if (!safeLabel || looksLikeTreatment(safeLabel)) {
+        safeLabel = humanizeKey(d.observation_key || d.id);
+      }
+      // Defensive: also strip embedded treatment phrases from the safe label.
+      if (looksLikeTreatment(safeLabel)) {
+        safeLabel = humanizeKey(d.observation_key || d.id);
+      }
+      const displayLabel = `${d.icon} ${safeLabel}`.trim();
+
       return {
         id: d.id,
-        label: displayLabel,  // CLEAN: Farmer sees only readable text
-        observation_key: d.observation_key,  // ROUTING: Backend uses this for rule matching
+        label: displayLabel,                 // OBSERVATION-ONLY chip text
+        observation_key: d.observation_key,  // routing key for symbolic engine
         rule_id: d.rule_id,
-        confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
+        confidence_boost: 0.20,
         icon: d.icon,
-        cause: d.cause
+        cause: d.cause                       // backend-only; never rendered
       };
-  });
+    })
+    // Final safety net: drop any chip whose label still reads like treatment.
+    .filter((o) => !looksLikeTreatment(o.label));
   
   // Add photo option at end - CLEAN label, observation_key for routing
   options.push({
@@ -769,6 +827,7 @@ export function formatForClarificationUI(
     selectionType: 'single_choice',
     maxSelections: 1,
     metadata: {
+      clarification_site: CLARIFICATION_SITES.DIAGNOSIS_FIRST_GENERATOR,
       source: output.source,
       mode: output.mode,
       crop_code: output.crop_code,

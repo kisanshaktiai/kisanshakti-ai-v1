@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Check, Wheat, Sprout, TreePine, Flower, Apple, Carrot, Bean } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
@@ -43,6 +44,7 @@ const groupIcons: Record<string, React.ElementType> = {
 };
 
 export function CropSelector({ value, onChange, mode = 'single', className, label }: CropSelectorProps) {
+  const tRef = useLocalizedRef();
   const [cropGroups, setCropGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -165,7 +167,7 @@ export function CropSelector({ value, onChange, mode = 'single', className, labe
                     "text-xs font-medium truncate",
                     isSelected ? "text-primary" : "text-foreground"
                   )}>
-                    {group.group_name}
+                    {tRef(group, 'group_name') || group.group_name}
                   </p>
                 </div>
                 {isSelected && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
@@ -183,7 +185,7 @@ export function CropSelector({ value, onChange, mode = 'single', className, labe
             <div className="flex flex-wrap gap-1.5">
               {crops.map((crop) => {
                 const isSelected = selectedCrop === crop.id;
-                
+                const localized = tRef(crop, 'label') || crop.label;
                 return (
                   <Badge
                     key={crop.id}
@@ -194,12 +196,12 @@ export function CropSelector({ value, onChange, mode = 'single', className, labe
                         ? "bg-primary text-primary-foreground"
                         : "hover:bg-primary/10"
                     )}
-                    onClick={() => handleCropSelect(crop.id, crop.label)}
+                    onClick={() => handleCropSelect(crop.id, localized)}
                   >
-                    {crop.label}
-                    {crop.label_local && (
+                    {localized}
+                    {localized !== crop.label && (
                       <span className="ml-1 text-xs opacity-75">
-                        ({crop.label_local})
+                        ({crop.label})
                       </span>
                     )}
                   </Badge>

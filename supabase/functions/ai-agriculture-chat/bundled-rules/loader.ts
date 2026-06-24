@@ -10,6 +10,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import { areStagesCompatible, getStageQueryVariants } from '../utils/stage-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -101,18 +102,34 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     
-    const { data, error } = await supabase
-      .from('decision_rules')
-      .select('*')
-      .eq('is_active', true)
-      .limit(3000);
-    
-    if (error) {
-      console.error('❌ [RuleLoader] Database error:', error.message);
-      return [];
+    // PostgREST caps a single response at ~1000 rows regardless of `.limit()`.
+    // decision_rules has >1800 active rows — a non-paginated read silently
+    // dropped rules like RICE_GERMINATION_DIAGNOSTIC_001, causing
+    // RULE_DATA_INTEGRITY_ERROR (matched_responses=0) for valid observations.
+    // Paginate explicitly and stop only when a page returns < PAGE rows.
+    const PAGE = 1000;
+    const MAX_PAGES = 20; // hard ceiling = 20k rules
+    let allRows: any[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const to = from + PAGE - 1;
+      const { data: pageData, error } = await supabase
+        .from('decision_rules')
+        .select('*')
+        .eq('is_active', true)
+        .order('rule_id', { ascending: true })
+        .range(from, to);
+      if (error) {
+        console.error('❌ [RuleLoader] Database error:', error.message);
+        return [];
+      }
+      const rows = pageData || [];
+      allRows = allRows.concat(rows);
+      if (rows.length < PAGE) break;
     }
-    
-    console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database`);
+    const data = allRows;
+
+    console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database (paginated)`);
     return (data || []).map(row => {
       // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
@@ -123,38 +140,61 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       
       // Normalize action_type to standard enums
       // ═══════════════════════════════════════════════════════════════════════
-      // PHASE 3: Strict action_type alignment - preserve DB canonical values
-      // Database uses 5 canonical types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
+      // WAVE 1 FIX (P0-2): Preserve all 8 canonical DB action_type values as
+      // first-class. Prior implementation silently collapsed APPLY_TREATMENT,
+      // IMMEDIATE_ACTION and RELEASE_BIOCONTROL into 'RECOMMEND', erasing
+      // urgency and biocontrol routing for every non-sugarcane crop.
+      // DB enum (decision_rules.action_type):
+      //   RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION,
+      //   APPLY_TREATMENT, IMMEDIATE_ACTION, RELEASE_BIOCONTROL
       // ═══════════════════════════════════════════════════════════════════════
       const normalizeActionType = (action: string | null): string => {
         if (!action) return 'RECOMMEND';
         const upper = action.toUpperCase().trim();
-        const VALID_DB_TYPES = ['RECOMMEND', 'MONITOR', 'BLOCK', 'NO_ACTION_REQUIRED', 'URGENT_ACTION'];
+        const VALID_DB_TYPES = [
+          'RECOMMEND', 'MONITOR', 'BLOCK', 'NO_ACTION_REQUIRED',
+          'URGENT_ACTION', 'APPLY_TREATMENT', 'IMMEDIATE_ACTION', 'RELEASE_BIOCONTROL',
+        ];
         if (VALID_DB_TYPES.includes(upper)) return upper;
-        // Legacy reverse mapping for any old data still using lowercase types
+        // Legacy reverse mapping for any old data still using lowercase / non-canonical types.
+        // NOTE: APPLY_TREATMENT / IMMEDIATE_ACTION / RELEASE_BIOCONTROL are intentionally
+        // NOT collapsed here — they pass through above as first-class enums.
         const legacyMapping: Record<string, string> = {
-          'treatment': 'RECOMMEND', 'monitoring': 'MONITOR', 'safety_gate': 'BLOCK',
-          'advisory': 'NO_ACTION_REQUIRED', 'urgent_treatment': 'URGENT_ACTION',
-          'APPLY_TREATMENT': 'RECOMMEND', 'prevention': 'RECOMMEND',
-          'diagnosis': 'MONITOR', 'clarification': 'MONITOR',
+          'treatment': 'APPLY_TREATMENT',
+          'monitoring': 'MONITOR',
+          'safety_gate': 'BLOCK',
+          'advisory': 'NO_ACTION_REQUIRED',
+          'urgent_treatment': 'URGENT_ACTION',
+          'prevention': 'RECOMMEND',
+          'diagnosis': 'MONITOR',
+          'clarification': 'MONITOR',
         };
-        return legacyMapping[action] || legacyMapping[upper] || 'RECOMMEND';
+        return legacyMapping[action] || legacyMapping[upper.toLowerCase()] || 'RECOMMEND';
       };
       
       // Normalize canonical_group to 13-group system
+      // WAVE 3 FIX (P3): Extend per-crop prefix coverage beyond sc_/ct_ so RICE,
+      // WHEAT, TOMATO, MAIZE, ONION, POTATO, SOYBEAN, BRINJAL, CHILI rules
+      // surface their real category in analytics instead of collapsing to
+      // '12_monitoring'.
       const normalizeCanonicalGroup = (group: string | null): string => {
         if (!group) return '12_monitoring';
         const g = group.toLowerCase();
-        
-        // Handle SC_PEST_*, CT_PEST_* patterns
-        if (g.startsWith('sc_pest_') || g.startsWith('ct_pest_')) return '03_pest';
-        if (g.startsWith('sc_disease_') || g.startsWith('ct_disease_')) return '04_disease';
-        if (g.startsWith('sc_nutrient_') || g.startsWith('ct_nutrient_')) return '05_nutrition';
-        if (g.startsWith('sc_stress_') || g.startsWith('ct_stress_')) return '08_stress';
-        if (g.startsWith('sc_irrigation_') || g.startsWith('ct_irrigation_')) return '10_irrigation';
-        if (g.startsWith('sc_safety_') || g.startsWith('ct_safety_')) return '11_safety';
-        if (g.startsWith('sc_weather_') || g.startsWith('ct_weather_')) return '09_weather';
-        
+
+        // Per-crop prefixes seen in DB rule_ids / canonical_group strings.
+        // SC=sugarcane CT=cotton RC/RICE WH/WHEAT TM/TOMATO MZ/MAIZE
+        // ON/ONION PT/POTATO SY/SOY/SOYBEAN BR/BRINJAL CH/CHILI/CHILLI
+        const CROP_PREFIX = '(?:sc|ct|rc|rice|wh|wheat|tm|tomato|mz|maize|on|onion|pt|potato|sy|soy|soybean|br|brinjal|ch|chili|chilli)';
+        const cropTopic = (topic: string) => new RegExp(`^${CROP_PREFIX}_${topic}_`);
+        if (cropTopic('pest').test(g)) return '03_pest';
+        if (cropTopic('disease').test(g)) return '04_disease';
+        if (cropTopic('nutrient').test(g) || cropTopic('nutrition').test(g)) return '05_nutrition';
+        if (cropTopic('stress').test(g)) return '08_stress';
+        if (cropTopic('irrigation').test(g)) return '10_irrigation';
+        if (cropTopic('safety').test(g)) return '11_safety';
+        if (cropTopic('weather').test(g)) return '09_weather';
+        if (cropTopic('weed').test(g)) return '06_weed';
+
         // Direct mapping for short names
         const mapping: Record<string, string> = {
           'pest': '03_pest',
@@ -168,39 +208,51 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
           'weather_alert': '09_weather',
           'irrigation': '10_irrigation',
           'safety': '11_safety',
+          'compliance': '11_safety',
+          'advisory': '12_management',
+          'management': '12_management',
+          'planning': '12_management',
           'monitoring': '12_monitoring',
           'treatment': '13_treatment',
           'identity': '01_crop_identity',
           'crop_identity': '01_crop_identity',
           'growth_stage': '02_growth_stage',
         };
-        
+
         return mapping[g] || (g.match(/^\d{2}_/) ? g : '12_monitoring');
       };
+
       
-      // AUDIT FIX: Preserve UPPERCASE stages from DB, normalize synonyms only
-      // DB stores UPPERCASE (TILLERING, GRAND_GROWTH) - comparisons must be case-insensitive at match time
+      // WAVE 1 FIX (P0-4): Sugarcane-specific stage synonyms must NOT be
+      // applied to transplanted crops (RICE, TOMATO, BRINJAL, CHILI, ONION)
+      // where PLANTING != GERMINATION. Scope remap to SUGARCANE only.
+      const cropCodeUpper = (row.crop_code || '').toUpperCase();
+      const SUGARCANE_STAGE_SYNONYMS: Record<string, string> = {
+        'PLANTING': 'GERMINATION',
+        'RATOON': 'POST_HARVEST',
+        'CANE_FORMATION': 'GRAND_GROWTH',
+        'EARLY_GROWTH': 'SEEDLING',
+        'RATOON_INIT': 'POST_HARVEST',
+      };
       const normalizeStages = (stages: string[] | null): string[] => {
         if (!stages || !Array.isArray(stages)) return ['ALL'];
-        const stageMapping: Record<string, string> = {
-          'PLANTING': 'GERMINATION',
-          'RATOON': 'POST_HARVEST',
-          'CANE_FORMATION': 'GRAND_GROWTH',
-          'EARLY_GROWTH': 'SEEDLING',
-          'RATOON_INIT': 'POST_HARVEST',
-        };
+        const isSugarcane = cropCodeUpper === 'SUGARCANE' || cropCodeUpper === 'SC';
         return stages.map(s => {
           const upper = s.toUpperCase();
-          return stageMapping[upper] || upper;
+          if (isSugarcane && SUGARCANE_STAGE_SYNONYMS[upper]) {
+            return SUGARCANE_STAGE_SYNONYMS[upper];
+          }
+          return upper;
         });
       };
       
-      // Normalize observable_characteristics to array
+      // Normalize observable_characteristics to canonical lower_snake_case array
       const normalizeObservableChars = (chars: unknown): string[] | null => {
         if (!chars) return null;
-        if (Array.isArray(chars)) return chars.map(c => String(c).toUpperCase());
+        const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+        if (Array.isArray(chars)) return chars.map(c => norm(c));
         if (typeof chars === 'object') {
-          return Object.keys(chars).map(k => k.toUpperCase());
+          return Object.keys(chars).map(k => norm(k));
         }
         return null;
       };
@@ -216,6 +268,12 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       
       return {
         rule_id: row.rule_id,
+        // Stage-1 migration sidecars — surface so callers / cache layers can
+        // key on the canonical lowercase form and on version_hash for drift
+        // detection without re-querying the DB.
+        rule_id_lc: row.rule_id_lc,
+        version_hash: row.version_hash,
+        updated_at: row.updated_at,
         category: row.category?.toLowerCase() || 'advisory',
         crop_code: row.crop_code?.toLowerCase() || 'universal',
         crop_group: row.crop_group?.toLowerCase() || 'universal',
@@ -344,6 +402,11 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         required_observation_category: row.required_observation_category || null,
         required_plant_part: row.required_plant_part || null,
         
+        // P1 SYSTEM-WIDE FIX (2026-06-22): cross-crop context-completeness gate
+        min_data_completeness: typeof row.min_data_completeness === 'number'
+          ? row.min_data_completeness
+          : 0.0,
+
         is_active: row.is_active
       };
     });
@@ -424,7 +487,7 @@ export function clearLedgerCache(): void {
 // KEY CATEGORY CLASSIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-const STRUCTURAL_KEYS = new Set(['all', 'any', 'fact', 'operator', 'value']);
+const STRUCTURAL_KEYS = new Set(['all', 'any', 'fact', 'operator', 'value', 'match_all', 'observation_match']);
 
 // Category C: Numeric threshold (required)
 const CATEGORY_C_KEYS = new Set([
@@ -698,7 +761,7 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
   }
 
   // Generic observation-based boolean flags
-  const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+  const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
   if (expected) {
     const obsMatch = expandedObs.has(keySymbol) ||
       [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
@@ -776,24 +839,23 @@ export function evaluateConditionsJson(
   const conditionKeys = Object.keys(conditions);
 
   // Precompute input values
+  // CANONICAL CASE (post-2026-06-21 migration): observation/condition codes
+  // are lower_snake_case in DB (observation_master, observation_aliases,
+  // hypothesis_conditions, decision_rules). Stages stay UPPER.
   const inputStage = (input.crop_stage || '').toUpperCase();
-  const inputSymptoms = (input.visual_symptoms || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
-  const inputSymptom = ((input as any).primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
-  const inputQuery = ((input as any).user_query || '').toUpperCase();
-  const inputObservations = (input.observations || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
+  const inputSymptoms = (input.visual_symptoms || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
+  const inputSymptom = String((input as any).primary_symptom || '').toLowerCase().replace(/[\s-]+/g, '_');
+  const inputQuery = String((input as any).user_query || '').toLowerCase();
+  const inputObservations = (input.observations || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
 
-  // Combined observation set
+  // Combined observation set (all lower_snake_case)
   const allInputObs = new Set([...inputSymptoms, ...inputObservations]);
   if (inputSymptom) allInputObs.add(inputSymptom);
 
-  // Observation aliases
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
-  // Empty fallback is intentional - safer than hardcoded phantom matches
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Observation aliases (canonical lower SSOT — see loader cache build).
   const observationAliases: Record<string, string[]> = cachedObservationAliases || {};
 
-  // Expand with aliases
+  // Expand with aliases (lower → lower)
   const expandedObs = new Set(allInputObs);
   for (const obs of allInputObs) {
     if (observationAliases[obs]) {
@@ -806,6 +868,24 @@ export function evaluateConditionsJson(
 
     const condValue = conditions[key];
 
+    // ─── DAS range gate (SSOT: input.days_since_sowing) ───
+    if (key === 'das_range') {
+      const das = Number(input.days_since_sowing ?? (input as any).days_after_sowing_exact);
+      if (!Number.isFinite(das)) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+        continue;
+      }
+      const cv: any = condValue || {};
+      const min = Number(cv.min ?? cv.from ?? Number.NEGATIVE_INFINITY);
+      const max = Number(cv.max ?? cv.to ?? Number.POSITIVE_INFINITY);
+      const passes = das >= min && das <= max;
+      ledger.push({
+        key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED,
+        required: true, inputValue: das, ruleValue: condValue,
+      });
+      continue;
+    }
+
     // ─── Category H: Deprecated/Ignored ───
     if (key === 'trigger_keywords') continue;
     if (key === 'always_applicable') {
@@ -817,14 +897,31 @@ export function evaluateConditionsJson(
 
     // ─── Category A: Stage Keys ───
     if (key === 'crop_stage' || key === 'stage' || key === 'growth_stage') {
-      const stages = Array.isArray(condValue) ? condValue : [condValue];
+      const ruleStageApplicable = Array.isArray((input as any).rule_stage_applicable)
+        ? (input as any).rule_stage_applicable
+        : [];
+      const stages = [
+        ...(Array.isArray(condValue) ? condValue : [condValue]),
+        ...ruleStageApplicable,
+      ].filter((s) => s !== undefined && s !== null && String(s).trim() !== '');
       if (stages.length > 0) {
         // v7.8 FIX: Default/generic stages should not block rules
         const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
         const isDefault = !inputStage || DEFAULT_STAGES.has(inputStage);
+        // ESTABLISHMENT_STAGE_EQUIVALENCE (2026-06-20): rules authored against
+        // 'germination' must also match when the live crop_stage_master returns
+        // 'nursery', 'seedling', 'emergence', or 'establishment' for the same
+        // DAS window. Without this, every rice DAS≤25 emergence/germination
+        // rule was being stage-gated out.
+        const inputStageForCompare = String(input.crop_stage || '').trim();
+        const stageVariants = new Set(getStageQueryVariants(inputStageForCompare).map(s => String(s).toUpperCase().replace(/[\s-]+/g, '_')));
         const stageMatch = stages.some((s: any) => {
           const upper = String(s).toUpperCase();
-          return upper === inputStage || upper === '*' || upper === 'ALL' || upper === 'ANY' || inputStage.includes(upper);
+          if (upper === inputStage || upper === '*' || upper === 'ALL' || upper === 'ANY') return true;
+          if (inputStage.includes(upper)) return true;
+          if (stageVariants.has(upper.replace(/[\s-]+/g, '_'))) return true;
+          if (areStagesCompatible(String(s), inputStageForCompare)) return true;
+          return false;
         });
         ledger.push({
           key, status: stageMatch || isDefault ? ConditionStatus.PASSED : ConditionStatus.FAILED,
@@ -843,36 +940,53 @@ export function evaluateConditionsJson(
       const isRequiredSymptoms = key === 'required_symptoms';
       const obsList = Array.isArray(condValue) ? condValue : [condValue];
       if (obsList.length > 0) {
+        const requiresAllObservations = conditions.match_all === true ||
+          String(conditions.observation_match || '').toLowerCase() === 'all';
         // ═══════════════════════════════════════════════════════════════════
         // PHASE 7: Validate observation codes against observation_master cache
         // Log warnings for invalid codes that may indicate stale rule data
         // ═══════════════════════════════════════════════════════════════════
         if (cachedObservationCodes && ruleId) {
+          // FORENSIC AUDIT v9.0: dedup per-(rule, obs) so each unknown code
+          // logs at most once per process. The loader previously warned twice
+          // per rule (once for `observations` and once for `required_symptoms`).
           for (const obs of obsList) {
-            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
-            if (!cachedObservationCodes.has(obsUpper)) {
-              console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsUpper}`);
+            const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
+            if (!cachedObservationCodes.has(obsNorm)) {
+              const dedupKey = `${ruleId}|${obsNorm}`;
+              if (!(globalThis as any).__obsValidationLogged) (globalThis as any).__obsValidationLogged = new Set<string>();
+              const seen = (globalThis as any).__obsValidationLogged as Set<string>;
+              if (!seen.has(dedupKey)) {
+                seen.add(dedupKey);
+                console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsNorm}`);
+              }
             }
           }
         }
         
         if (expandedObs.size > 0) {
-          const obsMatch = obsList.some((obs: string) => {
-            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+          const matchesOneObservation = (obs: string) => {
+            const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
             for (const inputObs of expandedObs) {
-              if (inputObs === obsUpper || inputObs.includes(obsUpper) || obsUpper.includes(inputObs)) return true;
-              // ═══════════════════════════════════════════════════════════════
-              // AUDIT FIX: Root-word matching for related codes
-              // STUNTED_PLANTS ↔ STUNTED_GROWTH (share root word 'STUNTED')
-              // POOR_TILLERING ↔ POOR_RATOONING (share root word 'POOR')
-              // ═══════════════════════════════════════════════════════════════
-              const obsWords = obsUpper.split('_');
+              if (inputObs === obsNorm) return true;
+              // Canonical observation codes (`obs_*`) must match by exact token
+              // (or alias-expanded exact token) only. Substring/root matching made
+              // mutually exclusive alternatives such as obs_rice_no_emergence and
+              // obs_rice_patchy_emergence look identical under `match_all`.
+              if (obsNorm.startsWith('obs_') || inputObs.startsWith('obs_')) continue;
+              if (inputObs.includes(obsNorm) || obsNorm.includes(inputObs)) return true;
+              // Root-word matching for related codes
+              // stunted_plants ↔ stunted_growth (share 'stunted')
+              const obsWords = obsNorm.split('_');
               const inputWords = inputObs.split('_');
               const sharedWords = obsWords.filter(w => inputWords.includes(w) && w.length > 3);
               if (sharedWords.length > 0) return true;
             }
             return false;
-          });
+          };
+          const obsMatch = requiresAllObservations
+            ? obsList.every((obs: string) => matchesOneObservation(obs))
+            : obsList.some((obs: string) => matchesOneObservation(obs));
           ledger.push({
             key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.FAILED,
             // FORENSIC FIX 1A: required_symptoms is soft (required: false) since farmers
@@ -912,7 +1026,7 @@ export function evaluateConditionsJson(
     // ─── Category G: Informational/Context Keys (NOT required) ───
     if (CATEGORY_G_KEYS.has(key)) {
       if (typeof condValue === 'string') {
-        const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+        const valUpper = condValue.toLowerCase().replace(/[\s-]+/g, "_");
         const matches = inputQuery.includes(valUpper) || [...expandedObs].some(o => o.includes(valUpper));
         ledger.push({
           key, status: matches ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA,
@@ -956,7 +1070,14 @@ export function evaluateConditionsJson(
     }
 
     // ─── Category D: Boolean Gate Keys (severity, stress, leaf_n_status, etc.) ───
-    if (typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false' ||
+    if ((typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false') && CATEGORY_G_KEYS.has(key)) {
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
+      const matched = expandedObs.has(keySymbol) || [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) || inputQuery.includes(keySymbol);
+      ledger.push({ key, status: matched ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      continue;
+    }
+
+    if ((typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false') ||
         key === 'severity' || key === 'stress' || key === 'leaf_n_status' ||
         key === 'disease_confirmed' || key === 'pest_present' || key === 'etl_exceeded' || key === 'etl_below' ||
         key === 'lodging_risk' || key === 'soil_moisture_low' || key === 'soil_moisture_high' ||
@@ -976,7 +1097,7 @@ export function evaluateConditionsJson(
     // Unknown boolean keys are treated as SOFT observation hints, not hard gates.
     // This prevents orphan/new DB keys from blocking entire rules.
     if (condValue === true || condValue === 'true') {
-      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
       const match = expandedObs.has(keySymbol) ||
         [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
         inputQuery.includes(keySymbol);
@@ -1008,7 +1129,7 @@ export function evaluateConditionsJson(
 
       // String match against observations/query
       // v7.6: Unknown string keys are soft — don't block rules
-      const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+      const valUpper = condValue.toLowerCase().replace(/[\s-]+/g, "_");
       const match = [...expandedObs].some(o => o.includes(valUpper) || valUpper.includes(o)) || inputQuery.includes(valUpper);
       ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       continue;
@@ -1016,7 +1137,7 @@ export function evaluateConditionsJson(
 
     if (condValue === false || condValue === 'false') {
       // Negative assertion - passes unless contradicted
-      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
       const present = expandedObs.has(keySymbol) || [...expandedObs].some(o => o.includes(keySymbol));
       ledger.push({ key, status: present ? ConditionStatus.FAILED : ConditionStatus.PASSED, required: false, ruleValue: condValue });
       continue;
@@ -1055,7 +1176,7 @@ export function evaluateConditionsJson(
       if (Array.isArray(condValue)) {
         // Treat unknown array keys as soft observation lists
         const arrMatch = condValue.some((v: any) => {
-          const vUpper = String(v).toUpperCase().replace(/[\s-]/g, '_');
+          const vUpper = String(v).toLowerCase().replace(/[\s-]+/g, "_");
           return expandedObs.has(vUpper) || [...expandedObs].some(o => o.includes(vUpper) || vUpper.includes(o));
         });
         ledger.push({ key, status: arrMatch ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
@@ -1095,7 +1216,11 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
     conditions: (input: DecisionInput) => {
       // Primary path: evaluate conditions_json
       if (rule.conditions_json && Object.keys(rule.conditions_json).length > 0) {
-        const result = evaluateConditionsJson(rule.conditions_json, input, rule.rule_id);
+        const result = evaluateConditionsJson(
+          rule.conditions_json,
+          { ...input, rule_stage_applicable: rule.stage_applicable },
+          rule.rule_id,
+        );
         if (result) return true;
       }
 
@@ -1112,10 +1237,10 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
       const obsChars = (rule as any).observable_characteristics;
       if (obsChars && Array.isArray(obsChars) && obsChars.length > 0) {
         const inputSymptoms = (input.visual_symptoms || []).map(s =>
-          s.toUpperCase().replace(/[\s-]/g, '_')
+          s.toLowerCase().replace(/[\s-]+/g, "_")
         );
         if (inputSymptoms.length > 0) {
-          const obsSet = new Set(obsChars.map((o: any) => String(o).toUpperCase().replace(/[\s-]/g, '_')));
+          const obsSet = new Set(obsChars.map((o: any) => String(o).toLowerCase().replace(/[\s-]+/g, "_")));
           const matched: string[] = [];
           for (const sym of inputSymptoms) {
             for (const obs of obsSet) {
@@ -1191,34 +1316,75 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           .select('alias_code, canonical_code');
         
         if (aliases && aliases.length > 0) {
+          // P0 HOTFIX (Layer 2): reject cause-named aliases at runtime.
+          // Aliases are for SYNONYMS of observable signs only — never for
+          // hard-coding a CAUSE (e.g. *_DEFICIENCY_*, *_TOXICITY_*).
+          const CAUSE_ENCODED = /(_DEFICIENCY_|_TOXICITY_|_POISONING_|^K_DEFICIENCY|^POTASH_DEFICIENCY|^N_DEFICIENCY|^P_DEFICIENCY)/i;
           const aliasMap: Record<string, string[]> = {};
+          let skipped = 0;
+          const norm = (s: string) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
           for (const row of aliases) {
-            if (!aliasMap[row.alias_code]) aliasMap[row.alias_code] = [];
-            aliasMap[row.alias_code].push(row.canonical_code);
-            // Also add reverse mapping
-            if (!aliasMap[row.canonical_code]) aliasMap[row.canonical_code] = [];
-            if (!aliasMap[row.canonical_code].includes(row.alias_code)) {
-              aliasMap[row.canonical_code].push(row.alias_code);
+            if (CAUSE_ENCODED.test(row.alias_code)) {
+              skipped++;
+              console.warn(`🚫 [RuleLoader] Rejecting cause-named alias '${row.alias_code}' → '${row.canonical_code}' (use observable-sign aliases only)`);
+              continue;
             }
+            // CANONICAL LOWER SSOT: keys + values are lower_snake_case so
+            // alias expansion always returns codes that match
+            // decision_rules / hypothesis_conditions / observation_master.
+            const aliasLower = norm(row.alias_code);
+            const canonLower = norm(row.canonical_code);
+            if (!aliasMap[aliasLower]) aliasMap[aliasLower] = [];
+            if (!aliasMap[aliasLower].includes(canonLower)) aliasMap[aliasLower].push(canonLower);
+            if (!aliasMap[canonLower]) aliasMap[canonLower] = [];
+            if (!aliasMap[canonLower].includes(aliasLower)) aliasMap[canonLower].push(aliasLower);
           }
           cachedObservationAliases = aliasMap;
           aliasesCacheExpiry = now + CACHE_TTL;
-          console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB`);
+          console.log(`✅ [RuleLoader] Cached ${aliases.length - skipped} observation aliases from DB (${skipped} cause-named aliases rejected)`);
         }
         
         // ═══════════════════════════════════════════════════════════════════
         // PHASE 7: Load observation_master codes for validation
         // ═══════════════════════════════════════════════════════════════════
+        // FORENSIC AUDIT FIX v9.0 (2026-06-04):
+        // PostgREST default cap is 1000 rows. observation_master has ~1982
+        // active rows, so the previous unpaginated read silently truncated
+        // ~982 valid codes, producing a flood of false "unknown observation"
+        // warnings. Paginate explicitly and log a smell if we hit exactly 1000.
+        // ═══════════════════════════════════════════════════════════════════
         if (!cachedObservationCodes || now >= obsCacheExpiry) {
-          const { data: obsCodes } = await supabase
-            .from('observation_master')
-            .select('observation_code')
-            .eq('is_active', true);
-          
-          if (obsCodes && obsCodes.length > 0) {
-            cachedObservationCodes = new Set(obsCodes.map(r => r.observation_code.toUpperCase()));
+          const allCodes: string[] = [];
+          const PAGE = 1000;
+          let fromIdx = 0;
+          while (true) {
+            const { data: page, error: pageErr } = await supabase
+              .from('observation_master')
+              .select('observation_code')
+              .eq('is_active', true)
+              .range(fromIdx, fromIdx + PAGE - 1);
+            if (pageErr) {
+              console.warn(`⚠️ [RuleLoader] observation_master page ${fromIdx} failed: ${pageErr.message}`);
+              break;
+            }
+            const rows = page || [];
+            for (const r of rows) {
+              if (r?.observation_code) allCodes.push(String(r.observation_code).toLowerCase().replace(/[\s-]+/g, '_'));
+            }
+            if (rows.length < PAGE) break;
+            fromIdx += PAGE;
+            if (fromIdx > 50_000) {
+              console.warn(`⚠️ [RuleLoader] observation_master pagination guard tripped at ${fromIdx}`);
+              break;
+            }
+          }
+          if (allCodes.length > 0) {
+            cachedObservationCodes = new Set(allCodes);
             obsCacheExpiry = now + CACHE_TTL;
-            console.log(`✅ [RuleLoader] Cached ${obsCodes.length} observation_master codes for validation`);
+            console.log(`✅ [RuleLoader] Cached ${allCodes.length} observation_master codes for validation (paginated)`);
+            if (allCodes.length === 1000) {
+              console.warn(`⚠️ [RuleLoader] observation_master count==1000 exactly — possible pagination smell`);
+            }
           }
         }
       }
@@ -1266,17 +1432,39 @@ export function loadRulesByCategory(category: string): ExecutableRule[] {
 
 export function evaluateRules(rules: ExecutableRule[], input: DecisionInput): ExecutableRule[] {
   const matched: ExecutableRule[] = [];
-  
+  const filteredOut: Array<{ rule_id: string; reason: string }> = [];
+
   for (const rule of rules) {
     try {
       if (rule.conditions(input)) {
         matched.push(rule);
+      } else {
+        // WAVE A3 — observability: track which rules were considered but
+        // rejected so we can size DB-vs-bundled drift later.
+        filteredOut.push({
+          rule_id: String((rule as any).rule_id || (rule as any).id || 'unknown'),
+          reason: 'conditions_returned_false',
+        });
       }
-    } catch {
-      // Skip rule on error
+    } catch (e) {
+      filteredOut.push({
+        rule_id: String((rule as any).rule_id || (rule as any).id || 'unknown'),
+        reason: `conditions_threw: ${(e as Error).message?.slice(0, 80) ?? 'unknown'}`,
+      });
     }
   }
-  
+
+  // Single line summary — full per-rule detail behind LOADER_VERBOSE flag
+  if (rules.length > 0) {
+    console.log(
+      `📊 [RuleLoader:evaluateRules] considered=${rules.length} matched=${matched.length} ` +
+      `filtered=${filteredOut.length} crop=${(input.crop_code || '?').toString().toLowerCase()}`
+    );
+    if (Deno.env.get('LOADER_VERBOSE') === '1' && filteredOut.length > 0) {
+      console.log(`   filtered rules: ${filteredOut.slice(0, 20).map(r => `${r.rule_id}(${r.reason})`).join(', ')}${filteredOut.length > 20 ? '...' : ''}`);
+    }
+  }
+
   return matched.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 }
 

@@ -35,6 +35,18 @@ export interface LandContext {
     status?: string;
     is_active?: boolean;
   };
+  /**
+   * Set when there is NO active crop on the land but a prior crop_schedule
+   * exists. Used by CROP_NAME / past-tense crop-lookup responses so the
+   * farmer hears "this field had X" instead of a generic "not recorded".
+   */
+  last_harvested_schedule?: {
+    crop_name: string;
+    crop_variety?: string | null;
+    sowing_date?: string | null;
+    actual_harvest_date?: string | null;
+    expected_harvest_date?: string | null;
+  } | null;
   growth_stage?: string;
   days_since_sowing?: number;
   irrigation_type?: string;
@@ -53,6 +65,15 @@ export interface StaticDataGateInput {
   farmer_message: string;
   language: string;
   land_context: LandContext | null;
+  /**
+   * Phase 2 (P0): when true, the gate will REFUSE to handle CROP_NAME-style
+   * lookups. Used by the orchestrator when the message looks like a next-crop
+   * recommendation request (Marathi "नवीन पीक घेवू", Hindi "अगली फसल",
+   * English "what should I plant next"). Without this, the gate's CROP_NAME
+   * regex (e.g. /या\s*शेतात.*पीक/i) intercepts advisory queries and answers
+   * with last-harvest info, blocking the symbolic decision brain.
+   */
+  is_recommendation_query?: boolean;
 }
 
 export interface StaticDataGateOutput {
@@ -80,15 +101,32 @@ const STATIC_QUERY_PATTERNS = {
       /which\s*crop/i,
       /current\s*crop/i,
       /या\s*शेतात.*पीक/i,       // "in this land...crop"
+      /या\s*शेतात.*पिक/i,       // script variant (ि vs ी)
       /इस\s*खेत.*फसल/i,
       /कोणतं\s*पीक/i,
+      /कोणतं\s*पिक/i,
       /पिक\s*कोणतं/i,
-      /फसल\s*कौन\s*सी/i
+      /पीक\s*कोणतं/i,
+      /फसल\s*कौन\s*सी/i,
+      // ── Past-tense / harvested-land lookups ─────────────────────────────
+      /कोणतं?\s*(पीक|पिक).*होतं?/i,      // Marathi: "which crop was (here)"
+      /कोणते?\s*(पीक|पिक).*होते?/i,
+      /(पीक|पिक).*होतं?\s*\??/i,
+      /(पीक|पिक).*लावले/i,                // "what crop was planted"
+      /(पीक|पिक).*पेरले/i,                // "what crop was sown"
+      /कौन\s*सी?\s*फसल\s*थी/i,           // Hindi past
+      /क्या\s*उगाया/i,                    // Hindi: "what was grown"
+      /क्या\s*बोया/i,
+      /पिछ(ली|ले)\s*फसल/i,               // "previous crop"
+      /मागील\s*(पीक|पिक)/i,              // Marathi: "previous crop"
+      /(last|previous)\s*crop/i,
+      /tell\s*me\s*(the\s*)?crop/i,
+      /this\s*field.*crop/i
     ],
     data_source: 'crop_schedules.crop_name',
     requires_crop_schedule: true
   },
-  
+
   LAND_AREA: {
     patterns: [
       /किती\s*(एकर|क्षेत्र|जमीन)/i,     // Marathi
@@ -201,6 +239,28 @@ const STATIC_QUERY_PATTERNS = {
  * 
  * CRITICAL: This MUST be called BEFORE NLU Agent
  */
+/**
+ * P0 GUARD (2026-06-23): Detect negation / damage / emergence-failure
+ * predicates in a farmer message so the StaticGate refuses to answer them
+ * as bare lookups (e.g. CROP_NAME → "this field has rice"). When this
+ * returns true the gate MUST pass the query to the AI / symbolic pipeline.
+ *
+ * Exported for unit testing.
+ */
+export function hasProblemOrEmergenceSignal(message: string): boolean {
+  if (!message || typeof message !== 'string') return false;
+
+  // English problem / negation / damage predicates
+  const en = /\b(not|no|never|n't|fail|failed|failing|dying|dead|damage|damaged|poor|wilt|wilting|yellow|stunt|stunted|rot|rotting|disease|pest|attack|burn|burnt|missing|empty|gap|sparse|patchy|emerge|emergence|germinat|sprout|sprouted|did\s*not|hasn't|hasnt|haven't|havent)\b/i;
+  if (en.test(message)) return true;
+
+  // Marathi / Hindi (Devanagari) — negation, damage, emergence/germination
+  const dev = /(नाही|नही|नहीं|उगवले|उगवल|उगवली|उगवलं|उगाव|अंकुर|अंकुरण|उगणे|उगत|पेरणी|पेरले|सुकल|सुकली|सुकत|सुकले|मेली|मेले|मरत|मरण|खराब|कमी|पिवळ|पीला|पीली|जळ|जळल|जळली|जळले|करपल|करपली|करपले|कुजल|कुजली|कुजले|नष्ट|नुकसान|रोग|कीड|कीडे|डाग|वाळ|वाळल|वाळली|गायब)/i;
+  if (dev.test(message)) return true;
+
+  return false;
+}
+
 export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateOutput {
   const startTime = performance.now();
   
@@ -214,10 +274,29 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
   
   const message = input.farmer_message.trim();
   const lang = input.language;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P0 PROBLEM/NEGATION/EMERGENCE GUARD (2026-06-23):
+  // If the message contains any negation, damage/symptom predicate, or an
+  // emergence/germination signal, the static gate MUST bypass ALL branches
+  // — these are diagnostic queries (e.g. "या शेतातील पिक अजून उगवले नाही")
+  // that the CROP_NAME regex (/या\s*शेतात.*पिक/i) would otherwise hijack
+  // and answer as a generic "what crop is in this field" lookup. Pass to
+  // the symbolic brain so EMERGENCE_FAILURE / diagnosis rules can fire.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (hasProblemOrEmergenceSignal(message)) {
+    console.log('🚫 [StaticGate] Problem/negation/emergence predicate detected — bypassing static branches (→ AI pipeline)');
+    return { handled: false, processing_time_ms: performance.now() - startTime, confidence: 0 };
+  }
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: CROP NAME QUERY
+  // Phase 2 (P0): skip CROP_NAME when message is pre-classified as a
+  // next-crop recommendation request.
   // ═══════════════════════════════════════════════════════════════════════════
+  if (input.is_recommendation_query) {
+    console.log('⏭️ [StaticGate] CROP_NAME branch SKIPPED — message classified as NEXT_CROP_RECOMMENDATION; routing to symbolic brain');
+  } else {
   for (const pattern of STATIC_QUERY_PATTERNS.CROP_NAME.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] CROP_NAME query detected');
@@ -229,6 +308,35 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       const daysSinceSowing = input.land_context.days_since_sowing;
       
       if (!cropName) {
+        // ─── HARVESTED-LAND FALLBACK ────────────────────────────────────────
+        // If there is no active crop but a prior crop_schedule exists, tell
+        // the farmer what *was* grown rather than the generic "not recorded".
+        const last = input.land_context.last_harvested_schedule;
+        if (last?.crop_name) {
+          const lastVariety = last.crop_variety ? ` (${last.crop_variety})` : '';
+          const harvestDate = last.actual_harvest_date || last.expected_harvest_date || null;
+          let dateStrMr = '', dateStrHi = '', dateStrEn = '';
+          if (harvestDate) {
+            const d = new Date(harvestDate);
+            const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+            try { dateStrMr = d.toLocaleDateString('mr-IN', opts); } catch { dateStrMr = harvestDate; }
+            try { dateStrHi = d.toLocaleDateString('hi-IN', opts); } catch { dateStrHi = harvestDate; }
+            try { dateStrEn = d.toLocaleDateString('en-IN', opts); } catch { dateStrEn = harvestDate; }
+          }
+          const harvestedResponses = {
+            mr: `🌾 या शेतात मागील हंगामात **${last.crop_name}${lastVariety}** हे पीक होते.${harvestDate ? `\n📅 कापणी: ${dateStrMr}` : ''}\n🌱 सध्या हे शेत रिकामे आहे — नवीन पेरणीसाठी उपलब्ध आहे.`,
+            hi: `🌾 इस खेत में पिछले मौसम में **${last.crop_name}${lastVariety}** फसल थी।${harvestDate ? `\n📅 कटाई: ${dateStrHi}` : ''}\n🌱 अभी यह खेत खाली है — नई बुवाई के लिए उपलब्ध है।`,
+            en: `🌾 This field previously had **${last.crop_name}${lastVariety}**.${harvestDate ? `\n📅 Harvested: ${dateStrEn}` : ''}\n🌱 The field is currently empty and available for sowing.`
+          };
+          return {
+            handled: true,
+            response: harvestedResponses[lang] || harvestedResponses.en,
+            response_type: 'CROP_NAME',
+            confidence: 0.98,
+            processing_time_ms: performance.now() - startTime
+          };
+        }
+
         const responses = {
           mr: '🌱 या शेताची पीक माहिती अद्याप नोंदवलेली नाही. कृपया "पीक नोंदणी" मध्ये पीक जोडा.',
           hi: '🌱 इस खेत की फसल जानकारी अभी दर्ज नहीं है। कृपया "फसल पंजीकरण" में फसल जोड़ें।',
@@ -297,6 +405,8 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       };
     }
   }
+  } // end of `else { ... }` for is_recommendation_query guard
+  
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 2: LAND AREA QUERY

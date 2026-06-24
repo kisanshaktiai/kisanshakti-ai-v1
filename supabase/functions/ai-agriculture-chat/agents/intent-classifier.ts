@@ -23,10 +23,17 @@ export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 // edge runtime is serving a stale bundle and needs a forced redeploy.
 console.log(`[IntentClassifier] MODULE_LOAD version=${INTENT_CLASSIFIER_VERSION}`);
 
+const ESTABLISHMENT_FAILURE_RE = /उगव(?:ले|त|ण|णी)?\s*(नाही|कमी)|अजून\s*उगवले\s*नाही|germin(?:ation|ate|ated).*\b(poor|fail|failed|not|no)\b|\b(poor|failed|no)\s+germin|emerg(?:ence|ed|e).*\b(poor|fail|failed|not|no)\b|अंकुरण\s*(नहीं|कम)|धान\s*(नहीं\s*उगा|कम\s*उगा)/i;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL INTENT REGISTRY (Fix 1) — loaded once per cold start from DB
 // ═══════════════════════════════════════════════════════════════════════════
-
+// LEAKAGE-SAFETY (Task 3, Q3 — leave-with-comment):
+// These two module-level variables hold a read-mostly GLOBAL lookup of
+// canonical intent codes. Intent codes are tenant-agnostic and immutable for
+// the lifetime of an isolate, so sharing across warm requests is safe AND
+// avoids a DB round-trip on every request (p95 latency win). The forbidden-
+// pattern guardrail explicitly allow-lists these names.
 let _validIntentCodes: Set<string> | null = null;
 let _validIntentCodesPromise: Promise<Set<string>> | null = null;
 
@@ -123,9 +130,13 @@ ROUTING HINTS:
 - "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
 - "spray", "फवारणी", "छिड़काव", "spraying schedule" → SPRAY_TIMING_QUERY
 - "water", "पाणी", "पानी", "irrigation timing" → IRRIGATION_QUERY or IRRIGATION_SCHEDULING_QUERY
+- "did not germinate", "not emerging", "poor germination", Marathi "उगवले नाही / उगवत नाही / उगवण कमी", Hindi "अंकुरण नहीं / नहीं उगा" → EMERGENCE_FAILURE
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
   (COLOR_CHANGE, LEAF_MARKS_OR_SPOTS, WILTING_OR_DROOPING, STEM_DAMAGE, PEST_PRESENCE_VISIBLE, ...)
 - "when to harvest" → HARVEST_TIMING
+- "which new crop should I grow", "next crop", "what to plant next", "recommend a crop",
+  Marathi "कोणते नवीन पीक घेवू / पीक घ्यावे / पुढील पीक / आता काय पेरू / नवीन पीक सुचवा / फायदेशीर पीक",
+  Hindi "कौन सी फसल लगाऊं / अगली फसल / नई फसल बताओ / क्या बोऊं" → NEXT_CROP_RECOMMENDATION
 - Pure greeting / unclear → GENERAL_CROP_INFO
 
 If genuinely unsure → GENERAL_CROP_INFO. Never UNKNOWN_OBSERVATION unless the message is empty
@@ -232,6 +243,12 @@ export async function classifyFarmerIntent(
     return emergencyFallback(farmerMessage, new Set());
   }
 
+  const deterministic = deterministicSymptomIntent(farmerMessage, validCodes);
+  if (deterministic) {
+    console.log(`   ✅ Deterministic symptom intent: ${deterministic.intent_code} (${(deterministic.confidence * 100).toFixed(0)}%)`);
+    return deterministic;
+  }
+
   const prompt = buildConstrainedPrompt(farmerMessage, validCodes, landContext);
 
   try {
@@ -277,9 +294,31 @@ function emit(code: string, conf: number, validCodes: Set<string>): IntentClassi
   return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.15 };
 }
 
+function deterministicSymptomIntent(message: string, validCodes: Set<string>): IntentClassification | null {
+  const original = message || '';
+  if (ESTABLISHMENT_FAILURE_RE.test(original)) {
+    return emit('EMERGENCE_FAILURE', 0.82, validCodes);
+  }
+  return null;
+}
+
 function emergencyFallback(message: string, validCodes: Set<string>): IntentClassification {
   const original = message || '';
   if (!original.trim()) return emit('UNKNOWN_OBSERVATION', 0.0, validCodes);
+
+  const deterministic = deterministicSymptomIntent(original, validCodes);
+  if (deterministic) return deterministic;
+
+  // Next-crop recommendation (Phase 1 — P0). Must run BEFORE generic crop/fasal
+  // matchers so "नवीन पीक घेवू" / "अगली फसल" don't fall to GENERAL_CROP_INFO.
+  if (
+    /नवीन\s*(पीक|पिक)|(पीक|पिक)\s*(घ्यावे|घेवू|घेऊ|लावावे|पेरू|पेरावे|सुचवा)/i.test(original) ||
+    /पुढील\s*(पीक|पिक)|आता\s*(काय|कोणते)\s*(पेरू|पेरावे|लावावे|घेवू)/i.test(original) ||
+    /अगली\s*फसल|नई\s*फसल|क्या\s*(बोऊं|बोएं|लगाऊं|उगाऊं)|कौन\s*सी?\s*(नई\s*)?फसल\s*(लगाऊं|बोऊं|उगाऊं|सुझाव|बताओ)/i.test(original) ||
+    /\bnext\s+crop\b|\bwhat\s+(should\s+i|to)\s+(plant|sow|grow)\b|\brecommend\s+(a\s+)?crop\b/i.test(original)
+  ) {
+    return emit('NEXT_CROP_RECOMMENDATION', 0.7, validCodes);
+  }
 
   // Fertilizer
   if (/खत|खते|खाद|उर्वरक|fertiliz|\bkhat\b|\bkhaad\b/i.test(original)) return emit('FERTILIZER_SCHEDULE', 0.6, validCodes);

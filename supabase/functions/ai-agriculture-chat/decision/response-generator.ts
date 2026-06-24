@@ -197,9 +197,22 @@ export class ResponseGenerator {
   
   private fillTemplate(template: string, variables: Record<string, string>): string {
     let result = template;
+    // 1) Substitute every {{key}} where the value is a non-empty string.
     for (const [key, value] of Object.entries(variables)) {
-      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+      const v = (value ?? '').toString();
+      if (v.trim().length > 0) {
+        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), v);
+      }
     }
+    // 2) Drop any line that still contains an unresolved {{...}} token so we
+    //    never leak debug-looking placeholders (e.g. "{symptom}") to farmers.
+    result = result
+      .split('\n')
+      .filter((line) => !/\{\{[^}]+\}\}/.test(line))
+      .join('\n')
+      // collapse 3+ consecutive blank lines that filtering may produce
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     return result;
   }
   
@@ -284,17 +297,13 @@ export class ResponseGenerator {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// FACTORY (Type B — stateless class, see context-validator.ts for rationale)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let generatorInstance: ResponseGenerator | null = null;
-
 export function getResponseGenerator(): ResponseGenerator {
-  if (!generatorInstance) {
-    generatorInstance = new ResponseGenerator();
-  }
-  return generatorInstance;
+  return new ResponseGenerator();
 }
+
 
 export function generateFarmerResponse(input: ResponseInput): GeneratedResponse {
   const generator = getResponseGenerator();

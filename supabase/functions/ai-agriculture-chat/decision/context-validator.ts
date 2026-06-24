@@ -488,17 +488,17 @@ export class ContextValidator {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON & CONVENIENCE FUNCTIONS
+// FACTORY (Type B — stateless class)
 // ═══════════════════════════════════════════════════════════════════════════
-
-let validatorInstance: ContextValidator | null = null;
+// `ContextValidator` holds no Supabase client and no per-turn state — every
+// method is a pure function of its input. The previous module-level singleton
+// was harmless but blocked the "no `let *Instance`" regression guardrail, so
+// it has been removed in favor of fresh-per-call construction.
 
 export function getContextValidator(): ContextValidator {
-  if (!validatorInstance) {
-    validatorInstance = new ContextValidator();
-  }
-  return validatorInstance;
+  return new ContextValidator();
 }
+
 
 export function validateContextCompleteness(input: ContextValidationInput): ContextValidationResult {
   return getContextValidator().validateContext(input);
