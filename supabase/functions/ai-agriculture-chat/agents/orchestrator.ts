@@ -553,8 +553,14 @@ import {
   type CandidateHypothesis,
   type HypothesisEvaluationOutput
 } from '../decision/hypothesis-evaluator.ts';
+// Phase-23: Hypothesis-first readiness gate (architectural fix)
+import {
+  runHypothesisReadinessProbe,
+  logBrainTrace,
+  READINESS_GATE_VERSION
+} from '../decision/decision-readiness-gate.ts';
 
-export const ORCHESTRATOR_VERSION = '4.1.0'; // Phase-22.5: Diagnosis-First mode with hypothesis-driven options
+export const ORCHESTRATOR_VERSION = '4.2.0'; // Phase-23: Hypothesis-first brain (readiness gate v1.0)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-21: CANONICAL CONTEXT CONTRACT IMPORTS
