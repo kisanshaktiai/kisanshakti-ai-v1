@@ -7544,135 +7544,144 @@ export class AIAgentOrchestrator {
       if (layeredRuleResult) {
         decisionOutput.layered_rule_result = layeredRuleResult;
         
-        // CRITICAL: If ruleEngine.execute() returned empty primary_decision but layeredRuleResult has one,
-        // use layeredRuleResult.primary_decision as the authoritative source
-        if (layeredRuleResult.primary_decision && 
-            layeredRuleResult.primary_decision.rule_id && 
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SYMBOLIC AUTHORITY UNIFICATION (Wave-S):
+        // LayeredRuleEvaluator is the ONLY authority for primary_decision,
+        // rules_applied and matched_responses. RuleEngineExecutor.execute()
+        // may have produced its own primary_decision/rules_applied from a
+        // legacy resolveConflicts path — those are competing authorities and
+        // would trip RULE_EMISSION_MISMATCH_HARD_GATE. We unconditionally
+        // project the layered result over decisionOutput here, regardless of
+        // what the executor returned. RuleEngineExecutor is downgraded to an
+        // enrichment-only role (economics / contingency / audit_trail).
+        // ═══════════════════════════════════════════════════════════════════════════
+        if (layeredRuleResult.primary_decision &&
+            layeredRuleResult.primary_decision.rule_id &&
             layeredRuleResult.primary_decision.action_type) {
-          
-          const hasValidPrimary = decisionOutput.primary_decision?.action_type && 
-                                  (decisionOutput.primary_decision?.rule_id || 
-                                   decisionOutput.primary_decision?.application_details?.rule_id);
-          
-          if (!hasValidPrimary) {
-            console.log(`   🔄 PRIMARY_DECISION RECOVERY: Using layered_rule_result.primary_decision`);
-            console.log(`      rule_id=${layeredRuleResult.primary_decision.rule_id}`);
-            console.log(`      action_type=${layeredRuleResult.primary_decision.action_type}`);
-            
-            // BUG-B FIX: Extract actual product info from rule for validation
-            const ruleActiveIngredient = layeredRuleResult.primary_decision.active_ingredient || null;
-            const ruleDosage = layeredRuleResult.primary_decision.dosage_per_acre || null;
-            const ruleCause = layeredRuleResult.primary_decision.cause || null;
-            
-            decisionOutput.primary_decision = {
-              action_type: layeredRuleResult.primary_decision.action_type,
-              rule_id: layeredRuleResult.primary_decision.rule_id,
-              specific_action: layeredRuleResult.primary_decision.action_type,
-              target: {},
-              urgency: 'WITHIN_24H',
-              priority: layeredRuleResult.primary_decision.priority,
-              // SSOT: Propagate ledger-derived confidence fields
-              weighted_confidence: layeredRuleResult.primary_decision.weighted_confidence,
-              normalized_score: layeredRuleResult.primary_decision.normalized_score,
-              total_required: layeredRuleResult.primary_decision.total_required,
-              passed_required: layeredRuleResult.primary_decision.passed_required,
-              // BUG-B FIX: Propagate product_details with actual active_ingredient
-              product_details: ruleActiveIngredient ? {
-                product_name: ruleActiveIngredient,
-                active_ingredient: ruleActiveIngredient,
-                dosage_per_acre: ruleDosage,
-              } : undefined,
-              timing: {
-                recommended_start: new Date().toISOString(),
-                recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-                weather_dependency: false,
-                reason: 'Recovered from layered_rule_result.primary_decision in orchestrator'
-              },
-              application_details: {
-                // BUG-B FIX: Use actual active_ingredient instead of placeholder
-                product_name: ruleActiveIngredient || 'See structured response',
-                product_type: 'BOTANICAL',
-                active_ingredient: ruleActiveIngredient,
-                dosage_per_acre: ruleDosage,
-                cause: ruleCause,
-                action_text: layeredRuleResult.primary_decision.action_text,
-                reason_text: layeredRuleResult.primary_decision.reason_text,
-                knowledge_text: layeredRuleResult.primary_decision.knowledge_text,
-                i18n_key: layeredRuleResult.primary_decision.i18n_key,
-                rule_id: layeredRuleResult.primary_decision.rule_id,
-                // PRODUCTION FIX: Propagate ALL rich agronomic fields for deterministic builder
-                organic_alternative: layeredRuleResult.primary_decision.organic_alternative || null,
-                phi_days: layeredRuleResult.primary_decision.phi_days || null,
-                bee_toxicity: layeredRuleResult.primary_decision.bee_toxicity || null,
-                application_method: layeredRuleResult.primary_decision.application_method || null,
-                water_volume_per_acre: layeredRuleResult.primary_decision.water_volume_per_acre || null,
-                mode_of_action: layeredRuleResult.primary_decision.mode_of_action || null,
-                chemical_class: layeredRuleResult.primary_decision.chemical_class || null,
-                resistance_group: layeredRuleResult.primary_decision.resistance_group || null,
-                target_pest_stage: layeredRuleResult.primary_decision.target_pest_stage || null,
-                treatment_type: layeredRuleResult.primary_decision.treatment_type || null,
-                biological_group: layeredRuleResult.primary_decision.biological_group || null,
-                success_indicators: layeredRuleResult.primary_decision.success_indicators || null,
-                failure_indicators: layeredRuleResult.primary_decision.failure_indicators || null,
-                roi_yield_gain_pct: layeredRuleResult.primary_decision.roi_yield_gain_pct || null,
-                reentry_interval_hours: layeredRuleResult.primary_decision.reentry_interval_hours || null,
-                aquatic_toxicity: layeredRuleResult.primary_decision.aquatic_toxicity || null,
-                farmer_safety_level: layeredRuleResult.primary_decision.farmer_safety_level || null,
-                regulatory_status: layeredRuleResult.primary_decision.regulatory_status || null,
-                ipm_level: layeredRuleResult.primary_decision.ipm_level || null,
-                material_cost_per_acre_min: layeredRuleResult.primary_decision.material_cost_per_acre_min || null,
-                material_cost_per_acre_max: layeredRuleResult.primary_decision.material_cost_per_acre_max || null,
-                labor_cost_per_acre_min: layeredRuleResult.primary_decision.labor_cost_per_acre_min || null,
-                labor_cost_per_acre_max: layeredRuleResult.primary_decision.labor_cost_per_acre_max || null,
-                labor_hours_per_acre: layeredRuleResult.primary_decision.labor_hours_per_acre || null,
-                equipment_required: layeredRuleResult.primary_decision.equipment_required || null,
-                equipment_cost_per_acre: layeredRuleResult.primary_decision.equipment_cost_per_acre || null,
-                total_cost_estimated: layeredRuleResult.primary_decision.total_cost_estimated || null,
-                roi_cost_saved_min: layeredRuleResult.primary_decision.roi_cost_saved_min || null,
-                roi_cost_saved_max: layeredRuleResult.primary_decision.roi_cost_saved_max || null,
-                roi_net_score: layeredRuleResult.primary_decision.roi_net_score || null,
-                roi_confidence: layeredRuleResult.primary_decision.roi_confidence || null,
-                min_temperature: layeredRuleResult.primary_decision.min_temperature || null,
-                max_temperature: layeredRuleResult.primary_decision.max_temperature || null,
-                max_wind_speed: layeredRuleResult.primary_decision.max_wind_speed || null,
-                rain_delay_hours: layeredRuleResult.primary_decision.rain_delay_hours || null,
-                weather_dependency: layeredRuleResult.primary_decision.weather_dependency || null,
-                scientific_source: layeredRuleResult.primary_decision.scientific_source || null,
-                scientific_basis: layeredRuleResult.primary_decision.scientific_basis || null,
-                icar_package_ref: layeredRuleResult.primary_decision.icar_package_ref || null,
-                university_source: layeredRuleResult.primary_decision.university_source || null,
-                risk_level: layeredRuleResult.primary_decision.risk_level || null,
-                response_severity: layeredRuleResult.primary_decision.response_severity || null,
-                data_authority_rank: layeredRuleResult.primary_decision.data_authority_rank || null,
-              },
-              expected_outcomes: {
-                efficacy_percent: layeredRuleResult.primary_decision.weighted_confidence 
-                  ? Math.round(layeredRuleResult.primary_decision.weighted_confidence * 100) 
-                  : layeredRuleResult.primary_decision.confidence_score
-                    ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100)
-                    : 75,
-                time_to_visible_effect_days: '3-5',
-                success_indicators: layeredRuleResult.primary_decision.success_indicators || []
-              }
-            };
+
+          console.log(`   🔒 [SYMBOLIC_AUTHORITY] Projecting layered primary onto decisionOutput`);
+          console.log(`      layered.rule_id=${layeredRuleResult.primary_decision.rule_id}`);
+          console.log(`      layered.action_type=${layeredRuleResult.primary_decision.action_type}`);
+          if (decisionOutput.primary_decision?.rule_id &&
+              decisionOutput.primary_decision.rule_id !== layeredRuleResult.primary_decision.rule_id) {
+            console.log(`      ⚠️  overriding executor primary rule_id=${decisionOutput.primary_decision.rule_id} (competing authority discarded)`);
           }
+
+          // BUG-B FIX: Extract actual product info from rule for validation
+          const ruleActiveIngredient = layeredRuleResult.primary_decision.active_ingredient || null;
+          const ruleDosage = layeredRuleResult.primary_decision.dosage_per_acre || null;
+          const ruleCause = layeredRuleResult.primary_decision.cause || null;
+
+          decisionOutput.primary_decision = {
+            action_type: layeredRuleResult.primary_decision.action_type,
+            rule_id: layeredRuleResult.primary_decision.rule_id,
+            specific_action: layeredRuleResult.primary_decision.action_type,
+            target: {},
+            urgency: 'WITHIN_24H',
+            priority: layeredRuleResult.primary_decision.priority,
+            // SSOT: Propagate ledger-derived confidence fields
+            weighted_confidence: layeredRuleResult.primary_decision.weighted_confidence,
+            normalized_score: layeredRuleResult.primary_decision.normalized_score,
+            total_required: layeredRuleResult.primary_decision.total_required,
+            passed_required: layeredRuleResult.primary_decision.passed_required,
+            // BUG-B FIX: Propagate product_details with actual active_ingredient
+            product_details: ruleActiveIngredient ? {
+              product_name: ruleActiveIngredient,
+              active_ingredient: ruleActiveIngredient,
+              dosage_per_acre: ruleDosage,
+            } : undefined,
+            timing: {
+              recommended_start: new Date().toISOString(),
+              recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+              weather_dependency: false,
+              reason: 'Projected from layered_rule_result.primary_decision (single authority)'
+            },
+            application_details: {
+              product_name: ruleActiveIngredient || 'See structured response',
+              product_type: 'BOTANICAL',
+              active_ingredient: ruleActiveIngredient,
+              dosage_per_acre: ruleDosage,
+              cause: ruleCause,
+              action_text: layeredRuleResult.primary_decision.action_text,
+              reason_text: layeredRuleResult.primary_decision.reason_text,
+              knowledge_text: layeredRuleResult.primary_decision.knowledge_text,
+              i18n_key: layeredRuleResult.primary_decision.i18n_key,
+              rule_id: layeredRuleResult.primary_decision.rule_id,
+              organic_alternative: layeredRuleResult.primary_decision.organic_alternative || null,
+              phi_days: layeredRuleResult.primary_decision.phi_days || null,
+              bee_toxicity: layeredRuleResult.primary_decision.bee_toxicity || null,
+              application_method: layeredRuleResult.primary_decision.application_method || null,
+              water_volume_per_acre: layeredRuleResult.primary_decision.water_volume_per_acre || null,
+              mode_of_action: layeredRuleResult.primary_decision.mode_of_action || null,
+              chemical_class: layeredRuleResult.primary_decision.chemical_class || null,
+              resistance_group: layeredRuleResult.primary_decision.resistance_group || null,
+              target_pest_stage: layeredRuleResult.primary_decision.target_pest_stage || null,
+              treatment_type: layeredRuleResult.primary_decision.treatment_type || null,
+              biological_group: layeredRuleResult.primary_decision.biological_group || null,
+              success_indicators: layeredRuleResult.primary_decision.success_indicators || null,
+              failure_indicators: layeredRuleResult.primary_decision.failure_indicators || null,
+              roi_yield_gain_pct: layeredRuleResult.primary_decision.roi_yield_gain_pct || null,
+              reentry_interval_hours: layeredRuleResult.primary_decision.reentry_interval_hours || null,
+              aquatic_toxicity: layeredRuleResult.primary_decision.aquatic_toxicity || null,
+              farmer_safety_level: layeredRuleResult.primary_decision.farmer_safety_level || null,
+              regulatory_status: layeredRuleResult.primary_decision.regulatory_status || null,
+              ipm_level: layeredRuleResult.primary_decision.ipm_level || null,
+              material_cost_per_acre_min: layeredRuleResult.primary_decision.material_cost_per_acre_min || null,
+              material_cost_per_acre_max: layeredRuleResult.primary_decision.material_cost_per_acre_max || null,
+              labor_cost_per_acre_min: layeredRuleResult.primary_decision.labor_cost_per_acre_min || null,
+              labor_cost_per_acre_max: layeredRuleResult.primary_decision.labor_cost_per_acre_max || null,
+              labor_hours_per_acre: layeredRuleResult.primary_decision.labor_hours_per_acre || null,
+              equipment_required: layeredRuleResult.primary_decision.equipment_required || null,
+              equipment_cost_per_acre: layeredRuleResult.primary_decision.equipment_cost_per_acre || null,
+              total_cost_estimated: layeredRuleResult.primary_decision.total_cost_estimated || null,
+              roi_cost_saved_min: layeredRuleResult.primary_decision.roi_cost_saved_min || null,
+              roi_cost_saved_max: layeredRuleResult.primary_decision.roi_cost_saved_max || null,
+              roi_net_score: layeredRuleResult.primary_decision.roi_net_score || null,
+              roi_confidence: layeredRuleResult.primary_decision.roi_confidence || null,
+              min_temperature: layeredRuleResult.primary_decision.min_temperature || null,
+              max_temperature: layeredRuleResult.primary_decision.max_temperature || null,
+              max_wind_speed: layeredRuleResult.primary_decision.max_wind_speed || null,
+              rain_delay_hours: layeredRuleResult.primary_decision.rain_delay_hours || null,
+              weather_dependency: layeredRuleResult.primary_decision.weather_dependency || null,
+              scientific_source: layeredRuleResult.primary_decision.scientific_source || null,
+              scientific_basis: layeredRuleResult.primary_decision.scientific_basis || null,
+              icar_package_ref: layeredRuleResult.primary_decision.icar_package_ref || null,
+              university_source: layeredRuleResult.primary_decision.university_source || null,
+              risk_level: layeredRuleResult.primary_decision.risk_level || null,
+              response_severity: layeredRuleResult.primary_decision.response_severity || null,
+              data_authority_rank: layeredRuleResult.primary_decision.data_authority_rank || null,
+            },
+            expected_outcomes: {
+              efficacy_percent: layeredRuleResult.primary_decision.weighted_confidence
+                ? Math.round(layeredRuleResult.primary_decision.weighted_confidence * 100)
+                : layeredRuleResult.primary_decision.confidence_score
+                  ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100)
+                  : 75,
+              time_to_visible_effect_days: '3-5',
+              success_indicators: layeredRuleResult.primary_decision.success_indicators || []
+            }
+          };
         }
-        
-        // Also attach matched_responses for additional recovery options
-        if (layeredRuleResult.matched_responses && layeredRuleResult.matched_responses.length > 0) {
+
+        // SYMBOLIC AUTHORITY: matched_responses — always project from layered.
+        if (Array.isArray(layeredRuleResult.matched_responses)) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
         }
-        
-        // ═══════════════════════════════════════════════════════════════════════════
-        // BUG-3 FIX: Propagate rules_applied from layeredRuleResult → decisionOutput
-        // Without this, decisionOutput.rules_applied stays empty ([]) even when 11+
-        // rules actually fired. This causes PHASE-19 photo gate (line 6322) to
-        // incorrectly trigger when rulesAppliedCount === 0.
-        // ═══════════════════════════════════════════════════════════════════════════
-        const safeLayeredRulesApplied = Array.isArray(layeredRuleResult.rules_applied) 
-          ? layeredRuleResult.rules_applied 
+
+        // SYMBOLIC AUTHORITY: rules_applied — always project from layered.
+        // Previously we only filled this when executor produced an empty list;
+        // executor almost always produced a NON-matching list, so layered's
+        // fired-rule-id set was silently replaced, leading to identity-mismatch
+        // scrub (RULE_EMISSION_MISMATCH_HARD_GATE) in symbolic-invariant-gate.
+        const safeLayeredRulesApplied = Array.isArray(layeredRuleResult.rules_applied)
+          ? layeredRuleResult.rules_applied
           : [];
-        if (safeLayeredRulesApplied.length > 0 && (!decisionOutput.rules_applied || decisionOutput.rules_applied.length === 0)) {
+        if (safeLayeredRulesApplied.length > 0) {
+          const existingIds = new Set(
+            (Array.isArray(decisionOutput.rules_applied) ? decisionOutput.rules_applied : [])
+              .map((r: any) => (typeof r === 'string' ? r : r?.rule_id))
+              .filter(Boolean)
+          );
           decisionOutput.rules_applied = safeLayeredRulesApplied.map((ruleId: string) => ({
             rule_id: ruleId,
             rule_file: 'layered-evaluator',
@@ -7680,7 +7689,12 @@ export class AIAgentOrchestrator {
             result: 'RECOMMEND',
             confidence: layeredRuleResult.confidence_in_result ?? 0.7
           }));
-          console.log(`   🔧 BUG-3 FIX: Propagated ${safeLayeredRulesApplied.length} rules_applied from layeredRuleResult → decisionOutput`);
+          const layeredIds = new Set(safeLayeredRulesApplied);
+          const discarded = [...existingIds].filter(id => !layeredIds.has(id));
+          if (discarded.length > 0) {
+            console.log(`   🔒 [SYMBOLIC_AUTHORITY] Discarded ${discarded.length} executor rule_ids not in layered fired-set: ${discarded.join(', ')}`);
+          }
+          console.log(`   🔒 [SYMBOLIC_AUTHORITY] rules_applied projected from layered (${safeLayeredRulesApplied.length} rules)`);
         }
       }
       
