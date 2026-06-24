@@ -82,6 +82,20 @@ export interface ObservationExtraction {
    * Count of critical observations
    */
   observation_count: number;
+
+  /**
+   * Canonical observation codes attached by symbolic layers after raw extraction.
+   * The extractor itself never invents these; orchestrator/DB mappers populate them
+   * so deterministic gates can inspect the same evidence the brain will use.
+   */
+  extracted_observations?: string[];
+
+  /** Optional enriched symptom payload from photo/vision or DB mappers. */
+  extracted_symptoms?: Array<{
+    text?: string;
+    symptom_code?: string;
+    confidence?: number;
+  }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

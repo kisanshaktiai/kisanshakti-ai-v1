@@ -2765,7 +2765,8 @@ serve(async (req) => {
     // and the orchestrator already parse [obs_keys:...] from pending options.
     const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => {
       const label = String(o?.label ?? '').trim();
-      const code = (o?.observation_code || o?.observation_key || '').toString().trim();
+      const rawValue = (o?.value || '').toString().trim();
+      const code = (o?.observation_code || o?.observation_key || (/^[A-Za-z][A-Za-z0-9_]+$/.test(rawValue) ? rawValue : '')).toString().trim();
       // Don't double-embed if label already carries [obs_keys:...]
       if (!label) return label;
       if (/\[obs_keys:[^\]]+\]/i.test(label)) return label;
@@ -4831,6 +4832,17 @@ function transformOrchestratorResponse(
         }
         return String(o);
       };
+      const pickOptionValue = (o: any): string => {
+        if (typeof o === 'string') return o;
+        return o?.value || o?.observation_code || o?.observation_key || o?.label || String(o);
+      };
+      const pickObservationKey = (o: any): string | undefined => {
+        if (!o || typeof o !== 'object') return undefined;
+        const candidate = o.observation_key || o.observation_code || o.value;
+        return typeof candidate === 'string' && /^[A-Za-z][A-Za-z0-9_]+$/.test(candidate.trim())
+          ? candidate.trim()
+          : undefined;
+      };
       const safeQuickReplies = rawOptions
         .filter((o: any) => o != null)
         .map(pickOptionLabel);
@@ -4851,8 +4863,8 @@ function transformOrchestratorResponse(
           // ═══════════════════════════════════════════════════════════════════════════
           options: rawOptions.map((o: any) => ({
             label: pickOptionLabel(o),
-            value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
-            observation_key: typeof o === 'object' ? (o?.observation_key || o?.value) : undefined,
+            value: pickOptionValue(o),
+            observation_key: pickObservationKey(o),
             description: typeof o === 'object' ? (o?.[`description_${language}`] || o?.description) : undefined,
             diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
           })),

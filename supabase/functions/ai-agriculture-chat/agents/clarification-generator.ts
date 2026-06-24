@@ -176,7 +176,18 @@ export async function generateScopedClarification(
   // Determine effective context state
   const hasLandContext = canonicalContext !== null;
   const effectiveHasLandContext = hasDiagnosticContext(canonicalContext);
-  const hasCropContext = effectiveHasLandContext;
+  const effectiveCropContext: (CropContextAuthority & { crop_code?: string | null }) | null = cropContext ?? (
+    effectiveHasLandContext && canonicalContext
+      ? {
+          crop_name: canonicalContext.crop_name || canonicalContext.crop_code || 'UNKNOWN',
+          crop_code: canonicalContext.crop_code,
+          growth_stage: canonicalContext.growth_stage || 'UNKNOWN',
+          days_since_sowing: canonicalContext.days_since_sowing ?? 0,
+          source: 'crop_schedules'
+        }
+      : null
+  );
+  const hasCropContext = effectiveHasLandContext || !!effectiveCropContext;
   
   // Log context audit using canonical contract
   console.log(`📋 [Clarification v6] Canonical Context State:`);
@@ -187,7 +198,7 @@ export async function generateScopedClarification(
     console.log(`   Context=NULL (General Query Mode)`);
   }
   
-  console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
+  console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${effectiveCropContext ? `${effectiveCropContext.crop_name}/${effectiveCropContext.growth_stage}` : 'none'}`);
   console.log(`   hasLandContext: ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
   console.log(`   intentCode: ${intentCode || 'none'}, intentConfidence: ${intentConfidence ?? 'none'}`);
   
@@ -197,7 +208,7 @@ export async function generateScopedClarification(
   const keyMappingResult = mapToObservationKeys(
     observations, 
     { current_crop: observations.crop_mentioned },
-    cropContext // PHASE-8.1: Pass crop context authority
+    effectiveCropContext // PHASE-8.1: Pass crop context authority
   );
   
   const observedKeys = keyMappingResult.keys;
@@ -344,7 +355,7 @@ export async function generateScopedClarification(
       no_treatment: true,
       no_assumptions: true
     },
-    cropContext: cropContext, // PHASE-8.1: For stage-aware framing
+    cropContext: effectiveCropContext, // PHASE-8.1: For stage-aware framing + DB intent options
     intentCode: intentCode ?? null // v3.1: INTENT_DRIVEN scope
 
   });

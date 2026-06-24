@@ -4233,6 +4233,22 @@ export class AIAgentOrchestrator {
       
       console.log(`      Symptoms detected: ${crossCropSymptoms.size}`);
       console.log(`      Symptoms: ${serializeCrossCropSymptoms(crossCropSymptoms).slice(0, 5).join(', ')}${crossCropSymptoms.size > 5 ? '...' : ''}`);
+
+      // CRITICAL PIPELINE FIX: the raw ObservationExtraction object intentionally
+      // contains only farmer words, but the Understanding Gate checks
+      // `extracted_observations` for diagnostic-entry codes. Without attaching
+      // the already-resolved symbolic evidence here, GERMINATION_FAILURE was
+      // present in the brain pipeline but invisible to the gate, producing
+      // VERY_LOW → CLARIFY → options=0 before the symbolic diagnosis tree ran.
+      const understandingEvidenceCodes = Array.from(new Set([
+        ...(serializeKeys(observationKeys) || []),
+        ...serializeCrossCropSymptoms(crossCropSymptoms),
+        ...((inductionResult?.symptoms || [])
+          .map((s: any) => s?.symbol)
+          .filter((s: any): s is string => typeof s === 'string' && s.trim().length > 0))
+      ]));
+      (observationExtraction as any).extracted_observations = understandingEvidenceCodes;
+      console.log(`      🧠 [UnderstandingEvidence] Attached ${understandingEvidenceCodes.length} symbolic observation codes before gate`);
       
       // NOTE: Cross-crop symptoms will be injected into nluOutput AFTER NLU processing (line ~2760)
       // The nluOutput variable is declared later, so we store crossCropSymptoms in this scope
@@ -5231,6 +5247,7 @@ export class AIAgentOrchestrator {
           observations: observationExtraction,
           understandingResult: understandingResult,
           canonicalContext: canonicalContext, // PHASE-21: Single canonical context (read-only)
+          cropContext: cropContextAuthority, // Preserve crop/stage for INTENT_DRIVEN DB options
           diagnosisRulesFired: false, // No diagnosis rules have fired yet
           farmerMessage: farmerMessage, // Farmer message for LLM context
           intentCode: intentCode,            // v3.1: enable INTENT_DRIVEN scope
@@ -5409,8 +5426,13 @@ export class AIAgentOrchestrator {
               // ALL clarification flows post lower_snake_case migration. Fall back to the LABEL
               // (not an integer index) so the orchestrator's label→observation mapper can recover.
               const code = isObj ? ((opt as any).observation_code || (opt as any).observation_key) : undefined;
-              const chipValue = (typeof code === 'string' && code.trim().length > 0) ? code : rawLabel;
-              return { value: chipValue, label: rawLabel };
+              const canonicalCode = (typeof code === 'string' && code.trim().length > 0) ? code.trim() : undefined;
+              const chipValue = canonicalCode || rawLabel;
+              return {
+                value: chipValue,
+                label: rawLabel,
+                ...(canonicalCode ? { observation_code: canonicalCode, observation_key: canonicalCode } : {})
+              };
             })).then(async (opts) => {
               // Translate raw observation codes to farmer language
               const translated = await translateClarificationOptions(
