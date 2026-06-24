@@ -4421,10 +4421,22 @@ export class AIAgentOrchestrator {
           if (s.symbol && isCanonicalCode(s.symbol)) {
             const c = canonicalize(s.symbol);
             allObservationsForPreAuth.add(c);
-            // Tag based on induction source
-            const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
-              ? ObservationAuthority.INFERRED 
-              : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
+            // Tag based on induction source.
+            // P0 AUTHORITY FIX (2026-06-24): DB-curated intent→observation
+            // promotions carry their assertion-strength provenance so the
+            // confirmed/extracted lane survives downstream gates. LITERAL is
+            // farmer-stated → CONFIRMED; STRONG_HYPOTHESIS @ high intent
+            // confidence → EXTRACTED (treated as pattern-matched evidence).
+            let inductionAuthority: ObservationAuthority;
+            if (s.source === 'DB_INTENT_OBSERVATIONS_LITERAL') {
+              inductionAuthority = ObservationAuthority.CONFIRMED;
+            } else if (s.source === 'DB_INTENT_OBSERVATIONS_STRONG') {
+              inductionAuthority = ObservationAuthority.EXTRACTED;
+            } else if (s.source === 'LLM_SEMANTIC_EXTRACTOR') {
+              inductionAuthority = ObservationAuthority.INFERRED;
+            } else {
+              inductionAuthority = ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
+            }
             authoredObservations.add(c, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
