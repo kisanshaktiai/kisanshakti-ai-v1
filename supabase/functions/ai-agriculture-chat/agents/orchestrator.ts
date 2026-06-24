@@ -1093,16 +1093,16 @@ export class AIAgentOrchestrator {
   // PHASE-14: Stage-Aware Fallback - Returns symbolic structure
   // Text generation delegated to narration layer
   // ═══════════════════════════════════════════════════════════════════════════
-  private generateStageAwareFallback(
+  private async generateStageAwareFallback(
     cropCode: string,
     stage: string,
     symptomContext: string,
     daysSinceSowing: number,
     language: string = 'mr'
-  ): { i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> } {
+  ): Promise<{ i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> }> {
     console.log(`[STAGE_FALLBACK] ${cropCode}/${stage} (${daysSinceSowing} DAS)`);
-    
-    const stageAdvice = getStageSpecificAdvice(cropCode, stage);
+
+    const stageAdvice = await getStageSpecificAdvice(this.supabase, cropCode, stage);
     
     if (!stageAdvice) {
       console.log(`[STAGE_FALLBACK] No advice for ${cropCode}/${stage}, using generic`);
@@ -2039,7 +2039,7 @@ export class AIAgentOrchestrator {
       // When pending_options > 0, COMPLETELY SKIP NLU pipeline - only process option selection
       // This is the CRITICAL FIX to prevent infinite clarification loops
       // ========================================
-      let pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
+      let gatePendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
       const clarificationTurnCount = options.sessionState?.turnCount || 0;
       
       // ========================================
@@ -2047,7 +2047,7 @@ export class AIAgentOrchestrator {
       // Language-agnostic detection of NEW question vs option selection
       // If farmer types free text that doesn't match any option, treat as NEW query
       // ========================================
-      if (pendingOptionsCount > 0) {
+      if (gatePendingOptionsCount > 0) {
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
         
         // ========================================
@@ -2088,10 +2088,10 @@ export class AIAgentOrchestrator {
           console.log('🆕 [NewQueryDetector v2] FREE TEXT detected - clearing stale clarification (FAIL-OPEN)');
           console.log(`   Message preview: "${safeFarmerMessage.slice(0, 50)}..."`);
           console.log(`   Length: ${safeFarmerMessage.length}, Match confidence: ${matchResult.match_confidence}`);
-          console.log(`   Clearing ${pendingOptionsCount} pending options to proceed with fresh NLU`);
+          console.log(`   Clearing ${gatePendingOptionsCount} pending options to proceed with fresh NLU`);
           
           // CLEAR pending options - this is a NEW query, not an option selection
-          pendingOptionsCount = 0;
+          gatePendingOptionsCount = 0;
           if (options.sessionState) {
             options.sessionState.pendingClarificationOptions = undefined;
             options.sessionState.pendingClarificationScope = undefined;
@@ -2102,9 +2102,9 @@ export class AIAgentOrchestrator {
         }
       }
       
-      if (pendingOptionsCount > 0) {
+      if (gatePendingOptionsCount > 0) {
         console.log('🔒 [Phase9.1-Fix] Clarification HARD GATE active - NLU pipeline BLOCKED');
-        console.log(`   📋 Pending options: ${pendingOptionsCount}, Turn count: ${clarificationTurnCount}`);
+        console.log(`   📋 Pending options: ${gatePendingOptionsCount}, Turn count: ${clarificationTurnCount}`);
         
         // PHASE-9.1-FIX: Retrieve locked crop context FIRST - this is authoritative
         const lockedCropContext = options.sessionState?.lockedCropContext;
@@ -2927,7 +2927,7 @@ export class AIAgentOrchestrator {
           };
           
           // PHASE-14: Generate stage-aware fallback response
-          const stageFallback = this.generateStageAwareFallback(
+          const stageFallback = await this.generateStageAwareFallback(
             cropName || 'UNKNOWN',
             growthStage || 'UNKNOWN',
             matchResult.matched_option || farmerMessage,
@@ -5615,7 +5615,7 @@ export class AIAgentOrchestrator {
         symptom_count: inductionResult.symptoms.length,
         symptom_coverage: inductionResult.symbol_coverage,
         is_ambiguous: inductionResult.aggregated_confidence < 0.5 && inductionResult.symptoms.length > 0,
-        has_pending_clarification: pendingOptionsCount > 0,
+        has_pending_clarification: gatePendingOptionsCount > 0,
         clarification_completed: clarificationCompleted
       };
       
@@ -7716,7 +7716,7 @@ export class AIAgentOrchestrator {
         const stageName = landContext.growth_stage || 'current stage';
         const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
         const userLanguage = options.language || 'mr';
-        const stageFallback = this.generateStageAwareFallback(
+        const stageFallback = await this.generateStageAwareFallback(
           cropName,
           stageName,
           'stage_advisory',
