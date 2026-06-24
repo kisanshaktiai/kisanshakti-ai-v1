@@ -471,7 +471,12 @@ export async function loadIntentDrivenClarification(
 
     // 2) Options from intent_observation_mapping (crop+stage permissive)
     const cropList = crop ? [crop, 'all'] : ['all'];
-    const stageList = stage ? [stage, 'all'] : ['all'];
+    const establishmentFamily = ['germination', 'nursery', 'seedling', 'emergence', 'establishment'];
+    const stageList = stage
+      ? (establishmentFamily.includes(stage)
+          ? Array.from(new Set([...establishmentFamily, 'all']))
+          : [stage, 'all'])
+      : ['all'];
 
     let mappingRows: any[] = [];
     try {

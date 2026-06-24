@@ -752,7 +752,7 @@ export async function renderClarificationAsync(
     try {
       const intentClarification = await loadIntentDrivenClarification(
         intentCode,
-        cropContext?.crop_name || null,
+        ((cropContext as any)?.crop_code || cropContext?.crop_name || null),
         cropContext?.growth_stage || null,
         language_code,
         max_options
