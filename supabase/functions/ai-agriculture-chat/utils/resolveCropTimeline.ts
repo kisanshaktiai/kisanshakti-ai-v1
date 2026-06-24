@@ -180,7 +180,11 @@ export async function resolveCropTimeline(args: {
     let stage = 'UNKNOWN';
     let stageSource: CropTimeline['stage_source'] = 'fallback';
     if (cropCode) {
-      const sm = await resolveStageFromMaster(args.supabase, cropCode, days);
+      // Pass variety maturity_days only when it actually came from the variety
+      // (not the crop-level baseline/fallback) — scaling generic windows by a
+      // crop-wide baseline would just reproduce the unscaled table.
+      const scaleDays = maturitySource === 'variety' ? maturityDays : null;
+      const sm = await resolveStageFromMaster(args.supabase, cropCode, days, scaleDays);
       if (sm) {
         stage = sm.stage;
         stageSource = sm.source;
