@@ -493,6 +493,9 @@ import {
   serializeCrossCropSymptoms 
 } from './cross-crop-symptom-mapper.ts';
 
+// Wave-S: DB-driven canonical observation resolver (alias fan-out)
+import { resolveObservationCanonical } from '../runtime/observation-resolver.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-18: Rule Evaluation Layer - Clean wrapper for symbolic reasoning
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4522,25 +4525,80 @@ export class AIAgentOrchestrator {
       // v5.0: Cross-crop symptoms injection with TERMINAL CODE GUARD
       // Cross-crop symptoms are tagged SYNTHETIC and terminal codes are BLOCKED
       // from injection to prevent false terminal gate triggers.
+      //
+      // WAVE-S ONTOLOGY DRIFT FIX (2026-06-24):
+      // The cross-crop mapper emits keys from the hardcoded `CrossCropSymptomKey`
+      // enum (Layer C). Decision rules are authored against `observation_master`
+      // canonical codes (Layer B). The two vocabularies overlap but DRIFT — e.g.
+      // cross-crop `LARVAE_VISIBLE` matches only 2 rules, while its canonical
+      // synonyms `larva_present` / `pest_damage` (resolved via
+      // `observation_aliases`) reach 13 rules each. `LEAF_BROWNING` matches 0
+      // rules unless fanned out.
+      //
+      // Fix: for every cross-crop key, query `resolve_observation_canonical`
+      // (alias-driven, DB-authoritative) and inject ALL returned canonical_codes
+      // in addition to the lowercased original. Misses are auto-logged to
+      // `observation_vocabulary_gaps` by the resolver. Terminal-code guard runs
+      // on the ORIGINAL key (pre-fanout) AND on each resolved canonical so guard
+      // semantics are preserved.
       // ═══════════════════════════════════════════════════════════════════════════
       if (crossCropSymptomsList.length > 0) {
         const injected: string[] = [];
         const blocked: string[] = [];
-        crossCropSymptomsList.forEach(sym => {
+        const fannedOut: string[] = [];
+        const resolverLang = String(
+          (normalizedInput as any)?.language
+          ?? (canonicalContext as any)?.language
+          ?? 'und'
+        ).toLowerCase();
+
+        await Promise.all(crossCropSymptomsList.map(async (sym) => {
           // Terminal guard set is UPPER snake. Compare case-insensitively.
           const symU = String(sym).toUpperCase().replace(/[\s-]+/g, '_');
           if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(symU)) {
             blocked.push(sym);
             console.log(`   🛡️ [TERMINAL GUARD] Blocked cross-crop terminal code: ${sym}`);
-          } else {
-            const c = canonicalize(sym);
-            allObservationsForPreAuth.add(c);
-            authoredObservations.add(c, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
-            injected.push(c);
+            return;
           }
-        });
+
+          // 1. Always inject the lowercased original (matches direct codes in
+          //    `observation_master` like `leaf_yellowing`, `larvae_visible`).
+          const original = canonicalize(sym);
+          allObservationsForPreAuth.add(original);
+          authoredObservations.add(original, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
+          injected.push(original);
+
+          // 2. Fan out via DB alias resolver (Layer B). The alias table is keyed
+          //    on the UPPERCASE form emitted by the enum (e.g. `LARVAE_VISIBLE`).
+          //    All returned canonical_codes are injected as SYNTHETIC too so the
+          //    rule comparator (OR semantics, lowercase) can hit synonym rules.
+          try {
+            const candidates = await resolveObservationCanonical(symU, {
+              language: resolverLang,
+              source: 'rule_token',
+            });
+            for (const cand of (candidates || [])) {
+              const canon = canonicalize(cand.canonical_code);
+              if (!canon || canon === original) continue;
+              // Re-check terminal guard on the resolved canonical too.
+              if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(canon.toUpperCase())) continue;
+              if (allObservationsForPreAuth.has(canon)) continue;
+              allObservationsForPreAuth.add(canon);
+              authoredObservations.add(canon, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER_ALIAS_FANOUT');
+              const mt = (cand as any).match_type ?? 'alias';
+              const sim = typeof (cand as any).similarity === 'number' ? (cand as any).similarity.toFixed(2) : '1.00';
+              fannedOut.push(`${symU}->${canon}(${mt},${sim})`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [CrossCropFanout] resolver failed for ${symU}: ${(e as Error).message}`);
+          }
+        }));
+
         if (injected.length > 0) {
           console.log(`   🔗 [CrossCropFix] Injected ${injected.length} cross-crop symptoms (SYNTHETIC): ${injected.join(', ')}`);
+        }
+        if (fannedOut.length > 0) {
+          console.log(`   🧬 [CrossCropFanout] DB-aliased ${fannedOut.length} canonical synonyms: ${fannedOut.slice(0, 8).join(', ')}${fannedOut.length > 8 ? '…' : ''}`);
         }
         if (blocked.length > 0) {
           console.log(`   🛡️ [CrossCropFix] BLOCKED ${blocked.length} terminal codes from injection: ${blocked.join(', ')}`);
