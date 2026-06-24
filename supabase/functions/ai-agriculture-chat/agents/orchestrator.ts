@@ -3171,6 +3171,11 @@ export class AIAgentOrchestrator {
       // hypothesis fan-out, or canonical→alias expansion. NEVER merged into
       // expandedObservationCodes / inductionResult.symptoms / confirmedObservations.
       const candidateObservationCodes: Set<string> = new Set<string>();
+      // P0 AUTHORITY FIX (2026-06-24): track DB-intent promotion strength per
+      // canonical code so the downstream authoredObservations assignment can
+      // tag LITERAL → CONFIRMED and STRONG_HYPOTHESIS → EXTRACTED, instead of
+      // silently downgrading to INFERRED via the LLM_SEMANTIC_EXTRACTOR source.
+      const dbIntentPromotedSources: Map<string, 'DB_INTENT_OBSERVATIONS_LITERAL' | 'DB_INTENT_OBSERVATIONS_STRONG'> = new Map();
       try {
         const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase, 'alias_to_canonical');
         if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
