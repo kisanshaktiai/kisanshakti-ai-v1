@@ -159,6 +159,16 @@ const VALID_OVERRIDE_TOKENS = new Set<string>([
   'SYMBOLIC_DECISION_PRE_SAFETY_v1',
 ]);
 
+/** SSOT helper — never reverse a gate that has signaled clarification. */
+function clarificationPendingFromGate(g: UnifiedGateResult): boolean {
+  return g.response_mode === ResponseMode.CLARIFICATION
+    || g.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION
+    || g.response_mode === ResponseMode.PHOTO_REQUIRED
+    || g.gate_action === GateAction.REQUIRE_CLARIFICATION
+    || g.gate_action === GateAction.REQUEST_PHOTO
+    || g.gate_action === GateAction.DIAGNOSTIC_ESCALATION;
+}
+
 export function applySuppressionGuard(
   gateResult: UnifiedGateResult,
   symbolicDecision: {
