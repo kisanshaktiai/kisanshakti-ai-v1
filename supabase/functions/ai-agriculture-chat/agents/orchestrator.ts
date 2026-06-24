@@ -1093,16 +1093,16 @@ export class AIAgentOrchestrator {
   // PHASE-14: Stage-Aware Fallback - Returns symbolic structure
   // Text generation delegated to narration layer
   // ═══════════════════════════════════════════════════════════════════════════
-  private generateStageAwareFallback(
+  private async generateStageAwareFallback(
     cropCode: string,
     stage: string,
     symptomContext: string,
     daysSinceSowing: number,
     language: string = 'mr'
-  ): { i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> } {
+  ): Promise<{ i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> }> {
     console.log(`[STAGE_FALLBACK] ${cropCode}/${stage} (${daysSinceSowing} DAS)`);
-    
-    const stageAdvice = getStageSpecificAdvice(cropCode, stage);
+
+    const stageAdvice = await getStageSpecificAdvice(this.supabase, cropCode, stage);
     
     if (!stageAdvice) {
       console.log(`[STAGE_FALLBACK] No advice for ${cropCode}/${stage}, using generic`);
@@ -2927,7 +2927,7 @@ export class AIAgentOrchestrator {
           };
           
           // PHASE-14: Generate stage-aware fallback response
-          const stageFallback = this.generateStageAwareFallback(
+          const stageFallback = await this.generateStageAwareFallback(
             cropName || 'UNKNOWN',
             growthStage || 'UNKNOWN',
             matchResult.matched_option || farmerMessage,
@@ -7716,7 +7716,7 @@ export class AIAgentOrchestrator {
         const stageName = landContext.growth_stage || 'current stage';
         const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
         const userLanguage = options.language || 'mr';
-        const stageFallback = this.generateStageAwareFallback(
+        const stageFallback = await this.generateStageAwareFallback(
           cropName,
           stageName,
           'stage_advisory',
