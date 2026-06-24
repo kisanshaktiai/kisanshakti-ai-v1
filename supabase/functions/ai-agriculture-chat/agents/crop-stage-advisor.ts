@@ -368,6 +368,40 @@ const CROP_ADVISORS: Record<string, CropStageAdvisor> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+// STAGE ALIASES — maps `crop_stage_master.growth_stage` labels that have no
+// directly-authored entry above onto the entry that already covers the same
+// DAS window and agronomic content, per crop_stage_master's own
+// `stage_description` text (e.g. sugarcane's "cane_formation" row is
+// documented in the DB as "alias for GRAND_GROWTH"). Only mappings backed by
+// an explicit DB-documented equivalence or an identical DAS window are
+// included here — stages with no authored equivalent are left as genuine
+// gaps (logged, not guessed).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const STAGE_ALIASES: Record<string, Record<string, string>> = {
+  RICE: {
+    NURSERY: 'SEEDLING', // DB: "Overlaps SEEDLING in DAS; nursery is a parent category for pre-transplant ops"
+    HARVEST: 'MATURITY', // DB harvest (140-160) overlaps MATURITY (130-150); MATURITY text already covers harvest prep
+  },
+  WHEAT: {
+    SOWING: 'GERMINATION', // DB sowing (0-7) is a subset of GERMINATION (0-10)
+    CRI: 'TILLERING', // CRI irrigation guidance is authored inside the existing TILLERING entry
+    CRI_STAGE: 'TILLERING', // duplicate row of CRI (same DAS window, case-alias) in crop_stage_master
+    JOINTING: 'STEM_ELONGATION', // same DAS window (50-70), DB uses agronomic stage name, advisor uses growth-phase name
+    HARVEST: 'MATURITY', // DB harvest (145-160) overlaps MATURITY (130-150) tail; MATURITY text covers harvest prep
+  },
+  COTTON: {
+    BOLL_DEVELOPMENT: 'BOLL_FORMATION', // same DAS window (100-140), naming mismatch only
+    MATURITY: 'BOLL_OPENING', // same DAS window (140-180); BOLL_OPENING text already covers this phase
+    HARVEST: 'BOLL_OPENING',
+  },
+  SUGARCANE: {
+    CANE_FORMATION: 'GRAND_GROWTH', // DB: "Cane elongation phase (alias for GRAND_GROWTH)"
+    MATURATION: 'MATURITY', // DB: "Final maturation (alias for MATURITY)"
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -378,13 +412,16 @@ export function getStageSpecificAdvice(
   cropCode: string,
   stage: string
 ): StageAdvice | null {
-  const advisor = CROP_ADVISORS[cropCode.toUpperCase()];
+  const cropU = cropCode.toUpperCase();
+  const advisor = CROP_ADVISORS[cropU];
   if (!advisor) {
     console.log(`[CROP_STAGE_ADVISOR] No advisor found for crop: ${cropCode}`);
     return null;
   }
 
-  const stageAdvice = advisor.stages[stage.toUpperCase()];
+  const stageU = stage.toUpperCase();
+  const resolvedStage = advisor.stages[stageU] ? stageU : (STAGE_ALIASES[cropU]?.[stageU] ?? stageU);
+  const stageAdvice = advisor.stages[resolvedStage];
   if (!stageAdvice) {
     console.log(`[CROP_STAGE_ADVISOR] No advice for stage: ${stage} in crop: ${cropCode}`);
     return null;
