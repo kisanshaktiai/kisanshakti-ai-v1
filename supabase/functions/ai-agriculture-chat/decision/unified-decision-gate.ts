@@ -159,6 +159,16 @@ const VALID_OVERRIDE_TOKENS = new Set<string>([
   'SYMBOLIC_DECISION_PRE_SAFETY_v1',
 ]);
 
+/** SSOT helper — never reverse a gate that has signaled clarification. */
+function clarificationPendingFromGate(g: UnifiedGateResult): boolean {
+  return g.response_mode === ResponseMode.CLARIFICATION
+    || g.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION
+    || g.response_mode === ResponseMode.PHOTO_REQUIRED
+    || g.gate_action === GateAction.REQUIRE_CLARIFICATION
+    || g.gate_action === GateAction.REQUEST_PHOTO
+    || g.gate_action === GateAction.DIAGNOSTIC_ESCALATION;
+}
+
 export function applySuppressionGuard(
   gateResult: UnifiedGateResult,
   symbolicDecision: {
@@ -173,6 +183,20 @@ export function applySuppressionGuard(
 
   if (!guardResult.suppression_prevented) {
     return gateResult;
+  }
+
+  // SSOT invariant: NEVER reverse FAIL→PASS when clarification is pending.
+  // "rules matched" is not proof of diagnostic certainty — the
+  // DiagnosticDecisionAuthority is the only writer of response_mode.
+  if (clarificationPendingFromGate(gateResult)) {
+    console.warn(
+      `🚦 [SuppressionGuard] trace=${opts.trace_id ?? 'n/a'} reversal_refused=true ` +
+      `reason=clarification_pending source=${opts.source ?? 'n/a'}`
+    );
+    return {
+      ...gateResult,
+      reason: `${gateResult.reason} | SUPPRESSION_GUARD_REFUSED: clarification_pending`,
+    };
   }
 
   const enforce = shouldEnforceSuppressionGuardLockdown();
@@ -192,6 +216,8 @@ export function applySuppressionGuard(
       reason: `${gateResult.reason} | SUPPRESSION_GUARD_LOCKDOWN: reversal refused (no override_token)`,
     };
   }
+
+
 
   // Shadow OR enforce-with-token → perform the legacy reversal.
   const products = (symbolicDecision?.actions_returned ?? [])

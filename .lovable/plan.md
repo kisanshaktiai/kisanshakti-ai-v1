@@ -1,97 +1,198 @@
-# Symbolic Decision Authority Unification
+# Neuro-Symbolic Decision Brain — Architectural Refactor
 
-## Audit findings — exact files & lines where symbolic authority is lost
+## 1. Current Broken Flow (audit findings)
 
-### 1. Two competing decision authorities run sequentially
+Authority over `response_mode` / `clarification_required` / `recommendation_allowed` is **fragmented across 8+ files**. Each can independently mutate state, so the "ambiguity → clarification" invariant is repeatedly overridden by "rules matched → emit recommendation" shortcuts.
 
-| Authority | File | Entry point |
-|---|---|---|
-| **A** LayeredRuleEvaluator (correct) | `agents/layered-rule-evaluator.ts:450` `evaluateRulesLayered()` | Produces authoritative `primary_decision`, `matched_responses`, `rules_applied` (rule-id list). |
-| **B** RuleEngineExecutor (competing) | `agents/rule-engine-executor.ts:200-260` `execute()` | Runs AFTER A. Builds its own `decisionOutput` via `resolveConflicts(decisions)` + `formatDecisionOutput()` / `generateDefaultDecision()` / `formatBlockedDecision()` (lines `468`, `541`, `618`, `746`). Generates an independent `rules_applied` (`generateAppliedRules(decisions)`, line ~`816`) and an independent `primary_decision` (line `803`). It knows NOTHING about `layeredRuleResult`. |
+Concrete violations found:
 
-Orchestrator wiring that lets B override A:
-- `orchestrator.ts:7549` — call site: `let decisionOutput = await this.ruleEngine.execute(ruleEngineInput);` — B's output becomes the canonical object that every downstream gate reads.
-- `orchestrator.ts:7553-7559` — recovery only triggers when B's `primary_decision.rule_id` is falsy. When B's `formatDecisionOutput()` builds a SUCCESS primary, the recovery is **skipped** and A's `primary_decision` is discarded.
-- `orchestrator.ts:7672-7684` — `rules_applied` from A is propagated **only when B's array is empty**. B almost always emits a non-empty list, so A's fired-rule-id list is silently replaced.
+| # | File | Lines | Violation |
+|---|------|-------|-----------|
+| V1 | `agents/orchestrator.ts` | 4350, 4355, 4874 | Sets `understandingResult.clarification_required = false` whenever photo codes ≥2 OR `diagnosisOnlyModeActive` (rules-matched ⇒ certainty) |
+| V2 | `agents/orchestrator.ts` | 4923-4933 | `isTerminalOrSignificantWithLandContext` bypasses `evidenceInsufficient` based on rule-derived damage taxonomy, not on competing-hypothesis count |
+| V3 | `agents/orchestrator.ts` | ~7028-7065, ~7549-7684 | `RuleEngineExecutor` rebuilds `primary_decision`, `rules_applied`, `matched_responses` after layered evaluator already produced them — competing authority |
+| V4 | `decision/symbolic-invariant-gate.ts` | 156, 222 | Mutates `decisionOutput.response_mode = 'OBSERVATION'` from a gate that should be read-only |
+| V5 | `decision/unified-decision-gate.ts` | 84-194 (`applySuppressionGuard`) | Reverses FAIL → PASS purely because "rules fired"; encodes `rulesMatched > 0` as proof of certainty |
+| V6 | `index.ts` | 1838-1839, 1928 | Rewrites `unifiedGateResult.response_mode` after the fact (safety override + zero-hypothesis downgrade) |
+| V7 | `agents/clarification-generator.ts`, `dynamic-clarification-generator.ts` | multiple | Generate generic yes/no questions (no information-gain ranking); clarification answers re-enter as plain text, not as `OBS_*` evidence nodes |
+| V8 | `decision/decision-readiness-gate.ts` + `unified-decision-gate.ts` + `prescription-gate-enforcer.ts` | n/a | Three "readiness" gates with overlapping rules — no single certainty model |
+| V9 | `agents/diagnostic-flow-controller.ts` | 69-79 | Owns its own `DiagnosticStatus` state machine, independent of the authority pipeline |
 
-### 2. Where the mismatch is detected (symptom, not cause)
+There is **no graph** — `evidence`, `hypothesis`, `diagnosis`, `rule`, `recommendation` are all flat fields on `decisionOutput`. There is **no certainty model** — confidence is recomputed inline in 5+ places. There is **no information-gain ranker** — clarifications come from `differential-diagnosis-clarifier.ts` heuristics. There is **no telemetry** identifying which component wrote which field.
 
-- `decision/symbolic-invariant-gate.ts:95` `fired = firedRuleIds(decisionOutput)` — reads `decisionOutput.rules_applied` (B's list).
-- `decision/symbolic-invariant-gate.ts:162-205` — compares `primary.rule_id` (recovered from A at orchestrator:7569) against B's fired set → identity mismatch → `RULE_EMISSION_MISMATCH_HARD_GATE` → scrubs `primary_decision = null`, sets `response_mode = 'OBSERVATION'`, surfaces INFORMATION_ONLY.
-- `runtime/rules-fired.ts:37-53` — SSOT correctly reads `dec.rules_applied`; the contamination is upstream (B writes a non-matching list).
-
-### 3. Other places `DecisionOutput` is rebuilt / mutated
-
-- `agents/orchestrator.ts:2466-2873` (OPTION_SELECTED path) — re-runs `evaluateRulesLayered` and rebuilds `primary_decision` inline (line 2873).
-- `agents/orchestrator.ts:7028-7065` (`SymbolicMerge`) — synthesises `primary_decision` from `symbolicResult.recommendations[0]` and pushes synthetic rule_ids (`'SYMBOLIC'`) into `matched_responses`. These synthetic ids never appear in A's `rules_applied`, so they are guaranteed to trip the identity gate.
-- `agents/orchestrator.ts:7567-7645` (PRIMARY_DECISION RECOVERY) — overwrites `decisionOutput.primary_decision` after B already populated it.
-- `agents/rule-engine-executor.ts:478, 551, 628, 701, 803` — five separate `primary_decision: {…}` constructors (default / fallback / blocked / weather-delayed / success).
-
-### 4. Net effect (matches production logs)
-
-`LayeredRuleEvaluator` logs `Primary decision: <RULE_ID>`, `matched_responses=N`, `rules_applied=[...]`. Then `RuleEngineExecutor.formatDecisionOutput` overwrites both arrays with a different rule_id set. `symbolic-invariant-gate` sees the mismatch and nulls the primary → `actions=0`, `RULE_EMISSION_MISMATCH_HARD_GATE`, `INFORMATION_ONLY`.
-
----
-
-## Target architecture (single source of truth)
+## 2. Target Flow
 
 ```text
-Observation
-   → Hypothesis (hypothesis-evaluator)
-   → LayeredRuleEvaluator  ◀── ONLY authority for primary_decision + rules_applied + matched_responses
-   → DecisionOutput adapter (pure projection of layeredRuleResult)
-   → RuleEngineExecutor.enrich() (economics, contingency, follow-up — NO primary, NO rules_applied)
-   → Safety / Invariant Gates
-   → Response Builder
-   → LLM Translation
+Farmer Reality
+      │
+      ▼
+┌─────────────────────────┐
+│  Evidence Graph         │  OBS_* nodes (text, photo, clarification answers, sensor)
+└─────────────────────────┘
+      │
+      ▼
+┌─────────────────────────┐
+│  Context Graph          │  crop, stage, DAS, weather, soil, NDVI, land
+└─────────────────────────┘
+      │
+      ▼
+┌─────────────────────────┐
+│  Hypothesis Graph       │  competing causes w/ prior + posterior confidence
+└─────────────────────────┘
+      │
+      ▼
+┌─────────────────────────┐
+│  Diagnosis Graph        │  arbitrated hypotheses + contradictions
+└─────────────────────────┘
+      │
+      ▼
+┌─────────────────────────┐
+│  Rule Graph             │  decision_rules matched against diagnosis nodes
+└─────────────────────────┘
+      │
+      ▼
+┌─────────────────────────┐
+│  Recommendation Graph   │  actions, products, dosages, PHI, contingencies
+└─────────────────────────┘
+      │
+      ▼
+┌────────────────────────────────────────────────────────────────┐
+│           DiagnosticDecisionAuthority  (SSOT)                  │
+│  Reads all graphs → emits ONE AuthorityDecision:               │
+│    diagnostic_state, response_mode, clarification_required,    │
+│    recommendation_allowed, diagnostic_certainty                │
+└────────────────────────────────────────────────────────────────┘
+      │
+      ▼
+Read-only Unified Gate → Response Generator (formatting only) → LLM Translation
 ```
 
-## Implementation plan
+## 3. New Modules
 
-### Step 1 — Demote `RuleEngineExecutor` to enrichment
+```
+decision/
+  graph/
+    evidence-graph.ts          # OBS_* nodes; mutateFromClarification()
+    context-graph.ts           # crop/stage/weather/soil/NDVI
+    hypothesis-graph.ts        # candidates + priors
+    diagnosis-graph.ts         # arbitrated diagnoses + contradictions
+    rule-graph.ts              # matched decision_rules
+    recommendation-graph.ts    # actions/products/dosages
+    graph-types.ts             # node/edge interfaces + provenance
+  authority/
+    diagnostic-certainty-model.ts   # ONE function: computeCertainty(graphs) → number + breakdown
+    diagnostic-decision-authority.ts # SSOT writer for diagnostic_state, response_mode, clarification_required, recommendation_allowed
+    information-gain-engine.ts       # ranks candidate clarification questions by H(hypotheses|answer)
+  telemetry/
+    authority-trace.ts          # logs {field, old, new, source, trace_id} for every mutation
+```
 
-File: `supabase/functions/ai-agriculture-chat/agents/rule-engine-executor.ts`
+## 4. Certainty Model (single source of truth)
 
-- Add `enrich(decisionOutput, input): DecisionOutput` that ONLY computes `economic_assessment`, `contingency_planning`, `follow_up_schedule`, `audit_trail`, `confidence_metrics`. It must accept a `decisionOutput` already containing the authoritative `primary_decision` / `rules_applied` / `matched_responses` and must never write to those three fields.
-- Mark `execute()` deprecated; route it internally to `enrich()` and require callers to pass `authoritative_primary` + `authoritative_rules_applied` + `authoritative_matched_responses` in the input. If they are missing, `enrich()` returns the input untouched (no synthetic primary, no default `MONITOR_ONLY`).
-- Delete the five competing `primary_decision: {…}` constructors at lines 478/551/628/701/803 (or guard them behind `if (!input.authoritative_primary)` returning an empty shell with `primary_decision: null`).
-- `generateAppliedRules()` (line ~816) must be replaced with a pass-through of `input.authoritative_rules_applied`.
+```ts
+// diagnostic-certainty-model.ts
+computeCertainty({ evidence, hypothesis, diagnosis, rules }) => {
+  evidence_coverage,         // required_obs_for_top_hyp ∩ confirmed
+  contradiction_score,       // negated evidence count
+  competing_hypotheses,      // hypotheses with conf > 0.3
+  observation_confidence,    // mean of evidence node confidences
+  visual_confidence,         // photo-derived contribution
+  rule_confidence,           // top rule's weighted_confidence
+  certainty                  // weighted aggregate ∈ [0,1]
+}
+```
 
-### Step 2 — Make the orchestrator construct `DecisionOutput` from `layeredRuleResult`
+`DiagnosticDecisionAuthority.decide(certainty, graphs)` returns:
 
-File: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
+```
+if competing_hypotheses > 1
+   || required_observations_missing > 0
+   || certainty < THRESHOLD
+   || visual_confirmation_required
+→ response_mode=CLARIFICATION, clarification_required=true,
+  recommendation_allowed=false
+else if certainty ≥ TREATMENT_THRESHOLD && rule_graph.has_match
+→ response_mode=TREATMENT, recommendation_allowed=true
+else
+→ response_mode=OBSERVATION
+```
 
-- After `evaluateRulesLayered(...)` at line ~6692 succeeds, build a `decisionOutput` skeleton directly from `layeredRuleResult` (new helper `buildDecisionOutputFromLayered(layeredRuleResult, ruleEngineInput)`). That skeleton owns `primary_decision`, `rules_applied` (array of `{rule_id, …}` derived from `layeredRuleResult.rules_applied`), `matched_responses`, `secondary_recommendations`.
-- Replace line 7549 `await this.ruleEngine.execute(...)` with `await this.ruleEngine.enrich(decisionOutput, ruleEngineInput)`.
-- Delete the recovery block at 7553-7645 (no longer needed — A is authoritative from the start).
-- Delete the conditional `rules_applied` propagation at 7672-7684 — `rules_applied` is set once at skeleton creation and immutable thereafter.
-- In `SymbolicMerge` (7028-7065), stop writing synthetic `'SYMBOLIC'` rule_ids into `matched_responses` / `primary_decision`. If symbolic-reasoner has no concrete rule_id, keep its output in a NEW `decisionOutput.symbolic_advisory` field that the invariant gate ignores.
-- In OPTION_SELECTED path (2466-2873), apply the same `buildDecisionOutputFromLayered` helper so primary/rules_applied are never reconstructed by hand.
+## 5. Information Gain Engine
 
-### Step 3 — Lock the invariant gate to authority A
+Question selector:
 
-File: `supabase/functions/ai-agriculture-chat/decision/symbolic-invariant-gate.ts`
+```
+score(q) = H(hypothesis_graph) − E_a[H(hypothesis_graph | q=a)]
+```
 
-- Add a debug assertion (warn, do not throw): if `decisionOutput.primary_decision?.rule_id` is set and `decisionOutput.rules_applied` is empty, log `SYMBOLIC_AUTHORITY_DESYNC` with `trace_id` — this catches future regressions where someone bypasses Step 2.
-- No behavioural change otherwise; with Steps 1 & 2 in place the identity-mismatch branch becomes unreachable on the happy path.
+Inputs: current `hypothesis_graph`, candidate questions from `observation_differential_questions` + `decision_rules.required_observations`. Returns top-N questions whose answers most reduce entropy. **No generic questions** — every question must reference at least one OBS code that splits ≥2 candidate hypotheses.
 
-### Step 4 — Forensic logging
+## 6. Clarification → Evidence Mutation Contract
 
-File: `supabase/functions/ai-agriculture-chat/runtime/decision-logger.ts` (or nearest existing logger)
+`clarification-generator.ts` emits options as `{label, value, observation_key, polarity}`. The receiving turn calls `evidence-graph.mutateFromClarification(answers)` which creates `OBS_*` nodes with `source='CLARIFICATION'`, then re-runs hypothesis/diagnosis/rule graphs. Clarification text is **never** re-fed to the LLM as free text.
 
-- Emit `decision_authority_trace` once per turn containing: `layered.primary_rule_id`, `layered.rules_applied.length`, `decisionOutput.primary_decision.rule_id`, `decisionOutput.rules_applied.length`, `gate_reason`. Lets us prove A == final on every request.
+## 7. Patches to Existing Files
 
-### Step 5 — Tests
+| File | Change |
+|---|---|
+| `agents/orchestrator.ts` | Remove all `understandingResult.clarification_required = false` assignments (4350, 4355, 4874). Remove `evidenceInsufficient` / `isTerminalOrSignificantWithLandContext` block (4878-4933). Replace with call to `DiagnosticDecisionAuthority.decide()`. Remove inline `primary_decision` rewrites in `SymbolicMerge` and OPTION_SELECTED paths |
+| `agents/rule-engine-executor.ts` | Demoted to `enrich()` only — economics, contingency, follow-up, audit_trail. Remove all `primary_decision` / `rules_applied` / `matched_responses` writes |
+| `agents/layered-rule-evaluator.ts` | Wrap output into `rule-graph` projection; no direct mutation of `decisionOutput` |
+| `decision/unified-decision-gate.ts` | Convert to **read-only validator**. Delete `applySuppressionGuard`'s FAIL→PASS reversal entirely. Gate may emit `validation_errors[]` but **never** writes `response_mode`, `treatments_allowed`, `clarification_required` |
+| `decision/symbolic-invariant-gate.ts` | Lines 156, 222: stop mutating `decisionOutput.response_mode`. Emit `invariant_violation` event read by `DiagnosticDecisionAuthority` instead |
+| `decision/decision-readiness-gate.ts` | Delete file (folded into Authority + Certainty model) |
+| `decision/differential-diagnosis-clarifier.ts` | Replace heuristic ranker with call to `information-gain-engine.ts` |
+| `agents/clarification-generator.ts` + `dynamic-clarification-generator.ts` | Return `{questions, options[]}` typed against `observation_key` only; remove free-text fallback |
+| `index.ts` | Lines 1838-1839, 1928: remove `unifiedGateResult.response_mode =` rewrites. Route through `DiagnosticDecisionAuthority.revise()` if safety/zero-hypothesis events fire |
+| `agents/understanding-completeness-checker.ts` | Becomes an evidence-graph contributor only; does not set `clarification_required` |
+| `agents/diagnostic-flow-controller.ts` | Drop its private `DiagnosticStatus`; consume `DiagnosticDecisionAuthority.diagnostic_state` |
 
-- Update `_tests/wave_r_no_rule_no_treatment_test.ts` to assert that when `evaluateRulesLayered` returns a primary, `RuleEngineExecutor.enrich` never overwrites `primary_decision.rule_id` and the invariant gate returns `PASS`.
-- Add a new test: when `evaluateRulesLayered` returns `primary_decision = null`, `enrich` must NOT synthesise a `MONITOR_ONLY` primary (current `generateDefaultDecision` behaviour is removed).
+## 8. Telemetry Contract
 
-## Out of scope
+Every write to `diagnostic_state`, `response_mode`, `clarification_required`, `recommendation_allowed` goes through `authority-trace.log({field, old, new, source, trace_id, certainty_snapshot})`. CI test asserts that **only files in `decision/authority/`** call `authority-trace.log` as writer; all other modules are read-only consumers.
 
-- No changes to `LayeredRuleEvaluator` internals, hypothesis scoring, observation mapping, or `unified-decision-gate.ts`. Those are working as designed; the bug is exclusively in who owns the output.
+## 9. Regression Tests (new `_tests/`)
 
-## Acceptance criteria
+```
+_tests/neurosymbolic_graph_authority_test.ts
+  - Input: "भात अजून उगवले नाही" (no land context, no photo)
+    Expect: response_mode = CLARIFICATION,
+            clarification_required = true,
+            questions.length >= 3,
+            questions all reference distinct OBS_* codes,
+            recommendations.length === 0,
+            certainty < TREATMENT_THRESHOLD
 
-1. For the failing Marathi query, edge logs show `layered.primary_rule_id == decisionOutput.primary_decision.rule_id`, and `gate_reason ∈ {PASS, NO_RULES_FIRED_HARD_GATE}` — never `RULE_EMISSION_MISMATCH_HARD_GATE`.
-2. `RuleEngineExecutor.execute` returns `primary_decision: null` when `authoritative_primary` is absent (no MONITOR_ONLY fallback).
-3. Grep `rg "primary_decision\s*[:=]\s*\{" supabase/functions/ai-agriculture-chat` returns matches only in `layered-rule-evaluator.ts` and the new `buildDecisionOutputFromLayered` helper.
+  - Input: same + clarification answers {SEED_ROT=yes, WATERLOGGING=no}
+    Expect: evidence_graph has 2 new OBS nodes,
+            hypothesis_graph updated, competing_hypotheses == 1,
+            response_mode = TREATMENT,
+            recommendations.length >= 1
+
+_tests/single_authority_invariant_test.ts
+  - Static grep: no file outside decision/authority/ assigns response_mode,
+    clarification_required, recommendation_allowed, diagnostic_state
+  - Runtime: every authority-trace.log entry's `source` ∈ allowlist
+
+_tests/information_gain_engine_test.ts
+  - With 3 competing hypotheses sharing 1 OBS and differing on 2,
+    selected question MUST be one that discriminates the 2 differing OBS
+
+_tests/no_rulesmatched_bypass_test.ts
+  - With rules_matched > 0 but competing_hypotheses == 2,
+    response_mode MUST remain CLARIFICATION
+```
+
+## 10. Rollout
+
+1. Add new graph/authority/telemetry modules (no behavior change yet, shadow-mode logs).
+2. Flip `DiagnosticDecisionAuthority` to authoritative; demote `RuleEngineExecutor`, `unified-decision-gate`, `symbolic-invariant-gate` to read-only.
+3. Delete dead bypass branches in `orchestrator.ts` + `index.ts`.
+4. Add regression suite; block deploy on failure.
+5. Edge function redeploys automatically.
+
+## Out of Scope
+
+- `LayeredRuleEvaluator` internal scoring (kept as-is, output projected into rule-graph)
+- `observation_master` / `decision_rules` schema changes (consumed unchanged)
+- Frontend chat renderer (already option-aware after prior fix)
