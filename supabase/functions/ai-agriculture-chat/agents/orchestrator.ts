@@ -7028,9 +7028,33 @@ export class AIAgentOrchestrator {
                 // AND build primary_decision so the pipeline doesn't hit RULE_DATA_INTEGRITY_ERROR.
                 // Without this, pest rules fire but never become eligible for primary decision.
                 // ═══════════════════════════════════════════════════════════════════════════
+                // SYMBOLIC AUTHORITY: only merge symbolic recs that carry a REAL
+                // rule_id. Synthetic placeholders ('SYMBOLIC', '', null) are NOT
+                // members of layeredRuleResult.rules_applied and would later trip
+                // symbolic-invariant-gate's identity check
+                // (RULE_EMISSION_MISMATCH_HARD_GATE). Park advisory-only items
+                // on a side channel for diagnostics, never on matched_responses
+                // or primary_decision.
+                const symbolicAdvisory: any[] = Array.isArray((layeredRuleResult as any).symbolic_advisory)
+                  ? (layeredRuleResult as any).symbolic_advisory
+                  : [];
                 for (const rec of symbolicResult.recommendations) {
+                  const realRuleId = typeof rec.rule_id === 'string'
+                    && rec.rule_id.length > 0
+                    && rec.rule_id !== 'SYMBOLIC'
+                    ? rec.rule_id
+                    : null;
+                  if (!realRuleId) {
+                    symbolicAdvisory.push({
+                      source: 'symbolic-reasoner',
+                      cause: rec.cause || symbolicResult.diagnosis?.cause_name || null,
+                      action_text: rec.description || rec.action_text || null,
+                      confidence: symbolicResult.confidence || 0.8
+                    });
+                    continue;
+                  }
                   layeredRuleResult.matched_responses.push({
-                    rule_id: rec.rule_id || 'SYMBOLIC',
+                    rule_id: realRuleId,
                     cause: rec.cause || symbolicResult.diagnosis?.cause_name || 'DIAGNOSIS',
                     action_type: rec.action || 'RECOMMEND',
                     priority: rec.priority || 80,
@@ -7040,14 +7064,26 @@ export class AIAgentOrchestrator {
                     knowledge_text: rec.knowledge_text || null,
                     i18n_key: rec.i18n_key || null
                   });
+                  // Symbolic-bridged rules ARE genuinely fired by the symbolic
+                  // reasoner; register them in rules_applied so SSOT firedSet
+                  // contains them.
+                  if (!Array.isArray(layeredRuleResult.rules_applied)) {
+                    layeredRuleResult.rules_applied = [];
+                  }
+                  if (!layeredRuleResult.rules_applied.includes(realRuleId)) {
+                    layeredRuleResult.rules_applied.push(realRuleId);
+                  }
                 }
-                
-                // Build primary_decision from best symbolic recommendation
-                const bestRec = symbolicResult.recommendations[0];
+                (layeredRuleResult as any).symbolic_advisory = symbolicAdvisory;
+
+                // Build primary_decision ONLY from a symbolic rec with a real rule_id.
+                const bestRec = symbolicResult.recommendations.find(
+                  (r: any) => typeof r.rule_id === 'string' && r.rule_id.length > 0 && r.rule_id !== 'SYMBOLIC'
+                );
                 if (bestRec && !layeredRuleResult.primary_decision) {
                   console.log(`   🔧 [SymbolicMerge] Building primary_decision from symbolic: ${bestRec.rule_id}`);
                   layeredRuleResult.primary_decision = {
-                    rule_id: bestRec.rule_id || 'SYMBOLIC',
+                    rule_id: bestRec.rule_id,
                     action_type: bestRec.action || 'RECOMMEND',
                     priority: bestRec.priority || 80,
                     confidence_score: symbolicResult.confidence || 0.8,
