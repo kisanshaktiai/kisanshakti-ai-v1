@@ -96,6 +96,24 @@ export async function enforceNoRuleNoTreatment(
   const firedSet = new Set(fired);
   const rulesFiredCount = fired.length;
 
+  // Wave-S authority desync probe: primary exists but rules_applied empty
+  // means an upstream layer set primary_decision without registering its
+  // rule_id in the SSOT fired-set. Log loudly so regressions are visible.
+  const primaryRidProbe = ridOf(decisionOutput.primary_decision);
+  if (primaryRidProbe && rulesFiredCount === 0) {
+    console.warn(
+      `🚨 [SYMBOLIC_AUTHORITY_DESYNC] trace=${ctx.trace_id} primary_rule_id=${primaryRidProbe} ` +
+      `but rules_applied is empty — a competing authority bypassed LayeredRuleEvaluator. ` +
+      `This will be scrubbed by NO_RULES_FIRED_HARD_GATE.`,
+    );
+  } else if (primaryRidProbe && !firedSet.has(primaryRidProbe)) {
+    console.warn(
+      `🚨 [SYMBOLIC_AUTHORITY_DESYNC] trace=${ctx.trace_id} primary_rule_id=${primaryRidProbe} ` +
+      `is NOT in fired-set [${fired.join(',')}] — competing authority detected. ` +
+      `This will be scrubbed by RULE_EMISSION_MISMATCH_HARD_GATE.`,
+    );
+  }
+
   // ═════════════════════════════════════════════════════════════════════════
   // CASE 1 — No rule actually fired. Strip everything from farmer surface.
   // ═════════════════════════════════════════════════════════════════════════
