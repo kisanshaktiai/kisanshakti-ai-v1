@@ -24,8 +24,9 @@
  */
 
 import type { ObservationExtraction } from './observation-extractor.ts';
+import { isDiagnosticEntryObservation } from '../decision/diagnosis-only-mode.ts';
 
-export const UNDERSTANDING_CHECKER_VERSION = '2.0.0'; // SSOT-compliant version
+export const UNDERSTANDING_CHECKER_VERSION = '2.1.0'; // diagnostic-entry bypass
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -327,6 +328,43 @@ export function checkUnderstandingCompleteness(
   const missingForDiagnosis: string[] = [];
   let totalScore = 0;
   let maxScore = 0;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX (Phase-24): DIAGNOSTIC-ENTRY SHORT-CIRCUIT
+  // For germination/emergence/establishment observations, fields like
+  // affected_part / symptom_distribution / severity_words / time_reference
+  // are by definition N/A (the crop hasn't emerged yet — there is no
+  // "affected leaf area" to describe). The Understanding Gate must NOT
+  // demand those metadata and block the symbolic brain.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const extractedCodes = observations.extracted_observations || [];
+  const entryCodesPresent = extractedCodes.filter(c => isDiagnosticEntryObservation(c));
+  const cropKnown =
+    (observations.crop_mentioned !== undefined && observations.crop_mentioned !== '') ||
+    (landContext?.current_crop !== undefined && landContext.current_crop !== '');
+
+  if (entryCodesPresent.length > 0 && cropKnown) {
+    console.log(
+      `   ✅ [UnderstandingChecker v${UNDERSTANDING_CHECKER_VERSION}] DIAGNOSTIC_ENTRY bypass — ` +
+      `crop="${observations.crop_mentioned || landContext?.current_crop}" ` +
+      `entry_codes=[${entryCodesPresent.join(',')}]`
+    );
+    console.log(
+      `      → Skipping affected_part/distribution/severity/timing penalties; symbolic brain must run.`
+    );
+    return {
+      understanding_confidence: UnderstandingConfidence.HIGH,
+      unknown_critical_fields: [],
+      contradiction_detected: detectContradictions(observations),
+      clarification_required: false,
+      clarification_reason: undefined,
+      missing_for_diagnosis: [],
+      completeness_score: 100,
+      clarification_priority: 'none',
+      diagnosis_rules_fired: false
+    };
+  }
+
   
   // Check each critical field
   for (const field of CRITICAL_FIELDS) {

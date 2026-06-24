@@ -83,26 +83,28 @@ export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
   'DEAD_SEEDLINGS',
   'CROP_FAILURE',
   'ESTABLISHMENT_FAILURE',
-  'GERMINATION_FAILURE',  // CrossCropSymptomKey v4.1
-  
+  // NOTE: GERMINATION_FAILURE intentionally REMOVED from terminal set.
+  //       It is a diagnostic ENTRY observation (start of diagnosis),
+  //       not a terminal verdict. See DIAGNOSTIC_ENTRY_OBSERVATION_KEYS below.
+
   // Whole-plant/severe damage
   'AFFECTED_PART_WHOLE',
   'ENTIRE_PLANT_AFFECTED',
   'WILTING_SEVERE',
   'PLANT_DRYING',
   'COMPLETE_DRYING',
-  
+
   // Terminal patterns
   'PATCHY_DAMAGE',
   'GAPS_IN_FIELD',
   'DEAD_PATCHES',
-  
+
   // Borer terminal symptoms
   'DEAD_HEART',
   'DEAD_HEART_VISIBLE',
   'STEM_BORED',
   'STEM_TUNNELING',
-  
+
   // Root/base terminal damage
   'ROOT_DAMAGE',
   'ROOT_DECAY',
@@ -111,6 +113,36 @@ export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
   'TERMITE_DAMAGE',
   'MUD_TUBES_VISIBLE'
 ]);
+
+/**
+ * DIAGNOSTIC ENTRY OBSERVATIONS — these are the START of diagnosis,
+ * not terminal verdicts. The farmer reports "crop hasn't emerged" and
+ * the symbolic brain must compete causes (seed rot, waterlogging,
+ * soil crust, deep sowing, termite, bird damage, poor seed viability).
+ * MUST NOT be treated as a final terminal-damage diagnosis.
+ */
+export const DIAGNOSTIC_ENTRY_OBSERVATION_KEYS = new Set([
+  'GERMINATION_FAILURE',
+  'NO_EMERGENCE',
+  'OBS_RICE_NO_EMERGENCE',
+  'DELAYED_GERMINATION',
+  'POOR_GERMINATION',
+  'POOR_GERMINATION_PERCENT',
+  'UNEVEN_EMERGENCE',
+  'OBS_RICE_PATCHY_EMERGENCE',
+  'GERMINATION_CONCERN',
+  'SEED_NOT_GERMINATED'
+]);
+
+/**
+ * Helper: returns true if the observation code is a diagnostic-entry
+ * observation that must trigger the symbolic brain (not terminal lane).
+ */
+export function isDiagnosticEntryObservation(code: string | undefined | null): boolean {
+  if (!code) return false;
+  return DIAGNOSTIC_ENTRY_OBSERVATION_KEYS.has(String(code).toUpperCase());
+}
+
 
 /**
  * v4.0: CROP DAMAGE OBSERVATION KEYS - Sufficient grounds for DIAGNOSIS mode.

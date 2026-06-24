@@ -1073,6 +1073,51 @@ export async function evaluateCandidateHypotheses(
         );
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // Phase-24: STAGE BIAS — at GERMINATION/SEEDLING/EMERGENCE/ESTABLISHMENT,
+      // promote causes that genuinely explain "crop hasn't emerged" and
+      // suppress mature-stage causes (leaf disease / rust / borer / late
+      // nutrient deficiency) that cannot apply pre-emergence.
+      // Multipliers are conservative and clamped to [0,1].
+      // ═══════════════════════════════════════════════════════════════════════
+      const STAGE_BIAS_PROMOTE = new Set([
+        'SEED_ROT', 'POOR_SEED_VIABILITY', 'WATERLOGGING',
+        'DEEP_SOWING', 'SOIL_CRUST', 'TERMITE_DAMAGE',
+        'BIRD_DAMAGE', 'SEED_TREATMENT_FAILURE', 'POOR_GERMINATION',
+        'SEED_QUALITY', 'SOIL_MOISTURE_DEFICIT', 'CRUSTING'
+      ]);
+      const STAGE_BIAS_SUPPRESS = new Set([
+        'LEAF_DISEASE', 'RUST', 'BLAST', 'SHEATH_BLIGHT',
+        'BORER', 'STEM_BORER', 'BOLLWORM',
+        'NUTRIENT_DEFICIENCY_LATE_STAGE', 'PANICLE_DISEASE',
+        'GRAIN_DISEASE', 'TILLERING_ISSUE'
+      ]);
+      const upperStage = String(growth_stage || '').toUpperCase();
+      const isEarlyStage =
+        upperStage.includes('GERMINATION') ||
+        upperStage.includes('SEEDLING') ||
+        upperStage.includes('EMERGENCE') ||
+        upperStage.includes('ESTABLISHMENT') ||
+        upperStage.includes('NURSERY');
+      if (isEarlyStage) {
+        const causeUp = String(rule.cause || '').toUpperCase();
+        const groupUp = String(rule.canonical_group || rule.category || '').toUpperCase();
+        const tokens = `${causeUp} ${groupUp}`;
+        const promoted = [...STAGE_BIAS_PROMOTE].some(k => tokens.includes(k));
+        const suppressed = [...STAGE_BIAS_SUPPRESS].some(k => tokens.includes(k));
+        if (promoted && !suppressed) {
+          const before = totalScore;
+          totalScore = Math.max(0, Math.min(1, totalScore * 1.25));
+          console.log(`   📈 [HypothesisEval] StageBias stage=${upperStage} cause=${rule.cause} ×1.25 (${(before*100).toFixed(0)}%→${(totalScore*100).toFixed(0)}%)`);
+        } else if (suppressed && !promoted) {
+          const before = totalScore;
+          totalScore = Math.max(0, Math.min(1, totalScore * 0.4));
+          console.log(`   📉 [HypothesisEval] StageBias stage=${upperStage} cause=${rule.cause} ×0.4 (${(before*100).toFixed(0)}%→${(totalScore*100).toFixed(0)}%)`);
+        }
+      }
+
+
+
       scoredCandidates.push({
         rule_id: rule.rule_id,
         cause: rule.cause || 'unknown',

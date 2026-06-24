@@ -23,8 +23,9 @@ import {
   type CandidateHypothesis,
   type HypothesisEvaluationOutput,
 } from './hypothesis-evaluator.ts';
+import { isDiagnosticEntryObservation } from './diagnosis-only-mode.ts';
 
-export const READINESS_GATE_VERSION = '1.0.0';
+export const READINESS_GATE_VERSION = '1.1.0'; // Phase-24: diagnostic-entry pre-check
 
 // Tunable thresholds (see plan.md, Phase 1)
 export const READY_TOP_SCORE = 0.55;     // top candidate must clear this
@@ -76,6 +77,18 @@ export async function runHypothesisReadinessProbe(
     return { ...empty, reason: 'NO_OBSERVATIONS' };
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Phase-24: DIAGNOSTIC-ENTRY PRE-CHECK
+  // If the farmer reported a germination/emergence/establishment problem,
+  // the symbolic brain MUST run — even if hypothesis_master coverage for
+  // those canonical groups is sparse and the evaluator returns weak scores.
+  // The gate must not short-circuit to a generic CLARIFY.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const hasDiagnosticEntry = input.known_observations.some((o) =>
+    isDiagnosticEntryObservation(o),
+  );
+
+
   let evaluation: HypothesisEvaluationOutput;
   try {
     evaluation = await evaluateCandidateHypotheses({
@@ -125,6 +138,18 @@ export async function runHypothesisReadinessProbe(
     fired_rule_ids: firedRuleIds,
     evaluation,
   };
+
+  // Phase-24: diagnostic-entry observations FORCE ready=true so the symbolic
+  // brain (hypothesis arbitration + rule engine + targeted clarifier) runs
+  // even when hypothesis_master coverage for the GERMINATION/EMERGENCE
+  // canonical group is sparse and the evaluator returns weak scores.
+  if (hasDiagnosticEntry) {
+    return {
+      ...result,
+      ready: true,
+      reason: 'DIAGNOSTIC_ENTRY_OBSERVATION',
+    };
+  }
 
   // Readiness rules (any one suffices)
   if (topScore >= READY_TOP_SCORE && spread >= READY_SPREAD) {
