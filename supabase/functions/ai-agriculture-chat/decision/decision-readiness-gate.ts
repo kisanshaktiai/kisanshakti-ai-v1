@@ -23,8 +23,9 @@ import {
   type CandidateHypothesis,
   type HypothesisEvaluationOutput,
 } from './hypothesis-evaluator.ts';
+import { isDiagnosticEntryObservation } from './diagnosis-only-mode.ts';
 
-export const READINESS_GATE_VERSION = '1.0.0';
+export const READINESS_GATE_VERSION = '1.1.0'; // Phase-24: diagnostic-entry pre-check
 
 // Tunable thresholds (see plan.md, Phase 1)
 export const READY_TOP_SCORE = 0.55;     // top candidate must clear this
@@ -75,6 +76,18 @@ export async function runHypothesisReadinessProbe(
   if (!input.known_observations || input.known_observations.length === 0) {
     return { ...empty, reason: 'NO_OBSERVATIONS' };
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Phase-24: DIAGNOSTIC-ENTRY PRE-CHECK
+  // If the farmer reported a germination/emergence/establishment problem,
+  // the symbolic brain MUST run — even if hypothesis_master coverage for
+  // those canonical groups is sparse and the evaluator returns weak scores.
+  // The gate must not short-circuit to a generic CLARIFY.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const hasDiagnosticEntry = input.known_observations.some((o) =>
+    isDiagnosticEntryObservation(o),
+  );
+
 
   let evaluation: HypothesisEvaluationOutput;
   try {
