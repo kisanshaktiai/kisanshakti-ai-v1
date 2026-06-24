@@ -3171,6 +3171,11 @@ export class AIAgentOrchestrator {
       // hypothesis fan-out, or canonical→alias expansion. NEVER merged into
       // expandedObservationCodes / inductionResult.symptoms / confirmedObservations.
       const candidateObservationCodes: Set<string> = new Set<string>();
+      // P0 AUTHORITY FIX (2026-06-24): track DB-intent promotion strength per
+      // canonical code so the downstream authoredObservations assignment can
+      // tag LITERAL → CONFIRMED and STRONG_HYPOTHESIS → EXTRACTED, instead of
+      // silently downgrading to INFERRED via the LLM_SEMANTIC_EXTRACTOR source.
+      const dbIntentPromotedSources: Map<string, 'DB_INTENT_OBSERVATIONS_LITERAL' | 'DB_INTENT_OBSERVATIONS_STRONG'> = new Map();
       try {
         const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase, 'alias_to_canonical');
         if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
@@ -3260,6 +3265,18 @@ export class AIAgentOrchestrator {
                   if (strength === 'LITERAL') promotedLiteral++;
                   else promotedStrong++;
                 }
+                // Tag the source so the authoredObservations assignment
+                // (≈ orchestrator.ts:4395) can preserve the DB-curated authority.
+                try {
+                  const canon = canonicalize(c);
+                  const tag = strength === 'LITERAL'
+                    ? 'DB_INTENT_OBSERVATIONS_LITERAL'
+                    : 'DB_INTENT_OBSERVATIONS_STRONG';
+                  // LITERAL wins over STRONG if both routes ever overlap.
+                  if (dbIntentPromotedSources.get(canon) !== 'DB_INTENT_OBSERVATIONS_LITERAL') {
+                    dbIntentPromotedSources.set(canon, tag as any);
+                  }
+                } catch { /* canonicalize tolerant */ }
               } else if (!candidateObservationCodes.has(c)) {
                 candidateObservationCodes.add(c);
                 addedCandidate++;
@@ -3518,10 +3535,19 @@ export class AIAgentOrchestrator {
           // Check if symptom already exists in inductionResult
           const existingSymptom = inductionResult.symptoms.find(s => s.symbol === code);
           if (!existingSymptom) {
+            // P0 AUTHORITY FIX (2026-06-24): preserve DB-intent provenance for
+            // LITERAL / STRONG_HYPOTHESIS promoted codes so the authority
+            // assignment block does not collapse them to INFERRED.
+            let promotedSource: string = 'LLM_SEMANTIC_EXTRACTOR';
+            try {
+              const canon = canonicalize(code);
+              const tag = dbIntentPromotedSources.get(canon);
+              if (tag) promotedSource = tag;
+            } catch { /* tolerant */ }
             inductionResult.symptoms.push({
               symbol: code,
               confidence: safeConfidence,
-              source: 'LLM_SEMANTIC_EXTRACTOR'
+              source: promotedSource
             });
             inductionResult.total_symbols_extracted++;
           }
@@ -4395,10 +4421,22 @@ export class AIAgentOrchestrator {
           if (s.symbol && isCanonicalCode(s.symbol)) {
             const c = canonicalize(s.symbol);
             allObservationsForPreAuth.add(c);
-            // Tag based on induction source
-            const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
-              ? ObservationAuthority.INFERRED 
-              : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
+            // Tag based on induction source.
+            // P0 AUTHORITY FIX (2026-06-24): DB-curated intent→observation
+            // promotions carry their assertion-strength provenance so the
+            // confirmed/extracted lane survives downstream gates. LITERAL is
+            // farmer-stated → CONFIRMED; STRONG_HYPOTHESIS @ high intent
+            // confidence → EXTRACTED (treated as pattern-matched evidence).
+            let inductionAuthority: ObservationAuthority;
+            if (s.source === 'DB_INTENT_OBSERVATIONS_LITERAL') {
+              inductionAuthority = ObservationAuthority.CONFIRMED;
+            } else if (s.source === 'DB_INTENT_OBSERVATIONS_STRONG') {
+              inductionAuthority = ObservationAuthority.EXTRACTED;
+            } else if (s.source === 'LLM_SEMANTIC_EXTRACTOR') {
+              inductionAuthority = ObservationAuthority.INFERRED;
+            } else {
+              inductionAuthority = ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
+            }
             authoredObservations.add(c, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
