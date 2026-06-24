@@ -53,7 +53,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-mobile-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -71,13 +71,26 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     const cachedAuth = localStorage.getItem('auth-storage');
     const offlineAuth = localStorage.getItem('offline_auth_data');
     
-    // If offline and has cached auth, allow access temporarily
+    // If offline and has cached auth, allow access
     if (!isOnline && (cachedAuth || offlineAuth)) {
       console.log('ProtectedRoute: Offline mode with cached auth, allowing access');
-      // Try to restore auth once more
-      checkAuth();
+      
+      // Try to restore auth if not already restoring
+      if (!isLoading) {
+        checkAuth();
+      }
+      
       // Allow rendering while auth is being restored
       return <>{children}</>;
+    }
+    
+    // If online but still loading auth, wait
+    if (isLoading) {
+      return (
+        <div className="min-h-mobile-screen flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      );
     }
     
     // Redirect to splash screen to start proper auth flow

@@ -23,16 +23,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { landsApi } from '@/services/landsApi';
 import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
-import { CropSelectorModal } from '@/components/crops/CropSelectorModal';
+import { CropSelectionCard } from '@/components/land/CropSelectionCard';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface LandFormData {
   // Basic Info
   name: string;
   survey_number: string;
-  ownership_type: 'owned' | 'leased' | 'shared';
+  ownership_type: 'owned' | 'leased' | 'shared' | 'contract';
   
   // Location
   state_id: string;
@@ -98,6 +100,7 @@ const initialFormData: LandFormData = {
 
 export function ModernLandWizard({ boundary, area, onComplete, onCancel }: ModernLandWizardProps) {
   const { t } = useTranslation();
+  const tRef = useLocalizedRef();
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { speak } = useTextToSpeech();
@@ -118,9 +121,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
   const [talukas, setTalukas] = useState<any[]>([]);
   const [villages, setVillages] = useState<any[]>([]);
   
-  // Crop selector modals
-  const [showCurrentCropModal, setShowCurrentCropModal] = useState(false);
-  const [showPreviousCropModal, setShowPreviousCropModal] = useState(false);
+  // Crop selection state
   const [currentCropId, setCurrentCropId] = useState('');
   const [previousCropId, setPreviousCropId] = useState('');
 
@@ -227,33 +228,106 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
   const handleCurrentCropSelect = (cropId: string, cropName: string) => {
     setCurrentCropId(cropId);
     handleInputChange('current_crop', cropName);
-    setShowCurrentCropModal(false);
   };
 
   const handlePreviousCropSelect = (cropId: string, cropName: string) => {
     setPreviousCropId(cropId);
     handleInputChange('previous_crop', cropName);
-    setShowPreviousCropModal(false);
   };
 
   const handleSave = async () => {
+    // Validate required fields
+    if (!formData.name?.trim()) {
+      toast({
+        title: t('lands.wizard.toast.validation_title'),
+        description: t('lands.wizard.toast.name_required'),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!area.acres || area.acres <= 0) {
+      toast({
+        title: t('lands.wizard.toast.validation_title'),
+        description: t('lands.wizard.toast.boundary_required'),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check network connectivity
+    if (!navigator.onLine) {
+      toast({
+        title: t('lands.wizard.toast.offline_title'),
+        description: t('lands.wizard.toast.offline_message'),
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     
     try {
-      const response = await supabase.functions.invoke('lands-api', {
-        body: {
-          action: 'create',
-          ...formData,
-          farmer_id: user?.id,
-          tenant_id: user?.tenantId,
-        },
+      // Build proper GeoJSON polygon from boundary points
+      const boundaryGeoJSON = boundary.length >= 3 ? {
+        type: 'Polygon',
+        coordinates: [[
+          ...boundary.map(p => [p.lng, p.lat]),
+          [boundary[0].lng, boundary[0].lat]
+        ]]
+      } : null;
+      
+      // Calculate center point from boundary
+      const centerGeoJSON = boundary.length >= 3 ? {
+        type: 'Point',
+        coordinates: [
+          boundary.reduce((sum, p) => sum + p.lng, 0) / boundary.length,
+          boundary.reduce((sum, p) => sum + p.lat, 0) / boundary.length
+        ]
+      } : null;
+
+      console.log('📍 [ModernLandWizard] Saving land:', {
+        name: formData.name,
+        area_acres: area.acres,
+        boundaryPoints: boundary.length
       });
 
-      if (response.error) throw response.error;
+      // Use landsApi with timeout handling
+      const savePromise = landsApi.createLand({
+        name: formData.name,
+        survey_number: formData.survey_number || undefined,
+        ownership_type: formData.ownership_type,
+        area_acres: area.acres,
+        area_guntas: area.guntha,
+        area_sqft: area.sqft,
+        state: formData.state || undefined,
+        district: formData.district || undefined,
+        taluka: formData.taluka || undefined,
+        village: formData.village || undefined,
+        soil_type: formData.soil_type || undefined,
+        water_source: formData.water_source || undefined,
+        irrigation_type: formData.irrigation_type || undefined,
+        current_crop: formData.current_crop || undefined,
+        previous_crop: formData.previous_crop || undefined,
+        cultivation_date: formData.cultivation_date || undefined,
+        last_harvest_date: formData.last_harvest_date || undefined,
+        boundary_polygon_old: boundaryGeoJSON,
+        center_point_old: centerGeoJSON,
+        boundary_method: 'gps_points',
+        gps_accuracy_meters: 10,
+        gps_recorded_at: new Date().toISOString()
+      });
+
+      // Add timeout to prevent indefinite waiting
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timed out. Please try again.')), 30000)
+      );
+
+      await Promise.race([savePromise, timeoutPromise]);
 
       toast({
-        title: "✅ Success",
-        description: "Your land has been saved successfully!",
+        title: t('lands.wizard.toast.success_title'),
+        description: t('lands.wizard.toast.success_message'),
       });
 
       // Clear draft
@@ -261,9 +335,21 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
       
       onComplete();
     } catch (error: any) {
+      console.error('❌ [ModernLandWizard] Save error:', error);
+      
+      let errorMessage = t('lands.wizard.toast.error_generic');
+      
+      if (error.message?.includes('timeout')) {
+        errorMessage = t('lands.wizard.toast.error_timeout');
+      } else if (error.message?.includes('logged in')) {
+        errorMessage = t('lands.wizard.toast.error_session');
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
-        title: "Error",
-        description: error.message || "Failed to save land",
+        title: t('lands.wizard.toast.error_title'),
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -272,41 +358,41 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
   };
 
   const steps = [
-    { number: 1, title: 'Basic Info', icon: Home },
-    { number: 2, title: 'Location', icon: MapPin },
-    { number: 3, title: 'Land Details', icon: Sprout },
-    { number: 4, title: 'Review & Save', icon: Save },
+    { number: 1, title: t('lands.wizard.steps.basic_info'), icon: Home },
+    { number: 2, title: t('lands.wizard.steps.location'), icon: MapPin },
+    { number: 3, title: t('lands.wizard.steps.land_details'), icon: Sprout },
+    { number: 4, title: t('lands.wizard.steps.review_save'), icon: Save },
   ];
 
   const soilTypes = [
-    { value: 'alluvial', label: 'Alluvial' },
-    { value: 'black', label: 'Black (Regur)' },
-    { value: 'red', label: 'Red' },
-    { value: 'laterite', label: 'Laterite' },
-    { value: 'desert', label: 'Desert' },
-    { value: 'mountain', label: 'Mountain' },
+    { value: 'alluvial', label: t('lands.wizard.soil_types.alluvial') },
+    { value: 'black', label: t('lands.wizard.soil_types.black') },
+    { value: 'red', label: t('lands.wizard.soil_types.red') },
+    { value: 'laterite', label: t('lands.wizard.soil_types.laterite') },
+    { value: 'desert', label: t('lands.wizard.soil_types.desert') },
+    { value: 'mountain', label: t('lands.wizard.soil_types.mountain') },
   ];
 
   const waterSources = [
-    { value: 'well', label: 'Well' },
-    { value: 'borewell', label: 'Borewell' },
-    { value: 'canal', label: 'Canal' },
-    { value: 'river', label: 'River' },
-    { value: 'rain', label: 'Rain-fed' },
-    { value: 'tank', label: 'Tank' },
+    { value: 'well', label: t('lands.wizard.water_sources.well') },
+    { value: 'borewell', label: t('lands.wizard.water_sources.borewell') },
+    { value: 'canal', label: t('lands.wizard.water_sources.canal') },
+    { value: 'river', label: t('lands.wizard.water_sources.river') },
+    { value: 'rain', label: t('lands.wizard.water_sources.rain') },
+    { value: 'tank', label: t('lands.wizard.water_sources.tank') },
   ];
 
   const irrigationTypes = [
-    { value: 'drip', label: 'Drip' },
-    { value: 'sprinkler', label: 'Sprinkler' },
-    { value: 'flood', label: 'Flood' },
-    { value: 'furrow', label: 'Furrow' },
-    { value: 'manual', label: 'Manual' },
-    { value: 'none', label: 'None' },
+    { value: 'drip', label: t('lands.wizard.irrigation_types.drip') },
+    { value: 'sprinkler', label: t('lands.wizard.irrigation_types.sprinkler') },
+    { value: 'flood', label: t('lands.wizard.irrigation_types.flood') },
+    { value: 'furrow', label: t('lands.wizard.irrigation_types.furrow') },
+    { value: 'manual', label: t('lands.wizard.irrigation_types.manual') },
+    { value: 'none', label: t('lands.wizard.irrigation_types.none') },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
+    <div className="min-h-full bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 pb-24">
       {/* Progress Bar */}
       <div className="max-w-4xl mx-auto mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -331,7 +417,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         </div>
         <div className="text-center">
           <h2 className="text-xl font-bold text-foreground">
-            Step {currentStep} of 4: {steps[currentStep - 1].title}
+            {t('lands.wizard.step_of_total', { current: currentStep, total: 4, title: steps[currentStep - 1].title })}
           </h2>
         </div>
       </div>
@@ -354,55 +440,56 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <Home className="w-5 h-5 text-primary" />
-                      Basic Information
+                      {t('lands.wizard.sections.basic_info')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Enter your land name, survey number, and ownership type')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.basic_info'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="name" className="text-base mb-2 block">
-                        Land Name <span className="text-destructive">*</span>
+                        {t('lands.wizard.fields.land_name')} <span className="text-destructive">*</span>
                       </Label>
                       <Input
                         id="name"
                         value={formData.name}
                         onChange={(e) => handleInputChange('name', e.target.value)}
-                        placeholder="e.g., North Field"
+                        placeholder={t('lands.wizard.fields.land_name_placeholder')}
                         className="h-12 text-base"
                       />
                     </div>
 
                     <div>
                       <Label htmlFor="survey_number" className="text-base mb-2 block">
-                        Survey/Gat Number
+                        {t('lands.wizard.fields.survey_number')}
                       </Label>
                       <Input
                         id="survey_number"
                         value={formData.survey_number}
                         onChange={(e) => handleInputChange('survey_number', e.target.value)}
-                        placeholder="e.g., 123/A"
+                        placeholder={t('lands.wizard.fields.survey_placeholder')}
                         className="h-12 text-base"
                       />
                     </div>
 
                     <div>
                       <Label className="text-base mb-3 block">
-                        Ownership Type <span className="text-destructive">*</span>
+                        {t('lands.wizard.ownership.label')} <span className="text-destructive">*</span>
                       </Label>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-2 gap-3">
                         {[
-                          { value: 'owned', label: 'Owned', icon: '🏡' },
-                          { value: 'leased', label: 'Leased', icon: '📝' },
-                          { value: 'shared', label: 'Shared', icon: '🤝' },
+                          { value: 'owned', label: t('lands.wizard.ownership.owned'), icon: '🏡' },
+                          { value: 'leased', label: t('lands.wizard.ownership.leased'), icon: '📝' },
+                          { value: 'shared', label: t('lands.wizard.ownership.shared'), icon: '🤝' },
+                          { value: 'contract', label: t('lands.wizard.ownership.contract'), icon: '📑' },
                         ].map((type) => (
                           <Card
                             key={type.value}
@@ -432,22 +519,22 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <MapPin className="w-5 h-5 text-primary" />
-                      Location Details
+                      {t('lands.wizard.sections.location')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Select your state, district, taluka, and village')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.location'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-base mb-2 block">State</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.state')}</Label>
                       <Select
                         value={formData.state_id}
                         onValueChange={(value) => {
@@ -464,12 +551,12 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         }}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select State" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_state')} />
                         </SelectTrigger>
                         <SelectContent>
                           {states.map((state) => (
                             <SelectItem key={state.id} value={state.id}>
-                              {state.name}
+                              {tRef(state, 'name') || state.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -477,7 +564,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">District</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.district')}</Label>
                       <Select
                         value={formData.district_id}
                         onValueChange={(value) => {
@@ -493,12 +580,12 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         disabled={!formData.state_id}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select District" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_district')} />
                         </SelectTrigger>
                         <SelectContent>
                           {districts.map((district) => (
                             <SelectItem key={district.id} value={district.id}>
-                              {district.name}
+                              {tRef(district, 'name') || district.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -506,7 +593,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Taluka</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.taluka')}</Label>
                       <Select
                         value={formData.taluka_id}
                         onValueChange={(value) => {
@@ -520,12 +607,12 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         disabled={!formData.district_id}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Taluka" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_taluka')} />
                         </SelectTrigger>
                         <SelectContent>
                           {talukas.map((taluka) => (
                             <SelectItem key={taluka.id} value={taluka.id}>
-                              {taluka.name}
+                              {tRef(taluka, 'name') || taluka.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -533,7 +620,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Village</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.village')}</Label>
                       <Select
                         value={formData.village_id}
                         onValueChange={(value) => {
@@ -544,12 +631,12 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         disabled={!formData.taluka_id}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Village" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_village')} />
                         </SelectTrigger>
                         <SelectContent>
                           {villages.map((village) => (
                             <SelectItem key={village.id} value={village.id}>
-                              {village.name}
+                              {tRef(village, 'name') || village.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -565,28 +652,28 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <Sprout className="w-5 h-5 text-primary" />
-                      Land Characteristics
+                      {t('lands.wizard.sections.land_details')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Enter soil type, water source, crops, and dates')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.land_details'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-base mb-2 block">Soil Type</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.soil_type')}</Label>
                       <Select
                         value={formData.soil_type}
                         onValueChange={(value) => handleInputChange('soil_type', value)}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Soil Type" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_soil')} />
                         </SelectTrigger>
                         <SelectContent>
                           {soilTypes.map((type) => (
@@ -599,13 +686,13 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Water Source</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.water_source')}</Label>
                       <Select
                         value={formData.water_source}
                         onValueChange={(value) => handleInputChange('water_source', value)}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Water Source" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_water')} />
                         </SelectTrigger>
                         <SelectContent>
                           {waterSources.map((source) => (
@@ -618,13 +705,13 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Irrigation Type</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.irrigation_type')}</Label>
                       <Select
                         value={formData.irrigation_type}
                         onValueChange={(value) => handleInputChange('irrigation_type', value)}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Irrigation" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_irrigation')} />
                         </SelectTrigger>
                         <SelectContent>
                           {irrigationTypes.map((type) => (
@@ -636,47 +723,34 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                       </Select>
                     </div>
 
-                    <div>
-                      <Label className="text-base mb-2 block">Current Crop</Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowCurrentCropModal(true)}
-                        className="w-full h-12 text-base justify-start text-left font-normal"
-                      >
-                        {formData.current_crop ? (
-                          <span className="flex items-center gap-2">
-                            <Wheat className="w-4 h-4 text-primary" />
-                            <span>{formData.current_crop}</span>
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">Select Current Crop</span>
-                        )}
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label className="text-base mb-2 block">Previous Crop</Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowPreviousCropModal(true)}
-                        className="w-full h-12 text-base justify-start text-left font-normal"
-                      >
-                        {formData.previous_crop ? (
-                          <span className="flex items-center gap-2">
-                            <TreePine className="w-4 h-4 text-muted-foreground" />
-                            <span>{formData.previous_crop}</span>
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">Select Previous Crop</span>
-                        )}
-                      </Button>
+                    {/* Modern Crop Selection Cards */}
+                    <div className="col-span-1 md:col-span-2 space-y-4">
+                      <Label className="text-base font-semibold block text-foreground/90">
+                        {t('lands.wizard.crop_selection')}
+                      </Label>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <CropSelectionCard
+                          label={t('lands.wizard.current_crop')}
+                          value={formData.current_crop}
+                          cropId={currentCropId}
+                          onSelect={handleCurrentCropSelect}
+                          variant="current"
+                        />
+                        
+                        <CropSelectionCard
+                          label={t('lands.wizard.previous_crop')}
+                          value={formData.previous_crop}
+                          cropId={previousCropId}
+                          onSelect={handlePreviousCropSelect}
+                          variant="previous"
+                        />
+                      </div>
                     </div>
 
                     <div>
                       <Label htmlFor="cultivation_date" className="text-base mb-2 block">
-                        Cultivation Date
+                        {t('lands.wizard.fields.cultivation_date')}
                       </Label>
                       <Input
                         id="cultivation_date"
@@ -689,7 +763,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     <div>
                       <Label htmlFor="last_harvest_date" className="text-base mb-2 block">
-                        Last Harvest Date
+                        {t('lands.wizard.fields.last_harvest_date')}
                       </Label>
                       <Input
                         id="last_harvest_date"
@@ -709,16 +783,16 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <Save className="w-5 h-5 text-primary" />
-                      Review & Save
+                      {t('lands.wizard.sections.review')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Review your land details and save')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.review'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
@@ -727,19 +801,19 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     <Card className="p-4 bg-primary/5 border-primary/20">
                       <h4 className="font-semibold mb-3 flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
-                        Land Area
+                        {t('lands.wizard.review.land_area')}
                       </h4>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <p className="text-sm text-muted-foreground">Acres</p>
+                          <p className="text-sm text-muted-foreground">{t('lands.wizard.review_labels.acres')}</p>
                           <p className="text-lg font-bold">{area.acres.toFixed(2)}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">Guntha</p>
+                          <p className="text-sm text-muted-foreground">{t('lands.wizard.review_labels.guntha')}</p>
                           <p className="text-lg font-bold">{area.guntha.toFixed(1)}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">Sq.ft</p>
+                          <p className="text-sm text-muted-foreground">{t('lands.wizard.review_labels.sqft')}</p>
                           <p className="text-lg font-bold">{area.sqft.toLocaleString()}</p>
                         </div>
                       </div>
@@ -747,41 +821,41 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     {/* Basic Info Review */}
                     <Card className="p-4">
-                      <h4 className="font-semibold mb-3">Basic Information</h4>
+                      <h4 className="font-semibold mb-3">{t('lands.wizard.review.basic_info')}</h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Name:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.name')}:</span>
                           <span className="font-medium">{formData.name || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Survey Number:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.survey_number')}:</span>
                           <span className="font-medium">{formData.survey_number || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Ownership:</span>
-                          <span className="font-medium capitalize">{formData.ownership_type}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.ownership')}:</span>
+                          <span className="font-medium">{t(`lands.wizard.ownership.${formData.ownership_type}`)}</span>
                         </div>
                       </div>
                     </Card>
 
                     {/* Location Review */}
                     <Card className="p-4">
-                      <h4 className="font-semibold mb-3">Location</h4>
+                      <h4 className="font-semibold mb-3">{t('lands.wizard.review.location')}</h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">State:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.state')}:</span>
                           <span className="font-medium">{formData.state || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">District:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.district')}:</span>
                           <span className="font-medium">{formData.district || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Taluka:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.taluka')}:</span>
                           <span className="font-medium">{formData.taluka || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Village:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.village')}:</span>
                           <span className="font-medium">{formData.village || '-'}</span>
                         </div>
                       </div>
@@ -789,19 +863,19 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     {/* Land Details Review */}
                     <Card className="p-4">
-                      <h4 className="font-semibold mb-3">Land Details</h4>
+                      <h4 className="font-semibold mb-3">{t('lands.wizard.review.land_details')}</h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Soil Type:</span>
-                          <span className="font-medium capitalize">{formData.soil_type || '-'}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.soil_type')}:</span>
+                          <span className="font-medium">{formData.soil_type ? t(`lands.wizard.soil_types.${formData.soil_type}`) : '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Water Source:</span>
-                          <span className="font-medium capitalize">{formData.water_source || '-'}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.water_source')}:</span>
+                          <span className="font-medium">{formData.water_source ? t(`lands.wizard.water_sources.${formData.water_source}`) : '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Current Crop:</span>
-                          <span className="font-medium capitalize">{formData.current_crop || '-'}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.current_crop')}:</span>
+                          <span className="font-medium">{formData.current_crop || '-'}</span>
                         </div>
                       </div>
                     </Card>
@@ -810,10 +884,10 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     <Card className="p-4 bg-secondary/5 border-secondary/20">
                       <h4 className="font-semibold mb-2 flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
-                        Boundary Points
+                        {t('lands.wizard.review.boundary_points')}
                       </h4>
                       <p className="text-sm text-muted-foreground">
-                        {boundary.length} points captured from map
+                        {t('lands.wizard.review.points_captured', { count: boundary.length })}
                       </p>
                     </Card>
                   </div>
@@ -830,7 +904,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
               className="gap-2"
             >
               <ChevronLeft className="w-4 h-4" />
-              {currentStep === 1 ? 'Cancel' : 'Previous'}
+              {currentStep === 1 ? t('lands.wizard.buttons.cancel') : t('lands.wizard.buttons.previous')}
             </Button>
 
             {currentStep < 4 ? (
@@ -842,7 +916,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   (currentStep === 2 && (!formData.state || !formData.district))
                 }
               >
-                Next
+                {t('lands.wizard.buttons.next')}
                 <ChevronRight className="w-4 h-4" />
               </Button>
             ) : (
@@ -852,11 +926,11 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                 className="gap-2 bg-success hover:bg-success/90"
               >
                 {isSaving ? (
-                  <>Saving...</>
+                  <>{t('lands.wizard.buttons.saving')}</>
                 ) : (
                   <>
                     <Check className="w-4 h-4" />
-                    Save Land
+                    {t('lands.wizard.buttons.save_land')}
                   </>
                 )}
               </Button>
@@ -865,24 +939,6 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         </Card>
       </div>
 
-      {/* Crop Selector Modals */}
-      <CropSelectorModal
-        open={showCurrentCropModal}
-        onClose={() => setShowCurrentCropModal(false)}
-        onSelect={handleCurrentCropSelect}
-        selectedCropId={currentCropId}
-        title="Select Current Crop"
-        description="Choose the crop currently growing on this land"
-      />
-
-      <CropSelectorModal
-        open={showPreviousCropModal}
-        onClose={() => setShowPreviousCropModal(false)}
-        onSelect={handlePreviousCropSelect}
-        selectedCropId={previousCropId}
-        title="Select Previous Crop"
-        description="Choose the crop that was previously grown on this land"
-      />
     </div>
   );
 }

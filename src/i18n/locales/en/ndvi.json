@@ -1,0 +1,183 @@
+{
+  "__meta": {
+    "page": "ndvi",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "ndvi": {
+    "title": "NDVI Analysis",
+    "subtitle": "Satellite crop health monitoring",
+    "satellite_monitoring": "Satellite monitoring",
+    "select_your_field": "Select Your Field",
+    "choose_field_analyze": "Choose a field to analyze",
+    "no_fields_found": "No fields found",
+    "add_first_field": "Add Your First Field",
+    "health_status": {
+      "excellent": "Excellent Health",
+      "good": "Good Health",
+      "moderate": "Moderate Health",
+      "poor": "Poor Health"
+    },
+    "fetching_data": "Fetching satellite data...",
+    "advice": {
+      "crop_very_healthy": "🌱 Excellent! Your crop is very healthy",
+      "good_improve": "🌿 Good! Small improvements possible",
+      "attention_stress": "⚠️ Attention! Crop shows stress",
+      "critical_action": "🆘 Critical! Immediate action needed"
+    },
+    "actions": {
+      "maintain_water": "Maintain current water levels",
+      "continue_monitoring": "Continue pest monitoring",
+      "check_in_days": "Check again in {{days}} days",
+      "increase_irrigation": "💧 Increase irrigation",
+      "apply_fertilizer": "Can apply light fertilizer",
+      "remove_weeds": "Remove weeds if any",
+      "check_leaf_color": "Observe leaf color",
+      "irrigate_immediately": "🚨 Irrigate immediately",
+      "check_nutrients": "🌾 Check nutrients",
+      "look_pests": "🐛 Look for pests/disease",
+      "contact_expert": "📞 Contact expert",
+      "check_tomorrow": "Check tomorrow",
+      "take_photos": "Take photos",
+      "water_now": "💦 Water now",
+      "call_officer": "☎️ Call agriculture officer",
+      "apply_treatment": "💊 Apply treatment",
+      "inform_insurance": "📋 Inform insurance",
+      "check_daily": "Check daily",
+      "document_evidence": "Document evidence"
+    },
+    "next_steps": {
+      "record_height": "Record crop height",
+      "monitor_weather": "Monitor weather"
+    },
+    "indices": {
+      "ndvi": "NDVI",
+      "ndwi": "Water Stress",
+      "evi": "Vegetation Health",
+      "savi": "Soil Moisture"
+    },
+    "map": {
+      "view_map": "View Map",
+      "satellite_view": "Satellite View",
+      "health_overlay": "Health Overlay",
+      "aria": "NDVI satellite map",
+      "cloud": "Cloud {{value}}%",
+      "fullscreen": "Fullscreen",
+      "full": "Full",
+      "exit": "Exit",
+      "opacity": "Heatmap opacity",
+      "legend": "Legend",
+      "legend_title": "NDVI scale",
+      "legend_note": "Continuous NDVI palette · NASA/ESA convention",
+      "max": "Max",
+      "mean": "Mean",
+      "min": "Min",
+      "mode_raster": "Pixel raster",
+      "mode_zonal": "Zonal mosaic",
+      "mode_boundary": "Boundary only",
+      "mode_land_thumb": "Satellite NDVI",
+      "no_clean_for_date": "No clean observation on this date",
+      "no_data": "No satellite data yet",
+      "provenance": "Source",
+      "recenter": "Recenter",
+      "stale_warning": "Showing latest clean observation",
+      "thumbnail_alt": "Satellite NDVI thumbnail"
+    },
+    "historical": {
+      "trend": "Historical Trend",
+      "last_30_days": "Last 30 Days",
+      "comparison": "Compare Dates"
+    },
+    "metadata": {
+      "cloud_coverage": "Cloud Coverage",
+      "last_updated": "Last Updated",
+      "days_ago": "{{count}} days ago",
+      "satellite_source": "Satellite Source"
+    },
+    "refresh": {
+      "data_refreshed": "✅ Data Refreshed",
+      "latest_data": "Latest satellite data loaded",
+      "refresh_failed": "❌ Refresh Failed",
+      "try_again": "Please try again"
+    },
+    "check_back": "Check back in {{days}} days",
+    "no_clean": "No clean satellite observation yet",
+    "tab": {
+      "now": "Now",
+      "trend": "Trend",
+      "map": "Map"
+    },
+    "now": {
+      "status": "Status",
+      "cloud": "Cloud",
+      "quality": "Quality",
+      "field_stats": "Field statistics",
+      "guided_actions": "Guided actions",
+      "rule_based": "Rule-based · no AI guesses"
+    },
+    "trend": {
+      "need_more": "Need at least 4 reliable observations"
+    },
+    "projection": {
+      "title": "Indicative projection",
+      "indicative": "Indicative",
+      "disclaimer": "Linear projection from recent observations · not a forecast"
+    },
+    "reliability": {
+      "stale": "Latest clean reading is {{days}} days old"
+    },
+    "risk": {
+      "low": "Low risk",
+      "medium": "Medium risk",
+      "high": "High risk",
+      "critical": "Critical risk"
+    },
+    "stage_aware": {
+      "germination": "Healthy NDVI for germination stage",
+      "tillering": "Healthy NDVI for tillering stage",
+      "vegetative": "Healthy NDVI for vegetative growth",
+      "reproductive": "Healthy NDVI for reproductive stage",
+      "maturity": "Healthy NDVI for maturity stage",
+      "unknown": "Stage-aware reference unavailable"
+    },
+    "stages": {
+      "germination": "Germination",
+      "tillering": "Tillering",
+      "vegetative": "Vegetative",
+      "reproductive": "Reproductive",
+      "maturity": "Maturity",
+      "unknown": "Unknown stage"
+    },
+    "early_warning": {
+      "title": "Early warning",
+      "active_alerts": "Active alerts",
+      "no_alerts": "No active alerts",
+      "recommended": "Recommended actions"
+    },
+    "warning": {
+      "attention": "Attention needed",
+      "no_alerts": "No alerts"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show NDVI analysis",
+      "Check crop health",
+      "Satellite monitoring",
+      "View field health"
+    ],
+    "voice_examples_hi": [
+      "NDVI विश्लेषण दिखाएं",
+      "फसल स्वास्थ्य जांचें",
+      "सैटेलाइट निगरानी",
+      "खेत स्वास्थ्य देखें"
+    ],
+    "voice_examples_mr": [
+      "NDVI विश्लेषण दाखवा",
+      "पीक आरोग्य तपासा",
+      "उपग्रह निरीक्षण",
+      "शेत आरोग्य पहा"
+    ]
+  }
+}

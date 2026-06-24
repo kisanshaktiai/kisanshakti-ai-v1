@@ -2,37 +2,53 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
     <title>KisanShakti - Empowering Farmers</title>
     <meta name="description" content="Digital platform empowering Indian farmers with weather updates, market prices, advisory services, and government schemes" />
     <meta name="author" content="KisanShakti" />
     
-    <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#22c55e" />
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#22c55e">
+
+    <!-- Apple / iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="KisanShakti" />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     
     <!-- Open Graph / Social Media Tags -->
-    <meta property="og:title" content="KisanShakti - Empowering Farmers" />
-    <meta property="og:description" content="Digital platform for Indian farmers" />
+    <meta property="og:title" content="KisanShakti AI - Intelligent AI Guru for Farmers" />
+    <meta property="og:description" content="Empowering Indian farmers with AI-powered crop advisory, weather insights, market prices, and smart farming solutions" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image" content="https://kisanshakti-ai-v1.lovable.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://kisanshakti-ai-v1.lovable.app" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="KisanShakti" />
-    <meta name="twitter:description" content="Empowering Indian farmers digitally" />
-    <meta name="twitter:image" content="/og-image.png" />
+    <meta name="twitter:title" content="KisanShakti AI - Intelligent AI Guru for Farmers" />
+    <meta name="twitter:description" content="AI-powered farming assistant for Indian farmers" />
+    <meta name="twitter:image" content="https://kisanshakti-ai-v1.lovable.app/og-image.png" />
     
-    <!-- Manifest -->
-    <link rel="manifest" id="app-manifest" />
+    <!-- Android/Chrome PWA -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <!-- Microsoft Windows/Edge PWA -->
+    <meta name="msapplication-TileColor" content="#22c55e" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    
+    <!-- PWA: Service Worker will be registered in main.tsx -->
   </head>
 
   <body>
     <div id="root">
       <!-- Instant loading state - shows BEFORE React loads -->
       <style>
+        :root {
+          --loader-primary: #059669;
+          --loader-accent: #34d399;
+        }
+        
         .app-loader {
           position: fixed;
           inset: 0;
@@ -40,9 +56,35 @@
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
+          background-size: 200% 200%;
+          animation: fadeIn 0.3s ease-out, gradientShift 8s ease infinite;
           z-index: 9999;
-          animation: fadeIn 0.2s ease-out;
+          overflow: hidden;
+        }
+        
+        /* Floating particles overlay */
+        .app-loader::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image: 
+            radial-gradient(circle at 20% 30%, rgba(255,255,255,0.1) 1px, transparent 1px),
+            radial-gradient(circle at 60% 70%, rgba(255,255,255,0.08) 1px, transparent 1px),
+            radial-gradient(circle at 80% 20%, rgba(255,255,255,0.12) 1px, transparent 1px);
+          background-size: 100px 100px, 150px 150px, 80px 80px;
+          animation: particlesFloat 20s linear infinite;
+          pointer-events: none;
+        }
+        
+        @keyframes gradientShift {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        
+        @keyframes particlesFloat {
+          0% { transform: translateY(0); }
+          100% { transform: translateY(-100px); }
         }
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -62,105 +104,828 @@
             transform: translateY(0);
           }
         }
-        .app-loader-logo {
-          width: 80px;
-          height: 80px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 20px;
-          margin: 0 auto 24px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          backdrop-filter: blur(10px);
-          border: 2px solid rgba(255, 255, 255, 0.2);
-        }
-        .app-loader-logo svg {
-          width: 48px;
-          height: 48px;
-          color: white;
-        }
-        .app-loader-spinner {
-          width: 48px;
-          height: 48px;
-          border: 4px solid rgba(255, 255, 255, 0.2);
-          border-top-color: white;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-          margin: 0 auto 16px;
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
         .app-loader-text {
           color: white;
           font-size: 18px;
           font-weight: 600;
-          margin-bottom: 8px;
+          margin-top: 24px;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
         .app-loader-subtext {
           color: rgba(255, 255, 255, 0.7);
           font-size: 14px;
+          margin-top: 8px;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
-        .app-loader-dots {
-          display: inline-flex;
-          gap: 4px;
+        
+        /* Agricultural Animations Container */
+        .agri-animation {
+          width: 200px;
+          height: 200px;
+          position: relative;
+          display: none;
         }
-        .app-loader-dot {
-          width: 4px;
-          height: 4px;
-          background: rgba(255, 255, 255, 0.7);
+        .agri-animation.active {
+          display: block;
+        }
+        
+        /* Animation 1: Seed to Sprout - Enhanced 2030 Design */
+        .anim-seed-sprout .soil {
+          position: absolute;
+          bottom: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 140px;
+          height: 40px;
+          background: linear-gradient(180deg, #78350f 0%, #451a03 100%);
+          border-radius: 20px 20px 0 0;
+          animation: soil-appear 0.5s ease-out forwards;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 -2px 8px rgba(0,0,0,0.2);
+        }
+        .anim-seed-sprout .seed {
+          position: absolute;
+          bottom: 35px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 14px;
+          height: 18px;
+          background: radial-gradient(circle, #f59e0b 0%, #d97706 100%);
           border-radius: 50%;
-          animation: pulse 1.4s ease-in-out infinite;
+          animation: seed-crack 1s 0.5s ease-out forwards;
+          box-shadow: 0 4px 12px rgba(217, 119, 6, 0.6), 0 0 20px rgba(245, 158, 11, 0.4);
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
         }
-        .app-loader-dot:nth-child(1) { animation-delay: 0s; }
-        .app-loader-dot:nth-child(2) { animation-delay: 0.2s; }
-        .app-loader-dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes pulse {
-          0%, 80%, 100% {
-            opacity: 0.3;
-            transform: scale(1);
-          }
-          40% {
-            opacity: 1;
-            transform: scale(1.3);
+        .anim-seed-sprout .seed::after {
+          content: '';
+          position: absolute;
+          inset: 20%;
+          background: radial-gradient(circle, rgba(255,255,255,0.5), transparent);
+          border-radius: 50% 50% 0 50%;
+          transform: rotate(-45deg);
+        }
+        .anim-seed-sprout .stem {
+          position: absolute;
+          bottom: 40px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 5px;
+          height: 0;
+          background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+          animation: stem-grow 1.5s 1s ease-out forwards;
+          filter: drop-shadow(0 0 12px rgba(52, 211, 153, 0.8)) drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+          box-shadow: inset 0 0 4px rgba(255,255,255,0.3);
+        }
+        .anim-seed-sprout .leaf {
+          position: absolute;
+          width: 24px;
+          height: 34px;
+          background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+          border-radius: 0 100% 0 100%;
+          opacity: 0;
+          filter: drop-shadow(0 3px 8px rgba(52, 211, 153, 0.5));
+          box-shadow: inset 2px -2px 6px rgba(255,255,255,0.2);
+        }
+        .anim-seed-sprout .leaf::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 10%;
+          right: 10%;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+          transform: rotate(-45deg);
+        }
+        .anim-seed-sprout .leaf-left {
+          top: 20px;
+          left: -18px;
+          transform: rotate(-30deg);
+          animation: leaf-grow 0.6s 2.3s ease-out forwards, leaf-sway 3s 3s ease-in-out infinite;
+        }
+        .anim-seed-sprout .leaf-right {
+          top: 30px;
+          right: -18px;
+          transform: rotate(150deg);
+          animation: leaf-grow 0.6s 2.6s ease-out forwards, leaf-sway 3s 3.2s ease-in-out infinite;
+        }
+        
+        @keyframes leaf-sway {
+          0%, 100% { transform: rotate(var(--r, 0deg)) translateX(0); }
+          50% { transform: rotate(var(--r, 0deg)) translateX(2px); }
+        }
+        
+        /* Animation 2: Smart Tractor - 2030 Design */
+        .anim-tractor .field {
+          position: absolute;
+          bottom: 0;
+          width: 100%;
+          height: 50px;
+          background: linear-gradient(180deg, #92400e 0%, #78350f 100%);
+          border-radius: 10px 10px 0 0;
+          box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .anim-tractor .tractor {
+          position: absolute;
+          bottom: 50px;
+          left: -80px;
+          width: 60px;
+          height: 45px;
+          animation: tractor-move 5s ease-in-out infinite;
+          filter: drop-shadow(0 6px 12px rgba(0,0,0,0.4));
+        }
+        .anim-tractor .tractor-body {
+          width: 42px;
+          height: 28px;
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          border-radius: 6px;
+          position: relative;
+          box-shadow: 0 4px 16px rgba(16, 185, 129, 0.5), inset 2px 2px 6px rgba(255,255,255,0.2);
+        }
+        .anim-tractor .tractor-cabin {
+          width: 24px;
+          height: 18px;
+          background: linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.1));
+          backdrop-filter: blur(12px);
+          position: absolute;
+          top: -18px;
+          right: 6px;
+          border-radius: 4px 4px 2px 2px;
+          border: 1.5px solid rgba(255, 255, 255, 0.4);
+          box-shadow: inset 0 -2px 6px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .anim-tractor .tractor-cabin::before {
+          content: '';
+          position: absolute;
+          top: 30%;
+          left: 15%;
+          right: 15%;
+          height: 2px;
+          background: rgba(255,255,255,0.3);
+        }
+        .anim-tractor .wheel {
+          position: absolute;
+          background: radial-gradient(circle, #374151 0%, #1f2937 100%);
+          border-radius: 50%;
+          border: 2.5px solid #e5e7eb;
+          box-shadow: inset 0 0 8px rgba(0,0,0,0.5), 0 3px 8px rgba(0,0,0,0.4);
+        }
+        .anim-tractor .wheel::after {
+          content: '';
+          position: absolute;
+          inset: 30%;
+          background: #6b7280;
+          border-radius: 50%;
+          box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+        }
+        .anim-tractor .wheel-front {
+          width: 18px;
+          height: 18px;
+          bottom: -9px;
+          right: 3px;
+          animation: wheel-spin 0.6s linear infinite;
+        }
+        .anim-tractor .wheel-back {
+          width: 24px;
+          height: 24px;
+          bottom: -12px;
+          left: 3px;
+          animation: wheel-spin 0.6s linear infinite;
+        }
+        .anim-tractor .furrow {
+          position: absolute;
+          bottom: 45px;
+          height: 4px;
+          background: linear-gradient(90deg, transparent, #78350f, transparent);
+          opacity: 0;
+          border-radius: 2px;
+          animation: furrow-appear 0.6s ease-out forwards;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .anim-tractor .furrow-1 { left: 0; width: 0; animation-delay: 1.2s; }
+        .anim-tractor .furrow-2 { left: 0; width: 0; animation-delay: 2.2s; }
+        .anim-tractor .furrow-3 { left: 0; width: 0; animation-delay: 3.2s; }
+        
+        /* GPS Signal */
+        .anim-tractor .gps-signal {
+          position: absolute;
+          top: -25px;
+          left: 50%;
+          width: 40px;
+          height: 40px;
+          border: 2px solid rgba(59, 130, 246, 0.4);
+          border-radius: 50%;
+          animation: gps-pulse 2s ease-out infinite;
+        }
+        @keyframes gps-pulse {
+          0%, 100% { transform: translate(-50%, 0) scale(0.5); opacity: 0; }
+          50% { transform: translate(-50%, 0) scale(1.5); opacity: 1; }
+        }
+        
+        /* Animation 3: AI Irrigation - 2030 Design */
+        .anim-water .ground {
+          position: absolute;
+          bottom: 0;
+          width: 100%;
+          height: 40px;
+          background: linear-gradient(180deg, #92400e 0%, #78350f 100%);
+          border-radius: 10px 10px 0 0;
+          box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .anim-water .sensor {
+          position: absolute;
+          top: 30px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 20px;
+          height: 20px;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+          border-radius: 50%;
+          box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 4px 12px rgba(0,0,0,0.3);
+          animation: sensor-pulse 2s ease-in-out infinite;
+        }
+        .anim-water .sensor::after {
+          content: '';
+          position: absolute;
+          inset: 30%;
+          background: rgba(255,255,255,0.5);
+          border-radius: 50%;
+          animation: sensor-scan 2s ease-in-out infinite;
+        }
+        @keyframes sensor-pulse {
+          0%, 100% { transform: translateX(-50%) scale(1); }
+          50% { transform: translateX(-50%) scale(1.1); box-shadow: 0 0 30px rgba(59, 130, 246, 0.8); }
+        }
+        @keyframes sensor-scan {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 1; }
+        }
+        .anim-water .crop {
+          position: absolute;
+          bottom: 40px;
+          width: 7px;
+          background: linear-gradient(180deg, #34d399 0%, #10b981 50%, #059669 100%);
+          transform-origin: bottom;
+          animation: crop-grow 2s ease-out forwards;
+          filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.6));
+          border-radius: 2px 2px 0 0;
+          box-shadow: inset 0 0 4px rgba(255,255,255,0.2);
+        }
+        .anim-water .crop-1 { left: 60px; height: 0; animation-delay: 0.5s; }
+        .anim-water .crop-2 { left: 90px; height: 0; animation-delay: 0.8s; }
+        .anim-water .crop-3 { left: 120px; height: 0; animation-delay: 1.1s; }
+        .anim-water .drop {
+          position: absolute;
+          width: 10px;
+          height: 13px;
+          background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.9), #3b82f6 60%, #2563eb);
+          border-radius: 0 50% 50% 50%;
+          opacity: 0;
+          animation: drop-fall 1.8s ease-in infinite;
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+        .anim-water .drop::before {
+          content: '';
+          position: absolute;
+          top: 15%;
+          left: 25%;
+          width: 3px;
+          height: 3px;
+          background: rgba(255,255,255,0.8);
+          border-radius: 50%;
+        }
+        .anim-water .drop-1 { top: 20px; left: 60px; animation-delay: 0s; }
+        .anim-water .drop-2 { top: 20px; left: 90px; animation-delay: 0.4s; }
+        .anim-water .drop-3 { top: 20px; left: 120px; animation-delay: 0.8s; }
+        
+        .anim-water .ripple {
+          position: absolute;
+          bottom: 40px;
+          width: 20px;
+          height: 4px;
+          border-radius: 50%;
+          background: rgba(59, 130, 246, 0.3);
+          animation: ripple-expand 0.8s ease-out;
+          opacity: 0;
+        }
+        @keyframes ripple-expand {
+          0% { width: 10px; opacity: 0.6; }
+          100% { width: 30px; opacity: 0; }
+        }
+        
+        /* Animation 4: Sunrise Harvest - 2030 Design */
+        .anim-sunrise .field {
+          position: absolute;
+          bottom: 0;
+          width: 100%;
+          height: 60px;
+          background: linear-gradient(180deg, #34d399 0%, #10b981 30%, #78350f 100%);
+          border-radius: 10px 10px 0 0;
+          box-shadow: inset 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .anim-sunrise .sun {
+          position: absolute;
+          bottom: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 90px;
+          height: 90px;
+          background: radial-gradient(circle at 35% 35%, #fef3c7 0%, #fde047 30%, #fbbf24 60%, #f59e0b 100%);
+          border-radius: 50%;
+          animation: sun-rise 3.5s ease-out forwards;
+          box-shadow: 
+            0 0 50px rgba(251, 191, 36, 0.8), 
+            0 0 100px rgba(251, 191, 36, 0.4),
+            inset -10px -10px 30px rgba(0,0,0,0.1);
+        }
+        .anim-sunrise .sun::before {
+          content: '';
+          position: absolute;
+          inset: 20%;
+          background: radial-gradient(circle at 40% 40%, rgba(255,255,255,0.6), transparent);
+          border-radius: 50%;
+        }
+        .anim-sunrise .ray {
+          position: absolute;
+          bottom: 40px;
+          left: 50%;
+          width: 3px;
+          height: 0;
+          background: linear-gradient(180deg, #fbbf24 0%, rgba(251, 191, 36, 0.5) 50%, transparent 100%);
+          transform-origin: bottom;
+          opacity: 0;
+          animation: ray-appear 1.2s ease-out forwards;
+          filter: blur(1px);
+          box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+        }
+        .anim-sunrise .ray-1 { transform: translateX(-50%) rotate(-40deg); animation-delay: 2.8s; }
+        .anim-sunrise .ray-2 { transform: translateX(-50%) rotate(-20deg); animation-delay: 2.9s; }
+        .anim-sunrise .ray-3 { transform: translateX(-50%) rotate(0deg); animation-delay: 3s; width: 4px; }
+        .anim-sunrise .ray-4 { transform: translateX(-50%) rotate(20deg); animation-delay: 3.1s; }
+        .anim-sunrise .ray-5 { transform: translateX(-50%) rotate(40deg); animation-delay: 3.2s; }
+        
+        /* Birds */
+        .anim-sunrise .bird {
+          position: absolute;
+          top: 40px;
+          width: 16px;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, #1f2937, transparent);
+          animation: bird-fly 4s ease-in-out infinite;
+          opacity: 0.6;
+        }
+        .anim-sunrise .bird::before,
+        .anim-sunrise .bird::after {
+          content: '';
+          position: absolute;
+          width: 8px;
+          height: 2px;
+          background: #1f2937;
+          top: -1px;
+        }
+        .anim-sunrise .bird::before {
+          left: 0;
+          transform: rotate(-20deg);
+          animation: wing-flap 0.3s ease-in-out infinite;
+        }
+        .anim-sunrise .bird::after {
+          right: 0;
+          transform: rotate(20deg);
+          animation: wing-flap 0.3s ease-in-out infinite 0.15s;
+        }
+        @keyframes bird-fly {
+          0% { left: -20px; }
+          100% { left: calc(100% + 20px); }
+        }
+        @keyframes wing-flap {
+          0%, 100% { transform: rotate(-20deg) translateY(0); }
+          50% { transform: rotate(-25deg) translateY(-1px); }
+        }
+        
+        /* Animation 5: Data Growth - 2030 Design */
+        .anim-harvest .ground {
+          position: absolute;
+          bottom: 0;
+          width: 100%;
+          height: 40px;
+          background: linear-gradient(180deg, #92400e 0%, #78350f 100%);
+          border-radius: 10px 10px 0 0;
+          box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        /* Progress Ring */
+        .anim-harvest .progress-ring {
+          position: absolute;
+          top: 40px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100px;
+          height: 100px;
+        }
+        .anim-harvest .progress-ring circle {
+          fill: none;
+          stroke-width: 6;
+          stroke-linecap: round;
+          transform: rotate(-90deg);
+          transform-origin: 50% 50%;
+        }
+        .anim-harvest .progress-bg {
+          stroke: rgba(255, 255, 255, 0.2);
+        }
+        .anim-harvest .progress-bar {
+          stroke: url(#gradient);
+          stroke-dasharray: 283;
+          stroke-dashoffset: 283;
+          animation: progress-fill 3s ease-out forwards;
+          filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.6));
+        }
+        @keyframes progress-fill {
+          0% { stroke-dashoffset: 283; }
+          100% { stroke-dashoffset: 0; }
+        }
+        
+        /* Data Points */
+        .anim-harvest .data-point {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          background: radial-gradient(circle, #34d399, #10b981);
+          border-radius: 50%;
+          box-shadow: 0 0 12px rgba(52, 211, 153, 0.8);
+          animation: data-float 3s ease-out infinite;
+        }
+        .anim-harvest .data-point-1 {
+          bottom: 50px;
+          left: 30px;
+          animation-delay: 0.5s;
+        }
+        .anim-harvest .data-point-2 {
+          bottom: 70px;
+          left: 60px;
+          animation-delay: 1s;
+        }
+        .anim-harvest .data-point-3 {
+          bottom: 60px;
+          left: 90px;
+          animation-delay: 1.5s;
+        }
+        .anim-harvest .data-point-4 {
+          bottom: 80px;
+          left: 120px;
+          animation-delay: 2s;
+        }
+        .anim-harvest .data-point-5 {
+          bottom: 55px;
+          left: 150px;
+          animation-delay: 2.5s;
+        }
+        @keyframes data-float {
+          0%, 100% { transform: translateY(0) scale(1); opacity: 0; }
+          10% { opacity: 1; }
+          50% { transform: translateY(-20px) scale(1.2); }
+          90% { opacity: 1; }
+        }
+        
+        /* Graph Line */
+        .anim-harvest .graph-line {
+          position: absolute;
+          bottom: 50px;
+          left: 25px;
+          width: 0;
+          height: 2px;
+          background: linear-gradient(90deg, #34d399, #10b981);
+          animation: line-draw 2.5s ease-out 0.5s forwards;
+          box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+        }
+        @keyframes line-draw {
+          0% { width: 0; }
+          100% { width: 135px; }
+        }
+        
+        /* Success Check */
+        .anim-harvest .check {
+          position: absolute;
+          top: 65px;
+          left: 50%;
+          transform: translateX(-50%) scale(0);
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          background: rgba(16, 185, 129, 0.2);
+          backdrop-filter: blur(8px);
+          border: 3px solid #10b981;
+          animation: check-appear 0.5s 2.8s ease-out forwards;
+        }
+        .anim-harvest .check::after {
+          content: '✓';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 28px;
+          color: #10b981;
+          font-weight: bold;
+        }
+        @keyframes check-appear {
+          0% { transform: translateX(-50%) scale(0) rotate(-180deg); }
+          100% { transform: translateX(-50%) scale(1) rotate(0deg); }
+        }
+        
+        /* Keyframe Animations */
+        @keyframes soil-appear {
+          0% { transform: translateX(-50%) scaleY(0); }
+          100% { transform: translateX(-50%) scaleY(1); }
+        }
+        @keyframes seed-crack {
+          0%, 50% { transform: translateX(-50%) scale(1); }
+          60% { transform: translateX(-50%) scale(1.2); }
+          100% { transform: translateX(-50%) scale(0.8); opacity: 0; }
+        }
+        @keyframes stem-grow {
+          0% { height: 0; }
+          100% { height: 70px; }
+        }
+        @keyframes leaf-grow {
+          0% { opacity: 0; transform: scale(0) rotate(var(--r)); }
+          100% { opacity: 1; transform: scale(1) rotate(var(--r)); }
+        }
+        @keyframes tractor-move {
+          0% { left: -60px; }
+          100% { left: 100%; }
+        }
+        @keyframes wheel-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes furrow-appear {
+          0% { width: 0; opacity: 0; }
+          100% { width: 50px; opacity: 1; }
+        }
+        @keyframes crop-grow {
+          0% { height: 0; }
+          100% { height: 50px; }
+        }
+        @keyframes drop-fall {
+          0% { opacity: 0; transform: translateY(0) scale(1); }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { opacity: 0; transform: translateY(100px) scale(0.5); }
+        }
+        @keyframes sun-rise {
+          0% { bottom: 0; opacity: 0; }
+          100% { bottom: 80px; opacity: 1; }
+        }
+        @keyframes ray-appear {
+          0% { opacity: 0; height: 0; }
+          100% { opacity: 0.6; height: 50px; }
+        }
+        @keyframes wheat-sway {
+          0%, 100% { transform: rotate(0deg); }
+          50% { transform: rotate(3deg); }
+        }
+        
+        @media (prefers-reduced-motion: reduce) {
+          .app-loader-content,
+          .agri-animation * {
+            animation: none !important;
           }
         }
       </style>
       <div class="app-loader" id="initial-loader">
         <div class="app-loader-content">
-          <div class="app-loader-logo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2v20M2 12h20M6.5 6.5l11 11M6.5 17.5l11-11" />
+          <!-- Animation 1: Seed to Sprout -->
+          <div class="agri-animation anim-seed-sprout" data-index="0">
+            <div class="soil"></div>
+            <div class="seed"></div>
+            <div class="stem">
+              <div class="leaf leaf-left"></div>
+              <div class="leaf leaf-right"></div>
+            </div>
+          </div>
+          
+          <!-- Animation 2: Smart Tractor -->
+          <div class="agri-animation anim-tractor" data-index="1">
+            <div class="field"></div>
+            <div class="tractor">
+              <div class="tractor-body">
+                <div class="tractor-cabin"></div>
+                <div class="wheel wheel-front"></div>
+                <div class="wheel wheel-back"></div>
+              </div>
+              <div class="gps-signal"></div>
+            </div>
+            <div class="furrow furrow-1"></div>
+            <div class="furrow furrow-2"></div>
+            <div class="furrow furrow-3"></div>
+          </div>
+          
+          <!-- Animation 3: AI Irrigation -->
+          <div class="agri-animation anim-water" data-index="2">
+            <div class="ground"></div>
+            <div class="sensor"></div>
+            <div class="crop crop-1"></div>
+            <div class="crop crop-2"></div>
+            <div class="crop crop-3"></div>
+            <div class="drop drop-1"></div>
+            <div class="drop drop-2"></div>
+            <div class="drop drop-3"></div>
+          </div>
+          
+          <!-- Animation 4: Sunrise Harvest -->
+          <div class="agri-animation anim-sunrise" data-index="3">
+            <div class="field"></div>
+            <div class="sun"></div>
+            <div class="ray ray-1"></div>
+            <div class="ray ray-2"></div>
+            <div class="ray ray-3"></div>
+            <div class="ray ray-4"></div>
+            <div class="ray ray-5"></div>
+            <div class="bird" style="animation-delay: 2.5s;"></div>
+            <div class="bird" style="animation-delay: 3s; top: 50px;"></div>
+          </div>
+          
+          <!-- Animation 5: Data Growth -->
+          <div class="agri-animation anim-harvest" data-index="4">
+            <div class="ground"></div>
+            <svg class="progress-ring" viewBox="0 0 100 100">
+              <defs>
+                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#34d399;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#10b981;stop-opacity:1" />
+                </linearGradient>
+              </defs>
+              <circle class="progress-bg" cx="50" cy="50" r="45" />
+              <circle class="progress-bar" cx="50" cy="50" r="45" />
             </svg>
+            <div class="data-point data-point-1"></div>
+            <div class="data-point data-point-2"></div>
+            <div class="data-point data-point-3"></div>
+            <div class="data-point data-point-4"></div>
+            <div class="data-point data-point-5"></div>
+            <div class="graph-line"></div>
+            <div class="check"></div>
           </div>
-          <div class="app-loader-spinner"></div>
-          <div class="app-loader-text">KisanShakti AI</div>
-          <div class="app-loader-subtext">
-            Loading
-            <span class="app-loader-dots">
-              <span class="app-loader-dot"></span>
-              <span class="app-loader-dot"></span>
-              <span class="app-loader-dot"></span>
-            </span>
-          </div>
+          
+          <div class="app-loader-text">Loading Farm Portal</div>
+          <div class="app-loader-subtext">Preparing your workspace...</div>
         </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Remove loader when React takes over
-      window.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-          const loader = document.getElementById('initial-loader');
-          if (loader && window.__REACT_LOADED__) {
-            loader.style.opacity = '0';
-            loader.style.transition = 'opacity 0.3s ease-out';
-            setTimeout(() => loader.remove(), 300);
+      // ============= EVENT-DRIVEN LOADER SYSTEM =============
+      // This loader stays until tenant data is ready (no blank screen!)
+      
+      (function() {
+        const TOTAL_ANIMATIONS = 5;
+        const STORAGE_KEY = 'agri_splash_animation_index';
+        const COLOR_CACHE_KEY = 'tenant_primary_color';
+        const APP_VERSION = '2.1.0';
+        
+        console.log('🚀 [Loader] Initializing dynamic loader system...');
+        
+        // Version-based cache busting (must run first)
+        const cachedVersion = localStorage.getItem('app_version');
+        if (cachedVersion !== APP_VERSION) {
+          console.log('🔄 [Loader] App version changed, clearing caches...');
+          localStorage.removeItem(COLOR_CACHE_KEY);
+          localStorage.removeItem('tenant_config_cache');
+          localStorage.setItem('app_version', APP_VERSION);
+        }
+        
+        // Get next animation index
+        let lastIndex = parseInt(localStorage.getItem(STORAGE_KEY) || '0');
+        let nextIndex = (lastIndex + 1) % TOTAL_ANIMATIONS;
+        
+        console.log('🎬 [Loader] Animation selected:', { lastIndex, nextIndex });
+        
+        // Show only the selected animation
+        const animations = document.querySelectorAll('.agri-animation');
+        animations.forEach((el, i) => {
+          if (i === nextIndex) {
+            el.classList.add('active');
+            console.log('✅ [Loader] Showing animation:', i);
           }
-        }, 100);
-      });
+        });
+        
+        // Save for next time
+        localStorage.setItem(STORAGE_KEY, nextIndex.toString());
+        
+        // Apply cached tenant colors immediately (for instant branding)
+        const cachedColor = localStorage.getItem(COLOR_CACHE_KEY);
+        if (cachedColor) {
+          console.log('🎨 [Loader] Applying cached tenant color:', cachedColor);
+          
+          // Handle both HEX and HSL formats
+          if (cachedColor.startsWith('#')) {
+            // Convert HEX to HSL
+            const hex = cachedColor.replace('#', '');
+            const r = parseInt(hex.substr(0, 2), 16) / 255;
+            const g = parseInt(hex.substr(2, 2), 16) / 255;
+            const b = parseInt(hex.substr(4, 2), 16) / 255;
+            
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            let h = 0, s = 0;
+            const l = (max + min) / 2;
+            
+            if (max !== min) {
+              const d = max - min;
+              s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+              switch (max) {
+                case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                case g: h = ((b - r) / d + 2) / 6; break;
+                case b: h = ((r - g) / d + 4) / 6; break;
+              }
+            }
+            
+            const hslValue = `${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%`;
+            document.documentElement.style.setProperty('--loader-primary', `hsl(${hslValue})`);
+            
+            // Calculate lighter accent
+            const lighterL = Math.min(Math.round(l * 100) + 15, 95);
+            const accentValue = `${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${lighterL}%`;
+            document.documentElement.style.setProperty('--loader-accent', `hsl(${accentValue})`);
+          } else if (cachedColor.includes('hsl')) {
+            // Already HSL format
+            document.documentElement.style.setProperty('--loader-primary', cachedColor);
+            
+            const hslMatch = cachedColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+            if (hslMatch) {
+              const [, h, s, l] = hslMatch;
+              const lighterL = Math.min(parseInt(l) + 15, 95);
+              document.documentElement.style.setProperty('--loader-accent', `hsl(${h}, ${s}%, ${lighterL}%)`);
+            }
+          }
+        }
+        
+        // ============= PRODUCTION-READY LOADER =============
+        // Fast startup with race conditions and graceful fallbacks
+        
+        let loaderRemoved = false;
+        
+        function removeLoader() {
+          if (loaderRemoved) return;
+          loaderRemoved = true;
+          
+          console.log('✅ [Loader] Removing loader with crossfade...');
+          const loader = document.getElementById('initial-loader');
+          if (loader) {
+            // Smooth crossfade transition
+            loader.style.opacity = '0';
+            loader.style.filter = 'blur(10px)';
+            loader.style.transition = 'opacity 0.4s ease-out, filter 0.4s ease-out';
+            setTimeout(() => {
+              loader.remove();
+              console.log('🎉 [Loader] Loader removed successfully!');
+            }, 400);
+          }
+        }
+        
+        // Listen for tenant loaded signal from TenantProvider
+        function checkTenantReady() {
+          if (window.__TENANT_LOADED__) {
+            console.log('🎯 [Loader] Tenant signal received!');
+            removeLoader();
+            return true;
+          }
+          return false;
+        }
+        
+        // FAST STARTUP: Check if we have cached tenant data for immediate show
+        const hasCachedTenant = localStorage.getItem('tenant_config_cache');
+        const hasOfflineData = localStorage.getItem('tenantId');
+        
+        // Determine startup strategy based on cache availability
+        const fastStartup = hasCachedTenant || hasOfflineData;
+        const startupTimeout = fastStartup ? 3000 : 5000; // 3s if cached, 5s if fresh
+        
+        console.log('🚀 [Loader] Startup mode:', {
+          hasCachedTenant: !!hasCachedTenant,
+          hasOfflineData: !!hasOfflineData,
+          timeout: startupTimeout + 'ms'
+        });
+        
+        // Check immediately
+        if (!checkTenantReady()) {
+          // Poll every 100ms for tenant ready signal
+          const checkInterval = setInterval(() => {
+            if (checkTenantReady()) {
+              clearInterval(checkInterval);
+            }
+          }, 100);
+          
+          // PRODUCTION FIX: Smart timeout based on cache state
+          // Never block for more than 5 seconds - show app even if tenant not fully loaded
+          setTimeout(() => {
+            if (!loaderRemoved) {
+              console.warn('⚠️ [Loader] Timeout reached after ' + startupTimeout + 'ms, forcing loader removal');
+              clearInterval(checkInterval);
+              removeLoader();
+            }
+          }, startupTimeout);
+        }
+      })();
     </script>
+
+    <!-- PWA: Service Worker registration handled by main.tsx -->
   </body>
 </html>

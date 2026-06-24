@@ -1,0 +1,178 @@
+{
+  "__meta": {
+    "page": "chat",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "chat": {
+    "title": "AI Farm Assistant",
+    "subtitle": "Ask me anything about farming",
+    "tabs": {
+      "general": "General Chat",
+      "land_specific": "Land Specific"
+    },
+    "input": {
+      "placeholder": "Ask about crops, weather, or farming...",
+      "placeholder_voice": "Tap mic to speak",
+      "send": "Send",
+      "send_aria": "Send message",
+      "voice": "Voice",
+      "voice_aria": "Record voice message",
+      "attach": "Attach",
+      "attach_aria": "Attach image"
+    },
+    "welcome": {
+      "greeting": "Namaste! I'm your AI farming assistant",
+      "description": "I can help you with crop advice, weather updates, pest control, and more.",
+      "suggestions_title": "Popular Questions",
+      "suggestion_1": "What crop should I plant this season?",
+      "suggestion_2": "How do I control pests naturally?",
+      "suggestion_3": "When should I irrigate my crops?",
+      "suggestion_4": "What fertilizer is best for wheat?"
+    },
+    "land_context": {
+      "title": "Land Context",
+      "select_land": "Select a land",
+      "selected": "Selected: {{name}}",
+      "area": "{{area}} hectares",
+      "crop": "Crop: {{crop}}",
+      "no_land": "No lands available"
+    },
+    "messages": {
+      "thinking": "Thinking...",
+      "typing": "AI is typing...",
+      "error": "Failed to get response",
+      "retry": "Retry",
+      "copy": "Copy",
+      "copy_aria": "Copy message",
+    "copied": "Copied!",
+    "feedback": "Was this helpful?",
+    "like": "Like",
+    "dislike": "Dislike",
+    "share": "Share",
+    "tts": {
+      "notSupported": "Text-to-speech not supported",
+      "settings": "Text-to-Speech Settings",
+      "settingsDescription": "Customize voice playback for your language",
+      "speed": "Speech Speed",
+      "slow": "Slow",
+      "normal": "Normal",
+      "fast": "Fast",
+      "voiceSelection": "Voice",
+      "options": "Options",
+      "autoRead": "Auto-read new messages",
+      "autoReadDesc": "Automatically play new AI responses",
+      "highlightFull": "Highlight full message",
+      "highlightFullDesc": "Instead of sentence-by-sentence",
+      "settingsSaved": "Text-to-speech settings saved",
+      "settingsReset": "Settings reset to default",
+      "confirmReset": "Reset all settings to default?",
+      "stop": "Stop",
+      "pause": "Pause",
+      "play": "Play",
+      "voiceReady": "{{language}} voice ready!",
+      "downloadComplete": "Voice Ready!",
+      "downloadError": "Download Error",
+      "downloadingVoice": "Downloading Voice",
+      "voiceReadyDesc": "{{language}} voice is now available",
+      "downloadingDesc": "Downloading {{language}} voice for text-to-speech ({{progress}}%)",
+      "estimatedTime": "Estimated time: ~{{seconds}}s",
+      "insufficientStorage": "Not enough storage. Need ~80MB free. Current free space: {{space}}MB",
+      "downloadFailed": "Download failed. Please check your internet connection.",
+      "usingFallback": "Using Hindi voice temporarily. You can download {{language}} later from settings.",
+      "startDownload": "Download Now",
+      "useHindi": "Use Hindi",
+      "continueUsingApp": "You can continue using the app while downloading"
+    },
+    "feedback_section": {
+      "feedback_yes": "Yes",
+      "feedback_no": "No",
+      "feedback_thanks": "Thank you for your feedback!"
+    }
+  },
+    "schedule": {
+      "title": "Recommended Schedule",
+      "view_full": "View Full Schedule",
+      "task": "Task {{number}}",
+      "stage": "Stage: {{stage}}",
+      "date": "Date: {{date}}"
+    },
+    "response_sections": {
+      "recommendation": "Recommendation",
+      "steps": "Steps to Follow",
+      "caution": "Cautions",
+      "benefits": "Benefits",
+      "alternatives": "Alternatives"
+    },
+    "feedback": {
+      "title": "Rate this response",
+      "helpful": "Helpful",
+      "not_helpful": "Not Helpful",
+      "comment_placeholder": "Tell us more (optional)",
+      "submit": "Submit Feedback",
+      "cancel": "Cancel",
+      "thanks": "Thanks for your feedback!"
+    },
+    "history": {
+      "title": "Chat History",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "this_week": "This Week",
+      "older": "Older",
+      "clear": "Clear History",
+      "clear_confirm": "Are you sure you want to clear chat history?",
+      "empty": "No chat history"
+    },
+    "voice": {
+      "listening": "Listening...",
+      "processing": "Processing audio...",
+      "tap_to_stop": "Tap to stop",
+      "permission_required": "Microphone permission required",
+      "error": "Voice input failed"
+    },
+    "image": {
+      "uploading": "Uploading image...",
+      "uploaded": "Image uploaded",
+      "error": "Image upload failed",
+      "remove": "Remove image"
+    },
+    "empty": {
+      "title": "Start a conversation",
+      "message": "Ask me anything about your farm"
+    },
+    "error": {
+      "network": "Network error. Please check your connection.",
+      "server": "Server error. Please try again later.",
+      "unknown": "Something went wrong. Please retry."
+    },
+    "general": {
+      "pick_land_title": "Pick a land for context",
+      "pick_land_subtitle": "Attach a land so the agronomist tailors advice to your crop & stage.",
+      "no_specific_land": "No specific land — general question",
+      "no_specific_land_hint": "Best for season planning, scheme info, market trends.",
+      "or_pick_land": "Or pick a land",
+      "no_lands_yet": "No lands added yet — continuing as general question."
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Ask AI about pest control",
+      "What crop should I plant",
+      "Show chat history",
+      "Send voice message"
+    ],
+    "voice_examples_hi": [
+      "कीट नियंत्रण के बारे में AI से पूछें",
+      "कौन सी फसल लगाऊं",
+      "चैट इतिहास दिखाओ",
+      "वॉइस संदेश भेजें"
+    ],
+    "voice_examples_mr": [
+      "कीड नियंत्रणाबद्दल AI ला विचारा",
+      "कोणते पीक लावावे",
+      "चॅट इतिहास दाखवा",
+      "व्हॉइस संदेश पाठवा"
+    ]
+  }
+}

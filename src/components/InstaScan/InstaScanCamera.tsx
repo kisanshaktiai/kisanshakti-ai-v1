@@ -1,14 +1,17 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, X, Loader2 } from 'lucide-react';
+import { Camera, X, Loader2, Sun, Moon, Droplets } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface InstaScanCameraProps {
-  onCapture: (imageData: string) => void;
+  onCapture: (imageData: string[]) => void; // Now accepts multiple frames
   onClose: () => void;
 }
+
+type QualityStatus = 'good' | 'acceptable' | 'poor';
 
 export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
   const { t } = useTranslation();
@@ -18,34 +21,63 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [qualityStatus, setQualityStatus] = useState<QualityStatus>('acceptable');
+  const [stabilityLevel, setStabilityLevel] = useState<number>(0); // 0-100
+  const [autoCapturing, setAutoCapturing] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [liveDetection, setLiveDetection] = useState<string | null>(null);
 
   useEffect(() => {
     requestCameraPermission();
+    
+    // Set up motion detection for stability
+    let motionListener: ((event: DeviceMotionEvent) => void) | null = null;
+    
+    if (typeof DeviceMotionEvent !== 'undefined' && 'requestPermission' in DeviceMotionEvent) {
+      // iOS requires permission
+      (DeviceMotionEvent as any).requestPermission().then((response: string) => {
+        if (response === 'granted') {
+          motionListener = handleMotion;
+          window.addEventListener('devicemotion', motionListener);
+        }
+      });
+    } else {
+      // Android or desktop
+      motionListener = handleMotion;
+      window.addEventListener('devicemotion', motionListener);
+    }
+    
+    // REDUCED frequency to prevent flickering - check quality every 2 seconds instead of 0.5s
+    const qualityInterval = setInterval(checkQuality, 2000);
+    
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
       }
+      if (motionListener) {
+        window.removeEventListener('devicemotion', motionListener);
+      }
+      clearInterval(qualityInterval);
     };
-  }, []);
+  }, [stream]);
 
-  // Image quality validation function
-  const validateImageQuality = (canvas: HTMLCanvasElement): {
-    isValid: boolean;
-    reason?: string;
-    metrics: {
-      brightness: number;
-      contrast: number;
-    }
-  } => {
+  // Relaxed quality validation for rural farming conditions
+  const checkQuality = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
     const context = canvas.getContext('2d');
-    if (!context) {
-      return { isValid: true, metrics: { brightness: 0, contrast: 0 } };
-    }
-
+    if (!context) return;
+    
+    // Use small canvas for quick quality check
+    canvas.width = 320;
+    canvas.height = 240;
+    context.drawImage(video, 0, 0, 320, 240);
+    
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     
-    // Calculate average brightness (0-255)
     let totalBrightness = 0;
     let minBrightness = 255;
     let maxBrightness = 0;
@@ -60,37 +92,51 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     const avgBrightness = totalBrightness / (pixels.length / 4);
     const contrast = maxBrightness - minBrightness;
     
-    // Check if too dark
-    if (avgBrightness < 40) {
-      return { 
-        isValid: false, 
-        reason: 'Image too dark - please use better lighting', 
-        metrics: { brightness: avgBrightness, contrast } 
-      };
+    // EXTREMELY RELAXED thresholds - only warn on very dark/bright images
+    let status: QualityStatus = 'good';
+    
+    if (avgBrightness < 20 || avgBrightness > 250) {
+      status = 'poor';
+    } else if (avgBrightness < 30 || avgBrightness > 240) {
+      status = 'acceptable';
     }
     
-    // Check if overexposed
-    if (avgBrightness > 240) {
-      return { 
-        isValid: false, 
-        reason: 'Image overexposed - reduce lighting or avoid direct sunlight', 
-        metrics: { brightness: avgBrightness, contrast } 
-      };
-    }
+    // Only update state if status actually changed to minimize re-renders
+    setQualityStatus(prev => prev === status ? prev : status);
+  };
+  
+  // Motion detection for stability
+  const handleMotion = (event: DeviceMotionEvent) => {
+    const acceleration = event.accelerationIncludingGravity;
+    if (!acceleration) return;
     
-    // Check contrast (low contrast = blurry/foggy)
-    if (contrast < 50) {
-      return { 
-        isValid: false, 
-        reason: 'Image appears blurry or low contrast - hold camera steady', 
-        metrics: { brightness: avgBrightness, contrast } 
-      };
-    }
+    const { x = 0, y = 0, z = 0 } = acceleration;
+    const totalMotion = Math.abs(x) + Math.abs(y) + Math.abs(z);
     
-    return { 
-      isValid: true, 
-      metrics: { brightness: avgBrightness, contrast } 
-    };
+    // Map motion to stability (0-100, higher = more stable)
+    const stability = Math.max(0, 100 - totalMotion * 5);
+    setStabilityLevel(stability);
+    
+    // Auto-capture when stable enough for 1.5 seconds
+    if (stability > 85 && qualityStatus !== 'poor' && !isCapturing && !autoCapturing) {
+      triggerAutoCapture();
+    }
+  };
+  
+  const triggerAutoCapture = () => {
+    setAutoCapturing(true);
+    setCountdown(3);
+    
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          captureMultiFrame();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 500);
   };
 
   const requestCameraPermission = async () => {
@@ -120,10 +166,12 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     }
   };
 
-  const captureImage = async () => {
+  // Multi-frame burst capture - capture 3 frames and select the best
+  const captureMultiFrame = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
     setIsCapturing(true);
+    setAutoCapturing(false);
     
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -131,18 +179,15 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     
     if (!context) return;
     
-    // Get original dimensions
+    // Get dimensions
     const originalWidth = video.videoWidth;
     const originalHeight = video.videoHeight;
-    
-    // Calculate dimensions to fit within 1536x1536 while maintaining aspect ratio (increased for better AI analysis)
     const maxDimension = 1536;
     let targetWidth = originalWidth;
     let targetHeight = originalHeight;
     
     if (originalWidth > maxDimension || originalHeight > maxDimension) {
       const aspectRatio = originalWidth / originalHeight;
-      
       if (originalWidth > originalHeight) {
         targetWidth = maxDimension;
         targetHeight = Math.round(maxDimension / aspectRatio);
@@ -152,38 +197,38 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
       }
     }
     
-    // Set canvas to target dimensions
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     
-    // Draw scaled image
-    context.drawImage(video, 0, 0, targetWidth, targetHeight);
+    // Capture 3 frames with 100ms delay
+    const frames: string[] = [];
     
-    // Validate image quality before sending
-    const qualityCheck = validateImageQuality(canvas);
-    console.log('📷 Image Quality Metrics:', qualityCheck);
-    
-    if (!qualityCheck.isValid) {
-      console.warn('⚠️ Image quality warning:', qualityCheck.reason);
-      toast({
-        title: 'Image Quality Warning',
-        description: qualityCheck.reason + ' - Results may be less accurate.',
-        variant: 'default'
-      });
+    for (let i = 0; i < 3; i++) {
+      context.drawImage(video, 0, 0, targetWidth, targetHeight);
+      const imageData = canvas.toDataURL('image/jpeg', 0.92);
+      frames.push(imageData);
+      
+      if (i < 2) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
     
-    // Convert to base64 with higher quality JPEG compression (0.92 instead of 0.8 for better detail)
-    const imageData = canvas.toDataURL('image/jpeg', 0.92);
+    console.log('📷 Captured 3 frames for burst analysis');
     
-    // Add capture animation
+    // Flash animation
     const overlay = document.createElement('div');
     overlay.className = 'fixed inset-0 bg-white animate-flash pointer-events-none z-50';
     document.body.appendChild(overlay);
     
     setTimeout(() => {
       overlay.remove();
-      onCapture(imageData);
+      onCapture(frames);
     }, 300);
+  };
+  
+  const captureManual = () => {
+    setCountdown(null);
+    captureMultiFrame();
   };
 
   if (hasPermission === false) {
@@ -232,29 +277,108 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
           </div>
         </div>
 
-        {/* Viewfinder Frame */}
+        {/* Viewfinder Frame with Quality Indicator */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="relative w-80 h-80 max-w-[80vw] max-h-[60vh]">
+            {/* Quality Ring - Green/Yellow/Red - REMOVED animation to prevent flickering */}
+            <div
+              className={cn(
+                "absolute inset-0 rounded-3xl border-4 transition-colors duration-300",
+                qualityStatus === 'good' && "border-success shadow-[0_0_30px_rgba(34,197,94,0.5)]",
+                qualityStatus === 'acceptable' && "border-warning shadow-[0_0_30px_rgba(234,179,8,0.5)]",
+                qualityStatus === 'poor' && "border-destructive shadow-[0_0_30px_rgba(239,68,68,0.5)]"
+              )}
+            />
+            
             {/* Corner Markers */}
             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-2xl" />
             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-2xl" />
             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-2xl" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-2xl" />
             
-            {/* Scanning Animation */}
-            <div className="absolute inset-x-4 top-4 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-scan" />
+            {/* Visual Quality Indicators */}
+            <AnimatePresence>
+              {qualityStatus === 'poor' && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-black/70 rounded-full"
+                >
+                  {qualityStatus === 'poor' && (
+                    <>
+                      <Sun className="w-5 h-5 text-warning animate-pulse" />
+                      <span className="text-white text-sm font-medium">Better Light Needed</span>
+                    </>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            {/* Stability Meter */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+              <div className="flex gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "w-2 h-8 rounded-full transition-all duration-200",
+                      stabilityLevel > i * 20 ? "bg-success" : "bg-white/30"
+                    )}
+                  />
+                ))}
+              </div>
+              {stabilityLevel > 85 && (
+                <span className="text-success text-xs font-medium">✓ Steady</span>
+              )}
+            </div>
+            
+            {/* Live Detection Overlay */}
+            {liveDetection && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-2 bg-primary/90 rounded-full text-white font-medium"
+              >
+                {liveDetection}
+              </motion.div>
+            )}
+            
+            {/* Countdown Indicator */}
+            <AnimatePresence>
+              {countdown && (
+                <motion.div
+                  initial={{ scale: 2, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  className="absolute inset-0 flex items-center justify-center"
+                >
+                  <div className="w-24 h-24 rounded-full bg-primary/90 flex items-center justify-center">
+                    <span className="text-6xl font-bold text-white">{countdown}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
         {/* Bottom Controls */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-safe-bottom pointer-events-auto">
           <div className="flex flex-col items-center gap-4 px-4 py-6">
-            <p className="text-white/80 text-sm text-center">{t('instaScan.instruction')}</p>
+            {/* Icon-Based Instructions */}
+            <div className="flex items-center gap-3 text-white/80">
+              <span className="text-2xl">📱➡️🌱</span>
+              {stabilityLevel > 85 ? (
+                <span className="text-sm">🖐️✓ {t('instaScan.steadyHold')}</span>
+              ) : (
+                <span className="text-sm">{t('instaScan.holdSteady')}</span>
+              )}
+            </div>
             
             {/* Capture Button */}
             <button
-              onClick={captureImage}
-              disabled={isCapturing || !stream}
+              onClick={captureManual}
+              disabled={isCapturing || !stream || autoCapturing}
               className={cn(
                 "relative w-20 h-20 rounded-full",
                 "bg-white shadow-2xl",
@@ -272,6 +396,13 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
                 </>
               )}
             </button>
+            
+            {/* Auto-capture status */}
+            {autoCapturing && !countdown && (
+              <span className="text-success text-sm font-medium animate-pulse">
+                ✨ Auto-capturing...
+              </span>
+            )}
           </div>
         </div>
       </div>

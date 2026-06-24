@@ -63,12 +63,12 @@ export function FloatingActionButton() {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/60 via-accent/60 to-primary-glow/60 shadow-2xl shadow-primary/20 flex items-center justify-center">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/60 via-accent/60 to-primary-glow/60 shadow-2xl shadow-primary/20 flex items-center justify-center">
                 <Loader2 className="w-7 h-7 text-primary-foreground animate-spin" />
               </div>
             </TooltipTrigger>
             <TooltipContent side="left">
-              <p className="text-sm">Loading features...</p>
+              <p className="text-sm">{t('common.loadingFeatures')}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -166,7 +166,7 @@ export function FloatingActionButton() {
                   </TooltipTrigger>
                   {item.comingSoon && (
                     <TooltipContent side="left">
-                      <p className="text-sm font-medium">Coming Soon</p>
+                      <p className="text-sm font-medium">{t('common.comingSoon')}</p>
                       <p className="text-xs text-muted-foreground">This feature is under development</p>
                     </TooltipContent>
                   )}

@@ -14,50 +14,63 @@ export function useLocationPreloader() {
   const cache = useLocationCache();
 
   useEffect(() => {
-    const preloadLocationData = async () => {
-      // Skip if states are already cached and valid
-      if (cache.isCacheValid('states') && cache.states.length > 0) {
-        return;
-      }
-
-      try {
-        // Load states first
-        const { data: statesData } = await supabase
-          .from('states')
-          .select('id, name, code')
-          .eq('is_active', true)
-          .order('name');
-
-        if (statesData && statesData.length > 0) {
-          cache.setStates(statesData);
-          
-          // Preload districts for common states in the background
-          setTimeout(async () => {
-            for (const stateId of COMMON_STATES) {
-              if (!cache.isCacheValid('districts', stateId)) {
-                const { data: districtsData } = await supabase
-                  .from('districts')
-                  .select('id, name, state_id')
-                  .eq('state_id', stateId)
-                  .eq('is_active', true)
-                  .order('name');
-
-                if (districtsData) {
-                  cache.setDistricts(stateId, districtsData);
-                }
-                
-                // Add small delay between requests to avoid overwhelming the server
-                await new Promise(resolve => setTimeout(resolve, 100));
-              }
-            }
-          }, 1000);
+    // PERFORMANCE FIX: Delay preloading by 3 seconds to not block initial app load
+    // Location data is only needed when user goes to forms
+    const timeoutId = setTimeout(() => {
+      const preloadLocationData = async () => {
+        // Skip if states are already cached and valid
+        if (cache.isCacheValid('states') && cache.states.length > 0) {
+          return;
         }
-      } catch (error) {
-        console.error('Error preloading location data:', error);
-      }
-    };
 
-    preloadLocationData();
+        // Skip if offline - no point in trying
+        if (!navigator.onLine) {
+          console.log('📴 [LocationPreloader] Offline, skipping preload');
+          return;
+        }
+
+        try {
+          // Load states first
+          const { data: statesData } = await supabase
+            .from('states')
+            .select('id, name, code')
+            .eq('is_active', true)
+            .order('name');
+
+          if (statesData && statesData.length > 0) {
+            cache.setStates(statesData);
+            
+            // Preload districts for common states in the background with longer delay
+            setTimeout(async () => {
+              for (const stateId of COMMON_STATES) {
+                if (!cache.isCacheValid('districts', stateId)) {
+                  // Select * so future name_<lang> columns are cached too.
+                  const { data: districtsData } = await supabase
+                    .from('districts')
+                    .select('*')
+                    .eq('state_id', stateId)
+                    .eq('is_active', true)
+                    .order('name');
+
+                  if (districtsData) {
+                    cache.setDistricts(stateId, districtsData);
+                  }
+                  
+                  // Add delay between requests to avoid overwhelming the server
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                }
+              }
+            }, 2000);
+          }
+        } catch (error) {
+          console.error('Error preloading location data:', error);
+        }
+      };
+
+      preloadLocationData();
+    }, 3000); // Delay preloading by 3 seconds
+
+    return () => clearTimeout(timeoutId);
   }, []);
 }
 
@@ -80,7 +93,7 @@ export async function preloadAllLocationData() {
       const districtPromises = statesData.map(state => 
         supabase
           .from('districts')
-          .select('id, name, state_id')
+          .select('*')
           .eq('state_id', state.id)
           .eq('is_active', true)
           .order('name')

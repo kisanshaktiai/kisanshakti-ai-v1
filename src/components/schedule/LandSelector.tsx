@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +26,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +39,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface Land {
   id: string;
@@ -51,6 +55,7 @@ interface Land {
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  ownership_type?: string;
   current_crop?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
@@ -97,26 +102,46 @@ const getCropIcon = (crop?: string) => {
 export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEditSchedule }: LandSelectorProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
+  const { user } = useAuthStore();
+  const { t } = useTranslation();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchScheduleStatuses();
-  }, [lands]);
+    if (user?.id && user?.tenantId && lands.length > 0) {
+      fetchScheduleStatuses();
+    }
+  }, [lands, user?.id, user?.tenantId]);
 
   const fetchScheduleStatuses = async () => {
+    if (!user?.id || !user?.tenantId) {
+      console.warn('Cannot fetch schedules: Missing user authentication');
+      setLoading(false);
+      return;
+    }
+
     try {
       const landIds = lands.map(l => l.id);
+      const client = supabaseWithAuth(user.id, user.tenantId);
       
-      const { data, error } = await supabase
+      console.log('Fetching schedules with auth:', { userId: user.id, tenantId: user.tenantId, landIds });
+      
+      const { data, error } = await client
         .from('crop_schedules')
         .select('id, land_id, crop_name')
         .in('land_id', landIds)
         .eq('is_active', true);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching schedules:', error);
+        throw error;
+      }
+      
+      console.log('Fetched schedules:', data);
 
       const statuses: LandScheduleStatus[] = lands.map(land => {
         const schedule = data?.find(s => s.land_id === land.id);
@@ -174,14 +199,16 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
   };
 
   const confirmDeleteSchedule = async () => {
-    if (!scheduleToDelete) return;
+    if (!scheduleToDelete || !user?.id || !user?.tenantId) return;
 
     try {
       const status = scheduleStatuses.find(s => s.landId === scheduleToDelete);
       if (!status?.scheduleId) return;
 
+      const client = supabaseWithAuth(user.id, user.tenantId);
+
       // Delete all tasks for this schedule
-      const { error: tasksError } = await supabase
+      const { error: tasksError } = await client
         .from('schedule_tasks')
         .delete()
         .eq('schedule_id', status.scheduleId);
@@ -189,7 +216,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       if (tasksError) throw tasksError;
 
       // Delete the schedule
-      const { error: scheduleError } = await supabase
+      const { error: scheduleError } = await client
         .from('crop_schedules')
         .delete()
         .eq('id', status.scheduleId);
@@ -197,8 +224,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       if (scheduleError) throw scheduleError;
 
       toast({
-        title: '✅ Schedule Deleted',
-        description: 'AI crop schedule has been removed',
+        title: t('schedule.land_selector.toast.deleted'),
+        description: t('schedule.land_selector.toast.deleted_message'),
         className: 'bg-success/10 border-success/20',
       });
 
@@ -207,8 +234,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
     } catch (error) {
       console.error('Error deleting schedule:', error);
       toast({
-        title: '❌ Delete Failed',
-        description: 'Failed to delete schedule',
+        title: t('schedule.land_selector.toast.delete_failed'),
+        description: t('schedule.land_selector.toast.delete_failed_message'),
         variant: 'destructive',
       });
     } finally {
@@ -277,7 +304,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   >
                     <Badge className="bg-gradient-to-r from-primary to-accent text-primary-foreground border-0 shadow-lg flex items-center gap-1.5 px-2.5 py-1">
                       <Sparkles className="h-3 w-3 animate-pulse" />
-                      <span className="text-xs font-semibold">AI Schedule Ready</span>
+                      <span className="text-xs font-semibold">{t('schedule.land_selector.ai_schedule_ready')}</span>
                     </Badge>
                   </motion.div>
                 )}
@@ -287,7 +314,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   <div className="absolute top-2 right-2 z-10">
                     <Badge variant="outline" className="bg-background/80 backdrop-blur-sm border-muted-foreground/30 flex items-center gap-1.5 px-2.5 py-1">
                       <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs font-medium text-muted-foreground">Generate Schedule</span>
+                      <span className="text-xs font-medium text-muted-foreground">{t('schedule.land_selector.generate_schedule')}</span>
                     </Badge>
                   </div>
                 )}
@@ -309,7 +336,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         {land.survey_number && (
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <Grid3x3 className="h-3 w-3" />
-                            Survey #{land.survey_number}
+                            {t('schedule.land_selector.survey', { number: land.survey_number })}
                           </p>
                         )}
                         {hasSchedule && status?.cropName && (
@@ -355,11 +382,11 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         </div>
                         <div>
                           <p className="text-xl font-bold text-foreground">
-                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
+                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">{t('schedule.land_selector.acres')}</span>
                           </p>
                           {land.area_guntas && land.area_guntas > 0 && (
                             <p className="text-xs text-muted-foreground">
-                              {land.area_guntas} guntas
+                              {land.area_guntas} {t('schedule.land_selector.guntas')}
                             </p>
                           )}
                         </div>
@@ -367,8 +394,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       
                       {hasSchedule && (
                         <div className="text-right">
-                          <p className="text-xs text-primary font-semibold">Active</p>
-                          <p className="text-[10px] text-muted-foreground">Click to view</p>
+                          <p className="text-xs text-primary font-semibold">{t('schedule.land_selector.active')}</p>
+                          <p className="text-[10px] text-muted-foreground">{t('schedule.land_selector.click_to_view')}</p>
                         </div>
                       )}
                     </div>
@@ -379,57 +406,75 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                     <div className="flex items-start gap-2">
                       <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
                       <div className="text-sm text-muted-foreground">
-                        {land.village && <span>{land.village}</span>}
-                        {land.village && land.district && ', '}
-                        {land.district && <span>{land.district}</span>}
-                        {land.state && (
-                          <>
-                            {(land.village || land.district) && ', '}
-                            <span>{land.state}</span>
-                          </>
-                        )}
+                        {refLabels.location({
+                          village: land.village,
+                          taluka: land.taluka,
+                          district: land.district,
+                          state: land.state,
+                        })}
                       </div>
                     </div>
                   )}
 
                   {/* Pills for attributes */}
                   <div className="flex flex-wrap gap-2">
-                    {land.soil_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-secondary/20 to-secondary/10 border border-secondary/20">
-                        <SoilIcon className="h-3.5 w-3.5 text-secondary" />
-                        <span className="text-xs font-medium text-secondary-foreground/90">
-                          {land.soil_type}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.water_source && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-info/20 to-info/10 border border-info/20">
-                        <WaterIcon className="h-3.5 w-3.5 text-info" />
-                        <span className="text-xs font-medium text-info-foreground/90">
-                          {land.water_source}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.irrigation_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-accent/20 to-accent/10 border border-accent/20">
-                        <Droplets className="h-3.5 w-3.5 text-accent" />
-                        <span className="text-xs font-medium text-accent-foreground/90">
-                          {land.irrigation_type}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.current_crop && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-success/20 to-success/10 border border-success/20">
-                        <CropIcon className="h-3.5 w-3.5 text-success" />
-                        <span className="text-xs font-medium text-success-foreground/90">
-                          {land.current_crop}
-                        </span>
-                      </div>
-                    )}
+                    {land.soil_type && (() => {
+                      const d = refLabels.display(land.soil_type, 'soil');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <SoilIcon className="h-3.5 w-3.5 text-secondary" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.water_source && (() => {
+                      const d = refLabels.display(land.water_source, 'water');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <WaterIcon className="h-3.5 w-3.5 text-info" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.irrigation_type && (() => {
+                      const d = refLabels.display(land.irrigation_type, 'irrigation');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <Droplets className="h-3.5 w-3.5 text-accent" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.current_crop && (() => {
+                      const d = refLabels.display(land.current_crop, 'crop');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <CropIcon className="h-3.5 w-3.5 text-success" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.ownership_type && (() => {
+                      const key = String(land.ownership_type).toLowerCase().trim();
+                      const styles: Record<string, string> = {
+                        owned: 'bg-success/15 border-success/30 text-success',
+                        leased: 'bg-info/15 border-info/30 text-info',
+                        shared: 'bg-warning/15 border-warning/30 text-warning',
+                        contract: 'bg-accent/20 border-accent/40 text-accent-foreground',
+                      };
+                      const cls = styles[key] || 'bg-muted/40 border-border/40 text-foreground';
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${cls}`}>
+                          <span className="text-xs font-semibold">{ownershipLabel(land.ownership_type)}</span>
+                        </div>
+                      );
+                    })()}
                    </div>
+
 
                    {/* Schedule Actions */}
                    {hasSchedule && (
@@ -442,22 +487,22 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                            e.stopPropagation();
                            onViewSchedule?.(land.id);
                          }}
-                       >
-                         <Calendar className="h-3.5 w-3.5" />
-                         View
-                       </Button>
-                       <Button
-                         variant="outline"
-                         size="sm"
-                         className="flex-1 gap-2"
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           handleEditSchedule(land.id);
-                         }}
-                       >
-                         <Edit className="h-3.5 w-3.5" />
-                         Edit
-                       </Button>
+                        >
+                          <Calendar className="h-3.5 w-3.5" />
+                          {t('schedule.land_selector.view')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSchedule(land.id);
+                          }}
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          {t('schedule.land_selector.edit')}
+                        </Button>
                        <Button
                          variant="outline"
                          size="sm"
@@ -472,20 +517,20 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                      </div>
                    )}
 
-                   {!hasSchedule && (
-                     <Button
-                       variant="outline"
-                       size="sm"
-                       className="w-full mt-3 gap-2"
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         handleCreateSchedule(land);
-                       }}
-                     >
-                       <Plus className="h-3.5 w-3.5" />
-                       Create Schedule
-                     </Button>
-                   )}
+                    {!hasSchedule && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-3 gap-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCreateSchedule(land);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {t('schedule.land_selector.create_schedule')}
+                      </Button>
+                    )}
                  </div>
                </Card>
              </motion.div>
@@ -511,7 +556,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
           size="lg"
         >
           <Plus className="h-5 w-5" />
-          <span className="font-medium">Add Land</span>
+          <span className="font-medium">{t('schedule.land_selector.add_land_btn')}</span>
         </Button>
       </motion.div>
 
@@ -519,18 +564,18 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete AI Schedule?</AlertDialogTitle>
+            <AlertDialogTitle>{t('schedule.land_selector.delete_ai_dialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the AI-generated crop schedule and all its tasks. This action cannot be undone.
+              {t('schedule.land_selector.delete_ai_dialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('schedule.land_selector.delete_dialog.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteSchedule}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t('schedule.land_selector.delete_dialog.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

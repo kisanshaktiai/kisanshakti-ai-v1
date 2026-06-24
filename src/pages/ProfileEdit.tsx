@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,10 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/stores/authStore';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { AvatarUpload } from '@/components/profile/AvatarUpload';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function ProfileEdit() {
   const { t } = useTranslation();
@@ -20,6 +21,7 @@ export default function ProfileEdit() {
   const { user, setUser } = useAuthStore();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
 
   // Initialize form with user data
@@ -29,8 +31,14 @@ export default function ProfileEdit() {
     displayName: user?.displayName || '',
     dateOfBirth: user?.dateOfBirth || '',
     gender: user?.gender || '',
+    email: '',
+    bio: '',
+    aadhaarNumber: '',
+    preferredContactMethod: 'phone',
     
     // Address
+    addressLine1: '',
+    addressLine2: '',
     village: user?.village || '',
     taluka: user?.taluka || '',
     district: user?.district || '',
@@ -42,6 +50,8 @@ export default function ProfileEdit() {
     primaryCrops: user?.primaryCrops?.join(', ') || '',
     farmingExperienceYears: user?.farmingExperienceYears || 0,
     farmType: user?.farmType || '',
+    hasLoan: false,
+    loanAmount: 0,
     
     // Facilities
     hasTractor: user?.hasTractor || false,
@@ -51,8 +61,97 @@ export default function ProfileEdit() {
     
     // Other
     annualIncomeRange: user?.annualIncomeRange || '',
-    preferredLanguage: user?.preferredLanguage || 'hi'
+    preferredLanguage: user?.preferredLanguage || 'hi',
+    notes: ''
   });
+
+  // Fetch fresh data from database on mount
+  useEffect(() => {
+    const loadProfileData = async () => {
+      if (!user?.id || !user?.tenantId) return;
+      
+      setDataLoading(true);
+      try {
+        // Create authenticated client with custom headers
+        const authClient = supabaseWithAuth(user.id, user.tenantId);
+        console.log('🔐 Loading profile with authenticated client:', { userId: user.id, tenantId: user.tenantId });
+        
+        // Fetch from farmers table
+        const { data: farmerData, error: farmerError } = await authClient
+          .from('farmers')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (farmerError) {
+          console.error('Error loading farmer data:', farmerError);
+        }
+
+        // Fetch from user_profiles table
+        const { data: profileData, error: profileError } = await authClient
+          .from('user_profiles')
+          .select('*')
+          .eq('farmer_id', user.id)
+          .maybeSingle();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Error loading profile data:', profileError);
+        }
+
+        // Merge data and update form
+        if (farmerData || profileData) {
+          const mergedData = {
+            fullName: profileData?.full_name || farmerData?.farmer_name || user.fullName || '',
+            displayName: profileData?.display_name || user.displayName || '',
+            dateOfBirth: profileData?.date_of_birth || user.dateOfBirth || '',
+            gender: profileData?.gender || user.gender || '',
+            email: profileData?.email || '',
+            bio: profileData?.bio || '',
+            aadhaarNumber: profileData?.aadhaar_number || farmerData?.aadhaar_number || '',
+            preferredContactMethod: farmerData?.preferred_contact_method || 'phone',
+            addressLine1: profileData?.address_line1 || '',
+            addressLine2: profileData?.address_line2 || '',
+            village: profileData?.village || user.village || '',
+            taluka: profileData?.taluka || user.taluka || '',
+            district: profileData?.district || user.district || '',
+            state: profileData?.state || user.state || '',
+            pincode: profileData?.pincode || user.pincode || '',
+            totalLandAcres: profileData?.total_land_acres || farmerData?.total_land_acres || user.totalLandAcres || 0,
+            primaryCrops: (profileData?.primary_crops || farmerData?.primary_crops || user.primaryCrops || []).join(', '),
+            farmingExperienceYears: profileData?.farming_experience_years || farmerData?.farming_experience_years || user.farmingExperienceYears || 0,
+            farmType: farmerData?.farm_type || user.farmType || '',
+            hasLoan: farmerData?.has_loan ?? false,
+            loanAmount: farmerData?.loan_amount || 0,
+            hasTractor: profileData?.has_tractor ?? farmerData?.has_tractor ?? user.hasTractor ?? false,
+            hasIrrigation: profileData?.has_irrigation ?? farmerData?.has_irrigation ?? user.hasIrrigation ?? false,
+            irrigationType: farmerData?.irrigation_type || user.irrigationType || '',
+            hasStorage: profileData?.has_storage ?? farmerData?.has_storage ?? user.hasStorage ?? false,
+            annualIncomeRange: profileData?.annual_income_range || farmerData?.annual_income_range || user.annualIncomeRange || '',
+            preferredLanguage: profileData?.preferred_language || farmerData?.language_preference || user.preferredLanguage || 'hi',
+            notes: farmerData?.notes || ''
+          };
+
+          setFormData(mergedData);
+          
+          // Update avatar if available
+          if (profileData?.avatar_url) {
+            setAvatarUrl(profileData.avatar_url);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load profile data',
+          variant: 'destructive'
+        });
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    loadProfileData();
+  }, [user?.id]);
 
   const handleAvatarUpdate = (url: string) => {
     setAvatarUrl(url);
@@ -69,10 +168,14 @@ export default function ProfileEdit() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !user.tenantId) return;
     
     setLoading(true);
     try {
+      // Create authenticated client with custom headers
+      const authClient = supabaseWithAuth(user.id, user.tenantId);
+      console.log('🔐 Saving profile with authenticated client:', { userId: user.id, tenantId: user.tenantId });
+      
       // Parse crops string to array
       const cropsArray = formData.primaryCrops
         .split(',')
@@ -80,19 +183,24 @@ export default function ProfileEdit() {
         .filter(crop => crop.length > 0);
 
       // Update farmers table
-      const { error: farmerError } = await supabase
+      const { error: farmerError } = await authClient
         .from('farmers')
         .update({
           total_land_acres: formData.totalLandAcres,
           primary_crops: cropsArray,
           farming_experience_years: formData.farmingExperienceYears,
           farm_type: formData.farmType,
+          has_loan: formData.hasLoan,
+          loan_amount: formData.loanAmount,
           has_tractor: formData.hasTractor,
           has_irrigation: formData.hasIrrigation,
           irrigation_type: formData.irrigationType,
           has_storage: formData.hasStorage,
           annual_income_range: formData.annualIncomeRange,
           language_preference: formData.preferredLanguage,
+          preferred_contact_method: formData.preferredContactMethod,
+          aadhaar_number: formData.aadhaarNumber,
+          notes: formData.notes,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
@@ -103,7 +211,7 @@ export default function ProfileEdit() {
       }
 
       // Check if profile exists
-      const { data: existingProfile } = await supabase
+      const { data: existingProfile } = await authClient
         .from('user_profiles')
         .select('id')
         .eq('farmer_id', user.id)
@@ -111,13 +219,18 @@ export default function ProfileEdit() {
 
       // Update or create user_profiles
       if (existingProfile) {
-        const { error: profileError } = await supabase
+        const { error: profileError } = await authClient
           .from('user_profiles')
           .update({
             full_name: formData.fullName,
             display_name: formData.displayName,
             date_of_birth: formData.dateOfBirth || null,
             gender: formData.gender || null,
+            email: formData.email || null,
+            bio: formData.bio || null,
+            aadhaar_number: formData.aadhaarNumber || null,
+            address_line1: formData.addressLine1 || null,
+            address_line2: formData.addressLine2 || null,
             village: formData.village || null,
             taluka: formData.taluka || null,
             district: formData.district || null,
@@ -140,7 +253,7 @@ export default function ProfileEdit() {
           throw profileError;
         }
       } else {
-        const { error: profileError } = await supabase
+        const { error: profileError } = await authClient
           .from('user_profiles')
           .insert({
             id: user.id,
@@ -150,6 +263,11 @@ export default function ProfileEdit() {
             display_name: formData.displayName,
             date_of_birth: formData.dateOfBirth || null,
             gender: formData.gender || null,
+            email: formData.email || null,
+            bio: formData.bio || null,
+            aadhaar_number: formData.aadhaarNumber || null,
+            address_line1: formData.addressLine1 || null,
+            address_line2: formData.addressLine2 || null,
             village: formData.village || null,
             taluka: formData.taluka || null,
             district: formData.district || null,
@@ -215,97 +333,156 @@ export default function ProfileEdit() {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-4 pb-24">
-        <div className="flex items-center gap-2 sticky top-0 bg-background/95 backdrop-blur-sm z-10 -mx-4 px-4 py-3 border-b">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/app/profile')}
-            className="shrink-0"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <h1 className="text-xl font-bold text-foreground truncate">Edit Profile</h1>
-        </div>
-
-        {/* Profile Picture Section */}
-        <Card>
-          <CardContent className="pt-6 flex flex-col items-center gap-4">
-            <AvatarUpload 
-              currentAvatarUrl={avatarUrl}
-              onAvatarUpdate={handleAvatarUpdate}
-              size="xl"
-              editable={true}
-            />
-            <div className="text-center">
-              <p className="text-sm font-medium">{user?.fullName || user?.name}</p>
-              <p className="text-xs text-muted-foreground">Click to change profile picture</p>
+    <PageShell padding="default" spacing="none">
+      <div className="space-y-4">
+        {dataLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 sticky top-0 bg-background/95 backdrop-blur-sm z-10 -mx-4 px-4 py-3 border-b">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/app/profile')}
+                className="shrink-0"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <h1 className="text-xl font-bold text-foreground truncate">Edit Profile</h1>
             </div>
-          </CardContent>
-        </Card>
 
-      {/* Personal Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Personal Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="fullName">Full Name</Label>
-            <Input
-              id="fullName"
-              value={formData.fullName}
-              onChange={(e) => handleInputChange('fullName', e.target.value)}
-              placeholder="Enter your full name"
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="displayName">Display Name</Label>
-            <Input
-              id="displayName"
-              value={formData.displayName}
-              onChange={(e) => handleInputChange('displayName', e.target.value)}
-              placeholder="Name to display in app"
-            />
-          </div>
+            {/* Profile Picture Section */}
+            <Card>
+              <CardContent className="pt-6 flex flex-col items-center gap-4">
+                <AvatarUpload 
+                  currentAvatarUrl={avatarUrl}
+                  onAvatarUpdate={handleAvatarUpdate}
+                  size="xl"
+                  editable={true}
+                />
+                <div className="text-center">
+                  <p className="text-sm font-medium">{user?.fullName || user?.name}</p>
+                  <p className="text-xs text-muted-foreground">Click to change profile picture</p>
+                </div>
+              </CardContent>
+            </Card>
 
-          <div>
-            <Label htmlFor="dateOfBirth">Date of Birth</Label>
-            <Input
-              id="dateOfBirth"
-              type="date"
-              value={formData.dateOfBirth}
-              onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-            />
-          </div>
+            {/* Personal Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Personal Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    value={formData.fullName}
+                    onChange={(e) => handleInputChange('fullName', e.target.value)}
+                    placeholder="Enter your full name"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="displayName">Display Name</Label>
+                  <Input
+                    id="displayName"
+                    value={formData.displayName}
+                    onChange={(e) => handleInputChange('displayName', e.target.value)}
+                    placeholder="Name to display in app"
+                  />
+                </div>
 
-          <div>
-            <Label htmlFor="gender">Gender</Label>
-            <Select
-              value={formData.gender}
-              onValueChange={(value) => handleInputChange('gender', value)}
-            >
-              <SelectTrigger id="gender">
-                <SelectValue placeholder="Select gender" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Male">Male</SelectItem>
-                <SelectItem value="Female">Female</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+                <div>
+                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                  <Input
+                    id="dateOfBirth"
+                    type="date"
+                    value={formData.dateOfBirth}
+                    onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="gender">Gender</Label>
+                  <Select
+                    value={formData.gender}
+                    onValueChange={(value) => handleInputChange('gender', value)}
+                  >
+                    <SelectTrigger id="gender">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="email">Email (Optional)</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    placeholder="your.email@example.com"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="aadhaarNumber">Aadhaar Number (Optional)</Label>
+                  <Input
+                    id="aadhaarNumber"
+                    value={formData.aadhaarNumber}
+                    onChange={(e) => handleInputChange('aadhaarNumber', e.target.value)}
+                    placeholder="XXXX-XXXX-XXXX"
+                    maxLength={12}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="bio">Bio (Optional)</Label>
+                  <Textarea
+                    id="bio"
+                    value={formData.bio}
+                    onChange={(e) => handleInputChange('bio', e.target.value)}
+                    placeholder="Tell us about yourself"
+                    rows={3}
+                  />
+                </div>
+              </CardContent>
+            </Card>
 
       {/* Address Information */}
-      <Card>
+            <Card>
         <CardHeader>
           <CardTitle className="text-base">Address</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="addressLine1">Address Line 1</Label>
+            <Input
+              id="addressLine1"
+              value={formData.addressLine1}
+              onChange={(e) => handleInputChange('addressLine1', e.target.value)}
+              placeholder="House/Plot number, Street"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="addressLine2">Address Line 2 (Optional)</Label>
+            <Input
+              id="addressLine2"
+              value={formData.addressLine2}
+              onChange={(e) => handleInputChange('addressLine2', e.target.value)}
+              placeholder="Landmark"
+            />
+          </div>
+
           <div>
             <Label htmlFor="village">Village</Label>
             <Input
@@ -437,6 +614,29 @@ export default function ProfileEdit() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex items-center justify-between">
+            <Label htmlFor="hasLoan">Has Agricultural Loan</Label>
+            <Switch
+              id="hasLoan"
+              checked={formData.hasLoan}
+              onCheckedChange={(checked) => handleInputChange('hasLoan', checked)}
+            />
+          </div>
+
+          {formData.hasLoan && (
+            <div>
+              <Label htmlFor="loanAmount">Loan Amount (₹)</Label>
+              <Input
+                id="loanAmount"
+                type="number"
+                value={formData.loanAmount}
+                onChange={(e) => handleInputChange('loanAmount', parseFloat(e.target.value) || 0)}
+                placeholder="Enter loan amount"
+                min="0"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -499,9 +699,9 @@ export default function ProfileEdit() {
       {/* Preferences */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Preferences</CardTitle>
+          <CardTitle className="text-base">Preferences & Notes</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div>
             <Label htmlFor="language">Preferred Language</Label>
             <Select
@@ -520,41 +720,72 @@ export default function ProfileEdit() {
               </SelectContent>
             </Select>
           </div>
+
+          <div>
+            <Label htmlFor="contactMethod">Preferred Contact Method</Label>
+            <Select
+              value={formData.preferredContactMethod}
+              onValueChange={(value) => handleInputChange('preferredContactMethod', value)}
+            >
+              <SelectTrigger id="contactMethod">
+                <SelectValue placeholder="Select contact method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="phone">Phone</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="notes">Additional Notes (Optional)</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => handleInputChange('notes', e.target.value)}
+              placeholder="Any additional information..."
+              rows={3}
+            />
+          </div>
         </CardContent>
       </Card>
 
-      {/* Fixed Bottom Action Bar */}
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t z-10">
-        <div className="max-w-2xl mx-auto flex gap-3">
-          <Button
-            onClick={() => navigate('/app/profile')}
-            variant="outline"
-            className="flex-1"
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-          
-          <Button
-            onClick={handleSave}
-            className="flex-1"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save
-              </>
-            )}
-          </Button>
-        </div>
+            {/* Fixed Bottom Action Bar */}
+            <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t z-10">
+              <div className="max-w-2xl mx-auto flex gap-3">
+                <Button
+                  onClick={() => navigate('/app/profile')}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={loading}
+                >
+                  Cancel
+                </Button>
+                
+                <Button
+                  onClick={handleSave}
+                  className="flex-1"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
-      </div>
-    </div>
+    </PageShell>
   );
 }

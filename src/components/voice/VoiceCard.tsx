@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
-import { useVoiceNavigation } from '@/contexts/VoiceNavigationContext';
+import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { cn } from '@/lib/utils';
 
 interface VoiceCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -10,24 +10,30 @@ interface VoiceCardProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export const VoiceCard = React.forwardRef<HTMLDivElement, VoiceCardProps>(
   ({ voiceLabel, announceOnHover = true, onMouseEnter, onFocus, onClick, className, children, ...props }, ref) => {
-    const { announceElement, isEnabled } = useVoiceNavigation();
+    const { speak, isReady } = useModernVoice();
+
+    const announceElement = (text: string) => {
+      if (isReady) {
+        speak(text);
+      }
+    };
 
     const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (announceOnHover && isEnabled) {
+      if (announceOnHover && isReady) {
         announceElement(voiceLabel);
       }
       onMouseEnter?.(e);
     };
 
     const handleFocus = (e: React.FocusEvent<HTMLDivElement>) => {
-      if (isEnabled) {
+      if (isReady) {
         announceElement(voiceLabel);
       }
       onFocus?.(e);
     };
 
     const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (isEnabled && onClick) {
+      if (isReady && onClick) {
         announceElement(`${voiceLabel} selected`);
       }
       onClick?.(e);

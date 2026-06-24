@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 
 export const MarketSkeleton = () => {
   return (
-    <div className="min-h-screen bg-background animate-fade-in">
+    <div className="min-h-full bg-background animate-fade-in">
       {/* Header Skeleton */}
       <div className="bg-card border-b border-border p-4">
         <div className="flex items-center justify-between mb-4">

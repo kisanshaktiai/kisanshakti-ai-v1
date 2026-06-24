@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { offlineDataService } from '@/services/offlineDataService';
 import { landsApi } from '@/services/landsApi';
 import { localDB } from '@/services/localDB';
@@ -11,10 +12,12 @@ import { useToast } from '@/hooks/use-toast';
  * - Offline support
  * - Automatic refetching
  * - Real-time updates integration
- * - Waits for initial sync to complete
+ * - Auth-readiness gating (waits for global headers to propagate)
  */
 export function useLands() {
   const { user } = useAuthStore();
+  const { isReady: authReady } = useAuthReady();
+  const tenantId = user?.tenantId;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -101,6 +104,8 @@ export function useLands() {
                 nitrogen_kg_per_ha: null,
                 phosphorus_kg_per_ha: null,
                 potassium_kg_per_ha: null,
+                soil_confidence_level: null,
+                soil_data_source: null,
                 water_source: l.water_source || null,
                 irrigation_source: null,
                 irrigation_type: null,
@@ -112,6 +117,8 @@ export function useLands() {
                 last_sowing_date: null,
                 harvest_date: null,
                 expected_harvest_date: null,
+                current_moisture_status: null,
+                last_moisture_update: null,
                 previous_crop: null,
                 previous_crop_id: null,
                 last_crop: null,
@@ -120,6 +127,8 @@ export function useLands() {
                 last_ndvi_calculation: null,
                 last_ndvi_value: null,
                 ndvi_thumbnail_url: null,
+                ndvi_geotiff_url: null,
+                ndvi_status: null,
                 last_processed_at: null,
                 tile_id: null,
                 tile_ids: null,
@@ -154,31 +163,37 @@ export function useLands() {
       console.log(`📦 [useLands] Local DB has ${localData?.length || 0} lands for farmer ${user.id}`);
       return localData || [];
     },
-    enabled: !!user?.id, // No sync blocking - fetch immediately
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
+    enabled: authReady, // Gate on full auth-readiness (user + tenant + headers)
+    // PHASE 1A: Long stale window — realtime + manual refetch will invalidate when needed.
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     retry: 1, // Reduced retry for faster fallback
     retryDelay: 1000, // Quick retry
   });
 
-  // Mutation for deleting a land
+  // Mutation for deleting a land (soft delete - marks as inactive)
   const deleteMutation = useMutation({
     mutationFn: async (landId: string) => {
+      console.log('🗑️ [useLands] Delete mutation started for:', landId);
       await landsApi.deleteLand(landId);
+      console.log('✅ [useLands] Delete mutation completed for:', landId);
     },
     onSuccess: () => {
+      console.log('✅ [useLands] Delete successful, invalidating queries');
       queryClient.invalidateQueries({ queryKey: ['lands'] });
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       toast({
-        title: 'Success',
-        description: 'Land deleted successfully',
+        title: 'Land Removed',
+        description: 'Land has been removed from your list',
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error('❌ [useLands] Delete mutation error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete land',
+        description: error?.message || 'Failed to remove land',
         variant: 'destructive',
       });
     },

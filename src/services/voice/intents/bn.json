@@ -1,0 +1,36 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": ["হোম দেখাও", "প্রথম পাতা", "হোমে যাও", "ড্যাশবোর্ড খুলুন"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": ["আমার জমি", "জমি দেখাও", "খামার দেখাও", "আমার খামার"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": ["আবহাওয়া বলুন", "আবহাওয়া দেখাও", "আবহাওয়া কেমন", "বৃষ্টি হবে"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": ["সময়সূচী দেখাও", "আমার কাজ", "ফসল সময়সূচী", "আজকের কাজ"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/schedule"
+    }
+  ]
+}

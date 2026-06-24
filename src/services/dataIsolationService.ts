@@ -1,6 +1,7 @@
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { tenantIsolationService } from './tenantIsolationService';
 
 /**
  * Centralized service for tenant and farmer data isolation
@@ -8,15 +9,31 @@ import type { Database } from '@/integrations/supabase/types';
  */
 class DataIsolationService {
   /**
-   * Get current isolation context from auth store
+   * Get current isolation context from auth store and tenant isolation service
    */
   getIsolationContext() {
     const { user, session } = useAuthStore.getState();
+    
+    // Get tenant ID from user object first, fallback to tenant isolation service
+    let tenantId = user?.tenantId;
+    if (!tenantId) {
+      try {
+        tenantId = tenantIsolationService.getTenantId();
+      } catch (e) {
+        // Tenant isolation service not initialized yet
+        console.warn('[DataIsolation] Tenant isolation service not initialized');
+      }
+    }
+    
+    // CRITICAL: farmerId should come from user.id (which is the farmer's ID)
+    // The session.farmerId should match user.id
+    const farmerId = user?.id || session?.farmerId || null;
+
     return {
-      tenantId: user?.tenantId,
-      farmerId: user?.id,
-      sessionToken: session?.token,
-      isValid: !!(user?.tenantId && user?.id)
+      tenantId: tenantId || null,
+      farmerId: farmerId,
+      sessionToken: session?.token || null,
+      isValid: !!(tenantId && farmerId)
     };
   }
 

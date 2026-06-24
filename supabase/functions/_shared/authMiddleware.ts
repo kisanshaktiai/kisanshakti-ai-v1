@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { ResolvedTenant } from './tenantMiddleware.ts';
 
 /**
@@ -227,4 +227,293 @@ export function extractAuthContext(req: Request): Partial<AuthContext> | null {
     email: payload.email,
     role: payload.role || payload.user_metadata?.role,
   };
+}
+
+// =============================================================================
+// HEADER-BASED AUTHENTICATION (for mobile/web apps)
+// =============================================================================
+
+/**
+ * Header-based authentication context
+ */
+export interface HeaderAuthContext {
+  tenantId: string;
+  farmerId: string;
+  sessionToken: string | null;
+}
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token',
+  'Content-Type': 'application/json'
+};
+
+/**
+ * Validates authentication headers from incoming requests
+ * 
+ * @param req - The incoming HTTP request
+ * @param options - Optional configuration
+ * @param options.requireSessionToken - Whether to require x-session-token header (default: false)
+ * @param options.allowMissingFarmerId - Whether farmerId is optional for background jobs (default: false)
+ * 
+ * @returns HeaderAuthContext object if valid, or Response with error if invalid
+ * 
+ * @example
+ * ```typescript
+ * const authResult = await validateAuthHeaders(req);
+ * if (authResult instanceof Response) {
+ *   return authResult; // Return error response
+ * }
+ * const { tenantId, farmerId, sessionToken } = authResult;
+ * ```
+ */
+export async function validateAuthHeaders(
+  req: Request,
+  options?: {
+    requireSessionToken?: boolean;
+    allowMissingFarmerId?: boolean;
+  }
+): Promise<HeaderAuthContext | Response> {
+  const tenantId = req.headers.get('x-tenant-id');
+  const farmerId = req.headers.get('x-farmer-id');
+  const sessionToken = req.headers.get('x-session-token');
+
+  // Log headers for debugging (without sensitive data)
+  console.log('🔐 [validateAuthHeaders] Validating headers:', {
+    hasTenantId: !!tenantId,
+    hasFarmerId: !!farmerId,
+    hasSessionToken: !!sessionToken,
+    requireSessionToken: options?.requireSessionToken || false,
+    allowMissingFarmerId: options?.allowMissingFarmerId || false,
+    timestamp: new Date().toISOString()
+  });
+
+  // Validate tenant ID (always required)
+  if (!tenantId) {
+    console.error('🚨 [validateAuthHeaders] Missing x-tenant-id header');
+    return new Response(
+      JSON.stringify({ 
+        error: 'Authentication required',
+        details: 'x-tenant-id header is required',
+        code: 'MISSING_TENANT_ID'
+      }),
+      { 
+        status: 401, 
+        headers: corsHeaders
+      }
+    );
+  }
+
+  // Validate farmer ID (required unless explicitly allowed to be missing)
+  if (!farmerId && !options?.allowMissingFarmerId) {
+    console.error('🚨 [validateAuthHeaders] Missing x-farmer-id header');
+    return new Response(
+      JSON.stringify({ 
+        error: 'Authentication required',
+        details: 'x-farmer-id header is required',
+        code: 'MISSING_FARMER_ID'
+      }),
+      { 
+        status: 401, 
+        headers: corsHeaders
+      }
+    );
+  }
+
+  // Validate session token if required
+  if (options?.requireSessionToken && !sessionToken) {
+    console.error('🚨 [validateAuthHeaders] Missing x-session-token header');
+    return new Response(
+      JSON.stringify({ 
+        error: 'Authentication required',
+        details: 'x-session-token header is required for this operation',
+        code: 'MISSING_SESSION_TOKEN'
+      }),
+      { 
+        status: 401, 
+        headers: corsHeaders
+      }
+    );
+  }
+
+  // Validate header formats (basic validation)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  if (!uuidRegex.test(tenantId)) {
+    console.error('🚨 [validateAuthHeaders] Invalid tenantId format:', tenantId);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Invalid authentication',
+        details: 'x-tenant-id must be a valid UUID',
+        code: 'INVALID_TENANT_ID_FORMAT'
+      }),
+      { 
+        status: 400, 
+        headers: corsHeaders
+      }
+    );
+  }
+
+  if (farmerId && !uuidRegex.test(farmerId)) {
+    console.error('🚨 [validateAuthHeaders] Invalid farmerId format:', farmerId);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Invalid authentication',
+        details: 'x-farmer-id must be a valid UUID',
+        code: 'INVALID_FARMER_ID_FORMAT'
+      }),
+      { 
+        status: 400, 
+        headers: corsHeaders
+      }
+    );
+  }
+
+  console.log('✅ [validateAuthHeaders] Headers validated successfully');
+
+  return {
+    tenantId,
+    farmerId: farmerId || '', // Return empty string if optional and missing
+    sessionToken: sessionToken || null
+  };
+}
+
+/**
+ * Validates tenant-farmer association in the database
+ * 
+ * This ensures the farmer belongs to the specified tenant, preventing
+ * cross-tenant data access attempts.
+ * 
+ * @param supabase - Supabase client instance
+ * @param tenantId - Tenant ID from headers
+ * @param farmerId - Farmer ID from headers
+ * 
+ * @returns true if valid, Response with error if invalid
+ * 
+ * @example
+ * ```typescript
+ * const validationResult = await validateTenantFarmerAssociation(supabase, tenantId, farmerId);
+ * if (validationResult instanceof Response) {
+ *   return validationResult;
+ * }
+ * // Continue with business logic
+ * ```
+ */
+export async function validateTenantFarmerAssociation(
+  supabase: any,
+  tenantId: string,
+  farmerId: string
+): Promise<true | Response> {
+  console.log('🔐 [validateTenantFarmerAssociation] Validating association...');
+
+  try {
+    const { data: farmer, error } = await supabase
+      .from('farmers')
+      .select('id, tenant_id, farmer_name')
+      .eq('id', farmerId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (error || !farmer) {
+      console.error('🚨 [validateTenantFarmerAssociation] Invalid association:', {
+        tenantId,
+        farmerId,
+        error: error?.message,
+        code: error?.code
+      });
+
+      return new Response(
+        JSON.stringify({ 
+          error: 'Unauthorized',
+          details: 'Invalid tenant-farmer association',
+          code: 'INVALID_TENANT_FARMER_ASSOCIATION'
+        }),
+        { 
+          status: 403, 
+          headers: corsHeaders
+        }
+      );
+    }
+
+    console.log('✅ [validateTenantFarmerAssociation] Association validated:', {
+      farmerId: farmer.id,
+      farmerName: farmer.farmer_name,
+      tenantId: farmer.tenant_id
+    });
+
+    return true;
+  } catch (err) {
+    console.error('🚨 [validateTenantFarmerAssociation] Error:', err);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Internal server error',
+        details: 'Failed to validate authentication',
+        code: 'VALIDATION_ERROR'
+      }),
+      { 
+        status: 500, 
+        headers: corsHeaders
+      }
+    );
+  }
+}
+
+/**
+ * Creates a standardized CORS response for OPTIONS requests
+ * 
+ * @returns Response object with CORS headers
+ */
+export function createCorsResponse(): Response {
+  return new Response(null, { 
+    status: 204,
+    headers: corsHeaders 
+  });
+}
+
+/**
+ * Creates a standardized error response with proper CORS headers
+ * 
+ * @param message - Error message
+ * @param status - HTTP status code (default: 500)
+ * @param code - Error code for client-side handling
+ * 
+ * @returns Response object with error details
+ */
+export function createErrorResponse(
+  message: string,
+  status: number = 500,
+  code?: string
+): Response {
+  return new Response(
+    JSON.stringify({ 
+      error: message,
+      code: code || 'INTERNAL_ERROR',
+      timestamp: new Date().toISOString()
+    }),
+    { 
+      status, 
+      headers: corsHeaders
+    }
+  );
+}
+
+/**
+ * Creates a standardized success response with proper CORS headers
+ * 
+ * @param data - Response data
+ * @param status - HTTP status code (default: 200)
+ * 
+ * @returns Response object with data
+ */
+export function createSuccessResponse(
+  data: any,
+  status: number = 200
+): Response {
+  return new Response(
+    JSON.stringify(data),
+    { 
+      status, 
+      headers: corsHeaders
+    }
+  );
 }

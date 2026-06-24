@@ -1,0 +1,147 @@
+{
+  "__meta": {
+    "page": "weather",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "weather": {
+    "header": {
+      "title": "हवामान",
+      "current_location": "सध्याचे स्थान",
+      "updated_now": "आत्ताच",
+      "updated_minutes": "{{minutes}} मिनिटे आधी",
+      "updated_hour": "1 तास आधी",
+      "updated_hours": "{{hours}} तास आधी"
+    },
+    "hero": {
+      "feels_like": "{{temp}}°C वाटतो",
+      "provider": "{{provider}} पासून डेटा"
+    },
+    "stats": {
+      "wind": "वारा",
+      "humidity": "आर्द्रता",
+      "visibility": "दृश्यमानता",
+      "pressure": "दाब"
+    },
+    "units": {
+      "celsius": "°C",
+      "kmh": "किमी/तास",
+      "percent": "%",
+      "km": "किमी",
+      "hpa": "hPa",
+      "mm": "मिमी"
+    },
+    "forecast": {
+      "title": "7 दिवसांचा अंदाज",
+      "daily": "दैनिक",
+      "hourly": "तासानुतास",
+      "today": "आज",
+      "week": "आठवडा",
+      "days_7": "7 दिवस",
+      "temp_max": "कमाल",
+      "temp_min": "किमान",
+      "rain_chance": "पाऊस"
+    },
+    "rainfall": {
+      "title": "पर्जन्यवृष्टी",
+      "today": "आज",
+      "week": "आठवडा",
+      "chart_label": "पाऊस (मिमी)",
+      "cumulative": "एकूण",
+      "no_rain": "पाऊस अपेक्षित नाही"
+    },
+    "farming": {
+      "title": "शेती शिफारसी",
+      "irrigation": "पाणी पुरवठा",
+      "spraying": "फवारणी",
+      "planting": "लागवड",
+      "high": "जास्त",
+      "medium": "मध्यम",
+      "low": "कमी",
+      "good": "चांगले",
+      "moderate": "ठीक आहे",
+      "avoid": "टाळा",
+      "favorable": "अनुकूल",
+      "ok": "ठीक",
+      "not_recommended": "शिफारस नाही"
+    },
+    "voice": {
+      "read": "ऐका",
+      "stop": "थांबवा",
+      "summary": "आजचे हवामान: {{temp}} अंश सेल्सिअस, {{condition}}। {{feelsLike}} अंश वाटत आहे। आर्द्रता {{humidity}} टक्के आहे। वाऱ्याचा वेग {{windSpeed}} किलोमीटर प्रति तास आहे। {{rainInfo}} {{advice}}",
+      "high_rain_advice": "जास्त पाऊस अपेक्षित असल्याने आज फवारणी टाळा।",
+      "high_wind_advice": "जोरदार वाऱ्यामुळे फवारणी करताना सावधगिरी बाळगा।",
+      "irrigation_advice": "गरम आणि कोरड्या हवामानामुळे पाणी पुरवठा वाढवा।",
+      "good_conditions": "हवामान शेतीसाठी अनुकूल आहे।",
+      "rain_expected": "पाऊस {{chance}} टक्के शक्यता आहे।",
+      "no_rain": "पाऊस अपेक्षित नाही।"
+    },
+    "toast": {
+      "sync_success": "हवामान डेटा यशस्वीरित्या अपडेट झाला",
+      "sync_error": "हवामान डेटा अपडेट झाला नाही",
+      "location_error": "तुमचे स्थान मिळू शकले नाही",
+      "offline": "तुम्ही ऑफलाइन आहात। जुना हवामान डेटा दर्शवित आहे।",
+      "refresh_hint": "अपडेट करण्यासाठी खाली खेचा"
+    },
+    "error": {
+      "title": "हवामान डेटा उपलब्ध नाही",
+      "message": "हवामान माहिती लोड करू शकत नाही. कृपया तुमचे कनेक्शन तपासा आणि पुन्हा प्रयत्न करा।",
+      "network": "नेटवर्क त्रुटी. कृपया तुमचे इंटरनेट कनेक्शन तपासा।",
+      "location": "स्थान प्रवेश नाकारला. अचूक हवामानासाठी स्थान सक्षम करा।",
+      "server": "हवामान सेवा तात्पुरती अनुपलब्ध आहे।",
+      "retry": "पुन्हा प्रयत्न करा"
+    },
+    "empty": {
+      "no_data": "कोणताही हवामान डेटा उपलब्ध नाही",
+      "enable_location": "हवामान पाहण्यासाठी स्थान सक्षम करा"
+    },
+    "cta": {
+      "refresh": "ताजे करा",
+      "retry": "पुन्हा प्रयत्न करा",
+      "enable_location": "स्थान सक्षम करा"
+    },
+    "chart": {
+      "temperature": "तापमान",
+      "rain_probability": "पाऊस %",
+      "humidity": "आर्द्रता",
+      "wind_speed": "वाऱ्याचा वेग",
+      "x_axis_hours": "वेळ",
+      "y_axis_temp": "°C",
+      "tooltip_temp": "तापमान: {{value}}°C",
+      "tooltip_feels": "वाटते: {{value}}°C",
+      "tooltip_rain": "पाऊस: {{value}}%"
+    },
+    "aria": {
+      "refresh_button": "हवामान डेटा ताजे करा",
+      "back_button": "मागे जा",
+      "hero_card": "सध्याची हवामान माहिती",
+      "stats_grid": "हवामान सांख्यिकी",
+      "forecast_card": "{{day}} साठी हवामान अंदाज",
+      "rainfall_chart": "7 दिवसांचा पाऊस चार्ट",
+      "farming_recommendations": "हवामानावर आधारित शेती शिफारसी",
+      "voice_summary": "हवामान सारांश ऐका",
+      "hourly_chart": "तासानुतास तापमान अंदाज"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show today's weather",
+      "What's the weather forecast?",
+      "Read the weather report",
+      "How much rain is expected?"
+    ],
+    "voice_examples_hi": [
+      "आज का मौसम दिखाओ",
+      "मौसम का पूर्वानुमान क्या है?",
+      "मौसम रिपोर्ट पढ़ो",
+      "कितनी बारिश होगी?"
+    ],
+    "voice_examples_mr": [
+      "आजचे हवामान दाखवा",
+      "हवामानाचा अंदाज काय आहे?",
+      "हवामान अहवाल वाचा",
+      "किती पाऊस अपेक्षित आहे?"
+    ]
+  }
+}

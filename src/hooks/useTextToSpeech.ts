@@ -1,4 +1,16 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+/**
+ * Text-to-Speech Hook with Web Speech API
+ * Uses Web Speech API for better voice quality in browser/PWA
+ */
+
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+
+// Web Speech API synthesis
+let synth: SpeechSynthesis | null = null;
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  synth = window.speechSynthesis;
+}
 
 interface UseTextToSpeechProps {
   language?: string;
@@ -8,181 +20,190 @@ interface UseTextToSpeechProps {
 }
 
 export function useTextToSpeech({ 
-  language = 'hi-IN', 
-  rate = 0.9, 
+  language = 'hi', 
+  rate = 0.9,
   pitch = 1.0,
   onError
 }: UseTextToSpeechProps = {}) {
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isSupported, setIsSupported] = useState(false);
+  const [isSupported, setIsSupported] = useState(true);
   const [isVoicesLoaded, setIsVoicesLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const speakingRef = useRef(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const voicesLoadedRef = useRef(false);
 
-  // Check support and load voices
+  // Check TTS support
   useEffect(() => {
-    const checkSupport = () => {
-      const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
-      setIsSupported(supported);
-      
-      if (supported) {
-        // Load voices
-        const loadVoices = () => {
-          const voices = window.speechSynthesis.getVoices();
-          if (voices.length > 0 && !voicesLoadedRef.current) {
-            voicesLoadedRef.current = true;
-            setIsVoicesLoaded(true);
-          }
-        };
-
-        // Try to load voices immediately
-        loadVoices();
-
-        // Listen for voices changed event (some browsers load voices async)
-        if (window.speechSynthesis.onvoiceschanged !== undefined) {
-          window.speechSynthesis.onvoiceschanged = loadVoices;
-        }
-
-        // Fallback: Set loaded after a short delay
-        const timeout = setTimeout(() => {
-          if (!voicesLoadedRef.current) {
-            voicesLoadedRef.current = true;
-            setIsVoicesLoaded(true);
-          }
-        }, 500);
-
-        return () => {
-          clearTimeout(timeout);
-          if (window.speechSynthesis.onvoiceschanged !== undefined) {
-            window.speechSynthesis.onvoiceschanged = null;
-          }
-        };
-      }
-    };
-
-    checkSupport();
+    const hasWebSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
+    setIsSupported(hasWebSpeech || Capacitor.isNativePlatform());
   }, []);
 
-  const getVoiceForLanguage = useCallback((lang: string) => {
-    if (!isSupported) return null;
-    
-    const voices = window.speechSynthesis.getVoices();
-    
-    // Try to find a voice for the specified language
-    let voice = voices.find(v => v.lang.startsWith(lang.split('-')[0]));
-    
-    // Fallback to English if language not found
-    if (!voice) {
-      voice = voices.find(v => v.lang.startsWith('en'));
+  // Load voices
+  useEffect(() => {
+    if (synth) {
+      const loadVoices = () => {
+        const voices = synth!.getVoices();
+        setIsVoicesLoaded(voices.length > 0);
+      };
+      
+      loadVoices();
+      synth.onvoiceschanged = loadVoices;
+      
+      return () => {
+        if (synth) synth.onvoiceschanged = null;
+      };
     }
-    
-    // Fallback to any voice
-    if (!voice && voices.length > 0) {
-      voice = voices[0];
-    }
-    
-    return voice;
-  }, [isSupported]);
+  }, []);
 
-  const speak = useCallback((text: string) => {
-    if (!isSupported) {
-      const errorMsg = 'Text-to-speech is not supported in this browser';
-      setError(errorMsg);
-      onError?.(errorMsg);
-      return;
-    }
+  // Get language code
+  const getLanguageCode = useCallback((lang: string): string => {
+    const baseLang = lang.split('-')[0].toLowerCase();
+    const langCodes: Record<string, string> = {
+      'hi': 'hi-IN', 'mr': 'mr-IN', 'ta': 'ta-IN', 'te': 'te-IN',
+      'bn': 'bn-IN', 'gu': 'gu-IN', 'kn': 'kn-IN', 'ml': 'ml-IN',
+      'pa': 'pa-IN', 'en': 'en-IN',
+    };
+    return langCodes[baseLang] || `${baseLang}-IN`;
+  }, []);
 
-    if (!text.trim()) {
-      return;
+  // Get best voice for language
+  const getBestVoice = useCallback((langCode: string): SpeechSynthesisVoice | null => {
+    if (!synth) return null;
+    
+    const voices = synth.getVoices();
+    const baseLang = langCode.split('-')[0].toLowerCase();
+    
+    // Find voices matching the language
+    const matchingVoices = voices.filter(v => 
+      v.lang.toLowerCase().startsWith(baseLang)
+    );
+    
+    if (matchingVoices.length === 0) {
+      // Fallback to Hindi, then English
+      const fallbackLang = baseLang === 'en' ? 'en' : 'hi';
+      const fallbackVoices = voices.filter(v => 
+        v.lang.toLowerCase().startsWith(fallbackLang)
+      );
+      return fallbackVoices[0] || voices[0] || null;
     }
+    
+    // Prefer high-quality voices
+    const qualityIndicators = ['wavenet', 'neural', 'enhanced', 'premium'];
+    for (const indicator of qualityIndicators) {
+      const hqVoice = matchingVoices.find(v => 
+        v.name.toLowerCase().includes(indicator)
+      );
+      if (hqVoice) return hqVoice;
+    }
+    
+    // Prefer non-local voices
+    const nonLocalVoice = matchingVoices.find(v => !v.localService);
+    return nonLocalVoice || matchingVoices[0];
+  }, []);
+
+  const speak = useCallback(async (text: string) => {
+    if (!text.trim()) return;
 
     try {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
       setError(null);
+      setIsSpeaking(true);
+      speakingRef.current = true;
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      // Set language and voice
-      utterance.lang = language;
-      const voice = getVoiceForLanguage(language);
-      if (voice) {
-        utterance.voice = voice;
+      // Use Web Speech API if available
+      if (synth) {
+        synth.cancel();
+        
+        const langCode = getLanguageCode(language);
+        const voice = getBestVoice(langCode);
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = langCode;
+        utterance.rate = Math.max(0.5, Math.min(2.0, rate));
+        utterance.pitch = Math.max(0.5, Math.min(2.0, pitch));
+        utterance.volume = 1.0;
+        
+        if (voice) utterance.voice = voice;
+        
+        utteranceRef.current = utterance;
+        
+        utterance.onstart = () => {
+          setIsSpeaking(true);
+          speakingRef.current = true;
+        };
+        
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          speakingRef.current = false;
+        };
+        
+        utterance.onerror = (event) => {
+          if (event.error === 'canceled' || event.error === 'interrupted') return;
+          const errorMsg = event.error || 'Speech synthesis failed';
+          setError(errorMsg);
+          onError?.(errorMsg);
+          setIsSpeaking(false);
+          speakingRef.current = false;
+        };
+        
+        synth.speak(utterance);
+        console.log(`[TTS] Speaking with voice: ${voice?.name || 'default'}`);
+      } else if (Capacitor.isNativePlatform()) {
+        // Fallback to native TTS
+        const { TextToSpeech } = await import('@capacitor-community/text-to-speech');
+        const langCode = getLanguageCode(language);
+        
+        await TextToSpeech.speak({
+          text: text.trim(),
+          lang: langCode,
+          rate: Math.max(0.5, Math.min(2.0, rate)),
+          pitch: Math.max(0.5, Math.min(2.0, pitch)),
+          volume: 1.0,
+          category: 'ambient',
+        });
+        
+        setIsSpeaking(false);
+        speakingRef.current = false;
       }
-      
-      utterance.rate = rate;
-      utterance.pitch = pitch;
-
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-        setError(null);
-      };
-
-      utterance.onend = () => {
-        setIsSpeaking(false);
-      };
-
-      utterance.onerror = (event) => {
-        console.error('Speech synthesis error:', event);
-        setIsSpeaking(false);
-        
-        let errorMsg = 'Failed to play speech';
-        
-        if (event.error === 'not-allowed') {
-          errorMsg = 'Microphone/audio access denied. Please enable in settings.';
-        } else if (event.error === 'network') {
-          errorMsg = 'Network error. Please check your connection.';
-        } else if (event.error === 'synthesis-failed') {
-          errorMsg = 'Speech synthesis failed. Language may not be supported.';
-        }
-        
-        setError(errorMsg);
-        onError?.(errorMsg);
-      };
-
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
     } catch (err) {
       console.error('Error in speak function:', err);
-      const errorMsg = 'An error occurred while trying to speak';
+      const errorMsg = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMsg);
       onError?.(errorMsg);
       setIsSpeaking(false);
+      speakingRef.current = false;
     }
-  }, [isSupported, language, rate, pitch, getVoiceForLanguage, onError]);
+  }, [language, rate, pitch, onError, getLanguageCode, getBestVoice]);
 
   const stop = useCallback(() => {
-    if (isSupported) {
-      try {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-        setError(null);
-      } catch (err) {
-        console.error('Error stopping speech:', err);
+    try {
+      if (synth) synth.cancel();
+      
+      if (Capacitor.isNativePlatform()) {
+        import('@capacitor-community/text-to-speech').then(({ TextToSpeech }) => {
+          TextToSpeech.stop().catch(() => {});
+        }).catch(() => {});
       }
+      
+      utteranceRef.current = null;
+      setIsSpeaking(false);
+      speakingRef.current = false;
+      setError(null);
+    } catch (err) {
+      console.error('Error stopping speech:', err);
     }
-  }, [isSupported]);
+  }, []);
 
   const pause = useCallback(() => {
-    if (isSupported && isSpeaking) {
-      try {
-        window.speechSynthesis.pause();
-      } catch (err) {
-        console.error('Error pausing speech:', err);
-      }
+    if (synth && speakingRef.current) {
+      synth.pause();
     }
-  }, [isSupported, isSpeaking]);
+  }, []);
 
   const resume = useCallback(() => {
-    if (isSupported && window.speechSynthesis.paused) {
-      try {
-        window.speechSynthesis.resume();
-      } catch (err) {
-        console.error('Error resuming speech:', err);
-      }
+    if (synth) {
+      synth.resume();
     }
-  }, [isSupported]);
+  }, []);
 
   const reset = useCallback(() => {
     stop();

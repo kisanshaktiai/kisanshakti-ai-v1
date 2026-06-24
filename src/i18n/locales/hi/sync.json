@@ -1,0 +1,55 @@
+{
+  "__meta": {
+    "page": "sync",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "sync": {
+    "title": "डेटा सिंक करें",
+    "full_sync_starting": "🔄 पूर्ण सिंक शुरू हो रहा है...",
+    "syncing_data": "🔄 डेटा सिंक हो रहा है...",
+    "clearing_local": "स्थानीय डेटा साफ करके सर्वर से पुनः लोड कर रहे हैं...",
+    "please_wait": "कृपया प्रतीक्षा करें जब तक हम आपका डेटा अपडेट करते हैं",
+    "sync_complete": "✅ सिंक पूर्ण!",
+    "all_data_synced": "सभी डेटा अद्यतित है",
+    "data_reloaded": "सभी डेटा सर्वर से पुनः लोड किया गया - यदि आवश्यक हो तो रीफ्रेश करें",
+    "tip": "💡 सुझाव",
+    "refresh_after_sync": "सर्वोत्तम परिणामों के लिए, पूर्ण सिंक के बाद पेज रीफ्रेश करें",
+    "refresh_now": "अभी रीफ्रेश करें",
+    "sync_partial": "⚠️ सिंक आंशिक रूप से पूर्ण",
+    "some_not_synced": "कुछ डेटा सिंक नहीं हो सका",
+    "sync_failed": "❌ सिंक विफल",
+    "check_connection": "कृपया अपना कनेक्शन जांचें और पुनः प्रयास करें",
+    "offline": "ऑफ़लाइन",
+    "quick_sync": "त्वरित सिंक",
+    "full_reload": "सर्वर से पूर्ण पुनः लोड",
+    "pending_changes": "{{count}} लंबित परिवर्तन",
+    "pending_changes_plural": "{{count}} लंबित परिवर्तन",
+    "all_synced": "सभी डेटा सिंक किया गया",
+    "last_synced": "अंतिम सिंक",
+    "syncing": "सिंक हो रहा है...",
+    "sync_data": "डेटा सिंक करें",
+    "never_synced": "कभी सिंक नहीं हुआ",
+    "just_now": "अभी",
+    "pending": "लंबित"
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Sync data",
+      "Refresh data",
+      "Update from server"
+    ],
+    "voice_examples_hi": [
+      "डेटा सिंक करें",
+      "डेटा रीफ्रेश करें",
+      "सर्वर से अपडेट करें"
+    ],
+    "voice_examples_mr": [
+      "डेटा सिंक करा",
+      "डेटा रीफ्रेश करा",
+      "सर्व्हरवरून अपडेट करा"
+    ]
+  }
+}

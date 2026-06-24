@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { Loader2, Phone, ArrowLeft, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -15,7 +15,7 @@ import { offlineAuthService } from '@/services/offlineAuthService';
 export default function MobileAuth() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { tenant, isLoading: tenantLoading } = useTenantStore();
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const [mobile, setMobile] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +37,8 @@ export default function MobileAuth() {
       return;
     }
 
-    if (!isReady) {
+    // Allow offline mode even if tenant is still loading
+    if (!isReady && isOnline) {
       setError('Application is still loading. Please wait...');
       return;
     }
@@ -50,39 +51,90 @@ export default function MobileAuth() {
       
       let farmer = null;
       
-      // If offline, check local database first
-      if (!isOnline) {
-        console.log('Offline mode: Checking local database');
-        const cachedAuth = await offlineAuthService.getCachedAuthData();
+      // OFFLINE-FIRST: Always check local database first
+      console.log('🔍 [MobileAuth] Checking local database first (offline-first approach)');
+      const cachedAuth = await offlineAuthService.getCachedAuthData();
+      
+      if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
+        farmer = cachedAuth.farmerData;
+        console.log('✅ [MobileAuth] Found farmer in local cache:', farmer.id);
         
+        // Store needed data for PIN entry
+        localStorage.setItem('authMobile', mobile);
+        localStorage.setItem('farmerId', farmer.id);
+        localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+        navigate('/pin-auth');
+        return;
+      }
+      
+      // If offline and no cached data for this user
+      if (!isOnline) {
+        console.log('📴 [MobileAuth] Offline mode with no cached auth for this number');
+        
+        // Check if ANY cached auth exists (different user)
+        if (cachedAuth) {
+          setError('This mobile number is not available offline. Please use the registered number or connect to internet.');
+        } else {
+          setError('Cannot register new users while offline. Please connect to the internet first.');
+        }
+        setIsLoading(false);
+        return;
+      }
+      
+      // ONLINE: Check Supabase with retry for flaky networks
+      console.log('🌐 [MobileAuth] Online mode - checking Supabase');
+      const maxRetries = 2;
+      let lastNetworkError: any = null;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          let query = supabase
+            .from('farmers')
+            .select('id, mobile_number, farmer_code, tenant_id')
+            .eq('mobile_number', mobile);
+          
+          // Only add tenant filter if tenant exists
+          if (tenant?.id) {
+            query = query.eq('tenant_id', tenant.id);
+          }
+          
+          const { data: farmerRows, error: fetchError } = await query.limit(2);
+
+          if (fetchError) {
+            console.error('Error fetching farmer:', fetchError);
+            throw fetchError;
+          }
+          
+          farmer = farmerRows?.[0] ?? null;
+          lastNetworkError = null;
+          break; // Success, exit retry loop
+        } catch (networkError: any) {
+          lastNetworkError = networkError;
+          const isNetworkErr = networkError.message?.includes('Failed to fetch') || 
+                               networkError.message === 'Load failed' ||
+                               networkError.name === 'TypeError';
+          
+          console.warn(`⚠️ [MobileAuth] Attempt ${attempt}/${maxRetries} failed:`, networkError.message);
+          
+          if (!isNetworkErr || attempt >= maxRetries) break;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      // If all online attempts failed, fallback to offline
+      if (lastNetworkError) {
+        console.log('⚠️ [MobileAuth] All online attempts failed, checking offline cache');
         if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
           farmer = cachedAuth.farmerData;
-          console.log('Found farmer in local cache:', farmer.id);
-        } else {
-          setError('Cannot register new users while offline. Please connect to the internet.');
-          setIsLoading(false);
+          localStorage.setItem('authMobile', mobile);
+          localStorage.setItem('farmerId', farmer.id);
+          localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+          navigate('/pin-auth');
           return;
         }
-      } else {
-        // Online mode: Check Supabase
-        let query = supabase
-          .from('farmers')
-          .select('id, mobile_number, pin, pin_hash, tenant_id')
-          .eq('mobile_number', mobile);
-        
-        // Only add tenant filter if tenant exists
-        if (tenant?.id) {
-          query = query.eq('tenant_id', tenant.id);
-        }
-        
-        const { data: farmerData, error: fetchError } = await query.maybeSingle();
-
-        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = no rows returned
-          console.error('Error fetching farmer:', fetchError);
-          throw fetchError;
-        }
-        
-        farmer = farmerData;
+        setError('Network connection is weak. Please move to an area with better signal and try again.');
+        setIsLoading(false);
+        return;
       }
 
       if (farmer) {
@@ -90,6 +142,7 @@ export default function MobileAuth() {
         // Farmer exists, navigate to PIN entry
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', farmer.id);
+        localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
         navigate('/pin-auth');
       } else {
         console.log('Creating new farmer with tenant_id:', tenant?.id);
@@ -109,15 +162,20 @@ export default function MobileAuth() {
           farmerData.tenant_id = tenant.id;
         }
         
-        const { data: newFarmer, error: insertError } = await supabase
+        const { data: newFarmerRows, error: insertError } = await supabase
           .from('farmers')
           .insert(farmerData)
           .select()
-          .single();
+          .limit(1);
 
         if (insertError) {
           console.error('Error creating farmer:', insertError);
           throw insertError;
+        }
+
+        const newFarmer = newFarmerRows?.[0];
+        if (!newFarmer) {
+          throw new Error('Farmer account could not be created. Please try again.');
         }
 
         console.log('New farmer created:', newFarmer.id);
@@ -142,6 +200,7 @@ export default function MobileAuth() {
 
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', newFarmer.id);
+        localStorage.setItem('tenantId', newFarmer.tenant_id || tenant?.id || '');
         navigate('/set-pin');
       }
     } catch (err: any) {
@@ -155,7 +214,7 @@ export default function MobileAuth() {
   // Show loading state while tenant is loading
   if (tenantLoading || !isReady) {
     return (
-      <div className="min-h-screen bg-gradient-earth flex items-center justify-center">
+      <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex items-center justify-center">
         <Card className="p-8">
           <div className="flex items-center space-x-3">
             <Loader2 className="w-5 h-5 animate-spin text-primary" />
@@ -167,7 +226,7 @@ export default function MobileAuth() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-earth flex flex-col items-center justify-center p-4">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6">
         {/* Header */}
         <div className="space-y-4">
@@ -189,7 +248,7 @@ export default function MobileAuth() {
               {t('auth.enterPhone')}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Enter your mobile number to continue
+              {t('auth.enterPhoneDescription')}
             </p>
           </div>
         </div>
@@ -199,7 +258,7 @@ export default function MobileAuth() {
           <Alert className="border-yellow-500 bg-yellow-50">
             <WifiOff className="h-4 w-4" />
             <AlertDescription className="text-yellow-800">
-              You are offline. You can only log in with existing accounts.
+              {t('auth.offlineMode')}
             </AlertDescription>
           </Alert>
         )}
@@ -213,7 +272,7 @@ export default function MobileAuth() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-sm font-medium text-foreground">
-              Mobile Number
+              {t('auth.mobileNumber')}
             </label>
             <div className="mt-2 relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
@@ -231,7 +290,7 @@ export default function MobileAuth() {
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              We'll use this number to identify you
+              {t('auth.mobileHint')}
             </p>
           </div>
 
@@ -243,10 +302,10 @@ export default function MobileAuth() {
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Checking...
+                {t('auth.checking')}
               </>
             ) : (
-              'Continue'
+              t('auth.continue')
             )}
           </Button>
         </form>

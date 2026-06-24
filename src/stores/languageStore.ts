@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import i18n from '@/i18n/config';
+import i18n, { loadPageTranslations } from '@/i18n/config';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Language {
@@ -44,8 +44,31 @@ export const useLanguageStore = create<LanguageState>()(
       isLoading: false,
 
       setLanguage: (language) => {
-        set({ currentLanguage: language });
-        i18n.changeLanguage(language);
+        console.log('🌐 [Language] Changing language to:', language);
+
+        // Preload the target language's page bundles BEFORE switching i18n,
+        // so React never re-renders with missing keys (the "key flash" bug).
+        loadPageTranslations(language)
+          .catch((err) => console.warn('⚠️ [Language] Page bundle preload failed:', err))
+          .finally(() => {
+            set({ currentLanguage: language });
+            i18n.changeLanguage(language).then(() => {
+              console.log('✅ [Language] i18n language changed successfully');
+              if (typeof window !== 'undefined') {
+                import('@/hooks/use-toast').then(({ toast }) => {
+                  const languageName = get().availableLanguages.find(l => l.code === language)?.nativeName || language;
+                  toast({
+                    title: i18n.t('toast.language_changed') || 'Language Changed',
+                    description: i18n.t('toast.language_changed_to', { language: languageName }) || `Language changed to ${languageName}`,
+                  });
+                }).catch(() => {
+                  console.log('⚠️ [Language] Toast notification unavailable');
+                });
+              }
+            }).catch((error) => {
+              console.error('❌ [Language] Failed to change i18n language:', error);
+            });
+          });
       },
 
       toggleLanguage: () => {

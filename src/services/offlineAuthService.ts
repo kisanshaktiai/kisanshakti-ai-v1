@@ -1,5 +1,5 @@
 import { localDB } from './localDB';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integrations/supabase/client';
 import CryptoJS from 'crypto-js';
 
 interface OfflineAuthData {
@@ -129,10 +129,14 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
+    // OFFLINE-FIRST: Check cached auth IMMEDIATELY, regardless of network status
+    const offlineResult = await this.validateOfflinePin(mobile, pin);
+    
     // Check if we're online
-    if (!navigator.onLine) {
-      console.log('Device is offline, using cached authentication');
-      const offlineResult = await this.validateOfflinePin(mobile, pin);
+    const isOnline = navigator.onLine;
+    
+    if (!isOnline) {
+      console.log('📴 [OfflineAuth] Device is offline, using cached authentication');
       
       if (offlineResult.isValid) {
         return {
@@ -150,51 +154,87 @@ class OfflineAuthService {
       }
     }
 
-    // Try online authentication
-    try {
-      // Set a timeout for the online request
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 10000)
-      );
+    // ONLINE: Try online authentication with timeout, retry, and fallback
+    console.log('🌐 [OfflineAuth] Device is online, attempting online authentication...');
+    
+    const maxRetries = 2;
+    let lastError: Error | null = null;
 
-      const authPromise = this.performOnlineAuth(farmerId, tenantId, pin);
-      
-      const result = await Promise.race([authPromise, timeoutPromise]);
-      
-      // If online auth succeeds, cache the data
-      if ((result as any).success) {
-        await this.cacheAuthData(
-          farmerId,
-          tenantId,
-          mobile,
-          pin,
-          (result as any).farmerData,
-          (result as any).profileData
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Shorter timeout for retries
+        const timeoutMs = attempt === 1 ? 8000 : 5000;
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
         );
+
+        const authPromise = this.performOnlineAuth(farmerId, tenantId, pin);
+        
+        const result = await Promise.race([authPromise, timeoutPromise]);
+        
+        // If online auth succeeds, cache the data for future offline use
+        if (result.success) {
+          console.log('✅ [OfflineAuth] Online authentication successful, caching data');
+          await this.cacheAuthData(
+            farmerId,
+            tenantId,
+            mobile,
+            pin,
+            result.farmerData,
+            result.profileData
+          );
+        }
+        
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        const isNetworkError = error.message === 'TypeError: Failed to fetch' || 
+                               error.message?.includes('Failed to fetch') ||
+                               error.message === 'Request timeout' ||
+                               error.message === 'Load failed' ||
+                               error.name === 'TypeError';
+        
+        console.warn(`⚠️ [OfflineAuth] Attempt ${attempt}/${maxRetries} failed:`, error.message, 
+          isNetworkError ? '(network error)' : '(auth error)');
+        
+        // Don't retry non-network errors (wrong PIN, user not found, etc.)
+        if (!isNetworkError) {
+          break;
+        }
+        
+        // Small delay before retry
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
-      
-      return result as any;
-    } catch (error) {
-      console.log('Online authentication failed, falling back to offline');
-      
-      // Fallback to offline
-      const offlineResult = await this.validateOfflinePin(mobile, pin);
-      
-      if (offlineResult.isValid) {
-        return {
-          success: true,
-          isOffline: true,
-          farmerData: offlineResult.farmerData,
-          profileData: offlineResult.profileData
-        };
-      }
-      
+    }
+
+    // All online attempts failed — fallback to offline
+    console.log('🔄 [OfflineAuth] Online auth failed, falling back to offline validation');
+    
+    if (offlineResult.isValid) {
+      console.log('✅ [OfflineAuth] Offline validation successful');
       return {
-        success: false,
+        success: true,
         isOffline: true,
-        error: 'Unable to authenticate. Please check your internet connection.'
+        farmerData: offlineResult.farmerData,
+        profileData: offlineResult.profileData
       };
     }
+    
+    // Both online and offline failed
+    const isNetworkError = lastError?.message?.includes('Failed to fetch') || 
+                           lastError?.message === 'Request timeout' ||
+                           lastError?.message === 'Load failed' ||
+                           lastError?.name === 'TypeError';
+    
+    return {
+      success: false,
+      isOffline: !isOnline,
+      error: isNetworkError
+        ? 'Network connection is weak. Please move to an area with better signal and try again.'
+        : lastError?.message || 'Unable to authenticate. Please try again.'
+    };
   }
 
   private async performOnlineAuth(
@@ -208,16 +248,37 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
-    // Fetch farmer data
-    const { data: farmer, error: fetchError } = await supabase
+    // CRITICAL: RLS on `farmers` requires the `x-tenant-id` header (and ideally
+    // `x-farmer-id`) to be set so `get_current_tenant_id()` resolves. When the
+    // user lands directly on /pin from a restored session they skip /auth where
+    // headers would normally be set, so we set them here and use an auth-scoped
+    // client to guarantee they ride along on this request.
+    updateSupabaseHeaders(farmerId, tenantId);
+    const authedClient = supabaseWithAuth(farmerId, tenantId);
+
+    // Fetch farmer data in array mode. PostgREST object mode (`single` / `maybeSingle`)
+    // can still surface PGRST116 in production bundles when no rows are visible via RLS.
+    const { data: farmerRows, error: fetchError } = await authedClient
       .from('farmers')
       .select('*')
       .eq('id', farmerId)
       .eq('tenant_id', tenantId)
-      .single();
+      .limit(2);
 
     if (fetchError) {
       throw fetchError;
+    }
+
+    const farmer = farmerRows?.[0] ?? null;
+
+    if (!farmer) {
+      // No farmer row for this (id, tenant) pair — let caller fall back to
+      // offline validation rather than surfacing a Postgres error to the UI.
+      return {
+        success: false,
+        isOffline: false,
+        error: 'Account not found for this tenant. Please re-register or try offline.',
+      };
     }
 
     // Validate PIN - compare hashed versions
@@ -232,25 +293,24 @@ class OfflineAuthService {
       });
 
     if (validationError || !isValid) {
-      // Fallback to direct comparison of hashed PINs
+      // Fallback: compare salted hash directly (matches SetPin.tsx hashing scheme)
       if (farmer.pin_hash !== pinHash) {
-        // Also check plain PIN for backward compatibility during migration
-        if (farmer.pin !== pin) {
-          return {
-            success: false,
-            isOffline: false,
-            error: 'Incorrect PIN'
-          };
-        }
+        return {
+          success: false,
+          isOffline: false,
+          error: 'Incorrect PIN'
+        };
       }
     }
 
     // Fetch profile data
-    const { data: profileData } = await supabase
+    const { data: profileRows } = await authedClient
       .from('user_profiles')
       .select('*')
       .eq('farmer_id', farmerId)
-      .maybeSingle();
+      .limit(1);
+
+    const profileData = profileRows?.[0] ?? null;
 
     return {
       success: true,

@@ -1,0 +1,90 @@
+{
+  "__meta": {
+    "page": "pwa",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "pwa": {
+    "title": "ऐप इंस्टॉल करें",
+    "install_title": "{{appName}} इंस्टॉल करें",
+    "full_experience": "ऑफ़लाइन एक्सेस और सूचनाओं के साथ पूर्ण ऐप अनुभव प्राप्त करें",
+    "app_installed": "ऐप इंस्टॉल हो गया!",
+    "access_home_screen": "आप इसे अपनी होम स्क्रीन से एक्सेस कर सकते हैं",
+    "why_install": "इंस्टॉल क्यों करें?",
+    "benefits": {
+      "faster_access": {
+        "title": "तेज़ एक्सेस",
+        "description": "होम स्क्रीन से तुरंत खोलें"
+      },
+      "work_offline": {
+        "title": "ऑफ़लाइन काम करें",
+        "description": "बिना इंटरनेट के अपना डेटा एक्सेस करें"
+      },
+      "get_notifications": {
+        "title": "सूचनाएं प्राप्त करें",
+        "description": "अलर्ट के साथ अपडेट रहें"
+      },
+      "save_data": {
+        "title": "डेटा बचाएं",
+        "description": "कम मोबाइल डेटा उपयोग करता है"
+      }
+    },
+    "android": {
+      "title": "Android पर इंस्टॉल करें",
+      "installing": "इंस्टॉल हो रहा है...",
+      "install_now": "अभी ऐप इंस्टॉल करें"
+    },
+    "ios": {
+      "title": "iPhone/iPad पर इंस्टॉल करें",
+      "step_1": "चरण 1: शेयर पर टैप करें",
+      "step_1_desc": "Safari के टूलबार में शेयर बटन पर टैप करें",
+      "step_2": "चरण 2: होम स्क्रीन पर जोड़ें",
+      "step_2_desc": "स्क्रॉल करें और \"होम स्क्रीन पर जोड़ें\" चुनें",
+      "step_3": "चरण 3: पुष्टि करें",
+      "step_3_desc": "ऐप इंस्टॉल करने के लिए \"जोड़ें\" पर टैप करें",
+      "note": "नोट: इंस्टॉलेशन Safari ब्राउज़र के माध्यम से किया जाना चाहिए"
+    },
+    "desktop": {
+      "title": "डेस्कटॉप पर इंस्टॉल करें",
+      "look_for_icon": "या अपने ब्राउज़र के एड्रेस बार में इंस्टॉल आइकन देखें"
+    },
+    "alternative_method": "वैकल्पिक तरीका:",
+    "alternative_desc": "अपने ब्राउज़र के मेनू या एड्रेस बार में इंस्टॉल आइकन देखें",
+    "prompt": {
+      "title": "किसानशक्ति ऐप इंस्टॉल करें",
+      "subtitle": "तेज़ एक्सेस करें, ऑफ़लाइन काम करें, सूचनाएं प्राप्त करें",
+      "to_install_iphone": "iPhone/iPad पर इंस्टॉल करने के लिए:",
+      "tap_share_safari": "Safari में शेयर बटन पर टैप करें",
+      "select_add_home": "\"होम स्क्रीन पर जोड़ें\" चुनें",
+      "tap_add_confirm": "पुष्टि करने के लिए \"जोड़ें\" पर टैप करें",
+      "install_better_experience": "बेहतर अनुभव के लिए ऐप इंस्टॉल करें",
+      "install_on_desktop": "अपने डेस्कटॉप पर ऐप इंस्टॉल करें",
+      "install_now": "अभी इंस्टॉल करें",
+      "later": "बाद में",
+      "got_it": "समझ गया"
+    },
+    "success": {
+      "installed": "ऐप सफलतापूर्वक इंस्टॉल हो गया!",
+      "access_from_home": "अब आप अपनी होम स्क्रीन से किसानशक्ति एक्सेस कर सकते हैं"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Install the app",
+      "How do I install",
+      "Add to home screen"
+    ],
+    "voice_examples_hi": [
+      "ऐप इंस्टॉल करें",
+      "इंस्टॉल कैसे करें",
+      "होम स्क्रीन पर जोड़ें"
+    ],
+    "voice_examples_mr": [
+      "अॅप इंस्टॉल करा",
+      "इंस्टॉल कसे करावे",
+      "होम स्क्रीनवर जोडा"
+    ]
+  }
+}

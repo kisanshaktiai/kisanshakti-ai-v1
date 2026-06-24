@@ -53,7 +53,10 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       ctx.clearRect(0, 0, width, height);
 
       ctx.lineWidth = 3;
-      ctx.strokeStyle = '#10b981'; // emerald-500
+      // Use CSS variable for theming
+      const computedStyle = getComputedStyle(document.documentElement);
+      const successH = computedStyle.getPropertyValue('--success').trim() || '142 76% 45%';
+      ctx.strokeStyle = `hsl(${successH})`;
       ctx.beginPath();
 
       const sliceWidth = width / dataArray.length;
@@ -96,13 +99,13 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       exit={{ opacity: 0, scale: 0.8, y: 20 }}
       className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[90%] max-w-md z-50"
     >
-      <div className="bg-gradient-to-r from-emerald-500/20 to-green-500/20 backdrop-blur-xl rounded-2xl border border-emerald-500/30 p-4 shadow-2xl">
+      <div className="bg-gradient-to-r from-success/20 to-success/20 backdrop-blur-xl rounded-2xl border border-success/30 p-4 shadow-2xl">
         <div className="flex items-center gap-3 mb-3">
           <div className="flex gap-1">
             {[0, 0.1, 0.2].map((delay, i) => (
               <motion.div
                 key={i}
-                className="w-1 h-8 bg-emerald-500 rounded-full"
+                className="w-1 h-8 bg-success rounded-full"
                 animate={{
                   height: ['16px', '32px', '16px'],
                 }}
@@ -115,7 +118,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
               />
             ))}
           </div>
-          <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+          <span className="text-sm font-semibold text-success dark:text-success">
             Listening...
           </span>
         </div>

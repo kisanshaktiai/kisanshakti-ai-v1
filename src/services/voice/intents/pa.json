@@ -1,0 +1,339 @@
+{
+  "language": "pa",
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": ["ਘਰ ਦਿਖਾਓ", "ਮੁੱਖ ਪੰਨਾ", "ਘਰ ਜਾਓ", "ਡੈਸ਼ਬੋਰਡ ਖੋਲ੍ਹੋ", "ਮੁੱਖ ਸਕਰੀਨ"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.back",
+      "patterns": ["ਪਿੱਛੇ ਜਾਓ", "ਵਾਪਸ ਜਾਓ", "ਪਿਛਲਾ ਪੰਨਾ", "ਵਾਪਸ"],
+      "priority": "high",
+      "offline": true,
+      "action": "back"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": ["ਮੇਰੀ ਜ਼ਮੀਨ", "ਜ਼ਮੀਨ ਦਿਖਾਓ", "ਖੇਤ ਦਿਖਾਓ", "ਜ਼ਮੀਨਾਂ ਖੋਲ੍ਹੋ", "ਖੇਤ ਪ੍ਰਬੰਧਨ"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": ["ਮੌਸਮ ਦੱਸੋ", "ਮੌਸਮ ਦਿਖਾਓ", "ਹਵਾ ਕਿਵੇਂ ਹੈ", "ਬਾਰਿਸ਼ ਹੋਵੇਗੀ", "ਅੱਜ ਦਾ ਮੌਸਮ"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": ["ਕਾਰਜਕ੍ਰਮ ਦਿਖਾਓ", "ਮੇਰੇ ਕੰਮ", "ਫਸਲ ਦਾ ਕਾਰਜਕ੍ਰਮ", "ਅੱਜ ਦੇ ਕੰਮ"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": ["AI ਨਾਲ ਗੱਲ ਕਰੋ", "ਸਵਾਲ ਪੁੱਛੋ", "ਚੈਟ ਖੋਲ੍ਹੋ", "ਮਦਦ ਚਾਹੀਦੀ ਹੈ"],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/chat"
+    },
+    {
+      "id": "navigate.market",
+      "patterns": ["ਬਾਜ਼ਾਰ ਦਿਖਾਓ", "ਖਰੀਦਣਾ ਹੈ", "ਵੇਚਣਾ ਹੈ", "ਉਤਪਾਦ ਦੇਖੋ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/market"
+    },
+    {
+      "id": "navigate.profile",
+      "patterns": ["ਪ੍ਰੋਫਾਈਲ ਦਿਖਾਓ", "ਮੇਰੀ ਜਾਣਕਾਰੀ", "ਸੈਟਿੰਗਜ਼", "ਖਾਤਾ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/profile"
+    },
+    {
+      "id": "navigate.menu",
+      "patterns": ["ਮੇਨੂ ਖੋਲ੍ਹੋ", "ਮੇਨੂ ਦਿਖਾਓ", "ਮੁੱਖ ਮੇਨੂ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "open_menu" }
+    },
+    {
+      "id": "navigate.close_menu",
+      "patterns": ["ਮੇਨੂ ਬੰਦ ਕਰੋ", "ਮੇਨੂ ਲੁਕਾਓ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "close_menu" }
+    },
+    {
+      "id": "crud.create_land",
+      "patterns": ["ਨਵੀਂ ਜ਼ਮੀਨ ਜੋੜੋ", "ਨਵਾਂ ਖੇਤ ਜੋੜੋ", "ਜ਼ਮੀਨ ਰਜਿਸਟਰ ਕਰੋ"],
+      "slots": [
+        { "name": "landName", "type": "string", "required": false },
+        { "name": "area", "type": "number", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/add-land"
+    },
+    {
+      "id": "crud.edit_land",
+      "patterns": ["ਜ਼ਮੀਨ ਸੋਧੋ", "ਖੇਤ ਅਪਡੇਟ ਕਰੋ", "ਜ਼ਮੀਨ ਬਦਲੋ"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false },
+        { "name": "landName", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "edit",
+      "params": { "entity": "land" }
+    },
+    {
+      "id": "crud.delete_land",
+      "patterns": ["ਜ਼ਮੀਨ ਮਿਟਾਓ", "ਖੇਤ ਡਿਲੀਟ ਕਰੋ", "ਇਹ ਜ਼ਮੀਨ ਮਿਟਾਓ"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "land", "requiresConfirmation": true }
+    },
+    {
+      "id": "crud.create_task",
+      "patterns": ["ਕੰਮ ਜੋੜੋ", "ਨਵਾਂ ਕੰਮ ਬਣਾਓ", "ਰਿਮਾਈਂਡਰ ਜੋੜੋ"],
+      "slots": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "date", "type": "date", "required": false },
+        { "name": "priority", "type": "enum", "required": false, "values": ["ਘੱਟ", "ਮੱਧ", "ਵੱਧ"] }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "create",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.delete_task",
+      "patterns": ["ਕੰਮ ਮਿਟਾਓ", "ਟਾਸਕ ਡਿਲੀਟ ਕਰੋ", "ਇਹ ਕੰਮ ਮਿਟਾਓ"],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "task", "requiresConfirmation": true }
+    },
+    {
+      "id": "form.next_field",
+      "patterns": ["ਅਗਲਾ ਫੀਲਡ", "ਅੱਗੇ", "ਅੱਗੇ ਵਧੋ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "next_field" }
+    },
+    {
+      "id": "form.previous_field",
+      "patterns": ["ਪਿਛਲਾ ਫੀਲਡ", "ਪਿੱਛੇ", "ਪਿੱਛੇ ਜਾਓ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "previous_field" }
+    },
+    {
+      "id": "form.clear_field",
+      "patterns": ["ਫੀਲਡ ਸਾਫ਼ ਕਰੋ", "ਇਸ ਨੂੰ ਮਿਟਾਓ", "ਡਿਲੀਟ ਕਰੋ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "clear_field" }
+    },
+    {
+      "id": "form.save",
+      "patterns": ["ਸੇਵ ਕਰੋ", "ਸਬਮਿਟ ਕਰੋ", "ਬਚਾਓ", "ਤਬਦੀਲੀਆਂ ਸੰਭਾਲੋ"],
+      "priority": "high",
+      "offline": false,
+      "action": "form_action",
+      "params": { "action": "save" }
+    },
+    {
+      "id": "form.cancel",
+      "patterns": ["ਰੱਦ ਕਰੋ", "ਛੱਡੋ", "ਸੇਵ ਨਾ ਕਰੋ", "ਵਾਪਸ ਜਾਓ"],
+      "priority": "high",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "cancel" }
+    },
+    {
+      "id": "form.type_text",
+      "patterns": ["ਟਾਈਪ ਕਰੋ", "ਲਿਖੋ", "ਦਰਜ ਕਰੋ"],
+      "slots": [
+        { "name": "text", "type": "string", "required": true }
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "type_text" }
+    },
+    {
+      "id": "confirm.yes",
+      "patterns": ["ਹਾਂ", "ਠੀਕ ਹੈ", "ਜੀ ਹਾਂ", "ਕਰੋ", "ਅੱਗੇ ਵਧੋ"],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": true }
+    },
+    {
+      "id": "confirm.no",
+      "patterns": ["ਨਹੀਂ", "ਰੱਦ ਕਰੋ", "ਨਾ ਕਰੋ", "ਛੱਡੋ"],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": false }
+    },
+    {
+      "id": "help.repeat",
+      "patterns": ["ਦੁਹਰਾਓ", "ਫਿਰ ਬੋਲੋ", "ਫਿਰ ਦੱਸੋ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "repeat" }
+    },
+    {
+      "id": "help.examples",
+      "patterns": ["ਮਦਦ", "ਤੁਸੀਂ ਕੀ ਕਰ ਸਕਦੇ ਹੋ", "ਉਦਾਹਰਣਾਂ ਦਿਖਾਓ", "ਕਮਾਂਡ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "examples" }
+    },
+    {
+      "id": "help.slow_down",
+      "patterns": ["ਹੌਲੀ ਬੋਲੋ", "ਹੌਲੀ ਗਤੀ", "ਆਰਾਮ ਨਾਲ ਬੋਲੋ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "slow_down" }
+    },
+    {
+      "id": "accessibility.read_screen",
+      "patterns": ["ਸਕ੍ਰੀਨ ਪੜ੍ਹੋ", "ਸਕ੍ਰੀਨ 'ਤੇ ਕੀ ਹੈ", "ਇਹ ਪੜ੍ਹੋ"],
+      "priority": "medium",
+      "offline": true,
+      "action": "accessibility",
+      "params": { "action": "read_screen" }
+    },
+    {
+      "id": "action.undo",
+      "patterns": ["ਅਨਡੂ ਕਰੋ", "ਵਾਪਸ ਲਿਆਓ", "ਪਹਿਲਾਂ ਵਾਂਗ ਕਰੋ"],
+      "priority": "high",
+      "offline": true,
+      "action": "undo"
+    },
+    {
+      "id": "emergency.call_support",
+      "patterns": ["ਸਹਾਇਤਾ ਨਾਲ ਸੰਪਰਕ", "ਮਦਦ ਚਾਹੀਦੀ ਹੈ", "ਐਮਰਜੈਂਸੀ", "ਜ਼ਰੂਰੀ ਮਦਦ"],
+      "priority": "high",
+      "offline": false,
+      "action": "emergency",
+      "params": { "type": "support" }
+    },
+    {
+      "id": "crud.create_land",
+      "patterns": ["ਨਵੀਂ ਜ਼ਮੀਨ ਜੋੜੋ", "ਨਵਾਂ ਖੇਤ ਜੋੜੋ", "ਜ਼ਮੀਨ ਰਜਿਸਟਰ ਕਰੋ"],
+      "slots": [
+        { "name": "landName", "type": "string", "required": false },
+        { "name": "area", "type": "number", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/add-land"
+    },
+    {
+      "id": "crud.edit_land",
+      "patterns": ["ਜ਼ਮੀਨ ਸੋਧੋ", "ਖੇਤ ਅਪਡੇਟ ਕਰੋ", "ਜ਼ਮੀਨ ਬਦਲੋ"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "edit",
+      "params": { "entity": "land" }
+    },
+    {
+      "id": "crud.delete_land",
+      "patterns": ["ਜ਼ਮੀਨ ਮਿਟਾਓ", "ਖੇਤ ਡਿਲੀਟ ਕਰੋ", "ਇਹ ਜ਼ਮੀਨ ਮਿਟਾਓ"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "land", "requiresConfirmation": true }
+    },
+    {
+      "id": "crud.create_task",
+      "patterns": ["ਕੰਮ ਜੋੜੋ", "ਨਵਾਂ ਕੰਮ ਬਣਾਓ", "ਰਿਮਾਈਂਡਰ ਜੋੜੋ"],
+      "slots": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "date", "type": "date", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "create",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.delete_task",
+      "patterns": ["ਕੰਮ ਮਿਟਾਓ", "ਟਾਸਕ ਡਿਲੀਟ ਕਰੋ", "ਇਹ ਕੰਮ ਮਿਟਾਓ"],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "task", "requiresConfirmation": true }
+    },
+    {
+      "id": "form.save",
+      "patterns": ["ਸੇਵ ਕਰੋ", "ਸਬਮਿਟ ਕਰੋ", "ਬਚਾਓ"],
+      "priority": "high",
+      "offline": false,
+      "action": "form_action",
+      "params": { "action": "save" }
+    },
+    {
+      "id": "form.cancel",
+      "patterns": ["ਰੱਦ ਕਰੋ", "ਛੱਡੋ", "ਸੇਵ ਨਾ ਕਰੋ"],
+      "priority": "high",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "cancel" }
+    }
+  ],
+  "examples": [
+    "ਘਰ ਦਿਖਾਓ",
+    "ਮੇਰੀ ਜ਼ਮੀਨ ਦਿਖਾਓ",
+    "ਮੌਸਮ ਕਿਵੇਂ ਹੈ?",
+    "ਨਵੀਂ ਜ਼ਮੀਨ ਜੋੜੋ",
+    "ਕੰਮ ਮਿਟਾਓ",
+    "ਸੇਵ ਕਰੋ",
+    "ਮਦਦ"
+  ]
+}

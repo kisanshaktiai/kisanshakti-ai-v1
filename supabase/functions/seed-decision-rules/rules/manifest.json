@@ -1,0 +1,191 @@
+{
+  "version": "3.2.0",
+  "description": "Agricultural Decision Rules - Complete Sugarcane Rule Universe with Stage-Specific Advisory",
+  "generated_on": "2026-01-10",
+  "total_target_rules": 600,
+  "current_rules": 287,
+  "scientific_sources": ["ICAR", "FAO", "CIB&RC", "FSSAI", "CABI", "State Agricultural Universities", "ICAR-SBI Coimbatore", "IISR Lucknow"],
+  "rule_files": [
+    {
+      "path": "universal/safety-weather.json",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "crop": "all",
+      "expected_rules": 15
+    },
+    {
+      "path": "sugarcane/germination-problems.json",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "crop": "sugarcane",
+      "expected_rules": 15
+    },
+    {
+      "path": "sugarcane/tillering-problems.json",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "crop": "sugarcane",
+      "expected_rules": 15
+    },
+    {
+      "path": "sugarcane/grand-growth-problems.json",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "crop": "sugarcane",
+      "expected_rules": 15
+    },
+    {
+      "path": "sugarcane/maturity-problems.json",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "crop": "sugarcane",
+      "expected_rules": 12
+    },
+    {
+      "path": "sugarcane/harvest-advisory.json",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "crop": "sugarcane",
+      "expected_rules": 10
+    },
+    {
+      "path": "sugarcane/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "sugarcane",
+      "expected_rules": 45
+    },
+    {
+      "path": "sugarcane/diseases.json",
+      "category": "diagnosis",
+      "canonical_group": "04_disease",
+      "crop": "sugarcane",
+      "expected_rules": 35
+    },
+    {
+      "path": "sugarcane/ipm-treatment.json",
+      "category": "treatment",
+      "canonical_group": "13_ipm_treatment",
+      "crop": "sugarcane",
+      "expected_rules": 25
+    },
+    {
+      "path": "sugarcane/nutrients.json",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "crop": "sugarcane",
+      "expected_rules": 20
+    },
+    {
+      "path": "sugarcane/irrigation.json",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "crop": "sugarcane",
+      "expected_rules": 18
+    },
+    {
+      "path": "sugarcane/stress.json",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "crop": "sugarcane",
+      "expected_rules": 15
+    },
+    {
+      "path": "sugarcane/weather.json",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "crop": "sugarcane",
+      "expected_rules": 12
+    },
+    {
+      "path": "sugarcane/safety.json",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "crop": "sugarcane",
+      "expected_rules": 18
+    },
+    {
+      "path": "sugarcane/economics.json",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "crop": "sugarcane",
+      "expected_rules": 15
+    },
+    {
+      "path": "sugarcane/crop-identity.json",
+      "category": "identity",
+      "canonical_group": "01_crop_identity",
+      "crop": "sugarcane",
+      "expected_rules": 2
+    },
+    {
+      "path": "sugarcane/monitoring.json",
+      "category": "monitoring",
+      "canonical_group": "06_monitoring",
+      "crop": "sugarcane",
+      "expected_rules": 2
+    },
+    {
+      "path": "sugarcane/clarification.json",
+      "category": "clarification",
+      "canonical_group": "07_clarification",
+      "crop": "sugarcane",
+      "expected_rules": 2
+    },
+    {
+      "path": "cotton/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "cotton",
+      "expected_rules": 35
+    },
+    {
+      "path": "rice/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "rice",
+      "expected_rules": 35
+    },
+    {
+      "path": "wheat/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "wheat",
+      "expected_rules": 25
+    }
+  ],
+  "canonical_groups": [
+    "01_crop_identity",
+    "02_growth_stage",
+    "03_pest",
+    "04_disease",
+    "05_nutrition",
+    "06_weed",
+    "07_clarification",
+    "08_stress",
+    "09_weather",
+    "10_irrigation",
+    "11_safety",
+    "12_monitoring",
+    "13_treatment"
+  ],
+  "sugarcane_rule_summary": {
+    "total_files": 17,
+    "total_rules": 239,
+    "by_canonical_group": {
+      "01_crop_identity": 2,
+      "02_growth_stage": 67,
+      "03_pest": 45,
+      "04_disease": 35,
+      "05_nutrition": 20,
+      "06_monitoring": 2,
+      "07_clarification": 2,
+      "08_stress": 15,
+      "09_weather": 12,
+      "10_irrigation": 18,
+      "11_safety": 18,
+      "12_economics": 15,
+      "13_ipm_treatment": 25
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "__meta": {
+    "page": "schemes",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "schemes": {
+    "title": "Government Schemes",
+    "subtitle": "Available subsidies and programs",
+    "pm_kisan": "PM-KISAN",
+    "pm_kisan_desc": "Direct income support of ₹6000 per year",
+    "pm_kisan_eligibility": "Small and marginal farmers",
+    "crop_insurance": "Crop Insurance",
+    "crop_insurance_desc": "Insurance coverage for crop loss",
+    "crop_insurance_eligibility": "All farmers",
+    "soil_health_card": "Soil Health Card",
+    "soil_health_desc": "Free soil testing and recommendations",
+    "soil_health_eligibility": "All farmers",
+    "eligibility": "Eligibility",
+    "amount": "Amount",
+    "apply_now": "Apply Now",
+    "all_farmers": "All farmers",
+    "small_marginal": "Small and marginal farmers",
+    "free": "Free",
+    "variable": "Variable",
+    "per_year": "/year"
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show government schemes",
+      "What schemes are available",
+      "PM KISAN scheme",
+      "Apply for crop insurance"
+    ],
+    "voice_examples_hi": [
+      "सरकारी योजनाएं दिखाएं",
+      "कौन सी योजनाएं उपलब्ध हैं",
+      "PM किसान योजना",
+      "फसल बीमा के लिए आवेदन करें"
+    ],
+    "voice_examples_mr": [
+      "सरकारी योजना दाखवा",
+      "कोणत्या योजना उपलब्ध आहेत",
+      "PM किसान योजना",
+      "पीक विम्यासाठी अर्ज करा"
+    ]
+  }
+}

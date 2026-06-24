@@ -1,0 +1,186 @@
+{
+  "__meta": {
+    "page": "market",
+    "version": "2.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-12-19"
+  },
+  "market": {
+    "tabs": {
+      "browse": "Browse",
+      "my_orders": "My Orders",
+      "sell": "Sell",
+      "analytics": "Analytics"
+    },
+    "analytics": {
+      "title": "Analytics Dashboard",
+      "description": "View your sales analytics and performance metrics"
+    },
+    "auth": {
+      "login_required": {
+        "title": "Please login",
+        "cart": "You need to login to add items to cart",
+        "wishlist": "You need to login to add items to wishlist"
+      }
+    },
+    "cart": {
+      "added": {
+        "title": "Added to cart",
+        "message": "Product has been added to your cart"
+      },
+      "title": "Shopping Cart",
+      "empty": "Your cart is empty",
+      "total": "Total",
+      "checkout": "Checkout",
+      "continue_shopping": "Continue Shopping"
+    },
+    "search": {
+      "placeholder": "Search products..."
+    },
+    "categories": {
+      "all": "All Categories",
+      "seeds": "Seeds",
+      "fertilizers": "Fertilizers",
+      "pesticides": "Pesticides",
+      "equipment": "Equipment",
+      "organic": "Organic"
+    },
+    "product": {
+      "add_to_cart": "Add to Cart",
+      "buy_now": "Buy Now",
+      "out_of_stock": "Out of Stock",
+      "in_stock": "In Stock",
+      "seller": "Seller",
+      "price": "Price",
+      "quantity": "Quantity",
+      "description": "Description",
+      "reviews": "Reviews",
+      "rating": "Rating"
+    },
+    "order": {
+      "status": {
+        "pending": "Pending",
+        "confirmed": "Confirmed",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "cancelled": "Cancelled"
+      },
+      "placed_on": "Placed on {{date}}",
+      "total_amount": "Total: ₹{{amount}}",
+      "track": "Track Order",
+      "cancel": "Cancel Order",
+      "view_details": "View Details"
+    },
+    "seller": {
+      "dashboard_title": "Seller Dashboard",
+      "add_product": "Add Product",
+      "my_products": "My Products",
+      "orders_received": "Orders Received",
+      "earnings": "Earnings",
+      "pending_orders": "Pending Orders"
+    },
+    "filters": {
+      "price_range": "Price Range",
+      "sort_by": "Sort By",
+      "low_to_high": "Price: Low to High",
+      "high_to_low": "Price: High to Low",
+      "newest": "Newest First",
+      "popular": "Most Popular"
+    },
+    "toast": {
+      "product_added": "Product added successfully",
+      "order_placed": "Order placed successfully",
+      "error": "Something went wrong"
+    },
+    "seller_dashboard": {
+      "title": "Seller Dashboard",
+      "become_seller": "Become a Seller",
+      "start_selling": "Start selling your products on our marketplace",
+      "register": "Register as Seller",
+      "add_product": "Add Product",
+      "total_products": "Total Products",
+      "total_sales": "Total Sales",
+      "revenue": "Revenue",
+      "rating": "Rating",
+      "products_tab": "Products",
+      "orders_tab": "Orders",
+      "analytics_tab": "Analytics",
+      "order_management_soon": "Order management coming soon",
+      "analytics_dashboard_soon": "Analytics dashboard coming soon"
+    },
+    "intelligence": {
+      "title": "Market Price Intelligence",
+      "subtitle": "Real-time prices from MSAMB",
+      "selectFilters": "Select Filters",
+      "cropType": "Crop Type",
+      "selectMarket": "Select Market",
+      "allMarkets": "All Markets",
+      "selectCrop": "Select Crop",
+      "crops": "crops",
+      "more": "more",
+      "clearSelection": "Clear selection",
+      "selectCropType": "Select a crop type above",
+      "date": "Date",
+      "search": "Search...",
+      "refresh": "Refresh",
+      "aiAdvice": "AI Advice",
+      "prices": "Prices",
+      "nearby": "Nearby",
+      "comparison": "Compare",
+      "ai": "AI",
+      "noPrices": "No price data for selected filters",
+      "arrival": "Arrival",
+      "other": "Other",
+      "locationRequired": "Location Required",
+      "locationRequiredDesc": "Add land coordinates in your land settings to see nearby markets within 50km radius",
+      "nearbyTitle": "Markets within 50km",
+      "noNearbyMarkets": "No market data found within 50km radius",
+      "selectCropFirst": "Select a Crop",
+      "selectCropFirstDesc": "Choose a crop to view historical price comparison",
+      "priceComparison": "Price Comparison",
+      "loadData": "Load Data",
+      "week": "Week",
+      "month": "Month",
+      "year": "Year",
+      "avgPrice": "Avg Price",
+      "priceRange": "Range",
+      "trend": "Trend",
+      "dataPoints": "Data Points",
+      "noHistoricalData": "No historical data available",
+      "viewAllCrops": "View All Crops",
+      "viewAllMarkets": "View All Markets",
+      "cropGroups": {
+        "grains": "Grains",
+        "pulses": "Pulses",
+        "vegetables": "Vegetables",
+        "fruits": "Fruits",
+        "spices": "Spices",
+        "oilseeds": "Oilseeds",
+        "jaggerySugar": "Jaggery & Sugar",
+        "cotton": "Cotton",
+        "others": "Others",
+        "all": "All Crops"
+      }
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show fertilizers",
+      "Add to cart",
+      "Check my orders",
+      "Search for seeds"
+    ],
+    "voice_examples_hi": [
+      "उर्वरक दिखाओ",
+      "कार्ट में जोड़ें",
+      "मेरे ऑर्डर देखें",
+      "बीज खोजें"
+    ],
+    "voice_examples_mr": [
+      "खते दाखवा",
+      "कार्टमध्ये जोडा",
+      "माझे ऑर्डर पहा",
+      "बियाणे शोधा"
+    ]
+  }
+}

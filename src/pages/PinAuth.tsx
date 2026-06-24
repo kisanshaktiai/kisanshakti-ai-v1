@@ -9,17 +9,19 @@ import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { Loader2, Lock, ArrowLeft, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { offlineAuthService } from '@/services/offlineAuthService';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { toast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function PinAuth() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { setUser, setSession, session } = useAuthStore();
   const { setStep } = useAuthFlowStore();
-  const { tenant } = useTenantStore();
+  const queryClient = useQueryClient();
+  const { tenant } = useTenant();
   const [pin, setPin] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,12 +34,24 @@ export default function PinAuth() {
   const tenantId = localStorage.getItem('tenantId');
   const maskedMobile = mobile ? `${mobile.slice(0, 2)}****${mobile.slice(-2)}` : '';
   
-  // Ensure we have all required data
+  // Ensure we have all required data (but allow if cached auth exists for offline)
   useEffect(() => {
-    if (!mobile || !farmerId || !tenantId) {
-      navigate('/auth');
-    }
-  }, [mobile, farmerId, tenantId, navigate]);
+    const checkRequiredData = async () => {
+      if (!mobile || !farmerId) {
+        // Check if we have cached auth for offline
+        const cachedAuth = await offlineAuthService.getCachedAuthData();
+        if (cachedAuth) {
+          // Restore data from cache
+          localStorage.setItem('authMobile', cachedAuth.mobile);
+          localStorage.setItem('farmerId', cachedAuth.farmerId);
+          localStorage.setItem('tenantId', cachedAuth.tenantId);
+        } else {
+          navigate('/auth');
+        }
+      }
+    };
+    checkRequiredData();
+  }, [mobile, farmerId, navigate]);
 
   const handlePinComplete = async (value: string) => {
     if (value.length !== 4) return;
@@ -159,37 +173,43 @@ export default function PinAuth() {
       await waitForHeaders();
       console.log('✅ [PinAuth] Headers ready');
       
-      // VERIFY headers are working before navigating
-      console.log('🔍 [PinAuth] Testing data access...');
-      try {
-        const testQuery = await supabaseWithAuth(farmer.id, farmer.tenant_id)
-          .from('lands')
-          .select('count')
-          .limit(1);
+      // VERIFY headers are working before navigating (SKIP if offline)
+      if (!authResult.isOffline && isOnline) {
+        console.log('🔍 [PinAuth] Testing data access...');
+        try {
+          const testQuery = await supabaseWithAuth(farmer.id, farmer.tenant_id)
+            .from('lands')
+            .select('count')
+            .limit(1);
 
-        if (testQuery.error) {
-          console.error('❌ [PinAuth] Data access test failed:', testQuery.error);
-          throw new Error('Authentication succeeded but data access failed. Please contact support.');
+          if (testQuery.error) {
+            console.error('❌ [PinAuth] Data access test failed:', testQuery.error);
+            // Don't throw - allow offline access with warning
+            console.warn('⚠️ [PinAuth] Continuing despite data access test failure');
+          } else {
+            console.log('✅ [PinAuth] Data access verified');
+          }
+        } catch (testError) {
+          console.warn('⚠️ [PinAuth] Data access verification failed, continuing anyway:', testError);
         }
-
-        console.log('✅ [PinAuth] Data access verified');
-      } catch (testError) {
-        console.error('❌ [PinAuth] Data access verification failed:', testError);
-        throw new Error('Cannot verify data access. Please try again.');
+      } else {
+        console.log('📴 [PinAuth] Skipping data access test - offline mode');
       }
 
       // Clear temp storage but keep session data
       localStorage.removeItem('authMobile');
       localStorage.removeItem('farmerId');
-      
-      // Set step and force navigation
+
+      // CRITICAL: nuke any stale React Query cache from a previous user/session.
+      // Without this, the home screen briefly renders the previous user's data
+      // (the "old view" the user reported).
+      queryClient.clear();
+
+      // Set step and navigate synchronously — headers are already awaited above,
+      // so the next render of <Home/> will see authReady === true on first try.
       setStep('dashboard');
-      console.log('Navigating to dashboard...');
-      
-      // Use setTimeout to ensure state updates are processed
-      setTimeout(() => {
-        navigate('/app', { replace: true });
-      }, 100);
+      console.log('🚀 [PinAuth] Navigating to dashboard');
+      navigate('/app', { replace: true });
     } catch (err: any) {
       console.error('Error verifying PIN:', err);
       setError(err.message || 'Authentication failed. Please try again.');
@@ -208,11 +228,8 @@ export default function PinAuth() {
     }
   };
 
-  // Get branding
-  const brandName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name;
-
   return (
-    <div className="min-h-screen bg-gradient-primary flex flex-col items-center justify-center p-4">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6 shadow-xl">
         {/* Header */}
         <div className="space-y-4">
@@ -223,7 +240,7 @@ export default function PinAuth() {
             className="mb-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            {t('common.back')}
+            {t('auth.back')}
           </Button>
           
           <div className="text-center space-y-3">
@@ -251,7 +268,7 @@ export default function PinAuth() {
           <Alert>
             <WifiOff className="h-4 w-4" />
             <AlertDescription>
-              You are offline. Using cached credentials.
+              {t('auth.usingCachedCredentials')}
             </AlertDescription>
           </Alert>
         )}
@@ -271,10 +288,10 @@ export default function PinAuth() {
               autoFocus
             >
               <InputOTPGroup>
-                <InputOTPSlot index={0} />
-                <InputOTPSlot index={1} />
-                <InputOTPSlot index={2} />
-                <InputOTPSlot index={3} />
+                <InputOTPSlot index={0} mask />
+                <InputOTPSlot index={1} mask />
+                <InputOTPSlot index={2} mask />
+                <InputOTPSlot index={3} mask />
               </InputOTPGroup>
             </InputOTP>
           </div>
@@ -298,7 +315,7 @@ export default function PinAuth() {
             
             {attempts > 0 && attempts < 3 && (
               <p className="text-xs text-muted-foreground">
-                {3 - attempts} {t('auth.attemptsRemaining')}
+                {t('auth.attemptsRemaining', { count: 3 - attempts })}
               </p>
             )}
           </div>

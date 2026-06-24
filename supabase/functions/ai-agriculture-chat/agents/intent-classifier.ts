@@ -1,0 +1,356 @@
+/**
+ * ARCHITECTURAL CONTRACT — INTENT CLASSIFIER v4.0.0
+ *
+ * Role: language → canonical intent_code. Nothing else.
+ *
+ * v4.0.0 (Fix 1) changes:
+ * - Intent code whitelist is loaded LIVE from observation_intent_master
+ *   (the single source of truth — 88 codes verified). No more hand-maintained
+ *   in-file lists drifting out of sync.
+ * - LLM prompt receives the full canonical list as a hard constraint.
+ * - LLM output is validated against the DB-loaded Set.
+ * - Invalid output → 1 stricter retry → fallback GENERAL_CROP_INFO @ 0.3.
+ * - Emergency keyword fallback is retained for total LLM outage, but every
+ *   emitted code is gated through the same canonical Set before return.
+ */
+
+import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+
+export const INTENT_CLASSIFIER_VERSION = '4.0.0';
+
+// Module-load boot marker — if logs still show "v3.0.0" after a deploy, the
+// edge runtime is serving a stale bundle and needs a forced redeploy.
+console.log(`[IntentClassifier] MODULE_LOAD version=${INTENT_CLASSIFIER_VERSION}`);
+
+const ESTABLISHMENT_FAILURE_RE = /उगव(?:ले|त|ण|णी)?\s*(नाही|कमी)|अजून\s*उगवले\s*नाही|germin(?:ation|ate|ated).*\b(poor|fail|failed|not|no)\b|\b(poor|failed|no)\s+germin|emerg(?:ence|ed|e).*\b(poor|fail|failed|not|no)\b|अंकुरण\s*(नहीं|कम)|धान\s*(नहीं\s*उगा|कम\s*उगा)/i;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL INTENT REGISTRY (Fix 1) — loaded once per cold start from DB
+// ═══════════════════════════════════════════════════════════════════════════
+// LEAKAGE-SAFETY (Task 3, Q3 — leave-with-comment):
+// These two module-level variables hold a read-mostly GLOBAL lookup of
+// canonical intent codes. Intent codes are tenant-agnostic and immutable for
+// the lifetime of an isolate, so sharing across warm requests is safe AND
+// avoids a DB round-trip on every request (p95 latency win). The forbidden-
+// pattern guardrail explicitly allow-lists these names.
+let _validIntentCodes: Set<string> | null = null;
+let _validIntentCodesPromise: Promise<Set<string>> | null = null;
+
+async function loadCanonicalIntentCodes(): Promise<Set<string>> {
+  if (_validIntentCodes) return _validIntentCodes;
+  if (_validIntentCodesPromise) return _validIntentCodesPromise;
+
+  _validIntentCodesPromise = (async () => {
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (!supabaseUrl || !serviceKey) {
+        console.error('[IntentValidator] Missing Supabase credentials — cannot load canonical intents');
+        return new Set<string>();
+      }
+      const client = createClient(supabaseUrl, serviceKey);
+      const { data, error } = await client
+        .from('observation_intent_master')
+        .select('intent_code')
+        .eq('is_active', true);
+      if (error || !data) {
+        console.error(`[IntentValidator] Failed to load registry: ${error?.message || 'no rows'}`);
+        return new Set<string>();
+      }
+      const set = new Set<string>(data.map((r: any) => r.intent_code));
+      _validIntentCodes = set;
+      console.log(`[IntentValidator] Loaded ${set.size} canonical intent codes from DB`);
+      return set;
+    } catch (e) {
+      console.error(`[IntentValidator] Exception loading registry: ${e}`);
+      return new Set<string>();
+    }
+  })();
+
+  return _validIntentCodesPromise;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PUBLIC TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface IntentLandContext {
+  current_crop?: string;
+  growth_stage?: string;
+  days_since_sowing?: number;
+  ndvi_value?: number;
+  soil_type?: string;
+}
+
+export interface IntentClassification {
+  intent_code: string;
+  confidence: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROMPT BUILDER
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildLandContextBlock(landContext?: IntentLandContext): string {
+  if (!landContext || !landContext.current_crop) return '';
+  const lines: string[] = ["FARM CONTEXT (use this to interpret the farmer's message):"];
+  if (landContext.current_crop) lines.push(`- Crop: ${landContext.current_crop}`);
+  if (landContext.growth_stage) {
+    const dasStr = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} days after sowing)` : '';
+    lines.push(`- Growth Stage: ${landContext.growth_stage}${dasStr}`);
+  }
+  if (typeof landContext.ndvi_value === 'number') lines.push(`- NDVI: ${landContext.ndvi_value.toFixed(2)}`);
+  if (landContext.soil_type) lines.push(`- Soil: ${landContext.soil_type}`);
+  return lines.join('\n');
+}
+
+function buildConstrainedPrompt(farmerMessage: string, validCodes: Set<string>, landContext?: IntentLandContext): string {
+  const codesList = Array.from(validCodes).sort().join(', ');
+  const landBlock = buildLandContextBlock(landContext);
+  return `You are a language-understanding component for an agricultural decision system.
+
+YOUR ONLY JOB: translate the farmer's natural-language query into ONE canonical intent_code.
+You do NOT diagnose, recommend, or explain. The symbolic decision brain handles that.
+
+The farmer may write in ANY language (Marathi, Hindi, English, Tamil, Telugu, Kannada, Gujarati,
+Bengali, Punjabi) including ROMANIZED scripts (e.g. "mazya usala kide lagale",
+"pani kab dena hai", "kapus la rog lagla").
+
+═══════════════════════════════════════════════════════════════════════
+HARD CONSTRAINT — intent_code MUST be EXACTLY one of these canonical codes
+(do NOT invent new codes, do NOT change capitalization, do NOT abbreviate):
+
+${codesList}
+═══════════════════════════════════════════════════════════════════════
+
+${landBlock}
+
+ROUTING HINTS:
+- "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
+- "spray", "फवारणी", "छिड़काव", "spraying schedule" → SPRAY_TIMING_QUERY
+- "water", "पाणी", "पानी", "irrigation timing" → IRRIGATION_QUERY or IRRIGATION_SCHEDULING_QUERY
+- "did not germinate", "not emerging", "poor germination", Marathi "उगवले नाही / उगवत नाही / उगवण कमी", Hindi "अंकुरण नहीं / नहीं उगा" → EMERGENCE_FAILURE
+- "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
+  (COLOR_CHANGE, LEAF_MARKS_OR_SPOTS, WILTING_OR_DROOPING, STEM_DAMAGE, PEST_PRESENCE_VISIBLE, ...)
+- "when to harvest" → HARVEST_TIMING
+- "which new crop should I grow", "next crop", "what to plant next", "recommend a crop",
+  Marathi "कोणते नवीन पीक घेवू / पीक घ्यावे / पुढील पीक / आता काय पेरू / नवीन पीक सुचवा / फायदेशीर पीक",
+  Hindi "कौन सी फसल लगाऊं / अगली फसल / नई फसल बताओ / क्या बोऊं" → NEXT_CROP_RECOMMENDATION
+- Pure greeting / unclear → GENERAL_CROP_INFO
+
+If genuinely unsure → GENERAL_CROP_INFO. Never UNKNOWN_OBSERVATION unless the message is empty
+or has no agricultural meaning.
+
+Farmer query: "${farmerMessage}"
+
+Return JSON ONLY (no markdown, no prose):
+{"intent_code": "<one canonical code from the list>", "confidence": 0.0-1.0}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HTTP / PARSING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function callLLMWithRetry(endpoint: string, payload: RequestInit, maxRetries = 2): Promise<Response> {
+  let attempt = 0; let delay = 300;
+  while (true) {
+    const response = await fetch(endpoint, payload);
+    if (response.status === 429 && attempt < maxRetries) {
+      const jitter = Math.random() * 200;
+      await new Promise(res => setTimeout(res, delay + jitter));
+      delay *= 2; attempt++;
+      continue;
+    }
+    return response;
+  }
+}
+
+function extractFirstBalancedJSON(str: string): string | null {
+  let depth = 0, start = -1;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '{') { if (depth === 0) start = i; depth++; }
+    else if (str[i] === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const candidate = str.slice(start, i + 1);
+        try { JSON.parse(candidate); return candidate; } catch { start = -1; }
+      }
+    }
+  }
+  return null;
+}
+
+function safeExtractJson(content: string): { intent_code: string; confidence: number } | null {
+  if (!content || typeof content !== 'string') return null;
+  const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try { const d = JSON.parse(cleaned); if (d && typeof d.intent_code === 'string') return d; } catch {/* */}
+  const m = cleaned.match(/\{[^{}]*"intent_code"[^{}]*\}/);
+  if (m) { try { const e = JSON.parse(m[0]); if (e?.intent_code) return e; } catch {/* */} }
+  const bal = extractFirstBalancedJSON(cleaned);
+  if (bal) { try { const e = JSON.parse(bal); if (e?.intent_code) return e; } catch {/* */} }
+  const im = cleaned.match(/intent_code["\s:]*["']?([A-Z_]+)["']?/i);
+  const cm = cleaned.match(/confidence["\s:]*([0-9.]+)/i);
+  if (im) return { intent_code: im[1].toUpperCase(), confidence: cm ? Math.min(1, Math.max(0, parseFloat(cm[1]))) : 0.5 };
+  return null;
+}
+
+async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ intent_code: string; confidence: number } | null> {
+  const { provider, model, apiKey } = getBestAvailableProvider();
+  const endpoint = getAPIEndpoint(provider);
+  const isGemini = provider === 'gemini' || provider === 'google';
+  const requestBody: any = {
+    model,
+    messages: [
+      { role: 'system', content: strict
+        ? 'You are a JSON-only classifier. Output MUST be valid JSON containing intent_code and confidence. Nothing else.'
+        : 'You are an intent classifier. Return only JSON: {"intent_code": "...", "confidence": 0.0-1.0}. No prose, no markdown.' },
+      { role: 'user', content: prompt }
+    ],
+    temperature: strict ? 0 : 0.1,
+    max_tokens: 1024,
+  };
+  if (!isGemini) requestBody.response_format = { type: 'json_object' };
+
+  const response = await callLLMWithRetry(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify(requestBody),
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) return null;
+  return safeExtractJson(content);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN CLASSIFY
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function classifyFarmerIntent(
+  farmerMessage: string,
+  landContext?: IntentLandContext
+): Promise<IntentClassification> {
+  console.log(`\n🎯 [IntentClassifier v${INTENT_CLASSIFIER_VERSION}] Classifying...`);
+  if (landContext?.current_crop) {
+    console.log(`   📋 Land context: ${landContext.current_crop}/${landContext.growth_stage || '?'} DAS=${landContext.days_since_sowing || '?'}`);
+  }
+
+  const validCodes = await loadCanonicalIntentCodes();
+  if (validCodes.size === 0) {
+    console.error('[IntentClassifier] Canonical registry empty — emergency fallback only');
+    return emergencyFallback(farmerMessage, new Set());
+  }
+
+  const deterministic = deterministicSymptomIntent(farmerMessage, validCodes);
+  if (deterministic) {
+    console.log(`   ✅ Deterministic symptom intent: ${deterministic.intent_code} (${(deterministic.confidence * 100).toFixed(0)}%)`);
+    return deterministic;
+  }
+
+  const prompt = buildConstrainedPrompt(farmerMessage, validCodes, landContext);
+
+  try {
+    let result = await callClassifierLLM(prompt, false);
+
+    if (result && validCodes.has(result.intent_code)) {
+      const conf = typeof result.confidence === 'number' ? Math.max(0, Math.min(1, result.confidence)) : 0.6;
+      console.log(`   ✅ Intent: ${result.intent_code} (${(conf * 100).toFixed(0)}%)`);
+      return { intent_code: result.intent_code, confidence: conf };
+    }
+
+    if (result) {
+      console.error(`[IntentValidator] LLM emitted non-canonical intent: "${result.intent_code}". Retrying with stricter prompt.`);
+    } else {
+      console.warn('[IntentValidator] LLM returned no parseable JSON. Retrying.');
+    }
+
+    const retryPrompt = prompt + `\n\nYour previous response was INVALID. Return ONLY a code from the canonical list above.`;
+    const retry = await callClassifierLLM(retryPrompt, true);
+    if (retry && validCodes.has(retry.intent_code)) {
+      const conf = typeof retry.confidence === 'number' ? Math.max(0, Math.min(1, retry.confidence)) : 0.5;
+      console.log(`   ✅ Intent (retry): ${retry.intent_code} (${(conf * 100).toFixed(0)}%)`);
+      return { intent_code: retry.intent_code, confidence: conf };
+    }
+
+    console.error(`[IntentValidator] Retry also failed. Trying keyword fallback, then GENERAL_CROP_INFO.`);
+    const kw = emergencyFallback(farmerMessage, validCodes);
+    if (kw.intent_code !== 'UNKNOWN_OBSERVATION') return kw;
+    return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3 };
+  } catch (e) {
+    console.error(`[IntentClassifier] Error: ${e}`);
+    return emergencyFallback(farmerMessage, validCodes);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EMERGENCY KEYWORD FALLBACK — every emitted code is gated through validCodes
+// ═══════════════════════════════════════════════════════════════════════════
+
+function emit(code: string, conf: number, validCodes: Set<string>): IntentClassification {
+  if (validCodes.size === 0 || validCodes.has(code)) return { intent_code: code, confidence: conf };
+  if (validCodes.has('GENERAL_CROP_INFO')) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3 };
+  return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.15 };
+}
+
+function deterministicSymptomIntent(message: string, validCodes: Set<string>): IntentClassification | null {
+  const original = message || '';
+  if (ESTABLISHMENT_FAILURE_RE.test(original)) {
+    return emit('EMERGENCE_FAILURE', 0.82, validCodes);
+  }
+  return null;
+}
+
+function emergencyFallback(message: string, validCodes: Set<string>): IntentClassification {
+  const original = message || '';
+  if (!original.trim()) return emit('UNKNOWN_OBSERVATION', 0.0, validCodes);
+
+  const deterministic = deterministicSymptomIntent(original, validCodes);
+  if (deterministic) return deterministic;
+
+  // Next-crop recommendation (Phase 1 — P0). Must run BEFORE generic crop/fasal
+  // matchers so "नवीन पीक घेवू" / "अगली फसल" don't fall to GENERAL_CROP_INFO.
+  if (
+    /नवीन\s*(पीक|पिक)|(पीक|पिक)\s*(घ्यावे|घेवू|घेऊ|लावावे|पेरू|पेरावे|सुचवा)/i.test(original) ||
+    /पुढील\s*(पीक|पिक)|आता\s*(काय|कोणते)\s*(पेरू|पेरावे|लावावे|घेवू)/i.test(original) ||
+    /अगली\s*फसल|नई\s*फसल|क्या\s*(बोऊं|बोएं|लगाऊं|उगाऊं)|कौन\s*सी?\s*(नई\s*)?फसल\s*(लगाऊं|बोऊं|उगाऊं|सुझाव|बताओ)/i.test(original) ||
+    /\bnext\s+crop\b|\bwhat\s+(should\s+i|to)\s+(plant|sow|grow)\b|\brecommend\s+(a\s+)?crop\b/i.test(original)
+  ) {
+    return emit('NEXT_CROP_RECOMMENDATION', 0.7, validCodes);
+  }
+
+  // Fertilizer
+  if (/खत|खते|खाद|उर्वरक|fertiliz|\bkhat\b|\bkhaad\b/i.test(original)) return emit('FERTILIZER_SCHEDULE', 0.6, validCodes);
+  // Spray
+  if (/फवारणी|छिड़काव|spray/i.test(original)) return emit('SPRAY_TIMING_QUERY', 0.6, validCodes);
+  // Irrigation
+  if (/पाणी|पानी|सिंचन|सिंचाई|irrigat|\bpani\b|\bpaani\b/i.test(original)) return emit('IRRIGATION_QUERY', 0.55, validCodes);
+  // Harvest
+  if (/कापणी|काटाई|harvest|तोड/i.test(original)) return emit('HARVEST_TIMING', 0.55, validCodes);
+  // Weed
+  if (/तण|खरपतवार|weed|निंदणी|निराई/i.test(original)) return emit('WEED_PROBLEM', 0.55, validCodes);
+  // Death/dying
+  if (/मेला|मेले|मरत|सुकल|सुकत|वाळल|dried|dead|dying|wilt|droop|कोमेज/i.test(original)) return emit('WILTING_OR_DROOPING', 0.5, validCodes);
+  // Pest
+  if (/किडा|किडे|कीट|कीड़|insect|pest|अळी|बोंड/i.test(original)) return emit('PEST_PRESENCE_VISIBLE', 0.5, validCodes);
+  // Disease
+  if (/रोग|बीमारी|disease|fungus|करपा|तांबेरा/i.test(original)) return emit('DISEASE_LIKE_PATTERN', 0.5, validCodes);
+  // Yellowing
+  if (/पिवळ|पीला|yellow/i.test(original)) return emit('COLOR_CHANGE', 0.5, validCodes);
+  // Leaf spots
+  if (/ठिपके|डाग|धब्बे|spots?/i.test(original)) return emit('LEAF_MARKS_OR_SPOTS', 0.5, validCodes);
+  // Stem damage / borer
+  if (/borer|छेदक|खोड.*भोक|खोड.*अळी|frass/i.test(original)) return emit('STEM_DAMAGE', 0.55, validCodes);
+  if (/खोड|तना|stem/i.test(original)) return emit('STEM_DAMAGE', 0.45, validCodes);
+  // Soil
+  if (/soil test|माती परीक्षण|मृदा परीक्षण/i.test(original)) return emit('SOIL_TESTING_QUERY', 0.55, validCodes);
+  // Market
+  if (/market price|भाव|दर|mandi|बाजार/i.test(original)) return emit('MARKET_PRICE_QUERY', 0.55, validCodes);
+  // Weather
+  if (/weather|forecast|rain|पाऊस|बारिश/i.test(original)) return emit('WEATHER_ADVISORY', 0.55, validCodes);
+
+  return emit('GENERAL_CROP_INFO', 0.3, validCodes);
+}
+
+export default { classifyFarmerIntent, INTENT_CLASSIFIER_VERSION };

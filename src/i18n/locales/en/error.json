@@ -1,0 +1,53 @@
+{
+  "__meta": {
+    "page": "error",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "error": {
+    "notFound": {
+      "title": "Oops! Page not found",
+      "message": "The page you're looking for doesn't exist"
+    },
+    "boundary": {
+      "something_went_wrong": "Oops! Something went wrong",
+      "sorry_inconvenience": "We're sorry for the inconvenience. Please try refreshing the page.",
+      "error_details": "Error details",
+      "refresh_page": "Refresh Page"
+    },
+    "network": {
+      "no_connection": "No internet connection",
+      "check_connection": "Please check your connection and try again",
+      "offline_mode": "Working in offline mode"
+    },
+    "auth": {
+      "unauthorized": "Unauthorized access",
+      "session_expired": "Your session has expired",
+      "login_again": "Please login again"
+    },
+    "data": {
+      "load_failed": "Failed to load data",
+      "save_failed": "Failed to save data",
+      "delete_failed": "Failed to delete",
+      "try_again": "Please try again"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "What's the error",
+      "Why did it fail",
+      "Show error details"
+    ],
+    "voice_examples_hi": [
+      "त्रुटि क्या है",
+      "यह क्यों विफल हुआ",
+      "त्रुटि विवरण दिखाएं"
+    ],
+    "voice_examples_mr": [
+      "त्रुटी काय आहे",
+      "हे का अपयशी झाले",
+      "त्रुटी तपशील दाखवा"
+    ]
+  }
+}

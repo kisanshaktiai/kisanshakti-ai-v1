@@ -1,0 +1,403 @@
+{
+  "__meta": {
+    "page": "schedule",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "schedule": {
+    "variety": {
+      "label": "Seed variety",
+      "loading": "Loading varieties…",
+      "none_for_crop": "No varieties catalogued yet — add yours",
+      "choose_from": "Choose from {{count}} varieties",
+      "change": "Change variety",
+      "choose_crop_first": "Select a crop first to see its varieties.",
+      "search_placeholder": "Search by name, code or brand…",
+      "no_match": "No varieties match your search.",
+      "add_missing": "My variety isn't listed — add it",
+      "about": "About this variety",
+      "maturity": "Maturity",
+      "yield": "Yield",
+      "irrigation": "Water",
+      "seed_rate": "Seed rate",
+      "days": "days",
+      "released_by": "Released by",
+      "suitable_states": "Suitable for",
+      "resistance": "Pest & disease resistance",
+      "loading_resistance": "Loading…",
+      "loading_details": "Loading…",
+      "no_resistance": "No catalogued resistance data.",
+      "no_details": "Currently information not available. We'll update soon.",
+      "use_this": "Use this variety",
+      "selected": "Selected",
+      "selected_chip": "Selected variety",
+      "tap_to_view": "Tap any variety to see full details",
+      "featured": "Recommended",
+      "submit": {
+        "title": "Add your variety",
+        "desc": "Tell us about the variety you sowed. Our team will verify and add it to the catalogue.",
+        "desc_with_crop": "Tell us about the {{crop}} variety you sowed. Our team will verify and add it.",
+        "name": "Variety name",
+        "name_required": "Please enter the variety name",
+        "local_name": "Local / vernacular name",
+        "season": "Season",
+        "min_days": "Min days",
+        "max_days": "Max days",
+        "notes": "Notes (source, brand, seed origin…)",
+        "submit": "Submit for review",
+        "submitted_title": "Variety submitted",
+        "submitted_desc": "Your team will review and add it to the catalogue. We'll use this name for your schedule.",
+        "invalid_range": "Minimum days cannot exceed maximum days",
+        "auth_required": "Please sign in to submit a variety"
+      }
+    },
+    "title": "Crop Schedule",
+    "generate": "Generate Schedule",
+    "ai_schedule": "AI Smart Schedule",
+    "manual_entry": "Manual Entry",
+    "steps": {
+      "land_selection": "Step 1: Select Your Land",
+      "crop_input": "Step 2: Crop Details",
+      "schedule_view": "Step 3: AI Schedule",
+      "of_total": "Step {{current}} of {{total}}"
+    },
+    "land_selector": {
+      "ai_schedule_ready": "AI Schedule Ready",
+      "generate_schedule": "Generate Schedule",
+      "active": "Active",
+      "click_to_view": "Click to view",
+      "view": "View",
+      "edit": "Edit",
+      "delete": "Delete",
+      "survey": "Survey #{{number}}",
+      "acres": "acres",
+      "guntas": "guntas",
+      "create_schedule": "Create Schedule",
+      "add_land_btn": "Add Land",
+      "delete_dialog": {
+        "title": "Delete Schedule",
+        "description": "Are you sure you want to delete this AI crop schedule? This action cannot be undone.",
+        "cancel": "Cancel",
+        "delete": "Delete"
+      },
+      "delete_ai_dialog": {
+        "title": "Delete AI Schedule?",
+        "description": "This will permanently delete the AI-generated crop schedule and all its tasks. This action cannot be undone."
+      },
+      "toast": {
+        "deleted": "Schedule Deleted",
+        "deleted_message": "AI crop schedule has been removed",
+        "delete_failed": "Delete Failed",
+        "delete_failed_message": "Failed to delete schedule"
+      }
+    },
+    "crop_input": {
+      "variety_label": "Variety (Optional)",
+      "variety_placeholder": "e.g., IR-64, HD-2967, BT Cotton",
+      "ready_made_plant": "Using ready-made nursery plants",
+      "ready_made_description": "Check if planting seedlings/transplants instead of sowing seeds",
+      "sowing_date": "Sowing Date",
+      "planting_date": "Planting Date",
+      "pick_date": "Pick a date",
+      "generate_ai_schedule": "Generate AI Schedule",
+      "generating": "Generating AI Schedule...",
+      "select_crop": "Select Crop",
+      "please_select_crop": "Please select a crop",
+      "select_date": "Select Date",
+      "please_select_date": "Please select the sowing date",
+      "water": "Water",
+      "intercrop_label": "Intercrops (Optional)",
+      "nursery_days_label": "Plant age (days from seed sowing)",
+      "nursery_days_placeholder": "e.g., 25, 30, 45 days",
+      "nursery_days_help": "Enter how many days old the nursery plant is. Schedule will start from transplanting.",
+      "backdated_warning": "Past date selected. You'll need to confirm consent for a backdated schedule.",
+      "change_crop": "Change crop",
+      "selected_crop": "Selected crop"
+    },
+    "schedule_view": {
+      "no_active_schedule": "No Active Schedule",
+      "no_schedule_available": "No Schedule Available",
+      "no_schedule_description": "Generate an AI-powered crop schedule to get personalized farming tasks and recommendations",
+      "generate_schedule": "Generate Schedule",
+      "ai_schedule": "AI Schedule",
+      "loading": "Loading schedule data...",
+      "standard_variety": "Standard Variety"
+    },
+    "farming_type": {
+      "organic": "Organic",
+      "organic_chemical": "Org+Chem",
+      "chemical": "Chemical"
+    },
+    "loading": {
+      "syncing": "Syncing data from server..."
+    },
+    "filters": {
+      "all": "All Tasks",
+      "pending": "Pending",
+      "completed": "Completed",
+      "overdue": "Overdue",
+      "upcoming": "Upcoming"
+    },
+    "time_view": {
+      "today": "Today",
+      "week": "Week",
+      "month": "Month",
+      "all": "All"
+    },
+    "task": {
+      "mark_complete": "Mark as Completed",
+      "skip": "Skip Task",
+      "reschedule": "Reschedule",
+      "details": "Task Details",
+      "priority": "Priority",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "status": {
+        "pending": "Pending",
+        "completed": "Completed",
+        "skipped": "Skipped",
+        "overdue": "Overdue"
+      }
+    },
+    "stages": {
+      "land_prep": "Land Preparation",
+      "sowing": "Sowing",
+      "irrigation": "Irrigation",
+      "fertilizer": "Fertilization",
+      "pest_control": "Pest Control",
+      "weeding": "Weeding",
+      "harvest": "Harvesting"
+    },
+    "badges": {
+      "weather": "Weather",
+      "ai_adjusted": "AI Adjusted",
+      "critical": "Critical",
+      "optimal": "Optimal"
+    },
+    "empty": {
+      "title": "No Tasks Scheduled",
+      "message": "Generate an AI schedule or add tasks manually",
+      "no_tasks_period": "No tasks for this period"
+    },
+    "stats": {
+      "total_tasks": "Total Tasks",
+      "completed": "Completed",
+      "pending": "Pending",
+      "completion_rate": "Completion Rate"
+    },
+    "alerts": {
+      "weather_warning": "Weather Alert: {{message}}",
+      "task_due": "Task due in {{hours}} hours",
+      "overdue_tasks": "You have {{count}} overdue tasks"
+    },
+    "cta": {
+      "add_task": "Add Task",
+      "view_calendar": "View Calendar",
+      "refresh": "Refresh Schedule"
+    },
+    "toast": {
+      "task_completed": "Task marked as completed",
+      "task_skipped": "Task skipped",
+      "schedule_generated": "Schedule generated successfully",
+      "error": "Failed to update task",
+      "great_work": "Great work! Syncing...",
+      "sync_failed": "Failed to sync completion",
+      "rolled_back": "Rolled back. Try again.",
+      "task_unmarked": "Task unmarked",
+      "task_updated": "Task updated successfully",
+      "changes_saved": "Your changes have been saved",
+      "update_failed": "Failed to update task",
+      "reverting": "Reverting completion...",
+      "unmark_failed": "Failed to unmark",
+      "try_again": "Try again."
+    },
+    "main": {
+      "ai_crop_schedule": "AI Crop Schedule",
+      "add_land": "Add Land",
+      "retrying": "Retrying...",
+      "generating_attempt": "Generating AI schedule (Attempt {{count}}/2)",
+      "generated_success": "AI Schedule Generated!",
+      "generated_description": "Smart farming schedule created for {{crop}}",
+      "generation_failed": "Generation Failed",
+      "refreshing": "Refreshing",
+      "syncing_latest": "Syncing latest data..."
+    },
+    "task_statistics": {
+      "title": "Task Statistics",
+      "completion_rate": "Completion Rate",
+      "tasks_count": "{{completed}}/{{total}} tasks",
+      "completed": "Completed",
+      "tasks_done": "tasks done",
+      "streak": "Streak",
+      "days": "days",
+      "best_streak": "Best: {{days}} days",
+      "perfect_score": "Perfect Score! 🎉",
+      "on_fire": "On Fire! {{days}} Day Streak 🔥"
+    },
+    "task_card": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "overdue": "Overdue",
+      "days_until": "{{days}} days",
+      "high_priority": "High Priority",
+      "weather": "Weather",
+      "weather_dependent": "Weather Dependent",
+      "completed": "Completed",
+      "description": "Description",
+      "instructions": "Instructions",
+      "precautions": "Precautions",
+      "required_resources": "Required Resources",
+      "ideal_weather": "Ideal Weather",
+      "temperature": "Temperature",
+      "humidity": "Humidity",
+      "conditions": "Conditions",
+      "read_aloud": "Read Aloud",
+      "quantity": "Quantity",
+      "product_details": "Product Details",
+      "icar_guideline": "ICAR Recommendation",
+      "climate_risk": "Climate Risk",
+      "approx_cost": "Approx. Cost",
+      "recommended_products": "Recommended Products",
+      "mark_done_label": "Mark as done when completed",
+      "mark_done": "Mark Done"
+    },
+    "schedule_card": {
+      "variety": "Variety",
+      "variety_label": "Variety:",
+      "tbd": "TBD",
+      "yield": "Yield",
+      "cost": "Cost",
+      "progress": "Progress: {{completed}}/{{total}} tasks",
+      "view_schedule": "View Schedule"
+    },
+    "timeline": {
+      "title": "Timeline View",
+      "tasks_count": "{{count}} tasks",
+      "task": "task",
+      "tasks": "tasks",
+      "ai_adjusted": "AI Adjusted",
+      "done": "Done",
+      "today": "Today",
+      "tomorrow": "Tomorrow"
+    },
+    "dialog": {
+      "task_details": "Task Details",
+      "update_status": "Update task status and add notes",
+      "resources_needed": "Resources Needed",
+      "resources_needed_label": "Resources Needed:",
+      "notes_label": "Notes",
+      "notes_optional": "(Optional)",
+      "notes_placeholder": "Add any notes about this task...",
+      "done": "Confirm",
+      "skipped": "Skipped",
+      "weather": "Weather",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "hours": "hours",
+      "persons": "persons",
+      "edit": "Edit",
+      "edit_task": "Edit Task",
+      "n_task": "Task",
+      "n": "n"
+    },
+    "climate": {
+      "ai_active": "AI Active",
+      "tasks_auto_adjusted": "Tasks Auto-Adjusted",
+      "schedule_optimized": "Schedule automatically optimized based on climate conditions",
+      "heavy_rainfall": "Heavy rainfall detected. Irrigation and spraying tasks may be delayed.",
+      "low_crop_health": "Low crop health (NDVI). Fertilizer application may be prioritized.",
+      "high_temperature": "High temperature. Irrigation may be advanced to prevent heat stress."
+    },
+    "crop_selector": {
+      "failed_load_categories": "Failed to load crop categories",
+      "failed_load_crops": "Failed to load crops",
+      "search_placeholder": "Search crops...",
+      "hot": "Hot",
+      "retry": "Retry"
+    },
+    "sowing": "Sowing",
+    "harvest": "Harvest",
+    "days_remaining": "days left",
+    "days_ago": "days ago",
+    "todays_tasks": "Today's Tasks",
+    "pending": "pending",
+    "upcoming": "Upcoming",
+    "complete": "Complete",
+    "overdue": "Overdue",
+    "refresh_schedule": "Refresh Schedule",
+    "no_tasks": "No tasks for this period",
+    "today": "Today",
+    "week": "Week",
+    "month": "Month",
+    "all": "All",
+    "listen": "Listen",
+    "close": "Close",
+    "done": "Done",
+    "skipped": "Skipped"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show today's tasks",
+      "Mark task as complete",
+      "Generate crop schedule",
+      "Show pending tasks"
+    ],
+    "voice_examples_hi": [
+      "आज के कार्य दिखाओ",
+      "कार्य पूर्ण के रूप में चिह्नित करें",
+      "फसल अनुसूची बनाएं",
+      "लंबित कार्य दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "आजची कामे दाखवा",
+      "काम पूर्ण म्हणून चिन्हांकित करा",
+      "पीक वेळापत्रक तयार करा",
+      "प्रलंबित कामे दाखवा"
+    ],
+    "harvest": {
+      "crop_fallback": "your crop",
+      "banner": {
+        "title": "Ready for harvest — please confirm"
+      },
+      "land_badge": {
+        "ready": "Ready",
+        "confirm": "Confirm harvest"
+      },
+      "dialog": {
+        "title": "Confirm harvest",
+        "expected": "Expected",
+        "outcome_label": "Outcome",
+        "date_label": "Actual harvest date",
+        "pick_date": "Pick a date",
+        "yield_label": "Yield (quintals, optional)",
+        "notes_label": "Notes (optional)",
+        "notes_placeholder": "Anything you want to remember about this harvest",
+        "snooze": "Snooze 7 days",
+        "confirm": "Confirm",
+        "share": "Share on WhatsApp"
+      },
+      "outcomes": {
+        "full": "Fully harvested",
+        "partial": "Partially harvested",
+        "abandoned": "Abandoned / failed"
+      },
+      "toast": {
+        "confirmed": "Harvest confirmed",
+        "abandoned": "Season closed",
+        "snoozed": "Reminder snoozed for 7 days"
+      },
+      "errors": {
+        "date_required": "Please pick the harvest date",
+        "submit": "Could not save harvest",
+        "snooze": "Could not snooze"
+      }
+    }
+  }
+}

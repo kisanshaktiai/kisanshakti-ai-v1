@@ -172,18 +172,39 @@ class NotificationService {
     }
   }
 
-  async scheduleTaskReminder(taskId: string, taskTitle: string, dueDate: Date) {
+  async scheduleTaskReminder(taskId: string, taskTitle: string, dueDate: Date, language: string = 'en') {
     // Schedule 3 notifications: 5 days before, 1 day before, and same day
+    const getTitleByLanguage = (type: string, title: string) => {
+      const templates: Record<string, Record<string, string>> = {
+        '5_days': {
+          hi: `📋 आगामी काम: ${title}`,
+          mr: `📋 आगामी काम: ${title}`,
+          en: `📋 Upcoming: ${title}`,
+        },
+        '1_day': {
+          hi: `⏰ कल का काम: ${title}`,
+          mr: `⏰ उद्याचे काम: ${title}`,
+          en: `⏰ Tomorrow: ${title}`,
+        },
+        'same_day': {
+          hi: `🔔 आज का काम: ${title}`,
+          mr: `🔔 आजचे काम: ${title}`,
+          en: `🔔 Today: ${title}`,
+        },
+      };
+      return templates[type]?.[language] || templates[type]?.en || title;
+    };
+
     const notifications = [
-      { type: '5_days', daysBefore: 5, title: `Upcoming: ${taskTitle}` },
-      { type: '1_day', daysBefore: 1, title: `Tomorrow: ${taskTitle}` },
-      { type: 'same_day', daysBefore: 0, title: `Today: ${taskTitle}` },
+      { type: '5_days', daysBefore: 5 },
+      { type: '1_day', daysBefore: 1 },
+      { type: 'same_day', daysBefore: 0 },
     ];
 
     const now = new Date();
     const reminders = this.getScheduledReminders();
 
-    notifications.forEach(({ type, daysBefore, title }) => {
+    notifications.forEach(({ type, daysBefore }) => {
       const notificationTime = new Date(dueDate);
       notificationTime.setDate(notificationTime.getDate() - daysBefore);
       notificationTime.setHours(9, 0, 0, 0); // 9 AM
@@ -192,7 +213,7 @@ class NotificationService {
         reminders.push({
           id: `${taskId}-${type}`,
           taskId,
-          title,
+          title: getTitleByLanguage(type, taskTitle),
           time: notificationTime.toISOString(),
           type: 'task',
           notificationType: type,
@@ -203,11 +224,21 @@ class NotificationService {
     localStorage.setItem('scheduledReminders', JSON.stringify(reminders));
   }
 
-  async scheduleWeatherAlert(alertType: string, message: string) {
+  async scheduleWeatherAlert(alertType: string, message: string, language: string = 'en') {
     const reminders = this.getScheduledReminders();
+    
+    const getTitleByLanguage = () => {
+      const templates: Record<string, string> = {
+        hi: `⚠️ मौसम अलर्ट: ${alertType}`,
+        mr: `⚠️ हवामान अलर्ट: ${alertType}`,
+        en: `⚠️ Weather Alert: ${alertType}`,
+      };
+      return templates[language] || templates.en;
+    };
+
     reminders.push({
       id: `weather-${Date.now()}`,
-      title: `Weather Alert: ${alertType}`,
+      title: getTitleByLanguage(),
       message,
       time: new Date().toISOString(),
       type: 'weather',
@@ -215,11 +246,72 @@ class NotificationService {
     localStorage.setItem('scheduledReminders', JSON.stringify(reminders));
 
     // Send immediate notification
-    this.sendNotification(`Weather Alert: ${alertType}`, {
+    this.sendNotification(getTitleByLanguage(), {
       body: message,
       icon: '/icon-192x192.png',
       badge: '/icon-192x192.png',
       tag: 'weather-alert',
+      requireInteraction: true,
+    });
+  }
+
+  async scheduleIrrigationReminder(cropName: string, liters: number, landName: string, language: string = 'en') {
+    const getTitleByLanguage = () => {
+      const templates: Record<string, string> = {
+        hi: `💧 पानी देने का समय - ${landName}`,
+        mr: `💧 पाणी देण्याची वेळ - ${landName}`,
+        en: `💧 Irrigation Due - ${landName}`,
+      };
+      return templates[language] || templates.en;
+    };
+
+    const getBodyByLanguage = () => {
+      const templates: Record<string, string> = {
+        hi: `${cropName} को ${Math.round(liters)} लीटर पानी दें`,
+        mr: `${cropName} ला ${Math.round(liters)} लीटर पाणी द्या`,
+        en: `Give ${Math.round(liters)} liters water to ${cropName}`,
+      };
+      return templates[language] || templates.en;
+    };
+
+    this.sendNotification(getTitleByLanguage(), {
+      body: getBodyByLanguage(),
+      icon: '/icon-192x192.png',
+      badge: '/icon-192x192.png',
+      tag: 'irrigation-reminder',
+    });
+  }
+
+  async scheduleWeatherAdjustmentNotification(
+    taskName: string, 
+    oldDate: string, 
+    newDate: string, 
+    reason: string,
+    language: string = 'en'
+  ) {
+    const getTitleByLanguage = () => {
+      const templates: Record<string, string> = {
+        hi: `⚠️ मौसम के कारण काम बदला`,
+        mr: `⚠️ हवामानामुळे काम बदलले`,
+        en: `⚠️ Task Rescheduled - Weather`,
+      };
+      return templates[language] || templates.en;
+    };
+
+    const getBodyByLanguage = () => {
+      const templates: Record<string, string> = {
+        hi: `"${taskName}" ${oldDate} से ${newDate} पर बदला गया। कारण: ${reason}`,
+        mr: `"${taskName}" ${oldDate} वरून ${newDate} वर बदलले. कारण: ${reason}`,
+        en: `"${taskName}" moved from ${oldDate} to ${newDate}. Reason: ${reason}`,
+      };
+      return templates[language] || templates.en;
+    };
+
+    this.sendNotification(getTitleByLanguage(), {
+      body: getBodyByLanguage(),
+      icon: '/icon-192x192.png',
+      badge: '/icon-192x192.png',
+      tag: 'weather-adjustment',
       requireInteraction: true,
     });
   }

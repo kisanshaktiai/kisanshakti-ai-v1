@@ -3,7 +3,7 @@ import { Mic, MicOff } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
-import { useVoiceNavigation } from '@/contexts/VoiceNavigationContext';
+import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { useLanguageStore } from '@/stores/languageStore';
 import { cn } from '@/lib/utils';
 
@@ -19,7 +19,7 @@ export const VoiceInput = React.forwardRef<HTMLInputElement, VoiceInputProps>(
   ({ value, onChange, voiceLabel, onVoiceStart, onVoiceEnd, className, ...props }, ref) => {
     const [isVoiceActive, setIsVoiceActive] = useState(false);
     const { currentLanguage } = useLanguageStore();
-    const { isEnabled: voiceNavEnabled } = useVoiceNavigation();
+    const { isReady, isSupported } = useModernVoice();
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleTranscript = (transcript: string) => {
@@ -32,7 +32,7 @@ export const VoiceInput = React.forwardRef<HTMLInputElement, VoiceInputProps>(
       isListening,
       startListening,
       stopListening,
-      isSupported,
+      isSupported: speechSupported,
     } = useSpeechRecognition({
       onTranscript: handleTranscript,
       language: currentLanguage === 'hi' ? 'hi-IN' : 
@@ -59,7 +59,7 @@ export const VoiceInput = React.forwardRef<HTMLInputElement, VoiceInputProps>(
       }
     }, [isListening]);
 
-    const showVoiceButton = voiceNavEnabled && isSupported;
+    const showVoiceButton = (isReady || isSupported) && speechSupported;
 
     return (
       <div className="relative w-full">

@@ -1,0 +1,510 @@
+{
+  "language": "en",
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": ["go home", "take me home", "open home", "home screen", "main page", "home page", "dashboard", "main screen", "start page"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.back",
+      "patterns": ["go back", "previous page", "back", "return", "previous", "go to previous", "last page"],
+      "priority": "high",
+      "offline": true,
+      "action": "back"
+    },
+    {
+      "id": "navigate.forward",
+      "patterns": ["go forward", "next page", "forward", "move forward"],
+      "priority": "high",
+      "offline": true,
+      "action": "forward"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": ["show my lands", "open lands", "view my farms", "my fields", "land management", "show lands", "my lands", "farms", "fields", "all lands", "view lands", "land list"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.add_land",
+      "patterns": ["add new land", "register new field", "add farm", "create new land", "new land", "register land", "add land", "new field", "create land", "add my land"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands/add"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": ["show weather", "what's the weather", "weather forecast", "check weather", "open weather", "weather today", "today's weather", "will it rain", "temperature", "rainfall", "weather report", "mausam"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": ["show schedule", "my tasks", "open calendar", "what's on schedule", "farming schedule", "schedule", "tasks", "today's tasks", "my work", "calendar", "task list", "pending tasks", "work schedule"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": ["open chat", "talk to assistant", "ai assistant", "help me", "ask question", "chat", "assistant", "ai help", "ask ai", "virtual assistant", "chatbot", "talk to ai"],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/chat"
+    },
+    {
+      "id": "navigate.market",
+      "patterns": ["open market", "marketplace", "buy products", "sell crops", "market prices", "market", "shop", "prices", "mandi", "bazaar", "crop prices", "sell produce", "buy items"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/market"
+    },
+    {
+      "id": "navigate.profile",
+      "patterns": ["my profile", "open profile", "account settings", "user profile", "profile", "account", "settings", "my account", "edit profile", "view profile", "user settings"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/profile"
+    },
+    {
+      "id": "navigate.profile_edit",
+      "patterns": ["edit profile", "update profile", "change profile", "modify profile", "profile edit", "update my details"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/profile/edit"
+    },
+    {
+      "id": "navigate.community",
+      "patterns": ["open community", "social feed", "farmer community", "connect with farmers", "community", "social", "farmers network", "connect", "other farmers"],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/social"
+    },
+    {
+      "id": "navigate.analytics",
+      "patterns": ["analytics", "view analytics", "statistics", "reports", "data", "insights", "farm analytics", "performance", "my data", "farm data"],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/analytics"
+    },
+    {
+      "id": "navigate.advisory",
+      "patterns": ["advisory", "farming advice", "recommendations", "suggestions", "expert advice", "crop advisory", "farming tips", "agricultural advice"],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/advisory"
+    },
+    {
+      "id": "navigate.schemes",
+      "patterns": ["schemes", "government schemes", "subsidies", "benefits", "yojana", "sarkar yojana", "government programs", "farmer schemes", "loan schemes"],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/schemes"
+    },
+    {
+      "id": "navigate.videos",
+      "patterns": ["videos", "watch videos", "farming videos", "tutorials", "video tutorials", "training videos", "learn", "educational videos", "reels"],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/videos"
+    },
+    {
+      "id": "navigate.ndvi",
+      "patterns": ["ndvi", "satellite view", "crop health", "ndvi analysis", "vegetation index", "satellite images", "field health", "crop monitoring"],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/ndvi"
+    },
+    {
+      "id": "navigate.ai_dashboard",
+      "patterns": ["ai dashboard", "smart schedule", "ai schedule", "intelligent schedule", "smart planning", "ai planning"],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/ai-dashboard"
+    },
+    {
+      "id": "navigate.notifications",
+      "patterns": ["notifications", "notification settings", "alerts", "alert settings", "manage notifications", "push notifications"],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/notifications/settings"
+    },
+    {
+      "id": "navigate.menu",
+      "patterns": ["open menu", "show menu", "main menu", "navigation menu", "menu"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "open_menu" }
+    },
+    {
+      "id": "navigate.close_menu",
+      "patterns": ["close menu", "hide menu", "dismiss menu", "close"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "close_menu" }
+    },
+    {
+      "id": "action.scroll_down",
+      "patterns": ["scroll down", "go down", "move down", "page down", "down", "scroll"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "scroll_down" }
+    },
+    {
+      "id": "action.scroll_up",
+      "patterns": ["scroll up", "go up", "move up", "page up", "up", "top"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "scroll_up" }
+    },
+    {
+      "id": "action.refresh",
+      "patterns": ["refresh", "reload", "update page", "refresh page", "load again"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "refresh" }
+    },
+    {
+      "id": "action.share",
+      "patterns": ["share", "share this", "send to", "share page", "share link"],
+      "priority": "medium",
+      "offline": false,
+      "action": "ui_action",
+      "params": { "action": "share" }
+    },
+    {
+      "id": "action.logout",
+      "patterns": ["logout", "sign out", "log out", "exit", "sign off"],
+      "priority": "high",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "logout", "requiresConfirmation": true }
+    },
+    {
+      "id": "action.select",
+      "patterns": ["select", "choose", "pick", "tap", "click", "select this", "open this"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "select" }
+    },
+    {
+      "id": "action.select_first",
+      "patterns": ["select first", "first one", "first item", "open first", "top one"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "select_first" }
+    },
+    {
+      "id": "action.select_last",
+      "patterns": ["select last", "last one", "last item", "open last", "bottom one"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "select_last" }
+    },
+    {
+      "id": "crud.create_land",
+      "patterns": ["add new land", "register new field", "add farm", "create new land", "new land"],
+      "slots": [
+        { "name": "landName", "type": "string", "required": false },
+        { "name": "area", "type": "number", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/lands/add"
+    },
+    {
+      "id": "crud.view_land",
+      "patterns": ["view land", "show land details", "open land", "land details", "see land"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false },
+        { "name": "landName", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "view",
+      "params": { "entity": "land" }
+    },
+    {
+      "id": "crud.edit_land",
+      "patterns": ["edit land", "update land", "modify field", "change land details", "update field"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false },
+        { "name": "landName", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "edit",
+      "params": { "entity": "land" }
+    },
+    {
+      "id": "crud.delete_land",
+      "patterns": ["delete land", "remove field", "delete this land", "remove this field", "remove land"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "land", "requiresConfirmation": true }
+    },
+    {
+      "id": "crud.create_task",
+      "patterns": ["add task", "create task", "new task", "add reminder", "add work", "schedule task", "set reminder"],
+      "slots": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "date", "type": "date", "required": false },
+        { "name": "priority", "type": "enum", "required": false, "values": ["low", "medium", "high"] }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "create",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.edit_task",
+      "patterns": ["edit task", "update task", "modify task", "change task", "reschedule task"],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "edit",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.complete_task",
+      "patterns": ["complete task", "mark done", "finish task", "task done", "mark complete", "done", "completed"],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "complete",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.delete_task",
+      "patterns": ["delete task", "remove task", "cancel task", "delete this task"],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "task", "requiresConfirmation": true }
+    },
+    {
+      "id": "form.next_field",
+      "patterns": ["next field", "next", "go to next", "move forward", "next input", "continue"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "next_field" }
+    },
+    {
+      "id": "form.previous_field",
+      "patterns": ["previous field", "previous", "go back field", "move back", "back field"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "previous_field" }
+    },
+    {
+      "id": "form.clear_field",
+      "patterns": ["clear field", "clear this", "erase", "delete this", "clear", "empty field"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "clear_field" }
+    },
+    {
+      "id": "form.save",
+      "patterns": ["save", "submit", "save this", "submit form", "save changes", "confirm", "save it", "done"],
+      "priority": "high",
+      "offline": false,
+      "action": "form_action",
+      "params": { "action": "save" }
+    },
+    {
+      "id": "form.cancel",
+      "patterns": ["cancel", "discard", "don't save", "cancel changes", "close", "exit form", "never mind"],
+      "priority": "high",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "cancel" }
+    },
+    {
+      "id": "form.type_text",
+      "patterns": ["type", "enter", "write", "input"],
+      "slots": [
+        { "name": "text", "type": "string", "required": true }
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "type_text" }
+    },
+    {
+      "id": "form.select_option",
+      "patterns": ["select option", "choose option", "pick option"],
+      "slots": [
+        { "name": "option", "type": "string", "required": true }
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "select_option" }
+    },
+    {
+      "id": "confirm.yes",
+      "patterns": ["yes", "confirm", "ok", "sure", "proceed", "do it", "okay", "alright", "correct", "right", "yeah", "yep"],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": true }
+    },
+    {
+      "id": "confirm.no",
+      "patterns": ["no", "cancel", "stop", "don't", "never mind", "nope", "wrong", "no way"],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": false }
+    },
+    {
+      "id": "help.repeat",
+      "patterns": ["repeat", "say again", "what did you say", "repeat that", "come again", "pardon"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "repeat" }
+    },
+    {
+      "id": "help.examples",
+      "patterns": ["help", "what can you do", "show examples", "help me", "commands", "what can i say", "available commands"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "examples" }
+    },
+    {
+      "id": "help.slow_down",
+      "patterns": ["slow down", "speak slower", "slower please", "too fast"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "slow_down" }
+    },
+    {
+      "id": "help.louder",
+      "patterns": ["louder", "speak louder", "can't hear", "volume up", "increase volume"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "louder" }
+    },
+    {
+      "id": "help.stop_speaking",
+      "patterns": ["stop", "stop speaking", "be quiet", "silence", "shut up", "enough"],
+      "priority": "high",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "stop_speaking" }
+    },
+    {
+      "id": "accessibility.read_screen",
+      "patterns": ["read screen", "what's on screen", "read this", "tell me what you see", "describe screen"],
+      "priority": "medium",
+      "offline": true,
+      "action": "accessibility",
+      "params": { "action": "read_screen" }
+    },
+    {
+      "id": "accessibility.read_options",
+      "patterns": ["read options", "what are the options", "list options", "available options"],
+      "priority": "medium",
+      "offline": true,
+      "action": "accessibility",
+      "params": { "action": "read_options" }
+    },
+    {
+      "id": "action.undo",
+      "patterns": ["undo", "undo that", "reverse", "cancel that", "take back"],
+      "priority": "high",
+      "offline": true,
+      "action": "undo"
+    },
+    {
+      "id": "action.redo",
+      "patterns": ["redo", "redo that", "do again"],
+      "priority": "high",
+      "offline": true,
+      "action": "redo"
+    },
+    {
+      "id": "emergency.call_support",
+      "patterns": ["call support", "contact support", "emergency", "need help", "urgent help", "helpline", "customer care"],
+      "priority": "high",
+      "offline": false,
+      "action": "emergency",
+      "params": { "type": "support" }
+    },
+    {
+      "id": "query.weather_today",
+      "patterns": ["how's the weather today", "today's weather", "will it rain today", "temperature today", "weather now"],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": { "type": "weather", "timeframe": "today" }
+    },
+    {
+      "id": "query.weather_week",
+      "patterns": ["weekly weather", "weather this week", "week forecast", "next 7 days weather"],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": { "type": "weather", "timeframe": "week" }
+    }
+  ],
+  "examples": [
+    "Go home",
+    "Show my lands",
+    "What's the weather?",
+    "Add new land",
+    "Save changes",
+    "Go back",
+    "Show schedule",
+    "Help me"
+  ]
+}

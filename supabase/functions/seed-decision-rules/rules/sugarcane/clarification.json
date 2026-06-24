@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "clarification",
+    "canonical_group": "07_clarification",
+    "version": "3.1.0",
+    "scientific_source": "ICAR-SBI Diagnostic Guide",
+    "last_updated": "2026-01-10",
+    "total_rules": 5
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_YELLOWING_CLARIFY_001",
+      "crop_code": "sugarcane",
+      "category": "clarification",
+      "canonical_group": "07_clarification",
+      "stage_applicable": ["all"],
+      "conditions_json": {"observations": ["yellowing"], "context": "diagnosis"},
+      "cause": "Yellowing differential diagnosis",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Diagnostic Guide",
+      "response_en": "🔍 YELLOWING DIAGNOSIS:\n\n📋 Which leaves are yellow?\n1️⃣ OLD/lower leaves → N deficiency\n2️⃣ YOUNG/upper leaves → Fe/S deficiency\n3️⃣ ALL leaves + wilting → Waterlogging/Wilt\n4️⃣ Streaky pattern → Mosaic virus\n5️⃣ With white waxy insects → Woolly aphid\n\n📸 Please share photo of affected leaves.",
+      "response_hi": "🔍 पीलापन निदान: कौन सी पत्तियां पीली? 1) पुरानी=N कमी 2) नई=Fe कमी 3) सभी=जलभराव",
+      "response_mr": "🔍 पिवळेपणा निदान: कोणती पाने पिवळी? 1) जुनी=N कमी 2) नवी=Fe कमी 3) सर्व=पाणी साचणे",
+      "action_type": "clarification",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_DEAD_HEART_CLARIFY_001",
+      "crop_code": "sugarcane",
+      "category": "clarification",
+      "canonical_group": "07_clarification",
+      "stage_applicable": ["germination", "tillering", "grand_growth"],
+      "conditions_json": {"observations": ["dead_heart"], "context": "diagnosis"},
+      "cause": "Dead heart differential diagnosis",
+      "priority": 90,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Diagnostic Guide",
+      "response_en": "🔍 DEAD HEART DIAGNOSIS:\n\n📋 At which stage?\n1️⃣ 30-90 DAP (young) → Early Shoot Borer\n2️⃣ 90-180 DAP (grown) → Top Shoot Borer\n3️⃣ Pull the dead shoot - what do you see?\n   • Tunnel/frass → Borer\n   • Rotted base → Sett rot\n   • Clean break → Mechanical damage",
+      "response_hi": "🔍 डेड हार्ट निदान: किस अवस्था में? 30-90 DAP=ESB, 90-180 DAP=TSB",
+      "response_mr": "🔍 डेड हार्ट निदान: कोणत्या अवस्थेत? 30-90 DAP=ESB, 90-180 DAP=TSB",
+      "action_type": "clarification",
+      "is_active": true
+    }
+  ]
+}

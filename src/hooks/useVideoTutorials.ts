@@ -33,12 +33,14 @@ export function useVideoTutorials(options: UseVideoTutorialsOptions = {}) {
   return useQuery({
     queryKey: ['video_tutorials', category, language],
     queryFn: async () => {
+      // SPRINT 3: bound payload to the top 100 active tutorials.
       let query = supabase
         .from('video_tutorials')
         .select('*')
         .eq('is_active', true)
         .order('is_featured', { ascending: false })
-        .order('view_count', { ascending: false });
+        .order('view_count', { ascending: false })
+        .limit(100);
       
       if (category) {
         query = query.eq('category', category);
@@ -60,7 +62,8 @@ export function useVideoTutorials(options: UseVideoTutorialsOptions = {}) {
 
 export async function incrementVideoViewCount(videoId: string) {
   try {
-    const { error } = await supabase.rpc('increment_video_view_count', {
+    const rpc = (supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>);
+    const { error } = await rpc('increment_video_view_count', {
       video_id: videoId,
     });
     

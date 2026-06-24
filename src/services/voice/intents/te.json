@@ -1,0 +1,44 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": ["హోమ్ చూపించు", "మొదటి పేజీ", "హోమ్‌కు వెళ్ళు", "డాష్‌బోర్డ్ తెరువు"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": ["నా భూములు", "భూములు చూపించు", "పొలం చూపించు", "నా పొలాలు"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": ["వాతావరణం చెప్పు", "వాతావరణం చూపించు", "వాతావరణం ఎలా ఉంది", "వాన పడుతుందా"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": ["షెడ్యూల్ చూపించు", "నా పనులు", "పంట షెడ్యూల్", "ఈరోజు పనులు"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": ["AI తో మాట్లాడు", "ప్రశ్న అడగండి", "చాట్ తెరువు", "సహాయం కావాలి"],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/chat"
+    }
+  ]
+}

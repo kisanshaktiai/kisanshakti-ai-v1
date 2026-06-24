@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { GoogleMap, Marker, Polygon, Polyline, LoadScript } from '@react-google-maps/api';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { GoogleMap, Marker, Polygon, Polyline } from '@react-google-maps/api';
 import * as turf from '@turf/turf';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { MapControls } from './MapControls';
 import { AreaDisplay } from './AreaDisplay';
 import { useToast } from '@/components/ui/use-toast';
 import LocationService from '@/services/LocationService';
 import { Card } from '@/components/ui/card';
-import { Satellite, Navigation, MapPin, Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, WifiOff, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useGoogleMapsScript } from '@/components/maps/GoogleMapsScriptProvider';
+import { Button } from '@/components/ui/button';
+
+const IS_NATIVE = Capacitor.isNativePlatform();
+const IS_IOS = Capacitor.getPlatform() === 'ios';
 
 interface LatLng {
   lat: number;
@@ -20,10 +28,16 @@ interface GoogleMapBoundaryDrawerProps {
   initialBoundary?: LatLng[];
 }
 
-const mapContainerStyle = {
+const mapContainerStyle: React.CSSProperties = {
   width: '100%',
   height: '100%',
+  // iOS Safari/WKWebView swallows two-finger gestures (rotate/tilt) by routing
+  // them to page-zoom. `touch-action: none` hands every gesture to Google Maps.
+  touchAction: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
 };
+
 
 export function GoogleMapBoundaryDrawer({ 
   onSave, 
@@ -32,6 +46,9 @@ export function GoogleMapBoundaryDrawer({
   initialBoundary = []
 }: GoogleMapBoundaryDrawerProps) {
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const { isLoaded, loadError, isLoading, retry } = useGoogleMapsScript();
+  
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [center, setCenter] = useState<LatLng>(
     initialCenter || { lat: 20.5937, lng: 78.9629 } // Default to India center
@@ -44,94 +61,154 @@ export function GoogleMapBoundaryDrawer({
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isCentering, setIsCentering] = useState(false);
-  const [isAccuracyInfoVisible, setIsAccuracyInfoVisible] = useState(false);
   const [locationSource, setLocationSource] = useState<string>('gps');
   const [locationAccuracy, setLocationAccuracy] = useState<number>(0);
   const watchIdRef = useRef<number | null>(null);
+  const nativeWatchIdRef = useRef<string | null>(null);
+
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   const initialZoomSet = useRef(false);
+  const [mapLoading, setMapLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Map options - enable rotation and tilt with street labels
-  const mapOptions: google.maps.MapOptions = {
-    mapTypeId: 'hybrid', // Shows satellite with labels
-    disableDefaultUI: false,
-    zoom: 18, // Start with a closer zoom for better visibility
-    // Critical: Prevent ALL zoom on click/tap for smooth boundary marking
-    disableDoubleClickZoom: true,
-    scrollwheel: true, // Allow scroll wheel zoom on desktop
-    // Disable clickable POIs to prevent interference with point marking
-    clickableIcons: false,
-    zoomControl: true, // Keep zoom buttons visible for farmers
-    zoomControlOptions: {
-      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_CENTER : 7,
-    },
-    // 'greedy' allows single finger pan on mobile (farmer-friendly)
-    // Also prevents accidental zoom while marking points
-    gestureHandling: 'greedy',
-    tilt: 0, // Start with no tilt for easier drawing
-    rotateControl: true,
-    mapTypeControl: true,
-    mapTypeControlOptions: {
-      mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
-      position: typeof google !== 'undefined' ? google.maps.ControlPosition.TOP_LEFT : 1,
-      style: typeof google !== 'undefined' ? google.maps.MapTypeControlStyle.HORIZONTAL_BAR : 0,
-    },
-    streetViewControl: false, // Disable street view to reduce clutter for farmers
-    fullscreenControl: true,
-    fullscreenControlOptions: {
-      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_TOP : 3,
-    },
-    scaleControl: true,
-    styles: [
-      {
-        featureType: 'all',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      },
-      {
-        featureType: 'road',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      },
-      {
-        featureType: 'poi',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      },
-      {
-        featureType: 'administrative',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      }
-    ],
-  };
+  // Check if Google Maps is fully ready - defensive check
+  const isGoogleReady = useMemo(() => {
+    if (!isLoaded) {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - isLoaded is false');
+      return false;
+    }
+    if (typeof google === 'undefined') {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - google undefined');
+      return false;
+    }
+    if (!google.maps) {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - google.maps undefined');
+      return false;
+    }
+    if (!google.maps.Map) {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - google.maps.Map undefined');
+      return false;
+    }
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Google Maps is READY!');
+    return true;
+  }, [isLoaded]);
 
-  // Get user's current location on mount using LocationService
+  // Network status listener
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Back online');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Gone offline');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Map options - memoized to prevent unnecessary re-renders
+  const mapOptions = useMemo((): google.maps.MapOptions | undefined => {
+    if (!isGoogleReady) return undefined;
+    
+    return {
+      mapTypeId: 'hybrid',
+      disableDefaultUI: false,
+      zoom: 18,
+      disableDoubleClickZoom: true,
+      scrollwheel: true,
+      clickableIcons: false,
+      zoomControl: true,
+      zoomControlOptions: {
+        position: google.maps.ControlPosition.RIGHT_CENTER,
+      },
+      // 'greedy' is required so Google Maps captures every touch on iOS
+      // instead of letting WKWebView treat the second finger as page-zoom.
+      gestureHandling: 'greedy',
+      // Allow tilt+rotation on raster (satellite/hybrid) maps. Setting tilt:0
+      // (the previous value) globally disabled the two-finger rotate gesture.
+      tilt: 45,
+      heading: 0,
+      rotateControl: true,
+      rotateControlOptions: {
+        position: google.maps.ControlPosition.RIGHT_TOP,
+      },
+      isFractionalZoomEnabled: true,
+      mapTypeControl: true,
+      mapTypeControlOptions: {
+        mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
+        position: google.maps.ControlPosition.TOP_LEFT,
+        style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+      },
+      streetViewControl: false,
+      fullscreenControl: true,
+      fullscreenControlOptions: {
+        position: google.maps.ControlPosition.RIGHT_TOP,
+      },
+      scaleControl: true,
+      styles: [
+        { featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'on' }] },
+        { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'on' }] },
+        { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'on' }] },
+        { featureType: 'administrative', elementType: 'labels', stylers: [{ visibility: 'on' }] }
+      ],
+    };
+  }, [isGoogleReady]);
+
+  // iOS WKWebView merges two-finger gestures into page zoom unless we
+  // temporarily disable user-scalable while the map is mounted. Restore on unmount.
+  useEffect(() => {
+    if (!IS_IOS) return;
+    const viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    const previous = viewport?.getAttribute('content') ?? null;
+    if (viewport) {
+      viewport.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+      );
+    }
+    return () => {
+      if (viewport && previous) viewport.setAttribute('content', previous);
+    };
+  }, []);
+
+
+  // Get user's current location on mount
+  useEffect(() => {
+    if (initialCenter) {
+      console.log('Edit mode - using land coordinates:', initialCenter);
+      setCenter(initialCenter);
+      setCurrentPosition(initialCenter);
+      setLocationSource('land_data');
+      setIsMapInitialized(true);
+      return;
+    }
+
     const fetchLocation = async () => {
       try {
         const location = await LocationService.getCurrentLocation();
         
         if (location) {
-          const newCenter = {
-            lat: location.lat,
-            lng: location.lon,
-          };
+          const newCenter = { lat: location.lat, lng: location.lon };
           setCenter(newCenter);
           setCurrentPosition(newCenter);
           setLocationAccuracy(location.accuracy);
           setLocationSource(location.source || 'gps');
           
-          // Only pan if map is not yet initialized, never change zoom after init
           if (map && !isMapInitialized) {
             map.panTo(newCenter);
           }
           
-          // Show location source to user
           if (location.source && location.source !== 'gps') {
             toast({
-              title: "Location Set",
+              title: t('lands.map.toast.location_set'),
               description: `Using ${location.approximateArea || location.source} location`,
             });
           }
@@ -147,11 +224,10 @@ export function GoogleMapBoundaryDrawer({
     };
     
     fetchLocation();
-  }, [map, toast, isMapInitialized]);
+  }, [map, toast, isMapInitialized, initialCenter, t]);
 
-  // Calculate area and validate boundary whenever boundary changes
+  // Calculate area and validate boundary
   useEffect(() => {
-    // Reset validation error
     setValidationError(null);
 
     if (boundary.length < 3) {
@@ -163,7 +239,6 @@ export function GoogleMapBoundaryDrawer({
     }
 
     try {
-      // Close the polygon by adding the first point at the end if needed
       const closedBoundary = [...boundary];
       const firstPoint = boundary[0];
       const lastPoint = boundary[boundary.length - 1];
@@ -172,12 +247,10 @@ export function GoogleMapBoundaryDrawer({
         closedBoundary.push(firstPoint);
       }
 
-      // Convert to GeoJSON polygon format for Turf
       const polygon = turf.polygon([
         closedBoundary.map(point => [point.lng, point.lat])
       ]);
       
-      // Check for self-intersections using kinks
       const kinks = turf.kinks(polygon);
       if (kinks.features.length > 0) {
         setValidationError('⚠️ Boundary lines are crossing each other. Please adjust the points.');
@@ -185,13 +258,10 @@ export function GoogleMapBoundaryDrawer({
         return;
       }
       
-      // Calculate area in square meters
       const areaInSquareMeters = turf.area(polygon);
-      
-      // Convert to different units
-      const sqft = areaInSquareMeters * 10.7639; // 1 sq meter = 10.7639 sq ft
-      const guntha = sqft / 1089; // 1 guntha = 1089 sq ft
-      const acres = sqft / 43560; // 1 acre = 43560 sq ft
+      const sqft = areaInSquareMeters * 10.7639;
+      const guntha = sqft / 1089;
+      const acres = sqft / 43560;
       
       setArea({
         sqft: Math.round(sqft),
@@ -205,52 +275,53 @@ export function GoogleMapBoundaryDrawer({
     }
   }, [boundary]);
 
+  // Map load callback
   const onLoad = useCallback((mapInstance: google.maps.Map) => {
     console.log('Map loaded successfully');
     setMap(mapInstance);
-    
-    // Set initial map type to hybrid
     mapInstance.setMapTypeId('hybrid');
     
-    // Only set zoom on the very first load
-    if (!initialZoomSet.current && currentPosition) {
-      mapInstance.panTo(currentPosition);
-      const zoom = locationSource === 'gps' ? 18 : 
-                  locationSource === 'village' ? 16 :
-                  locationSource === 'taluka' ? 14 :
-                  locationSource === 'district' ? 12 : 10;
-      mapInstance.setZoom(zoom);
-      initialZoomSet.current = true;
-    } else if (!initialZoomSet.current) {
-      // If no position, try to get location again (only on first load)
-      LocationService.getCurrentLocation().then(location => {
-        if (location) {
-          const newCenter = {
-            lat: location.lat,
-            lng: location.lon,
-          };
-          mapInstance.panTo(newCenter);
-          const zoom = location.source === 'gps' ? 18 : 
-                      location.source === 'village' ? 16 :
-                      location.source === 'taluka' ? 14 :
-                      location.source === 'district' ? 12 : 10;
-          mapInstance.setZoom(zoom);
-          initialZoomSet.current = true;
-          setCurrentPosition(newCenter);
-          setCenter(newCenter);
-        }
-      }).catch(error => {
-        console.error('Error getting location on map load:', error);
-      });
+    if (!initialZoomSet.current) {
+      if (initialCenter) {
+        console.log('Centering on land location:', initialCenter);
+        mapInstance.panTo(initialCenter);
+        mapInstance.setZoom(18);
+        initialZoomSet.current = true;
+        setIsMapInitialized(true);
+      } else if (currentPosition) {
+        mapInstance.panTo(currentPosition);
+        const zoom = locationSource === 'gps' ? 18 : 
+                    locationSource === 'village' ? 16 :
+                    locationSource === 'taluka' ? 14 :
+                    locationSource === 'district' ? 12 : 10;
+        mapInstance.setZoom(zoom);
+        initialZoomSet.current = true;
+      } else if (!initialCenter) {
+        LocationService.getCurrentLocation().then(location => {
+          if (location) {
+            const newCenter = { lat: location.lat, lng: location.lon };
+            mapInstance.panTo(newCenter);
+            const zoom = location.source === 'gps' ? 18 : 
+                        location.source === 'village' ? 16 :
+                        location.source === 'taluka' ? 14 :
+                        location.source === 'district' ? 12 : 10;
+            mapInstance.setZoom(zoom);
+            initialZoomSet.current = true;
+            setCurrentPosition(newCenter);
+            setCenter(newCenter);
+          }
+        }).catch(console.error);
+      }
     }
     
     setIsMapInitialized(true);
-  }, [currentPosition, locationSource]);
+    setMapLoading(false);
+  }, [currentPosition, locationSource, initialCenter]);
 
+  // Map click handler
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (mode !== 'draw' || !e.latLng) return;
     
-    // Mark that user has started interacting
     if (boundary.length === 0) {
       setUserHasInteracted(true);
     }
@@ -271,53 +342,106 @@ export function GoogleMapBoundaryDrawer({
     setBoundary([]);
   }, []);
 
-  const startTracking = useCallback(() => {
+  // Drag a numbered point to a new position — live area recalculation
+  const handleMarkerDragEnd = useCallback((index: number, e: google.maps.MapMouseEvent) => {
+    if (!e.latLng) return;
+    const next: LatLng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    setBoundary(prev => prev.map((p, i) => (i === index ? next : p)));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(10);
+  }, []);
+
+  // Long-press / right-click on a vertex removes it
+  const handleMarkerRightClick = useCallback((index: number) => {
+    setBoundary(prev => prev.filter((_, i) => i !== index));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(20);
+  }, []);
+
+  // Sync polygon path back to state after the user drags a vertex/midpoint
+  // via Google's native editable-polygon UI
+  const handlePolygonEdit = useCallback((polygon: google.maps.Polygon) => {
+    const path = polygon.getPath();
+    const next: LatLng[] = [];
+    for (let i = 0; i < path.getLength(); i++) {
+      const ll = path.getAt(i);
+      next.push({ lat: ll.lat(), lng: ll.lng() });
+    }
+    setBoundary(next);
+  }, []);
+
+  // GPS tracking - uses Capacitor on native (CoreLocation on iOS / FusedLocation on Android)
+  const startTracking = useCallback(async () => {
+    setIsTracking(true);
+
+    const handlePoint = (lat: number, lng: number, accuracy: number) => {
+      const newPoint: LatLng = { lat, lng };
+      setCurrentPosition(newPoint);
+      setGpsAccuracy(accuracy);
+      setBoundary(prev => [...prev, newPoint]);
+      if (map) map.panTo(newPoint);
+    };
+
+    if (IS_NATIVE) {
+      try {
+        const perm = await Geolocation.checkPermissions();
+        if (perm.location !== 'granted') {
+          const req = await Geolocation.requestPermissions({ permissions: ['location'] });
+          if (req.location !== 'granted') {
+            toast({ title: t('lands.add_land.error.gps_not_available'), variant: 'destructive' });
+            setIsTracking(false);
+            return;
+          }
+        }
+        const id = await Geolocation.watchPosition(
+          { enableHighAccuracy: true, timeout: 10000 },
+          (position, err) => {
+            if (err || !position) {
+              console.error('Native GPS error:', err);
+              return;
+            }
+            handlePoint(
+              position.coords.latitude,
+              position.coords.longitude,
+              position.coords.accuracy ?? 50,
+            );
+          }
+        );
+        nativeWatchIdRef.current = id;
+        return;
+      } catch (err) {
+        console.error('Native watchPosition failed:', err);
+        toast({ title: t('lands.add_land.error.gps_error'), variant: 'destructive' });
+        setIsTracking(false);
+        return;
+      }
+    }
+
     if (!navigator.geolocation) {
-      toast({
-        title: "GPS Not Available",
-        description: "Your device doesn't support GPS tracking.",
-        variant: "destructive",
-      });
+      toast({ title: t('lands.add_land.error.gps_not_available'), variant: 'destructive' });
+      setIsTracking(false);
       return;
     }
 
-    setIsTracking(true);
-    
     const id = navigator.geolocation.watchPosition(
-      (position) => {
-        const newPoint: LatLng = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        
-        setCurrentPosition(newPoint);
-        setGpsAccuracy(position.coords.accuracy);
-        setBoundary(prev => [...prev, newPoint]);
-        
-        if (map) {
-          map.panTo(newPoint);
-        }
-      },
+      (position) => handlePoint(
+        position.coords.latitude,
+        position.coords.longitude,
+        position.coords.accuracy,
+      ),
       (error) => {
         console.error('GPS error:', error);
-        toast({
-          title: "GPS Error",
-          description: "Failed to get GPS location. Please check your settings.",
-          variant: "destructive",
-        });
+        toast({ title: t('lands.add_land.error.gps_error'), variant: 'destructive' });
         setIsTracking(false);
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0,
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-    
     watchIdRef.current = id;
-  }, [map, toast]);
+  }, [map, toast, t]);
 
   const stopTracking = useCallback(() => {
+    if (nativeWatchIdRef.current !== null) {
+      Geolocation.clearWatch({ id: nativeWatchIdRef.current }).catch(() => {});
+      nativeWatchIdRef.current = null;
+    }
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -327,11 +451,15 @@ export function GoogleMapBoundaryDrawer({
 
   useEffect(() => {
     return () => {
+      if (nativeWatchIdRef.current !== null) {
+        Geolocation.clearWatch({ id: nativeWatchIdRef.current }).catch(() => {});
+      }
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
   }, []);
+
 
   const handleToggleTracking = useCallback(() => {
     if (isTracking) {
@@ -341,6 +469,7 @@ export function GoogleMapBoundaryDrawer({
     }
   }, [isTracking, startTracking, stopTracking]);
 
+  // Save handler
   const handleSave = useCallback(() => {
     console.log('handleSave called', { boundary, area, validationError });
     
@@ -366,19 +495,21 @@ export function GoogleMapBoundaryDrawer({
     onSave(boundary, area);
   }, [boundary, area, validationError, onSave, toast]);
 
-  // Get theme colors from CSS variables
+  // Theme color helpers
   const getThemeColor = (varName: string, fallback: string): string => {
-    const root = document.documentElement;
-    const cssVar = getComputedStyle(root).getPropertyValue(varName).trim();
-    if (cssVar) {
-      // Convert HSL to hex for Google Maps
-      const [h, s, l] = cssVar.split(' ').map(v => parseFloat(v));
-      return hslToHex(h, s, l);
+    try {
+      const root = document.documentElement;
+      const cssVar = getComputedStyle(root).getPropertyValue(varName).trim();
+      if (cssVar) {
+        const [h, s, l] = cssVar.split(' ').map(v => parseFloat(v));
+        return hslToHex(h, s, l);
+      }
+    } catch (e) {
+      console.warn('Error getting theme color:', e);
     }
     return fallback;
   };
 
-  // Helper to convert HSL to hex
   const hslToHex = (h: number, s: number, l: number): string => {
     s /= 100;
     l /= 100;
@@ -387,19 +518,12 @@ export function GoogleMapBoundaryDrawer({
     const m = l - c / 2;
     let r = 0, g = 0, b = 0;
     
-    if (0 <= h && h < 60) {
-      r = c; g = x; b = 0;
-    } else if (60 <= h && h < 120) {
-      r = x; g = c; b = 0;
-    } else if (120 <= h && h < 180) {
-      r = 0; g = c; b = x;
-    } else if (180 <= h && h < 240) {
-      r = 0; g = x; b = c;
-    } else if (240 <= h && h < 300) {
-      r = x; g = 0; b = c;
-    } else if (300 <= h && h < 360) {
-      r = c; g = 0; b = x;
-    }
+    if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+    else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+    else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+    else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+    else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+    else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
     
     const toHex = (n: number) => {
       const hex = Math.round((n + m) * 255).toString(16);
@@ -409,10 +533,22 @@ export function GoogleMapBoundaryDrawer({
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   };
 
-  const polygonOptions = {
-    fillColor: getThemeColor('--primary', 'hsl(var(--primary))'),
-    fillOpacity: 0.35,
-    strokeColor: getThemeColor('--primary', 'hsl(var(--primary))'),
+  // Memoized polygon options — editable when 3+ points so users can drag vertices/midpoints
+  const polygonOptions = useMemo(() => ({
+    fillColor: getThemeColor('--primary', '#22c55e'),
+    fillOpacity: 0.3,
+    strokeColor: getThemeColor('--primary', '#22c55e'),
+    strokeOpacity: 1,
+    strokeWeight: 2.5,
+    clickable: true,
+    draggable: false,
+    editable: mode === 'draw' && boundary.length >= 3,
+    geodesic: false,
+    zIndex: 1,
+  }), [mode, boundary.length]);
+
+  const polylineOptions = useMemo(() => ({
+    strokeColor: getThemeColor('--primary', '#22c55e'),
     strokeOpacity: 1,
     strokeWeight: 2,
     clickable: false,
@@ -420,49 +556,36 @@ export function GoogleMapBoundaryDrawer({
     editable: false,
     geodesic: false,
     zIndex: 1,
-  };
+  }), []);
 
-  const polylineOptions = {
-    strokeColor: getThemeColor('--primary', 'hsl(var(--primary))'),
-    strokeOpacity: 1,
-    strokeWeight: 2,
-    clickable: false,
-    draggable: false,
-    editable: false,
-    geodesic: false,
-    zIndex: 1,
-  };
+  // Marker icons - only create when Google is ready
+  const getCurrentPositionIcon = useCallback(() => {
+    if (!isGoogleReady) return undefined;
+    
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: getThemeColor('--accent', '#3b82f6'),
+      fillOpacity: 1,
+      strokeColor: getThemeColor('--background', '#ffffff'),
+      strokeWeight: 2,
+    };
+  }, [isGoogleReady]);
 
-  // Create marker icon conditionally only when google is available
-  const getCurrentPositionIcon = () => {
-    if (typeof google !== 'undefined' && google.maps) {
-      return {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: getThemeColor('--accent', 'hsl(var(--accent))'),
-        fillOpacity: 1,
-        strokeColor: getThemeColor('--background', 'hsl(var(--background))'),
-        strokeWeight: 2,
-      };
-    }
-    return undefined;
-  };
+  const getMarkerIcon = useCallback(() => {
+    if (!isGoogleReady) return undefined;
 
-  const getMarkerIcon = () => {
-    if (typeof google !== 'undefined' && google.maps) {
-      return {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 6,
-        fillColor: getThemeColor('--destructive', 'hsl(var(--destructive))'),
-        fillOpacity: 1,
-        strokeColor: getThemeColor('--background', 'hsl(var(--background))'),
-        strokeWeight: 2,
-      };
-    }
-    return undefined;
-  };
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 11, // ~22px diameter, large finger target
+      fillColor: getThemeColor('--destructive', '#ef4444'),
+      fillOpacity: 1,
+      strokeColor: getThemeColor('--background', '#ffffff'),
+      strokeWeight: 3,
+    };
+  }, [isGoogleReady]);
 
-  // GPS center button handler
+  // Center on location handler
   const handleCenterOnLocation = useCallback(async () => {
     if (map) {
       setIsCentering(true);
@@ -470,16 +593,12 @@ export function GoogleMapBoundaryDrawer({
         const location = await LocationService.getCurrentLocation(true);
         
         if (location) {
-          const pos = {
-            lat: location.lat,
-            lng: location.lon,
-          };
+          const pos = { lat: location.lat, lng: location.lon };
           setCurrentPosition(pos);
           setLocationAccuracy(location.accuracy);
           setLocationSource(location.source || 'gps');
           map.setCenter(pos);
           
-          // Adjust zoom based on location source
           const zoom = location.source === 'gps' ? 18 : 
                       location.source === 'village' ? 16 :
                       location.source === 'taluka' ? 14 :
@@ -506,13 +625,71 @@ export function GoogleMapBoundaryDrawer({
     }
   }, [map, toast]);
 
-  // Loading state
-  const [mapLoading, setMapLoading] = useState(true);
+  // Show loading state while Google Maps is loading
+  if (isLoading) {
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Showing loading state - script loading');
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-background">
+        <Card className="p-6 space-y-4 text-center max-w-sm">
+          <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
+          <p className="text-muted-foreground font-medium">
+            Loading Map...
+          </p>
+          <p className="text-xs text-muted-foreground">Please wait while we prepare the map</p>
+          {!isOnline && (
+            <div className="flex items-center justify-center gap-2 mt-2 text-amber-600">
+              <WifiOff className="h-4 w-4" />
+              <span className="text-sm">You're offline</span>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
 
-  const handleMapLoad = useCallback((mapInstance: google.maps.Map) => {
-    onLoad(mapInstance);
-    setMapLoading(false);
-  }, [onLoad]);
+  // Show error state
+  if (loadError) {
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Showing error state:', loadError);
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-background p-4">
+        <Card className="p-6 space-y-4 text-center max-w-md">
+          <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
+          <h2 className="text-lg font-semibold text-destructive">Map Loading Failed</h2>
+          <p className="text-sm text-muted-foreground">
+            {!isOnline 
+              ? 'No internet connection. Please connect to the internet and try again.'
+              : loadError}
+          </p>
+          <div className="flex gap-3 justify-center pt-2">
+            <Button onClick={onCancel} variant="outline">
+              Go Back
+            </Button>
+            <Button onClick={retry} variant="default">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Still initializing after script loaded
+  if (!isGoogleReady) {
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Showing initializing state - waiting for Google');
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-background">
+        <Card className="p-6 space-y-4 text-center max-w-sm">
+          <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
+          <p className="text-muted-foreground font-medium">Initializing map...</p>
+          <Button variant="outline" size="sm" onClick={retry} className="mt-2">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full">
@@ -527,20 +704,22 @@ export function GoogleMapBoundaryDrawer({
         </div>
       )}
 
-      {/* Location button - bottom right like Google Maps */}
+      {/* Location center button — sits above the bottom action sheet, safe-area aware */}
       <button
         onClick={handleCenterOnLocation}
-        className="absolute bottom-24 right-3 h-10 w-10 bg-background/95 backdrop-blur-sm shadow-lg z-10 rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border"
+        aria-label="Center on my location"
+        className="absolute right-3 z-20 h-12 w-12 bg-background/95 backdrop-blur-md shadow-xl rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border/60"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 220px)' }}
         disabled={isCentering}
       >
         {isCentering ? (
           <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
         ) : (
-          <svg 
-            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`} 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
             strokeWidth="2"
           >
             <circle cx="12" cy="12" r="10" />
@@ -552,52 +731,60 @@ export function GoogleMapBoundaryDrawer({
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
-        options={{
-          ...mapOptions,
-          zoom: 18, // Initial zoom only - won't reset on re-renders
-        }}
+        options={mapOptions}
         onClick={handleMapClick}
-        onLoad={handleMapLoad}
-        onMapTypeIdChanged={() => {
-          if (map) {
-            console.log('Map type changed to:', map.getMapTypeId());
-          }
-        }}
-        onTilesLoaded={() => {
-          console.log('Map tiles loaded');
-          setMapLoading(false);
-        }}
+        onLoad={onLoad}
+        onTilesLoaded={() => setMapLoading(false)}
       >
-        {/* Current position marker - only render if google is loaded */}
-        {currentPosition && typeof google !== 'undefined' && (
+        {/* Current position marker */}
+        {currentPosition && isGoogleReady && (
           <Marker
             position={currentPosition}
             icon={getCurrentPositionIcon()}
           />
         )}
 
-        {/* Boundary markers - only render if google is loaded */}
-        {typeof google !== 'undefined' && boundary.map((point, index) => (
+        {/* Boundary markers — draggable in draw mode, long-press to delete */}
+        {isGoogleReady && boundary.map((point, index) => (
           <Marker
-            key={index}
+            key={`marker-${index}`}
             position={point}
+            draggable={mode === 'draw'}
+            onDragEnd={(e) => handleMarkerDragEnd(index, e)}
+            onRightClick={() => handleMarkerRightClick(index)}
             label={{
               text: (index + 1).toString(),
               color: 'white',
-              fontSize: '12px',
+              fontSize: '13px',
               fontWeight: 'bold',
             }}
             icon={getMarkerIcon()}
+            zIndex={10}
           />
         ))}
 
-        {/* Polygon or Polyline - only render if google is loaded */}
-        {typeof google !== 'undefined' && boundary.length >= 3 ? (
+        {/* Polygon (editable) or Polyline preview */}
+        {isGoogleReady && boundary.length >= 3 ? (
           <Polygon
             paths={boundary}
             options={polygonOptions}
+            onMouseUp={(e) => {
+              // After dragging a vertex/midpoint, sync the path back to state
+              const target = (e as unknown as { overlay?: google.maps.Polygon }).overlay;
+              if (target && typeof target.getPath === 'function') {
+                handlePolygonEdit(target);
+              }
+            }}
+            onLoad={(polygon) => {
+              // Listen to native edit events on the polygon path
+              const path = polygon.getPath();
+              const sync = () => handlePolygonEdit(polygon);
+              path.addListener('set_at', sync);
+              path.addListener('insert_at', sync);
+              path.addListener('remove_at', sync);
+            }}
           />
-        ) : boundary.length >= 2 && typeof google !== 'undefined' ? (
+        ) : boundary.length >= 2 && isGoogleReady ? (
           <Polyline
             path={boundary}
             options={polylineOptions}
@@ -607,7 +794,7 @@ export function GoogleMapBoundaryDrawer({
 
       <AreaDisplay area={area} pointsCount={boundary.length} />
       
-      {/* Validation Error Display */}
+      {/* Validation Error */}
       {validationError && (
         <Card className="absolute top-24 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-auto md:max-w-md z-10 bg-destructive/10 border-destructive">
           <div className="p-4 flex items-start gap-2">

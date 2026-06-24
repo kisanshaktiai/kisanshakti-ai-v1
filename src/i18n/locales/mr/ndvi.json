@@ -1,0 +1,184 @@
+{
+  "__meta": {
+    "page": "ndvi",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "ndvi": {
+    "title": "NDVI विश्लेषण",
+    "subtitle": "उपग्रह पीक आरोग्य निरीक्षण",
+    "satellite_monitoring": "उपग्रह निरीक्षण",
+    "select_your_field": "तुमचे शेत निवडा",
+    "choose_field_analyze": "विश्लेषणासाठी शेत निवडा",
+    "no_fields_found": "शेते सापडली नाहीत",
+    "add_first_field": "तुमचे पहिले शेत जोडा",
+    "health_status": {
+      "excellent": "उत्कृष्ट आरोग्य",
+      "good": "चांगले आरोग्य",
+      "moderate": "मध्यम आरोग्य",
+      "poor": "खराब आरोग्य"
+    },
+    "fetching_data": "उपग्रह डेटा प्राप्त करत आहे...",
+    "advice": {
+      "crop_very_healthy": "🌱 उत्तम! तुमचे पीक खूप निरोगी आहे",
+      "good_improve": "🌿 चांगले! थोडी सुधारणा करता येईल",
+      "attention_stress": "⚠️ लक्ष द्या! पिकात ताण आहे",
+      "critical_action": "🆘 गंभीर! तातडीने कारवाई करा"
+    },
+    "actions": {
+      "maintain_water": "सध्याच्या पाण्याचे प्रमाण राखा",
+      "continue_monitoring": "कीड तपासणी चालू ठेवा",
+      "check_in_days": "{{days}} दिवसांनी पुन्हा तपासा",
+      "increase_irrigation": "💧 पाणी प्रमाण वाढवा",
+      "apply_fertilizer": "हलके खत घालू शकता",
+      "remove_weeds": "तण काढा",
+      "check_leaf_color": "पानांचा रंग पहा",
+      "irrigate_immediately": "🚨 तातडीने पाणी द्या",
+      "check_nutrients": "🌾 पोषक तत्त्वे तपासा",
+      "look_pests": "🐛 कीड-रोग पहा",
+      "contact_expert": "📞 तज्ञांशी संपर्क करा",
+      "check_tomorrow": "उद्या तपासा",
+      "take_photos": "फोटो काढा",
+      "water_now": "💦 आता पाणी द्या",
+      "call_officer": "☎️ कृषी अधिकारी बोलवा",
+      "apply_treatment": "💊 औषध फवारा",
+      "inform_insurance": "📋 विमा कंपनीला कळवा",
+      "check_daily": "दररोज तपासा",
+      "document_evidence": "पुरावे गोळा करा"
+    },
+    "next_steps": {
+      "record_height": "पिकाची उंची नोंदवा",
+      "monitor_weather": "हवामानावर लक्ष ठेवा"
+    },
+    "indices": {
+      "ndvi": "NDVI",
+      "ndwi": "पाणी ताण",
+      "evi": "वनस्पती आरोग्य",
+      "savi": "माती ओलावा"
+    },
+    "map": {
+      "view_map": "नकाशा पहा",
+      "satellite_view": "उपग्रह दृश्य",
+      "health_overlay": "आरोग्य आच्छादन",
+      "aria": "NDVI उपग्रह नकाशा",
+      "cloud": "ढग {{value}}%",
+      "fullscreen": "पूर्ण स्क्रीन",
+      "legend": "संकेत",
+      "legend_title": "NDVI स्केल",
+      "legend_note": "निरंतर NDVI रंगपटल · NASA/ESA मानक",
+      "max": "जास्तीत जास्त",
+      "mean": "सरासरी",
+      "min": "किमान",
+      "mode_raster": "पिक्सेल रास्टर",
+      "mode_zonal": "क्षेत्रीय मोज़ेक",
+      "mode_boundary": "फक्त सीमा",
+      "no_clean_for_date": "या तारखेला स्पष्ट निरीक्षण नाही",
+      "no_data": "अद्याप उपग्रह डेटा नाही",
+      "provenance": "स्रोत",
+      "recenter": "केंद्र",
+      "stale_warning": "नवीनतम स्पष्ट निरीक्षण दर्शवित आहे",
+      "full": "पूर्ण",
+      "exit": "बाहेर",
+      "opacity": "उष्णतेची अपारदर्शकता",
+      "mode_land_thumb": "उपग्रह NDVI",
+      "thumbnail_alt": "उपग्रह NDVI थंबनेल"
+    },
+    "historical": {
+      "trend": "ऐतिहासिक प्रवृत्ती",
+      "last_30_days": "मागील 30 दिवस",
+      "comparison": "तारखा तुलना करा"
+    },
+    "metadata": {
+      "cloud_coverage": "ढग आवरण",
+      "last_updated": "शेवटचे अपडेट",
+      "days_ago": "{{count}} दिवसांपूर्वी",
+      "satellite_source": "उपग्रह स्रोत"
+    },
+    "refresh": {
+      "data_refreshed": "✅ डेटा रीफ्रेश झाला",
+      "latest_data": "नवीनतम उपग्रह डेटा लोड झाला",
+      "refresh_failed": "❌ रीफ्रेश अयशस्वी",
+      "try_again": "कृपया पुन्हा प्रयत्न करा"
+    },
+    "check_back": "{{days}} दिवसांनी पुन्हा पहा",
+    "no_clean": "अद्याप स्पष्ट उपग्रह डेटा नाही",
+    "tab": {
+      "now": "आत्ता",
+      "trend": "कल",
+      "map": "नकाशा"
+    },
+    "now": {
+      "status": "स्थिती",
+      "cloud": "ढग",
+      "quality": "गुणवत्ता",
+      "field_stats": "शेताची आकडेवारी",
+      "guided_actions": "सुचवलेल्या क्रिया",
+      "rule_based": "नियमावर आधारित · कोणताही AI अंदाज नाही"
+    },
+    "trend": {
+      "need_more": "किमान 4 विश्वसनीय निरीक्षणे लागतात"
+    },
+    "projection": {
+      "title": "सूचक अंदाज",
+      "indicative": "सूचक",
+      "disclaimer": "अलीकडील निरीक्षणांवरून रेषीय अंदाज · हे पूर्वानुमान नाही"
+    },
+    "reliability": {
+      "stale": "नवीनतम स्पष्ट निरीक्षण {{days}} दिवस जुने आहे"
+    },
+    "risk": {
+      "low": "कमी धोका",
+      "medium": "मध्यम धोका",
+      "high": "उच्च धोका",
+      "critical": "गंभीर धोका"
+    },
+    "stage_aware": {
+      "germination": "उगवण अवस्थेसाठी निरोगी NDVI",
+      "tillering": "फुटवे अवस्थेसाठी निरोगी NDVI",
+      "vegetative": "वाढीच्या अवस्थेसाठी निरोगी NDVI",
+      "reproductive": "पुनरुत्पादन अवस्थेसाठी निरोगी NDVI",
+      "maturity": "परिपक्वतेसाठी निरोगी NDVI",
+      "unknown": "अवस्थानिहाय संदर्भ उपलब्ध नाही"
+    },
+    "stages": {
+      "germination": "उगवण",
+      "tillering": "फुटवे",
+      "vegetative": "वाढ",
+      "reproductive": "पुनरुत्पादन",
+      "maturity": "परिपक्वता",
+      "unknown": "अज्ञात अवस्था"
+    },
+    "early_warning": {
+      "title": "पूर्व सूचना",
+      "active_alerts": "सक्रिय सूचना",
+      "no_alerts": "कोणतीही सक्रिय सूचना नाही",
+      "recommended": "सुचवलेल्या क्रिया"
+    },
+    "warning": {
+      "attention": "लक्ष द्या",
+      "no_alerts": "सूचना नाही"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show NDVI analysis",
+      "Check crop health",
+      "Satellite monitoring",
+      "View field health"
+    ],
+    "voice_examples_hi": [
+      "NDVI विश्लेषण दिखाएं",
+      "फसल स्वास्थ्य जांचें",
+      "सैटेलाइट निगरानी",
+      "खेत स्वास्थ्य देखें"
+    ],
+    "voice_examples_mr": [
+      "NDVI विश्लेषण दाखवा",
+      "पीक आरोग्य तपासा",
+      "उपग्रह निरीक्षण",
+      "शेत आरोग्य पहा"
+    ]
+  }
+}

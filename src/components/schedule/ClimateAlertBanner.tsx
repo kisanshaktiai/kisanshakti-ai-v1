@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CloudRain, Leaf, ThermometerSun, TrendingUp, Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 
 interface ClimateAlert {
   rainfall_24h: number;
@@ -17,6 +18,8 @@ interface ClimateAlertBannerProps {
 }
 
 const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
+  const { t } = useTranslation();
+  
   if (!data) return null;
 
   const hasHighRainfall = data.rainfall_24h > 50;
@@ -31,21 +34,21 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
   return (
     <div className="px-4 space-y-2">
       {/* Climate Conditions */}
-      <Alert className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-950/20 dark:to-green-950/20 border-primary/30">
+      <Alert className="bg-gradient-to-r from-info to-success dark:from-info/20 dark:to-success/20 border-primary/30">
         <div className="flex items-start gap-3">
           <div className="flex items-center gap-3 flex-1">
             <div className="flex items-center gap-2 text-xs">
-              <CloudRain className={`h-4 w-4 ${hasHighRainfall ? 'text-blue-600 animate-pulse' : 'text-blue-500'}`} />
+              <CloudRain className={`h-4 w-4 ${hasHighRainfall ? 'text-info animate-pulse' : 'text-info'}`} />
               <span className="font-semibold">{data.rainfall_24h}mm</span>
             </div>
             
             <div className="flex items-center gap-2 text-xs">
-              <Leaf className={`h-4 w-4 ${hasLowNDVI ? 'text-orange-600 animate-pulse' : 'text-green-500'}`} />
+              <Leaf className={`h-4 w-4 ${hasLowNDVI ? 'text-warning animate-pulse' : 'text-success'}`} />
               <span className="font-semibold">NDVI: {data.ndvi_value.toFixed(2)}</span>
             </div>
             
             <div className="flex items-center gap-2 text-xs">
-              <ThermometerSun className={`h-4 w-4 ${hasHighTemp ? 'text-red-600 animate-pulse' : 'text-orange-500'}`} />
+              <ThermometerSun className={`h-4 w-4 ${hasHighTemp ? 'text-destructive animate-pulse' : 'text-warning'}`} />
               <span className="font-semibold">{data.temperature_avg}°C</span>
             </div>
           </div>
@@ -55,7 +58,7 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
             className={`text-[10px] ${hasAdjustments ? 'bg-primary animate-pulse' : ''}`}
           >
             <TrendingUp className="h-3 w-3 mr-1" />
-            AI Active
+            {t('schedule.climate.ai_active')}
           </Badge>
         </div>
       </Alert>
@@ -67,11 +70,11 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
           <AlertDescription className="text-xs space-y-1">
             <div className="flex items-center gap-2">
               <Badge className="bg-success text-success-foreground text-[10px]">
-                {data.tasks_rescheduled} Tasks Auto-Adjusted
+                {t('schedule.climate.tasks_auto_adjusted', { count: data.tasks_rescheduled })}
               </Badge>
             </div>
             <p className="text-muted-foreground">
-              {data.adjustment_reason || 'Schedule automatically optimized based on climate conditions'}
+              {data.adjustment_reason || t('schedule.climate.schedule_optimized')}
             </p>
           </AlertDescription>
         </Alert>
@@ -79,28 +82,28 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
 
       {/* Warning Messages */}
       {hasHighRainfall && (
-        <Alert variant="default" className="bg-blue-50 dark:bg-blue-950/20 border-blue-300 text-xs py-2">
+        <Alert variant="default" className="bg-info-soft dark:bg-info/20 border-info/50 text-xs py-2">
           <CloudRain className="h-3 w-3" />
           <AlertDescription>
-            Heavy rainfall detected. Irrigation and spraying tasks may be delayed.
+            {t('schedule.climate.heavy_rainfall')}
           </AlertDescription>
         </Alert>
       )}
 
       {hasLowNDVI && (
-        <Alert variant="default" className="bg-orange-50 dark:bg-orange-950/20 border-orange-300 text-xs py-2">
+        <Alert variant="default" className="bg-warning-soft dark:bg-warning/20 border-warning/50 text-xs py-2">
           <Leaf className="h-3 w-3" />
           <AlertDescription>
-            Low crop health (NDVI). Fertilizer application may be prioritized.
+            {t('schedule.climate.low_crop_health')}
           </AlertDescription>
         </Alert>
       )}
 
       {hasHighTemp && (
-        <Alert variant="default" className="bg-red-50 dark:bg-red-950/20 border-red-300 text-xs py-2">
+        <Alert variant="default" className="bg-destructive-soft dark:bg-destructive/20 border-destructive/50 text-xs py-2">
           <ThermometerSun className="h-3 w-3" />
           <AlertDescription>
-            High temperature. Irrigation may be advanced to prevent heat stress.
+            {t('schedule.climate.high_temperature')}
           </AlertDescription>
         </Alert>
       )}

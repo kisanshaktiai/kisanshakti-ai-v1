@@ -1,0 +1,90 @@
+{
+  "__meta": {
+    "page": "pwa",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "pwa": {
+    "title": "अॅप इंस्टॉल करा",
+    "install_title": "{{appName}} इंस्टॉल करा",
+    "full_experience": "ऑफलाइन ॲक्सेस आणि सूचनांसह संपूर्ण अॅप अनुभव मिळवा",
+    "app_installed": "अॅप इंस्टॉल झाले!",
+    "access_home_screen": "तुम्ही ते तुमच्या होम स्क्रीनवरून ॲक्सेस करू शकता",
+    "why_install": "इंस्टॉल का करावे?",
+    "benefits": {
+      "faster_access": {
+        "title": "जलद ॲक्सेस",
+        "description": "होम स्क्रीनवरून लगेच उघडा"
+      },
+      "work_offline": {
+        "title": "ऑफलाइन काम करा",
+        "description": "इंटरनेटशिवाय तुमचा डेटा ॲक्सेस करा"
+      },
+      "get_notifications": {
+        "title": "सूचना मिळवा",
+        "description": "अलर्टसह अपडेट राहा"
+      },
+      "save_data": {
+        "title": "डेटा वाचवा",
+        "description": "कमी मोबाइल डेटा वापरतो"
+      }
+    },
+    "android": {
+      "title": "Android वर इंस्टॉल करा",
+      "installing": "इंस्टॉल होत आहे...",
+      "install_now": "आता अॅप इंस्टॉल करा"
+    },
+    "ios": {
+      "title": "iPhone/iPad वर इंस्टॉल करा",
+      "step_1": "पायरी 1: शेअर वर टॅप करा",
+      "step_1_desc": "Safari च्या टूलबारमधील शेअर बटणावर टॅप करा",
+      "step_2": "पायरी 2: होम स्क्रीनवर जोडा",
+      "step_2_desc": "स्क्रोल करा आणि \"होम स्क्रीनवर जोडा\" निवडा",
+      "step_3": "पायरी 3: पुष्टी करा",
+      "step_3_desc": "अॅप इंस्टॉल करण्यासाठी \"जोडा\" वर टॅप करा",
+      "note": "टीप: इंस्टॉलेशन Safari ब्राउझरद्वारे केले पाहिजे"
+    },
+    "desktop": {
+      "title": "डेस्कटॉपवर इंस्टॉल करा",
+      "look_for_icon": "किंवा तुमच्या ब्राउझरच्या ॲड्रेस बारमध्ये इंस्टॉल आयकन पहा"
+    },
+    "alternative_method": "पर्यायी पद्धत:",
+    "alternative_desc": "तुमच्या ब्राउझरच्या मेनू किंवा ॲड्रेस बारमध्ये इंस्टॉल आयकन पहा",
+    "prompt": {
+      "title": "किसानशक्ती अॅप इंस्टॉल करा",
+      "subtitle": "जलद ॲक्सेस करा, ऑफलाइन काम करा, सूचना मिळवा",
+      "to_install_iphone": "iPhone/iPad वर इंस्टॉल करण्यासाठी:",
+      "tap_share_safari": "Safari मध्ये शेअर बटणावर टॅप करा",
+      "select_add_home": "\"होम स्क्रीनवर जोडा\" निवडा",
+      "tap_add_confirm": "पुष्टी करण्यासाठी \"जोडा\" वर टॅप करा",
+      "install_better_experience": "चांगल्या अनुभवासाठी अॅप इंस्टॉल करा",
+      "install_on_desktop": "तुमच्या डेस्कटॉपवर अॅप इंस्टॉल करा",
+      "install_now": "आता इंस्टॉल करा",
+      "later": "नंतर",
+      "got_it": "समजले"
+    },
+    "success": {
+      "installed": "अॅप यशस्वीरित्या इंस्टॉल झाले!",
+      "access_from_home": "आता तुम्ही तुमच्या होम स्क्रीनवरून किसानशक्ती ॲक्सेस करू शकता"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Install the app",
+      "How do I install",
+      "Add to home screen"
+    ],
+    "voice_examples_hi": [
+      "ऐप इंस्टॉल करें",
+      "इंस्टॉल कैसे करें",
+      "होम स्क्रीन पर जोड़ें"
+    ],
+    "voice_examples_mr": [
+      "अॅप इंस्टॉल करा",
+      "इंस्टॉल कसे करावे",
+      "होम स्क्रीनवर जोडा"
+    ]
+  }
+}

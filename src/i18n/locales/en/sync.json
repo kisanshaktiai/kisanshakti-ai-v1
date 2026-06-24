@@ -1,0 +1,54 @@
+{
+  "__meta": {
+    "page": "sync",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "sync": {
+    "title": "Sync Data",
+    "full_sync_starting": "🔄 Full sync starting...",
+    "syncing_data": "🔄 Syncing data...",
+    "clearing_local": "Clearing local data and reloading from server...",
+    "please_wait": "Please wait while we update your data",
+    "sync_complete": "✅ Sync complete!",
+    "all_data_synced": "All data is up to date",
+    "data_reloaded": "All data reloaded from server - please refresh if needed",
+    "tip": "💡 Tip",
+    "refresh_after_sync": "For best results, refresh the page after full sync",
+    "refresh_now": "Refresh Now",
+    "sync_partial": "⚠️ Sync partially completed",
+    "some_not_synced": "Some data could not be synced",
+    "sync_failed": "❌ Sync failed",
+    "check_connection": "Please check your connection and try again",
+    "offline": "Offline",
+    "quick_sync": "Quick Sync",
+    "full_reload": "Full Reload from Server",
+    "pending_changes": "{{count}} pending change",
+    "pending_changes_plural": "{{count}} pending changes",
+    "all_synced": "All data synced",
+    "last_synced": "Last synced",
+    "syncing": "Syncing...",
+    "sync_data": "Sync data",
+    "never_synced": "Never synced",
+    "just_now": "Just now",
+    "pending": "Pending"
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Sync data",
+      "Refresh data",
+      "Update from server"
+    ],
+    "voice_examples_hi": [
+      "डेटा सिंक करें",
+      "डेटा रीफ्रेश करें",
+      "सर्वर से अपडेट करें"
+    ],
+    "voice_examples_mr": [
+      "डेटा सिंक करा",
+      "डेटा रीफ्रेश करा",
+      "सर्व्हरवरून अपडेट करा"
+    ]
+  }
+}

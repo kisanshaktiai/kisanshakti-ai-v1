@@ -8,10 +8,14 @@ import { Loader2, ChevronLeft, ChevronRight, Check, Search, Sparkles } from 'luc
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
   group_name: string;
+  group_name_hi?: string;
+  group_name_mr?: string;
   group_icon: string;
   display_order: number;
 }
@@ -20,6 +24,8 @@ interface Crop {
   id: string;
   label: string;
   label_local?: string;
+  label_hi?: string;
+  label_mr?: string;
   icon?: string;
   season?: string;
   crop_group_id: string;
@@ -28,7 +34,7 @@ interface Crop {
 
 interface CentralizedCropSelectorProps {
   selectedCropId?: string;
-  onSelect: (cropId: string, cropName: string) => void;
+  onSelect: (cropId: string, cropName: string, localizedName: string, englishName: string) => void;
   className?: string;
   showSearch?: boolean;
   showHeader?: boolean;
@@ -43,6 +49,8 @@ export function CentralizedCropSelector({
   showHeader = true,
   variant = 'default'
 }: CentralizedCropSelectorProps) {
+  const { t, i18n } = useTranslation();
+  const tRef = useLocalizedRef();
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
   const [groups, setGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -51,6 +59,10 @@ export function CentralizedCropSelector({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Helpers — delegate to canonical resolver so every supported language works.
+  const displayCropName = (crop: Crop) => tRef(crop as any, 'label') || crop.label;
+  const displayGroupName = (group: CropGroup) => tRef(group as any, 'group_name') || group.group_name;
 
   // Load crop groups on mount
   useEffect(() => {
@@ -80,7 +92,7 @@ export function CentralizedCropSelector({
       setGroups(data || []);
     } catch (err) {
       console.error('Error loading crop groups:', err);
-      setError('Failed to load crop categories');
+      setError(t('schedule.crop_selector.failed_load_categories'));
     } finally {
       setLoading(false);
     }
@@ -127,7 +139,7 @@ export function CentralizedCropSelector({
       setStep('crops');
     } catch (err) {
       console.error('Error loading crops:', err);
-      setError('Failed to load crops');
+      setError(t('schedule.crop_selector.failed_load_crops'));
     } finally {
       setLoading(false);
     }
@@ -140,7 +152,8 @@ export function CentralizedCropSelector({
 
   const handleCropSelect = (crop: Crop) => {
     setSelectedCrop(crop);
-    onSelect(crop.id, crop.label);
+    const localizedName = displayCropName(crop);
+    onSelect(crop.id, crop.label, localizedName, crop.label);
   };
 
   const handleBack = () => {
@@ -151,10 +164,15 @@ export function CentralizedCropSelector({
     setSearchQuery('');
   };
 
-  const filteredCrops = crops.filter(crop => 
-    crop.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (crop.label_local && crop.label_local.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredCrops = crops.filter((crop) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    return (
+      crop.label.toLowerCase().includes(q) ||
+      (displayCropName(crop) || '').toLowerCase().includes(q) ||
+      (crop.label_local && crop.label_local.toLowerCase().includes(q))
+    );
+  });
 
   const renderGroups = () => (
     <AnimatePresence mode="wait">
@@ -212,7 +230,7 @@ export function CentralizedCropSelector({
                 
                 {/* Label with better typography */}
                 <span className="text-[10px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">
-                  {group.group_name}
+                  {displayGroupName(group)}
                 </span>
                 
                 {/* Subtle arrow indicator */}
@@ -247,7 +265,7 @@ export function CentralizedCropSelector({
           )}
           <span className="font-medium flex items-center gap-2">
             <span className="text-lg">{selectedGroup?.group_icon}</span>
-            {selectedGroup?.group_name}
+            {selectedGroup && displayGroupName(selectedGroup)}
           </span>
         </div>
       )}
@@ -257,7 +275,7 @@ export function CentralizedCropSelector({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search crops..."
+              placeholder={t('schedule.crop_selector.search_placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 glass-card"
@@ -267,13 +285,7 @@ export function CentralizedCropSelector({
       )}
 
       <ScrollArea className="flex-1 h-full">
-        <AnimatePresence mode="wait">
-          <motion.div 
-            className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 sm:p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 sm:p-4">
             {filteredCrops.map((crop, index) => {
               const isSelected = selectedCrop?.id === crop.id || selectedCropId === crop.id;
               
@@ -343,11 +355,11 @@ export function CentralizedCropSelector({
                           "font-semibold text-xs leading-tight transition-colors",
                           isSelected ? "text-primary" : "text-foreground/80 group-hover:text-foreground"
                         )}>
-                          {crop.label}
+                          {displayCropName(crop)}
                         </p>
-                        {crop.label_local && (
+                        {crop.label !== displayCropName(crop) && (
                           <p className="text-[10px] text-muted-foreground/70 leading-tight line-clamp-1">
-                            {crop.label_local}
+                            {crop.label}
                           </p>
                         )}
                       </div>
@@ -356,9 +368,9 @@ export function CentralizedCropSelector({
                       {(crop.is_popular || crop.season) && (
                         <div className="flex flex-wrap gap-1 justify-center">
                           {crop.is_popular && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30">
-                              <Sparkles className="h-2 w-2 text-yellow-600 dark:text-yellow-400" />
-                              <span className="text-[9px] font-medium text-yellow-700 dark:text-yellow-300">Hot</span>
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-warning/20 to-warning/20 border border-warning/30">
+                              <Sparkles className="h-2 w-2 text-warning dark:text-warning" />
+                              <span className="text-[9px] font-medium text-warning dark:text-warning">{t('schedule.crop_selector.hot')}</span>
                             </span>
                           )}
                           {crop.season && (
@@ -387,8 +399,7 @@ export function CentralizedCropSelector({
                 </motion.div>
               );
             })}
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </ScrollArea>
     </div>
   );
@@ -406,7 +417,7 @@ export function CentralizedCropSelector({
       <div className="text-center p-8">
         <p className="text-destructive mb-4">{error}</p>
         <Button onClick={loadCropGroups} variant="outline">
-          Retry
+          {t('schedule.crop_selector.retry')}
         </Button>
       </div>
     );

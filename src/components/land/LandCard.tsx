@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
+import { useTranslation } from 'react-i18next';
 import { 
   MapPin, 
   Mountain, 
@@ -24,6 +26,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CropManagementDialog } from './CropManagementDialog';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 import { format } from 'date-fns';
 
 interface LandCardProps {
@@ -53,12 +57,14 @@ interface LandCardProps {
 export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const navigate = useNavigate();
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const { apiKey, isLoaded } = useGoogleMapsApi();
+  const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
-    if (!land.boundary || land.boundary.length === 0) return null;
-    
-    const API_KEY = 'AIzaSyA7T__VHsi2H8km-jRytv4Mdjzae7Uokjg'; // Google Maps API key from edge function
+    if (!land.boundary || land.boundary.length === 0 || !apiKey) return null;
     
     // Create path from boundary points
     const path = land.boundary
@@ -77,7 +83,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
       `&size=400x200` +
       `&maptype=satellite` +
       `&path=color:0x00ff00|weight:3|fillcolor:0x00ff0033|${path}` +
-      `&key=${API_KEY}`;
+      `&key=${apiKey}`;
   };
 
   const mapUrl = getStaticMapUrl();
@@ -101,7 +107,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
             <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
             <Badge className="absolute top-2 left-2 bg-background/90 backdrop-blur">
               <Mountain className="h-3 w-3 mr-1" />
-              {land.area.toFixed(2)} acres
+              {land.area.toFixed(2)} {t('lands.list_item.acres')}
             </Badge>
           </div>
         )}
@@ -112,14 +118,14 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               <h3 className="font-semibold text-lg">{land.name}</h3>
               {land.survey_number && (
                 <p className="text-xs text-muted-foreground">
-                  Survey No: {land.survey_number}
+                  {t('lands.card.survey_no', { number: land.survey_number })}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-1">
               {land.ownership_type && (
-                <Badge variant="secondary" className="text-xs">
-                  {land.ownership_type}
+                <Badge variant="outline" className={`text-xs font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
+                  {ownershipLabel(land.ownership_type)}
                 </Badge>
               )}
               <DropdownMenu>
@@ -131,18 +137,18 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => navigate(`/app/lands/${land.id}`)}>
                     <Eye className="h-4 w-4 mr-2" />
-                    View Details
+                    {t('lands.card.view_details')}
                   </DropdownMenuItem>
                   {onEdit && (
                     <DropdownMenuItem onClick={onEdit}>
                       <Edit className="h-4 w-4 mr-2" />
-                      Edit
+                      {t('lands.card.edit')}
                     </DropdownMenuItem>
                   )}
                   {onDelete && (
                     <DropdownMenuItem onClick={onDelete} className="text-destructive">
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
+                      {t('lands.card.delete')}
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -156,10 +162,10 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
           <div className="flex items-start gap-2">
             <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium">{land.village || 'Location'}</p>
+              <p className="font-medium">{land.village || t('lands.wizard.form.location_details')}</p>
               {(land.district || land.state) && (
                 <p className="text-muted-foreground">
-                  {[land.district, land.state].filter(Boolean).join(', ')}
+                  {refLabels.location({ district: land.district, state: land.state })}
                 </p>
               )}
             </div>
@@ -167,20 +173,27 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
           
           {/* Land Details */}
           <div className="grid grid-cols-2 gap-3 text-sm">
-            {land.soil_type && (
-              <div className="flex items-center gap-1.5">
-                <div className="h-2 w-2 bg-warning rounded-full" />
-                <span className="text-muted-foreground">Soil:</span>
-                <span className="font-medium capitalize">{land.soil_type.replace('_', ' ')}</span>
-              </div>
-            )}
-            {land.water_source && (
-              <div className="flex items-center gap-1.5">
-                <Droplets className="h-3 w-3 text-info" />
-                <span className="text-muted-foreground">Water:</span>
-                <span className="font-medium capitalize">{land.water_source.replace('_', ' ')}</span>
-              </div>
-            )}
+            {land.soil_type && (() => {
+              const d = refLabels.display(land.soil_type, 'soil');
+              return (
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 bg-warning rounded-full" />
+                  <span className="text-muted-foreground">Soil:</span>
+                  <span className={`font-medium capitalize ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>{d.text}</span>
+                </div>
+              );
+            })()}
+            {land.water_source && (() => {
+              const d = refLabels.display(land.water_source, 'water');
+              return (
+                <div className="flex items-center gap-1.5">
+                  <Droplets className="h-3 w-3 text-info" />
+                  <span className="text-muted-foreground">Water:</span>
+                  <span className={`font-medium capitalize ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>{d.text}</span>
+                </div>
+              );
+            })()}
+
           </div>
           
           {/* Crop Information Section */}
@@ -190,28 +203,34 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Wheat className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">Current Crop</span>
+                    <span className="text-sm font-medium">{t('lands.wizard.form.current_crop')}</span>
                   </div>
-                  <Badge variant="default" className="text-xs">
-                    {land.current_crop}
-                  </Badge>
+                  {(() => {
+                    const d = refLabels.display(land.current_crop, 'crop');
+                    return (
+                      <Badge variant={d.isFallback ? 'outline' : 'default'} className={`text-xs ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>
+                        {d.text}
+                      </Badge>
+                    );
+                  })()}
+
                 </div>
                 {land.planting_date && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Calendar className="h-3 w-3" />
-                    Planted: {format(new Date(land.planting_date), 'dd MMM yyyy')}
+                    {t('lands.details.last_sowing')}: {format(new Date(land.planting_date), 'dd MMM yyyy')}
                   </div>
                 )}
                 {land.expected_harvest_date && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    Expected Harvest: {format(new Date(land.expected_harvest_date), 'dd MMM yyyy')}
+                    {t('lands.details.expected_harvest')}: {format(new Date(land.expected_harvest_date), 'dd MMM yyyy')}
                   </div>
                 )}
               </div>
             ) : (
               <div className="flex items-center justify-center py-2 border-2 border-dashed rounded-lg">
-                <p className="text-sm text-muted-foreground">No crop planted</p>
+                <p className="text-sm text-muted-foreground">{t('lands.details.no_crop')}</p>
               </div>
             )}
             
@@ -225,12 +244,12 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               {land.current_crop ? (
                 <>
                   <Edit className="h-4 w-4 mr-2" />
-                  Manage Crops
+                  {t('lands.card.manage_crops')}
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Crop
+                  {t('lands.card.add_crop')}
                 </>
               )}
             </Button>

@@ -1,3 +1,5 @@
+import { getSupabaseFunctionUrl } from '@/config/supabase';
+
 /**
  * Version Service for tracking app version and checking for updates
  */
@@ -10,7 +12,7 @@ class VersionService {
   private isDevelopment: boolean;
 
   constructor() {
-    // Get version from build-time environment variable
+    // Get version and build hash from build-time environment variables
     this.currentVersion = import.meta.env.VITE_APP_VERSION || '1.0.0';
     
     // Detect development mode
@@ -20,7 +22,7 @@ class VersionService {
       window.location.hostname.includes('preview') ||
       window.location.hostname.includes('lovable.app');
     
-    console.log(`[VersionService] App version: ${this.currentVersion}, Build: ${this.getBuildTime()}, Mode: ${this.isDevelopment ? 'Development' : 'Production'}`);
+    console.log(`[VersionService] App version: ${this.currentVersion}, Build: ${this.getBuildTime()}, Hash: ${this.getBuildHash()?.substring(0, 10)}, Mode: ${this.isDevelopment ? 'Development' : 'Production'}`);
   }
 
   /**
@@ -62,9 +64,15 @@ class VersionService {
   }
 
   /**
-   * Check if a new version is available by comparing manifest ETag
-   * NOTE: This is now only for background detection. 
-   * Actual update prompts are handled by service worker state.
+   * Get build hash for cache invalidation
+   */
+  getBuildHash(): string | null {
+    return import.meta.env.VITE_BUILD_HASH || null;
+  }
+
+  /**
+   * Check if a new version is available by comparing build hash
+   * This is the primary mechanism for detecting new deploys
    */
   async checkForUpdates(): Promise<boolean> {
     const now = Date.now();
@@ -77,32 +85,28 @@ class VersionService {
     this.lastCheckTime = now;
 
     try {
-      // Check manifest.json with cache-busting
-      const response = await fetch(`/manifest.json?t=${now}`, {
-        method: 'HEAD',
-        cache: 'no-cache',
-      });
-
-      if (!response.ok) {
-        console.warn('[VersionService] Failed to check for updates');
+      // Get current build hash
+      const currentHash = this.getBuildHash();
+      if (!currentHash) {
+        console.warn('[VersionService] No build hash available');
         return false;
       }
 
-      // Get ETag from response
-      const etag = response.headers.get('etag');
-      const storedEtag = localStorage.getItem('app-manifest-etag');
-
-      // Only compare, DON'T store new ETag yet
-      // ETag is stored only after user updates or dismisses
-      if (etag && storedEtag && etag !== storedEtag) {
-        console.log('[VersionService] New ETag detected (old: %s, new: %s)', storedEtag?.substring(0, 10), etag?.substring(0, 10));
+      // Compare with stored hash
+      const storedHash = localStorage.getItem('build_hash');
+      
+      if (storedHash && storedHash !== currentHash) {
+        console.log('[VersionService] New build detected (old: %s, new: %s)', 
+          storedHash.substring(0, 10), 
+          currentHash.substring(0, 10)
+        );
         return true;
       }
 
-      if (etag && !storedEtag) {
+      if (!storedHash) {
         // First time - store it as baseline
-        localStorage.setItem('app-manifest-etag', etag);
-        console.log('[VersionService] Baseline ETag stored');
+        localStorage.setItem('build_hash', currentHash);
+        console.log('[VersionService] Baseline build hash stored');
       }
 
       return false;
@@ -113,19 +117,77 @@ class VersionService {
   }
 
   /**
-   * Mark current version as acknowledged (called after update or dismissal)
+   * Fetch current version from database
+   */
+  async fetchVersionFromDatabase(): Promise<{ version: string; buildHash: string; forceUpdate: boolean } | null> {
+    try {
+      const response = await fetch(
+        `${getSupabaseFunctionUrl('app-version')}?app_key=farmer_app`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.warn('[VersionService] Failed to fetch version from database');
+        return null;
+      }
+
+      const data = await response.json();
+      return {
+        version: data.version,
+        buildHash: data.build_hash,
+        forceUpdate: data.force_update || false,
+      };
+    } catch (error) {
+      console.error('[VersionService] Error fetching version from database:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Mark current build as acknowledged (called after update or dismissal)
    */
   acknowledgeCurrentVersion(): void {
-    // Get fresh ETag and store it
-    fetch(`/manifest.json?t=${Date.now()}`, { method: 'HEAD', cache: 'no-cache' })
-      .then(response => {
-        const etag = response.headers.get('etag');
-        if (etag) {
-          localStorage.setItem('app-manifest-etag', etag);
-          console.log('[VersionService] Current ETag acknowledged');
-        }
-      })
-      .catch(err => console.error('[VersionService] Error acknowledging version:', err));
+    const currentHash = this.getBuildHash();
+    if (currentHash) {
+      localStorage.setItem('build_hash', currentHash);
+      console.log('[VersionService] Current build hash acknowledged:', currentHash.substring(0, 10));
+    }
+  }
+
+  /**
+   * Clear all caches for force update
+   */
+  async clearAllCaches(): Promise<void> {
+    console.log('[VersionService] Clearing all caches...');
+    
+    try {
+      // Clear all cache storage
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+        console.log('[VersionService] All cache storage cleared');
+      }
+
+      // Clear localStorage caches
+      localStorage.removeItem('tenant_config_cache');
+      localStorage.removeItem('white_label_config');
+      localStorage.removeItem('tenant_primary_color');
+      
+      // Signal service worker to clear caches
+      if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHES' });
+        console.log('[VersionService] Sent cache clear signal to service worker');
+      }
+
+      console.log('[VersionService] All caches cleared successfully');
+    } catch (error) {
+      console.error('[VersionService] Error clearing caches:', error);
+    }
   }
 
   /**
@@ -135,12 +197,8 @@ class VersionService {
     console.log('[VersionService] Force updating app...');
 
     try {
-      // Clear all caches
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map(name => caches.delete(name)));
-        console.log('[VersionService] Cleared all caches');
-      }
+      // Clear all caches using the new method
+      await this.clearAllCaches();
 
       // Unregister service worker
       if ('serviceWorker' in navigator) {
@@ -149,8 +207,8 @@ class VersionService {
         console.log('[VersionService] Unregistered service workers');
       }
 
-      // Clear version tracking
-      localStorage.removeItem('app-manifest-etag');
+      // Clear build hash tracking
+      localStorage.removeItem('build_hash');
 
       // Hard reload
       window.location.reload();

@@ -1,0 +1,391 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "safety",
+    "canonical_group": "11_safety",
+    "version": "3.1.0",
+    "scientific_source": "CIB&RC, ICAR-SBI, FSSAI, State Agriculture Departments",
+    "last_updated": "2026-01-10",
+    "total_rules": 18
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_PHI_GENERAL_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["maturity", "harvest"],
+      "conditions_json": {
+        "observations": ["pre_harvest_spray", "phi_query"],
+        "context": "safety_gate"
+      },
+      "cause": "Pre-Harvest Interval (PHI) safety gate",
+      "priority": 100,
+      "confidence_score": 0.98,
+      "scientific_source": "CIB&RC PHI Guidelines",
+      "response_en": "⚠️ PRE-HARVEST INTERVAL (PHI) - CRITICAL SAFETY RULE:\n\n🚫 DO NOT spray ANY pesticide within PHI period before harvest!\n\n📋 Common PHI for Sugarcane:\n• Chlorpyrifos: 45 days\n• Fipronil: 30 days\n• Chlorantraniliprole: 3 days\n• Imidacloprid: 21 days\n• Carbendazim: 14 days\n\n⚠️ Violation leads to: Pesticide residue in jaggery/sugar\n⚠️ Check specific product label for exact PHI",
+      "response_hi": "⚠️ कटाई पूर्व अंतराल (PHI) - महत्वपूर्ण सुरक्षा नियम:\n\n🚫 PHI अवधि में कोई भी कीटनाशक न छिड़कें!\n\n⚠️ उल्लंघन से: गुड़/चीनी में कीटनाशक अवशेष",
+      "response_mr": "⚠️ कापणीपूर्व मध्यांतर (PHI) - महत्त्वाचा सुरक्षा नियम:\n\n🚫 PHI काळात कोणतेही कीटकनाशक फवारू नका!\n\n⚠️ उल्लंघनाने: गुळ/साखरेत कीटकनाशक अवशेष",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_BEE_SAFETY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["bee_activity", "pollinator_safety"],
+        "context": "pollinator_protection"
+      },
+      "cause": "Pollinator safety - bee protection",
+      "priority": 95,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR Pollinator Protection Guidelines",
+      "response_en": "🐝 POLLINATOR SAFETY (Sugarcane is not bee-pollinated but bees visit for honeydew):\n\n⚠️ HIGH BEE TOXICITY (avoid during bee activity):\n• Imidacloprid, Thiamethoxam, Fipronil\n\n✅ LOW BEE TOXICITY (safer options):\n• Chlorantraniliprole, Spinosad, Neem\n\n📋 Best practice:\n• Spray in evening (after 5 PM)\n• Avoid spraying when bees active\n• Warn neighboring beekeepers before spraying",
+      "response_hi": "🐝 परागणक सुरक्षा:\n\n⚠️ उच्च मधुमक्खी विषाक्तता वाले कीटनाशकों से बचें\n✅ शाम को (5 बजे के बाद) छिड़काव करें",
+      "response_mr": "🐝 परागकण सुरक्षा:\n\n⚠️ उच्च मधमाशी विषाक्तता असलेल्या कीटकनाशकांपासून दूर राहा\n✅ संध्याकाळी (५ नंतर) फवारणी करा",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_ORGANIC_RESTRICT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["organic_farming", "chemical_restriction"],
+        "farming_mode": "organic"
+      },
+      "cause": "Organic farming restrictions",
+      "priority": 92,
+      "confidence_score": 0.95,
+      "scientific_source": "NPOP Organic Standards",
+      "response_en": "🌿 ORGANIC SUGARCANE - PROHIBITED INPUTS:\n\n🚫 BANNED:\n• All synthetic pesticides\n• Synthetic fertilizers (Urea, DAP, MOP)\n• Growth regulators (except natural)\n• GMO inputs\n\n✅ ALLOWED:\n• Neem-based products\n• Trichoderma, Beauveria\n• Trichogramma, Cotesia\n• FYM, Compost, Vermicompost\n• Bio-fertilizers (Azospirillum, PSB)\n\n⚠️ 3-year conversion period required for certification",
+      "response_hi": "🌿 जैविक गन्ना - प्रतिबंधित:\n\n🚫 प्रतिबंधित: सभी सिंथेटिक कीटनाशक, उर्वरक\n✅ अनुमत: नीम, जैव नियंत्रण, जैव उर्वरक",
+      "response_mr": "🌿 सेंद्रिय ऊस - प्रतिबंधित:\n\n🚫 बंदी: सर्व कृत्रिम कीटकनाशके, खते\n✅ परवानगी: निंबोळी, जैविक नियंत्रण, जैविक खते",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SPRAY_WEATHER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["spray_timing", "weather_conditions"],
+        "weather": "check_required"
+      },
+      "cause": "Weather conditions for safe spraying",
+      "priority": 88,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR Good Spraying Practices",
+      "response_en": "🌤️ WEATHER CONDITIONS FOR SAFE SPRAYING:\n\n✅ IDEAL:\n• Temperature: 25-30°C\n• Wind: <10 km/hr\n• Humidity: 60-80%\n• Time: Early morning or late evening\n\n🚫 AVOID SPRAYING WHEN:\n• Rain expected within 4-6 hours\n• Wind >15 km/hr (drift to other crops)\n• Temperature >35°C (evaporation loss)\n• Bright sunlight (phytotoxicity risk)\n\n⚠️ Check weather forecast before mixing pesticides!",
+      "response_hi": "🌤️ सुरक्षित छिड़काव के लिए मौसम:\n\n✅ आदर्श: तापमान 25-30°C, हवा <10 km/hr\n🚫 बारिश, तेज हवा, गर्मी में छिड़काव न करें",
+      "response_mr": "🌤️ सुरक्षित फवारणीसाठी हवामान:\n\n✅ आदर्श: तापमान 25-30°C, वारा <10 km/hr\n🚫 पाऊस, तीव्र वारा, उष्णतेत फवारणी टाळा",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_BANNED_PEST_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["banned_pesticide_query"],
+        "context": "regulatory_compliance"
+      },
+      "cause": "Banned pesticides in India",
+      "priority": 100,
+      "confidence_score": 0.98,
+      "scientific_source": "CIB&RC Banned Pesticides List",
+      "response_en": "🚫 BANNED PESTICIDES - DO NOT USE:\n\n❌ Monocrotophos (highly toxic)\n❌ Phorate (groundwater contamination)\n❌ Methyl Parathion\n❌ Endosulfan\n❌ Triazophos (restricted)\n❌ Carbofuran 50% (only 3% granule allowed)\n\n⚠️ Using banned pesticides is ILLEGAL\n⚠️ Products may still be available in market - check registration status\n⚠️ Fine: Up to ₹2 lakh, imprisonment possible",
+      "response_hi": "🚫 प्रतिबंधित कीटनाशक - उपयोग न करें:\n\n❌ मोनोक्रोटोफॉस, फोरेट, एंडोसल्फान\n\n⚠️ प्रतिबंधित कीटनाशकों का उपयोग गैरकानूनी है",
+      "response_mr": "🚫 बंदी घातलेली कीटकनाशके - वापरू नका:\n\n❌ मोनोक्रोटोफॉस, फोरेट, एंडोसल्फान\n\n⚠️ बंदी घातलेली कीटकनाशके वापरणे बेकायदेशीर आहे",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_PPE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["spray_safety", "ppe_query"],
+        "context": "personal_safety"
+      },
+      "cause": "Personal Protective Equipment for spraying",
+      "priority": 85,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR Safe Pesticide Handling",
+      "response_en": "🧤 PERSONAL PROTECTIVE EQUIPMENT (PPE):\n\n✅ ESSENTIAL:\n• Face mask (filter type for toxic pesticides)\n• Rubber gloves (elbow length)\n• Full-sleeve shirt and pants\n• Gumboots\n• Head cover\n\n📋 SAFE PRACTICES:\n• Don't eat/smoke while spraying\n• Wash hands and face after spraying\n• Bathe after work\n• Wash clothes separately\n• Don't re-enter field for 24 hours\n\n⚠️ If poisoning symptoms: Drink water, vomit, seek medical help",
+      "response_hi": "🧤 व्यक्तिगत सुरक्षा उपकरण (PPE):\n\n✅ आवश्यक: मास्क, दस्ताने, पूरे कपड़े, जूते\n📋 छिड़काव के बाद हाथ-मुंह धोएं, नहाएं",
+      "response_mr": "🧤 वैयक्तिक सुरक्षा साधने (PPE):\n\n✅ आवश्यक: मास्क, हातमोजे, पूर्ण कपडे, बूट\n📋 फवारणीनंतर हात-तोंड धुवा, आंघोळ करा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_DOSAGE_SAFETY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["overdose_query", "dosage_calculation"],
+        "context": "dosage_safety"
+      },
+      "cause": "Correct dosage calculation",
+      "priority": 90,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR Pesticide Dosage Guidelines",
+      "response_en": "⚖️ DOSAGE SAFETY - NEVER EXCEED RECOMMENDED DOSE:\n\n📋 CALCULATION METHOD:\n• Read label for dose per hectare/acre\n• Measure field area accurately\n• Use measuring cup (not approximation)\n• Water volume: Usually 500 L/ha for tall crop\n\n⚠️ OVERDOSE CAUSES:\n• Phytotoxicity (leaf burn, growth damage)\n• Residue above MRL\n• Environmental contamination\n• Resistance development in pests\n\n✅ Under-dose is also harmful: Pests develop resistance",
+      "response_hi": "⚖️ खुराक सुरक्षा - अनुशंसित खुराक से अधिक न करें:\n\n📋 लेबल पर खुराक पढ़ें, क्षेत्र मापें\n⚠️ अधिक खुराक से पत्ती जलना, अवशेष समस्या",
+      "response_mr": "⚖️ डोस सुरक्षा - शिफारस केलेल्या डोसपेक्षा जास्त देऊ नका:\n\n📋 लेबलवर डोस वाचा, क्षेत्र मोजा\n⚠️ जास्त डोसमुळे पान करपणे, अवशेष समस्या",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_TANK_MIX_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["tank_mix_query", "pesticide_mixing"],
+        "context": "compatibility"
+      },
+      "cause": "Tank mixing safety",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Tank Mix Guidelines",
+      "response_en": "🔬 TANK MIXING SAFETY:\n\n✅ GENERALLY COMPATIBLE:\n• Insecticide + Fungicide (most cases)\n• Pesticide + Micronutrient\n• Pesticide + Sticker\n\n🚫 AVOID MIXING:\n• Two insecticides (phytotoxicity)\n• Alkaline + Acidic products\n• EC formulation with high dose urea\n• Copper products + other chemicals\n\n📋 JAR TEST: Mix small quantities first, check for flocculation/separation\n\n⚠️ When unsure, spray separately with 3-day gap",
+      "response_hi": "🔬 टैंक मिक्सिंग सुरक्षा:\n\n✅ आमतौर पर संगत: कीटनाशक + फफूंदनाशक\n🚫 दो कीटनाशक एक साथ न मिलाएं",
+      "response_mr": "🔬 टँक मिक्सिंग सुरक्षा:\n\n✅ सामान्यतः सुसंगत: कीटकनाशक + बुरशीनाशक\n🚫 दोन कीटकनाशके एकत्र मिसळू नका",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_STORAGE_PEST_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["pesticide_storage"],
+        "context": "storage_safety"
+      },
+      "cause": "Pesticide storage safety",
+      "priority": 80,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR Pesticide Storage Guidelines",
+      "response_en": "🏠 PESTICIDE STORAGE SAFETY:\n\n✅ CORRECT STORAGE:\n• Separate locked room/cabinet\n• Away from food, feed, water source\n• Original container with label intact\n• Cool, dry, ventilated place\n• Away from children and animals\n\n🚫 NEVER:\n• Store in food containers\n• Keep near kitchen/bedroom\n• Pour unused solution back\n• Mix different products in one container\n\n⚠️ DISPOSAL: Triple rinse containers, puncture, bury or return to dealer",
+      "response_hi": "🏠 कीटनाशक भंडारण सुरक्षा:\n\n✅ अलग बंद कमरे में, मूल कंटेनर में\n🚫 भोजन के पास, रसोई में न रखें",
+      "response_mr": "🏠 कीटकनाशक साठवण सुरक्षा:\n\n✅ वेगळ्या बंद खोलीत, मूळ डब्यात\n🚫 अन्नाजवळ, स्वयंपाकघरात ठेवू नका",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_JAGGERY_SAFETY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["maturity", "harvest"],
+      "conditions_json": {
+        "observations": ["jaggery_making", "food_safety"],
+        "context": "product_safety"
+      },
+      "cause": "Safety for jaggery-destined sugarcane",
+      "priority": 95,
+      "confidence_score": 0.95,
+      "scientific_source": "FSSAI Jaggery Safety Standards",
+      "response_en": "🍯 JAGGERY-DESTINED SUGARCANE - EXTRA SAFETY:\n\n⚠️ STRICTER RULES (direct consumption product):\n\n🚫 NO pesticide spray after 60 days before harvest\n🚫 Avoid systemic insecticides in last 90 days\n✅ Use only biocontrol after grand growth\n✅ Prefer organic inputs throughout\n\n📋 FSSAI LIMITS:\n• Pesticide residue: Below MRL\n• Heavy metals: As per food standards\n\n⚠️ Organic jaggery: No chemical input at any stage",
+      "response_hi": "🍯 गुड़ के लिए गन्ना - अतिरिक्त सुरक्षा:\n\n🚫 कटाई से 60 दिन पहले कोई कीटनाशक नहीं\n✅ भव्य वृद्धि के बाद केवल जैव नियंत्रण",
+      "response_mr": "🍯 गुळासाठी ऊस - अतिरिक्त सुरक्षा:\n\n🚫 कापणीपूर्वी 60 दिवस कोणतेही कीटकनाशक नाही\n✅ ग्रँड ग्रोथनंतर फक्त जैविक नियंत्रण",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_HARVEST_SAFETY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["harvest_operation", "labor_safety"],
+        "context": "harvest_safety"
+      },
+      "cause": "Harvest operation safety",
+      "priority": 82,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Farm Safety Guidelines",
+      "response_en": "🔪 HARVEST SAFETY:\n\n✅ CUTTER SAFETY:\n• Sharp, well-maintained cane knives\n• Proper footwear (no open sandals)\n• Gloves for handling\n• Adequate rest breaks\n• Clean drinking water availability\n\n⚠️ FIRE HAZARD:\n• Don't burn trash in field\n• Keep fire extinguisher during burning (if unavoidable)\n• Inform fire station before controlled burn\n\n⚠️ SNAKE CAUTION: Sugarcane fields harbor snakes - be alert during cutting",
+      "response_hi": "🔪 कटाई सुरक्षा:\n\n✅ तेज चाकू, उचित जूते, दस्ताने\n⚠️ आग का खतरा: पराली न जलाएं\n⚠️ सांप सावधानी: कटाई के दौरान सतर्क रहें",
+      "response_mr": "🔪 कापणी सुरक्षा:\n\n✅ धारदार कोयता, योग्य बूट, हातमोजे\n⚠️ आगीचा धोका: पाचट जाळू नका\n⚠️ साप सावधानी: कापणीत सतर्क राहा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RIPENER_SAFETY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["ripener_use", "ethephon_query"],
+        "context": "ripener_safety"
+      },
+      "cause": "Chemical ripener safety",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR Ripener Guidelines",
+      "response_en": "🧪 CHEMICAL RIPENER SAFETY (Ethephon/Glyphosate):\n\n⚠️ USE ONLY IF REGISTERED FOR SUGARCANE IN YOUR STATE\n\n📋 IF PERMITTED:\n• Ethephon: 200 ppm, 3-4 weeks before harvest\n• Glyphosate: NOT recommended (residue concerns)\n\n🚫 RISKS:\n• Residue in jaggery (banned for organic)\n• Reduces ratoon performance\n• May affect germination if used on seed cane\n\n✅ NATURAL RIPENING: Stop irrigation 15-20 days before harvest",
+      "response_hi": "🧪 रासायनिक रिपेनर सुरक्षा:\n\n⚠️ केवल पंजीकृत होने पर उपयोग करें\n✅ प्राकृतिक पकाव: कटाई से 15-20 दिन पहले सिंचाई बंद",
+      "response_mr": "🧪 रासायनिक रिपेनर सुरक्षा:\n\n⚠️ फक्त नोंदणीकृत असल्यासच वापरा\n✅ नैसर्गिक पिकवणे: कापणीपूर्वी 15-20 दिवस पाणी बंद",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_LABEL_READ_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["pesticide_purchase", "label_reading"],
+        "context": "product_verification"
+      },
+      "cause": "Read pesticide label before use",
+      "priority": 85,
+      "confidence_score": 0.95,
+      "scientific_source": "CIB&RC Label Guidelines",
+      "response_en": "📋 ALWAYS READ PESTICIDE LABEL:\n\n✅ CHECK BEFORE PURCHASE:\n• CIB&RC registration number\n• Manufacturing & expiry date\n• Target crop listed (must include sugarcane)\n• Hologram/authentication marks\n\n✅ CHECK BEFORE USE:\n• Recommended dose\n• Target pest/disease\n• PHI (Pre-Harvest Interval)\n• Safety precautions\n• Antidote information\n\n⚠️ Don't buy: Damaged packaging, missing label, expired products\n⚠️ Report fake products to agriculture department",
+      "response_hi": "📋 कीटनाशक लेबल अवश्य पढ़ें:\n\n✅ खरीदने से पहले: पंजीकरण संख्या, तिथि, लक्षित फसल\n✅ उपयोग से पहले: खुराक, PHI, सुरक्षा सावधानियां",
+      "response_mr": "📋 कीटकनाशक लेबल अवश्य वाचा:\n\n✅ खरेदीपूर्वी: नोंदणी क्रमांक, तारीख, लक्ष्य पीक\n✅ वापरापूर्वी: डोस, PHI, सुरक्षा सावधानी",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_WATER_CONTAM_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["water_source_near", "spray_near_water"],
+        "context": "water_protection"
+      },
+      "cause": "Protect water sources from contamination",
+      "priority": 88,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR Environmental Safety",
+      "response_en": "💧 WATER SOURCE PROTECTION:\n\n🚫 AVOID:\n• Spraying near wells, ponds, streams (50m buffer)\n• Washing spray equipment in water bodies\n• Disposing pesticide waste in drains\n• Spraying when runoff expected\n\n✅ SAFE PRACTICES:\n• Dispose rinse water in field only\n• Triple-rinse containers\n• Spray perpendicular to water body (if nearby)\n• Use low-drift nozzles\n\n⚠️ Groundwater contamination affects drinking water for years",
+      "response_hi": "💧 जल स्रोत सुरक्षा:\n\n🚫 कुएं, तालाब के पास छिड़काव न करें\n🚫 जल निकायों में उपकरण न धोएं",
+      "response_mr": "💧 पाण्याचा स्त्रोत संरक्षण:\n\n🚫 विहीर, तलावाजवळ फवारणी करू नका\n🚫 जलाशयांत साधने धुवू नका",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RESISTANCE_MGMT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["repeated_spray", "resistance_query"],
+        "context": "resistance_management"
+      },
+      "cause": "Pesticide resistance management",
+      "priority": 82,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Resistance Management",
+      "response_en": "🔄 RESISTANCE MANAGEMENT:\n\n⚠️ PROBLEM: Same pesticide repeated → Pests become resistant\n\n✅ SOLUTION - ROTATE MODES OF ACTION:\n\n📋 For Borers:\n• Week 1: Chlorantraniliprole (Group 28)\n• Week 3: Fipronil (Group 2B)\n• Week 5: Biocontrol (Trichogramma)\n\n📋 For Pyrilla/Aphids:\n• Rotate Imidacloprid ↔ Thiamethoxam ↔ Neem\n\n⚠️ Never spray same chemical >2 times consecutively\n⚠️ Include biocontrol in rotation",
+      "response_hi": "🔄 प्रतिरोध प्रबंधन:\n\n⚠️ एक ही कीटनाशक बार-बार → कीट प्रतिरोधी बनते हैं\n✅ समाधान: क्रिया विधि बदलें",
+      "response_mr": "🔄 प्रतिकार व्यवस्थापन:\n\n⚠️ एकच कीटकनाशक वारंवार → कीटक प्रतिरोधक होतात\n✅ उपाय: क्रिया पद्धती बदला",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_FIRST_AID_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["poisoning_symptoms", "emergency"],
+        "context": "first_aid"
+      },
+      "cause": "First aid for pesticide poisoning",
+      "priority": 100,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR First Aid Guidelines",
+      "response_en": "🚨 PESTICIDE POISONING FIRST AID:\n\n⚠️ SYMPTOMS: Nausea, vomiting, dizziness, sweating, blurred vision, difficulty breathing\n\n✅ IMMEDIATE ACTIONS:\n1. Move person to fresh air\n2. Remove contaminated clothing\n3. Wash skin with soap and water\n4. If in eyes: Flush with clean water 15 min\n5. If swallowed: Give water to drink (NOT milk)\n6. Do NOT induce vomiting (unless advised)\n7. CALL EMERGENCY: 108 or nearest hospital\n\n📋 TAKE PESTICIDE LABEL TO HOSPITAL",
+      "response_hi": "🚨 कीटनाशक विषाक्तता प्राथमिक उपचार:\n\n⚠️ लक्षण: मतली, उल्टी, चक्कर\n✅ ताजी हवा में ले जाएं, त्वचा धोएं, 108 कॉल करें",
+      "response_mr": "🚨 कीटकनाशक विषबाधा प्रथमोपचार:\n\n⚠️ लक्षणे: मळमळ, उलट्या, चक्कर\n✅ ताज्या हवेत न्या, त्वचा धुवा, 108 कॉल करा",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MRL_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["maturity", "harvest"],
+      "conditions_json": {
+        "observations": ["residue_query", "export_quality"],
+        "context": "mrl_compliance"
+      },
+      "cause": "Maximum Residue Limit compliance",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "scientific_source": "FSSAI MRL Standards",
+      "response_en": "📊 MAXIMUM RESIDUE LIMITS (MRL) FOR SUGARCANE:\n\n✅ ENSURE COMPLIANCE:\n• Follow recommended dose exactly\n• Respect PHI strictly\n• Use registered pesticides only\n\n📋 FSSAI SUGARCANE MRLs (mg/kg):\n• Chlorpyrifos: 0.5\n• Imidacloprid: 0.05\n• Carbendazim: 0.1\n• Fipronil: 0.01\n\n⚠️ FOR EXPORT: EU/US MRLs are STRICTER\n⚠️ Jaggery testing: Random samples at mandis\n⚠️ Violation: Product rejection, penalty",
+      "response_hi": "📊 अधिकतम अवशेष सीमा (MRL):\n\n✅ अनुपालन सुनिश्चित करें: सही खुराक, PHI का पालन\n⚠️ उल्लंघन: उत्पाद अस्वीकृति, जुर्माना",
+      "response_mr": "📊 कमाल अवशेष मर्यादा (MRL):\n\n✅ पालन सुनिश्चित करा: योग्य डोस, PHI पाळा\n⚠️ उल्लंघन: उत्पादन नाकारणे, दंड",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SPRAY_TECH_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["spray_technique", "nozzle_query"],
+        "context": "application_safety"
+      },
+      "cause": "Safe spray application technique",
+      "priority": 78,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Spray Technology",
+      "response_en": "💨 SAFE SPRAY TECHNIQUE:\n\n✅ EQUIPMENT:\n• Hollow cone nozzle for tall crop\n• 500 L water/ha (high volume)\n• Calibrate sprayer regularly\n• Check for leaks before use\n\n✅ APPLICATION:\n• Walk with wind (not against)\n• Maintain steady pace\n• Overlap swaths 10-15%\n• Don't spray under power lines\n\n⚠️ DRONE SPRAYING: Follow DGCA guidelines, maintain distance from habitation\n⚠️ Tractor sprayer: Check boom height for uniform coverage",
+      "response_hi": "💨 सुरक्षित छिड़काव तकनीक:\n\n✅ हवा की दिशा में चलें, 500 L पानी/हेक्टेयर\n⚠️ बिजली लाइनों के नीचे छिड़काव न करें",
+      "response_mr": "💨 सुरक्षित फवारणी तंत्र:\n\n✅ वाऱ्याच्या दिशेने चाला, 500 L पाणी/हेक्टर\n⚠️ वीज तारांखाली फवारणी करू नका",
+      "action_type": "advisory",
+      "is_active": true
+    }
+  ]
+}

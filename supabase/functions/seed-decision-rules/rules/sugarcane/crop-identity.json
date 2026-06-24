@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "crop_identity",
+    "canonical_group": "01_crop_identity",
+    "version": "3.1.0",
+    "scientific_source": "ICAR-SBI Coimbatore",
+    "last_updated": "2026-01-10",
+    "total_rules": 5
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_IDENTITY_001",
+      "crop_code": "sugarcane",
+      "category": "crop_identity",
+      "canonical_group": "01_crop_identity",
+      "stage_applicable": ["all"],
+      "conditions_json": {"context": "crop_confirmation"},
+      "cause": "Sugarcane crop confirmed",
+      "priority": 100,
+      "confidence_score": 0.98,
+      "scientific_source": "ICAR-SBI",
+      "response_en": "✅ Sugarcane (Saccharum officinarum) confirmed. Duration: 10-18 months. Major stages: Germination (0-35 DAP), Tillering (35-120 DAP), Grand Growth (120-270 DAP), Maturity (270-360 DAP).",
+      "response_hi": "✅ गन्ना (सैकेरम ऑफिसिनेरम) की पुष्टि। अवधि: 10-18 महीने।",
+      "response_mr": "✅ ऊस (सॅकेरम ऑफिसिनेरम) पुष्टी. कालावधी: 10-18 महिने.",
+      "action_type": "confirmation",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_VARIETIES_001",
+      "crop_code": "sugarcane",
+      "category": "crop_identity",
+      "canonical_group": "01_crop_identity",
+      "stage_applicable": ["planting"],
+      "conditions_json": {"context": "variety_selection"},
+      "cause": "Variety recommendation",
+      "priority": 85,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Variety Catalog",
+      "response_en": "🌾 RECOMMENDED VARIETIES:\n\n• HIGH YIELD: Co 0238, Co 86032, CoC 671\n• DISEASE RESISTANT: Co 0238 (Red Rot), CoC 671 (Smut)\n• EARLY MATURING: CoS 767, Co 0118\n• JAGGERY: Co 86032, CoC 671\n• WATERLOGGING TOLERANT: Co 87044",
+      "response_hi": "🌾 अनुशंसित किस्में: उच्च उपज - Co 0238, Co 86032",
+      "response_mr": "🌾 शिफारस वाण: उच्च उत्पादन - Co 0238, Co 86032",
+      "action_type": "advisory",
+      "is_active": true
+    }
+  ]
+}

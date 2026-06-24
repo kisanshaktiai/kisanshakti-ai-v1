@@ -1,0 +1,723 @@
+{
+  "language": "hi",
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "घर जाओ", "होम खोलो", "मुख्य पेज", "घर पर जाओ", "मुख्य स्क्रीन",
+        "होम पेज", "होम जाओ", "ghar jao", "home kholo", "main page",
+        "ghar dikhao", "mukhya page", "shuru mein jao"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.back",
+      "patterns": [
+        "पीछे जाओ", "वापस जाओ", "पिछला पेज", "वापस", "पीछे",
+        "पहले वाला पेज", "back jao", "peeche jao", "wapas jao",
+        "pichla page", "wapas", "peeche"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "back"
+    },
+    {
+      "id": "navigate.forward",
+      "patterns": [
+        "आगे जाओ", "अगला पेज", "आगे", "aage jao", "agla page"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "forward"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "मेरी जमीन दिखाओ", "खेत खोलो", "मेरे खेत", "भूमि प्रबंधन", "जमीन देखो",
+        "खेत दिखाओ", "सारी जमीन", "जमीन की लिस्ट", "मेरी जमीनें",
+        "meri zameen dikhao", "khet kholo", "mere khet", "jameen dikha",
+        "khetwa dikha", "sab jameen", "zameen list", "khait dikhao"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.add_land",
+      "patterns": [
+        "नई जमीन जोड़ो", "नया खेत जोड़ो", "जमीन रजिस्टर करो", "खेत डालो",
+        "नई जमीन डालो", "जमीन जोड़ो", "नया खेत बनाओ",
+        "nayi zameen jodo", "naya khet jodo", "jameen register karo",
+        "khet daalo", "nayi zameen daalo", "add land", "new land jodo"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands/add"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "मौसम दिखाओ", "मौसम कैसा है", "मौसम का पूर्वानुमान", "मौसम देखो", "आज का मौसम",
+        "बारिश होगी क्या", "तापमान बताओ", "मौसम कैसा रहेगा", "पानी गिरेगा क्या",
+        "mausam dikhao", "mausam kaisa hai", "mausam dekho", "aaj ka mausam",
+        "baarish hogi", "taapman batao", "mosam batao", "paani girega",
+        "weather dikhao", "weather batao"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": [
+        "कार्यक्रम दिखाओ", "मेरे काम", "समय सारिणी खोलो", "खेती का कार्यक्रम", "आज के काम",
+        "काम की लिस्ट", "शेड्यूल खोलो", "पेंडिंग काम", "आज क्या करना है",
+        "karyakram dikhao", "mere kaam", "schedule kholo", "aaj ke kaam",
+        "kaam ki list", "pending kaam", "task list", "kya karna hai aaj",
+        "kaam batao", "schedule dikhao"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": [
+        "चैट खोलो", "सहायक से बात करो", "एआई सहायक", "मदद करो", "सवाल पूछो",
+        "चैट शुरू करो", "बात करो", "असिस्टेंट खोलो", "AI से पूछो",
+        "chat kholo", "sahayk se baat karo", "ai assistant", "madad karo",
+        "sawal pucho", "assistant kholo", "baat karo", "ai se pucho"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/chat"
+    },
+    {
+      "id": "navigate.market",
+      "patterns": [
+        "बाजार खोलो", "बाजार दिखाओ", "उत्पाद खरीदो", "फसल बेचो", "बाजार के भाव",
+        "मंडी खोलो", "मंडी भाव", "दाम दिखाओ", "भाव बताओ",
+        "bazaar kholo", "market dikhao", "fasal becho", "bazaar ke bhaav",
+        "mandi kholo", "mandi bhaav", "daam dikhao", "bhaav batao",
+        "price dikhao", "crop price"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/market"
+    },
+    {
+      "id": "navigate.profile",
+      "patterns": [
+        "मेरी प्रोफाइल", "प्रोफाइल खोलो", "खाता सेटिंग", "उपयोगकर्ता प्रोफ़ाइल",
+        "मेरा खाता", "प्रोफाइल देखो", "सेटिंग खोलो",
+        "meri profile", "profile kholo", "khata setting", "mera khata",
+        "profile dekho", "setting kholo", "my profile", "account kholo"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/profile"
+    },
+    {
+      "id": "navigate.profile_edit",
+      "patterns": [
+        "प्रोफाइल एडिट करो", "प्रोफाइल बदलो", "प्रोफाइल अपडेट करो", "जानकारी बदलो",
+        "profile edit karo", "profile badlo", "profile update karo",
+        "details change karo"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/profile/edit"
+    },
+    {
+      "id": "navigate.community",
+      "patterns": [
+        "समुदाय खोलो", "सोशल फीड", "किसान समुदाय", "किसानों से जुड़ो",
+        "कम्युनिटी खोलो", "दूसरे किसान", "फार्मर नेटवर्क",
+        "samuday kholo", "social feed", "kisan samuday", "kisano se judo",
+        "community kholo", "farmer network", "other farmers"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/social"
+    },
+    {
+      "id": "navigate.analytics",
+      "patterns": [
+        "विश्लेषण दिखाओ", "रिपोर्ट देखो", "आंकड़े दिखाओ", "डाटा देखो",
+        "एनालिटिक्स खोलो", "परफॉर्मेंस देखो", "खेत का डाटा",
+        "vishleshan dikhao", "report dekho", "aankde dikhao", "data dekho",
+        "analytics kholo", "performance dekho", "khet ka data"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/analytics"
+    },
+    {
+      "id": "navigate.advisory",
+      "patterns": [
+        "सलाह दिखाओ", "एडवाइजरी खोलो", "खेती की सलाह", "फसल सलाह",
+        "सिफारिशें दिखाओ", "एक्सपर्ट सलाह", "कृषि सलाह",
+        "salah dikhao", "advisory kholo", "kheti ki salah", "fasal salah",
+        "recommendations dikhao", "expert salah", "krishi salah"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/advisory"
+    },
+    {
+      "id": "navigate.schemes",
+      "patterns": [
+        "योजनाएं दिखाओ", "सरकारी योजना", "सब्सिडी", "लाभ", "स्कीम खोलो",
+        "सरकार की स्कीम", "लोन स्कीम", "किसान योजना", "पीएम किसान",
+        "yojnaye dikhao", "sarkari yojana", "subsidy", "laabh", "scheme kholo",
+        "sarkar ki scheme", "loan scheme", "kisan yojana", "pm kisan"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/schemes"
+    },
+    {
+      "id": "navigate.videos",
+      "patterns": [
+        "वीडियो दिखाओ", "वीडियो देखो", "ट्यूटोरियल", "सीखो", "ट्रेनिंग वीडियो",
+        "खेती के वीडियो", "रील्स देखो",
+        "video dikhao", "video dekho", "tutorial", "seekho", "training video",
+        "kheti ke video", "reels dekho", "farming video"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/videos"
+    },
+    {
+      "id": "navigate.ndvi",
+      "patterns": [
+        "एनडीवीआई देखो", "सैटेलाइट व्यू", "फसल स्वास्थ्य", "खेत का नक्शा",
+        "सैटेलाइट इमेज", "क्रॉप मॉनिटरिंग",
+        "ndvi dekho", "satellite view", "fasal health", "khet ka naksha",
+        "satellite image", "crop monitoring"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/ndvi"
+    },
+    {
+      "id": "navigate.ai_dashboard",
+      "patterns": [
+        "एआई डैशबोर्ड", "स्मार्ट शेड्यूल", "बुद्धिमान शेड्यूल", "स्मार्ट प्लानिंग",
+        "ai dashboard", "smart schedule", "intelligent schedule"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/ai-dashboard"
+    },
+    {
+      "id": "navigate.notifications",
+      "patterns": [
+        "नोटिफिकेशन सेटिंग", "अलर्ट सेटिंग", "नोटिफिकेशन खोलो",
+        "notification setting", "alert setting", "notifications kholo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/notifications/settings"
+    },
+    {
+      "id": "navigate.menu",
+      "patterns": [
+        "मेनू खोलो", "मेनू दिखाओ", "मुख्य मेनू",
+        "menu kholo", "menu dikhao", "main menu"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "open_menu" }
+    },
+    {
+      "id": "navigate.close_menu",
+      "patterns": [
+        "मेनू बंद करो", "मेनू छुपाओ", "क्लोज करो",
+        "menu band karo", "menu chhupao", "close karo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "close_menu" }
+    },
+    {
+      "id": "action.scroll_down",
+      "patterns": [
+        "नीचे जाओ", "स्क्रॉल करो", "नीचे दिखाओ", "और दिखाओ",
+        "neeche jao", "scroll karo", "neeche dikhao", "aur dikhao", "down"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "scroll_down" }
+    },
+    {
+      "id": "action.scroll_up",
+      "patterns": [
+        "ऊपर जाओ", "ऊपर स्क्रॉल", "टॉप पर जाओ", "शुरू में जाओ",
+        "upar jao", "upar scroll", "top par jao", "shuru mein jao", "up"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "scroll_up" }
+    },
+    {
+      "id": "action.refresh",
+      "patterns": [
+        "रिफ्रेश करो", "फिर से लोड करो", "अपडेट करो", "दोबारा लोड",
+        "refresh karo", "phir se load karo", "update karo", "reload karo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "refresh" }
+    },
+    {
+      "id": "action.share",
+      "patterns": [
+        "शेयर करो", "भेजो", "साझा करो",
+        "share karo", "bhejo", "saajha karo", "send karo"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "ui_action",
+      "params": { "action": "share" }
+    },
+    {
+      "id": "action.logout",
+      "patterns": [
+        "लॉग आउट करो", "साइन आउट", "बाहर निकलो", "एग्जिट करो",
+        "log out karo", "sign out", "bahar niklo", "exit karo"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "logout", "requiresConfirmation": true }
+    },
+    {
+      "id": "action.select",
+      "patterns": [
+        "चुनो", "सेलेक्ट करो", "यह खोलो", "इसे चुनो", "टैप करो",
+        "chuno", "select karo", "yeh kholo", "ise chuno", "tap karo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "select" }
+    },
+    {
+      "id": "action.select_first",
+      "patterns": [
+        "पहला चुनो", "पहला वाला", "सबसे ऊपर वाला", "फर्स्ट वन",
+        "pehla chuno", "pehla wala", "sabse upar wala", "first one"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "select_first" }
+    },
+    {
+      "id": "action.select_last",
+      "patterns": [
+        "आखिरी चुनो", "आखिरी वाला", "सबसे नीचे वाला", "लास्ट वन",
+        "aakhiri chuno", "aakhiri wala", "sabse neeche wala", "last one"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "select_last" }
+    },
+    {
+      "id": "crud.create_land",
+      "patterns": [
+        "नई जमीन जोड़ो", "नया खेत जोड़ो", "नई भूमि जोड़ो", "जमीन रजिस्टर करो",
+        "खेत डालो", "नई जमीन", "जमीन ऐड करो",
+        "nayi zameen jodo", "naya khet jodo", "zameen register karo",
+        "khet daalo", "nayi zameen", "jameen add karo"
+      ],
+      "slots": [
+        { "name": "landName", "type": "string", "required": false },
+        { "name": "area", "type": "number", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/lands/add"
+    },
+    {
+      "id": "crud.view_land",
+      "patterns": [
+        "जमीन देखो", "खेत की जानकारी", "जमीन खोलो", "डिटेल्स दिखाओ",
+        "zameen dekho", "khet ki jaankari", "zameen kholo", "details dikhao"
+      ],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false },
+        { "name": "landName", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "view",
+      "params": { "entity": "land" }
+    },
+    {
+      "id": "crud.edit_land",
+      "patterns": [
+        "जमीन संपादित करो", "खेत अपडेट करो", "जमीन बदलो", "जमीन एडिट करो",
+        "zameen edit karo", "khet update karo", "zameen badlo"
+      ],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false },
+        { "name": "landName", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "edit",
+      "params": { "entity": "land" }
+    },
+    {
+      "id": "crud.delete_land",
+      "patterns": [
+        "जमीन हटाओ", "खेत डिलीट करो", "यह जमीन हटाओ", "जमीन मिटाओ",
+        "zameen hatao", "khet delete karo", "yeh zameen hatao", "zameen mitao"
+      ],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "land", "requiresConfirmation": true }
+    },
+    {
+      "id": "crud.create_task",
+      "patterns": [
+        "काम जोड़ो", "नया काम बनाओ", "रिमाइंडर जोड़ो", "टास्क ऐड करो",
+        "नया टास्क", "रिमाइंडर सेट करो", "काम डालो",
+        "kaam jodo", "naya kaam banao", "reminder jodo", "task add karo",
+        "naya task", "reminder set karo", "kaam daalo"
+      ],
+      "slots": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "date", "type": "date", "required": false },
+        { "name": "priority", "type": "enum", "required": false, "values": ["कम", "मध्यम", "अधिक"] }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "create",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.edit_task",
+      "patterns": [
+        "काम एडिट करो", "टास्क बदलो", "काम अपडेट करो", "रिशेड्यूल करो",
+        "kaam edit karo", "task badlo", "kaam update karo", "reschedule karo"
+      ],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "edit",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.complete_task",
+      "patterns": [
+        "काम पूरा हुआ", "टास्क कम्प्लीट", "हो गया", "काम खत्म", "डन",
+        "kaam poora hua", "task complete", "ho gaya", "kaam khatam", "done",
+        "finish", "complete karo"
+      ],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "complete",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.delete_task",
+      "patterns": [
+        "काम हटाओ", "टास्क डिलीट करो", "यह काम हटाओ", "काम मिटाओ",
+        "kaam hatao", "task delete karo", "yeh kaam hatao", "kaam mitao"
+      ],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "task", "requiresConfirmation": true }
+    },
+    {
+      "id": "form.next_field",
+      "patterns": [
+        "अगला फील्ड", "अगला", "आगे बढ़ो", "नेक्स्ट", "आगे जाओ", "अगला वाला",
+        "agla field", "agla", "aage badho", "next", "aage jao", "agla wala"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "next_field" }
+    },
+    {
+      "id": "form.previous_field",
+      "patterns": [
+        "पिछला फील्ड", "पिछला", "पीछे जाओ", "प्रीवियस", "पहले वाला",
+        "pichla field", "pichla", "peeche jao", "previous", "pehle wala"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "previous_field" }
+    },
+    {
+      "id": "form.clear_field",
+      "patterns": [
+        "फील्ड साफ करो", "इसे मिटाओ", "क्लियर करो", "खाली करो",
+        "field saaf karo", "ise mitao", "clear karo", "khali karo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "clear_field" }
+    },
+    {
+      "id": "form.save",
+      "patterns": [
+        "सेव करो", "सबमिट करो", "बचाओ", "परिवर्तन सहेजो", "जमा करो",
+        "रख दो", "सेव कर दो", "ओके", "डन",
+        "save karo", "submit karo", "bachao", "jama karo", "rakh do",
+        "save kar do", "ok", "done", "confirm karo"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "form_action",
+      "params": { "action": "save" }
+    },
+    {
+      "id": "form.cancel",
+      "patterns": [
+        "रद्द करो", "छोड़ो", "सेव मत करो", "कैंसल", "बंद करो", "मत करो",
+        "radd karo", "chhodo", "save mat karo", "cancel", "band karo", "mat karo"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "cancel" }
+    },
+    {
+      "id": "form.type_text",
+      "patterns": [
+        "टाइप करो", "लिखो", "दर्ज करो", "भरो",
+        "type karo", "likho", "darj karo", "bharo"
+      ],
+      "slots": [
+        { "name": "text", "type": "string", "required": true }
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "type_text" }
+    },
+    {
+      "id": "form.select_option",
+      "patterns": [
+        "ऑप्शन चुनो", "विकल्प चुनो", "यह चुनो",
+        "option chuno", "vikalp chuno", "yeh chuno"
+      ],
+      "slots": [
+        { "name": "option", "type": "string", "required": true }
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "select_option" }
+    },
+    {
+      "id": "confirm.yes",
+      "patterns": [
+        "हाँ", "ठीक है", "जी हां", "करो", "आगे बढ़ो", "हां जी", "ओके", "सही",
+        "haan", "theek hai", "ji haan", "karo", "aage badho", "haan ji", "ok", "sahi"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": true }
+    },
+    {
+      "id": "confirm.no",
+      "patterns": [
+        "नहीं", "रद्द करो", "मत करो", "छोड़ो", "ना", "नहीं जी", "रहने दो",
+        "nahi", "radd karo", "mat karo", "chhodo", "na", "nahi ji", "rehne do"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": false }
+    },
+    {
+      "id": "help.repeat",
+      "patterns": [
+        "दोहराओ", "फिर से बोलो", "फिर बताओ", "क्या बोला", "दोबारा बोलो",
+        "dohrao", "phir se bolo", "phir batao", "kya bola", "dobara bolo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "repeat" }
+    },
+    {
+      "id": "help.examples",
+      "patterns": [
+        "मदद", "क्या कर सकते हो", "उदाहरण दिखाओ", "कमांड बताओ", "क्या बोलूं",
+        "madad", "kya kar sakte ho", "udaharan dikhao", "command batao", "kya bolu",
+        "help", "help karo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "examples" }
+    },
+    {
+      "id": "help.slow_down",
+      "patterns": [
+        "धीरे बोलो", "धीमी गति", "आराम से बोलो", "स्लो बोलो",
+        "dheere bolo", "dheemi gati", "aaram se bolo", "slow bolo"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "slow_down" }
+    },
+    {
+      "id": "help.louder",
+      "patterns": [
+        "जोर से बोलो", "लाउड बोलो", "आवाज बढ़ाओ", "सुनाई नहीं दिया",
+        "jor se bolo", "loud bolo", "awaaz badhao", "sunai nahi diya"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "louder" }
+    },
+    {
+      "id": "help.stop_speaking",
+      "patterns": [
+        "रुको", "बंद करो", "चुप", "बस करो", "स्टॉप",
+        "ruko", "band karo", "chup", "bas karo", "stop"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "stop_speaking" }
+    },
+    {
+      "id": "accessibility.read_screen",
+      "patterns": [
+        "स्क्रीन पढ़ो", "क्या है स्क्रीन पर", "बताओ क्या दिख रहा", "पढ़कर सुनाओ",
+        "screen padho", "kya hai screen par", "batao kya dikh raha", "padhkar sunao"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "accessibility",
+      "params": { "action": "read_screen" }
+    },
+    {
+      "id": "accessibility.read_options",
+      "patterns": [
+        "ऑप्शन बताओ", "क्या ऑप्शन हैं", "विकल्प बताओ",
+        "option batao", "kya option hain", "vikalp batao"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "accessibility",
+      "params": { "action": "read_options" }
+    },
+    {
+      "id": "action.undo",
+      "patterns": [
+        "अनडू करो", "वापस लाओ", "पहले जैसा करो", "गलती सुधारो",
+        "undo karo", "wapas lao", "pehle jaisa karo", "galti sudharo"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "undo"
+    },
+    {
+      "id": "action.redo",
+      "patterns": [
+        "रीडू करो", "फिर से करो",
+        "redo karo", "phir se karo"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "redo"
+    },
+    {
+      "id": "emergency.call_support",
+      "patterns": [
+        "सपोर्ट से संपर्क", "मदद चाहिए", "इमरजेंसी", "जरूरी मदद", "हेल्पलाइन",
+        "support se sampark", "madad chahiye", "emergency", "jaruri madad", "helpline",
+        "customer care", "call karo"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "emergency",
+      "params": { "type": "support" }
+    },
+    {
+      "id": "query.weather_today",
+      "patterns": [
+        "आज मौसम कैसा है", "आज का मौसम", "क्या आज बारिश होगी", "आज का तापमान",
+        "aaj mausam kaisa hai", "aaj ka mausam", "kya aaj baarish hogi", "aaj ka taapman"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": { "type": "weather", "timeframe": "today" }
+    },
+    {
+      "id": "query.weather_week",
+      "patterns": [
+        "हफ्ते का मौसम", "इस हफ्ते मौसम", "सात दिन का मौसम", "वीक का मौसम",
+        "hafte ka mausam", "is hafte mausam", "saat din ka mausam", "week ka mausam"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": { "type": "weather", "timeframe": "week" }
+    }
+  ],
+  "examples": [
+    "घर जाओ",
+    "मेरी जमीन दिखाओ",
+    "मौसम कैसा है?",
+    "नई जमीन जोड़ो",
+    "सेव करो",
+    "वापस जाओ",
+    "मदद"
+  ]
+}

@@ -22,7 +22,7 @@ export interface FarmerData {
   location: string | null;
   
   // Authentication
-  pin: string | null;
+  pin?: string | null;
   pin_hash: string | null;
   pin_updated_at: string | null;
   failed_login_attempts: number | null;
@@ -150,6 +150,8 @@ export interface LandData {
   nitrogen_kg_per_ha: number | null;
   phosphorus_kg_per_ha: number | null;
   potassium_kg_per_ha: number | null;
+  soil_confidence_level: string | null;
+  soil_data_source: string | null;
   
   // Irrigation and water
   water_source: string | null;
@@ -166,6 +168,10 @@ export interface LandData {
   harvest_date: string | null;
   expected_harvest_date: string | null;
   
+  // Moisture
+  current_moisture_status: string | null;
+  last_moisture_update: string | null;
+  
   // Previous crop
   previous_crop: string | null;
   previous_crop_id: string | null;
@@ -177,6 +183,8 @@ export interface LandData {
   last_ndvi_calculation: string | null;
   last_ndvi_value: number | null;
   ndvi_thumbnail_url: string | null;
+  ndvi_geotiff_url: string | null;
+  ndvi_status: string | null;
   last_processed_at: string | null;
   
   // Tile mapping
@@ -204,6 +212,7 @@ export interface LandData {
 
 /**
  * Crop Schedules table - matches Supabase crop_schedules table exactly
+ * UPDATED: Full schema parity with Supabase (2025-12-09)
  */
 export interface CropScheduleData {
   // Core fields
@@ -227,7 +236,9 @@ export interface CropScheduleData {
   
   // Weather integration
   last_weather_update: string | null;
+  last_weather_check: string | null;
   weather_data: any;
+  weather_auto_update_enabled: boolean | null;
   
   // AI model information
   ai_model: string | null;
@@ -235,6 +246,125 @@ export interface CropScheduleData {
   // Status
   is_active: boolean | null;
   completed_at: string | null;
+  status: string | null;
+  
+  // Actual outcomes
+  actual_harvest_date: string | null;
+  actual_profit: number | null;
+  actual_total_cost: number | null;
+  actual_yield_quintals: number | null;
+  outcome_recorded_at: string | null;
+  
+  // Expected yields and revenue
+  expected_gross_revenue: number | null;
+  expected_market_price_per_quintal: number | null;
+  expected_net_profit: number | null;
+  expected_profit: number | null;
+  expected_yield_per_acre: number | null;
+  expected_yield_quintals: number | null;
+  
+  // Farm inputs - Fertilizers
+  fertilizer_k_kg: number | null;
+  fertilizer_n_kg: number | null;
+  fertilizer_p_kg: number | null;
+  organic_fertilizer_kg: number | null;
+  organic_manure_kg: number | null;
+  vermicompost_kg: number | null;
+  bio_fertilizer_units: number | null;
+  
+  // Farm inputs - Pesticides/Herbicides
+  bio_pesticide_ml: number | null;
+  fungicide_gm: number | null;
+  herbicide_ml: number | null;
+  insecticide_ml: number | null;
+  pesticide_requirements: any;
+  
+  // Farm inputs - Other
+  seed_quantity_kg: number | null;
+  pgr_hormone_ml: number | null;
+  growth_regulators: any;
+  organic_input_details: any;
+  
+  // Water and irrigation
+  irrigation_count_total: number | null;
+  water_per_irrigation_liters: number | null;
+  water_requirement_liters_total: number | null;
+  total_water_requirement_liters: number | null;
+  
+  // Cost breakdown
+  cost_by_category: any;
+  cost_by_stage: any;
+  total_estimated_cost: number | null;
+  total_labor_cost: number | null;
+  total_material_cost: number | null;
+  labor_rate_used: number | null;
+  
+  // Task tracking
+  tasks_completed_count: number | null;
+  tasks_on_time_count: number | null;
+  tasks_total_count: number | null;
+  total_duration_days: number | null;
+  stages_covered: any;
+  
+  // Location context
+  agro_climatic_zone: string | null;
+  district_name: string | null;
+  state_region: string | null;
+  taluka_name: string | null;
+  regional_dialect_zone: string | null;
+  
+  // Farming details
+  farming_type: string | null;
+  calculated_for_area_acres: number | null;
+  
+  // Suitability and quality
+  suitability_score: number | null;
+  suitability_warnings: any;
+  data_quality_score: number | null;
+  schedule_accuracy_score: number | null;
+  
+  // Yield optimization
+  yield_boosting_techniques: any;
+  yield_multiplier_target: number | null;
+  
+  // Product recommendations
+  products_recommended_count: number | null;
+  recommendation_order: string | null;
+  recommended_products: any;
+  
+  // Training data flags
+  is_training_candidate: boolean | null;
+  training_batch_id: string | null;
+  training_excluded_reason: string | null;
+  training_processed: boolean | null;
+  
+  // Farmer feedback
+  farmer_feedback: string | null;
+  farmer_rating: number | null;
+  
+  // Input data snapshots
+  input_land_coordinates: any;
+  input_soil_data: any;
+  input_weather_data: any;
+  
+  // Intercrop data
+  backdated_consent: boolean | null;
+  backdated_consent_at: string | null;
+  intercrop_name: string | null;
+  intercrop_variety: string | null;
+  intercrop_sowing_date: string | null;
+  intercrop_area_percent: number | null;
+  intercrop_2_name: string | null;
+  intercrop_2_variety: string | null;
+  intercrop_2_sowing_date: string | null;
+  intercrop_2_area_percent: number | null;
+  intercrop_3_name: string | null;
+  intercrop_3_variety: string | null;
+  intercrop_3_sowing_date: string | null;
+  intercrop_3_area_percent: number | null;
+  
+  // Additional metadata
+  metadata: any;
   
   // Timestamps
   created_at: string | null;
@@ -247,31 +377,44 @@ export interface CropScheduleData {
 
 /**
  * Schedule Tasks table - matches Supabase schedule_tasks table exactly
+ * UPDATED: Full schema parity with Supabase (2025-12-09)
  */
 export interface ScheduleTaskData {
   // Core fields
   id: string;
   schedule_id: string;
+  tenant_id: string;
+  farmer_id: string | null;
   
   // Task information
   task_name: string;
   task_type: string;
-  task_date: string;  // Note: Supabase uses task_date, not scheduled_date
+  task_date: string;
   task_description: string | null;
+  
+  // Task ordering and stages
+  days_from_sowing: number | null;
+  sequence_order: number | null;
+  stage_key: string | null;
+  stage_name: string | null;
+  stage_order: number | null;
   
   // Additional task details
   duration_hours: number | null;
   priority: string | null;
   weather_dependent: boolean | null;
+  detailed_steps: any;
   
   // Resources and cost
   resources: any;
   estimated_cost: number | null;
   currency: string | null;
+  water_required_liters: number | null;
   
   // Instructions
   instructions: string[] | null;
   precautions: string[] | null;
+  regional_terms: any;
   
   // Weather conditions
   ideal_weather: any;
@@ -293,12 +436,29 @@ export interface ScheduleTaskData {
   original_date_before_climate_adjust: string | null;
   climate_adjustment_reason: string | null;
   
+  // Product recommendations
+  product_recommendations: any;
+  product_type: string | null;
+  
+  // Yield impact
+  yield_boost_technique: string | null;
+  yield_impact: string | null;
+  yield_impact_details: any;
+  
+  // Skip penalty
+  skip_penalty: string | null;
+  skip_penalty_details: any;
+  
   // Language
   language: string | null;
   
   // Timestamps
   created_at: string | null;
   updated_at: string | null;
+  
+  // Sync metadata (local only)
+  lastModified?: number;
+  syncStatus?: 'synced' | 'pending' | 'conflict';
 }
 
 /**
@@ -362,6 +522,7 @@ export interface AIChatMessageData {
   // Feedback
   feedback_rating: number | null;
   feedback_text: string | null;
+  feedback_timestamp: string | null;
   
   // Attachments
   attachments: any;
@@ -383,8 +544,29 @@ export interface AIChatMessageData {
   ip_address: any;
   partition_key: number | null;
   
-  // Analysis
+  // Analysis & Intent Classification
   word_count: number | null;
+  inferred_intent: string | null;
+  intent_confidence: number | null;
+  
+  // Training & Quality fields (Supabase schema)
+  is_training_candidate: boolean | null;
+  human_verified: boolean | null;
+  correction_notes: string | null;
+  conversation_quality_score: number | null;
+  domain_tags: string[] | null;
+  complexity_level: string | null;
+  conversation_turn_number: number | null;
+  off_topic: boolean | null;
+  training_processed: boolean | null;
+  preprocessed_content: string | null;
+  excluded_reason: string | null;
+  agricultural_accuracy: number | null;
+  
+  // Decision Brain fields
+  decision_brain_source: boolean | null;
+  actions_returned: any;
+  actions_filtered_out: any;
   
   // Metadata
   metadata: any;
@@ -409,6 +591,8 @@ export interface CropData {
   
   // Localization
   label_local: string | null;
+  label_hi: string | null;
+  label_mr: string | null;
   local_name: string | null;
   
   // Visual
@@ -492,6 +676,110 @@ export interface FarmerAlertData {
 }
 
 /**
+ * Farmer Subscription - mirrors Supabase farmer_subscriptions table
+ */
+export interface FarmerSubscriptionData {
+  id: string;
+  farmer_id: string;
+  tenant_id: string;
+  tenant_subscription_id: string | null;
+  plan_id: string;
+  billing_interval: string | null;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  trial_end_date: string | null;
+  auto_renew: boolean | null;
+  payment_method: any;
+  metadata: any;
+  stripe_subscription_id: string | null;
+  stripe_customer_id: string | null;
+  paid_by_tenant: boolean | null;
+  paying_tenant_id: string | null;
+  grace_period_ends_at: string | null;
+  next_billing_date: string | null;
+  last_payment_date: string | null;
+  last_payment_amount: number | null;
+  payment_method_id: string | null;
+  cancellation_reason: string | null;
+  trial_days: number | null;
+  payment_provider: string | null;
+  payment_order_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lastModified: number;
+  syncStatus: 'synced' | 'pending' | 'conflict';
+}
+
+/**
+ * Subscription Plan - mirrors Supabase subscription_plans table
+ */
+export interface SubscriptionPlanData {
+  id: string;
+  name: string;
+  description: string | null;
+  plan_type: string;
+  price_monthly: number | null;
+  price_quarterly: number | null;
+  price_annually: number | null;
+  features: any;
+  limits: any;
+  is_active: boolean | null;
+  is_custom: boolean | null;
+  is_public: boolean | null;
+  tenant_id: string | null;
+  stripe_product_id: string | null;
+  stripe_price_id_monthly: string | null;
+  stripe_price_id_annually: string | null;
+  plan_category: string | null;
+  billing_interval: string | null;
+  trial_days: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lastModified: number;
+}
+
+/**
+ * Subscription Usage Log - mirrors Supabase subscription_usage_logs table
+ */
+export interface SubscriptionUsageLogData {
+  id: string;
+  tenant_id: string;
+  farmer_id: string | null;
+  subscription_id: string;
+  metric_name: string;
+  quantity: number;
+  unit: string | null;
+  usage_date: string | null;
+  billing_period_start: string | null;
+  billing_period_end: string | null;
+  metadata: any;
+  created_at: string | null;
+  lastModified: number;
+}
+
+/**
+ * Payment Record - mirrors Supabase payment_records table
+ */
+export interface PaymentRecordData {
+  id: string;
+  tenant_id: string;
+  invoice_id: string | null;
+  amount: number;
+  currency: string | null;
+  payment_method: string | null;
+  transaction_id: string | null;
+  gateway_response: any;
+  status: string;
+  processed_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  // Locally derived (joined via invoice → subscription → farmer)
+  farmer_id: string | null;
+  lastModified: number;
+}
+
+/**
  * Tenant Configuration (local cache only)
  */
 export interface TenantConfigData {
@@ -512,6 +800,14 @@ export interface SyncMetadata {
   pendingChanges: number;
   syncInProgress: boolean;
   schemaVersion: number;
+  // PHASE 3C: Per-entity incremental sync timestamps (ISO8601). Optional/additive.
+  // When present, the next sync sends `?since=<value>` and only downloads delta rows.
+  entityLastSync?: {
+    lands?: string | null;
+    schedules?: string | null;
+    tasks?: string | null;
+    proactive_alerts?: string | null;
+  };
 }
 
 // ============================================================================
@@ -559,7 +855,10 @@ interface KisanDB extends DBSchema {
     value: ScheduleTaskData;
     indexes: {
       'by-schedule': string;
+      'by-tenant': string;
+      'by-farmer': string;
       'by-date': string;
+      'by-sync-status': string;
     };
   };
   
@@ -621,6 +920,50 @@ interface KisanDB extends DBSchema {
     };
   };
   
+  // farmerSubscriptions table (maps to farmer_subscriptions in Supabase)
+  farmerSubscriptions: {
+    key: string;
+    value: FarmerSubscriptionData;
+    indexes: {
+      'by-farmer': string;
+      'by-tenant': string;
+      'by-status': string;
+      'by-sync-status': string;
+    };
+  };
+
+  // subscriptionPlans table (reference data)
+  subscriptionPlans: {
+    key: string;
+    value: SubscriptionPlanData;
+    indexes: {
+      'by-plan-type': string;
+      'by-active': string;
+    };
+  };
+
+  // subscriptionUsageLogs table
+  subscriptionUsageLogs: {
+    key: string;
+    value: SubscriptionUsageLogData;
+    indexes: {
+      'by-farmer': string;
+      'by-subscription': string;
+      'by-metric': string;
+    };
+  };
+
+  // paymentRecords table
+  paymentRecords: {
+    key: string;
+    value: PaymentRecordData;
+    indexes: {
+      'by-farmer': string;
+      'by-tenant': string;
+      'by-status': string;
+    };
+  };
+
   // tenantConfig table (local cache only)
   tenantConfig: {
     key: string;
@@ -630,6 +973,17 @@ interface KisanDB extends DBSchema {
     };
   };
   
+  // proactiveAlerts table (maps to proactive_alerts in Supabase)
+  proactiveAlerts: {
+    key: string;
+    value: ProactiveAlertData;
+    indexes: {
+      'by-farmer': string;
+      'by-status': string;
+      'by-created': string;
+    };
+  };
+
   // syncMetadata table (local only)
   syncMetadata: {
     key: string;
@@ -637,13 +991,41 @@ interface KisanDB extends DBSchema {
   };
 }
 
+/**
+ * Proactive Alerts - mirrors Supabase proactive_alerts table (subset, last 100 per farmer).
+ */
+export interface ProactiveAlertData {
+  id: string;
+  farmer_id: string;
+  tenant_id: string | null;
+  land_id: string | null;
+  alert_category: string;
+  priority: string;
+  title_mr: string | null;
+  title_hi: string | null;
+  title_en: string;
+  message_mr: string | null;
+  message_hi: string | null;
+  message_en: string;
+  action_text_mr: string | null;
+  action_text_hi: string | null;
+  action_text_en: string | null;
+  risk_score: number;
+  status: string;
+  created_at: string;
+  rule_id: string | null;
+  trigger_data: any;
+  decision_reasoning: string | null;
+  lastModified: number;
+}
+
 // ============================================================================
 // LOCAL DATABASE CLASS
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 6; // Incremented for schema improvements
-const SCHEMA_VERSION = 4; // Bumped for better schema validation
+const DB_VERSION = 12; // Bumped for proactive_alerts offline mirror (2026-04-20)
+const SCHEMA_VERSION = 10; // Bumped for proactive alerts parity
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -737,11 +1119,26 @@ class LocalDatabase {
           schedulesStore.createIndex('by-sync-status', 'syncStatus');
         }
 
-        // Create or update scheduleTasks store
+        // Create or update scheduleTasks store with full indexes
         if (!db.objectStoreNames.contains('scheduleTasks')) {
           const tasksStore = db.createObjectStore('scheduleTasks', { keyPath: 'id' });
           tasksStore.createIndex('by-schedule', 'schedule_id');
+          tasksStore.createIndex('by-tenant', 'tenant_id');
+          tasksStore.createIndex('by-farmer', 'farmer_id');
           tasksStore.createIndex('by-date', 'task_date');
+          tasksStore.createIndex('by-sync-status', 'syncStatus');
+        } else if (oldVersion < 8) {
+          // Add new indexes to existing store
+          const tasksStore = transaction.objectStore('scheduleTasks');
+          if (!tasksStore.indexNames.contains('by-tenant')) {
+            tasksStore.createIndex('by-tenant', 'tenant_id');
+          }
+          if (!tasksStore.indexNames.contains('by-farmer')) {
+            tasksStore.createIndex('by-farmer', 'farmer_id');
+          }
+          if (!tasksStore.indexNames.contains('by-sync-status')) {
+            tasksStore.createIndex('by-sync-status', 'syncStatus');
+          }
         }
 
         // Create aiChatSessions store (maps to ai_chat_sessions in Supabase)
@@ -792,6 +1189,51 @@ class LocalDatabase {
           const configStore = db.createObjectStore('tenantConfig', { keyPath: 'tenant_id' });
           configStore.createIndex('by-tenant', 'tenant_id');
           console.log('✅ [LocalDB] Created tenantConfig store for offline theme support');
+        }
+
+        // Create farmerSubscriptions store (offline subscription mirror)
+        if (!db.objectStoreNames.contains('farmerSubscriptions')) {
+          const subStore = db.createObjectStore('farmerSubscriptions', { keyPath: 'id' });
+          subStore.createIndex('by-farmer', 'farmer_id');
+          subStore.createIndex('by-tenant', 'tenant_id');
+          subStore.createIndex('by-status', 'status');
+          subStore.createIndex('by-sync-status', 'syncStatus');
+          console.log('✅ [LocalDB] Created farmerSubscriptions store');
+        }
+
+        // Create subscriptionPlans store (reference data)
+        if (!db.objectStoreNames.contains('subscriptionPlans')) {
+          const planStore = db.createObjectStore('subscriptionPlans', { keyPath: 'id' });
+          planStore.createIndex('by-plan-type', 'plan_type');
+          planStore.createIndex('by-active', 'is_active');
+          console.log('✅ [LocalDB] Created subscriptionPlans store');
+        }
+
+        // Create subscriptionUsageLogs store
+        if (!db.objectStoreNames.contains('subscriptionUsageLogs')) {
+          const usageStore = db.createObjectStore('subscriptionUsageLogs', { keyPath: 'id' });
+          usageStore.createIndex('by-farmer', 'farmer_id');
+          usageStore.createIndex('by-subscription', 'subscription_id');
+          usageStore.createIndex('by-metric', 'metric_name');
+          console.log('✅ [LocalDB] Created subscriptionUsageLogs store');
+        }
+
+        // Create paymentRecords store
+        if (!db.objectStoreNames.contains('paymentRecords')) {
+          const payStore = db.createObjectStore('paymentRecords', { keyPath: 'id' });
+          payStore.createIndex('by-farmer', 'farmer_id');
+          payStore.createIndex('by-tenant', 'tenant_id');
+          payStore.createIndex('by-status', 'status');
+          console.log('✅ [LocalDB] Created paymentRecords store');
+        }
+
+        // Create proactiveAlerts store (offline alerts mirror)
+        if (!db.objectStoreNames.contains('proactiveAlerts')) {
+          const paStore = db.createObjectStore('proactiveAlerts', { keyPath: 'id' });
+          paStore.createIndex('by-farmer', 'farmer_id');
+          paStore.createIndex('by-status', 'status');
+          paStore.createIndex('by-created', 'created_at');
+          console.log('✅ [LocalDB] Created proactiveAlerts store');
         }
 
         // Create syncMetadata store
@@ -1043,9 +1485,31 @@ class LocalDatabase {
     await this.db!.put('scheduleTasks', task);
   }
 
+  async saveTasks(tasks: ScheduleTaskData[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('scheduleTasks', 'readwrite');
+    for (const task of tasks) {
+      await tx.objectStore('scheduleTasks').put(task);
+    }
+    await tx.done;
+  }
+
   async getTasksBySchedule(scheduleId: string): Promise<ScheduleTaskData[]> {
     if (!this.db) await this.initialize();
     return await this.db!.getAllFromIndex('scheduleTasks', 'by-schedule', scheduleId);
+  }
+
+  async getTasksByFarmer(farmerId: string): Promise<ScheduleTaskData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('scheduleTasks', 'by-farmer', farmerId);
+  }
+
+  async getAllTasks(farmerId?: string): Promise<ScheduleTaskData[]> {
+    if (!this.db) await this.initialize();
+    if (farmerId) {
+      return await this.db!.getAllFromIndex('scheduleTasks', 'by-farmer', farmerId);
+    }
+    return await this.db!.getAll('scheduleTasks');
   }
 
   async getTaskById(id: string): Promise<ScheduleTaskData | undefined> {
@@ -1068,15 +1532,41 @@ class LocalDatabase {
 
   async getChatSessionsByFarmer(farmerId: string): Promise<AIChatSessionData[]> {
     if (!this.db) await this.initialize();
-    return await this.db!.getAllFromIndex('aiChatSessions', 'by-farmer', farmerId);
+    
+    // CRITICAL: Also filter by tenant_id for multi-tenant isolation
+    const tenantId = tenantIsolationService.getTenantId();
+    const allSessions = await this.db!.getAllFromIndex('aiChatSessions', 'by-farmer', farmerId);
+    
+    if (tenantId) {
+      return allSessions.filter(s => s.tenant_id === tenantId);
+    }
+    return allSessions;
   }
 
-  async getChatSessionsByLand(landId: string | null): Promise<AIChatSessionData[]> {
+  async getChatSessionsByLand(landId: string | null, farmerId?: string): Promise<AIChatSessionData[]> {
     if (!this.db) await this.initialize();
+    
+    // CRITICAL FIX: Get farmer and tenant context for proper isolation
+    const currentFarmerId = farmerId || tenantIsolationService.getUserId();
+    const tenantId = tenantIsolationService.getTenantId();
+    
+    let sessions: AIChatSessionData[];
+    
     if (landId) {
-      return await this.db!.getAllFromIndex('aiChatSessions', 'by-land', landId);
+      sessions = await this.db!.getAllFromIndex('aiChatSessions', 'by-land', landId);
+    } else {
+      // CRITICAL FIX: For general sessions (landId === null), we cannot use index lookup
+      // because IndexedDB doesn't index null values. Instead, filter all sessions manually.
+      const allSessions = await this.db!.getAll('aiChatSessions');
+      sessions = allSessions.filter(s => s.land_id === null || s.land_id === undefined);
     }
-    return [];
+    
+    // CRITICAL: Apply tenant and farmer isolation
+    return sessions.filter(s => {
+      const tenantMatch = !tenantId || s.tenant_id === tenantId;
+      const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
+      return tenantMatch && farmerMatch;
+    });
   }
 
   async saveChatMessage(message: Omit<AIChatMessageData, 'lastModified' | 'syncStatus'>): Promise<void> {
@@ -1090,15 +1580,101 @@ class LocalDatabase {
     await this.updatePendingCount();
   }
 
-  async getChatMessages(landId?: string | null): Promise<AIChatMessageData[]> {
+  async getChatMessages(landId?: string | null, farmerId?: string, tenantIdParam?: string): Promise<AIChatMessageData[]> {
     if (!this.db) await this.initialize();
-    // Get all messages and filter if needed
-    const allMessages = await this.db!.getAll('aiChatMessages');
-    if (landId) {
-      // Filter by land_context if available
-      return allMessages.filter(m => m.land_context?.id === landId);
+    
+    // CRITICAL FIX: Get farmer and tenant IDs from context if not provided
+    const currentFarmerId = farmerId || tenantIsolationService.getUserId();
+    const currentTenantId = tenantIdParam || tenantIsolationService.getTenantId();
+    
+    if (!currentFarmerId) {
+      console.warn('⚠️ [LocalDB] getChatMessages called without farmer context');
     }
-    return allMessages;
+    if (!currentTenantId) {
+      console.warn('⚠️ [LocalDB] getChatMessages called without tenant context');
+    }
+    
+    // =========================================================================
+    // CRITICAL FIX (2026-01-14): Multi-tenant isolation in message retrieval
+    // All messages MUST be filtered by tenant_id AND farmer_id
+    // =========================================================================
+    
+    // Get all messages and apply strict tenant + farmer isolation
+    const allMessages = await this.db!.getAll('aiChatMessages');
+    const isolatedMessages = allMessages.filter(m => {
+      const tenantMatch = !currentTenantId || m.tenant_id === currentTenantId;
+      const farmerMatch = !currentFarmerId || m.farmer_id === currentFarmerId;
+      return tenantMatch && farmerMatch;
+    });
+    
+    if (isolatedMessages.length === 0) {
+      console.log(`📱 [LocalDB] No messages found for tenant ${currentTenantId}, farmer ${currentFarmerId} in IndexedDB`);
+      return [];
+    }
+    
+    // Get sessions to determine land association - also with tenant/farmer isolation
+    const allSessions = await this.db!.getAll('aiChatSessions');
+    const relevantSessions = allSessions.filter(s => {
+      const tenantMatch = !currentTenantId || s.tenant_id === currentTenantId;
+      const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
+      
+      if (!tenantMatch || !farmerMatch) return false;
+      
+      if (landId === null || landId === undefined) {
+        // General chat: sessions without land_id
+        return s.land_id === null || s.land_id === undefined;
+      }
+      // Land-specific: sessions with matching land_id
+      return s.land_id === landId;
+    });
+    
+    const sessionIds = new Set(relevantSessions.map(s => s.id));
+    
+    // Filter messages by session, with fallback for messages that may have missing session links
+    const sessionFilteredMessages = isolatedMessages.filter(m => sessionIds.has(m.session_id));
+    
+    // CRITICAL FIX: SMART CONTENT-BASED FILTERING
+    const filteredMessages = sessionFilteredMessages.filter(msg => {
+      // Filter 1: Skip empty content messages
+      if (!msg.content || msg.content.trim().length === 0) {
+        return false;
+      }
+      
+      const content = msg.content.trim();
+      
+      // Filter 2: Skip ACTUAL system prompts (NOT farmer messages)
+      // These are internal prompts sent TO the LLM, not real farmer questions
+      const isSystemPrompt = 
+        content.startsWith('Based on the ') ||
+        content.startsWith('Based on ') && content.includes('provide') ||
+        content.startsWith('🧠 DECISION BRAIN OUTPUT') ||
+        content.startsWith('🧠') ||
+        content.startsWith('[PREVIOUS_RECOMMENDATIONS') ||
+        content.startsWith('Analyze this') ||
+        content.startsWith('Provide ') ||
+        content.includes('DO NOT CHANGE THE FORMAT') ||
+        content.includes('DECISION BRAIN OUTPUT');
+      
+      if (msg.role === 'user' && isSystemPrompt) {
+        return false;
+      }
+      
+      // Filter 3: Skip system acknowledgment messages
+      if (content === 'Response generated' || content === 'Processing...') {
+        return false;
+      }
+      
+      // Filter 4: Skip minimal decision brain responses (< 20 chars)
+      if (msg.role === 'assistant' && msg.decision_brain_source === true && content.length < 20) {
+        return false;
+      }
+      
+      // KEEP: All other messages including real farmer questions
+      return true;
+    });
+    
+    console.log(`📱 [LocalDB] getChatMessages: Found ${filteredMessages.length}/${sessionFilteredMessages.length} displayable messages for tenant ${currentTenantId}, farmer ${currentFarmerId} and land ${landId || 'general'}`);
+    return filteredMessages;
   }
 
   async getChatMessagesBySession(sessionId: string): Promise<AIChatMessageData[]> {
@@ -1317,10 +1893,11 @@ class LocalDatabase {
     console.log('🗑️ [LocalDB] Clearing all data stores...');
     
     // List of all object stores that may exist
-    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig'> = [
+    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig' | 'farmerSubscriptions' | 'subscriptionPlans' | 'subscriptionUsageLogs' | 'paymentRecords'> = [
       'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 
       'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 
-      'farmerAlerts', 'tenantConfig'
+      'farmerAlerts', 'tenantConfig',
+      'farmerSubscriptions', 'subscriptionPlans', 'subscriptionUsageLogs', 'paymentRecords'
     ];
     
     // Get list of existing stores from the database
@@ -1436,6 +2013,108 @@ class LocalDatabase {
       await tx.done;
       console.log('🗑️ [LocalDB] Cleared all tenant config caches');
     }
+  }
+
+  // ========== SUBSCRIPTION OPERATIONS ==========
+
+  async saveFarmerSubscriptions(subs: Omit<FarmerSubscriptionData, 'lastModified' | 'syncStatus'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('farmerSubscriptions', 'readwrite');
+    for (const s of subs) {
+      await tx.objectStore('farmerSubscriptions').put({
+        ...s,
+        lastModified: Date.now(),
+        syncStatus: 'synced',
+      });
+    }
+    await tx.done;
+  }
+
+  async getActiveSubscription(farmerId: string): Promise<FarmerSubscriptionData | undefined> {
+    if (!this.db) await this.initialize();
+    const all = await this.db!.getAllFromIndex('farmerSubscriptions', 'by-farmer', farmerId);
+    // Prefer 'active', then 'trial', then 'grace_period'
+    const priority = ['active', 'trial', 'grace_period'];
+    for (const status of priority) {
+      const match = all.find(s => s.status === status);
+      if (match) return match;
+    }
+    return all[0];
+  }
+
+  async getFarmerSubscriptions(farmerId: string): Promise<FarmerSubscriptionData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('farmerSubscriptions', 'by-farmer', farmerId);
+  }
+
+  async saveSubscriptionPlans(plans: Omit<SubscriptionPlanData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('subscriptionPlans', 'readwrite');
+    for (const p of plans) {
+      await tx.objectStore('subscriptionPlans').put({ ...p, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getPlans(): Promise<SubscriptionPlanData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAll('subscriptionPlans');
+  }
+
+  async getPlanById(planId: string): Promise<SubscriptionPlanData | undefined> {
+    if (!this.db) await this.initialize();
+    return await this.db!.get('subscriptionPlans', planId);
+  }
+
+  async saveUsageLogs(logs: Omit<SubscriptionUsageLogData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('subscriptionUsageLogs', 'readwrite');
+    for (const l of logs) {
+      await tx.objectStore('subscriptionUsageLogs').put({ ...l, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getUsageLogs(farmerId: string): Promise<SubscriptionUsageLogData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('subscriptionUsageLogs', 'by-farmer', farmerId);
+  }
+
+  async savePaymentRecords(records: Omit<PaymentRecordData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('paymentRecords', 'readwrite');
+    for (const r of records) {
+      await tx.objectStore('paymentRecords').put({ ...r, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getPaymentRecords(farmerId: string): Promise<PaymentRecordData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('paymentRecords', 'by-farmer', farmerId);
+  }
+
+  // ========== PROACTIVE ALERTS OPERATIONS ==========
+
+  async saveProactiveAlerts(alerts: Omit<ProactiveAlertData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('proactiveAlerts', 'readwrite');
+    for (const a of alerts) {
+      await tx.objectStore('proactiveAlerts').put({ ...a, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getProactiveAlerts(farmerId: string, includeHistory = false): Promise<ProactiveAlertData[]> {
+    if (!this.db) await this.initialize();
+    const all = await this.db!.getAllFromIndex('proactiveAlerts', 'by-farmer', farmerId);
+    const filtered = includeHistory
+      ? all
+      : all.filter(a => ['PENDING', 'DELIVERED', 'SEEN'].includes(a.status));
+    // Sort newest first
+    return filtered.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }
 }
 

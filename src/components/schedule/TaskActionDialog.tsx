@@ -28,12 +28,12 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
   const [selectedAction, setSelectedAction] = useState<'completed' | 'skipped' | null>(null);
 
   const taskTypeConfig = {
-    irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-50' },
-    fertilizer: { icon: Leaf, color: 'text-green-500', bg: 'bg-green-50' },
-    pesticide: { icon: Bug, color: 'text-orange-500', bg: 'bg-orange-50' },
-    weeding: { icon: Scissors, color: 'text-purple-500', bg: 'bg-purple-50' },
-    harvest: { icon: Package, color: 'text-amber-500', bg: 'bg-amber-50' },
-    other: { icon: AlertCircle, color: 'text-gray-500', bg: 'bg-gray-50' }
+    irrigation: { icon: Droplets, color: 'text-info', bg: 'bg-info-soft' },
+    fertilizer: { icon: Leaf, color: 'text-success', bg: 'bg-success-soft' },
+    pesticide: { icon: Bug, color: 'text-warning', bg: 'bg-warning-soft' },
+    weeding: { icon: Scissors, color: 'text-primary', bg: 'bg-primary-soft' },
+    harvest: { icon: Package, color: 'text-warning', bg: 'bg-warning-soft' },
+    other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted' }
   };
 
   const config = taskTypeConfig[task?.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
@@ -60,7 +60,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
             <span className="text-foreground">{t('schedule.taskDetails')}</span>
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Update task status and add notes
+            {t('schedule.dialog.update_status')}
           </DialogDescription>
         </DialogHeader>
 
@@ -85,7 +85,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
           {/* Resources */}
           {task.required_resources && (
             <div className="bg-muted/30 p-3 rounded-lg border border-border/30">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Resources Needed:</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">{t('schedule.dialog.resources_needed_label')}</p>
               <p className="text-sm text-foreground">{task.required_resources}</p>
             </div>
           )}
@@ -121,10 +121,10 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
               {selectedAction && (
                 <div className="space-y-2 animate-in slide-in-from-top-2">
                   <label className="text-sm font-medium text-foreground">
-                    Notes <span className="text-muted-foreground">(Optional)</span>
+                    {t('schedule.dialog.notes_label')} <span className="text-muted-foreground">{t('schedule.dialog.notes_optional')}</span>
                   </label>
                   <Textarea
-                    placeholder="Add any notes about this task..."
+                    placeholder={t('schedule.dialog.notes_placeholder')}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     className="resize-none bg-background/60 border-border/50"

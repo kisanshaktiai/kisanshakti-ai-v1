@@ -35,4 +35,24 @@
   Header set X-Content-Type-Options "nosniff"
   Header set X-Frame-Options "SAMEORIGIN"
   Header set X-XSS-Protection "1; mode=block"
+
+  # Manifest MIME type
+  <FilesMatch "\.(webmanifest|json)$">
+    Header set Content-Type "application/manifest+json"
+  </FilesMatch>
+
+  # Service Worker and JS files
+  <FilesMatch "^(sw\.js|registerSW\.js)$">
+    Header set Content-Type "text/javascript"
+    Header set Service-Worker-Allowed "/"
+  </FilesMatch>
+
+  # APK downloads
+  <FilesMatch "\.apk$">
+    ForceType application/vnd.android.package-archive
+    Header set Content-Disposition "attachment"
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET,OPTIONS"
+    Header set Access-Control-Allow-Headers "Origin,Content-Type,Accept"
+  </FilesMatch>
 </IfModule>

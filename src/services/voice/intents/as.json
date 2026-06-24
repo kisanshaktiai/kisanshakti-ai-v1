@@ -1,0 +1,43 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "ঘৰ দেখুৱাওক",
+        "মুখ্য পৃষ্ঠা",
+        "ঘৰলৈ যাওক",
+        "ডেশ্ববৰ্ড খোলক"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "মোৰ মাটি",
+        "মাটি দেখুৱাওক",
+        "খেতি দেখুৱাওক",
+        "মোৰ খেতিবোৰ"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "বতৰ দেখুৱাওক",
+        "বতৰ কেনে আছে",
+        "বৰষুণ হ'ব",
+        "আজিৰ বতৰ"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    }
+  ]
+}

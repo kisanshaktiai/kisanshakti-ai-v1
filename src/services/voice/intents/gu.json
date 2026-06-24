@@ -1,0 +1,43 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "ઘર બતાવો",
+        "મુખ્ય પૃષ્ઠ",
+        "ઘર જાઓ",
+        "ડેશબોર્ડ ખોલો"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "મારી જમીન",
+        "જમીન બતાવો",
+        "ખેતર બતાવો",
+        "મારા ખેતરો"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "હવામાન બતાવો",
+        "હવામાન કેવું છે",
+        "વરસાદ આવશે",
+        "આજનું હવામાન"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    }
+  ]
+}

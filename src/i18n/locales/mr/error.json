@@ -1,0 +1,54 @@
+{
+  "__meta": {
+    "page": "error",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "error": {
+    "notFound": {
+      "title": "अरेरे! पृष्ठ सापडले नाही",
+      "message": "तुम्ही शोधत असलेले पृष्ठ अस्तित्वात नाही"
+    },
+    "boundary": {
+      "something_went_wrong": "अरेरे! काहीतरी चूक झाली",
+      "sorry_inconvenience": "गैरसोयीबद्दल क्षमस्व. कृपया पृष्ठ रीफ्रेश करण्याचा प्रयत्न करा.",
+      "error_details": "त्रुटी तपशील",
+      "refresh_page": "पृष्ठ रीफ्रेश करा"
+    },
+    "network": {
+      "no_connection": "इंटरनेट कनेक्शन नाही",
+      "check_connection": "कृपया तुमचे कनेक्शन तपासा आणि पुन्हा प्रयत्न करा",
+      "offline_mode": "ऑफलाइन मोडमध्ये काम करत आहे"
+    },
+    "auth": {
+      "unauthorized": "अनधिकृत प्रवेश",
+      "session_expired": "तुमचे सत्र संपले आहे",
+      "login_again": "कृपया पुन्हा लॉगिन करा"
+    },
+    "data": {
+      "load_failed": "डेटा लोड करण्यात अयशस्वी",
+      "save_failed": "डेटा जतन करण्यात अयशस्वी",
+      "delete_failed": "हटवण्यात अयशस्वी",
+      "try_again": "कृपया पुन्हा प्रयत्न करा"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "What's the error",
+      "Why did it fail",
+      "Show error details"
+    ],
+    "voice_examples_hi": [
+      "त्रुटि क्या है",
+      "यह क्यों विफल हुआ",
+      "त्रुटि विवरण दिखाएं"
+    ],
+    "voice_examples_mr": [
+      "त्रुटी काय आहे",
+      "हे का अपयशी झाले",
+      "त्रुटी तपशील दाखवा"
+    ]
+  }
+}

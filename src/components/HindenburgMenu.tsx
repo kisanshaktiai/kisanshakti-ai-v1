@@ -1,15 +1,27 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
+import { toast } from '@/hooks/use-toast';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import {
   Home, MapPin, Cloud, Users, Bot, TrendingUp, User,
   Calendar, FileText, Award, Bell, Settings, HelpCircle,
   Wallet, BarChart3, Sprout, Tractor, Droplets, Sun,
-  MessageSquare, Store, BookOpen, Shield, Phone, Mail
+  MessageSquare, Store, BookOpen, Shield, Phone, Mail, Crown
 } from 'lucide-react';
+
+// Map menu paths to entitlement feature codes (SSOT: resolve_farmer_entitlements)
+const PATH_TO_ENTITLEMENT: Record<string, string> = {
+  '/app/chat': 'ai_chat',
+  '/app/ai-chat': 'ai_chat',
+  '/app/market': 'marketplace',
+  '/app/weather': 'weather_forecast',
+  '/app/community': 'community',
+  '/app/ndvi': 'ndvi',
+};
 
 interface MenuItemType {
   id: string;
@@ -19,44 +31,45 @@ interface MenuItemType {
   category: string;
   isNew?: boolean;
   isPremium?: boolean;
+  comingSoon?: boolean;
 }
 
 const defaultMenuItems: MenuItemType[] = [
-  // Core Features
-  { id: 'home', icon: Home, labelKey: 'menu.home', path: '/app', category: 'main' },
+  // Core Features - All routes exist
+  { id: 'home', icon: Home, labelKey: 'menu.home', path: '/app/home', category: 'main' },
   { id: 'lands', icon: MapPin, labelKey: 'menu.lands', path: '/app/lands', category: 'main' },
   { id: 'weather', icon: Cloud, labelKey: 'menu.weather', path: '/app/weather', category: 'main' },
   { id: 'schedule', icon: Calendar, labelKey: 'menu.schedule', path: '/app/schedule', category: 'main' },
   
-  // AI & Analytics
+  // AI & Analytics - All routes exist
   { id: 'ai-chat', icon: Bot, labelKey: 'menu.aiChat', path: '/app/chat', category: 'ai', isNew: true },
   { id: 'analytics', icon: BarChart3, labelKey: 'menu.analytics', path: '/app/analytics', category: 'ai' },
   { id: 'advisory', icon: Sprout, labelKey: 'menu.advisory', path: '/app/advisory', category: 'ai' },
+  { id: 'crop-growth', icon: Sprout, labelKey: 'menu.cropGrowth', path: '/app/crop-growth', category: 'ai', isNew: true },
   
   // Community & Market
-  { id: 'community', icon: Users, labelKey: 'menu.community', path: '/app/social', category: 'social' },
+  { id: 'community', icon: Users, labelKey: 'menu.community', path: '/app/community', category: 'social' },
   { id: 'market', icon: Store, labelKey: 'menu.market', path: '/app/market', category: 'social' },
-  { id: 'messages', icon: MessageSquare, labelKey: 'menu.messages', path: '/app/messages', category: 'social' },
+  { id: 'videos', icon: MessageSquare, labelKey: 'menu.videos', path: '/app/videos', category: 'social' },
   
   // Finance & Resources
-  { id: 'finance', icon: Wallet, labelKey: 'menu.finance', path: '/app/finance', category: 'resources', isPremium: true },
   { id: 'schemes', icon: Shield, labelKey: 'menu.schemes', path: '/app/schemes', category: 'resources' },
-  { id: 'resources', icon: BookOpen, labelKey: 'menu.resources', path: '/app/resources', category: 'resources' },
+  { id: 'finance', icon: Wallet, labelKey: 'menu.finance', path: '/app/finance', category: 'resources', isPremium: true, comingSoon: true },
   
-  // Farm Management
-  { id: 'machinery', icon: Tractor, labelKey: 'menu.machinery', path: '/app/machinery', category: 'farm' },
-  { id: 'irrigation', icon: Droplets, labelKey: 'menu.irrigation', path: '/app/irrigation', category: 'farm' },
-  { id: 'solar', icon: Sun, labelKey: 'menu.solar', path: '/app/solar', category: 'farm', isNew: true },
+  // Farm Management - Coming Soon
+  { id: 'ndvi', icon: Tractor, labelKey: 'menu.ndvi', path: '/app/ndvi', category: 'farm' },
+  { id: 'irrigation', icon: Droplets, labelKey: 'menu.irrigation', path: '/app/irrigation', category: 'farm', comingSoon: true },
+  { id: 'solar', icon: Sun, labelKey: 'menu.solar', path: '/app/solar', category: 'farm', isNew: true, comingSoon: true },
   
   // Account & Settings
   { id: 'profile', icon: User, labelKey: 'menu.profile', path: '/app/profile', category: 'account' },
-  { id: 'achievements', icon: Award, labelKey: 'menu.achievements', path: '/app/achievements', category: 'account' },
-  { id: 'notifications', icon: Bell, labelKey: 'menu.notifications', path: '/app/notifications', category: 'account' },
-  { id: 'settings', icon: Settings, labelKey: 'menu.settings', path: '/app/settings', category: 'account' },
+  { id: 'subscription', icon: Crown, labelKey: 'menu.subscription', path: '/app/subscription', category: 'account', isNew: true },
+  { id: 'notifications', icon: Bell, labelKey: 'menu.notifications', path: '/app/notifications/settings', category: 'account' },
+  { id: 'settings', icon: Settings, labelKey: 'menu.settings', path: '/app/profile', category: 'account' },
   
-  // Support
-  { id: 'help', icon: HelpCircle, labelKey: 'menu.help', path: '/app/help', category: 'support' },
-  { id: 'contact', icon: Phone, labelKey: 'menu.contact', path: '/app/contact', category: 'support' },
+  // Support - Coming Soon
+  { id: 'help', icon: HelpCircle, labelKey: 'menu.help', path: '/app/help', category: 'support', comingSoon: true },
+  { id: 'contact', icon: Phone, labelKey: 'menu.contact', path: '/app/contact', category: 'support', comingSoon: true },
 ];
 
 interface HindenburgMenuProps {
@@ -67,10 +80,11 @@ interface HindenburgMenuProps {
 export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [searchQuery, setSearchQuery] = useState('');
   const [menuItems, setMenuItems] = useState(defaultMenuItems);
   const [activeCategory, setActiveCategory] = useState('all');
+  const { isReady, canUse, farmer } = useEntitlements();
 
   // Load tenant-specific menu items from database
   useEffect(() => {
@@ -79,8 +93,35 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
     setMenuItems(defaultMenuItems);
   }, [tenant]);
 
-  const handleItemClick = (path: string) => {
-    navigate(path);
+  const isItemLocked = (path: string): boolean => {
+    if (!isReady) return false;
+    const code = PATH_TO_ENTITLEMENT[path];
+    if (!code) return false;
+    return !canUse(code).allowed;
+  };
+
+  const handleItemClick = (item: MenuItemType) => {
+    if (item.comingSoon) {
+      toast({
+        title: t('common.comingSoon', 'Coming Soon'),
+        description: t('common.featureInDevelopment', 'This feature is currently in development'),
+      });
+      return;
+    }
+    // Plan-gating: locked items route to subscription page instead of feature.
+    if (isItemLocked(item.path)) {
+      toast({
+        title: t('subscription.gate.feature_disabled.title', 'Premium feature'),
+        description: t('subscription.gate.feature_disabled.body', {
+          defaultValue: 'Upgrade your plan to unlock this feature.',
+          plan: farmer?.plan_name ?? 'Free',
+        }),
+      });
+      navigate('/app/subscription');
+      onClose();
+      return;
+    }
+    navigate(item.path);
     onClose();
   };
 
@@ -175,27 +216,41 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
           <div className="grid grid-cols-4 gap-3">
             {filteredItems.map((item) => {
               const Icon = item.icon;
+              const locked = isItemLocked(item.path);
               return (
                 <button
                   key={item.id}
-                  onClick={() => handleItemClick(item.path)}
+                  onClick={() => handleItemClick(item)}
                   className={cn(
                     "relative flex flex-col items-center justify-center p-3 rounded-2xl",
                     "glassmorphism-subtle hover:glassmorphism",
                     "transition-all duration-300 group",
                     "hover:scale-105 active:scale-95",
-                    "min-h-[90px]"
+                    "min-h-[90px]",
+                    item.comingSoon && "opacity-60",
+                    locked && "opacity-75"
                   )}
+                  aria-disabled={locked}
                 >
                   {/* Badge */}
-                  {item.isNew && (
+                  {item.isNew && !item.comingSoon && !locked && (
                     <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[8px] font-bold bg-accent text-white rounded-full animate-pulse">
                       NEW
                     </span>
                   )}
-                  {item.isPremium && (
+                  {item.isPremium && !locked && (
                     <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[8px] font-bold bg-gradient-to-r from-primary to-accent text-white rounded-full">
                       PRO
+                    </span>
+                  )}
+                  {item.comingSoon && (
+                    <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[8px] font-bold bg-muted text-muted-foreground rounded-full">
+                      SOON
+                    </span>
+                  )}
+                  {locked && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
+                      <Lock className="w-2.5 h-2.5 text-muted-foreground" />
                     </span>
                   )}
 
@@ -204,13 +259,22 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
                     "w-12 h-12 rounded-xl flex items-center justify-center",
                     "bg-gradient-to-br from-primary/10 to-accent/10",
                     "group-hover:from-primary/20 group-hover:to-accent/20",
-                    "transition-all duration-300"
+                    "transition-all duration-300",
+                    item.comingSoon && "from-muted/20 to-muted/10 group-hover:from-muted/20 group-hover:to-muted/10",
+                    locked && "grayscale"
                   )}>
-                    <Icon className="w-6 h-6 text-primary group-hover:scale-110 transition-transform" />
+                    <Icon className={cn(
+                      "w-6 h-6 group-hover:scale-110 transition-transform",
+                      item.comingSoon ? "text-muted-foreground" : "text-primary"
+                    )} />
                   </div>
 
+
                   {/* Label */}
-                  <span className="text-[10px] mt-2 font-medium text-center text-foreground/70 group-hover:text-foreground transition-colors line-clamp-2">
+                  <span className={cn(
+                    "text-[10px] mt-2 font-medium text-center transition-colors line-clamp-2",
+                    item.comingSoon ? "text-muted-foreground" : "text-foreground/70 group-hover:text-foreground"
+                  )}>
                     {t(item.labelKey)}
                   </span>
                 </button>
@@ -228,7 +292,7 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border/10 glassmorphism-subtle">
           <p className="text-[10px] text-center text-muted-foreground/50">
-            {tenant?.whiteLabel?.brand_identity?.tagline || t('app.tagline')}
+            {(tenant?.branding?.tagline && tenant.branding.tagline.trim()) || t('app.tagline')}
           </p>
         </div>
       </div>

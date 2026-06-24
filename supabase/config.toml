@@ -1,7 +1,8 @@
 project_id = "qfklkkzxemsbeniyugiz"
 
-[functions.generate-manifest]
+[functions.app-version]
 verify_jwt = false
+
 
 [functions.tenant-config]
 verify_jwt = false
@@ -10,6 +11,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ai-agriculture-chat]
+verify_jwt = false
+
+[functions.ai-crop-scan]
 verify_jwt = true
 
 [functions.google-maps-config]
@@ -21,14 +25,50 @@ verify_jwt = false
 [functions.lands-api]
 verify_jwt = false
 
-[functions.ai-smart-schedule]
-verify_jwt = true
+[functions.schedules-api]
+verify_jwt = false
 
-[functions.ai-schedule-monitor]
-verify_jwt = true
+[functions.ai-smart-schedule]
+verify_jwt = false
 
 [functions.ai-marketing-insights]
 verify_jwt = true
 
-[functions.ai-schedule-climate-monitor]
+[functions.voice-navigation-agent]
 verify_jwt = true
+
+[functions.text-to-speech]
+verify_jwt = false
+
+[functions.ai-general-chat]
+verify_jwt = false
+
+[functions.translate-text]
+verify_jwt = false
+
+[functions.transcribe-voice]
+verify_jwt = false
+
+[functions.community-tts]
+verify_jwt = false
+
+[functions.market-price-intelligence]
+verify_jwt = false
+
+
+[functions.seed-decision-rules]
+verify_jwt = false
+
+[functions.proactive-evaluator]
+verify_jwt = false
+
+[functions.proactive-question-seed]
+verify_jwt = false
+
+
+[functions.community-caption-suggest]
+verify_jwt = false
+
+[functions.community-moderate]
+verify_jwt = false
+

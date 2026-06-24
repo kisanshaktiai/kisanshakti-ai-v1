@@ -1,0 +1,43 @@
+{
+  "__meta": {
+    "page": "advisory",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "advisory": {
+    "title": "Advisory",
+    "subtitle": "Expert farming guidance",
+    "irrigation_advisory": "Irrigation Advisory",
+    "irrigation_content": "Light irrigation recommended for wheat crop in next 2 days",
+    "pest_alert": "Pest Alert",
+    "pest_content": "Aphid attack reported in nearby areas. Apply preventive measures",
+    "market_update": "Market Update",
+    "market_content": "Good time to sell wheat. Prices expected to drop next week",
+    "hours_ago": "{{count}} hours ago",
+    "days_ago": "{{count}} days ago",
+    "type": {
+      "info": "Information",
+      "warning": "Warning",
+      "success": "Success",
+      "urgent": "Urgent"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show advisory",
+      "Check farming advice",
+      "What are the alerts"
+    ],
+    "voice_examples_hi": [
+      "सलाह दिखाएं",
+      "खेती सलाह जांचें",
+      "अलर्ट क्या हैं"
+    ],
+    "voice_examples_mr": [
+      "सल्ला दाखवा",
+      "शेती सल्ला तपासा",
+      "अलर्ट काय आहेत"
+    ]
+  }
+}

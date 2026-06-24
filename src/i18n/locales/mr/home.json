@@ -1,0 +1,112 @@
+{
+  "__meta": {
+    "page": "home",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "home": {
+    "namaste": "नमस्कार, {{name}}",
+    "last_synced": "शेवटचे सिंक: {{time}}",
+    "default_name": "शेतकरी",
+    "loading": "लोड होत आहे...",
+    "view": "पहा",
+    "unnamed_land": "अनामित जमीन",
+    "location_not_set": "स्थान सेट नाही",
+    "no_crop": "पीक नाही",
+    "recent_activity": "अलीकडील क्रियाकलाप",
+    "myLand": "माझी जमीन",
+    "aiChat": "AI चॅट",
+    "market": "बाजार",
+    "governmentSchemes": "सरकारी योजना",
+    "weather": "हवामान",
+    "stats": {
+      "temperature": "तापमान",
+      "humidity": "आर्द्रता",
+      "wind_speed": "वाऱ्याचा वेग",
+      "wind": "वारा",
+      "pressure": "दबाव",
+      "temp": "तापमान",
+      "total_area": "एकूण क्षेत्र",
+      "plots": "प्लॉट",
+      "area": "क्षेत्र",
+      "no_land": "जमीन नाही"
+    },
+    "features": {
+      "lands": {
+        "description": "तुमची शेती जमीन व्यवस्थापित करा",
+        "plots": "{{count}} प्लॉट",
+        "plots_plural": "{{count}} प्लॉट",
+        "no_plots": "प्लॉट नाही"
+      },
+      "schedule": {
+        "title": "AI पीक वेळापत्रक",
+        "description": "स्मार्ट पेरणी कॅलेंडर",
+        "next_crop": "पुढील: {{crop}}",
+        "not_planned": "योजना नाही"
+      },
+      "chat": {
+        "description": "कृषी AI सहाय्यक",
+        "online": "ऑनलाइन"
+      },
+      "market": {
+        "description": "उत्पादन खरेदी आणि विक्री"
+      },
+      "community": {
+        "title": "समुदाय",
+        "description": "शेतकऱ्यांशी जुळा",
+        "stats": "{{count}} सक्रिय"
+      },
+      "ndvi": {
+        "title": "NDVI आणि उपग्रह",
+        "description": "पीक आरोग्य निरीक्षण",
+        "score": "स्कोअर: {{score}}",
+        "no_data": "डेटा नाही"
+      },
+      "schemes": {
+        "description": "नवीनतम योजना आणि सबसिडी",
+        "count": "{{count}} सक्रिय"
+      },
+      "analytics": {
+        "title": "विश्लेषण",
+        "description": "शेती कामगिरी मेट्रिक्स",
+        "view_report": "अहवाल पहा"
+      }
+    },
+    "badge": {
+      "active": "सक्रिय",
+      "add_land": "जमीन जोडा",
+      "ai": "AI",
+      "new": "नवीन",
+      "updated": "अपडेट"
+    },
+    "activity": {
+      "no_lands": "अजून जमीन जोडली नाही",
+      "add_first_land": "सुरुवात करण्यासाठी पहिली जमीन जोडा",
+      "current_weather": "सध्याचे हवामान",
+      "loading_weather": "हवामान लोड होत आहे...",
+      "govt_schemes": "सरकारी योजना",
+      "check_subsidies": "उपलब्ध सबसिडी तपासा"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my lands",
+      "What's the weather today?",
+      "Open AI assistant",
+      "Check market prices"
+    ],
+    "voice_examples_hi": [
+      "मेरी जमीन दिखाओ",
+      "आज का मौसम क्या है?",
+      "AI सहायक खोलें",
+      "बाजार भाव जांचें"
+    ],
+    "voice_examples_mr": [
+      "माझी जमीन दाखवा",
+      "आजचे हवामान काय आहे?",
+      "AI सहाय्यक उघडा",
+      "बाजार भाव तपासा"
+    ]
+  }
+}

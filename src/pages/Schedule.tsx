@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -7,12 +8,15 @@ import { ArrowLeft, Calendar, Plus, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useLanguageStore } from '@/stores/languageStore';
 import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
+import { PageShell } from '@/components/layout/PageShell';
+import { EmptyState } from '@/components/layout/EmptyState';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLocation } from '@/hooks/useLocation';
@@ -32,6 +36,7 @@ interface Land {
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  ownership_type?: string;
   current_crop?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
@@ -40,10 +45,11 @@ interface Land {
 type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view';
 
 export default function Schedule() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, session } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const { currentLanguage } = useLanguageStore();
   // Use the unified lands hook with real-time updates
   const { lands: fetchedLands, isLoading: isLoadingLands, refetch: refetchLands } = useLands();
@@ -55,9 +61,12 @@ export default function Schedule() {
     cropVariety: string;
     sowingDate: Date;
     isReadyMadePlant?: boolean;
+    farmingType?: string;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [generatingCropName, setGeneratingCropName] = useState('');
+  const [generatingFarmingType, setGeneratingFarmingType] = useState('');
   const { scheduleTaskReminder } = useNotifications();
 
   // Get device location and weather data for AI schedule generation
@@ -82,6 +91,7 @@ export default function Schedule() {
         soil_type: land.soil_type || undefined,
         water_source: land.water_source || undefined,
         irrigation_type: land.irrigation_type || undefined,
+        ownership_type: (land as any).ownership_type || undefined,
         current_crop: land.current_crop || undefined,
         soil_ph: (land as any).soil_ph || undefined,
         organic_carbon_percent: (land as any).organic_carbon_percent || undefined,
@@ -89,6 +99,35 @@ export default function Schedule() {
       setLands(mappedLands);
     }
   }, [fetchedLands]);
+
+  // Step 8 — post-harvest "Plan next crop" handoff.
+  // PostHarvestSuggestionDialog navigates here with router state. We auto-select
+  // the previously-harvested land, jump to crop-input, and show a hint toast.
+  const routerLocation = useRouterLocation();
+  useEffect(() => {
+    const st = (routerLocation.state || {}) as {
+      preselectedLandId?: string;
+      suggestedCrop?: string;
+      source?: string;
+    };
+    if (st.source !== 'post-harvest' || !st.preselectedLandId || lands.length === 0) return;
+    const land = lands.find((l) => l.id === st.preselectedLandId);
+    if (!land) return;
+    setSelectedLand(land);
+    setFlowStep('crop-input');
+    if (st.suggestedCrop) {
+      toast({
+        title: t('schedule.harvest.next.toast_title', 'Planning {{crop}}', { crop: st.suggestedCrop }),
+        description: t(
+          'schedule.harvest.next.toast_desc',
+          'Pre-selected from your last harvest. Adjust as needed.',
+        ),
+      });
+    }
+    // Clear navigation state so a refresh doesn't re-trigger.
+    window.history.replaceState({}, '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lands.length, routerLocation.state]);
 
   const handleLandSelect = (land: Land) => {
     setSelectedLand(land);
@@ -111,13 +150,30 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, varietyId?: string | null) => {
     if (!selectedLand) return;
 
-    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant });
+    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
+    
+    // Set generating state FIRST before anything else
+    setGenerating(true);
+    setGeneratingCropName(localizedCropName || cropName);
+    setGeneratingFarmingType(farmingType);
+    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
     try {
-      setGenerating(true);
+
+      // Persist the selected variety on the land so the variety-aware planner
+      // (ai-smart-schedule) and proactive evaluator pick it up.
+      if (varietyId !== undefined) {
+        try {
+          await landsApi.updateLand(selectedLand.id, {
+            current_crop_variety_id: varietyId,
+          } as any);
+        } catch (e) {
+          console.warn('[Schedule] could not persist variety_id on land', e);
+        }
+      }
 
       // First, deactivate any existing active schedules for this land
       const { error: deactivateError } = await supabase
@@ -157,39 +213,68 @@ export default function Schedule() {
 
       console.log('Fetched real weather data for AI:', weatherData);
 
-      // Call the updated ai-smart-schedule edge function with user's preferred language
+      // Call the updated ai-smart-schedule edge function with user's current app language
+      // Priority: currentLanguage (from language store/UI) > user.preferredLanguage > 'hi' (default)
+      const scheduleLanguage = currentLanguage || user?.preferredLanguage || 'hi';
+      console.log('🌐 [Schedule] Generating schedule in language:', scheduleLanguage, {
+        currentLanguage,
+        userPreferredLanguage: user?.preferredLanguage,
+        userLanguage: user?.language
+      });
+      
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId: selectedLand.id,
           cropName,
           cropVariety,
+          varietyId: varietyId ?? null,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant: isReadyMadePlant || false,
+          nurseryDays: nurseryDays || 0,
+          localizedCropName: localizedCropName || cropName,
+          farmingType: farmingType,
           weather: weatherData,
           regenerate: true,
-          tenantId: tenant?.id || user?.tenantId || '',
-          farmerId: user?.id || '',
-          language: user?.preferredLanguage || currentLanguage || 'en',
+          language: scheduleLanguage,
           country: 'India',
+          // NEW: Multi-crop and backdated consent support (array of intercrops)
+          intercrops: intercrops || [],
+          backdatedConsent: backdatedConsent || false,
+        },
+        headers: {
+          'x-tenant-id': tenant?.id || user?.tenantId || '',
+          'x-farmer-id': user?.id || '',
         },
       });
 
-      if (response.error) throw response.error;
+      console.log('🔍 [Schedule] Edge function response:', { error: response.error, data: response.data });
+
+      // Handle edge function errors
+      if (response.error) {
+        console.error('❌ [Schedule] Edge function error:', response.error);
+        throw new Error(response.error.message || 'Edge function returned an error');
+      }
 
       const { data } = response;
+      
+      // Check if data contains an error response from the edge function
+      if (data?.error) {
+        console.error('❌ [Schedule] API error:', data.error, data.details);
+        throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
+      }
       
       // Enhanced error handling with retry logic
       if (!data || !data.success) {
         if (retryCount < 2) {
           setRetryCount(prev => prev + 1);
           toast({
-            title: '🔄 Retrying...',
-            description: `Generating AI schedule (Attempt ${retryCount + 1}/2)`,
+            title: t('schedule.main.retrying'),
+            description: t('schedule.main.generating_attempt', { count: retryCount + 1 }),
             className: 'bg-accent/10 border-accent/20',
           });
           // Retry after 2 seconds
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType);
           }, 2000);
           return;
         }
@@ -212,8 +297,8 @@ export default function Schedule() {
       }
       
       toast({
-        title: '✅ AI Schedule Generated!',
-        description: `Smart farming schedule created for ${cropName}`,
+        title: t('schedule.main.generated_success'),
+        description: t('schedule.main.generated_description', { crop: cropName }),
         className: 'bg-success/10 border-success/20',
       });
 
@@ -224,8 +309,8 @@ export default function Schedule() {
       
       // Show user-friendly error with retry option
       toast({
-        title: '❌ Generation Failed',
-        description: error instanceof Error ? error.message : 'Failed to generate schedule',
+        title: t('schedule.main.generation_failed'),
+        description: error instanceof Error ? error.message : t('schedule.toast.error'),
         variant: 'destructive',
         action: (
           <Button 
@@ -233,10 +318,10 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               setRetryCount(0);
-              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant);
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >
-            Try Again
+            {t('common.try_again')}
           </Button>
         ),
       });
@@ -257,212 +342,161 @@ export default function Schedule() {
 
   if (isLoadingLands) {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5">
-        {/* Header Skeleton */}
-        <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
-          <div className="px-3 py-2.5">
+      <PageShell variant="gradient-primary" padding="default" spacing="default">
+        <Card className="animate-pulse">
+          <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-9 w-9 rounded-xl" />
-                <div className="space-y-2">
-                  <Skeleton className="h-5 w-32" />
-                  <Skeleton className="h-3 w-24" />
-                </div>
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-64" />
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
-                  <Skeleton className="h-1.5 w-8 rounded-full" />
-                  <Skeleton className="h-1.5 w-6 rounded-full" />
-                  <Skeleton className="h-1.5 w-6 rounded-full" />
-                </div>
-                <Skeleton className="h-3 w-16" />
-              </div>
+              <Skeleton className="h-10 w-24 rounded-lg" />
             </div>
-          </div>
-        </div>
-
-        {/* Content Skeleton */}
-        <div className="fixed inset-0 pt-14 pb-16 overflow-y-auto">
-          <div className="min-h-full p-4 space-y-4">
-            <Card className="animate-pulse">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <Skeleton className="h-6 w-48" />
-                    <Skeleton className="h-4 w-64" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 p-4 rounded-xl border border-border/50">
+                  <Skeleton className="h-16 w-16 rounded-xl" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
-                  <Skeleton className="h-10 w-24 rounded-lg" />
+                  <Skeleton className="h-10 w-20 rounded-lg" />
                 </div>
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border border-border/50">
-                      <Skeleton className="h-16 w-16 rounded-xl" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-5 w-32" />
-                        <Skeleton className="h-4 w-48" />
-                        <Skeleton className="h-3 w-24" />
-                      </div>
-                      <Skeleton className="h-10 w-20 rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-            
-            {/* Syncing message */}
-            <div className="flex items-center justify-center gap-2 text-muted-foreground">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-              <p className="text-sm font-medium">Syncing data from server...</p>
+              ))}
             </div>
-          </div>
+          </CardContent>
+        </Card>
+        <div className="flex items-center justify-center gap-2 text-muted-foreground">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+          <p className="text-sm font-medium">{t('schedule.loading.syncing')}</p>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (lands.length === 0) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/app')}
-          >
+      <PageShell variant="gradient-primary">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/app')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-bold">AI Crop Schedule</h1>
+          <h1 className="text-xl font-bold">{t('schedule.main.ai_crop_schedule')}</h1>
         </div>
-
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Lands Found</h3>
-            <p className="text-muted-foreground text-center mb-6">
-              Add your land first to generate AI-powered crop schedules
-            </p>
-            <Button onClick={() => navigate('/app/lands/add')}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Land
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+        <EmptyState
+          icon={Calendar}
+          title={t('schedule.empty.title')}
+          description={t('schedule.empty.message')}
+          actionLabel={t('schedule.main.add_land')}
+          onAction={() => navigate('/app/lands/add')}
+        />
+      </PageShell>
     );
   }
 
-  return (
-    <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5">
-      {/* Modern Glass Header */}
-      <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
-        <div className="px-3 py-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-                className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
-                  AI Crop Schedule
-                </h1>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {flowStep === 'land-selection' && 'Step 1: Select Your Land'}
-                  {flowStep === 'crop-input' && 'Step 2: Crop Details'}
-                  {flowStep === 'schedule-view' && 'Step 3: AI Schedule'}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {/* Manual Refresh Button */}
-              {flowStep === 'land-selection' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    refetchLands();
-                    toast({
-                      title: '🔄 Refreshing',
-                      description: 'Syncing latest data...',
-                      className: 'bg-accent/10 border-accent/20',
-                    });
-                  }}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              )}
-              
-              {/* Modern Step Progress Bar */}
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
-                  {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
-                    <div 
-                      key={step}
-                      className={`h-1.5 rounded-full transition-all duration-500 ${
-                        flowStep === step 
-                          ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50' 
-                          : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
-                          ? 'w-6 bg-primary/60'
-                          : 'w-6 bg-primary/20'
-                      }`} 
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] text-muted-foreground font-medium">
-                  Step {['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1} of 3
-                </span>
-              </div>
-            </div>
-          </div>
+  const STEPS: FlowStep[] = ['land-selection', 'crop-input', 'schedule-view'];
+  const currentStepIndex = STEPS.indexOf(flowStep);
+
+  const stickyHeader = (
+    <div className="px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
+            className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all shrink-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-base font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent truncate">
+            {t('schedule.main.ai_crop_schedule')}
+          </h1>
         </div>
-      </div>
 
-      {/* Full Screen Content Area */}
-      <div className="fixed inset-0 pt-14 pb-16 overflow-y-auto">
-        <div className="min-h-full">
-          {/* Flow Steps with Enhanced Animations */}
-          <div className="relative">
-            {flowStep === 'land-selection' && (
-              <div className="animate-fade-in">
-                <LandSelector 
-                  lands={lands}
-                  onSelectLand={handleLandSelect}
-                  onViewSchedule={handleViewSchedule}
-                  onEditSchedule={handleEditSchedule}
-                />
-              </div>
-            )}
+        <div className="flex items-center gap-2 shrink-0">
+          {flowStep === 'land-selection' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                refetchLands();
+                toast({
+                  title: t('schedule.main.refreshing'),
+                  description: t('schedule.main.syncing_latest'),
+                  className: 'bg-accent/10 border-accent/20',
+                });
+              }}
+              className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
 
-            {flowStep === 'crop-input' && selectedLand && (
-              <div className="animate-slide-in-right">
-                <CropDateInput
-                  land={selectedLand}
-                  onSubmit={handleCropDateSubmit}
-                  onBack={handleBack}
-                  loading={generating}
-                />
-              </div>
-            )}
-
-            {flowStep === 'schedule-view' && selectedLand && (
-              <div className="animate-slide-in-right">
-                <CropScheduleView
-                  landId={selectedLand.id}
-                  landName={selectedLand.name}
-                  currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
-                  onBack={handleBack}
-                />
-              </div>
-            )}
+          {/* Compact step indicator dots only */}
+          <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
+            {STEPS.map((step, index) => (
+              <div
+                key={step}
+                className={`h-1.5 rounded-full transition-all duration-500 ${
+                  index === currentStepIndex
+                    ? 'w-6 bg-gradient-to-r from-primary to-accent shadow-sm shadow-primary/40'
+                    : index < currentStepIndex
+                    ? 'w-4 bg-primary/60'
+                    : 'w-4 bg-primary/20'
+                }`}
+              />
+            ))}
           </div>
         </div>
       </div>
     </div>
+  );
+
+
+  return (
+    <PageShell variant="gradient-primary" padding="none" spacing="none" stickyHeader={stickyHeader}>
+      <div className="relative">
+        {flowStep === 'land-selection' && (
+          <div className="animate-fade-in">
+            <LandSelector
+              lands={lands}
+              onSelectLand={handleLandSelect}
+              onViewSchedule={handleViewSchedule}
+              onEditSchedule={handleEditSchedule}
+            />
+          </div>
+        )}
+
+        {flowStep === 'crop-input' && selectedLand && (
+          <div className="animate-slide-in-right">
+            <CropDateInput
+              land={selectedLand}
+              onSubmit={handleCropDateSubmit}
+              onBack={handleBack}
+              loading={generating}
+            />
+          </div>
+        )}
+
+        {flowStep === 'schedule-view' && selectedLand && (
+          <div className="animate-slide-in-right">
+            <CropScheduleView
+              landId={selectedLand.id}
+              landName={selectedLand.name}
+              currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
+              onBack={handleBack}
+            />
+          </div>
+        )}
+      </div>
+
+      <ScheduleLoadingOverlay
+        isLoading={generating}
+        cropName={generatingCropName || scheduleData?.cropName || ''}
+        farmingType={generatingFarmingType || scheduleData?.farmingType || 'organic_fertilizer'}
+      />
+    </PageShell>
   );
 }

@@ -39,18 +39,22 @@ export default {
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
+          soft: "hsl(var(--success-soft))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
+          soft: "hsl(var(--warning-soft))",
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+          soft: "hsl(var(--destructive-soft))",
         },
         info: {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
+          soft: "hsl(var(--info-soft))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
@@ -101,6 +105,20 @@ export default {
           light: "hsl(var(--overlay-light))",
           dark: "hsl(var(--overlay-dark))",
         },
+        'chart': {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+        },
+        'map': {
+          marker: "hsl(var(--marker-color))",
+          'polygon-fill': "hsl(var(--polygon-fill))",
+          'polygon-stroke': "hsl(var(--polygon-stroke))",
+          'tracking-fill': "hsl(var(--tracking-fill))",
+          'tracking-stroke': "hsl(var(--tracking-stroke))",
+        },
         // Chat section colors for AI interface
         'chat-section': {
           'green-bg': "hsl(var(--chat-section-green-bg))",
@@ -135,6 +153,11 @@ export default {
           'ai-border': "hsl(var(--chat-bubble-ai-border))",
           'ai-glass': "var(--chat-bubble-ai-glass)",
         },
+        'community': {
+          'bg-start': "hsl(var(--community-bg-start))",
+          'bg-mid': "hsl(var(--community-bg-mid))",
+          'bg-end': "hsl(var(--community-bg-end))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -147,6 +170,9 @@ export default {
       },
       backgroundImage: {
         "gradient-primary": "var(--gradient-primary)",
+        "gradient-secondary": "var(--gradient-secondary)",
+        "gradient-accent": "var(--gradient-accent)",
+        "gradient-subtle": "var(--gradient-subtle)",
         "gradient-neural": "var(--gradient-neural)",
         "gradient-earth": "var(--gradient-earth)",
         "gradient-sunrise": "var(--gradient-sunrise)",
@@ -159,6 +185,7 @@ export default {
         sm: "var(--shadow-sm)",
         md: "var(--shadow-md)",
         lg: "var(--shadow-lg)",
+        soft: "var(--shadow-soft)",
         glow: "var(--shadow-glow)",
         neural: "var(--shadow-neural)",
         ai: "var(--shadow-ai)",

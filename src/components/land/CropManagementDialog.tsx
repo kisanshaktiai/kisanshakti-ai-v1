@@ -42,6 +42,9 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
+import { VarietySelector, type VarietyOption } from '@/components/crops/VarietySelector';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
@@ -76,6 +79,7 @@ const groupIcons: Record<string, React.ReactNode> = {
 const formSchema = z.object({
   current_crop_id: z.string().optional(),
   current_crop_name: z.string().optional(),
+  current_crop_variety_id: z.string().nullable().optional(),
   planting_date: z.date().optional(),
   expected_harvest_date: z.date().optional(),
   previous_crop_id: z.string().optional(),
@@ -100,6 +104,8 @@ export function CropManagementDialog({
   landName,
   onSuccess 
 }: CropManagementDialogProps) {
+  const { t } = useTranslation();
+  const tRef = useLocalizedRef();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'current' | 'previous'>('current');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -114,6 +120,7 @@ export function CropManagementDialog({
     defaultValues: {
       current_crop_id: '',
       current_crop_name: '',
+      current_crop_variety_id: null,
       planting_date: undefined,
       expected_harvest_date: undefined,
       previous_crop_id: '',
@@ -150,24 +157,40 @@ export function CropManagementDialog({
         // Load existing crop data for the land
         const { data: landData, error: landError } = await supabase
           .from('lands')
-          .select('current_crop, planting_date, expected_harvest_date, previous_crop, harvest_date')
+          .select('current_crop, current_crop_variety_id, planting_date, expected_harvest_date, previous_crop, harvest_date')
           .eq('id', landId)
           .single();
 
         if (landData && !landError) {
           form.reset({
             current_crop_name: landData.current_crop || '',
+            current_crop_variety_id: (landData as any).current_crop_variety_id || null,
             planting_date: landData.planting_date ? new Date(landData.planting_date) : undefined,
             expected_harvest_date: landData.expected_harvest_date ? new Date(landData.expected_harvest_date) : undefined,
             previous_crop_name: landData.previous_crop || '',
             harvest_date: landData.harvest_date ? new Date(landData.harvest_date) : undefined,
           });
+
+          // If we have a current crop saved as text, try to resolve it back to a crop id
+          // so the VarietySelector can scope its list correctly.
+          if (landData.current_crop && (cropsData?.length ?? 0) > 0) {
+            const match = (cropsData ?? []).find(
+              (c: Crop) => c.label === landData.current_crop || c.value === landData.current_crop,
+            );
+            if (match) {
+              setCurrentCropSelection({
+                id: match.id,
+                name: match.label,
+                duration: match.duration_days || 90,
+              });
+            }
+          }
         }
       } catch (err) {
         console.error('Error loading data:', err);
         toast({
-          title: 'Error',
-          description: 'Failed to load crop data',
+          title: t('lands.wizard.toast.error_title'),
+          description: t('lands.crop_management.toast.load_error'),
           variant: 'destructive',
         });
       } finally {
@@ -187,10 +210,15 @@ export function CropManagementDialog({
     }
   }, [form.watch('planting_date'), currentCropSelection]);
 
-  const handleCropSelect = (cropId: string, cropName: string, isCurrentCrop: boolean) => {
+  const handleCropSelect = (cropId: string, _cropName: string, isCurrentCrop: boolean) => {
     const crop = crops.find(c => c.id === cropId);
+    const cropName = crop ? (tRef(crop as any, 'label') || crop.label) : _cropName;
     
     if (isCurrentCrop) {
+      // Reset variety when crop changes
+      if (currentCropSelection?.id !== cropId) {
+        form.setValue('current_crop_variety_id', null);
+      }
       setCurrentCropSelection({ 
         id: cropId, 
         name: cropName, 
@@ -221,18 +249,19 @@ export function CropManagementDialog({
         .from('lands')
         .update({
           current_crop: data.current_crop_name || null,
+          current_crop_variety_id: data.current_crop_variety_id ?? null,
           planting_date: data.planting_date?.toISOString() || null,
           expected_harvest_date: data.expected_harvest_date?.toISOString() || null,
           previous_crop: data.previous_crop_name || null,
           harvest_date: data.harvest_date?.toISOString() || null,
-        })
+        } as any)
         .eq('id', landId);
 
       if (error) throw error;
 
       toast({
-        title: 'Success',
-        description: 'Crop information updated successfully',
+        title: t('lands.wizard.toast.success_title'),
+        description: t('lands.crop_management.toast.success'),
       });
 
       onSuccess?.();
@@ -240,8 +269,8 @@ export function CropManagementDialog({
     } catch (error) {
       console.error('Error updating crop information:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to update crop information',
+        title: t('lands.wizard.toast.error_title'),
+        description: t('lands.crop_management.toast.error'),
         variant: 'destructive',
       });
     } finally {
@@ -269,9 +298,9 @@ export function CropManagementDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden p-0">
         <DialogHeader className="p-6 pb-0">
-          <DialogTitle>Manage Crops - {landName}</DialogTitle>
+          <DialogTitle>{t('lands.crop_management.title', { name: landName })}</DialogTitle>
           <DialogDescription>
-            Add or update crop information for your land
+            {t('lands.crop_management.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -281,11 +310,11 @@ export function CropManagementDialog({
               <TabsList className="grid w-full grid-cols-2 mx-6" style={{ width: 'calc(100% - 3rem)' }}>
                 <TabsTrigger value="current">
                   <Wheat className="h-4 w-4 mr-2" />
-                  Current Crop
+                  {t('lands.crop_management.current_crop')}
                 </TabsTrigger>
                 <TabsTrigger value="previous">
                   <Clock className="h-4 w-4 mr-2" />
-                  Previous Crop
+                  {t('lands.crop_management.previous_crop')}
                 </TabsTrigger>
               </TabsList>
 
@@ -310,7 +339,7 @@ export function CropManagementDialog({
                                   ) : (
                                     groupIcons[group.group_key] || <Leaf className="h-6 w-6" />
                                   )}
-                                  <span className="text-sm font-medium">{group.group_name}</span>
+                                  <span className="text-sm font-medium">{tRef(group as any, 'group_name') || group.group_name}</span>
                                 </div>
                               </CardContent>
                             </Card>
@@ -330,11 +359,13 @@ export function CropManagementDialog({
                             Back
                           </Button>
                           <h3 className="text-sm font-medium">
-                            Select Crop from {cropGroups.find(g => g.id === selectedGroup)?.group_name}
+                            Select Crop from {(() => { const g = cropGroups.find(g => g.id === selectedGroup); return g ? (tRef(g as any, 'group_name') || g.group_name) : ''; })()}
                           </h3>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          {filteredCrops.map((crop) => (
+                          {filteredCrops.map((crop) => {
+                            const localized = tRef(crop as any, 'label') || crop.label;
+                            return (
                             <Card
                               key={crop.id}
                               className={cn(
@@ -343,13 +374,13 @@ export function CropManagementDialog({
                                   ? "ring-2 ring-primary bg-primary/5" 
                                   : "hover:border-primary"
                               )}
-                              onClick={() => handleCropSelect(crop.id, crop.label, true)}
+                              onClick={() => handleCropSelect(crop.id, localized, true)}
                             >
                               <CardContent className="p-3">
                                 <div className="space-y-1">
-                                  <p className="font-medium text-sm">{crop.label}</p>
-                                  {crop.local_name && (
-                                    <p className="text-xs text-muted-foreground">{crop.local_name}</p>
+                                  <p className="font-medium text-sm">{localized}</p>
+                                  {localized !== crop.label && (
+                                    <p className="text-xs text-muted-foreground">{crop.label}</p>
                                   )}
                                   {crop.duration_days && (
                                     <Badge variant="secondary" className="text-xs">
@@ -359,7 +390,8 @@ export function CropManagementDialog({
                                 </div>
                               </CardContent>
                             </Card>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -370,6 +402,39 @@ export function CropManagementDialog({
                           <CalendarCheck className="h-4 w-4 text-primary" />
                           <span className="font-medium">Selected: {currentCropSelection.name}</span>
                         </div>
+
+                        {/* Seed variety (optional) */}
+                        <FormField
+                          control={form.control}
+                          name="current_crop_variety_id"
+                          render={({ field }) => (
+                            <FormItem>
+                              <VarietySelector
+                                cropId={currentCropSelection.id}
+                                value={field.value ?? null}
+                                onChange={(v: VarietyOption | null) => {
+                                  field.onChange(v?.id ?? null);
+                                  // Auto-tighten harvest date estimate with the variety's
+                                  // maturity range when available — DB is the source of truth.
+                                  if (v?.maturity_days_max) {
+                                    setCurrentCropSelection((prev) =>
+                                      prev ? { ...prev, duration: v.maturity_days_max! } : prev,
+                                    );
+                                    const plantingDate = form.getValues('planting_date');
+                                    if (plantingDate) {
+                                      form.setValue(
+                                        'expected_harvest_date',
+                                        addDays(plantingDate, v.maturity_days_max!),
+                                      );
+                                    }
+                                  }
+                                }}
+                              />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
 
                         {/* Planting Date */}
                         <FormField

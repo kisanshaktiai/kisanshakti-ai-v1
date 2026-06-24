@@ -1,0 +1,536 @@
+{
+  "__meta": {
+    "page": "lands",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "lands": {
+    "stats": {
+      "count": "{{count}} lands",
+      "count_one": "{{count}} land",
+      "total_area": "{{area}} acres",
+      "cultivated": "{{count}} active"
+    },
+    "offline_warning": "Offline - changes will sync later",
+    "search": {
+      "placeholder": "Search lands..."
+    },
+    "filter": {
+      "sheet_title": "Filters & Sort",
+      "by_label": "Filter by",
+      "all": "All Lands",
+      "with_crop": "With Crop",
+      "no_crop": "No Crop"
+    },
+    "sort": {
+      "label": "Sort by",
+      "by_name": "Name",
+      "by_area": "Area",
+      "by_date": "Date"
+    },
+    "view_mode": {
+      "label": "View mode",
+      "grid": "Grid",
+      "list": "List"
+    },
+    "empty": {
+      "title": "No Lands Found",
+      "search_message": "Try adjusting your search or filters",
+      "add_first": "Start by adding your first land parcel"
+    },
+    "cta": {
+      "add_first": "Add Your First Land",
+      "add": "Add Land"
+    },
+    "export": {
+      "success_title": "Exported Successfully",
+      "success_message": "{{count}} land records exported",
+      "success_message_one": "{{count}} land record exported"
+    },
+    "ownership": {
+      "owned": "Owned",
+      "leased": "Leased",
+      "shared": "Shared",
+      "contract": "Contract"
+    },
+    "list_item": {
+      "acres": "acres",
+      "ownership_default": "Owned"
+    },
+    "add_land": {
+      "title": "Add New Land",
+      "instructions_title": "Add New Land - Instructions",
+      "instructions_subtitle": "Follow these simple steps to add your land",
+      "loading": {
+        "maps": "Loading Google Maps...",
+        "hybrid_map": "Loading Hybrid Map...",
+        "location": "Getting your location..."
+      },
+      "error": {
+        "maps_failed": {
+          "title": "Failed to Load Maps",
+          "message": "Could not load Google Maps. Please check your internet connection and try again."
+        },
+        "location": "Could not determine your location",
+        "gps_not_available": "Your device doesn't support GPS tracking",
+        "gps_error": "Failed to get GPS location. Please check your settings.",
+        "invalid_boundary": "Please mark at least 3 points to define your land boundary."
+      },
+      "steps": {
+        "step_1": {
+          "title": "Step 1: Map will open",
+          "description": "A full-screen map will open showing your current location. Wait for the map to load completely."
+        },
+        "step_2": {
+          "title": "Step 2: Draw boundary",
+          "description": "Click on the map to mark boundary points of your land. Each click adds a corner point."
+        },
+        "step_3": {
+          "title": "Step 3: Walk mode (Optional)",
+          "description": "You can also walk around your land boundary and track your position using GPS."
+        },
+        "step_4": {
+          "title": "Step 4: Complete boundary",
+          "description": "Connect all points to form a closed boundary. The area will be calculated automatically."
+        },
+        "step_5": {
+          "title": "Step 5: Save and add details",
+          "description": "Click Save Boundary button. A form will open to add land details like crop information."
+        }
+      },
+      "buttons": {
+        "previous": "Previous",
+        "next": "Next",
+        "start_mapping": "Start Mapping",
+        "skip_instructions": "Skip instructions and start now",
+        "voice_guide": "Voice Guide"
+      }
+    },
+    "map": {
+      "mode": {
+        "tap_to_mark": "Tap to Mark",
+        "walk_boundary": "Walk Boundary"
+      },
+      "gps": {
+        "start_tracking": "Start GPS Tracking",
+        "stop_tracking": "Stop Tracking"
+      },
+      "actions": {
+        "undo": "Undo last point",
+        "clear_all": "Clear all points",
+        "save_boundary": "Save Boundary"
+      },
+      "area": {
+        "points_marked": "{{count}} points marked",
+        "label": "Area",
+        "sqft": "sq ft",
+        "guntha": "guntha",
+        "acres": "acres"
+      },
+      "toast": {
+        "location_set": "Location Set",
+        "location_updated": "Location Updated",
+        "gps_accuracy": "GPS Accuracy: {{accuracy}}m"
+      }
+    },
+    "wizard": {
+      "step_of_total": "Step {{current}} of {{total}}: {{title}}",
+      "voice_guide": "Voice Guide",
+      "tap_to_select": "Tap to select",
+      "select_crop_category": "Select a crop category",
+      "select_crop": "Choose your crop",
+      "search_crops": "Search crops...",
+      "crop_selection": "Crop Selection",
+      "current_crop": "Current Crop",
+      "previous_crop": "Previous Crop",
+      "popular": "Popular",
+      "steps": {
+        "basic_info": "Basic Info",
+        "location": "Location",
+        "land_details": "Land Details",
+        "review_save": "Review & Save"
+      },
+      "form": {
+        "land_name": "Land Name",
+        "land_name_placeholder": "e.g., North Field",
+        "survey_number": "Survey/Gat Number",
+        "survey_number_placeholder": "e.g., 123/A",
+        "ownership_type": "Ownership Type",
+        "location_details": "Location Details",
+        "land_characteristics": "Land Characteristics",
+        "basic_information": "Basic Information",
+        "state": "State",
+        "district": "District",
+        "taluka": "Taluka",
+        "village": "Village",
+        "soil_type": "Soil Type",
+        "water_source": "Water Source",
+        "irrigation_type": "Irrigation Type",
+        "current_crop": "Current Crop",
+        "previous_crop": "Previous Crop",
+        "cultivation_date": "Cultivation Date",
+        "last_harvest_date": "Last Harvest Date",
+        "select": "Select {{field}}",
+        "select_state": "Select State",
+        "select_district": "Select District",
+        "required": "Required"
+      },
+      "soil_types": {
+        "alluvial": "Alluvial",
+        "black": "Black (Regur)",
+        "red": "Red",
+        "laterite": "Laterite",
+        "desert": "Desert",
+        "mountain": "Mountain"
+      },
+      "water_sources": {
+        "well": "Well",
+        "borewell": "Borewell",
+        "canal": "Canal",
+        "river": "River",
+        "rain": "Rain-fed",
+        "tank": "Tank"
+      },
+      "irrigation_types": {
+        "drip": "Drip",
+        "sprinkler": "Sprinkler",
+        "flood": "Flood",
+        "furrow": "Furrow",
+        "manual": "Manual",
+        "none": "None"
+      },
+      "review": {
+        "land_area": "Land Area",
+        "basic_info": "Basic Information",
+        "location": "Location",
+        "land_details": "Land Details",
+        "boundary_points": "Boundary Points",
+        "points_captured": "{{count}} points captured from map"
+      },
+      "buttons": {
+        "previous": "Previous",
+        "next": "Next",
+        "cancel": "Cancel",
+        "save_land": "Save Land",
+        "saving": "Saving...",
+        "start_mapping": "Start Mapping",
+        "skip_instructions": "Skip instructions and start now"
+      },
+      "toast": {
+        "success_title": "Success",
+        "success_message": "Your land has been saved successfully!",
+        "error_title": "Error",
+        "error_save": "Failed to save land",
+        "validation_title": "Validation Error",
+        "name_required": "Please enter a land name",
+        "boundary_required": "Please draw a valid boundary on the map",
+        "offline_title": "No Internet Connection",
+        "offline_message": "Please connect to the internet to save your land. Your data is saved locally.",
+        "error_generic": "Failed to save land. Please try again.",
+        "error_timeout": "Request timed out. Please check your connection and try again.",
+        "error_session": "Please log in again to save your land."
+      },
+      "fields": {
+        "land_name": "Land Name",
+        "land_name_placeholder": "e.g., North Field",
+        "survey_number": "Survey/Gat Number",
+        "survey_placeholder": "e.g., 123/A",
+        "cultivation_date": "Cultivation Date",
+        "last_harvest_date": "Last Harvest Date",
+        "required": "Required"
+      },
+      "ownership": {
+        "label": "Ownership Type",
+        "owned": "Owned",
+        "leased": "Leased",
+        "shared": "Shared",
+        "contract": "Contract",
+        "unspecified": "Not specified"
+      },
+      "placeholders": {
+        "select_state": "Select State",
+        "select_district": "Select District",
+        "select_taluka": "Select Taluka",
+        "select_village": "Select Village",
+        "select_soil": "Select Soil Type",
+        "select_water": "Select Water Source",
+        "select_irrigation": "Select Irrigation"
+      },
+      "sections": {
+        "basic_info": "Basic Information",
+        "location": "Location Details",
+        "land_details": "Land Characteristics",
+        "review": "Review & Save",
+        "soil_type": "Soil Type",
+        "water_source": "Water Source",
+        "irrigation_type": "Irrigation Type",
+        "state": "State",
+        "district": "District",
+        "taluka": "Taluka",
+        "village": "Village"
+      },
+      "voice_guides": {
+        "basic_info": "Enter your land name, survey number, and ownership type",
+        "location": "Select your state, district, taluka, and village",
+        "land_details": "Enter soil type, water source, crops, and dates",
+        "review": "Review your land details and save"
+      },
+      "review_labels": {
+        "name": "Name",
+        "survey_number": "Survey Number",
+        "ownership": "Ownership",
+        "state": "State",
+        "district": "District",
+        "taluka": "Taluka",
+        "village": "Village",
+        "soil_type": "Soil Type",
+        "water_source": "Water Source",
+        "current_crop": "Current Crop",
+        "acres": "Acres",
+        "guntha": "Guntha",
+        "sqft": "Sq.ft"
+      }
+    },
+    "card": {
+      "utilized": "{{percent}}% Utilized",
+      "survey_no": "Survey No: {{number}}",
+      "current": "Current",
+      "previous": "Previous",
+      "soil_health": "Soil Health",
+      "ndvi_data": "NDVI Data",
+      "updated": "Updated: {{date}}",
+      "edit": "Edit",
+      "delete": "Delete",
+      "delete_dialog": {
+        "title": "Remove Land",
+        "description": "Are you sure you want to remove \"{{name}}\" from your lands? This land will no longer appear in your list but can be recovered later if needed.",
+        "cancel": "Cancel",
+        "remove": "Remove",
+        "removing": "Removing..."
+      },
+      "toast": {
+        "removed_title": "Land Removed",
+        "removed_message": "{{name}} has been removed from your lands",
+        "error": "Failed to remove land",
+        "link_copied": "Link Copied",
+        "link_copied_message": "Land link copied to clipboard"
+      }
+    },
+    "details": {
+      "total_area": "Total Area",
+      "current_crop": "Current Crop",
+      "no_crop": "No Crop",
+      "soil_health": "Soil Health",
+      "health_good": "Good",
+      "health_fair": "Fair",
+      "health_needs_care": "Needs Care",
+      "irrigation": "Irrigation",
+      "not_set": "Not Set",
+      "well": "well",
+      "land_info": "Land Information",
+      "survey_number_label": "Survey Number",
+      "not_available": "Not Available",
+      "ownership_type_label": "Ownership Type",
+      "not_specified": "Not Specified",
+      "soil_type_label": "Soil Type",
+      "location_label": "Location",
+      "last_sowing": "Last Sowing",
+      "expected_harvest": "Expected Harvest",
+      "recent_activities": "Recent Activities",
+      "add": "Add",
+      "no_activities": "No activities recorded yet",
+      "start_tracking": "Start tracking your farm activities",
+      "soil_overview": "Soil Health Overview",
+      "soil_composition": "Soil Composition",
+      "soil_ph": "Soil pH",
+      "organic_carbon": "Organic Carbon",
+      "nitrogen": "Nitrogen",
+      "phosphorus": "Phosphorus",
+      "potassium": "Potassium",
+      "not_tested": "Not Tested",
+      "kg_ha": "kg/ha",
+      "last_soil_test": "Last soil test conducted on {{date}}",
+      "activity_log": "Activity Log",
+      "log_activity": "Log Activity",
+      "note": "Note",
+      "crop_history": "Crop History",
+      "add_crop_record": "Add Crop Record",
+      "no_crop_history": "No crop history available",
+      "sown": "Sown",
+      "harvested": "Harvested",
+      "kg_acre": "kg/acre",
+      "activities_count": "Activities",
+      "cost_label": "Cost (₹)",
+      "yield_label": "Yield",
+      "revenue_label": "Revenue (₹)",
+      "photo_gallery": "Photo Gallery",
+      "upload_photos": "Upload Photos",
+      "no_photos": "No photos uploaded yet",
+      "upload_first_photo": "Upload First Photo",
+      "tabs": {
+        "overview": "Overview",
+        "soil": "Soil",
+        "activities": "Activity",
+        "crops": "Crops",
+        "analytics": "Analytics",
+        "history": "History",
+        "gallery": "Gallery"
+      },
+      "not_found": "Land not found",
+      "back_to_lands": "Back to Lands",
+      "error": {
+        "not_found_title": "Error",
+        "not_found_message": "Land not found or access denied",
+        "fetch_failed": "Failed to fetch land details"
+      },
+      "delete": {
+        "dialog_title": "Delete Land Parcel?",
+        "dialog_description": "This will permanently delete \"{{name}}\" and all associated data. This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete Permanently",
+        "success_title": "Success",
+        "success_message": "Land deleted successfully",
+        "error_title": "Error",
+        "error_message": "Failed to delete land"
+      }
+    },
+    "crop_management": {
+      "title": "Manage Crops - {{name}}",
+      "description": "Add or update crop information for your land",
+      "current_crop": "Current Crop",
+      "previous_crop": "Previous Crop",
+      "select_category": "Select Crop Category",
+      "back": "Back",
+      "select_from": "Select Crop from {{group}}",
+      "selected": "Selected",
+      "planting_date": "Planting/Sowing Date",
+      "expected_harvest": "Expected Harvest Date",
+      "auto_calculated": "Auto-calculated based on crop duration (~{{days}} days)",
+      "select_date": "Select date",
+      "select_planting_first": "Select planting date first",
+      "previous_harvest_date": "Previous Harvest Date",
+      "save_changes": "Save Changes",
+      "saving": "Saving...",
+      "duration_days": "~{{days}} days",
+      "toast": {
+        "success": "Crop information updated successfully",
+        "error": "Failed to update crop information",
+        "load_error": "Failed to load crop data"
+      }
+    },
+    "edit": {
+      "title": "Edit Land: {{name}}",
+      "basic_details": "Basic Details",
+      "basic_land_info": "Basic Land Information",
+      "land_characteristics": "Land Characteristics",
+      "review": "Review",
+      "area_display": "Area: {{acres}} acres",
+      "area_detail": "{{guntha}} guntha | {{sqft}} sq ft",
+      "toast": {
+        "success": "Land updated successfully",
+        "error": "Failed to update land",
+        "session_error": "Session or land information missing"
+      }
+    },
+    "smartConfirm": {
+      "title": "Confirm your land",
+      "thinking": "AI is thinking…",
+      "confirmed": "Confirmed",
+      "aiPrompt": "AI guessed this. Looks right?",
+      "voiceCaptured": "Voice captured",
+      "savedTitle": "Land saved",
+      "savedDesc": "Your land is ready for AI advice.",
+      "save": "Save Land",
+      "name": "Land name",
+      "namePlaceholder": "Name this land",
+      "tapToSet": "Tap to set",
+      "tapToAdd": "Tap to add crop",
+      "tapToAddCharacter": "Add soil, water, irrigation",
+      "whereIsIt": "Where is it?",
+      "outsideIndia": "Outside India?",
+      "whatsGrowing": "What's growing?",
+      "currentCrop": "Current crop",
+      "previousCrop": "Previous crop",
+      "suggestedCrops": "Suggested for your field",
+      "sowedOn": "When was it sowed?",
+      "sowed": "Sowed",
+      "landPrep": "Land prepared",
+      "sameDay": "Same day",
+      "7days": "7 days before",
+      "14days": "14 days before",
+      "expectedHarvest": "Expected harvest",
+      "stageNow": "Stage now",
+      "character": "Land character",
+      "soil": "Soil type",
+      "water": "Water source",
+      "irrigation": "Irrigation type",
+      "ownershipTitle": "Ownership & survey",
+      "owned": "Owned",
+      "leased": "Leased",
+      "shared": "Shared",
+      "survey": "Survey number (optional)",
+      "previousCycle": "Previous cycle",
+      "tapAddPrevious": "Tap to add (helps AI)",
+      "lastHarvest": "Last harvest month",
+      "moreDetails": "More details",
+      "optional": "Notes & marketplace (optional)",
+      "notesPlaceholder": "Anything else worth remembering…",
+      "marketplace": "List on marketplace",
+      "errors": {
+        "name": "Land name is required",
+        "country": "Country is required",
+        "state": "State is required",
+        "district": "District is required",
+        "crop": "Current crop is required",
+        "sowing": "Sowing date is required"
+      }
+    },
+    "location": {
+      "title": "Location",
+      "country": "Country",
+      "state": "State",
+      "district": "District",
+      "taluka": "Taluka",
+      "village": "Village",
+      "pickState": "Select State",
+      "pickDistrict": "Select District",
+      "pickTaluka": "Select Taluka",
+      "pickVillage": "Select Village",
+      "searchPlaceholder": "Search…",
+      "noMatchesFor": "No matches for \"{{q}}\"",
+      "selectStateFirst": "Select State first",
+      "selectDistrictFirst": "Select District first",
+      "selectTalukaFirst": "Select Taluka first",
+      "stateMustPick": "Please pick a State to load Districts",
+      "districtNotListed": "District not in list?",
+      "talukaNotListed": "Taluka not in list?",
+      "villageNotListed": "Village not in list?",
+      "districtTypeName": "Type district name",
+      "talukaTypeName": "Type taluka name",
+      "villageTypeName": "Type village name",
+      "useTypedAbove": "Use what you typed",
+      "openParent": "Open"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my lands",
+      "Add new land",
+      "Search for land by name",
+      "Filter lands with crops"
+    ],
+    "voice_examples_hi": [
+      "मेरी जमीन दिखाओ",
+      "नई जमीन जोड़ें",
+      "नाम से जमीन खोजें",
+      "फसल वाली जमीन फ़िल्टर करें"
+    ],
+    "voice_examples_mr": [
+      "माझी जमीन दाखवा",
+      "नवीन जमीन जोडा",
+      "नावाने जमीन शोधा",
+      "पिकांसह जमीन फिल्टर करा"
+    ]
+  }
+}

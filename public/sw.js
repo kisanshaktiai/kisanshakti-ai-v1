@@ -1,87 +1,67 @@
-// Service Worker for Push Notifications
+// Service Worker for KisanShakti AI PWA
+const CACHE_NAME = 'kisanshakti-v1';
+const STATIC_CACHE = 'static-v1';
+
+// Install event - cache essential files
 self.addEventListener('install', (event) => {
-  console.log('Service Worker installing...');
+  console.log('📦 [SW] Installing...');
   self.skipWaiting();
 });
 
+// Activate event - cleanup old caches
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker activating...');
-  event.waitUntil(clients.claim());
-});
-
-// Handle push notifications
-self.addEventListener('push', (event) => {
-  console.log('Push notification received:', event);
-
-  let notificationData = {
-    title: 'KisanShakti',
-    body: 'You have a new notification',
-    icon: '/icon-192x192.png',
-    badge: '/icon-192x192.png',
-  };
-
-  if (event.data) {
-    try {
-      const data = event.data.json();
-      notificationData = {
-        title: data.title || notificationData.title,
-        body: data.body || data.message || notificationData.body,
-        icon: data.icon || notificationData.icon,
-        badge: data.badge || notificationData.badge,
-        data: data.data || {},
-        tag: data.tag || 'default',
-        requireInteraction: data.requireInteraction || false,
-      };
-    } catch (e) {
-      notificationData.body = event.data.text();
-    }
-  }
-
+  console.log('✅ [SW] Activated');
   event.waitUntil(
-    self.registration.showNotification(notificationData.title, {
-      body: notificationData.body,
-      icon: notificationData.icon,
-      badge: notificationData.badge,
-      data: notificationData.data,
-      tag: notificationData.tag,
-      requireInteraction: notificationData.requireInteraction,
-      vibrate: [200, 100, 200],
-    })
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME && name !== STATIC_CACHE)
+          .map((name) => {
+            console.log('🗑️ [SW] Deleting old cache:', name);
+            return caches.delete(name);
+          })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
-// Handle notification clicks
-self.addEventListener('notificationclick', (event) => {
-  console.log('Notification clicked:', event);
-  event.notification.close();
+// Fetch event - network first, fallback to cache
+self.addEventListener('fetch', (event) => {
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') return;
+  
+  // Skip chrome-extension and other non-http(s) requests
+  if (!event.request.url.startsWith('http')) return;
+  
+  // Skip API calls - always go to network
+  if (event.request.url.includes('/functions/') || 
+      event.request.url.includes('/rest/') ||
+      event.request.url.includes('/auth/')) {
+    return;
+  }
 
-  const urlToOpen = event.notification.data?.url || '/app/schedule';
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Check if there's already a window open
-      for (const client of clientList) {
-        if (client.url.includes(urlToOpen) && 'focus' in client) {
-          return client.focus();
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        // Clone and cache successful responses
+        if (response.status === 200) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
         }
-      }
-      // Open a new window
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
+        return response;
+      })
+      .catch(() => {
+        // Fallback to cache on network failure
+        return caches.match(event.request);
+      })
   );
 });
 
-// Periodic sync for checking scheduled reminders
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'check-reminders') {
-    event.waitUntil(checkScheduledReminders());
+// Handle messages from main thread
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 });
-
-async function checkScheduledReminders() {
-  // This would check scheduled reminders and send notifications
-  // In a real implementation, this would query a backend or IndexedDB
-  console.log('Checking scheduled reminders...');
-}

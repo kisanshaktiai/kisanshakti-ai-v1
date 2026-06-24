@@ -1,0 +1,1 @@
+UPDATE public.crop_stage_master SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);

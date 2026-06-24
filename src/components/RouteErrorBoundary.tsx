@@ -40,11 +40,24 @@ export function RouteErrorBoundary() {
   };
 
   const handleRefresh = () => {
-    window.location.reload();
+    // Clear caches before reload — fixes "Importing a module script failed" after deploy
+    try {
+      if ('caches' in window) {
+        caches.keys().then((names) => names.forEach((n) => caches.delete(n)));
+      }
+      if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+      }
+    } catch {
+      /* ignore */
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set('_v', Date.now().toString(36));
+    window.location.replace(url.toString());
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-subtle">
+    <div className="min-h-mobile-screen flex items-center justify-center p-4 bg-gradient-subtle">
       <Card className="max-w-md w-full shadow-elegant">
         <CardHeader className="text-center pb-4">
           <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
@@ -64,7 +77,7 @@ export function RouteErrorBoundary() {
             variant="default"
           >
             <Home className="w-4 h-4 mr-2" />
-            {t('common.goHome') || 'Go to Dashboard'}
+            {t('common.goHome', { defaultValue: 'Go to Home' })}
           </Button>
           
           <div className="flex gap-2">
@@ -74,7 +87,7 @@ export function RouteErrorBoundary() {
               variant="outline"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
-              {t('common.goBack') || 'Go Back'}
+              {t('common.goBack', { defaultValue: 'Go Back' })}
             </Button>
             
             <Button
@@ -83,7 +96,7 @@ export function RouteErrorBoundary() {
               variant="outline"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
-              {t('common.refresh') || 'Refresh'}
+              {t('common.refresh', { defaultValue: 'Refresh' })}
             </Button>
           </div>
 

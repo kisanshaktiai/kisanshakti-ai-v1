@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getSupabaseFunctionUrl } from '@/config/supabase';
 
 interface WhiteLabelConfig {
   tenant: {
@@ -171,11 +172,13 @@ export class WhiteLabelService {
 
         // Alternative approach - direct URL call if invoke doesn't work with GET params
         if (error) {
-          const url = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/get-white-label-config?${params.toString()}`;
+          const url = `${getSupabaseFunctionUrl('get-white-label-config')}?${params.toString()}`;
           const response = await fetch(url, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
             }
           });
 
@@ -241,6 +244,7 @@ export class WhiteLabelService {
   private notifyThemeUpdate(config: WhiteLabelConfig): void {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('themeUpdated', { detail: config }));
+      window.dispatchEvent(new CustomEvent('theme-updated', { detail: config }));
     }
   }
 

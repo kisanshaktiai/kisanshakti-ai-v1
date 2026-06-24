@@ -6,12 +6,14 @@ import { Plus, Package, TrendingUp, DollarSign, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { AddProductDialog } from './AddProductDialog';
 import { ProductList } from './ProductList';
+import { useTranslation } from 'react-i18next';
 
 interface SellerDashboardProps {
   sellerId?: string;
 }
 
 export function SellerDashboard({ sellerId }: SellerDashboardProps) {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<any[]>([]);
   const [stats, setStats] = useState({
     totalProducts: 0,
@@ -61,9 +63,9 @@ export function SellerDashboard({ sellerId }: SellerDashboardProps) {
   if (!sellerId) {
     return (
       <div className="text-center py-12">
-        <h3 className="text-lg font-semibold mb-2">Become a Seller</h3>
-        <p className="text-muted-foreground mb-4">Start selling your products on our marketplace</p>
-        <Button>Register as Seller</Button>
+        <h3 className="text-lg font-semibold mb-2">{t('market.seller_dashboard.become_seller')}</h3>
+        <p className="text-muted-foreground mb-4">{t('market.seller_dashboard.start_selling')}</p>
+        <Button>{t('market.seller_dashboard.register')}</Button>
       </div>
     );
   }
@@ -71,17 +73,17 @@ export function SellerDashboard({ sellerId }: SellerDashboardProps) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Seller Dashboard</h2>
+        <h2 className="text-2xl font-bold">{t('market.seller_dashboard.title')}</h2>
         <Button onClick={() => setIsAddProductOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
-          Add Product
+          {t('market.seller_dashboard.add_product')}
         </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('market.seller_dashboard.total_products')}</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -91,7 +93,7 @@ export function SellerDashboard({ sellerId }: SellerDashboardProps) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('market.seller_dashboard.total_sales')}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -101,7 +103,7 @@ export function SellerDashboard({ sellerId }: SellerDashboardProps) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('market.seller_dashboard.revenue')}</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -111,7 +113,7 @@ export function SellerDashboard({ sellerId }: SellerDashboardProps) {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rating</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('market.seller_dashboard.rating')}</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -122,9 +124,9 @@ export function SellerDashboard({ sellerId }: SellerDashboardProps) {
 
       <Tabs defaultValue="products" className="w-full">
         <TabsList>
-          <TabsTrigger value="products">Products</TabsTrigger>
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="products">{t('market.seller_dashboard.products_tab')}</TabsTrigger>
+          <TabsTrigger value="orders">{t('market.seller_dashboard.orders_tab')}</TabsTrigger>
+          <TabsTrigger value="analytics">{t('market.seller_dashboard.analytics_tab')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products">
@@ -133,13 +135,13 @@ export function SellerDashboard({ sellerId }: SellerDashboardProps) {
 
         <TabsContent value="orders">
           <div className="text-center py-8">
-            <p className="text-muted-foreground">Order management coming soon</p>
+            <p className="text-muted-foreground">{t('market.seller_dashboard.order_management_soon')}</p>
           </div>
         </TabsContent>
 
         <TabsContent value="analytics">
           <div className="text-center py-8">
-            <p className="text-muted-foreground">Analytics dashboard coming soon</p>
+            <p className="text-muted-foreground">{t('market.seller_dashboard.analytics_dashboard_soon')}</p>
           </div>
         </TabsContent>
       </Tabs>

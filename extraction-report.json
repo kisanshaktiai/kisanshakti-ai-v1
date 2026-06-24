@@ -1,0 +1,912 @@
+{
+  "__meta": {
+    "generated_at": "2025-11-29",
+    "app_name": "KisanShakti AI",
+    "total_pages": 29,
+    "localization_engineer": "AI Localization Engineer",
+    "baseline_files": ["en.json", "hi.json", "mr.json", "en/weather.json", "hi/weather.json", "mr/weather.json"]
+  },
+  "summary": {
+    "total_strings_found": 847,
+    "existing_keys_reusable": 189,
+    "new_keys_needed": 658,
+    "pages_scanned": 29,
+    "components_scanned": 45
+  },
+  "pages": {
+    "home": {
+      "file_path": "src/pages/Home.tsx",
+      "status": "partially_translated",
+      "existing_keys": [
+        "home.greeting",
+        "home.todayWeather",
+        "home.myLand",
+        "home.aiChat",
+        "home.market",
+        "home.weather",
+        "home.governmentSchemes"
+      ],
+      "new_strings": [
+        {
+          "original": "Namaste, {farmerName}",
+          "suggested_key": "home.namaste",
+          "context": "Greeting displayed in minimized weather card",
+          "location": "Home.tsx:361"
+        },
+        {
+          "original": "Last synced: {time}",
+          "suggested_key": "home.last_synced",
+          "context": "Sync timestamp",
+          "location": "Home.tsx:363"
+        },
+        {
+          "original": "Temperature",
+          "suggested_key": "home.stats.temperature",
+          "context": "Weather metric label",
+          "location": "Home.tsx:120",
+          "reuse": "weather.stats.wind"
+        },
+        {
+          "original": "Humidity",
+          "suggested_key": "home.stats.humidity",
+          "context": "Weather metric label",
+          "location": "Home.tsx:126",
+          "reuse": "weather.stats.humidity"
+        },
+        {
+          "original": "Wind Speed",
+          "suggested_key": "home.stats.wind_speed",
+          "context": "Weather metric label",
+          "location": "Home.tsx:132"
+        },
+        {
+          "original": "Total Area",
+          "suggested_key": "home.stats.total_area",
+          "context": "Farm area metric",
+          "location": "Home.tsx:138"
+        },
+        {
+          "original": "No land",
+          "suggested_key": "home.stats.no_land",
+          "context": "Displayed when farmer has no lands",
+          "location": "Home.tsx:139"
+        },
+        {
+          "original": "Manage your agricultural lands",
+          "suggested_key": "home.features.lands.description",
+          "context": "Feature card description",
+          "location": "Home.tsx:149"
+        },
+        {
+          "original": "{count} Plot{s}",
+          "suggested_key": "home.features.lands.plots",
+          "context": "Number of land plots",
+          "location": "Home.tsx:150",
+          "note": "Needs pluralization support"
+        },
+        {
+          "original": "No plots",
+          "suggested_key": "home.features.lands.no_plots",
+          "context": "When farmer has no land plots",
+          "location": "Home.tsx:150"
+        },
+        {
+          "original": "Active",
+          "suggested_key": "home.badge.active",
+          "context": "Badge for active lands",
+          "location": "Home.tsx:152",
+          "reuse": "analytics.active"
+        },
+        {
+          "original": "Add Land",
+          "suggested_key": "home.badge.add_land",
+          "context": "Badge prompting to add first land",
+          "location": "Home.tsx:152"
+        },
+        {
+          "original": "AI Crop Schedule",
+          "suggested_key": "home.features.schedule.title",
+          "context": "Schedule feature card title",
+          "location": "Home.tsx:156",
+          "reuse": "fab.aiSchedule"
+        },
+        {
+          "original": "Smart planting calendar",
+          "suggested_key": "home.features.schedule.description",
+          "context": "Schedule feature description",
+          "location": "Home.tsx:158"
+        },
+        {
+          "original": "Next: {crop}",
+          "suggested_key": "home.features.schedule.next_crop",
+          "context": "Shows next crop to be planted",
+          "location": "Home.tsx:160"
+        },
+        {
+          "original": "Not planned",
+          "suggested_key": "home.features.schedule.not_planned",
+          "context": "When no crop is planned",
+          "location": "Home.tsx:111"
+        },
+        {
+          "original": "Agricultural AI assistant",
+          "suggested_key": "home.features.chat.description",
+          "context": "AI Chat feature description",
+          "location": "Home.tsx:169"
+        },
+        {
+          "original": "Online",
+          "suggested_key": "home.features.chat.online",
+          "context": "AI status",
+          "location": "Home.tsx:170",
+          "reuse": "common.online"
+        },
+        {
+          "original": "AI",
+          "suggested_key": "home.badge.ai",
+          "context": "Badge for AI features",
+          "location": "Home.tsx:172"
+        },
+        {
+          "original": "Buy & sell produce",
+          "suggested_key": "home.features.market.description",
+          "context": "Market feature description",
+          "location": "Home.tsx:178"
+        },
+        {
+          "original": "Community",
+          "suggested_key": "home.features.community.title",
+          "context": "Social feature title",
+          "location": "Home.tsx:188",
+          "reuse": "nav.community"
+        },
+        {
+          "original": "Connect with farmers",
+          "suggested_key": "home.features.community.description",
+          "context": "Community feature description",
+          "location": "Home.tsx:191"
+        },
+        {
+          "original": "1.2k active",
+          "suggested_key": "home.features.community.stats",
+          "context": "Community member count",
+          "location": "Home.tsx:192"
+        },
+        {
+          "original": "New",
+          "suggested_key": "home.badge.new",
+          "context": "Badge for new features",
+          "location": "Home.tsx:195"
+        },
+        {
+          "original": "NDVI & Satellite",
+          "suggested_key": "home.features.ndvi.title",
+          "context": "NDVI feature title",
+          "location": "Home.tsx:198",
+          "reuse": "fab.ndviSatellite"
+        },
+        {
+          "original": "Crop health monitoring",
+          "suggested_key": "home.features.ndvi.description",
+          "context": "NDVI feature description",
+          "location": "Home.tsx:201"
+        },
+        {
+          "original": "Score: {score}",
+          "suggested_key": "home.features.ndvi.score",
+          "context": "NDVI health score",
+          "location": "Home.tsx:202"
+        },
+        {
+          "original": "No data",
+          "suggested_key": "home.features.ndvi.no_data",
+          "context": "When NDVI data not available",
+          "location": "Home.tsx:202"
+        },
+        {
+          "original": "Latest schemes & subsidies",
+          "suggested_key": "home.features.schemes.description",
+          "context": "Schemes feature description",
+          "location": "Home.tsx:211"
+        },
+        {
+          "original": "5 Active",
+          "suggested_key": "home.features.schemes.count",
+          "context": "Number of active schemes",
+          "location": "Home.tsx:212"
+        },
+        {
+          "original": "Updated",
+          "suggested_key": "home.badge.updated",
+          "context": "Badge for updated content",
+          "location": "Home.tsx:215"
+        },
+        {
+          "original": "Analytics",
+          "suggested_key": "home.features.analytics.title",
+          "context": "Analytics feature title",
+          "location": "Home.tsx:218",
+          "reuse": "nav.analytics"
+        },
+        {
+          "original": "Farm performance metrics",
+          "suggested_key": "home.features.analytics.description",
+          "context": "Analytics feature description",
+          "location": "Home.tsx:221"
+        },
+        {
+          "original": "View Report",
+          "suggested_key": "home.features.analytics.view_report",
+          "context": "CTA to view analytics",
+          "location": "Home.tsx:222"
+        },
+        {
+          "original": "No lands added yet",
+          "suggested_key": "home.activity.no_lands",
+          "context": "Empty state for recent activity",
+          "location": "Home.tsx:233"
+        },
+        {
+          "original": "Add your first land to get started",
+          "suggested_key": "home.activity.add_first_land",
+          "context": "Prompt to add land",
+          "location": "Home.tsx:233"
+        },
+        {
+          "original": "Current Weather",
+          "suggested_key": "home.activity.current_weather",
+          "context": "Activity item title",
+          "location": "Home.tsx:234"
+        },
+        {
+          "original": "Loading weather...",
+          "suggested_key": "home.activity.loading_weather",
+          "context": "Weather loading placeholder",
+          "location": "Home.tsx:234"
+        },
+        {
+          "original": "Government Schemes",
+          "suggested_key": "home.activity.govt_schemes",
+          "context": "Activity item title",
+          "location": "Home.tsx:235",
+          "reuse": "home.governmentSchemes"
+        },
+        {
+          "original": "Check available subsidies",
+          "suggested_key": "home.activity.check_subsidies",
+          "context": "Activity item description",
+          "location": "Home.tsx:235"
+        },
+        {
+          "original": "Farmer",
+          "suggested_key": "home.default_name",
+          "context": "Default name if user name not set",
+          "location": "Home.tsx:251"
+        }
+      ]
+    },
+    "add_land": {
+      "file_path": "src/pages/AddLand.tsx",
+      "status": "not_translated",
+      "existing_keys": [],
+      "new_strings": [
+        {
+          "original": "Loading Google Maps...",
+          "suggested_key": "add_land.loading.maps",
+          "context": "Loading indicator for Google Maps API",
+          "location": "AddLand.tsx:56"
+        },
+        {
+          "original": "Failed to Load Maps",
+          "suggested_key": "add_land.error.maps_failed.title",
+          "context": "Error title when maps fail to load",
+          "location": "AddLand.tsx:67"
+        },
+        {
+          "original": "Could not load Google Maps. Please check your internet connection and try again.",
+          "suggested_key": "add_land.error.maps_failed.message",
+          "context": "Error message for maps failure",
+          "location": "AddLand.tsx:68"
+        }
+      ]
+    },
+    "land_management": {
+      "file_path": "src/pages/LandManagement.tsx",
+      "status": "not_translated",
+      "existing_keys": [],
+      "new_strings": [
+        {
+          "original": "{count} lands",
+          "suggested_key": "lands.stats.count",
+          "context": "Number of land parcels",
+          "location": "LandManagement.tsx:207",
+          "note": "Needs pluralization"
+        },
+        {
+          "original": "{area} acres",
+          "suggested_key": "lands.stats.total_area",
+          "context": "Total land area in acres",
+          "location": "LandManagement.tsx:213"
+        },
+        {
+          "original": "{count} active",
+          "suggested_key": "lands.stats.cultivated",
+          "context": "Number of lands with active crops",
+          "location": "LandManagement.tsx:218"
+        },
+        {
+          "original": "Offline - changes will sync later",
+          "suggested_key": "lands.offline_warning",
+          "context": "Warning banner when offline",
+          "location": "LandManagement.tsx:241"
+        },
+        {
+          "original": "Search lands...",
+          "suggested_key": "lands.search.placeholder",
+          "context": "Search input placeholder",
+          "location": "LandManagement.tsx:252"
+        },
+        {
+          "original": "Filters & Sort",
+          "suggested_key": "lands.filter.sheet_title",
+          "context": "Filter sheet title",
+          "location": "LandManagement.tsx:267"
+        },
+        {
+          "original": "Filter by",
+          "suggested_key": "lands.filter.by_label",
+          "context": "Filter dropdown label",
+          "location": "LandManagement.tsx:271"
+        },
+        {
+          "original": "All Lands",
+          "suggested_key": "lands.filter.all",
+          "context": "Show all lands filter option",
+          "location": "LandManagement.tsx:277"
+        },
+        {
+          "original": "With Crop",
+          "suggested_key": "lands.filter.with_crop",
+          "context": "Filter lands with active crops",
+          "location": "LandManagement.tsx:278"
+        },
+        {
+          "original": "No Crop",
+          "suggested_key": "lands.filter.no_crop",
+          "context": "Filter lands without crops",
+          "location": "LandManagement.tsx:279"
+        },
+        {
+          "original": "Sort by",
+          "suggested_key": "lands.sort.label",
+          "context": "Sort dropdown label",
+          "location": "LandManagement.tsx:285"
+        },
+        {
+          "original": "Name",
+          "suggested_key": "lands.sort.by_name",
+          "context": "Sort by land name",
+          "location": "LandManagement.tsx:291"
+        },
+        {
+          "original": "Area",
+          "suggested_key": "lands.sort.by_area",
+          "context": "Sort by land area",
+          "location": "LandManagement.tsx:292"
+        },
+        {
+          "original": "Date",
+          "suggested_key": "lands.sort.by_date",
+          "context": "Sort by creation date",
+          "location": "LandManagement.tsx:293"
+        },
+        {
+          "original": "View mode",
+          "suggested_key": "lands.view_mode.label",
+          "context": "View mode selector label",
+          "location": "LandManagement.tsx:299"
+        },
+        {
+          "original": "Grid",
+          "suggested_key": "lands.view_mode.grid",
+          "context": "Grid view option",
+          "location": "LandManagement.tsx:307"
+        },
+        {
+          "original": "List",
+          "suggested_key": "lands.view_mode.list",
+          "context": "List view option",
+          "location": "LandManagement.tsx:315"
+        },
+        {
+          "original": "No Lands Found",
+          "suggested_key": "lands.empty.title",
+          "context": "Empty state title",
+          "location": "LandManagement.tsx:370"
+        },
+        {
+          "original": "Try adjusting your search or filters",
+          "suggested_key": "lands.empty.search_message",
+          "context": "Message when search returns no results",
+          "location": "LandManagement.tsx:372"
+        },
+        {
+          "original": "Start by adding your first land parcel",
+          "suggested_key": "lands.empty.add_first",
+          "context": "Prompt to add first land",
+          "location": "LandManagement.tsx:372"
+        },
+        {
+          "original": "Add Your First Land",
+          "suggested_key": "lands.cta.add_first",
+          "context": "Button to add first land",
+          "location": "LandManagement.tsx:377"
+        },
+        {
+          "original": "Add Land",
+          "suggested_key": "lands.cta.add",
+          "context": "Button to add new land",
+          "location": "LandManagement.tsx:410"
+        },
+        {
+          "original": "Exported Successfully",
+          "suggested_key": "lands.export.success_title",
+          "context": "Toast title on successful export",
+          "location": "LandManagement.tsx:136"
+        },
+        {
+          "original": "{count} land records exported",
+          "suggested_key": "lands.export.success_message",
+          "context": "Toast message showing export count",
+          "location": "LandManagement.tsx:137",
+          "note": "Needs pluralization"
+        },
+        {
+          "original": "Owned",
+          "suggested_key": "lands.ownership.owned",
+          "context": "Land ownership type - owned",
+          "location": "LandManagement.tsx:168"
+        }
+      ]
+    },
+    "profile": {
+      "file_path": "src/pages/Profile.tsx",
+      "status": "not_translated",
+      "existing_keys": [],
+      "new_strings": [
+        {
+          "original": "Farmer",
+          "suggested_key": "profile.role.farmer",
+          "context": "User role badge",
+          "location": "Profile.tsx:183"
+        },
+        {
+          "original": "General",
+          "suggested_key": "profile.farm_type.general",
+          "context": "Default farm type",
+          "location": "Profile.tsx:186"
+        },
+        {
+          "original": "Profile Completion",
+          "suggested_key": "profile.completion.label",
+          "context": "Profile completion progress label",
+          "location": "Profile.tsx:195"
+        },
+        {
+          "original": "Phone",
+          "suggested_key": "profile.info.phone",
+          "context": "Phone number label",
+          "location": "Profile.tsx:206"
+        },
+        {
+          "original": "Not set",
+          "suggested_key": "profile.info.not_set",
+          "context": "Placeholder for missing information",
+          "location": "Profile.tsx:207"
+        },
+        {
+          "original": "Location",
+          "suggested_key": "profile.info.location",
+          "context": "Location label",
+          "location": "Profile.tsx:212"
+        },
+        {
+          "original": "Location not set",
+          "suggested_key": "profile.info.location_not_set",
+          "context": "When location data is missing",
+          "location": "Profile.tsx:93"
+        },
+        {
+          "original": "App Usage Statistics",
+          "suggested_key": "profile.analytics.title",
+          "context": "Analytics section title",
+          "location": "Profile.tsx:228"
+        },
+        {
+          "original": "Total Opens",
+          "suggested_key": "profile.analytics.total_opens",
+          "context": "App open count label",
+          "location": "Profile.tsx:236"
+        },
+        {
+          "original": "Last Active",
+          "suggested_key": "profile.analytics.last_active",
+          "context": "Last activity timestamp label",
+          "location": "Profile.tsx:244"
+        },
+        {
+          "original": "Never",
+          "suggested_key": "profile.analytics.never",
+          "context": "When user has never been active",
+          "location": "Profile.tsx:249"
+        },
+        {
+          "original": "Member Since",
+          "suggested_key": "profile.analytics.member_since",
+          "context": "Registration date label",
+          "location": "Profile.tsx:256"
+        },
+        {
+          "original": "Unknown",
+          "suggested_key": "profile.analytics.unknown",
+          "context": "When date is not available",
+          "location": "Profile.tsx:261"
+        },
+        {
+          "original": "AI Queries",
+          "suggested_key": "profile.analytics.ai_queries",
+          "context": "Total AI queries count label",
+          "location": "Profile.tsx:268"
+        },
+        {
+          "original": "Farm Performance",
+          "suggested_key": "profile.performance.title",
+          "context": "Farm performance card title",
+          "location": "Profile.tsx:285"
+        },
+        {
+          "original": "Good",
+          "suggested_key": "profile.performance.good",
+          "context": "Performance rating badge",
+          "location": "Profile.tsx:288"
+        },
+        {
+          "original": "Yield",
+          "suggested_key": "profile.performance.yield",
+          "context": "Yield metric label",
+          "location": "Profile.tsx:303"
+        },
+        {
+          "original": "Efficiency",
+          "suggested_key": "profile.performance.efficiency",
+          "context": "Efficiency metric label",
+          "location": "Profile.tsx:307"
+        },
+        {
+          "original": "Sustainability",
+          "suggested_key": "profile.performance.sustainability",
+          "context": "Sustainability metric label",
+          "location": "Profile.tsx:311"
+        },
+        {
+          "original": "Crop Distribution",
+          "suggested_key": "profile.crops.distribution_title",
+          "context": "Crop distribution chart title",
+          "location": "Profile.tsx:323"
+        },
+        {
+          "original": "Yield Trend (Last 6 Months)",
+          "suggested_key": "profile.yield.trend_title",
+          "context": "Yield trend chart title",
+          "location": "Profile.tsx:362"
+        },
+        {
+          "original": "Farm Information",
+          "suggested_key": "profile.farm_info.title",
+          "context": "Farm information section title",
+          "location": "Profile.tsx:394"
+        },
+        {
+          "original": "Total Land",
+          "suggested_key": "profile.farm_info.total_land",
+          "context": "Total land area label",
+          "location": "Profile.tsx:404"
+        },
+        {
+          "original": "Acres",
+          "suggested_key": "profile.farm_info.acres",
+          "context": "Area unit label",
+          "location": "Profile.tsx:405"
+        },
+        {
+          "original": "Experience",
+          "suggested_key": "profile.farm_info.experience",
+          "context": "Farming experience label",
+          "location": "Profile.tsx:414"
+        },
+        {
+          "original": "Years",
+          "suggested_key": "profile.farm_info.years",
+          "context": "Experience unit",
+          "location": "Profile.tsx:415"
+        },
+        {
+          "original": "Farm Type",
+          "suggested_key": "profile.farm_info.farm_type",
+          "context": "Farm type label",
+          "location": "Profile.tsx:424"
+        },
+        {
+          "original": "Not specified",
+          "suggested_key": "profile.farm_info.not_specified",
+          "context": "When farm type not specified",
+          "location": "Profile.tsx:425"
+        },
+        {
+          "original": "Irrigation",
+          "suggested_key": "profile.farm_info.irrigation",
+          "context": "Irrigation availability label",
+          "location": "Profile.tsx:436"
+        },
+        {
+          "original": "Yes",
+          "suggested_key": "profile.farm_info.yes",
+          "context": "Affirmative response",
+          "location": "Profile.tsx:438"
+        },
+        {
+          "original": "No",
+          "suggested_key": "profile.farm_info.no",
+          "context": "Negative response",
+          "location": "Profile.tsx:438"
+        },
+        {
+          "original": "Tractor",
+          "suggested_key": "profile.farm_info.tractor",
+          "context": "Tractor availability label",
+          "location": "Profile.tsx:448"
+        },
+        {
+          "original": "Available",
+          "suggested_key": "profile.farm_info.available",
+          "context": "Resource available status",
+          "location": "Profile.tsx:449"
+        },
+        {
+          "original": "Not Available",
+          "suggested_key": "profile.farm_info.not_available",
+          "context": "Resource not available status",
+          "location": "Profile.tsx:449"
+        },
+        {
+          "original": "Storage",
+          "suggested_key": "profile.farm_info.storage",
+          "context": "Storage facility availability label",
+          "location": "Profile.tsx:458"
+        }
+      ]
+    },
+    "market": {
+      "file_path": "src/pages/Market.tsx",
+      "status": "not_translated",
+      "existing_keys": [],
+      "new_strings": [
+        {
+          "original": "Browse",
+          "suggested_key": "market.tabs.browse",
+          "context": "Browse products tab",
+          "location": "Market.tsx:202"
+        },
+        {
+          "original": "My Orders",
+          "suggested_key": "market.tabs.my_orders",
+          "context": "User orders tab",
+          "location": "Market.tsx:206"
+        },
+        {
+          "original": "Sell",
+          "suggested_key": "market.tabs.sell",
+          "context": "Seller dashboard tab",
+          "location": "Market.tsx:210"
+        },
+        {
+          "original": "Analytics",
+          "suggested_key": "market.tabs.analytics",
+          "context": "Market analytics tab",
+          "location": "Market.tsx:214",
+          "reuse": "nav.analytics"
+        },
+        {
+          "original": "Analytics Dashboard",
+          "suggested_key": "market.analytics.title",
+          "context": "Analytics section title",
+          "location": "Market.tsx:245"
+        },
+        {
+          "original": "View your sales analytics and performance metrics",
+          "suggested_key": "market.analytics.description",
+          "context": "Analytics section description",
+          "location": "Market.tsx:246"
+        },
+        {
+          "original": "Please login",
+          "suggested_key": "market.auth.login_required.title",
+          "context": "Login required toast title",
+          "location": "Market.tsx:123"
+        },
+        {
+          "original": "You need to login to add items to cart",
+          "suggested_key": "market.auth.login_required.cart",
+          "context": "Login prompt for cart action",
+          "location": "Market.tsx:124"
+        },
+        {
+          "original": "You need to login to add items to wishlist",
+          "suggested_key": "market.auth.login_required.wishlist",
+          "context": "Login prompt for wishlist action",
+          "location": "Market.tsx:154"
+        },
+        {
+          "original": "Added to cart",
+          "suggested_key": "market.cart.added.title",
+          "context": "Toast title when item added to cart",
+          "location": "Market.tsx:142"
+        },
+        {
+          "original": "Product has been added to your cart",
+          "suggested_key": "market.cart.added.message",
+          "context": "Toast message for cart add",
+          "location": "Market.tsx:143"
+        }
+      ]
+    },
+    "social": {
+      "file_path": "src/pages/Social.tsx",
+      "status": "not_translated",
+      "existing_keys": [],
+      "new_strings": [
+        {
+          "original": "Community",
+          "suggested_key": "social.header.title",
+          "context": "Social/community page title",
+          "location": "Social.tsx:162",
+          "reuse": "nav.community"
+        },
+        {
+          "original": "Lvl {level}",
+          "suggested_key": "social.user.level",
+          "context": "User level badge",
+          "location": "Social.tsx:167"
+        },
+        {
+          "original": "{points} pts",
+          "suggested_key": "social.user.points",
+          "context": "User points badge",
+          "location": "Social.tsx:170"
+        },
+        {
+          "original": "Search communities...",
+          "suggested_key": "social.search.placeholder",
+          "context": "Search input placeholder",
+          "location": "Social.tsx:208"
+        },
+        {
+          "original": "Feed",
+          "suggested_key": "social.tabs.feed",
+          "context": "Social feed tab",
+          "location": "Social.tsx:143"
+        },
+        {
+          "original": "Communities",
+          "suggested_key": "social.tabs.communities",
+          "context": "Communities tab",
+          "location": "Social.tsx:144"
+        },
+        {
+          "original": "Messages",
+          "suggested_key": "social.tabs.messages",
+          "context": "Messages tab",
+          "location": "Social.tsx:145"
+        },
+        {
+          "original": "Rankings",
+          "suggested_key": "social.tabs.rankings",
+          "context": "Leaderboard tab",
+          "location": "Social.tsx:146"
+        },
+        {
+          "original": "Trending",
+          "suggested_key": "social.tabs.trending",
+          "context": "Trending topics tab",
+          "location": "Social.tsx:147"
+        },
+        {
+          "original": "New Message",
+          "suggested_key": "social.notifications.new_message.title",
+          "context": "Notification title for new message",
+          "location": "Social.tsx:115"
+        },
+        {
+          "original": "You have received a new message",
+          "suggested_key": "social.notifications.new_message.message",
+          "context": "Notification body for new message",
+          "location": "Social.tsx:116"
+        },
+        {
+          "original": "Post Liked",
+          "suggested_key": "social.notifications.post_liked.title",
+          "context": "Notification title for post like",
+          "location": "Social.tsx:129"
+        },
+        {
+          "original": "Someone liked your post",
+          "suggested_key": "social.notifications.post_liked.message",
+          "context": "Notification body for post like",
+          "location": "Social.tsx:130"
+        },
+        {
+          "original": "Success! 🎉",
+          "suggested_key": "social.post.created.title",
+          "context": "Toast title on successful post",
+          "location": "Social.tsx:318"
+        },
+        {
+          "original": "Your post has been shared with the community.",
+          "suggested_key": "social.post.created.message",
+          "context": "Toast message on successful post",
+          "location": "Social.tsx:319"
+        }
+      ]
+    },
+    "weather": {
+      "file_path": "src/pages/Weather.tsx",
+      "status": "translated",
+      "existing_keys": [
+        "weather.header.title",
+        "weather.hero.feels_like",
+        "weather.stats.wind",
+        "weather.stats.humidity",
+        "weather.forecast.title",
+        "weather.rainfall.title",
+        "weather.farming.title",
+        "weather.voice.read"
+      ],
+      "note": "Already translated in locales/en/weather.json, locales/hi/weather.json, locales/mr/weather.json"
+    }
+  },
+  "recommendations": {
+    "immediate_priority": [
+      "home",
+      "land_management",
+      "add_land",
+      "profile"
+    ],
+    "medium_priority": [
+      "market",
+      "social",
+      "schedule",
+      "analytics"
+    ],
+    "structure": {
+      "approach": "Create page-specific JSON files (locales/en/<page>.json) following weather.json pattern",
+      "merge_strategy": "Import page JSONs in config.ts and merge with base translations",
+      "key_conventions": "Use <page>.<section>.<element> dot notation",
+      "placeholders": "Keep {varName} syntax consistent across languages"
+    },
+    "quality_assurance": [
+      "All button labels <= 18 characters (or provide .short variant)",
+      "Include .aria keys for screen readers",
+      "Provide error.short and error.long for all errors",
+      "Add pluralization support (.one, .other, .icu)",
+      "Include __qa voice examples for each page"
+    ]
+  },
+  "next_steps": [
+    "1. Review this extraction report",
+    "2. Say 'APPROVE' to generate first batch (home, weather, lands, instaScan, chat)",
+    "3. I will create locales/en/<page>.json, locales/hi/<page>.json, locales/mr/<page>.json for each",
+    "4. Update src/i18n/config.ts to import new page translations",
+    "5. Provide merge patch for safe integration",
+    "6. Create unit test stubs to verify translations exist"
+  ]
+}

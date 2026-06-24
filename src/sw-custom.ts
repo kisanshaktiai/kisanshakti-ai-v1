@@ -2,7 +2,7 @@
 import { clientsClaim } from 'workbox-core';
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
-import { NetworkFirst, CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { NetworkFirst, CacheFirst, StaleWhileRevalidate, NetworkOnly } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -17,15 +17,30 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Take control of all pages immediately
 clientsClaim();
 
-// Handle messages from clients (for manual update triggering)
+// Handle messages from clients (for manual update triggering and cache clearing)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     console.log('Service Worker: Received SKIP_WAITING message - activating update');
     self.skipWaiting();
   }
+  
+  // Handle cache clearing for new deploys
+  if (event.data && event.data.type === 'CLEAR_CACHES') {
+    console.log('Service Worker: Received CLEAR_CACHES message - clearing tenant caches');
+    event.waitUntil(
+      Promise.all([
+        caches.delete('tenant-config'),
+        caches.delete('api-cache'),
+        caches.delete('images-cache'),
+      ]).then(() => {
+        console.log('Service Worker: Tenant caches cleared successfully');
+      })
+    );
+  }
 });
 
 // API calls - Network first with short cache
+// IMPORTANT: Do NOT cache status 0 (opaque responses) - they can cause "Failed to fetch" on replay
 registerRoute(
   ({ url }) => url.hostname.includes('supabase.co') && url.pathname.includes('/rest/'),
   new NetworkFirst({
@@ -37,28 +52,17 @@ registerRoute(
         maxAgeSeconds: 5 * 60, // 5 minutes
       }),
       new CacheableResponsePlugin({
-        statuses: [0, 200],
+        statuses: [200],
       }),
     ],
   })
 );
 
-// Tenant configs - Network first with very short cache
+// Tenant configs are the source of truth for partner branding/theme.
+// Never serve them from the service worker cache; TenantContext owns offline fallback.
 registerRoute(
-  ({ url }) => url.pathname.includes('get-white-label-config'),
-  new NetworkFirst({
-    cacheName: 'tenant-config',
-    networkTimeoutSeconds: 5,
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 5,
-        maxAgeSeconds: 60, // 1 minute
-      }),
-      new CacheableResponsePlugin({
-        statuses: [0, 200],
-      }),
-    ],
-  })
+  ({ url }) => url.pathname.includes('tenant-config') || url.pathname.includes('get-white-label-config'),
+  new NetworkOnly()
 );
 
 // Edge functions - Network first
@@ -92,7 +96,7 @@ registerRoute(
   })
 );
 
-// Images - Cache first
+// Images - Cache first with shorter expiration for theme updates
 registerRoute(
   ({ request }) => request.destination === 'image',
   new CacheFirst({
@@ -100,7 +104,7 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxEntries: 100,
-        maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+        maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days (reduced from 30 for faster theme updates)
       }),
     ],
   })

@@ -1,0 +1,43 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "گھر دکھائیں",
+        "مرکزی صفحہ",
+        "گھر جائیں",
+        "ڈیش بورڈ کھولیں"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "میری زمین",
+        "زمین دکھائیں",
+        "کھیت دکھائیں",
+        "میرے کھیت"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "موسم دکھائیں",
+        "موسم کیسا ہے",
+        "بارش ہوگی",
+        "آج کا موسم"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    }
+  ]
+}

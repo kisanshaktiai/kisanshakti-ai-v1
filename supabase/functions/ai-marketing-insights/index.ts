@@ -1,12 +1,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -24,7 +20,21 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    const { tenantId } = await req.json();
+    // SECURITY: Extract tenant ID from headers (not body)
+    const tenantId = req.headers.get('x-tenant-id');
+    const farmerId = req.headers.get('x-farmer-id');
+    
+    // Validate required header
+    if (!tenantId) {
+      console.error('Missing required header: x-tenant-id');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required header',
+          details: 'x-tenant-id header is required'
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Rate limiting: 50 requests per hour per tenant
     const rateLimit = await checkRateLimit(tenantId || 'anonymous', 'ai-marketing-insights', { maxRequests: 50, windowMs: 3600000 });
@@ -178,7 +188,7 @@ Generate marketing insights as JSON:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-5-mini-2025-08-07',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -224,7 +234,7 @@ Generate marketing insights as JSON:
     await supabase.from('ai_decision_log').insert({
       tenant_id: tenantId,
       decision_type: 'marketing_prediction',
-      model_version: 'openai/gpt-5-mini-2025-08-07',
+      model_version: 'openai/gpt-4o-mini',
       input_data: {
         schedules_count: schedules.length,
         upcoming_tasks: upcomingTasks.length,

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, ChevronLeft, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
@@ -34,6 +35,7 @@ export function SimpleCropSelector({
   onSelect,
   className 
 }: SimpleCropSelectorProps) {
+  const tRef = useLocalizedRef();
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
   const [groups, setGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -124,7 +126,8 @@ export function SimpleCropSelector({
 
   const handleCropSelect = (crop: Crop) => {
     setSelectedCrop(crop);
-    onSelect(crop.id, crop.label);
+    // Pass the localized label so downstream form-state shows the farmer's language.
+    onSelect(crop.id, tRef(crop, 'label') || crop.label);
   };
 
   const handleBack = () => {
@@ -148,7 +151,7 @@ export function SimpleCropSelector({
           <div className="flex flex-col items-center space-y-2">
             <span className="text-3xl">{group.group_icon}</span>
             <span className="text-sm font-medium text-center">
-              {group.group_name}
+              {tRef(group, 'group_name') || group.group_name}
             </span>
           </div>
         </Card>
@@ -167,7 +170,7 @@ export function SimpleCropSelector({
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <span className="font-medium">{selectedGroup?.group_name}</span>
+        <span className="font-medium">{selectedGroup ? (tRef(selectedGroup, 'group_name') || selectedGroup.group_name) : ''}</span>
       </div>
 
       <ScrollArea className="flex-1">
@@ -189,9 +192,9 @@ export function SimpleCropSelector({
                   <div className="flex items-center gap-3">
                     <span className="text-xl">{crop.icon || "🌱"}</span>
                     <div>
-                      <p className="font-medium">{crop.label}</p>
-                      {crop.label_local && (
-                        <p className="text-xs text-muted-foreground">{crop.label_local}</p>
+                      <p className="font-medium">{tRef(crop, 'label') || crop.label}</p>
+                      {crop.label && tRef(crop, 'label') && tRef(crop, 'label') !== crop.label && (
+                        <p className="text-xs text-muted-foreground">{crop.label}</p>
                       )}
                       {crop.season && (
                         <Badge variant="outline" className="mt-1 text-xs">

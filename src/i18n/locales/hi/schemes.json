@@ -1,0 +1,50 @@
+{
+  "__meta": {
+    "page": "schemes",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "schemes": {
+    "title": "सरकारी योजनाएं",
+    "subtitle": "उपलब्ध सब्सिडी और कार्यक्रम",
+    "pm_kisan": "PM-KISAN",
+    "pm_kisan_desc": "प्रति वर्ष ₹6000 की सीधी आय सहायता",
+    "pm_kisan_eligibility": "लघु और सीमांत किसान",
+    "crop_insurance": "फसल बीमा",
+    "crop_insurance_desc": "फसल नुकसान के लिए बीमा कवरेज",
+    "crop_insurance_eligibility": "सभी किसान",
+    "soil_health_card": "मृदा स्वास्थ्य कार्ड",
+    "soil_health_desc": "मुफ्त मिट्टी परीक्षण और सिफारिशें",
+    "soil_health_eligibility": "सभी किसान",
+    "eligibility": "पात्रता",
+    "amount": "राशि",
+    "apply_now": "अभी आवेदन करें",
+    "all_farmers": "सभी किसान",
+    "small_marginal": "लघु और सीमांत किसान",
+    "free": "मुफ्त",
+    "variable": "परिवर्तनशील",
+    "per_year": "/वर्ष"
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show government schemes",
+      "What schemes are available",
+      "PM KISAN scheme",
+      "Apply for crop insurance"
+    ],
+    "voice_examples_hi": [
+      "सरकारी योजनाएं दिखाएं",
+      "कौन सी योजनाएं उपलब्ध हैं",
+      "PM किसान योजना",
+      "फसल बीमा के लिए आवेदन करें"
+    ],
+    "voice_examples_mr": [
+      "सरकारी योजना दाखवा",
+      "कोणत्या योजना उपलब्ध आहेत",
+      "PM किसान योजना",
+      "पीक विम्यासाठी अर्ज करा"
+    ]
+  }
+}

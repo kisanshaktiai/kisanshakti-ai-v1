@@ -1,0 +1,89 @@
+{
+  "__meta": {
+    "page": "pwa",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "pwa": {
+    "title": "Install App",
+    "install_title": "Install {{appName}}",
+    "full_experience": "Get the full app experience with offline access and notifications",
+    "app_installed": "App installed!",
+    "access_home_screen": "You can access it from your home screen",
+    "why_install": "Why Install?",
+    "benefits": {
+      "faster_access": {
+        "title": "Faster Access",
+        "description": "Launch instantly from home screen"
+      },
+      "work_offline": {
+        "title": "Work Offline",
+        "description": "Access your data without internet"
+      },
+      "get_notifications": {
+        "title": "Get Notifications",
+        "description": "Stay updated with alerts"
+      },
+      "save_data": {
+        "title": "Save Data",
+        "description": "Uses less mobile data"
+      }
+    },
+    "android": {
+      "title": "Install on Android",
+      "installing": "Installing...",
+      "install_now": "Install App Now"
+    },
+    "ios": {
+      "title": "Install on iPhone/iPad",
+      "step_1": "Step 1: Tap Share",
+      "step_1_desc": "Tap the Share button in Safari's toolbar",
+      "step_2": "Step 2: Add to Home Screen",
+      "step_2_desc": "Scroll and select \"Add to Home Screen\"",
+      "step_3": "Step 3: Confirm",
+      "step_3_desc": "Tap \"Add\" to install the app",
+      "note": "Note: Installation must be done through Safari browser"
+    },
+    "desktop": {
+      "title": "Install on Desktop",
+      "look_for_icon": "Or look for the install icon in your browser's address bar"
+    },
+    "alternative_method": "Alternative method:",
+    "alternative_desc": "Look for the install icon in your browser's menu or address bar",
+    "prompt": {
+      "title": "Install KisanShakti App",
+      "subtitle": "Access faster, work offline, get notifications",
+      "to_install_iphone": "To install on iPhone/iPad:",
+      "tap_share_safari": "Tap the Share button in Safari",
+      "select_add_home": "Select \"Add to Home Screen\"",
+      "tap_add_confirm": "Tap \"Add\" to confirm",
+      "install_better_experience": "Install the app for better experience",
+      "install_on_desktop": "Install the app on your desktop",
+      "install_now": "Install Now",
+      "later": "Later",
+      "got_it": "Got it"
+    },
+    "success": {
+      "installed": "App installed successfully!",
+      "access_from_home": "You can now access KisanShakti from your home screen"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Install the app",
+      "How do I install",
+      "Add to home screen"
+    ],
+    "voice_examples_hi": [
+      "ऐप इंस्टॉल करें",
+      "इंस्टॉल कैसे करें",
+      "होम स्क्रीन पर जोड़ें"
+    ],
+    "voice_examples_mr": [
+      "अॅप इंस्टॉल करा",
+      "इंस्टॉल कसे करावे",
+      "होम स्क्रीनवर जोडा"
+    ]
+  }
+}

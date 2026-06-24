@@ -1,8 +1,91 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
 
 @tailwind base;
+
+/* Community Page Theme */
+:root {
+  --community-bg-start: 142 76% 96%;
+  --community-bg-mid: 142 50% 94%;
+  --community-bg-end: 142 30% 92%;
+}
+
+.dark {
+  --community-bg-start: 142 30% 8%;
+  --community-bg-mid: 142 20% 6%;
+  --community-bg-end: 142 15% 4%;
+}
+
+/* Blinking Photo Button Animation */
+@keyframes photo-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px hsl(var(--primary) / 0.3);
+    transform: scale(1.02);
+  }
+}
+
+/* 2030 Gradient animation for loading states */
+@keyframes gradient-x {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-photo-pulse {
+  animation: photo-pulse 2s ease-in-out infinite;
+}
+
+/* Glowing border animation for photo button */
+@keyframes glow-border {
+  0%, 100% {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 5px hsl(var(--primary) / 0.5), 0 0 20px hsl(var(--primary) / 0.2);
+  }
+  50% {
+    border-color: hsl(var(--accent));
+    box-shadow: 0 0 10px hsl(var(--accent) / 0.6), 0 0 30px hsl(var(--accent) / 0.3);
+  }
+}
+
+.animate-glow-border {
+  animation: glow-border 2.5s ease-in-out infinite;
+}
+
 @tailwind components;
 @tailwind utilities;
+
+/* ========================================
+   2030-Ready Touch Foundation
+   ======================================== */
+html, body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Eliminate 300ms tap delay on all interactive elements */
+button, a, [role="button"], input, select, textarea, label,
+[tabindex], summary {
+  touch-action: manipulation;
+}
+
+/* Universal scroll container pattern */
+.scroll-container {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  will-change: scroll-position;
+}
 
 /* Hide scrollbar for horizontal scrolling weather cards */
 .scrollbar-hide {
@@ -29,27 +112,27 @@
 
 @layer base {
   :root {
-    /* Core Colors - Neural Network Inspired */
-    --background: 220 25% 98%;
-    --foreground: 220 15% 12%;
+    /* Core Colors - Neutral defaults (will be overridden by tenant theme) */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
     
     /* Card & Surfaces - Advanced Layering */
     --card: 0 0% 100%;
-    --card-foreground: 220 15% 12%;
+    --card-foreground: 0 0% 9%;
     
     /* Popover */
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 12%;
+    --popover-foreground: 0 0% 9%;
     
-    /* Primary - AI Electric Blue */
-    --primary: 210 100% 56%;
+    /* Primary - Truly neutral (will be immediately overridden by tenant theme) */
+    --primary: 0 0% 50%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 210 100% 48%;
-    --primary-glow: 210 100% 70%;
-    --primary-dim: 210 100% 35%;
+    --primary-hover: 0 0% 40%;
+    --primary-glow: 0 0% 65%;
+    --primary-dim: 0 0% 35%;
     
-    /* Secondary - Quantum Purple */
-    --secondary: 270 75% 60%;
+    /* Secondary - Truly neutral (will be immediately overridden by tenant theme) */
+    --secondary: 0 0% 45%;
     --secondary-foreground: 0 0% 100%;
     
     /* Accent - Cyber Cyan */
@@ -59,15 +142,20 @@
     /* Status Colors */
     --success: 142 76% 45%;
     --success-foreground: 0 0% 100%;
+    --success-soft: 142 76% 92%;
     
     --warning: 38 95% 58%;
     --warning-foreground: 38 10% 15%;
+    --warning-soft: 38 95% 92%;
     
     --destructive: 0 85% 60%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 85% 94%;
     
     --info: 210 100% 56%;
     --info-foreground: 0 0% 100%;
+    --info-soft: 210 100% 94%;
+    
     
     /* Muted - Subtle Intelligence */
     --muted: 220 15% 95%;
@@ -117,6 +205,11 @@
     --gradient-danger: linear-gradient(135deg, hsl(0 85% 60%), hsl(38 95% 58%));
     --gradient-cyber: linear-gradient(135deg, hsl(180 100% 45%), hsl(210 100% 56%), hsl(270 75% 60%));
     
+    /* Action Button Gradients - 2030 UI */
+    --gradient-voice: linear-gradient(135deg, hsl(270 75% 60%), hsl(280 85% 65%));
+    --gradient-scan: linear-gradient(135deg, hsl(330 85% 60%), hsl(340 90% 65%));
+    --gradient-actions: linear-gradient(135deg, hsl(180 100% 45%), hsl(200 100% 55%));
+    
     /* Agricultural Theme Gradients for Chat */
     --gradient-agri-green: linear-gradient(135deg, hsl(142 76% 45%), hsl(100 70% 50%));
     --gradient-agri-yellow: linear-gradient(135deg, hsl(45 95% 55%), hsl(38 95% 58%));
@@ -124,6 +217,14 @@
     --gradient-soil: linear-gradient(180deg, hsl(30 45% 45%), hsl(25 50% 40%));
     --gradient-crop: linear-gradient(135deg, hsl(100 70% 50%), hsl(142 76% 45%));
     --gradient-sky: linear-gradient(180deg, hsl(210 100% 56%), hsl(200 85% 65%));
+
+    /* Theme-token gradients (resolve via semantic tokens, white-label safe) */
+    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary) / 0.7));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent) / 0.7));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.5));
+
+    /* Soft shadow (referenced by Home feature cards) */
+    --shadow-soft: 0 2px 8px 0 hsl(220 15% 12% / 0.06), 0 1px 3px 0 hsl(220 15% 12% / 0.04);
     
     /* Advanced Shadows - Multi-layer Depth */
     --shadow-sm: 0 1px 3px 0 hsl(220 15% 12% / 0.08), 0 1px 2px 0 hsl(220 15% 12% / 0.06);
@@ -220,6 +321,19 @@
     --chat-section-default-border: hsl(220 15% 75%);
     --chat-section-default-icon: hsl(220 15% 45%);
     --chat-section-default-badge: hsl(220 15% 50%);
+    
+    /* Multi-color User Bubble Variations (Theme-Based) */
+    --chat-user-1: 142 70% 45%;        /* Green - Success */
+    --chat-user-1-mid: 142 70% 38%;
+    --chat-user-1-end: 120 65% 50%;
+    
+    --chat-user-2: 270 70% 55%;        /* Purple - Creative */
+    --chat-user-2-mid: 270 70% 48%;
+    --chat-user-2-end: 280 75% 60%;
+    
+    --chat-user-3: 38 90% 50%;         /* Orange - Warm */
+    --chat-user-3-mid: 30 85% 45%;
+    --chat-user-3-end: 45 95% 55%;
   }
 
   .dark {
@@ -246,15 +360,20 @@
     
     --success: 142 76% 50%;
     --success-foreground: 0 0% 100%;
+    --success-soft: 142 40% 20%;
     
     --warning: 38 95% 62%;
     --warning-foreground: 38 10% 15%;
+    --warning-soft: 38 50% 20%;
     
     --destructive: 0 85% 65%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 50% 22%;
     
     --info: 210 100% 60%;
     --info-foreground: 0 0% 100%;
+    --info-soft: 210 50% 20%;
+    
     
     --muted: 220 20% 18%;
     --muted-foreground: 220 10% 65%;
@@ -273,6 +392,11 @@
     --gradient-danger: linear-gradient(135deg, hsl(0 85% 65%), hsl(38 95% 62%));
     --gradient-cyber: linear-gradient(135deg, hsl(180 100% 50%), hsl(210 100% 60%), hsl(270 75% 65%));
     
+    /* Action Button Gradients - 2030 UI Dark */
+    --gradient-voice: linear-gradient(135deg, hsl(270 75% 65%), hsl(280 85% 70%));
+    --gradient-scan: linear-gradient(135deg, hsl(330 85% 65%), hsl(340 90% 70%));
+    --gradient-actions: linear-gradient(135deg, hsl(180 100% 50%), hsl(200 100% 60%));
+    
     /* Agricultural Theme Gradients for Chat - Dark Mode */
     --gradient-agri-green: linear-gradient(135deg, hsl(142 76% 50%), hsl(100 70% 55%));
     --gradient-agri-yellow: linear-gradient(135deg, hsl(45 95% 60%), hsl(38 95% 62%));
@@ -280,6 +404,13 @@
     --gradient-soil: linear-gradient(180deg, hsl(30 45% 50%), hsl(25 50% 45%));
     --gradient-crop: linear-gradient(135deg, hsl(100 70% 55%), hsl(142 76% 50%));
     --gradient-sky: linear-gradient(180deg, hsl(210 100% 60%), hsl(200 85% 70%));
+
+    /* Theme-token gradients (dark) */
+    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary) / 0.7));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent) / 0.7));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.4));
+
+    --shadow-soft: 0 2px 8px 0 hsl(0 0% 0% / 0.35), 0 1px 3px 0 hsl(0 0% 0% / 0.25);
     
     --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.3), 0 1px 2px 0 hsl(0 0% 0% / 0.2);
     --shadow-md: 0 4px 12px 0 hsl(0 0% 0% / 0.4), 0 2px 6px 0 hsl(0 0% 0% / 0.3);
@@ -355,6 +486,19 @@
     --chat-section-default-border: hsl(220 15% 35%);
     --chat-section-default-icon: hsl(220 15% 65%);
     --chat-section-default-badge: hsl(220 15% 60%);
+    
+    /* Multi-color User Bubble Variations - Dark Mode */
+    --chat-user-1: 142 70% 50%;
+    --chat-user-1-mid: 142 70% 42%;
+    --chat-user-1-end: 120 65% 55%;
+    
+    --chat-user-2: 270 70% 60%;
+    --chat-user-2-mid: 270 70% 52%;
+    --chat-user-2-end: 280 75% 65%;
+    
+    --chat-user-3: 38 90% 55%;
+    --chat-user-3-mid: 30 85% 50%;
+    --chat-user-3-end: 45 95% 60%;
   }
 }
 
@@ -429,6 +573,15 @@
 
   .animate-scale-out {
     animation: scale-out 0.6s ease-out forwards;
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%) skewX(-12deg);
+    }
+    100% {
+      transform: translateX(200%) skewX(-12deg);
+    }
   }
 
   /* Radial gradient for FAB */
@@ -515,7 +668,7 @@
   
   /* Bottom Navigation Glassmorphism */
   .glassmorphism-nav {
-    @apply bg-background/85 backdrop-blur-2xl;
+    @apply bg-background/95;
     background: linear-gradient(
       to top,
       hsl(var(--background) / 0.95),
@@ -664,7 +817,7 @@
   
   /* Mobile Scroll Containers */
   .mobile-scroll-container {
-    height: 100%;
+    flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
@@ -688,6 +841,33 @@
   }
   
   /* Fade in animation */
+  /* Action Menu Popup Animation */
+  @keyframes slide-up-spring {
+    0% {
+      transform: translateY(100%) scale(0.95);
+      opacity: 0;
+    }
+    60% {
+      transform: translateY(-5%) scale(1.02);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+  
+  .animate-slide-up-spring {
+    animation: slide-up-spring 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+  
+  /* Glassmorphism for Action Menu */
+  .glassmorphism-nav-menu {
+    @apply bg-background/90 dark:bg-background/80 backdrop-blur-xl;
+    box-shadow: 
+      0 -8px 32px 0 rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  }
+  
   @keyframes fade-in {
     from {
       opacity: 0;
@@ -702,4 +882,69 @@
   .animate-fade-in {
     animation: fade-in 0.3s ease-out;
   }
+  
+  /* Safe area padding for mobile notches */
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  
+  .pt-safe {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  
+  /* Chat scroll area improvements */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 2030 Glass Header — opaque fallback for low-end Android, blur upgrade where supported */
+  .glass-header {
+    background-color: hsl(var(--card) / 0.95);
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: 0 1px 0 0 hsl(var(--primary) / 0.06), 0 4px 20px -8px hsl(var(--foreground) / 0.06);
+  }
+
+  @supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+    .glass-header {
+      background-color: hsl(var(--card) / 0.7);
+      backdrop-filter: blur(12px) saturate(140%);
+      -webkit-backdrop-filter: blur(12px) saturate(140%);
+    }
+  }
+
+  /* 2030 a11y: prevent iOS auto-zoom on input focus (font-size must be ≥16px) */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
+
+  /* Universal focus-visible ring for keyboard / accessibility users */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--primary) / 0.6);
+    border-radius: inherit;
+  }
+
+  /* Multi-tenant auth gradient — single source for tenant theming */
+  .bg-auth-gradient {
+    background: linear-gradient(135deg,
+      hsl(var(--primary) / 0.10),
+      hsl(var(--background)),
+      hsl(var(--accent) / 0.10));
+  }
 }
+

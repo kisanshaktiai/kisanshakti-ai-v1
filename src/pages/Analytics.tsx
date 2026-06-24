@@ -1,566 +1,268 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * Farm Analytics — per-land, real-data, mobile-first.
+ *
+ * Every metric is computed from real DB rows via `useAnalyticsData` +
+ * `reportEngine`. No hardcoded yields, prices, water, or weather.
+ * Theme colours only — no hex literals in this file or its sections.
+ */
+import { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Card } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { ArrowLeft, RefreshCw, Layers, Sprout, Wallet, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
-import { useToast } from '@/hooks/use-toast';
-import { useTextToSpeech } from '@/hooks/useTextToSpeech';
-import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
-import { landsApi } from '@/services/landsApi';
-import { supabase } from '@/utils/supabase';
-import { AnalyticsSkeleton } from '@/components/skeletons';
-import { useLands } from '@/hooks/useLands';
-import {
-  TrendingUp,
-  TrendingDown,
-  Volume2,
-  Wheat,
-  Ruler,
-  Droplets,
-  Heart,
-  Cloud,
-  IndianRupee,
-  Wallet,
-  Sprout,
-  TestTube,
-  Users,
-  ChevronRight,
-  BarChart3,
-  PieChart,
-  Activity
-} from 'lucide-react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  RadialLinearScale,
-} from 'chart.js';
-import { Pie, Bar, Line, Doughnut } from 'react-chartjs-2';
+import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { AnalyticsSkeleton } from '@/components/skeletons';
+import { useAnalyticsData, type DateRange } from '@/hooks/useAnalyticsData';
+import { LandSelectorRail } from '@/components/analytics/LandSelectorRail';
+import {
+  CropStageCard,
+  WaterWeatherCard,
+  SoilHealthCard,
+  TaskPerfCard,
+  FinancialCard,
+  MarketPulseCard,
+  RecommendationsCard,
+  DisclaimerCard,
+} from '@/components/analytics/AnalyticsSections';
+import { ForecastChart } from '@/components/analytics/ForecastChart';
+import { HarvestHistoryCard } from '@/components/analytics/HarvestHistoryCard';
+import { aggregateFarm } from '@/lib/analytics/reportEngine';
+import { formatINR, formatNumber } from '@/lib/analytics/formulas';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  RadialLinearScale
-);
-
-interface AnalyticsCardProps {
-  title: string;
-  value: string | number;
-  subtitle?: string;
-  icon: React.ReactNode;
-  color: string;
-  trend?: {
-    value: number;
-    isPositive: boolean;
-  };
-  onClick?: () => void;
-  children?: React.ReactNode;
-  onSpeak?: () => void;
-}
-
-const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
-  title,
-  value,
-  subtitle,
-  icon,
-  color,
-  trend,
-  onClick,
-  children,
-  onSpeak
-}) => {
-  return (
-    <Card
-      className={cn(
-        "relative overflow-hidden cursor-pointer transition-all duration-300",
-        "hover:scale-[1.02] hover:shadow-xl active:scale-[0.98]",
-        "bg-card/90 backdrop-blur-md border-border/50"
-      )}
-      onClick={onClick}
-    >
-      <div className="absolute top-0 right-0 w-32 h-32 opacity-10">
-        <div className={cn("w-full h-full rounded-full blur-3xl", color)} />
-      </div>
-      
-      <div className="p-4 relative">
-        <div className="flex items-start justify-between mb-3">
-          <div className={cn("p-2.5 rounded-xl", color, "bg-opacity-20")}>
-            {icon}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSpeak?.();
-            }}
-          >
-            <Volume2 className="h-4 w-4 text-muted-foreground" />
-          </Button>
-        </div>
-
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
-          {subtitle && (
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
-          )}
-        </div>
-
-        {trend && (
-          <div className="flex items-center gap-1 mt-3">
-            {trend.isPositive ? (
-              <TrendingUp className="h-4 w-4 text-success" />
-            ) : (
-              <TrendingDown className="h-4 w-4 text-destructive" />
-            )}
-            <span className={cn(
-              "text-xs font-medium",
-              trend.isPositive ? "text-success" : "text-destructive"
-            )}>
-              {trend.value}%
-            </span>
-          </div>
-        )}
-
-        {children && (
-          <div className="mt-4">
-            {children}
-          </div>
-        )}
-
-        {onClick && (
-          <ChevronRight className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground" />
-        )}
-      </div>
-    </Card>
-  );
-};
+const RANGES: { value: DateRange; label: string }[] = [
+  { value: '7d', label: '7D' },
+  { value: '30d', label: '30D' },
+  { value: 'season', label: 'Season' },
+  { value: 'year', label: '1Y' },
+];
 
 export default function Analytics() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const { speak, isSpeaking } = useTextToSpeech({ 
-    language: i18n.language === 'hi' ? 'hi-IN' : 'en-US' 
-  });
-  
-  const { user } = useAuthStore();
-  const { tenant } = useTenantStore();
-  const [isLoading, setIsLoading] = useState(true);
-  const [analyticsData, setAnalyticsData] = useState<any>({
-    lands: [],
-    crops: {},
-    totalArea: 0,
-    activeArea: 0,
-    waterUsage: 0,
-    soilHealth: 'Good',
-    weatherData: {},
-    marketPrices: {},
-    expectedIncome: 0,
-    tentativeExpenses: 0
-  });
+  const [params, setParams] = useSearchParams();
+  const [range, setRange] = useState<DateRange>((params.get('range') as DateRange) || '30d');
+  const selectedLandId = params.get('land') || 'all';
 
-  // Use consistent data fetching hook (handles online/offline automatically)
-  const { lands: landsFromHook, isLoading: landsLoading } = useLands();
+  const { data, isLoading, refetch, isFetching } = useAnalyticsData(range);
 
-  useEffect(() => {
-    loadAnalyticsData();
-  }, [user, tenant, landsFromHook]);
-  
-  const loadAnalyticsData = async () => {
-    if (!user || !tenant) return;
-    
-    setIsLoading(landsLoading);
-    try {
-      // Use lands from hook (consistent with other pages)
-      const lands = landsFromHook;
-      
-      // Calculate analytics from real data
-      const totalArea = lands.reduce((sum, land) => sum + (land.area_acres || 0), 0);
-      const activeArea = lands.filter(land => land.current_crop).reduce((sum, land) => sum + (land.area_acres || 0), 0);
-      
-      // Count crops
-      const cropCount: Record<string, number> = {};
-      lands.forEach(land => {
-        if (land.current_crop) {
-          cropCount[land.current_crop] = (cropCount[land.current_crop] || 0) + 1;
-        }
-      });
-      
-      // Calculate estimated income (₹25,000 per acre average)
-      const expectedIncome = totalArea * 25000;
-      
-      // Calculate estimated expenses (₹10,000 per acre average)
-      const tentativeExpenses = totalArea * 10000;
-      
-      setAnalyticsData({
-        lands,
-        crops: cropCount,
-        totalArea,
-        activeArea,
-        waterUsage: activeArea * 125, // 125L per acre average
-        soilHealth: 'Good',
-        weatherData: { temp: 28, humidity: 65, rainChance: 40 },
-        marketPrices: { rice: 2350, wheat: 1950 },
-        expectedIncome,
-        tentativeExpenses
-      });
-    } catch (error) {
-      console.error('Error loading analytics:', error);
-      toast({
-        title: t('error.loadingAnalytics'),
-        description: t('error.tryAgain'),
-        variant: 'destructive'
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const setSelected = (id: string | 'all') => {
+    const next = new URLSearchParams(params);
+    if (id === 'all') next.delete('land');
+    else next.set('land', id);
+    setParams(next, { replace: true });
+  };
+  const setRangeAndUrl = (r: DateRange) => {
+    setRange(r);
+    const next = new URLSearchParams(params);
+    next.set('range', r);
+    setParams(next, { replace: true });
   };
 
-  // Dynamic crop data from real tenant data
-  const cropLabels = Object.keys(analyticsData.crops);
-  const cropValues = Object.values(analyticsData.crops);
-  const cropData = {
-    labels: cropLabels.length > 0 ? cropLabels : ['No Crops'],
-    datasets: [{
-      data: cropValues.length > 0 ? cropValues : [1],
-      backgroundColor: [
-        'hsl(142 76% 36%)', // Green
-        'hsl(38 92% 50%)',  // Yellow
-        'hsl(199 89% 48%)', // Blue
-        'hsl(0 84% 60%)',   // Red
-        'hsl(30 41% 48%)',  // Brown
-      ],
-      borderWidth: 2,
-      borderColor: 'hsl(0 0% 100%)',
-    }]
-  };
+  const perLand = data?.perLand ?? [];
+  const aggregate = data?.aggregate ?? aggregateFarm([]);
 
-  const marketData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-    datasets: [{
-      label: 'Rice',
-      data: [2200, 2250, 2180, 2300, analyticsData.marketPrices.rice || 2350],
-      borderColor: 'hsl(142 76% 36%)',
-      backgroundColor: 'hsla(142, 76%, 36%, 0.1)',
-      tension: 0.4,
-      borderWidth: 2,
-    }, {
-      label: 'Wheat',
-      data: [1800, 1850, 1820, 1900, analyticsData.marketPrices.wheat || 1950],
-      borderColor: 'hsl(199 89% 48%)',
-      backgroundColor: 'hsla(199, 89%, 48%, 0.1)',
-      tension: 0.4,
-      borderWidth: 2,
-    }]
-  };
+  // Selected scope (all → aggregate; single → its analytics)
+  const scope = useMemo(() => {
+    if (selectedLandId === 'all') return null;
+    return perLand.find((a) => a.land.id === selectedLandId) ?? null;
+  }, [selectedLandId, perLand]);
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: 'hsl(0 0% 100%)',
-        titleColor: 'hsl(140 25% 15%)',
-        bodyColor: 'hsl(140 25% 15%)',
-        borderColor: 'hsl(142 20% 90%)',
-        borderWidth: 1,
-      }
-    },
-    scales: {
-      x: {
-        ticks: {
-          color: 'hsl(140 25% 15%)',
-        },
-        grid: {
-          color: 'hsla(142, 20%, 90%, 0.3)',
-        }
-      },
-      y: {
-        ticks: {
-          color: 'hsl(140 25% 15%)',
-        },
-        grid: {
-          color: 'hsla(142, 20%, 90%, 0.3)',
-        }
-      }
-    }
-  };
-
-  const speakCard = (text: string) => {
-    speak(text);
-  };
-
-  if (isLoading) {
-    return <AnalyticsSkeleton />;
-  }
+  if (isLoading) return <AnalyticsSkeleton />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background/95 to-primary/5">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-lg border-b border-border/50">
-        <div className="px-4 py-3">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-            📊 {t('analytics.title', 'Farm Analytics')}
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {t('analytics.subtitle', 'Your farming insights at a glance')}
-          </p>
-        </div>
-      </div>
-
-      <div className="p-4 space-y-4 pb-20">
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Crop Distribution */}
-          <AnalyticsCard
-            title={t('analytics.cropDistribution', '🌾 Crop Distribution')}
-            value={cropLabels.length.toString()}
-            subtitle={t('analytics.cropsGrown', 'Active Crops')}
-            icon={<Wheat className="h-5 w-5 text-success" />}
-            color="bg-success"
-            onClick={() => navigate('/app/analytics/crops')}
-            onSpeak={() => speakCard(`You have ${cropLabels.length} active crops growing`)}
+    <div className="min-h-full bg-background">
+      {/* Compact header */}
+      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60">
+        <div className="px-3 pt-[env(safe-area-inset-top,8px)] pb-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label={t('common.back', 'Back')}
+            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-foreground"
           >
-            <div className="h-32">
-              <Pie data={cropData} options={{...chartOptions, plugins: {...chartOptions.plugins}}} />
-            </div>
-          </AnalyticsCard>
-
-          {/* Land Utilization */}
-          <AnalyticsCard
-            title={t('analytics.landUtilization', '📏 Land Usage')}
-            value={`${analyticsData.totalArea > 0 ? Math.round((analyticsData.activeArea / analyticsData.totalArea) * 100) : 0}%`}
-            subtitle={t('analytics.landUsed', `${analyticsData.activeArea} of ${analyticsData.totalArea} acres active`)}
-            icon={<Ruler className="h-5 w-5 text-primary" />}
-            color="bg-primary"
-            onClick={() => navigate('/app/analytics/land')}
-            onSpeak={() => speakCard(`${Math.round((analyticsData.activeArea / analyticsData.totalArea) * 100)} percent of your land is being utilized`)}
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base font-bold text-foreground leading-tight truncate">
+              {t('analytics.title', 'Farm Analytics')}
+            </h1>
+            <p className="text-[11px] text-muted-foreground leading-tight truncate">
+              {scope ? scope.land.name : t('analytics.all_farm', 'All Farm')} ·{' '}
+              {formatNumber(scope ? scope.land.area_acres || 0 : aggregate.totalAreaAcres, 1)} ac
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            aria-label={t('common.refresh', 'Refresh')}
+            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-foreground"
           >
-            <Progress value={analyticsData.totalArea > 0 ? (analyticsData.activeArea / analyticsData.totalArea) * 100 : 0} className="h-2 mt-2" />
-            <div className="flex justify-between text-xs text-muted-foreground mt-2">
-              <span>{t('analytics.active', 'Active')}: {analyticsData.activeArea}</span>
-              <span>{t('analytics.idle', 'Idle')}: {analyticsData.totalArea - analyticsData.activeArea}</span>
-            </div>
-          </AnalyticsCard>
+            <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+          </button>
+        </div>
+        {/* Date range chips */}
+        <div className="px-3 pb-2 flex gap-1.5">
+          {RANGES.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              onClick={() => setRangeAndUrl(r.value)}
+              className={cn(
+                'flex-1 h-8 rounded-full text-xs font-semibold transition-colors',
+                range === r.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {t(`analytics.range.${r.value}`, r.label)}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main className="px-3 py-3 space-y-3 pb-24">
+        {/* Land selector */}
+        <LandSelectorRail
+          perLand={perLand}
+          selectedId={selectedLandId as string | 'all'}
+          onSelect={setSelected}
+          totalAreaAcres={aggregate.totalAreaAcres}
+        />
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 gap-2">
+          <KpiTile
+            icon={<Layers className="w-4 h-4" />}
+            label={t('analytics.kpi.area', 'Total area')}
+            value={`${formatNumber(scope ? scope.land.area_acres || 0 : aggregate.totalAreaAcres, 1)} ac`}
+          />
+          <KpiTile
+            icon={<Sprout className="w-4 h-4" />}
+            label={t('analytics.kpi.crops', 'Active crops')}
+            value={scope ? (scope.land.current_crop ? '1' : '0') : String(aggregate.activeCrops)}
+          />
+          <KpiTile
+            icon={<TrendingUp className="w-4 h-4" />}
+            label={t('analytics.kpi.revenue', 'Projected revenue')}
+            value={formatINR(scope ? scope.projectedRevenue : aggregate.projectedRevenue)}
+          />
+          <KpiTile
+            icon={<Wallet className="w-4 h-4" />}
+            label={t('analytics.kpi.profit', 'Projected profit')}
+            value={formatINR(scope ? scope.projectedProfit : aggregate.projectedProfit)}
+            accent={(scope ? scope.projectedProfit : aggregate.projectedProfit) >= 0}
+          />
         </div>
 
-        {/* Water & Irrigation */}
-        <AnalyticsCard
-          title={t('analytics.waterIrrigation', '💧 Water & Irrigation')}
-          value={t('analytics.optimal', 'Optimal')}
-          subtitle={t('analytics.waterUsage', `${analyticsData.waterUsage}L used today`)}
-          icon={<Droplets className="h-5 w-5 text-info" />}
-          color="bg-info"
-          trend={{ value: 12, isPositive: true }}
-          onClick={() => navigate('/app/analytics/water')}
-          onSpeak={() => speakCard(`Water usage is optimal at ${analyticsData.waterUsage} liters today`)}
-        >
-          <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <div className="flex justify-between text-xs mb-1">
-                <span>{t('analytics.usage', 'Usage')}</span>
-                <span>65%</span>
-              </div>
-              <Progress value={65} className="h-2" />
-            </div>
+        {/* Per-land sections OR all-farm grid */}
+        {perLand.length === 0 ? (
+          <Card className="p-6 text-center bg-card border-border/60">
+            <p className="text-sm font-semibold text-foreground mb-1">
+              {t('analytics.empty.title', 'No data available')}
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              {t('analytics.empty.message', 'Add land and start tracking activities to see analytics.')}
+            </p>
+            <Button size="sm" onClick={() => navigate('/app/lands/add')}>
+              {t('analytics.empty.cta', 'Add Land')}
+            </Button>
+          </Card>
+        ) : scope ? (
+          <div className="space-y-3">
+            <ForecastChart landId={scope.land.id} />
+            <RecommendationsCard a={scope} />
+            <CropStageCard a={scope} />
+            <WaterWeatherCard a={scope} />
+            <SoilHealthCard a={scope} />
+            <TaskPerfCard a={scope} />
+            <FinancialCard a={scope} />
+            <MarketPulseCard a={scope} />
+            <HarvestHistoryCard landId={scope.land.id} />
+            <DisclaimerCard />
           </div>
-        </AnalyticsCard>
-
-        {/* Soil Health */}
-        <AnalyticsCard
-          title={t('analytics.soilHealth', '🌱 Soil Health Index')}
-          value={t('analytics.good', 'Good')}
-          subtitle={t('analytics.soilPH', 'pH: 6.8 | Nitrogen: High')}
-          icon={<Heart className="h-5 w-5 text-warning" />}
-          color="bg-warning"
-          onClick={() => navigate('/app/analytics/soil')}
-          onSpeak={() => speakCard('Soil health is good with pH 6.8')}
-        >
-          <div className="flex gap-2 mt-2">
-            <div className="flex-1 text-center p-2 bg-success/10 rounded-lg">
-              <p className="text-xs text-muted-foreground">N</p>
-              <p className="text-sm font-bold text-success">High</p>
-            </div>
-            <div className="flex-1 text-center p-2 bg-warning/10 rounded-lg">
-              <p className="text-xs text-muted-foreground">P</p>
-              <p className="text-sm font-bold text-warning">Med</p>
-            </div>
-            <div className="flex-1 text-center p-2 bg-destructive/10 rounded-lg">
-              <p className="text-xs text-muted-foreground">K</p>
-              <p className="text-sm font-bold text-destructive">Low</p>
-            </div>
-          </div>
-        </AnalyticsCard>
-
-        {/* Weather Impact */}
-        <AnalyticsCard
-          title={t('analytics.weatherImpact', '🌦️ Weather Impact')}
-          value={t('analytics.favorable', 'Favorable')}
-          subtitle={t('analytics.rainExpected', 'Light rain expected')}
-          icon={<Cloud className="h-5 w-5 text-info" />}
-          color="bg-info"
-          onClick={() => navigate('/app/weather')}
-          onSpeak={() => speakCard('Weather is favorable with light rain expected')}
-        >
-          <div className="flex items-center gap-4 mt-2">
-            <div className="text-center">
-              <p className="text-xs text-muted-foreground">{t('analytics.temp', 'Temp')}</p>
-              <p className="text-lg font-bold">28°C</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-muted-foreground">{t('analytics.humidity', 'Humidity')}</p>
-              <p className="text-lg font-bold">65%</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-muted-foreground">{t('analytics.rain', 'Rain')}</p>
-              <p className="text-lg font-bold">40%</p>
-            </div>
-          </div>
-        </AnalyticsCard>
-
-        {/* Market Trends */}
-        <AnalyticsCard
-          title={t('analytics.marketTrends', '💰 Market Trends')}
-          value="₹2,350"
-          subtitle={t('analytics.ricePrice', 'Rice price per quintal')}
-          icon={<BarChart3 className="h-5 w-5 text-success" />}
-          color="bg-success"
-          trend={{ value: 5.2, isPositive: true }}
-          onClick={() => navigate('/app/market')}
-          onSpeak={() => speakCard('Rice price is 2350 rupees per quintal, up 5.2 percent')}
-        >
-          <div className="h-24">
-            <Line data={marketData} options={chartOptions} />
-          </div>
-        </AnalyticsCard>
-
-        {/* Expected Income */}
-        <AnalyticsCard
-          title={t('analytics.expectedIncome', '💵 Expected Income')}
-          value={`₹${analyticsData.expectedIncome.toLocaleString('en-IN')}`}
-          subtitle={t('analytics.perSeason', 'This season estimate')}
-          icon={<Wallet className="h-5 w-5 text-success" />}
-          color="bg-success"
-          onClick={() => navigate('/app/analytics/income')}
-          onSpeak={() => speakCard(`Expected income this season is ${analyticsData.expectedIncome} rupees`)}
-        >
-          <div className="grid grid-cols-3 gap-2 mt-3">
-            <div className="text-center">
-              <p className="text-2xl">🌾</p>
-              <p className="text-xs font-medium">₹{Math.round(analyticsData.expectedIncome * 0.5 / 1000)}K</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl">🌽</p>
-              <p className="text-xs font-medium">₹{Math.round(analyticsData.expectedIncome * 0.3 / 1000)}K</p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl">🥔</p>
-              <p className="text-xs font-medium">₹{Math.round(analyticsData.expectedIncome * 0.2 / 1000)}K</p>
-            </div>
-          </div>
-        </AnalyticsCard>
-
-        {/* Tentative Expenses */}
-        <AnalyticsCard
-          title={t('analytics.expenses', '💵 Tentative Expenses')}
-          value={`₹${analyticsData.tentativeExpenses.toLocaleString('en-IN')}`}
-          subtitle={t('analytics.perAcre', `₹${Math.round(analyticsData.tentativeExpenses / (analyticsData.totalArea || 1)).toLocaleString('en-IN')} per acre`)}
-          icon={<IndianRupee className="h-5 w-5 text-warning" />}
-          color="bg-warning"
-          onClick={() => navigate('/app/analytics/expenses')}
-          onSpeak={() => speakCard(`Estimated expenses are ${analyticsData.tentativeExpenses} rupees`)}
-        >
-          <div className="grid grid-cols-4 gap-2 mt-3">
-            <div className="text-center">
-              <div className="p-2 bg-primary/10 rounded-lg mb-1">
-                <Sprout className="h-4 w-4 mx-auto text-primary" />
-              </div>
-              <p className="text-[10px] text-muted-foreground">{t('analytics.seeds', 'Seeds')}</p>
-              <p className="text-xs font-bold">₹35K</p>
-            </div>
-            <div className="text-center">
-              <div className="p-2 bg-info/10 rounded-lg mb-1">
-                <Droplets className="h-4 w-4 mx-auto text-info" />
-              </div>
-              <p className="text-[10px] text-muted-foreground">{t('analytics.irrigation', 'Water')}</p>
-              <p className="text-xs font-bold">₹40K</p>
-            </div>
-            <div className="text-center">
-              <div className="p-2 bg-success/10 rounded-lg mb-1">
-                <TestTube className="h-4 w-4 mx-auto text-success" />
-              </div>
-              <p className="text-[10px] text-muted-foreground">{t('analytics.fertilizer', 'Fertilizer')}</p>
-              <p className="text-xs font-bold">₹60K</p>
-            </div>
-            <div className="text-center">
-              <div className="p-2 bg-warning/10 rounded-lg mb-1">
-                <Users className="h-4 w-4 mx-auto text-warning" />
-              </div>
-              <p className="text-[10px] text-muted-foreground">{t('analytics.labor', 'Labor')}</p>
-              <p className="text-xs font-bold">₹50K</p>
-            </div>
-          </div>
-        </AnalyticsCard>
-
-        {/* Summary Card */}
-        <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-primary/20">
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Activity className="h-5 w-5 text-primary" />
-                {t('analytics.profitEstimate', 'Profit Estimate')}
-              </h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => speakCard('Estimated profit is 2 lakh 65 thousand rupees')}
+        ) : (
+          <div className="space-y-3">
+            <ForecastChart landId={null} />
+            <HarvestHistoryCard landId={null} />
+            {perLand.map((a) => (
+              <Card
+                key={a.land.id}
+                className="bg-card border-border/60 p-3 active:scale-[0.99] transition-transform"
+                onClick={() => setSelected(a.land.id)}
               >
-                <Volume2 className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">{t('analytics.income', 'Income')}</span>
-                <span className="text-sm font-medium text-success">+ ₹{analyticsData.expectedIncome.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">{t('analytics.expenses', 'Expenses')}</span>
-                <span className="text-sm font-medium text-destructive">- ₹{analyticsData.tentativeExpenses.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="pt-2 border-t border-border">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">{t('analytics.netProfit', 'Net Profit')}</span>
-                  <span className="text-lg font-bold text-primary">₹{(analyticsData.expectedIncome - analyticsData.tentativeExpenses).toLocaleString('en-IN')}</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-muted flex items-center justify-center shrink-0">
+                    {a.land.ndvi_thumbnail_url ? (
+                      <img src={a.land.ndvi_thumbnail_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <Layers className="w-5 h-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-foreground truncate">{a.land.name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {a.land.current_crop || t('analytics.no_crop_short', 'fallow')} ·{' '}
+                      {formatNumber(a.land.area_acres || 0, 1)} ac
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.kpi.profit', 'Profit')}</p>
+                    <p
+                      className={cn(
+                        'text-sm font-bold',
+                        a.projectedProfit >= 0 ? 'text-primary' : 'text-destructive',
+                      )}
+                    >
+                      {formatINR(a.projectedProfit)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </div>
+                <div className="grid grid-cols-3 gap-2 mt-3 text-center text-[10px]">
+                  <Mini label={t('analytics.kpi.ndvi', 'NDVI')} value={a.latestNdvi != null ? Math.round(a.latestNdvi * 100) + '%' : '—'} />
+                  <Mini label={t('analytics.completion', 'Tasks')} value={a.tasks.total ? a.tasks.completionRate.toFixed(0) + '%' : '—'} />
+                  <Mini label={t('analytics.kpi.yield', 'Yield')} value={formatNumber(a.expectedYieldQuintals, 0) + ' q'} />
+                </div>
+              </Card>
+            ))}
+            <DisclaimerCard />
           </div>
-        </Card>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function KpiTile({
+  icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <Card className="p-3 bg-card border-border/60">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">{icon}</div>
+        <p className="text-[10px] text-muted-foreground uppercase leading-tight">{label}</p>
       </div>
+      <p className={cn('text-base font-bold leading-tight', accent === false ? 'text-destructive' : 'text-foreground')}>
+        {value}
+      </p>
+    </Card>
+  );
+}
+
+function Mini({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-muted/40 rounded p-1.5">
+      <p className="text-muted-foreground">{label}</p>
+      <p className="font-bold text-foreground">{value}</p>
     </div>
   );
 }

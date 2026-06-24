@@ -1,17 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Badge } from '@/components/ui/badge';
-import { CalendarIcon, MapPin, ChevronLeft, Sparkles, Wheat, Droplets, Sun } from 'lucide-react';
-import { format } from 'date-fns';
+import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle, Wheat } from 'lucide-react';
+import { format, differenceInDays, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
+import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
+import BackdatedConsentDialog from './BackdatedConsentDialog';
+import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
+import { VarietySelector } from '@/components/crops/VarietySelector';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface CropDateInputProps {
   land: {
@@ -23,8 +28,21 @@ interface CropDateInputProps {
     district?: string;
     soil_type?: string;
     water_source?: string;
+    irrigation_type?: string;
+    ownership_type?: string;
   };
-  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => void;
+  onSubmit: (
+    cropName: string, 
+    cropVariety: string, 
+    sowingDate: Date, 
+    isReadyMadePlant: boolean, 
+    farmingType: FarmingMode, 
+    nurseryDays: number, 
+    localizedCropName: string,
+    intercrops?: IntercropData[],
+    backdatedConsent?: boolean,
+    varietyId?: string | null,
+  ) => void;
   onBack: () => void;
   loading?: boolean;
 }
@@ -36,17 +54,45 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   loading = false
 }) => {
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
+  const [localizedCropName, setLocalizedCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
+  const [varietyId, setVarietyId] = useState<string | null>(null);
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
+  const [nurseryDays, setNurseryDays] = useState<number>(0);
+  const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
+  const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
+  const [intercrops, setIntercrops] = useState<IntercropData[]>([]);
+  const [showBackdatedConsent, setShowBackdatedConsent] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState<{farmingType: FarmingMode} | null>(null);
+
+  // Calculate total area for display
+  const totalIntercropArea = useMemo(() => {
+    return intercrops.reduce((sum, ic) => sum + (ic.areaPercent || 0), 0);
+  }, [intercrops]);
+
+  // Calculate if date is backdated
+  const backdatedInfo = useMemo(() => {
+    if (!sowingDate) return { isBackdated: false, daysAgo: 0 };
+    const today = startOfDay(new Date());
+    const selectedDate = startOfDay(sowingDate);
+    const daysDiff = differenceInDays(today, selectedDate);
+    return {
+      isBackdated: daysDiff > 0,
+      daysAgo: daysDiff,
+    };
+  }, [sowingDate]);
 
   const handleSubmit = () => {
     if (!cropName) {
       toast({
-        title: 'Select Crop',
-        description: 'Please select a crop',
+        title: t('schedule.crop_input.select_crop'),
+        description: t('schedule.crop_input.please_select_crop'),
         variant: 'destructive',
       });
       return;
@@ -54,28 +100,88 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     
     if (!sowingDate) {
       toast({
-        title: 'Select Date',
-        description: 'Please select the sowing date',
+        title: t('schedule.crop_input.select_date'),
+        description: t('schedule.crop_input.please_select_date'),
         variant: 'destructive',
       });
       return;
     }
 
-    onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
+    // Open farming type dialog instead of submitting directly
+    console.log('🔔 [CropDateInput] Opening farming type dialog for:', cropName);
+    setShowFarmingTypeDialog(true);
   };
 
-  const handleCropSelect = (id: string, name: string) => {
+  const handleFarmingTypeSelect = (farmingType: FarmingMode) => {
+    console.log('✅ [CropDateInput] Farming type selected:', farmingType);
+    setSelectedFarmingType(farmingType);
+    setShowFarmingTypeDialog(false);
+
+    // Check if backdated consent is needed
+    if (backdatedInfo.isBackdated && backdatedInfo.daysAgo > 0) {
+      setPendingSubmitData({ farmingType });
+      setShowBackdatedConsent(true);
+    } else {
+      // No backdated consent needed, proceed directly
+      proceedWithSubmit(farmingType, false);
+    }
+  };
+
+  const proceedWithSubmit = (farmingType: FarmingMode, backdatedConsent: boolean) => {
+    if (sowingDate) {
+      console.log('🚀 [CropDateInput] Calling onSubmit with:', {
+        cropName,
+        farmingType,
+        nurseryDays,
+        intercrops,
+        backdatedConsent,
+      });
+      onSubmit(
+        cropName, 
+        cropVariety, 
+        sowingDate, 
+        isReadyMadePlant, 
+        farmingType, 
+        nurseryDays, 
+        localizedCropName,
+        intercrops,
+        backdatedConsent,
+        varietyId,
+      );
+    }
+  };
+
+  const handleBackdatedConsentConfirm = () => {
+    setShowBackdatedConsent(false);
+    if (pendingSubmitData) {
+      proceedWithSubmit(pendingSubmitData.farmingType, true);
+      setPendingSubmitData(null);
+    }
+  };
+
+  const handleBackdatedConsentCancel = () => {
+    setShowBackdatedConsent(false);
+    setPendingSubmitData(null);
+    // Reset date to today
+    setSowingDate(new Date());
+  };
+
+  const handleCropSelect = (id: string, name: string, localized: string, _english: string) => {
     setCropId(id);
     setCropName(name);
-    
-    // Auto-suggest variety based on crop
-    if (name.toLowerCase().includes('rice')) setCropVariety('IR-64');
-    if (name.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
-    if (name.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
+    setLocalizedCropName(localized || name);
+
+    // Reset crop-scoped state when the crop changes
+    setIntercrops([]);
+    setCropVariety('');
+    setVarietyId(null);
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5 pt-14 pb-16 overflow-hidden">
+    <div
+      className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5 pt-14 overflow-hidden"
+      style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
+    >
       {/* Full Screen Container with Modern Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -101,136 +207,286 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {land.soil_type && (
-                <span className="text-xs px-2 py-1 rounded-full bg-white/50 dark:bg-black/30 backdrop-blur-sm">
-                  {land.soil_type}
-                </span>
-              )}
-              {land.water_source && (
-                <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
-                  <Droplets className="h-3 w-3 text-blue-500" />
-                  <span className="text-blue-700 dark:text-blue-300">Water</span>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {land.soil_type && (() => {
+                const d = refLabels.display(land.soil_type, 'soil');
+                return (
+                  <span className={`text-xs px-2 py-1 rounded-full bg-white/50 dark:bg-black/30 backdrop-blur-sm ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </span>
+                );
+              })()}
+              {land.water_source && (() => {
+                const d = refLabels.display(land.water_source, 'water');
+                return (
+                  <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                    <Droplets className="h-3 w-3 text-info" />
+                    <span className={`text-info dark:text-info ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                  </span>
+                );
+              })()}
+              {land.irrigation_type && (() => {
+                const d = refLabels.display(land.irrigation_type, 'irrigation');
+                return (
+                  <span className={`text-xs px-2 py-1 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </span>
+                );
+              })()}
+              {land.ownership_type && (
+                <span className={`text-xs px-2 py-1 rounded-full border font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
+                  {ownershipLabel(land.ownership_type)}
                 </span>
               )}
             </div>
           </div>
         </div>
 
-        {/* Full Height Crop Selection */}
-        <div className="flex-1 overflow-hidden bg-background/40 backdrop-blur-sm">
-          <CentralizedCropSelector
-            selectedCropId={cropId}
-            onSelect={handleCropSelect}
-            className="h-full"
-            showHeader={false}
-            variant="compact"
-            showSearch={true}
-          />
-        </div>
-        
-        {/* Bottom Fixed Panel for Variety & Date (Shows when crop selected) */}
-        {cropName && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 p-4 space-y-4"
-          >
-            {/* Variety Input */}
-            <div className="space-y-2">
-              <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
-                Variety (Optional)
-              </Label>
-              <Input
-                id="variety"
-                placeholder="e.g., IR-64, HD-2967, BT Cotton"
-                value={cropVariety}
-                onChange={(e) => setCropVariety(e.target.value)}
-                className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all"
-              />
-            </div>
-
-            {/* Ready-made Plant Checkbox */}
-            <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-lg border border-border/50">
-              <input
-                type="checkbox"
-                id="ready-made-plant"
-                checked={isReadyMadePlant}
-                onChange={(e) => setIsReadyMadePlant(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300"
-              />
-              <div className="flex-1">
-                <Label htmlFor="ready-made-plant" className="text-xs font-medium cursor-pointer">
-                  Using ready-made nursery plants
-                </Label>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Check if planting seedlings/transplants instead of sowing seeds
+        {/* Crop Selection – full screen when no crop chosen, collapsed chip after */}
+        {!cropName ? (
+          <div className="flex-1 overflow-hidden bg-background/40 backdrop-blur-sm">
+            <CentralizedCropSelector
+              selectedCropId={cropId}
+              onSelect={handleCropSelect}
+              className="h-full"
+              showHeader={false}
+              variant="compact"
+              showSearch={true}
+            />
+          </div>
+        ) : (
+          <div className="px-3 py-2 bg-background/80 border-b border-border/40 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Wheat className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">
+                  {t('schedule.crop_input.selected_crop', 'Selected crop')}
+                </p>
+                <p className="text-sm font-semibold truncate leading-tight">
+                  {localizedCropName || cropName}
                 </p>
               </div>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs shrink-0"
+              onClick={() => {
+                setCropId('');
+                setCropName('');
+                setLocalizedCropName('');
+                setVarietyId(null);
+                setCropVariety('');
+                setIntercrops([]);
+              }}
+            >
+              <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+              {t('schedule.crop_input.change_crop', 'Change crop')}
+            </Button>
+          </div>
+        )}
 
-            {/* Date Selection */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-primary" />
-                <span className="text-xs font-medium">
-                  {isReadyMadePlant ? 'Planting Date' : 'Sowing Date'}
-                </span>
+        {/* Variety + date + submit panel — takes all remaining height when crop selected */}
+        {cropName && (
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 40, opacity: 0 }}
+            className="bg-background flex-1 min-h-0 flex flex-col shrink-0"
+          >
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+              {/* Variety Selector — DB-driven, with rich details + "add missing" CTA */}
+              <VarietySelector
+                cropId={cropId}
+                value={varietyId}
+                cropName={localizedCropName || cropName}
+                onChange={(v) => {
+                  setVarietyId(v?.id ?? null);
+                  setCropVariety(v?.name ?? '');
+                }}
+                onManualSubmit={(proposedName) => {
+                  setVarietyId(null);
+                  setCropVariety(proposedName);
+                }}
+              />
+
+
+              {/* Multi-Intercrop Selector - 2030 Ready UI */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Wheat className="h-3.5 w-3.5" />
+                    {t('schedule.crop_input.intercrop_label', 'Intercrops (Optional)')}
+                  </Label>
+                  {intercrops.length > 0 && (
+                    <span className="text-[10px] font-semibold text-success dark:text-success bg-success/10 px-2 py-0.5 rounded-full">
+                      {intercrops.length}/3 • {totalIntercropArea}% area
+                    </span>
+                  )}
+                </div>
+                <MultiIntercropSelector
+                  majorCropName={cropName}
+                  intercrops={intercrops}
+                  onIntercropsChange={setIntercrops}
+                  maxIntercrops={3}
+                />
               </div>
-              
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-10",
-                      "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
-                      "border-white/30 dark:border-white/20 hover:border-primary/50",
-                      !sowingDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {sowingDate ? format(sowingDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={sowingDate}
-                    onSelect={(date) => date && setSowingDate(date)}
-                    initialFocus
-                    disabled={(date) => 
-                      date < new Date(new Date().setHours(0,0,0,0)) || 
-                      date > new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-                    }
+
+              {/* Ready-made Plant Checkbox */}
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-xl border border-border/50">
+                  <input
+                    type="checkbox"
+                    id="ready-made-plant"
+                    checked={isReadyMadePlant}
+                    onChange={(e) => {
+                      setIsReadyMadePlant(e.target.checked);
+                      if (!e.target.checked) setNurseryDays(0);
+                    }}
+                    className="mt-1 h-5 w-5 rounded border-border accent-primary"
                   />
-                </PopoverContent>
-              </Popover>
+                  <div className="flex-1">
+                    <Label htmlFor="ready-made-plant" className="text-sm font-medium cursor-pointer">
+                      {t('schedule.crop_input.ready_made_plant')}
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {t('schedule.crop_input.ready_made_description')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nursery Days Input - Only shown when ready-made plant is selected */}
+                {isReadyMadePlant && (
+                  <div className="p-3 bg-primary/10 rounded-xl border border-primary/30 space-y-2">
+                    <Label htmlFor="nursery-days" className="text-xs font-medium text-primary">
+                      {t('schedule.crop_input.nursery_days_label', 'Plant age (days from seed sowing)')}
+                    </Label>
+                    <Input
+                      id="nursery-days"
+                      type="number"
+                      min={1}
+                      max={90}
+                      placeholder={t('schedule.crop_input.nursery_days_placeholder', 'e.g., 25, 30, 45 days')}
+                      value={nurseryDays || ''}
+                      onChange={(e) => setNurseryDays(parseInt(e.target.value) || 0)}
+                      className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-primary/30 focus:border-primary/50 transition-all rounded-xl"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t('schedule.crop_input.nursery_days_help', 'Enter how many days old the nursery plant is. Schedule will start from transplanting.')}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Date Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    {isReadyMadePlant ? t('schedule.crop_input.planting_date') : t('schedule.crop_input.sowing_date')}
+                  </span>
+                  {backdatedInfo.isBackdated && (
+                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-warning/10 border border-warning/30 text-warning dark:text-warning">
+                      <AlertTriangle className="h-3 w-3" />
+                      {backdatedInfo.daysAgo}d ago
+                    </span>
+                  )}
+                </div>
+                
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-11 rounded-xl",
+                        "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
+                        "border-white/30 dark:border-white/20 hover:border-primary/50",
+                        backdatedInfo.isBackdated && "border-warning/50",
+                        !sowingDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {sowingDate ? format(sowingDate, "PPP") : t('schedule.crop_input.pick_date')}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={sowingDate}
+                      onSelect={(date) => date && setSowingDate(date)}
+                      initialFocus
+                      // Allow past dates up to 180 days (6 months) for existing crops
+                      disabled={(date) => {
+                        const today = new Date();
+                        const sixMonthsAgo = new Date();
+                        sixMonthsAgo.setMonth(today.getMonth() - 6);
+                        const oneYearFromNow = new Date();
+                        oneYearFromNow.setFullYear(today.getFullYear() + 1);
+                        return date < sixMonthsAgo || date > oneYearFromNow;
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {/* Backdated Warning Hint */}
+                {backdatedInfo.isBackdated && (
+                  <p className="text-xs text-warning dark:text-warning flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {t('schedule.crop_input.backdated_warning', 'Past date selected. You\'ll need to confirm consent for backdated schedule.')}
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Submit Button */}
-            <Button
-              onClick={handleSubmit}
-              disabled={!cropName || !sowingDate || loading}
-              className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg"
+            {/* Fixed Submit Button at Bottom — sits above the global bottom nav */}
+            <div
+              className="px-4 pt-2 border-t border-border/30 bg-background shrink-0"
+              style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
             >
-              {loading ? (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4 animate-spin" />
-                  Generating AI Schedule...
-                </>
-              ) : (
-                <>
-                  Generate AI Schedule
-                  <Sparkles className="ml-2 h-4 w-4" />
-                </>
-              )}
-            </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={!cropName || !sowingDate || loading}
+                className="w-full h-12 rounded-xl text-sm font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
+              >
+                {loading ? (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                    {t('schedule.crop_input.generating')}
+                  </>
+                ) : (
+                  <>
+                    {t('schedule.crop_input.generate_ai_schedule')}
+                    <Sparkles className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
           </motion.div>
         )}
 
       </motion.div>
+
+      {/* Farming Type Dialog */}
+      <FarmingTypeDialog
+        open={showFarmingTypeDialog}
+        onOpenChange={setShowFarmingTypeDialog}
+        onSelect={handleFarmingTypeSelect}
+        cropName={localizedCropName || cropName}
+      />
+
+      {/* Backdated Consent Dialog */}
+      <BackdatedConsentDialog
+        open={showBackdatedConsent}
+        onOpenChange={setShowBackdatedConsent}
+        onConfirm={handleBackdatedConsentConfirm}
+        onCancel={handleBackdatedConsentCancel}
+        sowingDate={sowingDate || new Date()}
+        daysAgo={backdatedInfo.daysAgo}
+        cropName={localizedCropName || cropName}
+      />
     </div>
   );
 };

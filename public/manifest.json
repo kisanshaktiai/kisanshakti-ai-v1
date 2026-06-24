@@ -1,12 +1,13 @@
 {
+  "id": "/",
   "name": "KisanShakti - Farmer Empowerment Platform",
   "short_name": "KisanShakti",
-  "description": "Digital platform empowering Indian farmers with weather, market prices, and advisory services",
+  "description": "Digital platform empowering Indian farmers with weather updates, market prices, advisory services, and government schemes",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#22c55e",
-  "orientation": "portrait",
+  "orientation": "any",
   "scope": "/",
   "icons": [
     {
@@ -22,7 +23,25 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["productivity", "utilities"],
+  "categories": ["productivity", "utilities", "agriculture"],
   "lang": "hi",
-  "dir": "ltr"
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Weather",
+      "short_name": "Weather",
+      "description": "Check weather forecast",
+      "url": "/app/weather",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Market",
+      "short_name": "Market",
+      "description": "View market prices",
+      "url": "/app/market",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
 }

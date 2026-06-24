@@ -1,14 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { resolveTenantFromRequest } from '../_shared/tenantMiddleware.ts';
 import { withTenantBlocker } from '../_shared/tenantBlocker.ts';
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-client-domain, if-none-match, origin',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 /**
  * Tenant Config API - Centralized Multi-Tenant Configuration Endpoint
@@ -101,7 +96,9 @@ interface TenantConfigResponse {
     cached_at: string;
     etag: string;
     version: string;
+    last_deployed_at?: string | null;
   };
+
 }
 
 /**
@@ -113,6 +110,66 @@ function generateETag(config: any): string {
     .reduce((hash, char) => ((hash << 5) - hash) + char.charCodeAt(0), 0)
     .toString(36);
   return `"${hash}"`;
+}
+
+type ThemeSource = Record<string, any>;
+
+function firstThemeValue(source: ThemeSource, keys: string[]) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+}
+
+function setThemeAlias(target: ThemeSource, group: string, key: string, source: ThemeSource, aliases: string[]) {
+  const value = firstThemeValue(source, aliases);
+  if (value === undefined) return;
+  const existing = target[group];
+  target[group] = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+  if (target[group][key] === undefined || target[group][key] === null || target[group][key] === '') {
+    target[group][key] = value;
+  }
+}
+
+function normalizeThemeConfig(theme?: ThemeSource | null) {
+  if (!theme) return undefined;
+  const out: ThemeSource = { ...theme };
+
+  setThemeAlias(out, 'core', 'primary', theme, ['primary', 'primary_color', 'primary_color_hex', 'brand_primary_color']);
+  setThemeAlias(out, 'core', 'primary_foreground', theme, ['primary_foreground', 'primary_foreground_color', 'on_primary', 'on_primary_color']);
+  setThemeAlias(out, 'core', 'secondary', theme, ['secondary', 'secondary_color', 'secondary_color_hex', 'brand_secondary_color']);
+  setThemeAlias(out, 'core', 'secondary_foreground', theme, ['secondary_foreground', 'secondary_foreground_color', 'on_secondary', 'on_secondary_color']);
+  setThemeAlias(out, 'core', 'accent', theme, ['accent', 'accent_color', 'accent_color_hex', 'brand_accent_color']);
+  setThemeAlias(out, 'core', 'accent_foreground', theme, ['accent_foreground', 'accent_foreground_color', 'on_accent', 'on_accent_color']);
+  setThemeAlias(out, 'core', 'ring', theme, ['ring', 'ring_color', 'focus_color']);
+
+  setThemeAlias(out, 'neutral', 'background', theme, ['background', 'background_color', 'background_color_hex', 'app_background_color']);
+  setThemeAlias(out, 'neutral', 'on_background', theme, ['on_background', 'on_background_color', 'foreground', 'foreground_color', 'text_color', 'text_color_hex']);
+  setThemeAlias(out, 'neutral', 'surface', theme, ['surface', 'surface_color', 'surface_color_hex', 'card', 'card_color', 'popover', 'panel_color']);
+  setThemeAlias(out, 'neutral', 'on_surface', theme, ['on_surface', 'on_surface_color', 'card_foreground', 'card_foreground_color', 'surface_text_color', 'text_color']);
+  setThemeAlias(out, 'neutral', 'border', theme, ['border', 'border_color', 'border_color_hex', 'input', 'input_color', 'divider_color']);
+
+  setThemeAlias(out, 'status', 'success', theme, ['success', 'success_color', 'success_color_hex']);
+  setThemeAlias(out, 'status', 'warning', theme, ['warning', 'warning_color', 'warning_color_hex']);
+  setThemeAlias(out, 'status', 'error', theme, ['error', 'error_color', 'error_color_hex', 'destructive', 'destructive_color']);
+  setThemeAlias(out, 'status', 'info', theme, ['info', 'info_color', 'info_color_hex']);
+
+  setThemeAlias(out, 'navigation', 'nav_background', theme, ['nav_background', 'nav_background_color', 'bottom_nav_background', 'bottom_nav_background_color', 'navigation_background_color']);
+  setThemeAlias(out, 'navigation', 'nav_active', theme, ['nav_active', 'nav_active_color', 'bottom_nav_active', 'bottom_nav_active_color', 'navigation_active_color']);
+  setThemeAlias(out, 'navigation', 'nav_inactive', theme, ['nav_inactive', 'nav_inactive_color', 'bottom_nav_inactive', 'bottom_nav_inactive_color', 'navigation_inactive_color']);
+  setThemeAlias(out, 'navigation', 'nav_border', theme, ['nav_border', 'nav_border_color', 'bottom_nav_border', 'bottom_nav_border_color', 'navigation_border_color']);
+
+  setThemeAlias(out, 'support', 'disabled', theme, ['disabled', 'disabled_color', 'disabled_text_color']);
+  setThemeAlias(out, 'support', 'overlay', theme, ['overlay', 'overlay_color']);
+
+  setThemeAlias(out, 'typography', 'font_family', theme, ['font_family', 'fontFamily']);
+  setThemeAlias(out, 'typography', 'font_size_base', theme, ['font_size_base', 'fontSizeBase', 'base_font_size']);
+  setThemeAlias(out, 'typography', 'font_weight_regular', theme, ['font_weight_regular', 'regular_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_medium', theme, ['font_weight_medium', 'medium_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_bold', theme, ['font_weight_bold', 'bold_font_weight']);
+
+  return out;
 }
 
 /**
@@ -135,47 +192,76 @@ async function buildTenantConfig(
       pwa_config,
       splash_screens,
       domain_config,
-      css_injection
+      css_injection,
+      last_deployed_at
     `)
     .eq('tenant_id', tenant.id)
     .maybeSingle();
 
+  // Fetch legacy/parallel `tenant_branding` row — some tenant-portal flows still
+  // write tagline/description/logo here (column `app_tagline`). Used ONLY as a
+  // fallback when the matching field in `white_label_configs.brand_identity` is
+  // missing or empty, so partner edits in either surface reach the mobile app.
+  const { data: tenantBranding } = await supabase
+    .from('tenant_branding')
+    .select('app_name, app_tagline, company_description, logo_url, favicon_url, primary_color, secondary_color, accent_color, background_color, text_color, font_family, updated_at')
+    .eq('tenant_id', tenant.id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   console.log('📦 [TenantConfig] White label data loaded:', {
     hasBrandIdentity: !!whiteLabel?.brand_identity,
-    hasTheme: !!(whiteLabel?.mobile_theme || whiteLabel?.theme_colors),
+    hasMobileTheme: !!whiteLabel?.mobile_theme,
+    hasThemeColors: !!whiteLabel?.theme_colors,
     hasPWA: !!whiteLabel?.pwa_config,
+    hasTenantBrandingFallback: !!tenantBranding,
+      themeColorNamespaces: Object.keys(whiteLabel?.theme_colors || {}),
+      mobileThemeNamespaces: Object.keys(whiteLabel?.mobile_theme || {}),
+    lastDeployedAt: whiteLabel?.last_deployed_at,
   });
 
-  // Extract branding
-  const brandIdentity = whiteLabel?.brand_identity || {};
+  // Extract branding — coalesce non-empty values across the two branding sources.
+  const brandIdentity: any = whiteLabel?.brand_identity || {};
+  const tb: any = tenantBranding || {};
+  const pick = (...vals: any[]) => {
+    for (const v of vals) {
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return undefined;
+  };
   const branding = {
-    company_name: brandIdentity.company_name || tenant.name,
-    tagline: brandIdentity.tagline,
-    logo_url: brandIdentity.logo_url,
-    favicon_url: brandIdentity.favicon_url,
-    primary_color: brandIdentity.primary_color || '#10b981',
-    secondary_color: brandIdentity.secondary_color || '#059669',
-    accent_color: brandIdentity.accent_color || '#14b8a6',
-    background_color: brandIdentity.background_color,
-    text_color: brandIdentity.text_color,
-    font_family: brandIdentity.font_family,
-    description: brandIdentity.description,
+    company_name: pick(brandIdentity.company_name, brandIdentity.app_name, tb.app_name, tenant.name),
+    tagline: pick(brandIdentity.tagline, brandIdentity.app_tagline, tb.app_tagline),
+    logo_url: pick(brandIdentity.logo_url, tb.logo_url),
+    favicon_url: pick(brandIdentity.favicon_url, tb.favicon_url),
+    primary_color: pick(brandIdentity.primary_color, tb.primary_color),
+    secondary_color: pick(brandIdentity.secondary_color, tb.secondary_color),
+    accent_color: pick(brandIdentity.accent_color, tb.accent_color),
+    background_color: pick(brandIdentity.background_color, tb.background_color),
+    text_color: pick(brandIdentity.text_color, tb.text_color),
+    font_family: pick(brandIdentity.font_family, tb.font_family),
+    description: pick(brandIdentity.description, brandIdentity.company_description, tb.company_description),
   };
 
-  // Extract theme (prioritize mobile_theme)
-  const themeData = whiteLabel?.mobile_theme || whiteLabel?.theme_colors;
-  const theme = themeData ? {
-    core: themeData.core,
-    neutral: themeData.neutral,
-    status: themeData.status,
-    typography: themeData.typography,
-    navigation: themeData.navigation,
-    charts: themeData.charts,
-    maps: themeData.maps,
-    weather: themeData.weather,
-    gradients: themeData.gradients,
-    dark_mode: themeData.dark_mode,
-  } : undefined;
+  // ---- Deep-merge theme groups ----
+  // theme_colors carries navigation/charts/maps/weather/gradients/dark_mode.
+  // mobile_theme carries core/neutral/status/support/typography/border_radius/shadows/spacing.
+  // Picking only one column (the prior `mobile_theme || theme_colors` logic) DROPS half
+  // the namespaces — that was the root cause of preset changes "not reaching" the app.
+  const tc: any = normalizeThemeConfig(whiteLabel?.theme_colors) || {};
+  const mt: any = normalizeThemeConfig(whiteLabel?.mobile_theme) || {};
+  const themeKeys = new Set([...Object.keys(tc), ...Object.keys(mt)]);
+  const theme: any = themeKeys.size ? {} : undefined;
+  for (const k of themeKeys) {
+    const a = tc[k]; const b = mt[k];
+    if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+      theme[k] = { ...a, ...b };
+    } else {
+      theme[k] = b ?? a;
+    }
+  }
+
 
   // Extract PWA config
   const pwaConfig = whiteLabel?.pwa_config;
@@ -227,11 +313,14 @@ async function buildTenantConfig(
       cached_at: new Date().toISOString(),
       etag: '', // Will be set after generating
       version: '1.0.0',
+      last_deployed_at: whiteLabel?.last_deployed_at || null,
     },
   };
 
-  // Generate ETag
-  config.metadata.etag = generateETag(config);
+  // Generate ETag — include last_deployed_at so the DB trigger bump
+  // forces a new ETag and clients with `If-None-Match` get a 200 instead of 304.
+  config.metadata.etag = generateETag({ ...config, _lda: whiteLabel?.last_deployed_at });
+
 
   return config;
 }
@@ -309,13 +398,32 @@ serve(async (req: Request) => {
       
       // Load default tenant as fallback
       const supabase = createClient(supabaseUrl, supabaseKey);
-      const { data: defaultTenant } = await supabase
+      
+      // First try to get tenant marked as default
+      let { data: defaultTenant } = await supabase
         .from('tenants')
         .select('id, name, slug, subdomain, custom_domain, status, settings')
         .eq('is_default', true)
+        .eq('status', 'active')
         .maybeSingle();
+
+      // If no default tenant, get first active tenant
+      if (!defaultTenant) {
+        console.log('🔧 [TenantConfig] No default tenant found, using first active tenant');
+        const { data: firstTenant } = await supabase
+          .from('tenants')
+          .select('id, name, slug, subdomain, custom_domain, status, settings')
+          .eq('status', 'active')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        
+        defaultTenant = firstTenant;
+      }
       
       if (defaultTenant) {
+        console.log('✅ [TenantConfig] Using tenant:', defaultTenant.name, `(${defaultTenant.id})`);
+        
         // Fetch branding for default tenant
         const { data: whiteLabel } = await supabase
           .from('white_label_configs')
@@ -339,13 +447,12 @@ serve(async (req: Request) => {
           } : undefined,
           features: defaultTenant.settings?.features || [],
         };
-        console.log('✅ [TenantConfig] Using default tenant:', defaultTenant.name);
       } else {
-        console.error('❌ [TenantConfig] No tenant found and no default tenant available');
+        console.error('❌ [TenantConfig] No active tenants found in database');
         return new Response(
           JSON.stringify({ 
             error: 'Tenant not found',
-            message: 'No tenant configuration found for this domain and no default tenant available.'
+            message: 'No tenant configuration found for this domain and no active tenants in database. Please create at least one active tenant.'
           }),
           { 
             status: 404, 
@@ -380,7 +487,10 @@ serve(async (req: Request) => {
         headers: {
           ...corsHeaders,
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=3600', // 1 hour
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store',
           'X-Tenant-ID': tenant.id,
         },
       });
@@ -398,7 +508,10 @@ serve(async (req: Request) => {
           ...corsHeaders,
           'Content-Type': 'application/json',
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=3600, must-revalidate', // 1 hour cache
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store',
           'X-Tenant-ID': tenant.id,
           'X-Response-Time': `${responseTime}ms`,
         },

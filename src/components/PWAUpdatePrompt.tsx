@@ -105,6 +105,18 @@ export function PWAUpdatePrompt() {
       return;
     }
 
+    // Check if this is a theme-only update (no code changes)
+    const currentBuildHash = versionService.getBuildHash();
+    const storedBuildHash = localStorage.getItem('build_hash');
+    
+    // If build hash hasn't changed, this might be just a service worker update (not a deploy)
+    if (storedBuildHash === currentBuildHash) {
+      console.log('[PWAUpdatePrompt] Service worker updated but build hash unchanged - likely theme update');
+      // Apply silently for theme updates
+      handleSilentThemeUpdate();
+      return;
+    }
+
     // Get version info
     const buildTime = versionService.getBuildTime();
     const versionDisplay = buildTime 
@@ -116,13 +128,6 @@ export function PWAUpdatePrompt() {
     // Get last known version to check if version actually changed
     const lastKnownVersion = localStorage.getItem('last-known-version') || '0.0.0';
     
-    // If version hasn't changed, don't show prompt (prevents false positives during dev)
-    if (lastKnownVersion === currentVersion) {
-      console.log('[PWAUpdatePrompt] Service worker updated but version unchanged - skipping prompt');
-      versionService.acknowledgeCurrentVersion(); // Acknowledge to prevent repeated checks
-      return;
-    }
-
     // Check if we should show the prompt based on dismissal state
     const shouldShow = updateStateManager.shouldShowUpdatePrompt(currentVersion);
     
@@ -141,6 +146,28 @@ export function PWAUpdatePrompt() {
 
     // Store last known version for comparison
     localStorage.setItem('last-known-version', currentVersion);
+  };
+
+  /**
+   * Handle silent theme updates (no code changes, just config)
+   */
+  const handleSilentThemeUpdate = () => {
+    console.log('[PWAUpdatePrompt] Applying silent theme update...');
+    
+    // Clear theme-related caches
+    localStorage.removeItem('tenant_config_cache');
+    localStorage.removeItem('white_label_config');
+    localStorage.removeItem('tenant_primary_color');
+    
+    // Signal service worker to clear caches
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHES' });
+    }
+    
+    // Dispatch event to trigger theme refresh in TenantProvider
+    window.dispatchEvent(new CustomEvent('tenant-theme-update'));
+    
+    console.log('[PWAUpdatePrompt] Theme update applied silently');
   };
 
   /**

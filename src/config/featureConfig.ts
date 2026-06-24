@@ -12,7 +12,9 @@ import {
   Shield,
   DollarSign,
   Leaf,
-  FileText
+  FileText,
+  Sprout,
+  Bell
 } from 'lucide-react';
 
 export interface FeatureItem {
@@ -21,6 +23,8 @@ export interface FeatureItem {
   labelKey: string;
   path: string;
   enabled: boolean;
+  /** Plan-gated: visible but greyed-out and routes to /app/subscription */
+  locked?: boolean;
   comingSoon?: boolean;
   order: number;
   category?: string;
@@ -40,6 +44,24 @@ export const defaultFeatures: FeatureItem[] = [
     enabled: true, // Enabled by default
     order: 1,
     category: 'farm-management'
+  },
+  {
+    id: 'crop-growth',
+    icon: Sprout,
+    labelKey: 'fab.cropGrowth',
+    path: '/app/crop-growth',
+    enabled: true,
+    order: 1.5,
+    category: 'farm-management'
+  },
+  {
+    id: 'proactive-alerts',
+    icon: Bell,
+    labelKey: 'fab.proactiveAlerts',
+    path: '/app/proactive-alerts',
+    enabled: true,
+    order: 1.6,
+    category: 'ai-tools'
   },
   {
     id: 'schedule',
@@ -78,10 +100,10 @@ export const defaultFeatures: FeatureItem[] = [
     category: 'tools'
   },
   {
-    id: 'social',
+    id: 'community',
     icon: Users,
     labelKey: 'fab.community',
-    path: '/app/social',
+    path: '/app/community',
     enabled: true, // Enabled by default
     order: 6,
     category: 'community'

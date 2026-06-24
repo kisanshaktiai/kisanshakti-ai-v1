@@ -1,0 +1,186 @@
+{
+  "__meta": {
+    "page": "market",
+    "version": "2.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-12-19"
+  },
+  "market": {
+    "tabs": {
+      "browse": "ब्राउझ करा",
+      "my_orders": "माझे ऑर्डर",
+      "sell": "विक्री करा",
+      "analytics": "विश्लेषण"
+    },
+    "analytics": {
+      "title": "विश्लेषण डॅशबोर्ड",
+      "description": "तुमचे विक्री विश्लेषण आणि कामगिरी मेट्रिक्स पहा"
+    },
+    "auth": {
+      "login_required": {
+        "title": "कृपया लॉगिन करा",
+        "cart": "कार्टमध्ये आयटम जोडण्यासाठी लॉगिन करा",
+        "wishlist": "विशलिस्टमध्ये जोडण्यासाठी लॉगिन करा"
+      }
+    },
+    "cart": {
+      "added": {
+        "title": "कार्टमध्ये जोडले",
+        "message": "उत्पादन तुमच्या कार्टमध्ये जोडले आहे"
+      },
+      "title": "शॉपिंग कार्ट",
+      "empty": "तुमचे कार्ट रिकामे आहे",
+      "total": "एकूण",
+      "checkout": "चेकआउट",
+      "continue_shopping": "खरेदी सुरू ठेवा"
+    },
+    "search": {
+      "placeholder": "उत्पादने शोधा..."
+    },
+    "categories": {
+      "all": "सर्व श्रेणी",
+      "seeds": "बियाणे",
+      "fertilizers": "खते",
+      "pesticides": "कीटकनाशके",
+      "equipment": "उपकरणे",
+      "organic": "सेंद्रिय"
+    },
+    "product": {
+      "add_to_cart": "कार्टमध्ये जोडा",
+      "buy_now": "आता खरेदी करा",
+      "out_of_stock": "स्टॉक नाही",
+      "in_stock": "स्टॉकमध्ये",
+      "seller": "विक्रेता",
+      "price": "किंमत",
+      "quantity": "प्रमाण",
+      "description": "वर्णन",
+      "reviews": "पुनरावलोकने",
+      "rating": "रेटिंग"
+    },
+    "order": {
+      "status": {
+        "pending": "प्रलंबित",
+        "confirmed": "पुष्टी",
+        "shipped": "पाठवले",
+        "delivered": "वितरित",
+        "cancelled": "रद्द"
+      },
+      "placed_on": "{{date}} रोजी प्लेस केले",
+      "total_amount": "एकूण: ₹{{amount}}",
+      "track": "ऑर्डर ट्रॅक करा",
+      "cancel": "ऑर्डर रद्द करा",
+      "view_details": "तपशील पहा"
+    },
+    "seller": {
+      "dashboard_title": "विक्रेता डॅशबोर्ड",
+      "add_product": "उत्पादन जोडा",
+      "my_products": "माझी उत्पादने",
+      "orders_received": "प्राप्त ऑर्डर",
+      "earnings": "कमाई",
+      "pending_orders": "प्रलंबित ऑर्डर"
+    },
+    "filters": {
+      "price_range": "किंमत श्रेणी",
+      "sort_by": "क्रमवारी लावा",
+      "low_to_high": "किंमत: कमी ते जास्त",
+      "high_to_low": "किंमत: जास्त ते कमी",
+      "newest": "नवीनतम प्रथम",
+      "popular": "सर्वात लोकप्रिय"
+    },
+    "toast": {
+      "product_added": "उत्पादन यशस्वीरित्या जोडले",
+      "order_placed": "ऑर्डर यशस्वीरित्या प्लेस केले",
+      "error": "काहीतरी चूक झाली"
+    },
+    "seller_dashboard": {
+      "title": "विक्रेता डॅशबोर्ड",
+      "become_seller": "विक्रेता व्हा",
+      "start_selling": "आमच्या बाजारात तुमची उत्पादने विकण्यास सुरुवात करा",
+      "register": "विक्रेता म्हणून नोंदणी करा",
+      "add_product": "उत्पादन जोडा",
+      "total_products": "एकूण उत्पादने",
+      "total_sales": "एकूण विक्री",
+      "revenue": "महसूल",
+      "rating": "रेटिंग",
+      "products_tab": "उत्पादने",
+      "orders_tab": "ऑर्डर",
+      "analytics_tab": "विश्लेषण",
+      "order_management_soon": "ऑर्डर व्यवस्थापन लवकरच येत आहे",
+      "analytics_dashboard_soon": "विश्लेषण डॅशबोर्ड लवकरच येत आहे"
+    },
+    "intelligence": {
+      "title": "बाजारभाव माहिती",
+      "subtitle": "MSAMB कडून रियल-टाइम किमती",
+      "selectFilters": "फिल्टर निवडा",
+      "cropType": "पीक प्रकार",
+      "selectMarket": "बाजार निवडा",
+      "allMarkets": "सर्व बाजार",
+      "selectCrop": "पीक निवडा",
+      "crops": "पिके",
+      "more": "आणखी",
+      "clearSelection": "निवड रद्द करा",
+      "selectCropType": "वरील पीक प्रकार निवडा",
+      "date": "तारीख",
+      "search": "शोधा...",
+      "refresh": "रिफ्रेश",
+      "aiAdvice": "AI सल्ला",
+      "prices": "भाव",
+      "nearby": "जवळ",
+      "comparison": "तुलना",
+      "ai": "AI",
+      "noPrices": "निवडलेल्या फिल्टरसाठी किंमत डेटा उपलब्ध नाही",
+      "arrival": "आवक",
+      "other": "इतर",
+      "locationRequired": "स्थान आवश्यक",
+      "locationRequiredDesc": "50 किमी आतील बाजार पाहण्यासाठी तुमच्या जमीन सेटिंगमध्ये निर्देशांक जोडा",
+      "nearbyTitle": "50 किमी आतील बाजार",
+      "noNearbyMarkets": "50 किमी आतील बाजार डेटा सापडला नाही",
+      "selectCropFirst": "पीक निवडा",
+      "selectCropFirstDesc": "ऐतिहासिक किंमत तुलना पाहण्यासाठी पीक निवडा",
+      "priceComparison": "किंमत तुलना",
+      "loadData": "डेटा लोड करा",
+      "week": "आठवडा",
+      "month": "महिना",
+      "year": "वर्ष",
+      "avgPrice": "सरासरी किंमत",
+      "priceRange": "श्रेणी",
+      "trend": "ट्रेंड",
+      "dataPoints": "डेटा पॉइंट",
+      "noHistoricalData": "ऐतिहासिक डेटा उपलब्ध नाही",
+      "viewAllCrops": "सर्व पिके पहा",
+      "viewAllMarkets": "सर्व बाजार पहा",
+      "cropGroups": {
+        "grains": "धान्ये",
+        "pulses": "डाळी",
+        "vegetables": "भाज्या",
+        "fruits": "फळे",
+        "spices": "मसाले",
+        "oilseeds": "तेलबिया",
+        "jaggerySugar": "गूळ व साखर",
+        "cotton": "कापूस",
+        "others": "इतर",
+        "all": "सर्व पिके"
+      }
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show fertilizers",
+      "Add to cart",
+      "Check my orders",
+      "Search for seeds"
+    ],
+    "voice_examples_hi": [
+      "उर्वरक दिखाओ",
+      "कार्ट में जोड़ें",
+      "मेरे ऑर्डर देखें",
+      "बीज खोजें"
+    ],
+    "voice_examples_mr": [
+      "खते दाखवा",
+      "कार्टमध्ये जोडा",
+      "माझे ऑर्डर पहा",
+      "बियाणे शोधा"
+    ]
+  }
+}

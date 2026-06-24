@@ -69,13 +69,14 @@ export default function SetPin() {
       
       if (isNewRegistration) {
         // Get the last farmer code for sequential generation
-        const { data: lastFarmer } = await supabase
+        const { data: lastFarmerRows } = await supabase
           .from('farmers')
           .select('farmer_code')
           .eq('tenant_id', tenantId!)
           .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+
+        const lastFarmer = lastFarmerRows?.[0] ?? null;
 
         // Generate sequential farmer code
         let farmerCode: string;
@@ -101,8 +102,7 @@ export default function SetPin() {
         
         const farmerData = {
           mobile_number: mobile!,
-          pin_hash: pinHash, // Store hashed PIN
-          pin: pin, // Store plain PIN for development/debugging (remove in production)
+          pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
           tenant_id: tenantId!,
           farmer_code: farmerCode,
           language_preference: localStorage.getItem('i18nextLng') || 'hi',
@@ -115,11 +115,11 @@ export default function SetPin() {
           pin_updated_at: new Date().toISOString()
         };
         
-        const { data: newFarmer, error: insertError } = await supabase
+        const { data: newFarmerRows, error: insertError } = await supabase
           .from('farmers')
           .insert(farmerData)
           .select()
-          .single();
+          .limit(1);
         
         if (insertError) {
           // Handle duplicate mobile number
@@ -131,7 +131,10 @@ export default function SetPin() {
           throw insertError;
         }
         
-        farmer = newFarmer;
+        farmer = newFarmerRows?.[0];
+        if (!farmer) {
+          throw new Error('Farmer account could not be created. Please try again.');
+        }
         
         // Create user profile with mobile and farmer_code
         await supabase
@@ -153,11 +156,10 @@ export default function SetPin() {
         // EXISTING FARMER: Update PIN with hash
         const pinHash = hashPin(pin);
         
-        const { data: updatedFarmer, error: updateError } = await supabase
+        const { data: updatedFarmerRows, error: updateError } = await supabase
           .from('farmers')
           .update({
-            pin_hash: pinHash, // Store hashed PIN
-            pin: pin, // Store plain PIN for development/debugging (remove in production)
+            pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
             pin_updated_at: new Date().toISOString(),
             last_login_at: new Date().toISOString(),
             total_app_opens: 1
@@ -165,13 +167,16 @@ export default function SetPin() {
           .eq('id', farmerId)
           .eq('tenant_id', tenantId)
           .select()
-          .single();
+          .limit(1);
 
         if (updateError) {
           throw updateError;
         }
         
-        farmer = updatedFarmer;
+        farmer = updatedFarmerRows?.[0];
+        if (!farmer) {
+          throw new Error('Account not found for this tenant. Please re-register or try offline.');
+        }
         
         // Update user profile with mobile and farmer_code if needed
         await supabase
@@ -231,7 +236,7 @@ export default function SetPin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-primary flex flex-col items-center justify-center p-4">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6 shadow-xl">
         {/* Header */}
         <div className="space-y-4">
@@ -242,7 +247,7 @@ export default function SetPin() {
             className="mb-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            {t('common.back')}
+            {t('auth.back')}
           </Button>
           
           <div className="text-center space-y-3">
@@ -256,8 +261,8 @@ export default function SetPin() {
             </h1>
             <p className="text-sm text-muted-foreground">
               {step === 'set' 
-                ? t('auth.createPinDescription') || 'Create a 4-digit PIN to secure your account'
-                : t('auth.confirmPinDescription') || 'Re-enter your PIN to confirm'}
+                ? t('auth.createPinDescription')
+                : t('auth.confirmPinDescription')}
             </p>
             <p className="text-xs text-muted-foreground">
               {t('auth.mobile')}: +91 {mobile}
@@ -291,10 +296,10 @@ export default function SetPin() {
                 disabled={isLoading}
               >
                 <InputOTPGroup className="gap-2">
-                  <InputOTPSlot index={0} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={1} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={2} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={3} className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={0} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={1} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={2} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={3} mask className="w-14 h-14 text-lg" />
                 </InputOTPGroup>
               </InputOTP>
             </div>
@@ -308,7 +313,7 @@ export default function SetPin() {
                 disabled={pin.length !== 4 || isLoading}
                 className="w-full h-12 text-base"
               >
-                {t('common.continue')}
+                {t('auth.continue')}
               </Button>
             ) : (
               <Button 
@@ -332,7 +337,7 @@ export default function SetPin() {
           {/* Helper Text */}
           <div className="text-center space-y-2">
             <p className="text-xs text-muted-foreground">
-              {t('auth.pinHelperText') || 'Remember this PIN. You\'ll need it to login next time.'}
+              {t('auth.pinHelperText')}
             </p>
             {isNewRegistration && (
               <p className="text-xs text-muted-foreground font-medium">

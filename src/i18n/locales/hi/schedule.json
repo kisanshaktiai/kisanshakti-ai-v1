@@ -1,0 +1,403 @@
+{
+  "__meta": {
+    "page": "schedule",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "schedule": {
+    "variety": {
+      "label": "बीज किस्म",
+      "loading": "किस्में लोड हो रही हैं…",
+      "none_for_crop": "अभी कोई किस्म पंजीकृत नहीं — अपनी किस्म जोड़ें",
+      "choose_from": "{{count}} किस्मों में से चुनें",
+      "change": "किस्म बदलें",
+      "choose_crop_first": "किस्में देखने के लिए पहले फसल चुनें.",
+      "search_placeholder": "नाम, कोड या ब्रांड से खोजें…",
+      "no_match": "आपकी खोज से कोई किस्म मेल नहीं खाती.",
+      "add_missing": "मेरी किस्म सूची में नहीं है — जोड़ें",
+      "about": "इस किस्म के बारे में",
+      "maturity": "पकने की अवधि",
+      "yield": "उपज",
+      "irrigation": "पानी",
+      "seed_rate": "बीज दर",
+      "days": "दिन",
+      "released_by": "द्वारा जारी",
+      "suitable_states": "उपयुक्त क्षेत्र",
+      "resistance": "कीट व रोग प्रतिरोध",
+      "loading_resistance": "लोड हो रहा है…",
+      "loading_details": "लोड हो रहा है…",
+      "no_resistance": "प्रतिरोध जानकारी उपलब्ध नहीं.",
+      "no_details": "अभी जानकारी उपलब्ध नहीं है। जल्द ही अपडेट करेंगे।",
+      "use_this": "इस किस्म का चयन करें",
+      "selected": "चयनित",
+      "selected_chip": "चयनित किस्म",
+      "tap_to_view": "पूरा विवरण देखने के लिए किस्म पर टैप करें",
+      "featured": "अनुशंसित",
+      "submit": {
+        "title": "अपनी किस्म जोड़ें",
+        "desc": "आपने जो किस्म बोई है उसकी जानकारी दें। हमारी टीम इसे सत्यापित करके सूची में जोड़ देगी।",
+        "desc_with_crop": "आपने जो {{crop}} किस्म बोई है उसकी जानकारी दें। हमारी टीम सत्यापित करके जोड़ेगी।",
+        "name": "किस्म का नाम",
+        "name_required": "कृपया किस्म का नाम दर्ज करें",
+        "local_name": "स्थानीय / देसी नाम",
+        "season": "मौसम",
+        "min_days": "न्यूनतम दिन",
+        "max_days": "अधिकतम दिन",
+        "notes": "टिप्पणी (स्रोत, ब्रांड, बीज कहाँ से…)",
+        "submit": "समीक्षा के लिए भेजें",
+        "submitted_title": "किस्म सबमिट हो गई",
+        "submitted_desc": "हमारी टीम समीक्षा करके इसे सूची में जोड़ेगी। आपके वेळापत्रक के लिए इसी नाम का उपयोग होगा।",
+        "invalid_range": "न्यूनतम दिन अधिकतम दिनों से ज्यादा नहीं हो सकते",
+        "auth_required": "किस्म सबमिट करने के लिए साइन इन करें"
+      }
+    },
+    "title": "फसल अनुसूची",
+    "generate": "अनुसूची बनाएं",
+    "ai_schedule": "AI स्मार्ट अनुसूची",
+    "manual_entry": "मैन्युअल एंट्री",
+    "steps": {
+      "land_selection": "चरण 1: अपनी भूमि चुनें",
+      "crop_input": "चरण 2: फसल विवरण",
+      "schedule_view": "चरण 3: AI अनुसूची",
+      "of_total": "चरण {{current}} / {{total}}"
+    },
+    "loading": {
+      "syncing": "सर्वर से डेटा सिंक हो रहा है..."
+    },
+    "filters": {
+      "all": "सभी कार्य",
+      "pending": "लंबित",
+      "completed": "पूर्ण",
+      "overdue": "विलंबित",
+      "upcoming": "आगामी"
+    },
+    "time_view": {
+      "today": "आज",
+      "week": "सप्ताह",
+      "month": "महीना",
+      "all": "सभी"
+    },
+    "task": {
+      "mark_complete": "पूर्ण के रूप में चिह्नित करें",
+      "skip": "कार्य छोड़ें",
+      "reschedule": "पुनर्निर्धारित करें",
+      "details": "कार्य विवरण",
+      "priority": "प्राथमिकता",
+      "high": "उच्च",
+      "medium": "मध्यम",
+      "low": "कम",
+      "status": {
+        "pending": "लंबित",
+        "completed": "पूर्ण",
+        "skipped": "छोड़ा गया",
+        "overdue": "विलंबित"
+      }
+    },
+    "stages": {
+      "land_prep": "भूमि तैयारी",
+      "sowing": "बुवाई",
+      "irrigation": "सिंचाई",
+      "fertilizer": "उर्वरक",
+      "pest_control": "कीट नियंत्रण",
+      "weeding": "निराई",
+      "harvest": "कटाई"
+    },
+    "badges": {
+      "weather": "मौसम",
+      "ai_adjusted": "AI समायोजित",
+      "critical": "महत्वपूर्ण",
+      "optimal": "उत्तम"
+    },
+    "empty": {
+      "title": "कोई कार्य निर्धारित नहीं",
+      "message": "AI अनुसूची बनाएं या मैन्युअल रूप से कार्य जोड़ें",
+      "no_tasks_period": "इस अवधि के लिए कोई कार्य नहीं"
+    },
+    "stats": {
+      "total_tasks": "कुल कार्य",
+      "completed": "पूर्ण",
+      "pending": "लंबित",
+      "completion_rate": "पूर्णता दर"
+    },
+    "alerts": {
+      "weather_warning": "मौसम चेतावनी: {{message}}",
+      "task_due": "कार्य {{hours}} घंटों में देय है",
+      "overdue_tasks": "आपके पास {{count}} विलंबित कार्य हैं"
+    },
+    "cta": {
+      "add_task": "कार्य जोड़ें",
+      "view_calendar": "कैलेंडर देखें",
+      "refresh": "अनुसूची रीफ्रेश करें"
+    },
+    "toast": {
+      "task_completed": "कार्य पूर्ण के रूप में चिह्नित",
+      "task_skipped": "कार्य छोड़ा गया",
+      "schedule_generated": "अनुसूची सफलतापूर्वक बनाई गई",
+      "error": "कार्य अपडेट करने में विफल",
+      "great_work": "बहुत अच्छा! सिंक हो रहा है...",
+      "sync_failed": "पूर्णता सिंक करने में विफल",
+      "rolled_back": "रोल बैक किया गया। फिर से प्रयास करें।",
+      "task_unmarked": "कार्य अचिह्नित",
+      "reverting": "पूर्णता वापस ले रहे हैं...",
+      "unmark_failed": "अचिह्नित करने में विफल",
+      "try_again": "फिर से प्रयास करें।",
+      "task_updated": "कार्य सफलतापूर्वक अपडेट हुआ",
+      "changes_saved": "आपके बदलाव सहेज लिए गए हैं",
+      "update_failed": "कार्य अपडेट करने में विफल"
+    },
+    "main": {
+      "ai_crop_schedule": "AI फसल अनुसूची",
+      "add_land": "जमीन जोड़ें",
+      "retrying": "पुनः प्रयास कर रहे हैं...",
+      "generating_attempt": "AI अनुसूची बना रहे हैं (प्रयास {{count}}/2)",
+      "generated_success": "AI अनुसूची बनाई गई!",
+      "generated_description": "{{crop}} के लिए स्मार्ट खेती अनुसूची बनाई गई",
+      "generation_failed": "बनाना विफल",
+      "refreshing": "रीफ्रेश हो रहा है",
+      "syncing_latest": "नवीनतम डेटा सिंक हो रहा है..."
+    },
+    "task_statistics": {
+      "title": "कार्य आंकड़े",
+      "completion_rate": "पूर्णता दर",
+      "tasks_count": "{{completed}}/{{total}} कार्य",
+      "completed": "पूर्ण",
+      "tasks_done": "कार्य पूर्ण",
+      "streak": "श्रृंखला",
+      "days": "दिन",
+      "best_streak": "सर्वश्रेष्ठ: {{days}} दिन",
+      "perfect_score": "पूर्ण स्कोर! 🎉",
+      "on_fire": "धमाकेदार! {{days}} दिन की श्रृंखला 🔥"
+    },
+    "task_card": {
+      "today": "आज",
+      "tomorrow": "कल",
+      "overdue": "विलंबित",
+      "days_until": "{{days}} दिन",
+      "high_priority": "जरूरी काम",
+      "weather": "मौसम",
+      "weather_dependent": "मौसम पर निर्भर",
+      "completed": "पूर्ण",
+      "description": "विवरण",
+      "instructions": "कैसे करें",
+      "precautions": "सावधानियां",
+      "required_resources": "जरूरी सामान",
+      "ideal_weather": "सही मौसम",
+      "temperature": "तापमान",
+      "humidity": "नमी",
+      "conditions": "हवा",
+      "read_aloud": "सुनें",
+      "quantity": "कितना लगेगा",
+      "product_details": "दवाई/खाद की जानकारी",
+      "icar_guideline": "कृषी विभाग की सलाह",
+      "climate_risk": "मौसम का खतरा",
+      "approx_cost": "अंदाजे खर्च",
+      "recommended_products": "सुझाए गए उत्पाद",
+      "mark_done_label": "पूर्ण होने पर चिह्नित करें",
+      "mark_done": "पूर्ण चिह्नित करें"
+    },
+    "schedule_card": {
+      "variety": "किस्म",
+      "variety_label": "किस्म:",
+      "tbd": "तय होना बाकी है",
+      "yield": "उपज",
+      "cost": "लागत",
+      "progress": "प्रगति: {{completed}}/{{total}} कार्य",
+      "view_schedule": "अनुसूची देखें"
+    },
+    "timeline": {
+      "title": "समयरेखा दृश्य",
+      "tasks_count": "{{count}} कार्य",
+      "task": "कार्य",
+      "tasks": "कार्य",
+      "ai_adjusted": "AI समायोजित",
+      "done": "पूर्ण",
+      "today": "आज",
+      "tomorrow": "कल"
+    },
+    "dialog": {
+      "task_details": "कार्य विवरण",
+      "update_status": "कार्य स्थिति अपडेट करें और नोट्स जोड़ें",
+      "resources_needed": "आवश्यक संसाधन",
+      "resources_needed_label": "आवश्यक संसाधन:",
+      "notes_label": "नोट्स",
+      "notes_optional": "(वैकल्पिक)",
+      "notes_placeholder": "इस कार्य के बारे में कोई नोट्स जोड़ें...",
+      "done": "पुष्टि करें",
+      "skipped": "छोड़ा गया",
+      "weather": "मौसम",
+      "high": "उच्च",
+      "medium": "मध्यम",
+      "low": "कम",
+      "hours": "घंटे",
+      "persons": "व्यक्ति",
+      "edit": "संपादित करें",
+      "edit_task": "कार्य संपादित करें",
+      "n_task": "कार्य",
+      "n": "n"
+    },
+    "land_selector": {
+      "ai_schedule_ready": "AI अनुसूची तैयार",
+      "generate_schedule": "अनुसूची बनाएं",
+      "active": "सक्रिय",
+      "click_to_view": "देखने के लिए क्लिक करें",
+      "view": "देखें",
+      "edit": "संपादित करें",
+      "delete": "हटाएं",
+      "survey": "सर्वे #{{number}}",
+      "acres": "एकड़",
+      "guntas": "गुंठा",
+      "create_schedule": "अनुसूची बनाएं",
+      "add_land_btn": "जमीन जोड़ें",
+      "delete_dialog": {
+        "title": "अनुसूची हटाएं",
+        "description": "क्या आप वाकई इस AI फसल अनुसूची को हटाना चाहते हैं? इस क्रिया को पूर्ववत नहीं किया जा सकता।",
+        "cancel": "रद्द करें",
+        "delete": "हटाएं"
+      },
+      "delete_ai_dialog": {
+        "title": "AI अनुसूची हटाएं?",
+        "description": "यह AI-जनित फसल अनुसूची और इसके सभी कार्यों को स्थायी रूप से हटा देगा। इस क्रिया को पूर्ववत नहीं किया जा सकता।"
+      },
+      "toast": {
+        "deleted": "अनुसूची हटाई गई",
+        "deleted_message": "AI फसल अनुसूची हटा दी गई है",
+        "delete_failed": "हटाना विफल",
+        "delete_failed_message": "अनुसूची हटाने में विफल"
+      }
+    },
+    "climate": {
+      "ai_active": "AI सक्रिय",
+      "tasks_auto_adjusted": "कार्य स्वतः समायोजित",
+      "schedule_optimized": "जलवायु परिस्थितियों के आधार पर अनुसूची स्वचालित रूप से अनुकूलित",
+      "heavy_rainfall": "भारी बारिश का पता चला। सिंचाई और छिड़काव कार्य में देरी हो सकती है।",
+      "low_crop_health": "फसल स्वास्थ्य कम (NDVI)। उर्वरक अनुप्रयोग को प्राथमिकता दी जा सकती है।",
+      "high_temperature": "उच्च तापमान। गर्मी के तनाव को रोकने के लिए सिंचाई आगे बढ़ाई जा सकती है।"
+    },
+    "crop_selector": {
+      "failed_load_categories": "फसल श्रेणियां लोड करने में विफल",
+      "failed_load_crops": "फसलें लोड करने में विफल",
+      "search_placeholder": "फसलें खोजें...",
+      "hot": "लोकप्रिय",
+      "retry": "पुनः प्रयास करें"
+    },
+    "sowing": "बुवाई",
+    "harvest": "कटाई",
+    "days_remaining": "दिन शेष",
+    "days_ago": "दिन पहले",
+    "todays_tasks": "आज के कार्य",
+    "pending": "लंबित",
+    "upcoming": "आगामी",
+    "complete": "पूर्ण",
+    "overdue": "विलंबित",
+    "refresh_schedule": "अनुसूची रीफ्रेश करें",
+    "no_tasks": "इस अवधि के लिए कोई कार्य नहीं",
+    "today": "आज",
+    "week": "सप्ताह",
+    "month": "महीना",
+    "all": "सभी",
+    "listen": "सुनें",
+    "close": "बंद करें",
+    "done": "पूर्ण",
+    "skipped": "छोड़ा गया",
+    "schedule_view": {
+      "no_active_schedule": "कोई सक्रिय शेड्यूल नहीं",
+      "no_schedule_available": "कोई शेड्यूल उपलब्ध नहीं",
+      "no_schedule_description": "व्यक्तिगत खेती कार्य और सिफारिशें प्राप्त करने के लिए AI-संचालित फसल शेड्यूल बनाएं",
+      "generate_schedule": "शेड्यूल बनाएं",
+      "ai_schedule": "AI शेड्यूल",
+      "loading": "शेड्यूल डेटा लोड हो रहा है...",
+      "standard_variety": "मानक किस्म"
+    },
+    "farming_type": {
+      "organic": "जैविक",
+      "organic_chemical": "जैविक+रासा.",
+      "chemical": "रासायनिक"
+    },
+    "crop_input": {
+      "variety_label": "किस्म (वैकल्पिक)",
+      "variety_placeholder": "जैसे, IR-64, HD-2967, BT कपास",
+      "ready_made_plant": "तैयार नर्सरी पौधे उपयोग कर रहे हैं",
+      "ready_made_description": "चुनें यदि बीज बोने के बजाय पौध/रोपण लगा रहे हैं",
+      "sowing_date": "बुवाई की तारीख",
+      "planting_date": "रोपण की तारीख",
+      "pick_date": "तारीख चुनें",
+      "generate_ai_schedule": "AI शेड्यूल बनाएं",
+      "generating": "AI शेड्यूल बन रहा है...",
+      "select_crop": "फसल चुनें",
+      "please_select_crop": "कृपया फसल चुनें",
+      "select_date": "तारीख चुनें",
+      "please_select_date": "कृपया बुवाई की तारीख चुनें",
+      "water": "पानी",
+      "intercrop_label": "मिश्र फसल (वैकल्पिक)",
+      "nursery_days_label": "पौधे की आयु (बीज बुवाई से दिन)",
+      "nursery_days_placeholder": "उदा., 25, 30, 45 दिन",
+      "nursery_days_help": "नर्सरी पौधा कितने दिन पुराना है दर्ज करें। वेळापत्रक रोपाई से शुरू होगा।",
+      "backdated_warning": "पिछली तारीख चुनी गई है। पुरानी तारीख की अनुसूची के लिए आपकी सहमति आवश्यक होगी।",
+      "change_crop": "फसल बदलें",
+      "selected_crop": "चयनित फसल"
+    }
+  },
+  "common": {
+    "cancel": "रद्द करें",
+    "save": "सहेजें"
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show today's tasks",
+      "Mark task as complete",
+      "Generate crop schedule",
+      "Show pending tasks"
+    ],
+    "voice_examples_hi": [
+      "आज के कार्य दिखाओ",
+      "कार्य पूर्ण के रूप में चिह्नित करें",
+      "फसल अनुसूची बनाएं",
+      "लंबित कार्य दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "आजची कामे दाखवा",
+      "काम पूर्ण म्हणून चिन्हांकित करा",
+      "पीक वेळापत्रक तयार करा",
+      "प्रलंबित कामे दाखवा"
+    ],
+    "harvest": {
+      "crop_fallback": "आपकी फसल",
+      "banner": {
+        "title": "कटाई के लिए तैयार — कृपया पुष्टि करें"
+      },
+      "land_badge": {
+        "ready": "तैयार",
+        "confirm": "कटाई पुष्टि करें"
+      },
+      "dialog": {
+        "title": "कटाई की पुष्टि करें",
+        "expected": "अपेक्षित",
+        "outcome_label": "परिणाम",
+        "date_label": "वास्तविक कटाई तिथि",
+        "pick_date": "तिथि चुनें",
+        "yield_label": "उपज (क्विंटल, वैकल्पिक)",
+        "notes_label": "टिप्पणी (वैकल्पिक)",
+        "notes_placeholder": "इस कटाई के बारे में याद रखने योग्य कुछ भी",
+        "snooze": "7 दिन बाद याद दिलाएं",
+        "confirm": "पुष्टि करें",
+        "share": "व्हाट्सएप पर साझा करें"
+      },
+      "outcomes": {
+        "full": "पूरी कटाई हो गई",
+        "partial": "आंशिक कटाई हुई",
+        "abandoned": "छोड़ दिया / असफल"
+      },
+      "toast": {
+        "confirmed": "कटाई की पुष्टि हो गई",
+        "abandoned": "सीज़न बंद किया गया",
+        "snoozed": "7 दिनों के लिए स्थगित"
+      },
+      "errors": {
+        "date_required": "कृपया कटाई की तिथि चुनें",
+        "submit": "कटाई सहेजने में असमर्थ",
+        "snooze": "स्थगित नहीं किया जा सका"
+      }
+    }
+  }
+}

@@ -1,0 +1,283 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "stage_problems",
+    "canonical_group": "02_growth_stage",
+    "stage": "maturity",
+    "version": "3.1.0",
+    "scientific_sources": ["ICAR-SBI Coimbatore", "IISR Lucknow", "Sugar Mills Research"],
+    "last_updated": "2026-01-10"
+  },
+  "rules": [
+    {
+      "rule_id": "SC_MATURE_LOWBRIX_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["LOW_BRIX", "IMMATURE_CANES", "GREEN_TOP"],
+        "growth_stage": "maturity",
+        "days_after_planting_min": 270
+      },
+      "cause": "low_sugar_accumulation",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-BRIX-001",
+      "response_en": "Low brix indicates delayed maturity. Stop nitrogen application. Withhold irrigation 3-4 weeks before harvest. Apply chemical ripener Ethephon 500 ppm if mill-recommended. Target brix >18.",
+      "response_hi": "कम ब्रिक्स विलंबित परिपक्वता दर्शाता है। नाइट्रोजन बंद करें। कटाई से 3-4 सप्ताह पहले सिंचाई रोकें। मिल की सिफारिश पर इथेफॉन 500 ppm लगाएं। लक्ष्य ब्रिक्स >18।",
+      "response_mr": "कमी ब्रिक्स विलंबित परिपक्वता दर्शवते. नायट्रोजन थांबवा. कापणीपूर्वी 3-4 आठवडे सिंचन थांबवा. मिल शिफारशीवर इथेफॉन 500 ppm द्या. लक्ष्य ब्रिक्स >18.",
+      "action_type": "ripening_management",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_FLOWER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["FLOWERING", "ARROW_FORMATION", "PITH_FORMATION"],
+        "growth_stage": "maturity"
+      },
+      "cause": "flowering_quality_loss",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-FLOWER-002",
+      "response_en": "Flowering causes pith formation reducing juice quality. Harvest flowering canes first. Sugar loss 0.5-1% per week after flowering. Remove arrows to reduce energy drain. Plan early harvest.",
+      "response_hi": "फूलने से पिथ बनता है जो रस गुणवत्ता कम करता है। फूले हुए गन्ने पहले काटें। फूलने के बाद प्रति सप्ताह 0.5-1% चीनी हानि। जल्दी कटाई की योजना बनाएं।",
+      "response_mr": "फुलल्याने पिथ तयार होतो ज्यामुळे रस गुणवत्ता कमी होते. फुललेले ऊस प्रथम कापा. फुलल्यानंतर दर आठवड्याला 0.5-1% साखर हानी. लवकर कापणीची योजना करा.",
+      "action_type": "harvest_planning",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_INVERT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["HIGH_REDUCING_SUGARS", "RAIN_DAMAGE", "QUALITY_DECLINE"],
+        "growth_stage": "maturity",
+        "weather": {"rainfall_mm_gt": 50}
+      },
+      "cause": "sugar_inversion_rain",
+      "priority": 90,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-INVERT-003",
+      "response_en": "Rain during maturity causes sugar inversion. Harvest immediately after rain stops. Reducing sugars increase, sucrose decreases. Don't delay harvest beyond 48 hours post-rain. Prioritize drainage.",
+      "response_hi": "परिपक्वता के दौरान बारिश से चीनी उलट जाती है। बारिश रुकने के बाद तुरंत काटें। रिड्यूसिंग शुगर बढ़ती है, सुक्रोज घटती है। बारिश के 48 घंटे बाद कटाई में देरी न करें।",
+      "response_mr": "परिपक्वतेदरम्यान पावसामुळे साखर उलटते. पाऊस थांबल्यानंतर लगेच कापा. रिड्यूसिंग शुगर वाढते, सुक्रोज कमी होते. पावसानंतर 48 तासांपेक्षा जास्त कापणी उशीर करू नका.",
+      "action_type": "harvest_planning",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_WILTBACK_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["WILT_BACK", "DRYING_TOP", "WATER_STRESS"],
+        "growth_stage": "maturity"
+      },
+      "cause": "wilt_back_stress",
+      "priority": 82,
+      "confidence_score": 0.87,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-WILT-004",
+      "response_en": "Wilt back during maturity is normal if irrigation stopped. If severe, check for red rot. Controlled water stress enhances ripening. Check brix before harvest - should be 18-20.",
+      "response_hi": "परिपक्वता के दौरान मुरझाना सामान्य है अगर सिंचाई बंद की गई। गंभीर होने पर रेड रॉट की जांच करें। नियंत्रित जल तनाव पकने को बढ़ाता है। ब्रिक्स 18-20 होना चाहिए।",
+      "response_mr": "सिंचन थांबवल्यास परिपक्वतेदरम्यान मुरगळणे सामान्य आहे. तीव्र असल्यास रेड रॉट तपासा. नियंत्रित पाण्याचा ताण पिकणे वाढवतो. ब्रिक्स 18-20 असावे.",
+      "action_type": "monitoring",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_LODGED_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["SEVERE_LODGING", "GROUND_CONTACT", "AERIAL_ROOTS"],
+        "growth_stage": "maturity"
+      },
+      "cause": "lodged_cane_quality_loss",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-LODGE-005",
+      "response_en": "Severe lodging causes quality deterioration. Harvest lodged canes first - 1-2% sugar loss per week. Aerial roots indicate quality decline. Avoid using lodged canes as seed. Plan immediate harvest.",
+      "response_hi": "गंभीर लॉजिंग गुणवत्ता गिरावट का कारण बनती है। लॉज्ड गन्ने पहले काटें - प्रति सप्ताह 1-2% चीनी हानि। हवाई जड़ें गुणवत्ता गिरावट दर्शाती हैं। तुरंत कटाई की योजना बनाएं।",
+      "response_mr": "तीव्र लोडिंगमुळे गुणवत्ता घट होते. लोड झालेले ऊस प्रथम कापा - दर आठवड्याला 1-2% साखर हानी. हवाई मुळे गुणवत्ता घट दर्शवतात. तत्काळ कापणीची योजना करा.",
+      "action_type": "harvest_planning",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_FROST_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["FROST_DAMAGE", "BURNT_TOPS", "INTERNAL_DAMAGE"],
+        "growth_stage": "maturity",
+        "weather": {"min_temp_lt": 3}
+      },
+      "cause": "frost_damage_maturity",
+      "priority": 92,
+      "confidence_score": 0.93,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-FROST-006",
+      "response_en": "Frost damage at maturity - URGENT! Harvest frost-affected canes within 72 hours. Internal damage causes rapid deterioration. Sugar loss 3-5% per week post-frost. Crush immediately at mill.",
+      "response_hi": "परिपक्वता पर पाला नुकसान - तत्काल! पाले से प्रभावित गन्ने 72 घंटे के भीतर काटें। आंतरिक क्षति तेजी से गिरावट का कारण बनती है। पाले के बाद प्रति सप्ताह 3-5% चीनी हानि।",
+      "response_mr": "परिपक्वतेवर दव नुकसान - तातडीचे! दव प्रभावित ऊस 72 तासांच्या आत कापा. अंतर्गत नुकसान जलद घट होते. दवानंतर दर आठवड्याला 3-5% साखर हानी.",
+      "action_type": "emergency_harvest",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_SIDEROOT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["SIDE_SHOOTS", "WATER_SPROUTS", "REGROWTH"],
+        "growth_stage": "maturity"
+      },
+      "cause": "side_shoot_formation",
+      "priority": 78,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-SIDE-007",
+      "response_en": "Side shoot formation indicates delayed harvest. Sugar stored in main cane transfers to shoots. Harvest within 2 weeks. Remove water sprouts manually. Indicates irrigation was continued too long.",
+      "response_hi": "साइड शूट बनना विलंबित कटाई दर्शाता है। मुख्य गन्ने में संग्रहित चीनी शूट में स्थानांतरित होती है। 2 सप्ताह के भीतर काटें। सिंचाई बहुत लंबी जारी रही थी।",
+      "response_mr": "साइड शूट तयार होणे विलंबित कापणी दर्शवते. मुख्य उसात साठवलेली साखर शूटमध्ये हस्तांतरित होते. 2 आठवड्यांच्या आत कापा. सिंचन खूप जास्त काळ सुरू होते.",
+      "action_type": "harvest_planning",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_REDROT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["WILTING_CANES", "RED_PITH", "ALCOHOLIC_ODOR"],
+        "growth_stage": "maturity"
+      },
+      "cause": "red_rot_maturity",
+      "priority": 95,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-REDROT-008",
+      "response_en": "Red rot at maturity - CRITICAL! Affected canes cannot recover. Harvest healthy canes first, then diseased. Separate diseased canes at mill. DO NOT use as seed. Inform mill of disease presence.",
+      "response_hi": "परिपक्वता पर रेड रॉट - गंभीर! प्रभावित गन्ने ठीक नहीं हो सकते। स्वस्थ गन्ने पहले काटें, फिर रोगग्रस्त। बीज के रूप में उपयोग न करें। मिल को रोग की जानकारी दें।",
+      "response_mr": "परिपक्वतेवर रेड रॉट - गंभीर! प्रभावित ऊस बरे होऊ शकत नाहीत. निरोगी ऊस प्रथम कापा, नंतर रोगग्रस्त. बियाणे म्हणून वापरू नका. मिलला रोगाची माहिती द्या.",
+      "action_type": "emergency_harvest",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_TOPROT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["ROTTING_TOP", "FOUL_SMELL", "SOFT_TOP"],
+        "growth_stage": "maturity"
+      },
+      "cause": "top_rot_maturity",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-TOPROT-009",
+      "response_en": "Top rot spreads downward rapidly. Cut 2-3 internodes below rot during harvest. Use base portion only for milling. Top portion not suitable for seed or jaggery. Separate affected canes.",
+      "response_hi": "टॉप रॉट तेजी से नीचे फैलता है। कटाई के दौरान सड़न से 2-3 इंटरनोड नीचे काटें। मिलिंग के लिए केवल बेस पोर्शन का उपयोग करें। टॉप पोर्शन बीज या गुड़ के लिए उपयुक्त नहीं।",
+      "response_mr": "टॉप रॉट वेगाने खाली पसरतो. कापणी दरम्यान कुजण्याच्या 2-3 इंटरनोड खाली कापा. मिलिंगसाठी फक्त बेस भाग वापरा. टॉप भाग बियाणे किंवा गुळासाठी योग्य नाही.",
+      "action_type": "harvest_practice",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_OPTIMUM_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["OPTIMAL_MATURITY", "HIGH_BRIX", "DRIED_LOWER_LEAVES"],
+        "growth_stage": "maturity",
+        "brix_min": 18
+      },
+      "cause": "optimal_harvest_time",
+      "priority": 70,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-OPTHAR-010",
+      "response_en": "Optimal maturity reached! Brix 18+ indicates peak sugar. Bottom to top maturity ratio should be 1:1. Harvest within 2 weeks for best recovery. Coordinate with mill for crushing schedule.",
+      "response_hi": "इष्टतम परिपक्वता! ब्रिक्स 18+ चरम चीनी दर्शाता है। नीचे से ऊपर परिपक्वता अनुपात 1:1 होना चाहिए। सर्वोत्तम रिकवरी के लिए 2 सप्ताह के भीतर काटें। क्रशिंग के लिए मिल से समन्वय करें।",
+      "response_mr": "इष्टतम परिपक्वता! ब्रिक्स 18+ पीक साखर दर्शवते. तळापासून वरपर्यंत परिपक्वता गुणोत्तर 1:1 असावे. उत्तम रिकव्हरीसाठी 2 आठवड्यांच्या आत कापा. क्रशिंगसाठी मिलशी समन्वय करा.",
+      "action_type": "harvest_planning",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_DELAY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["OVERRIPE_CANES", "DECLINING_BRIX", "DRYING_CANES"],
+        "growth_stage": "maturity",
+        "days_after_planting_min": 360
+      },
+      "cause": "delayed_harvest_loss",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-DELAY-011",
+      "response_en": "Delayed harvest causing quality loss! Sugar content declining after peak. Weight loss 2-3% per month. Fiber increases, juice purity decreases. Harvest immediately. Mill rejection risk if over 14 months.",
+      "response_hi": "विलंबित कटाई से गुणवत्ता हानि! चरम के बाद चीनी सामग्री घट रही है। प्रति माह 2-3% वजन हानि। फाइबर बढ़ता है, जूस शुद्धता घटती है। तुरंत काटें।",
+      "response_mr": "विलंबित कापणीमुळे गुणवत्ता हानी! पीक नंतर साखर सामग्री कमी होत आहे. दर महिन्याला 2-3% वजन हानी. फायबर वाढते, रस शुद्धता कमी होते. लगेच कापा.",
+      "action_type": "emergency_harvest",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_MATURE_RATOON_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "stage_problems",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["RATOON_PLANNING", "STUBBLE_MANAGEMENT", "HARVEST_METHOD"],
+        "growth_stage": "maturity",
+        "crop_type": "plant_crop"
+      },
+      "cause": "ratoon_preparation",
+      "priority": 75,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-RATPREP-012",
+      "response_en": "Plan ratoon management during harvest. Cut close to ground level. Avoid stubble damage by harvester. Leave minimum trash for mulching. Apply 25% extra fertilizer for ratoon. Off-bar within 3 days.",
+      "response_hi": "कटाई के दौरान रेटून प्रबंधन की योजना बनाएं। जमीन के करीब काटें। हार्वेस्टर द्वारा ठूंठ क्षति से बचें। मल्चिंग के लिए न्यूनतम ट्रैश छोड़ें। रेटून के लिए 25% अतिरिक्त उर्वरक लगाएं।",
+      "response_mr": "कापणी दरम्यान रेटून व्यवस्थापनाची योजना करा. जमिनीजवळ कापा. हार्वेस्टरने बुंध्याचे नुकसान टाळा. मल्चिंगसाठी किमान कचरा ठेवा. रेटूनसाठी 25% अतिरिक्त खत द्या.",
+      "action_type": "harvest_practice",
+      "is_active": true
+    }
+  ]
+}

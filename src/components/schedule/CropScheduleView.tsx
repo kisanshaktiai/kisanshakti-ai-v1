@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,13 +15,17 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useTranslation } from 'react-i18next';
 import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
+import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface CropSchedule {
   id: string;
@@ -32,6 +37,7 @@ interface CropSchedule {
   is_active: boolean;
   generated_at: string;
   last_weather_update?: string;
+  farming_type?: string;
 }
 
 interface ScheduleTask {
@@ -65,9 +71,10 @@ interface CropScheduleViewProps {
 }
 
 const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop, onBack }) => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { speak, stop, isSpeaking } = useTextToSpeech({ 
     language: i18n.language === 'hi' ? 'hi-IN' : 
              i18n.language === 'mr' ? 'mr-IN' : 
@@ -96,15 +103,34 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [climateData, setClimateData] = useState<any>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const [photoUploadTask, setPhotoUploadTask] = useState<ScheduleTask | null>(null);
+  const [showLandPhotoUpload, setShowLandPhotoUpload] = useState(false);
+  const [landContext, setLandContext] = useState<{ soil_type?: string; water_source?: string; irrigation_type?: string; ownership_type?: string } | null>(null);
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!landId) return;
+      const { data } = await supabase
+        .from('lands')
+        .select('soil_type, water_source, irrigation_type, ownership_type')
+        .eq('id', landId)
+        .maybeSingle();
+      if (!cancelled && data) setLandContext(data as any);
+    })();
+    return () => { cancelled = true; };
+  }, [landId]);
 
   // Task type icons and colors
   const taskTypeConfig = {
-    irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-    fertilizer: { icon: Leaf, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950/30' },
-    pesticide: { icon: Bug, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-950/30' },
-    weeding: { icon: Scissors, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-950/30' },
-    harvest: { icon: Package, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-    other: { icon: AlertCircle, color: 'text-gray-500', bg: 'bg-gray-50 dark:bg-gray-950/30' }
+    irrigation: { icon: Droplets, color: 'text-info', bg: 'bg-info-soft dark:bg-info/30' },
+    fertilizer: { icon: Leaf, color: 'text-success', bg: 'bg-success-soft dark:bg-success/30' },
+    pesticide: { icon: Bug, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
+    weeding: { icon: Scissors, color: 'text-primary', bg: 'bg-primary-soft dark:bg-primary/30' },
+    harvest: { icon: Package, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
+    other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted dark:bg-foreground/80/30' }
   };
 
   // Update schedule when schedules data changes from React Query
@@ -164,9 +190,16 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       setLoadingTasks(true);
       console.log('🔍 [CropScheduleView] Fetching tasks for schedule:', scheduleId);
       
-      // Try to fetch from API first
+      // Guard: Ensure user is authenticated
+      if (!user?.id || !user?.tenantId) {
+        console.warn('⚠️ [CropScheduleView] Cannot fetch tasks: Missing user authentication');
+        setLoadingTasks(false);
+        return;
+      }
+      
+      // Try to fetch from API first with authenticated client
       const { supabaseWithAuth } = await import('@/integrations/supabase/client');
-      const client = supabaseWithAuth();
+      const client = supabaseWithAuth(user.id, user.tenantId);
       
       const { data: tasksData, error: tasksError } = await client
         .from('schedule_tasks')
@@ -288,7 +321,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
+      <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
         {/* Header Skeleton */}
         <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
           <div className="px-4 py-3">
@@ -347,7 +380,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           {/* Loading message */}
           <div className="flex items-center justify-center gap-2 text-muted-foreground py-4">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-            <p className="text-sm font-medium">Loading schedule data...</p>
+            <p className="text-sm font-medium">{t('schedule.schedule_view.loading')}</p>
           </div>
         </div>
       </div>
@@ -356,31 +389,15 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   if (!schedule) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
-        {/* Header */}
-        <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-3">
-              {onBack && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onBack}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <h2 className="text-lg font-bold text-foreground">
-                  {landName}
-                </h2>
-                <p className="text-xs text-muted-foreground font-medium">
-                  No Active Schedule
-                </p>
-              </div>
-            </div>
-          </div>
+      <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
+        {/* Compact inline summary (no sticky — parent provides header) */}
+        <div className="px-4 pt-3 pb-1">
+          <h2 className="text-base font-bold text-foreground leading-tight">
+            {landName}
+          </h2>
+          <p className="text-xs text-muted-foreground font-medium mt-0.5">
+            {t('schedule.schedule_view.no_active_schedule')}
+          </p>
         </div>
 
         {/* Empty State */}
@@ -390,17 +407,17 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <Calendar className="h-20 w-20 text-primary/60 mx-auto animate-pulse" />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
             </div>
-            <h3 className="text-xl font-bold text-foreground">No Schedule Available</h3>
+            <h3 className="text-xl font-bold text-foreground">{t('schedule.schedule_view.no_schedule_available')}</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Generate an AI-powered crop schedule to get personalized farming tasks and recommendations
+              {t('schedule.schedule_view.no_schedule_description')}
             </p>
             <div className="pt-4">
-              <Button 
+              <Button
                 onClick={onBack}
                 className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/30 transition-all"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Generate Schedule
+                {t('schedule.schedule_view.generate_schedule')}
               </Button>
             </div>
           </div>
@@ -409,76 +426,141 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     );
   }
 
+
   const filteredTasks = getFilteredTasks();
   const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
   const completedTasks = filteredTasks.filter(t => t.status === 'completed');
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
   const todayTasks = tasks.filter(t => isToday(new Date(t.task_date)) && t.status === 'pending');
 
+  // Find real harvest date from tasks (harvest/harvesting task)
+  const harvestTask = tasks.find(t => 
+    t.task_type?.toLowerCase().includes('harvest') || 
+    t.task_name?.toLowerCase().includes('harvest') ||
+    t.task_name?.toLowerCase().includes('कटाई') ||
+    t.task_name?.toLowerCase().includes('काढणी')
+  );
+  const realHarvestDate = harvestTask?.task_date || schedule.expected_harvest_date;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
-      {/* Modern Mobile-First Header - 2025 Design */}
-      <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              {onBack && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onBack}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                  {schedule.crop_name}
-                </h2>
-                <p className="text-xs text-muted-foreground font-medium">
-                  <MapPin className="h-3 w-3 inline mr-1" />
-                  {landName} • {schedule.crop_variety || 'Standard Variety'}
-                </p>
-              </div>
-            </div>
-            <Badge className="bg-primary/10 text-primary border-primary/20">
-              AI Schedule
+    <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
+      {/* Compact inline crop summary (non-sticky — parent header handles back/nav) */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold text-foreground flex items-center gap-1.5 leading-tight truncate">
+              <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="truncate">{(schedule as any).metadata?.translated_crop_name || schedule.crop_name}</span>
+            </h2>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1 truncate">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{landName} • {schedule.crop_variety || t('schedule.schedule_view.standard_variety')}</span>
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-2 py-0.5 h-5">
+              {t('schedule.schedule_view.ai_schedule')}
             </Badge>
+            {schedule.farming_type && (
+              <Badge
+                className={cn(
+                  "text-[10px] border px-2 py-0.5 h-5",
+                  schedule.farming_type === 'organic_only' && "bg-success/10 text-success border-success/30",
+                  schedule.farming_type === 'organic_fertilizer' && "bg-info/10 text-info border-info/30",
+                  schedule.farming_type === 'fertilizer_pesticide' && "bg-warning/10 text-warning border-warning/30"
+                )}
+              >
+                {schedule.farming_type === 'organic_only' && (
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic')}</>
+                )}
+                {schedule.farming_type === 'organic_fertilizer' && (
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic_chemical')}</>
+                )}
+                {schedule.farming_type === 'fertilizer_pesticide' && (
+                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.chemical')}</>
+                )}
+              </Badge>
+            )}
           </div>
         </div>
+
+        {/* Localized land-attribute chip strip */}
+        {landContext && (landContext.soil_type || landContext.water_source || landContext.irrigation_type || landContext.ownership_type) && (
+          <div className="flex items-center gap-1.5 flex-wrap mt-2">
+            {landContext.soil_type && (() => {
+              const d = refLabels.display(landContext.soil_type, 'soil');
+              return (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full bg-secondary/10 border border-secondary/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                  {d.text}
+                </span>
+              );
+            })()}
+            {landContext.water_source && (() => {
+              const d = refLabels.display(landContext.water_source, 'water');
+              return (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                  {d.text}
+                </span>
+              );
+            })()}
+            {landContext.irrigation_type && (() => {
+              const d = refLabels.display(landContext.irrigation_type, 'irrigation');
+              return (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                  {d.text}
+                </span>
+              );
+            })()}
+            {landContext.ownership_type && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${ownershipChipClasses(landContext.ownership_type)}`}>
+                {ownershipLabel(landContext.ownership_type)}
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
+
 
       {/* Quick Stats Cards - Mobile Optimized */}
       <div className="px-4 pt-4 pb-2">
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/20 dark:to-green-900/10 border-green-200 dark:border-green-800">
-            <div className="p-3 space-y-1">
+          <Card className="relative overflow-hidden bg-success-soft border-success/30">
+            <div className="absolute inset-y-0 left-0 w-1 bg-success" aria-hidden />
+            <div className="p-3 pl-4 space-y-1">
               <div className="flex items-center justify-between">
-                <Calendar className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <span className="text-[10px] font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">Sowing</span>
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-success/15">
+                  <Calendar className="h-3.5 w-3.5 text-success" />
+                </div>
+                <span className="text-[10px] font-semibold text-success uppercase tracking-wider">{t('schedule.sowing')}</span>
               </div>
-              <p className="text-base font-bold text-green-900 dark:text-green-100">
+              <p className="text-base font-bold text-foreground leading-tight">
                 {format(new Date(schedule.sowing_date), 'dd MMM')}
               </p>
-              <p className="text-[10px] text-green-700 dark:text-green-300">
-                {differenceInDays(new Date(), new Date(schedule.sowing_date))} days ago
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {differenceInDays(new Date(), new Date(schedule.sowing_date))} {t('schedule.days_ago')}
               </p>
             </div>
           </Card>
-          
-          <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10 border-amber-200 dark:border-amber-800">
-            <div className="p-3 space-y-1">
+
+          <Card className="relative overflow-hidden bg-warning-soft border-warning/30">
+            <div className="absolute inset-y-0 left-0 w-1 bg-warning" aria-hidden />
+            <div className="p-3 pl-4 space-y-1">
               <div className="flex items-center justify-between">
-                <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">Harvest</span>
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-warning/15">
+                  <Package className="h-3.5 w-3.5 text-warning" />
+                </div>
+                <span className="text-[10px] font-semibold text-warning uppercase tracking-wider">{t('schedule.harvest')}</span>
               </div>
-              <p className="text-base font-bold text-amber-900 dark:text-amber-100">
-                {schedule.expected_harvest_date ? format(new Date(schedule.expected_harvest_date), 'dd MMM') : 'TBD'}
+              <p className="text-base font-bold text-foreground leading-tight">
+                {realHarvestDate
+                  ? format(new Date(realHarvestDate), 'dd MMM yyyy')
+                  : t('schedule.schedule_card.tbd')}
               </p>
-              <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                {schedule.expected_harvest_date && differenceInDays(new Date(schedule.expected_harvest_date), new Date())} days left
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {realHarvestDate
+                  ? `${Math.max(0, differenceInDays(new Date(realHarvestDate), new Date()))} ${t('schedule.days_remaining')}`
+                  : ''}
               </p>
             </div>
           </Card>
@@ -490,6 +572,36 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         {/* Task Statistics Widget */}
         <TaskStatisticsWidget scheduleId={schedule.id} className="mb-3" />
 
+        {/* Crop Growth Tracking Card - Upload Photo Button */}
+        <Card 
+          className="mb-3 border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5"
+        >
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-primary/10">
+                  <Camera className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">{i18n.language === 'hi' ? 'फसल वृद्धि ट्रैकिंग' : i18n.language === 'mr' ? 'पीक वाढ ट्रॅकिंग' : 'Crop Growth Tracking'}</h3>
+                  <p className="text-xs text-muted-foreground">{i18n.language === 'hi' ? 'फोटो अपलोड करें और AI विश्लेषण प्राप्त करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा आणि AI विश्लेषण मिळवा' : 'Upload photos for AI analysis'}</p>
+                </div>
+              </div>
+              <Sprout className="h-5 w-5 text-primary" />
+            </div>
+            {/* Quick Upload Button */}
+            <Button
+              variant="default"
+              size="sm"
+              className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:shadow-lg"
+              onClick={() => setShowLandPhotoUpload(true)}
+            >
+              <Camera className="h-4 w-4" />
+              {i18n.language === 'hi' ? 'फोटो अपलोड करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा' : 'Upload Photo'}
+            </Button>
+          </div>
+        </Card>
+
         {/* Today's Priority Tasks - Big & Clear for Farmers */}
         {todayTasks.length > 0 && (
           <Card className="mb-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30 shadow-lg">
@@ -497,10 +609,10 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                   <Clock className="h-4 w-4 text-primary" />
-                  {i18n.t('schedule.todaysTasks')}
+                  {t('schedule.todays_tasks')}
                 </h3>
                 <Badge variant="destructive" className="text-[10px]">
-                  {todayTasks.length} {i18n.t('schedule.pending')}
+                  {todayTasks.length} {t('schedule.pending')}
                 </Badge>
               </div>
               <div className="space-y-2">
@@ -520,18 +632,33 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                         <div className="flex-1">
                           <p className="font-semibold text-sm text-foreground">{task.task_name}</p>
                           <p className="text-xs text-muted-foreground mt-1">{task.task_description}</p>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs mt-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              speakTask(task);
-                            }}
-                          >
-                            <Volume2 className="h-3 w-3 mr-1" />
-                            Listen
-                          </Button>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakTask(task);
+                              }}
+                            >
+                              <Volume2 className="h-3 w-3 mr-1" />
+                              {i18n.language === 'hi' ? 'सुनें' : i18n.language === 'mr' ? 'ऐका' : 'Listen'}
+                            </Button>
+                            {/* Camera button for task photo */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPhotoUploadTask(task);
+                              }}
+                            >
+                              <Camera className="h-3 w-3" />
+                              {i18n.language === 'hi' ? 'फोटो' : i18n.language === 'mr' ? 'फोटो' : 'Photo'}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -600,6 +727,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                     onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)}
                     onTaskComplete={refetchSchedules}
                     onTaskUpdate={handleTaskUpdate}
+                    onTakePhoto={(task: any) => setPhotoUploadTask(task as ScheduleTask)}
                   />
                 ) : (
                   <div className="grid gap-3">
@@ -617,6 +745,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                             isOverdue={isOverdue}
                             daysUntil={daysUntil}
                             readOnly={true}
+                            onTakePhoto={() => setPhotoUploadTask(task)}
                           />
                         </div>
                       );
@@ -637,6 +766,43 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           onClose={() => setSelectedTask(null)}
           onSpeak={() => speakTask(selectedTask)}
           readOnly={true}
+        />
+      )}
+
+      {/* Task Photo Upload Dialog */}
+      {photoUploadTask && schedule && user && (
+        <TaskPhotoUploadDialog
+          isOpen={!!photoUploadTask}
+          onClose={() => setPhotoUploadTask(null)}
+          taskId={photoUploadTask.id}
+          taskType={photoUploadTask.task_type}
+          taskName={photoUploadTask.task_name}
+          scheduleId={schedule.id}
+          landId={landId}
+          farmerId={user.id}
+          tenantId={user.tenantId || ''}
+          cropName={schedule.crop_name}
+          onUploadComplete={() => {
+            setPhotoUploadTask(null);
+            refetchSchedules();
+          }}
+        />
+      )}
+
+      {/* Land Photo Upload Dialog (general) */}
+      {showLandPhotoUpload && schedule && user && (
+        <TaskPhotoUploadDialog
+          isOpen={showLandPhotoUpload}
+          onClose={() => setShowLandPhotoUpload(false)}
+          scheduleId={schedule.id}
+          landId={landId}
+          farmerId={user.id}
+          tenantId={user.tenantId || ''}
+          cropName={schedule.crop_name}
+          onUploadComplete={() => {
+            setShowLandPhotoUpload(false);
+            refetchSchedules();
+          }}
         />
       )}
     </div>

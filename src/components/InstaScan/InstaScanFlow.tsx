@@ -7,8 +7,9 @@ import { useTranslation } from 'react-i18next';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { toast as sonnerToast } from 'sonner';
+import { preprocessImage } from '@/utils/imagePreprocessing';
 
 interface InstaScanFlowProps {
   isOpen: boolean;
@@ -20,7 +21,7 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [showCamera, setShowCamera] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scanResult, setScanResult] = useState<InstaScanResult | null>(null);
@@ -38,21 +39,40 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
 
   if (!isOpen) return null;
 
-  const handleImageCapture = async (imageData: string) => {
+  const handleImageCapture = async (imageFrames: string[]) => {
     setShowCamera(false);
     setIsAnalyzing(true);
     setErrorMessage(null);
 
     try {
-      // Enhanced logging for debugging
-      const imageSizeKB = Math.round(imageData.length / 1024);
-      const imageFormat = imageData.substring(0, 30);
-      console.log('📷 Sending image to AI for analysis:', {
-        imageSize: `${imageSizeKB}KB`,
-        format: imageFormat,
-        timestamp: new Date().toISOString(),
-        language: i18n.language
+      console.log('📷 Starting image preprocessing...', imageFrames.length, 'frames');
+      
+      // Import selectBestFrame function
+      const { selectBestFrame } = await import('@/utils/imagePreprocessing');
+      
+      // Select best frame from burst
+      const bestFrame = await selectBestFrame(imageFrames);
+      
+      // Preprocess image: resize, compress, validate quality
+      const preprocessed = await preprocessImage(bestFrame, {
+        maxDimension: 1536,
+        targetQuality: 0.85,
+        targetSizeKB: 500
       });
+      
+      console.log('✨ Image preprocessed:', {
+        originalSize: `${Math.round(preprocessed.originalSize / 1024)}KB`,
+        processedSize: `${Math.round(preprocessed.processedSize / 1024)}KB`,
+        compression: `${preprocessed.compressionRatio.toFixed(2)}x`,
+        warnings: preprocessed.warnings
+      });
+      
+      // Show warnings to user if any
+      if (preprocessed.warnings.length > 0) {
+        preprocessed.warnings.forEach(warning => {
+          sonnerToast.warning(warning);
+        });
+      }
       
       // Get authentication context
       const farmerId = user?.id;
@@ -70,17 +90,15 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
       // Use authenticated Supabase client
       const supabase = supabaseWithAuth(farmerId, currentTenantId);
       
-      // Call the edge function with proper authentication and context
-      const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
+      console.log('🔬 Calling AI crop scan edge function...');
+      
+      // Call the new production-quality edge function
+      const { data, error } = await supabase.functions.invoke('ai-crop-scan', {
         body: {
-          messages: [],
-          imageUrl: imageData,
-          sessionId: `instascan-${Date.now()}`,
+          images: [preprocessed.processedImage],
           language: i18n.language,
-          metadata: {
-            tenantId: currentTenantId,
-            farmerId
-          }
+          farmerId,
+          tenantId: currentTenantId
         }
       });
 
@@ -90,6 +108,8 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
         // Handle specific error types
         if (error.message?.includes('429') || error.message?.includes('rate limit')) {
           sonnerToast.error(t('common.rateLimitError') || 'Too many requests. Please try again later.');
+        } else if (error.message?.includes('402') || error.message?.includes('quota')) {
+          sonnerToast.error(t('instaScan.quotaExceeded') || 'AI quota exceeded. Please contact support.');
         } else if (error.message?.includes('401') || error.message?.includes('authentication')) {
           sonnerToast.error(t('auth.loginRequired') || 'Authentication required');
         } else {
@@ -102,7 +122,7 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
         return;
       }
 
-      console.log('AI Analysis result:', data);
+      console.log('🤖 AI Analysis result:', data);
 
       // Handle the structured response
       if (!data?.success || !data?.result) {
@@ -114,31 +134,49 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
         return;
       }
 
-      // Validate result quality
-      const resultData = data.result;
+      const aiResult = data.result;
       
-      // Check if AI couldn't identify the crop reliably
-      if (resultData.confidence < 50 || 
-          resultData.cropName?.toLowerCase().includes('unknown') ||
-          resultData.cropName?.toLowerCase().includes('not a crop')) {
-        console.warn('Low confidence or unidentified crop:', resultData);
-        sonnerToast.warning(t('instaScan.lowConfidence') || 'Could not identify crop clearly. Please take a clearer photo.');
+      // RELAXED confidence threshold - accept more results
+      // Only reject if confidence is very low (<40%) AND category is unknown
+      if (aiResult.detectedItem?.confidence < 40 && 
+          aiResult.detectedItem?.category === 'unknown') {
+        console.warn('Very low confidence detection:', aiResult.detectedItem);
+        sonnerToast.warning(t('instaScan.lowConfidence') || 'Could not identify clearly. Please take a clearer photo.');
+        
+        if (aiResult.metadata?.needsMoreImages) {
+          sonnerToast.info(t('instaScan.needsMoreImages') || 'Try capturing from different angles');
+        }
+        
         setErrorMessage(t('instaScan.tryAgain'));
         setShowCamera(true);
         setIsAnalyzing(false);
         return;
       }
+      
+      // Show warning for moderate confidence but still proceed
+      if (aiResult.detectedItem?.confidence < 70) {
+        sonnerToast.info(t('instaScan.moderateConfidence') || 'Analysis complete. Consider taking additional photos for better accuracy.');
+      }
 
+      // Transform AI result to InstaScanResult format
       const result: InstaScanResult = {
-        imageUrl: imageData,
-        cropName: resultData.cropName || t('instaScan.unknownCrop'),
-        cropCondition: resultData.condition || 'warning',
-        diseases: resultData.diseases || [],
-        suggestions: resultData.suggestions || [t('instaScan.defaultSuggestion')],
-        confidence: resultData.confidence || 0
+        imageUrl: bestFrame,
+        detectedItem: aiResult.detectedItem,
+        healthStatus: aiResult.healthStatus,
+        diagnosis: aiResult.diagnosis,
+        recommendations: aiResult.recommendations,
+        metadata: aiResult.metadata,
+        visualAnalysis: aiResult.visualAnalysis,
+        processingTimeMs: data.processingTimeMs
       };
 
-      console.log('✅ InstaScan completed successfully:', result);
+      console.log('✅ InstaScan completed successfully:', {
+        item: result.detectedItem.commonName,
+        confidence: result.detectedItem.confidence,
+        condition: result.healthStatus.condition,
+        processingTime: result.processingTimeMs + 'ms'
+      });
+      
       setScanResult(result);
     } catch (error) {
       console.error('Error analyzing image:', error);
@@ -157,14 +195,23 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
   const handleContinueToChat = () => {
     if (!scanResult) return;
 
-    // Store scan result in session storage for AI Chat to pick up
+    // Store comprehensive scan result in session storage for AI Chat
     const scanContext = {
       fromInstaScan: true,
       imageUrl: scanResult.imageUrl,
-      cropName: scanResult.cropName,
-      cropCondition: scanResult.cropCondition,
-      diseases: scanResult.diseases,
-      suggestions: scanResult.suggestions,
+      detectedItem: scanResult.detectedItem.commonName,
+      scientificName: scanResult.detectedItem.scientificName,
+      category: scanResult.detectedItem.category,
+      healthStatus: scanResult.healthStatus.condition,
+      riskLevel: scanResult.healthStatus.riskLevel,
+      primaryIssues: scanResult.healthStatus.primaryIssues,
+      diagnosisSummary: scanResult.diagnosis.summary,
+      diseases: scanResult.diagnosis.likelyDiseases.map(d => d.name),
+      pests: scanResult.diagnosis.likelyPests.map(p => p.name),
+      recommendations: [
+        ...scanResult.recommendations.immediate.map(r => r.action),
+        ...scanResult.recommendations.shortTerm.map(r => r.action)
+      ],
       timestamp: new Date().toISOString()
     };
 

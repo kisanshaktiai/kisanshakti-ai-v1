@@ -1,0 +1,435 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "nutrition",
+    "canonical_group": "05_nutrition",
+    "version": "3.1.0",
+    "scientific_source": "ICAR-SBI Coimbatore, TNAU, VSI Pune",
+    "last_updated": "2026-01-10",
+    "total_rules": 20
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_N_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["yellowing_older_leaves", "stunted_growth", "thin_canes"],
+        "leaf_position": "lower_leaves_first",
+        "soil_nitrogen": "low"
+      },
+      "cause": "Nitrogen deficiency - mobile nutrient",
+      "priority": 90,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Nutrient Management",
+      "response_en": "🧪 NITROGEN DEFICIENCY: Yellowing starts from older/lower leaves. Apply Urea @100 kg/ha in 2 splits (tillering + grand growth). For organic: FYM @10 t/ha + Azotobacter. Fertigation: Urea 1.5% weekly. Critical period: 60-150 DAP.",
+      "response_hi": "🧪 नाइट्रोजन की कमी: पीलापन पुरानी/निचली पत्तियों से शुरू होता है। यूरिया @100 kg/हेक्टेयर 2 बार में दें। जैविक के लिए: गोबर खाद @10 टन/हेक्टेयर + एज़ोटोबैक्टर।",
+      "response_mr": "🧪 नायट्रोजनची कमतरता: पिवळेपणा जुन्या/खालच्या पानांपासून सुरू होतो. युरिया @१०० kg/हेक्टर २ वेळा द्या. सेंद्रियसाठी: शेणखत @१० टन/हेक्टर + अझोटोबॅक्टर.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_P_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["germination", "tillering"],
+      "conditions_json": {
+        "observations": ["purple_leaves", "poor_root_development", "stunted_growth"],
+        "soil_phosphorus": "low"
+      },
+      "cause": "Phosphorus deficiency - immobile nutrient",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Nutrient Management",
+      "response_en": "🧪 PHOSPHORUS DEFICIENCY: Purple/reddish leaves, poor tillering, weak roots. Apply SSP @375 kg/ha or DAP @125 kg/ha as BASAL dose only. P is immobile - surface application ineffective. Use PSB (Phosphate Solubilizing Bacteria) for better uptake.",
+      "response_hi": "🧪 फॉस्फोरस की कमी: बैंगनी/लाल पत्ते, कम कल्ले, कमजोर जड़ें। SSP @375 kg/हेक्टेयर या DAP @125 kg/हेक्टेयर केवल बेसल डोज के रूप में दें। P गतिहीन है - ऊपरी डोज बेकार।",
+      "response_mr": "🧪 स्फुरदाची कमतरता: जांभळी/लालसर पाने, कमी फुटवे, कमकुवत मुळे. SSP @३७५ kg/हेक्टर किंवा DAP @१२५ kg/हेक्टर फक्त बेसल डोस म्हणून द्या. P स्थिर आहे - वरून देणे निरुपयोगी.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_K_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["grand_growth", "maturity"],
+      "conditions_json": {
+        "observations": ["leaf_tip_burn", "marginal_scorch", "weak_stalks", "lodging"],
+        "soil_potassium": "low"
+      },
+      "cause": "Potassium deficiency - affects sugar accumulation",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Nutrient Management",
+      "response_en": "🧪 POTASSIUM DEFICIENCY: Leaf tip/margin burn, weak stalks prone to lodging, LOW SUGAR content. Apply MOP @120 kg/ha in 2 splits. K is critical for sugar synthesis. Foliar: SOP 1% spray. Organic: Wood ash @500 kg/ha.",
+      "response_hi": "🧪 पोटेशियम की कमी: पत्ती के सिरे/किनारे जलना, कमजोर तने जो गिर जाते हैं, कम चीनी। MOP @120 kg/हेक्टेयर 2 बार में दें। K चीनी संश्लेषण के लिए महत्वपूर्ण।",
+      "response_mr": "🧪 पालाशची कमतरता: पानाच्या टोकावर/कडेला करपणे, कमकुवत खोड जे पडतात, कमी साखर. MOP @१२० kg/हेक्टर २ वेळा द्या. K साखर निर्मितीसाठी महत्त्वाचे.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_FE_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["interveinal_chlorosis", "young_leaves_yellow", "green_veins"],
+        "soil_ph": "high",
+        "leaf_position": "young_leaves"
+      },
+      "cause": "Iron deficiency - common in alkaline soils",
+      "priority": 75,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-SBI Micronutrient Management",
+      "response_en": "🧪 IRON DEFICIENCY: Young leaves yellow with green veins (interveinal chlorosis). Common in high pH soils. Spray FeSO4 0.5% + Citric acid 0.1% (2-3 times at 15-day interval). Soil: FeSO4 @25 kg/ha with FYM.",
+      "response_hi": "🧪 लोहे की कमी: हरी नसों के साथ युवा पत्ते पीले। उच्च pH मिट्टी में आम। FeSO4 0.5% + साइट्रिक एसिड 0.1% छिड़कें (15 दिनों के अंतराल पर 2-3 बार)।",
+      "response_mr": "🧪 लोहाची कमतरता: हिरव्या शिरांसह कोवळी पाने पिवळी. उच्च pH जमिनीत सामान्य. FeSO4 0.5% + सायट्रिक अॅसिड 0.1% फवारा (१५ दिवसांच्या अंतराने २-३ वेळा).",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_ZN_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["germination", "tillering"],
+      "conditions_json": {
+        "observations": ["white_bands_on_leaves", "stunted_internodes", "small_leaves"],
+        "soil_zinc": "low"
+      },
+      "cause": "Zinc deficiency - affects growth hormone synthesis",
+      "priority": 78,
+      "confidence_score": 0.87,
+      "scientific_source": "ICAR-SBI Micronutrient Management",
+      "response_en": "🧪 ZINC DEFICIENCY: White/pale bands parallel to midrib, stunted internodes. Apply ZnSO4 @25 kg/ha as soil application OR spray 0.5% ZnSO4 + 0.25% lime. Critical for enzyme activation and auxin production.",
+      "response_hi": "🧪 जिंक की कमी: मध्य शिरा के समानांतर सफेद/पीली धारियां, बौने पोरे। ZnSO4 @25 kg/हेक्टेयर मिट्टी में डालें या 0.5% ZnSO4 + 0.25% चूना छिड़कें।",
+      "response_mr": "🧪 झिंकची कमतरता: मध्यशिरेला समांतर पांढऱ्या/फिकट पट्ट्या, खुंटलेले कांडे. ZnSO4 @२५ kg/हेक्टर जमिनीत टाका किंवा 0.5% ZnSO4 + 0.25% चुना फवारा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MN_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["grey_specks_on_leaves", "interveinal_chlorosis", "necrotic_spots"],
+        "soil_ph": "high"
+      },
+      "cause": "Manganese deficiency",
+      "priority": 70,
+      "confidence_score": 0.82,
+      "scientific_source": "ICAR Micronutrient Guidelines",
+      "response_en": "🧪 MANGANESE DEFICIENCY: Grey specks/streaks on young leaves, interveinal chlorosis. Spray MnSO4 0.5% (2-3 times). Soil application: MnSO4 @10-15 kg/ha. Deficiency worsens in high pH and over-limed soils.",
+      "response_hi": "🧪 मैंगनीज की कमी: युवा पत्तियों पर भूरे धब्बे/धारियां। MnSO4 0.5% छिड़कें (2-3 बार)। मिट्टी में: MnSO4 @10-15 kg/हेक्टेयर।",
+      "response_mr": "🧪 मँगेनीजची कमतरता: कोवळ्या पानांवर राखाडी ठिपके/पट्टे. MnSO4 0.5% फवारा (२-३ वेळा). जमिनीत: MnSO4 @१०-१५ kg/हेक्टर.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MG_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["grand_growth"],
+      "conditions_json": {
+        "observations": ["interveinal_yellowing_older_leaves", "reddish_purple_tinge"],
+        "soil_magnesium": "low"
+      },
+      "cause": "Magnesium deficiency - chlorophyll component",
+      "priority": 68,
+      "confidence_score": 0.80,
+      "scientific_source": "ICAR-SBI Nutrient Management",
+      "response_en": "🧪 MAGNESIUM DEFICIENCY: Interveinal yellowing on OLDER leaves (unlike Fe). Apply MgSO4 @25 kg/ha or spray 2% MgSO4. Important for chlorophyll and photosynthesis. Common in sandy, acidic soils.",
+      "response_hi": "🧪 मैग्नीशियम की कमी: पुरानी पत्तियों पर शिराओं के बीच पीलापन। MgSO4 @25 kg/हेक्टेयर डालें या 2% MgSO4 छिड़कें।",
+      "response_mr": "🧪 मॅग्नेशियमची कमतरता: जुन्या पानांवर शिरांमधील पिवळेपणा. MgSO4 @२५ kg/हेक्टर टाका किंवा 2% MgSO4 फवारा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_S_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["uniform_yellowing_young_leaves", "delayed_maturity"],
+        "soil_sulfur": "low"
+      },
+      "cause": "Sulfur deficiency - protein synthesis",
+      "priority": 72,
+      "confidence_score": 0.83,
+      "scientific_source": "ICAR Sulfur Management",
+      "response_en": "🧪 SULFUR DEFICIENCY: Uniform yellowing of YOUNG leaves (unlike N). Apply Gypsum @200 kg/ha or Ammonium Sulfate @50 kg/ha. S is needed for protein synthesis. Common when only urea/DAP used.",
+      "response_hi": "🧪 सल्फर की कमी: युवा पत्तियों का समान पीलापन। जिप्सम @200 kg/हेक्टेयर या अमोनियम सल्फेट @50 kg/हेक्टेयर डालें।",
+      "response_mr": "🧪 गंधकाची कमतरता: कोवळ्या पानांचा एकसमान पिवळेपणा. जिप्सम @२०० kg/हेक्टर किंवा अमोनियम सल्फेट @५० kg/हेक्टर टाका.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_B_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["grand_growth", "maturity"],
+      "conditions_json": {
+        "observations": ["cracking_internodes", "corky_lesions", "water_soaked_areas"],
+        "soil_boron": "low"
+      },
+      "cause": "Boron deficiency - cell wall formation",
+      "priority": 70,
+      "confidence_score": 0.82,
+      "scientific_source": "ICAR Micronutrient Guidelines",
+      "response_en": "🧪 BORON DEFICIENCY: Cracking/corky lesions on internodes, water-soaked areas. Apply Borax @10 kg/ha OR spray Boric acid 0.2% (2 times). Critical for cell wall formation. Excess B is toxic - don't over-apply.",
+      "response_hi": "🧪 बोरॉन की कमी: पोरों पर दरारें/कॉर्की घाव। बोरेक्स @10 kg/हेक्टेयर डालें या बोरिक एसिड 0.2% छिड़कें। अधिक B विषाक्त है।",
+      "response_mr": "🧪 बोरॉनची कमतरता: कांड्यांवर भेगा/कॉर्की जखम. बोरॅक्स @१० kg/हेक्टर टाका किंवा बोरिक अॅसिड 0.2% फवारा. जास्त B विषारी आहे.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_CU_DEF_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["drooping_leaves", "pale_green_color", "tip_dieback"],
+        "soil_copper": "low"
+      },
+      "cause": "Copper deficiency",
+      "priority": 65,
+      "confidence_score": 0.78,
+      "scientific_source": "ICAR Micronutrient Guidelines",
+      "response_en": "🧪 COPPER DEFICIENCY: Drooping/wilting of young leaves despite adequate water, pale green color, tip dieback. Apply CuSO4 @5 kg/ha or spray 0.2% CuSO4. Common in peat/organic soils.",
+      "response_hi": "🧪 तांबे की कमी: पर्याप्त पानी के बावजूद युवा पत्तियों का मुरझाना, हल्का हरा रंग। CuSO4 @5 kg/हेक्टेयर डालें या 0.2% CuSO4 छिड़कें।",
+      "response_mr": "🧪 तांब्याची कमतरता: पुरेसे पाणी असूनही कोवळ्या पानांचे कोमेजणे, फिकट हिरवा रंग. CuSO4 @५ kg/हेक्टर टाका किंवा 0.2% CuSO4 फवारा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_NUTRI_SCHEDULE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["planting"],
+      "conditions_json": {
+        "observations": ["new_planting", "fertilizer_schedule_query"],
+        "context": "planting_time"
+      },
+      "cause": "Fertilizer schedule for new planting",
+      "priority": 85,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR-SBI Recommended Package",
+      "response_en": "📋 SUGARCANE FERTILIZER SCHEDULE (per hectare):\n\n🌱 BASAL (At planting): N-30, P2O5-80, K2O-40 kg + FYM 10t + ZnSO4 25kg\n\n🌿 45 DAP (Tillering): N-75 kg (Urea 160kg)\n\n🌾 90 DAP (Grand Growth): N-75 kg + K2O-40 kg\n\n💧 Fertigation: Split into weekly doses",
+      "response_hi": "📋 गन्ना उर्वरक अनुसूची (प्रति हेक्टेयर):\n\n🌱 बेसल (रोपण पर): N-30, P2O5-80, K2O-40 kg + गोबर खाद 10t\n\n🌿 45 DAP: N-75 kg\n\n🌾 90 DAP: N-75 kg + K2O-40 kg",
+      "response_mr": "📋 ऊस खत वेळापत्रक (प्रति हेक्टर):\n\n🌱 बेसल (लागवडीला): N-30, P2O5-80, K2O-40 kg + शेणखत 10t\n\n🌿 45 DAP: N-75 kg\n\n🌾 90 DAP: N-75 kg + K2O-40 kg",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RATOON_NUTRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["post_harvest"],
+      "conditions_json": {
+        "observations": ["ratoon_management", "fertilizer_for_ratoon"],
+        "context": "ratoon_crop"
+      },
+      "cause": "Fertilizer schedule for ratoon crop",
+      "priority": 82,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Ratoon Management",
+      "response_en": "📋 RATOON FERTILIZER (25% higher than plant crop):\n\n✅ Within 10 days of harvest: Stubble shaving + gap filling\n✅ N-225, P2O5-100, K2O-100 kg/ha\n✅ First dose: 75 kg N after stubble shaving\n✅ Second: 75 kg N + 50 kg K at 45 days\n✅ Third: 75 kg N + 50 kg K at 90 days",
+      "response_hi": "📋 रैटून उर्वरक (पौध फसल से 25% अधिक):\n\n✅ कटाई के 10 दिनों के भीतर: ठूंठ छंटाई\n✅ N-225, P2O5-100, K2O-100 kg/हेक्टेयर",
+      "response_mr": "📋 खोडवा खत (रोप पिकापेक्षा २५% जास्त):\n\n✅ कापणीनंतर १० दिवसांत: खुंट छाटणी\n✅ N-225, P2O5-100, K2O-100 kg/हेक्टर",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_ORGANIC_NUTRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["planting", "tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["organic_farming_query", "no_chemical_fertilizer"],
+        "farming_mode": "organic"
+      },
+      "cause": "Organic nutrient management",
+      "priority": 78,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Organic Farming Package",
+      "response_en": "🌿 ORGANIC SUGARCANE NUTRITION:\n\n✅ FYM/Compost: 25 t/ha\n✅ Press mud: 10 t/ha (replaces P)\n✅ Vermicompost: 5 t/ha\n✅ Azospirillum: 10 kg/ha (N-fixer)\n✅ PSB: 10 kg/ha (P-solubilizer)\n✅ Green manure: Dhaincha/Sunhemp before planting\n✅ Neem cake: 250 kg/ha (nutrient + pest control)",
+      "response_hi": "🌿 जैविक गन्ना पोषण:\n\n✅ गोबर खाद: 25 t/ha\n✅ प्रेस मड: 10 t/ha\n✅ केंचुआ खाद: 5 t/ha\n✅ एज़ोस्पिरिलम + PSB",
+      "response_mr": "🌿 सेंद्रिय ऊस पोषण:\n\n✅ शेणखत: २५ t/ha\n✅ प्रेस मड: १० t/ha\n✅ गांडूळखत: ५ t/ha\n✅ अझोस्पिरिलम + PSB",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_PRESS_MUD_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["planting"],
+      "conditions_json": {
+        "observations": ["press_mud_query", "sugar_mill_byproduct"],
+        "context": "organic_amendment"
+      },
+      "cause": "Press mud (filter cake) application",
+      "priority": 75,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Press Mud Utilization",
+      "response_en": "♻️ PRESS MUD (Filter Cake) - Sugar Mill Byproduct:\n\n✅ Apply: 10-15 t/ha at planting\n✅ NPK value: 1.5% N, 2.5% P2O5, 1% K2O\n✅ Benefits: Improves soil structure, adds organic carbon, supplies micronutrients\n✅ Replaces: 50% P fertilizer, saves ₹4,000-6,000/ha\n\n⚠️ Compost for 30 days before use if fresh",
+      "response_hi": "♻️ प्रेस मड (फिल्टर केक) - चीनी मिल उपउत्पाद:\n\n✅ रोपण पर 10-15 t/ha डालें\n✅ 50% P उर्वरक की जगह लेता है",
+      "response_mr": "♻️ प्रेस मड (फिल्टर केक) - साखर कारखाना उपउत्पादन:\n\n✅ लागवडीला १०-१५ t/ha टाका\n✅ ५०% P खताची जागा घेते",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_BIOFERT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["planting", "germination"],
+      "conditions_json": {
+        "observations": ["biofertilizer_query", "reduce_chemical_fertilizer"],
+        "context": "biological_inputs"
+      },
+      "cause": "Biofertilizer recommendation",
+      "priority": 72,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-NBAIR Biofertilizer Package",
+      "response_en": "🦠 BIOFERTILIZERS FOR SUGARCANE:\n\n✅ Azospirillum: 10 kg/ha (fixes 20-25 kg N/ha)\n✅ PSB: 10 kg/ha (solubilizes fixed P)\n✅ Acetobacter: 10 kg/ha (sugarcane-specific N-fixer)\n\n📋 Application: Mix with FYM, apply in furrows. Can reduce N by 25%, P by 25%.",
+      "response_hi": "🦠 गन्ने के लिए जैव उर्वरक:\n\n✅ एज़ोस्पिरिलम: 10 kg/ha\n✅ PSB: 10 kg/ha\n✅ एसीटोबैक्टर: 10 kg/ha",
+      "response_mr": "🦠 उसासाठी जैविक खते:\n\n✅ अझोस्पिरिलम: १० kg/ha\n✅ PSB: १० kg/ha\n✅ अॅसिटोबॅक्टर: १० kg/ha",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_FOLIAR_NUTRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["foliar_spray_query", "quick_correction_needed"],
+        "context": "foliar_nutrition"
+      },
+      "cause": "Foliar nutrition for quick correction",
+      "priority": 70,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-SBI Foliar Nutrition",
+      "response_en": "💧 FOLIAR NUTRITION FOR SUGARCANE:\n\n✅ General: 19:19:19 @ 5g/L (tillering + grand growth)\n✅ N-boost: Urea 2% spray\n✅ K-boost: SOP 1% spray\n✅ Micronutrients: ZnSO4 0.5% + FeSO4 0.5%\n\n⏰ Best time: Early morning/late evening. Add sticker. 500 L water/ha.",
+      "response_hi": "💧 गन्ने के लिए पर्णीय पोषण:\n\n✅ सामान्य: 19:19:19 @ 5g/L\n✅ N-बूस्ट: यूरिया 2%\n✅ K-बूस्ट: SOP 1%",
+      "response_mr": "💧 उसासाठी पर्णसंवर्धन:\n\n✅ सामान्य: 19:19:19 @ 5g/L\n✅ N-बूस्ट: युरिया 2%\n✅ K-बूस्ट: SOP 1%",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_FERTIGATION_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["germination", "tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["drip_irrigation", "fertigation_schedule"],
+        "context": "fertigation"
+      },
+      "cause": "Fertigation schedule for drip irrigation",
+      "priority": 80,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Precision Farming",
+      "response_en": "💧 SUGARCANE FERTIGATION SCHEDULE:\n\n✅ Split N-P-K into 20 weekly doses (from 30-180 DAP)\n✅ Weekly: Urea 8 kg + MOP 6 kg + water-soluble 19:19:19 2 kg/ha\n✅ Benefits: 25-30% fertilizer saving, uniform growth, higher yield\n\n⚠️ Maintain pH 6-7 in fertigation solution",
+      "response_hi": "💧 गन्ना फर्टिगेशन अनुसूची:\n\n✅ N-P-K को 20 साप्ताहिक खुराकों में बांटें\n✅ 25-30% उर्वरक बचत",
+      "response_mr": "💧 ऊस फर्टिगेशन वेळापत्रक:\n\n✅ N-P-K २० साप्ताहिक डोसमध्ये विभागा\n✅ २५-३०% खत बचत",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SOIL_ALKALINITY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["planting"],
+      "conditions_json": {
+        "observations": ["high_ph_soil", "sodic_soil", "poor_growth"],
+        "soil_ph": ">8.5"
+      },
+      "cause": "Alkaline/sodic soil management",
+      "priority": 75,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-CSSRI Sodic Soil Management",
+      "response_en": "⚠️ ALKALINE/SODIC SOIL MANAGEMENT:\n\n✅ Apply Gypsum @5-10 t/ha before planting\n✅ Use acidifying fertilizers: Ammonium Sulfate instead of Urea\n✅ Apply FYM/Press mud liberally (10-15 t/ha)\n✅ Green manuring with Dhaincha\n✅ Leaching irrigation to wash salts\n\n🌾 Tolerant varieties: Co 0238, CoS 767",
+      "response_hi": "⚠️ क्षारीय/सोडिक मिट्टी प्रबंधन:\n\n✅ रोपण से पहले जिप्सम @5-10 t/ha डालें\n✅ FYM/प्रेस मड भरपूर डालें",
+      "response_mr": "⚠️ अल्कधर्मी/सोडिक जमीन व्यवस्थापन:\n\n✅ लागवडीपूर्वी जिप्सम @५-१० t/ha टाका\n✅ FYM/प्रेस मड भरपूर टाका",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SOIL_ACIDITY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["planting"],
+      "conditions_json": {
+        "observations": ["low_ph_soil", "acidic_soil"],
+        "soil_ph": "<5.5"
+      },
+      "cause": "Acidic soil management",
+      "priority": 72,
+      "confidence_score": 0.83,
+      "scientific_source": "ICAR Soil Health Guidelines",
+      "response_en": "⚠️ ACIDIC SOIL MANAGEMENT:\n\n✅ Apply lime @2-4 t/ha (based on soil test)\n✅ Use basic slag or rock phosphate\n✅ Avoid ammonium-based fertilizers\n✅ Apply dolomite if Mg also low\n\n📋 Lime 1 month before planting for best effect",
+      "response_hi": "⚠️ अम्लीय मिट्टी प्रबंधन:\n\n✅ चूना @2-4 t/ha डालें\n✅ डोलोमाइट अगर Mg भी कम हो",
+      "response_mr": "⚠️ आम्ल जमीन व्यवस्थापन:\n\n✅ चुना @२-४ t/ha टाका\n✅ Mg कमी असल्यास डोलोमाइट",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_TRASH_MULCH_NUTRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "stage_applicable": ["post_harvest"],
+      "conditions_json": {
+        "observations": ["trash_mulching_query", "residue_management"],
+        "context": "organic_matter"
+      },
+      "cause": "Trash mulching for nutrition",
+      "priority": 70,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Residue Management",
+      "response_en": "♻️ TRASH MULCHING BENEFITS:\n\n✅ 10-12 t/ha trash adds: N-50, P-15, K-120 kg equivalent\n✅ Conserves moisture (saves 2-3 irrigations)\n✅ Controls weeds, adds organic carbon\n✅ Reduces soil temperature in summer\n\n⚠️ Apply Trichoderma/urea 2% to speed decomposition. Don't burn!",
+      "response_hi": "♻️ पराली मल्चिंग के लाभ:\n\n✅ 10-12 t/ha पराली से: N-50, P-15, K-120 kg जोड़ता है\n✅ नमी बचाता है, खरपतवार नियंत्रण",
+      "response_mr": "♻️ पाचट आच्छादनाचे फायदे:\n\n✅ १०-१२ t/ha पाचट: N-50, P-15, K-120 kg जोडते\n✅ ओलावा वाचवते, तण नियंत्रण",
+      "action_type": "advisory",
+      "is_active": true
+    }
+  ]
+}
