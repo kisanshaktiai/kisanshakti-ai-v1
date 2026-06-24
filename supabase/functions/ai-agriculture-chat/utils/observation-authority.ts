@@ -176,11 +176,15 @@ export class AuthoredObservationSet {
 /**
  * Terminal-level codes that must NEVER be injected via cross-crop or synthetic sources.
  * These require explicit farmer confirmation to trigger the Terminal Damage Gate.
+ *
+ * NOTE: GERMINATION_FAILURE is intentionally NOT in this set — it is a
+ *       diagnostic ENTRY observation, not a terminal verdict. Blocking it
+ *       here prevents the symbolic brain from accepting valid farmer
+ *       reports of "crop hasn't emerged" as confirmed evidence.
  */
 export const TERMINAL_CODES_BLOCKED_FROM_INJECTION = new Set([
   'PLANT_DEATH',
   'SEEDLING_DEATH',
-  'GERMINATION_FAILURE',
   'CROP_FAILURE',
   'ESTABLISHMENT_FAILURE',
   'PLANT_DIED',
