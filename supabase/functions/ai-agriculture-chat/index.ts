@@ -93,6 +93,14 @@ import {
 
 // WAVE A.5 / Phase 2: defence-in-depth gate + observability
 import { enforceClarificationInvariant } from './decision/clarification-invariant-gate.ts';
+
+// SSOT: DiagnosticDecisionAuthority — single writer for response_mode /
+// clarification_required / recommendation_allowed / diagnostic_state.
+import {
+  decideAuthority,
+  enforceAuthorityOnPayload,
+  type AuthoritySignals,
+} from './decision/authority/diagnostic-decision-authority.ts';
 import { logDecisionTurn, logOrchestratorMetrics } from './runtime/decision-logger.ts';
 import { getRuleSource } from './runtime/feature-flags.ts';
 import { selectCandidateRuleIdsFromDb } from './bundled-rules/db-rule-executor.ts';
