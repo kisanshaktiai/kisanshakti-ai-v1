@@ -3171,6 +3171,14 @@ export class AIAgentOrchestrator {
       // hypothesis fan-out, or canonical→alias expansion. NEVER merged into
       // expandedObservationCodes / inductionResult.symptoms / confirmedObservations.
       const candidateObservationCodes: Set<string> = new Set<string>();
+      // AUTHORITY FIX (2026-06-24): tracks which codes were promoted to the
+      // confirmed lane via the DB-curated `intent_observation_mapping.assertion_strength`
+      // column (LITERAL / STRONG_HYPOTHESIS), so their authority survives the
+      // later merge into inductionResult.symptoms instead of collapsing to
+      // the generic 'LLM_SEMANTIC_EXTRACTOR' source (which downstream authority
+      // tagging treats as low-trust INFERRED, blocking the terminal gate even
+      // when the DB already confirmed the observation for this exact crop).
+      const dbPromotedCodeStrength = new Map<string, 'LITERAL' | 'STRONG_HYPOTHESIS'>();
       try {
         const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase, 'alias_to_canonical');
         if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
@@ -3260,6 +3268,7 @@ export class AIAgentOrchestrator {
                   if (strength === 'LITERAL') promotedLiteral++;
                   else promotedStrong++;
                 }
+                dbPromotedCodeStrength.set(c, strength === 'LITERAL' ? 'LITERAL' : 'STRONG_HYPOTHESIS');
               } else if (!candidateObservationCodes.has(c)) {
                 candidateObservationCodes.add(c);
                 addedCandidate++;
@@ -3518,10 +3527,20 @@ export class AIAgentOrchestrator {
           // Check if symptom already exists in inductionResult
           const existingSymptom = inductionResult.symptoms.find(s => s.symbol === code);
           if (!existingSymptom) {
+            // AUTHORITY FIX (2026-06-24): preserve DB-promoted (LITERAL/STRONG_HYPOTHESIS)
+            // provenance instead of collapsing every expanded code to the generic
+            // LLM_SEMANTIC_EXTRACTOR source, which the authority tagger below treats
+            // as low-trust INFERRED even when the DB already confirmed the code.
+            const dbStrength = dbPromotedCodeStrength.get(code);
+            const symptomSource = dbStrength === 'LITERAL'
+              ? 'DB_INTENT_OBSERVATIONS_LITERAL'
+              : dbStrength === 'STRONG_HYPOTHESIS'
+              ? 'DB_INTENT_OBSERVATIONS_STRONG_HYPOTHESIS'
+              : 'LLM_SEMANTIC_EXTRACTOR';
             inductionResult.symptoms.push({
               symbol: code,
               confidence: safeConfidence,
-              source: 'LLM_SEMANTIC_EXTRACTOR'
+              source: symptomSource
             });
             inductionResult.total_symbols_extracted++;
           }
@@ -4395,10 +4414,20 @@ export class AIAgentOrchestrator {
           if (s.symbol && isCanonicalCode(s.symbol)) {
             const c = canonicalize(s.symbol);
             allObservationsForPreAuth.add(c);
-            // Tag based on induction source
-            const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
-              ? ObservationAuthority.INFERRED 
-              : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
+            // Tag based on induction source.
+            // AUTHORITY FIX (2026-06-24): codes promoted via the DB-curated
+            // intent_observation_mapping.assertion_strength column must keep the
+            // trust level the DB already gave them — LITERAL is farmer-confirmed-
+            // equivalent (CONFIRMED), STRONG_HYPOTHESIS is direct evidence-grade
+            // (EXTRACTED). Only genuinely freeform LLM guesses stay INFERRED.
+            const inductionAuthority =
+              s.source === 'DB_INTENT_OBSERVATIONS_LITERAL'
+                ? ObservationAuthority.CONFIRMED
+                : s.source === 'DB_INTENT_OBSERVATIONS_STRONG_HYPOTHESIS'
+                ? ObservationAuthority.EXTRACTED
+                : s.source === 'LLM_SEMANTIC_EXTRACTOR'
+                ? ObservationAuthority.INFERRED
+                : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
             authoredObservations.add(c, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
