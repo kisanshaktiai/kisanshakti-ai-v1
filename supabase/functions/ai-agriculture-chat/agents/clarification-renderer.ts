@@ -640,37 +640,40 @@ export async function getContextAwareTemplateFromDB(
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Phase J — Localization safeguard. For non-English farmers, NEVER fall back
-  // to the English-only BASE_TEMPLATES. Resolve canonical default codes via
-  // observation_translations in the requested language so no English labels
-  // reach a Marathi / Hindi / regional UI.
+  // R6 FIX — Options are sourced PURELY through observation_translations
+  // (observation-label-loader). The English BASE_TEMPLATES.options dictionary
+  // is no longer used as an option source for any language. Templates only
+  // provide the QUESTION text. This prevents English leakage to non-English
+  // farmers and removes the hardcoded "🔍 Insects visible / Yellow leaves / …"
+  // fallback list that bypassed the canonical DB ontology.
   // ═══════════════════════════════════════════════════════════════════════════
   const lang = (language || 'en').toLowerCase();
-  if (lang !== 'en') {
-    try {
-      const url = Deno.env.get('SUPABASE_URL');
-      const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-      if (url && key) {
-        const client = createClient(url, key);
-        const labels = await loadObservationLabels(client, DEFAULT_CLARIFICATION_CODES, lang);
-        const localized: string[] = [];
-        for (const code of DEFAULT_CLARIFICATION_CODES) {
-          const l = labels.get(code.toUpperCase());
-          if (l?.display_text) localized.push(l.display_text);
-        }
-        if (localized.length > 0) {
-          console.log(`   ✅ [CLARIFICATION_TRACE] Localized fallback for lang=${lang} (${localized.length} options from observation_translations)`);
-          const templateQuestion = getTemplateQuestion(scope, lang, cropContext);
-          return { question: templateQuestion, options: localized.slice(0, 3) };
-        }
+  try {
+    const url = Deno.env.get('SUPABASE_URL');
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (url && key) {
+      const client = createClient(url, key);
+      const labels = await loadObservationLabels(client, DEFAULT_CLARIFICATION_CODES, lang);
+      const localized: string[] = [];
+      for (const code of DEFAULT_CLARIFICATION_CODES) {
+        const l = labels.get(code.toUpperCase());
+        if (l?.display_text) localized.push(l.display_text);
       }
-    } catch (locErr) {
-      console.error(`   ⚠️ [CLARIFICATION_TRACE] Localized fallback failed:`, locErr);
+      if (localized.length > 0) {
+        console.log(`   ✅ [CLARIFICATION_TRACE] DB-localized default options for lang=${lang} (${localized.length} options, source=observation_translations)`);
+        const templateQuestion = getTemplateQuestion(scope, lang, cropContext);
+        return { question: templateQuestion, options: localized.slice(0, 3) };
+      }
+      console.warn(`   ⚠️ [CLARIFICATION_TRACE] No DB labels resolved for DEFAULT_CLARIFICATION_CODES in lang=${lang}`);
     }
+  } catch (locErr) {
+    console.error(`   ⚠️ [CLARIFICATION_TRACE] DB-only option loader failed:`, locErr);
   }
 
-  // English path: legacy template fallback
-  return getContextAwareTemplate(scope, language, cropContext);
+  // Last-resort safe fallback: question from template, NO options
+  // (better empty than English leakage into a non-English farmer flow).
+  const safeQuestion = getTemplateQuestion(scope, lang, cropContext);
+  return { question: safeQuestion, options: [] };
 }
 
 /**
