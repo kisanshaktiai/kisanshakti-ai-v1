@@ -1284,6 +1284,51 @@ export function findRulesForCause(cause: string): ExecutableRule[] {
   return cachedRules?.filter(r => r.cause === cause) || [];
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE C, gate #2 — INTENT GATING ON RULES
+// Filters candidate rules by the active intent using `decision_rules.rule_intent`.
+// Rules whose rule_intent is NULL (generic) are KEPT but flagged via a
+// `_genericPenalty` marker so the weighted arbiter (Phase D) can demote them.
+// Backward-compatible: when no intent is supplied, behaves exactly like
+// the legacy filter.
+// ═══════════════════════════════════════════════════════════════════════════
+export function filterRulesByIntent(
+  rules: ExecutableRule[],
+  intent?: string | null,
+): ExecutableRule[] {
+  if (!intent) return rules;
+  const intentKey = intent.toLowerCase();
+  const out: ExecutableRule[] = [];
+  let kept = 0, demoted = 0, dropped = 0;
+  for (const r of rules) {
+    const ri = ((r as any).rule_intent ?? null);
+    if (ri == null) {
+      // Generic rule — keep but mark for arbiter penalty.
+      (r as any)._genericPenalty = true;
+      out.push(r);
+      demoted++;
+    } else if (String(ri).toLowerCase() === intentKey) {
+      out.push(r);
+      kept++;
+    } else {
+      dropped++;
+    }
+  }
+  console.log(
+    `[BRAIN_TRACE][RULE_INTENT_GATE] intent="${intentKey}" kept=${kept} demoted=${demoted} dropped=${dropped}`
+  );
+  return out;
+}
+
+export function evaluateRulesWithIntent(
+  rules: ExecutableRule[],
+  input: DecisionInput,
+  intent?: string | null,
+): ExecutableRule[] {
+  const intentFiltered = filterRulesByIntent(rules, intent);
+  return evaluateRules(intentFiltered, input);
+}
+
 export function getRuleIdsForInput(input: DecisionInput): string[] {
   const matched = evaluateRules(cachedRules || [], input);
   return matched.map(r => r.rule_id);
