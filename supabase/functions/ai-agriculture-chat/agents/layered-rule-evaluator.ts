@@ -1004,7 +1004,32 @@ export function evaluateRulesLayered(
       return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
 
-    
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE G — G1: TIERED ARGMAX (Intent + Semantic > Intent|Semantic > Generic)
+    // Partition candidates so a generic rule can NEVER outrank an intent-bound
+    // rule, regardless of evidence score. Argmax runs only inside the highest
+    // non-empty tier. This is the locked authority order:
+    //   1) Intent Match  2) Semantic Match  3) Hypothesis  4) Sci-validated
+    //   5) Generic (allowed only if 1–3 empty)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const hasIntent = (r: any) => r && r.rule_intent != null && r._genericPenalty !== true;
+    const hasSemantic = (s: { matchedConditions: number; totalConditions: number }) =>
+      s.totalConditions > 0 && s.matchedConditions > 0;
+    const tier0: typeof scored = [];
+    const tier1: typeof scored = [];
+    const tier2: typeof scored = [];
+    for (const s of scored) {
+      const intentBound = hasIntent(s.response as any);
+      const semanticBound = hasSemantic(s);
+      if (intentBound && semanticBound) tier0.push(s);
+      else if (intentBound || semanticBound) tier1.push(s);
+      else tier2.push(s);
+    }
+    const winnerTier = tier0.length > 0 ? 0 : (tier1.length > 0 ? 1 : 2);
+    const activeScored = winnerTier === 0 ? tier0 : (winnerTier === 1 ? tier1 : tier2);
+    console.log(`[BRAIN_TRACE][RULE_TIER] t0=${tier0.length} t1=${tier1.length} t2=${tier2.length} winner_tier=${winnerTier}`);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // AUDIT FIX: Sort by data_authority_rank DESC first, then evidence score
     // data_authority_rank: 95 = highest authority (ICAR/research validated)
@@ -1025,8 +1050,8 @@ export function evaluateRulesLayered(
       'MONITOR': 20,       'OBSERVATION': 20,
       'NO_ACTION_REQUIRED': 10, 'NO_ACTION': 10,
     };
-    
-    scored.sort((a, b) => {
+
+    activeScored.sort((a, b) => {
       // P0: Category priority (safety gates always win)
       const catA = CATEGORY_PRIORITY_MAP[(a.response.action_type || '').toUpperCase()] ?? 50;
       const catB = CATEGORY_PRIORITY_MAP[(b.response.action_type || '').toUpperCase()] ?? 50;
@@ -1047,6 +1072,11 @@ export function evaluateRulesLayered(
       // P4: confidence_score
       return (b.response.confidence_score ?? 0) - (a.response.confidence_score ?? 0);
     });
+    // Preserve original `scored` shape for downstream code: rewrite it with
+    // tier-winning candidates first, then the rest (so scored[0] is the winner).
+    const remaining = scored.filter(s => !activeScored.includes(s));
+    scored.length = 0;
+    scored.push(...activeScored, ...remaining);
     const best = scored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
