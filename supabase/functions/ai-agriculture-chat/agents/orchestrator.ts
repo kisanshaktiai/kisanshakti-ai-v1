@@ -3776,6 +3776,54 @@ export class AIAgentOrchestrator {
       
       // Log authority breakdown
       console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Phase H — Canonical ConversationState (frozen, single runtime authority)
+      // Computed exactly once. Every downstream module should read from this.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const __advisoryIntentForState =
+        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
+        isAdvisoryRoute(intentCode);
+      const __stageForState =
+        (landContext as any)?.growth_stage ||
+        (canonicalContext as any)?.stage ||
+        null;
+      const __stageSourceForState =
+        (landContext as any)?.growth_stage ? 'landContext'
+        : (canonicalContext as any)?.stage  ? 'crop_stage_master'
+        : 'default';
+      const __cropForState =
+        (landContext as any)?.current_crop ||
+        (canonicalContext as any)?.crop ||
+        (landContext as any)?.crop_name ||
+        null;
+      const __dasForState =
+        (landContext as any)?.days_after_sowing ??
+        (canonicalContext as any)?.das ??
+        null;
+      const conversationState: ConversationState = buildConversationState({
+        trace_id: traceId,
+        intent: String(intentCode || 'UNKNOWN'),
+        intent_confidence: Number(intentConf || 0),
+        advisory_intent: __advisoryIntentForState,
+        confirmed: confirmedObsCodes,
+        inferred:  syntheticObsCodes,
+        hypotheses: [],
+        stage: __stageForState,
+        stage_source: __stageSourceForState,
+        crop:  __cropForState,
+        das:   __dasForState,
+        semantic_status: 'OK',
+        authority_status: authoredObservations.toSummary?.() || 'UNCONFIRMED',
+      });
+      (this as any).__conversationState = conversationState; // accessible to trace emit
+      console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${conversationState.mode} clarify=${conversationState.clarification_required}(${conversationState.clarification_reason}) coverage=${conversationState.coverage.toFixed(2)} confirmed=${conversationState.confirmed.length} unknown=${conversationState.unknown.length}`);
+
+      // Phase H — Fix 2: ConversationState owns clarification. Sync the
+      // legacy boolean so downstream gates stay consistent without recomputing.
+      if (conversationState.clarification_required && !bypassClarification) {
+        shouldBlockDiagnosis = shouldBlockDiagnosis || true;
+      }
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
       const cropDamageResult = detectCropDamageWithAuthority(
