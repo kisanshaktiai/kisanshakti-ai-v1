@@ -223,6 +223,20 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // PHASE F: Cold-start self-check (memoized — runs once per cold start).
+  // Failures are logged loudly but do NOT 5xx; orchestrator degrades to
+  // safe-mode clarification when degradeToSafeMode is set.
+  try {
+    const sb = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    await runPipelineSelfCheck({ supabase: sb });
+  } catch (e) {
+    console.error('[PIPELINE_SELF_CHECK] threw', e instanceof Error ? e.message : e);
+  }
+
+
   const startTime = Date.now();
   const traceId = generateTraceId();
   let dedupeKey: string | null = null;
