@@ -148,19 +148,26 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 export async function generateScopedClarification(
   input: ScopedClarificationInput
 ): Promise<ClarificationOutput> {
-  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage } = input;
-  
+  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage, conversationState } = input;
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // v6.0: USE PASSED CANONICAL CONTEXT (NEVER REBUILD)
-  // The context was built in orchestrator Phase-1 and is IMMUTABLE
+  // Phase J — ConversationState is the single runtime authority.
+  // Stage / crop / language are pulled from the frozen state when provided.
   // ═══════════════════════════════════════════════════════════════════════════
-  
-  // Determine effective context state
+  const effectiveLanguage = (conversationState?.semantic_status ? language : language) || 'en';
+  const stateStage = conversationState?.stage || canonicalContext?.growth_stage || null;
+  const stateCrop  = conversationState?.crop  || canonicalContext?.crop_code   || canonicalContext?.crop_name || null;
+
+  if (conversationState) {
+    console.log(`📋 [CLARIFICATION_TRACE] state.mode=${conversationState.mode} stage=${stateStage} crop=${stateCrop} lang=${effectiveLanguage} confirmed=${conversationState.confirmed.length} inferred=${conversationState.inferred.length} reason=${conversationState.clarification_reason}`);
+  } else {
+    console.warn(`📋 [CLARIFICATION_TRACE] ConversationState NOT provided — falling back to canonicalContext (legacy path)`);
+  }
+
   const hasLandContext = canonicalContext !== null;
   const effectiveHasLandContext = hasDiagnosticContext(canonicalContext);
   const hasCropContext = effectiveHasLandContext;
-  
-  // Log context audit using canonical contract
+
   console.log(`📋 [Clarification v6] Canonical Context State:`);
   if (canonicalContext) {
     logCanonicalContextAudit(canonicalContext, 'CLARIFICATION_GENERATOR', 'CANONICAL_CONTRACT');
@@ -168,7 +175,7 @@ export async function generateScopedClarification(
   } else {
     console.log(`   Context=NULL (General Query Mode)`);
   }
-  
+
   console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
   console.log(`   hasLandContext: ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
   
