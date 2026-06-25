@@ -3818,6 +3818,7 @@ export class AIAgentOrchestrator {
       });
       (this as any).__conversationState = conversationState; // accessible to trace emit
       console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${conversationState.mode} clarify=${conversationState.clarification_required}(${conversationState.clarification_reason}) coverage=${conversationState.coverage.toFixed(2)} confirmed=${conversationState.confirmed.length} unknown=${conversationState.unknown.length}`);
+      emitBrainTrace(conversationState, { total_ms: Date.now() - startTime });
 
       // Phase H — Fix 2: ConversationState owns clarification. Sync the
       // legacy boolean so downstream gates stay consistent without recomputing.
