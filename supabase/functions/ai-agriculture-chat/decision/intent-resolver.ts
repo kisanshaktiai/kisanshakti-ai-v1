@@ -165,16 +165,18 @@ export async function getValidObservationCodes(
 ): Promise<ObservationMapping[]> {
   const supabase = getSupabaseClient();
 
+  // intent_observation_mapping.intent_code is stored UPPERCASE in DB.
+  const intentUpper = (intentCode || '').trim().toUpperCase();
   const cropLower = (cropCode || '').toLowerCase();
   const cropVariants = Array.from(new Set([cropLower, 'all'].filter(Boolean)));
   const stageVariants = expandStageSynonyms(growthStage);
 
-  console.log(`📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropVariants.join('|')}, stages=${stageVariants.join('|')}, DAS=${das}`);
+  console.log(`📊 [IntentResolver] Querying: intent=${intentUpper}, crop=${cropVariants.join('|')}, stages=${stageVariants.join('|')}, DAS=${das}`);
 
   const { data: mappings, error: mapError } = await supabase
     .from('intent_observation_mapping')
     .select('observation_code, confidence_rank, growth_stage, crop_code, das_min, das_max, assertion_strength')
-    .eq('intent_code', intentCode)
+    .eq('intent_code', intentUpper)
     .eq('is_active', true)
     .in('crop_code', cropVariants)
     .in('growth_stage', stageVariants)
