@@ -126,7 +126,7 @@ export async function evaluateScientificGate(
 
   for (const cand of candidates) {
     const baselines: BaselineGuideline[] = getBaselineForCrop(cand.crop_code);
-    const baseline = pickBaseline(baselines, cand.growth_stage, cand.das ?? null);
+    const { row: baseline } = pickBaseline(baselines, cand.growth_stage, cand.das ?? null, cand.rule_id);
 
     const violations: string[] = [];
     if (baseline) {
