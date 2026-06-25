@@ -218,6 +218,17 @@ import { getAuditLogger } from './audit-logger.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE B/C/E WIRING — request context, mandatory gates, stage SSOT
+// ═══════════════════════════════════════════════════════════════════════════
+import { createRequestContext, snapshotContext, type RequestContext } from '../decision/request-context.ts';
+import { evaluateSemanticGate } from '../decision/semantic-validator.ts';
+import { evaluateScientificGate, type CandidateRecommendation } from '../decision/scientific-validator.ts';
+import { filterRulesByIntent } from '../bundled-rules/loader.ts';
+import * as StageKnowledgeCache from '../utils/stage-knowledge-cache.ts';
+// Expose cache to stage-normalizer (DB-first fallback path).
+(globalThis as any).__stageKnowledgeCacheRef = StageKnowledgeCache;
+
 // STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
 import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
 
@@ -1091,6 +1102,14 @@ export class AIAgentOrchestrator {
     const startTime = Date.now();
     const agentsUsed: string[] = [];
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
+    // Every stage below contributes to this ctx instead of resetting confidence.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const requestCtx: RequestContext = createRequestContext(traceId);
+    // Pre-load stage knowledge cache (idempotent, 10min TTL).
+    try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
@@ -3145,6 +3164,37 @@ export class AIAgentOrchestrator {
       console.log(`      Symptoms: ${observationExtraction.raw_symptom_text.length} extracted`);
       console.log(`      Affected part: ${observationExtraction.affected_part}, Distribution: ${observationExtraction.symptom_distribution}`);
       console.log(`      Severity words: ${observationExtraction.severity_words.join(', ') || 'none'}`);
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE C, GATE #1 — SEMANTIC VALIDATOR
+      // Runs immediately after observation extraction. Drops observations whose
+      // semantic_class is not allow-listed for the active intent. Fails OPEN
+      // when the allowlist is unseeded so the pipeline is never blocked.
+      // ═══════════════════════════════════════════════════════════════════════
+      requestCtx.ledger.create('OBSERVATION_EXTRACT', 'extraction',
+        { symptoms: observationExtraction.raw_symptom_text.length, crop: observationExtraction.crop_mentioned },
+        { source: 'observation-extractor' });
+      requestCtx.chain.set('observation',
+        observationExtraction.raw_symptom_text.length > 0 ? 0.9 : 0.5);
+      try {
+        const semObs = (observationExtraction.raw_symptom_text || []).map((t: string) => ({
+          code: String(t).toLowerCase().replace(/\s+/g, '_'),
+          semantic_class: null,
+          source: 'observation-extractor',
+        }));
+        const semResult = await evaluateSemanticGate({
+          intent: (typeof intentCode !== 'undefined' ? String(intentCode) : 'GENERAL_QUERY'),
+          observations: semObs,
+          supabase: this.supabase,
+          ledger: requestCtx.ledger,
+          chain: requestCtx.chain,
+        });
+        if (semResult.dropped.length > 0) {
+          console.log(`      🚦 [SEMANTIC_GATE] dropped ${semResult.dropped.length} cross-class observations`);
+        }
+      } catch (semErr) {
+        console.warn('[SEMANTIC_GATE] non-fatal failure', semErr instanceof Error ? semErr.message : semErr);
+      }
       
       // PHASE-17 FIX: Detect urgency for adaptive gates
       const urgencyKeywords = ['मेला', 'मेले', 'मेलेला', 'dead', 'dying', 'died', 'मर गया', 'मर रहा'];
@@ -5425,11 +5475,52 @@ export class AIAgentOrchestrator {
           console.warn(`⚠️ Knowledge base pre-load failed:`, e instanceof Error ? e.message : 'unknown');
         }
         
-        layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE C, GATE #2 — INTENT FILTER before scoring
+        // Replaces direct evaluateRulesLayered() with an intent-filtered list.
+        // Generic rules (rule_intent == null) survive but carry a penalty flag
+        // that the layered scorer multiplies by 0.85 (see Phase D).
+        // ═══════════════════════════════════════════════════════════════════
+        const activeIntentForRules = (typeof intentCode !== 'undefined' && intentCode)
+          ? String(intentCode) : 'GENERAL_QUERY';
+        const rulesAfterIntent = filterRulesByIntent(rulesToEvaluate as any, activeIntentForRules);
+        requestCtx.ledger.create('RULE_INTENT_FILTER', `intent:${activeIntentForRules}`,
+          { input: rulesToEvaluate.length, kept: rulesAfterIntent.length });
+        console.log(`   🎯 [INTENT_FILTER] intent=${activeIntentForRules} ${rulesToEvaluate.length} → ${rulesAfterIntent.length}`);
+
+        layeredRuleResult = evaluateRulesLayered(rulesAfterIntent as any, canonicalStateWithQuery as any, {
           prescriptionGateOverride: isPrescriptionGateOverride,
           traceId: traceId
         });
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE C, GATE #3 — SCIENTIFIC VALIDATOR (after rules, before authority)
+        // Cross-checks rule outputs against crop_baseline_guidelines_v2.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          const candidates: CandidateRecommendation[] = (layeredRuleResult.matched_responses || [])
+            .map((r: any) => ({
+              rule_id: r?.rule_id || r?.id || 'unknown',
+              crop_code: String(canonicalState.crop_type || 'UNKNOWN'),
+              growth_stage: canonicalState.crop_stage || null,
+              ...(r?.numeric_claims || {}),
+            }));
+          if (candidates.length > 0) {
+            await evaluateScientificGate({
+              candidates,
+              supabase: this.supabase,
+              ledger: requestCtx.ledger,
+              chain: requestCtx.chain,
+            });
+          } else {
+            requestCtx.chain.set('scientific', 1);
+          }
+        } catch (sciErr) {
+          console.warn('[SCIENTIFIC_GATE] non-fatal failure', sciErr instanceof Error ? sciErr.message : sciErr);
+        }
+        requestCtx.chain.set('rules',
+          (layeredRuleResult.rules_matched || 0) > 0 ? 0.85 : 0.4);
         
         // PHASE-16: Safe array access with null checks
         const safeRulesApplied = Array.isArray(layeredRuleResult.rules_applied) ? layeredRuleResult.rules_applied : [];

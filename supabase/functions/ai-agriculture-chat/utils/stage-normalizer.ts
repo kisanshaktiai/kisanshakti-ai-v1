@@ -136,11 +136,35 @@ export function normalizeStageForDB(stage: string | undefined | null): string {
  * Get the broad category for a stage.
  * Used for cross-stage rule evaluation and fallback logic.
  */
-export function getStageCategory(stage: string | undefined | null): StageCategory {
+/**
+ * DB-first stage category resolution. When `crop` is provided and
+ * crop_stage_master has a row for (crop, stage), the DB stage_category wins.
+ * Otherwise falls back to the static SEEDLING/VEGETATIVE/REPRODUCTIVE/MATURITY
+ * lists below (kept ONLY as a last-resort fallback — see
+ * utils/stage-knowledge-cache.ts for the runtime SSOT).
+ */
+export function getStageCategory(
+  stage: string | undefined | null,
+  crop?: string | null,
+): StageCategory {
   if (!stage) return 'UNKNOWN';
-  
+
+  // 1) DB-first when both crop+stage are known.
+  if (crop) {
+    try {
+      // Lazy require to avoid a hard dep cycle with the cache module.
+      // The cache is populated by orchestrator pre-load at request start.
+      // deno-lint-ignore no-explicit-any
+      const cache = (globalThis as any).__stageKnowledgeCacheRef;
+      if (cache && typeof cache.getStageCategoryFromDB === 'function') {
+        const cat = cache.getStageCategoryFromDB(crop, stage);
+        if (cat) return cat as StageCategory;
+      }
+    } catch { /* fall through to static map */ }
+  }
+
   const normalizedStage = stage.toLowerCase().trim().replace(/[\s-]+/g, '_');
-  
+
   if (SEEDLING_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
     return 'SEEDLING';
   }
@@ -153,7 +177,7 @@ export function getStageCategory(stage: string | undefined | null): StageCategor
   if (MATURITY_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
     return 'MATURITY';
   }
-  
+
   return 'UNKNOWN';
 }
 
