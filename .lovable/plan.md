@@ -1,105 +1,75 @@
 
-# Phase H + Phase I — Runtime Stabilization Plan
+# Runtime Invariants Repair — ConversationState, Semantic Gate, Stage Master
 
-## Goal
-Stop multiple modules from independently recomputing intent, clarification, evidence, stage, and routing. Introduce one immutable `ConversationState`, computed once per request right after observation extraction, consumed everywhere downstream. No DB changes, no API changes, no new agents.
+## What the audit actually found
 
-## Architecture
+I cross-checked the production edge log against the live DB schema and the runtime code. The report's symptoms map to **three column-name mismatches** and **one missing pipeline emission**. The architecture is wired; the queries silently fail and a clarification short-circuit skips the invariant trace.
 
-```text
-Request
-  → Knowledge Initialization (Promise.allSettled, request-scoped)
-  → Intent Classification (label only — never routes)
-  → Observation Extraction (confirmed | inferred | unknown)
-  → BUILD ConversationState (frozen, single authority)
-  → Semantic Validation gate
-  → Clarification Decision (reads ConversationState only)
-  → Hypothesis Generation
-  → Rule Eligibility + Evaluation (confirmed obs only)
-  → Scientific Validation
-  → Authority → Builder → Translation → Response
+### Bug 1 — `crop_stage_master` query uses wrong columns (P0, explains `master=0`)
+
+`supabase/functions/ai-agriculture-chat/utils/stage-knowledge-cache.ts` lines 47–84 selects:
+
+```
+crop_code, stage_code, stage_category, das_start, das_end, display_name
 ```
 
-## Files to add
+Live `public.crop_stage_master` schema (verified):
 
-1. `supabase/functions/ai-agriculture-chat/runtime/conversation-state.ts`
-   - `ConversationState` type + `buildConversationState()` + `Object.freeze`.
-   - Owns: intent, mode (advisory|diagnosis), confirmed[], inferred[], unknown[], hypotheses[], coverage, clarification_required, clarification_reason, stage, stage_source, crop, das, semantic_status, symbolic_enabled, direct_mode, authority_status.
-   - Pure function — no IO, no mutation.
+```
+crop_code, growth_stage, das_min, das_max, stage_description
+```
 
-2. `supabase/functions/ai-agriculture-chat/runtime/clarification-authority.ts`
-   - Single function `decideClarification(state)` → `{required, reason, options?}`.
-   - Replaces scattered `directModeBypass`, `UnderstandingChecker` short-circuits, coverage-based skips.
+PostgREST returns a `42703` error → the `try/catch` swallows it → `master.length === 0`. DB actually has **111 rows**. Same loader also writes the lookup map with `r.stage_code` (undefined) so even after fixing the select, the map key would be `crop|undefined`.
 
-3. `supabase/functions/ai-agriculture-chat/runtime/evidence-coverage.ts`
-   - `computeCoverage(confirmed[])` — excludes `*_UNKNOWN`, `ACTION_NONE`, `PHOTO_NOT_PROVIDED`, `CROP_IDENTIFIED`, inferred, hypotheses.
-   - Returns 0–1 over informative confirmed observations only.
+Fix: change the select list and the `StageMasterRow` interface to `growth_stage / das_min / das_max / stage_description`, and use `growth_stage` (not `stage_code`) for the cache key and `getStageByDAS` window check.
 
-4. `supabase/functions/ai-agriculture-chat/runtime/brain-trace.ts`
-   - `emitBrainTrace(state, phases)` — single `[BRAIN_TRACE]` block per request.
+### Bug 2 — `intent_semantic_class_allowlist` query uses wrong columns (P0, explains `SEMANTIC_GATE FAIL_OPEN`)
 
-## Files to modify (surgical)
+`supabase/functions/ai-agriculture-chat/decision/semantic-validator.ts` lines 57–60 selects:
 
-### `agents/orchestrator.ts` (primary)
-- **Move knowledge preload** (`loadETLStandards`, `loadAgroZones`, `loadBaselineGuidelines`, `loadCropSynonyms`) from inside the layered-rule branch to **right after `requestCtx` creation** so irrigation/clarification/advisory routes share the same warm caches and emit `[KNOWLEDGE_PRELOAD]` traces.
-- **Remove early `directModeBypass`**. Intent classification stays, but routing is deferred until after `ConversationState` is built.
-- After observation extraction, call `buildConversationState(...)` and freeze.
-- Replace all in-orchestrator clarification triggers (`directModeBypass`, `ADVISORY_DIRECT_ROUTES` short-circuit, `UnderstandingChecker` independent decision, coverage-based skip) with one call to `decideClarification(state)`.
-- Gate: `direct_mode = advisoryIntent && state.confirmed.filter(isInformative).length === 0 && state.inferred.length === 0`. Symptom presence always wins.
-- Use `state.stage` everywhere — delete secondary stage recomputations downstream of this point.
-- Emit final `[BRAIN_TRACE]` block via `emitBrainTrace`.
+```
+intent, semantic_class
+```
 
-### `decision/understanding-checker.ts`
-- Demote to **pure scorer**. It returns a score + reason; it **never** decides clarification. The orchestrator passes its output into `ConversationState`; `decideClarification` is the sole decider.
+Live schema: `intent_code` + `allowed_classes text[]` (1 row per intent, classes as an array). 90 rows exist. Query errors → `byIntent` empty → every request logs `FAIL_OPEN`.
 
-### `decision/layered-rule-evaluator.ts`
-- Reject rules whose match relies on `*_UNKNOWN`, inferred, or hypothesis-only observations. Eligibility input = `state.confirmed` only.
-- Keep G1 3-tier argmax intact.
+Fix: select `intent_code, allowed_classes`, and expand the array into the `Set<string>` per intent.
 
-### `decision/semantic-validator.ts`
-- Wrap initialization in a try/catch that sets `state.semantic_status = 'UNAVAILABLE'`. When unavailable, orchestrator must **block symbolic execution** and route to safe clarification (no fail-open).
+### Bug 3 — `ConversationState` never built on the clarification short-circuit (P0)
 
-### `bundled-rules/loader.ts`
-- Replace `mapBundledCategory` fallback `Unknown → DIAGNOSIS` with a **preload-time validation error**: log `[CATEGORY_VIOLATION]` and drop the rule. Add `crop_rotation`, `proactive_pest`, `proactive_monitoring`, `management` to the canonical category map (they already exist in DB rows).
+`agents/orchestrator.ts` lines ~1716–2080 handle the "farmer answered a pending clarification" branch and `return` a response after `evaluateRulesLayered(...)`, well before the main pipeline reaches `buildConversationState(...)` at line 3804 and `emitBrainTrace(...)` at line 3821.
 
-### `utils/stage-normalizer.ts`
-- Resolve stage exactly once via `crop_stage_master → crop_stage_knowledge → landContext`. Cache on `requestCtx`. Downstream modules read `state.stage`.
+The trace in the report (`option_selected: "🔍 MANAGEMENT PLANNING"` → `Total rules for option selection: 76` → `STAGE_FALLBACK`) is exactly this branch — so neither `[CONVERSATION_STATE]` nor `[BRAIN_TRACE]` ever logs for these turns.
 
-### `runtime/observation-resolver.ts` (existing)
-- Tag each resolved observation with `{kind: 'confirmed'|'inferred'|'unknown'}`. No merging.
+Fix: just before the early `return` in the OPTION_SELECTED branch, build a `ConversationState` from the locally-available crop, stage, observations (`allObservations`), and rule result, then call `emitBrainTrace(state, …)`. Reuse the existing helpers — no logic changes, just emission, so the invariant becomes observable on every execution path.
 
-## Behavioural fixes mapped to bugs
+### Bug 4 — Stage-knowledge cache key drift (P1, secondary effect of Bug 1's interface)
 
-- **Bug 1** (intent disarms clarification): fixed by deferring `direct_mode` to after `ConversationState`; symptom signal vetoes advisory bypass.
-- **Bug 2** (`_UNKNOWN` inflates coverage): fixed by `computeCoverage` excluding placeholders + inferred + hypotheses.
-- **Unknown category warnings**: fixed by category map completion + preload validation.
-- **Stage drift**: single resolver, frozen on state.
-- **Knowledge preload missing on non-rule routes**: move preload to request init.
+After Bug 1 is corrected, ensure `byCropStage` and `knowledgeByCropStage` keys both use `(crop_code, growth_stage)` so `getStageRow` / `getStageKnowledge` actually hit. `crop_stage_knowledge` already exposes `growth_stage`; today the map writes `r.stage_code` (undefined) — both maps need the same key function.
 
-## Determinism guarantees (Phase I)
+## Scope of changes
 
-- One pipeline only. No early-return shortcuts; clarification path also passes through `ConversationState`.
-- `[BRAIN_TRACE]` emitted on every request with: intent, confirmed, inferred, hypotheses, coverage, clarification, stage, semantic, candidates, eligible, winner, scientific, authority, builder, translation, total_ms.
-- Clarification options always preserve `obs_key`, `semantic_class`, `observation_code` (already done in earlier phase — verify in `clarification-payload-builder`).
+Only three files; no DB migrations needed (data is fine, columns just need to be addressed correctly):
 
-## Deliverables (markdown reports written to `/mnt/documents/`)
+1. `supabase/functions/ai-agriculture-chat/utils/stage-knowledge-cache.ts`
+   - Update `StageMasterRow` / `StageKnowledgeRow` interfaces.
+   - Fix `.select(...)` for `crop_stage_master`.
+   - Change cache key from `stage_code` → `growth_stage` for both maps.
+   - Fix `getStageByDAS` to use `das_min`/`das_max`.
 
-1. `RUNTIME_ROOT_CAUSE_REPORT.md`
-2. `CONVERSATION_STATE_REPORT.md`
-3. `PIPELINE_VALIDATION_REPORT.md`
-4. `REGRESSION_REPORT.md` (Rice/Wheat/Sugarcane/Cotton/Tomato/Maize/Onion × diagnosis/irrigation/nutrition/disease/pest/weather/management/advisory — trace-line table)
+2. `supabase/functions/ai-agriculture-chat/decision/semantic-validator.ts`
+   - Fix `loadAllowlist` to select `intent_code, allowed_classes` and iterate the array.
 
-## Non-goals
-- No DB migrations.
-- No new tables, no new edge functions, no new agents.
-- No LLM-driven decisions added.
-- No response JSON schema changes.
+3. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
+   - In the OPTION_SELECTED early-return block (≈ lines 2016–2080), call `buildConversationState({...})` from the locally available `cropName`, `growthStage`, `allObservations`, `ruleResult` and `emitBrainTrace(state, { total_ms })` before each `return`.
+   - No other behavior changes; legacy decision state remains, the canonical state is added on top so the invariant is now provable in logs.
 
-## Validation
-- Redeploy `ai-agriculture-chat`.
-- Re-run `scripts/regression-fixtures.md` Fixture #1 (Rice emergence Marathi) and Fixture #3 (Sugarcane irrigation) against live edge function.
-- Confirm: no `[mapBundledCategory] Unknown category` warnings, `[BRAIN_TRACE]` present on every request, Rice symptom query no longer hits `GENERAL_INFO` short-circuit, coverage excludes `*_UNKNOWN`.
+## Validation after the fix
 
-## Risk / scope
-- Largest change is in `orchestrator.ts`. Edits are localized to: knowledge preload position, intent→state→route reordering, deletion of duplicate clarification deciders, replacement with `decideClarification`.
-- Existing modules (`evidence-ledger`, `confidence-chain`, `scientific-validator`, `authority-trace`) remain — `ConversationState` becomes the input contract they all share.
+Trigger one diagnosis + one clarification reply against the deployed function and confirm in `ai-agriculture-chat` edge logs:
+
+- `[STAGE_KNOWLEDGE] loaded master=111 knowledge=79` (not `master=0`).
+- For an intent that has allowlist rows: no `[BRAIN_TRACE][SEMANTIC_GATE] FAIL_OPEN` — instead a `kept/dropped` line.
+- Every response (including OPTION_SELECTED replies) emits a `[CONVERSATION_STATE]` line and a `[BRAIN_TRACE]` line.
+
+I will not touch the database, rule engine, or routing logic — those areas of the report are downstream symptoms that resolve once these four runtime invariants are restored.
