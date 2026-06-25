@@ -219,88 +219,104 @@ export async function generateScopedClarification(
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE-15: USE DYNAMIC CLARIFICATION if land context available
-  // This generates context-aware options using crop, DOS, soil, NDVI, weather
+  // R1 FIX — Intent-driven clarification using intent_observation_mapping.
+  //
+  // The previous path called the deprecated `generateDynamicClarification`
+  // stub (which returns empty) and silently fell back to BASE_TEMPLATES,
+  // producing generic English options (e.g. "🔍 Insects visible"). The
+  // mapping table is healthy (e.g. 29 curated rows for
+  // EMERGENCE_FAILURE / RICE / SEEDLING / DAS 17) but was unreachable.
+  //
+  // We now route REFINE_OBSERVATION through the canonical resolver:
+  //   intent_code + crop_code + growth_stage + DAS
+  //     → intent_observation_mapping (crop / stage-synonym / DAS filtered)
+  //     → observation_translations (language-localized labels)
+  //
+  // Falls through to the legacy renderer if intent_code is missing or the
+  // mapping returns no curated rows for the context.
   // ═══════════════════════════════════════════════════════════════════════════
-  
-  if (effectiveHasLandContext && canonicalContext && clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
+  const resolvedIntent =
+    intent_code ||
+    (conversationState as any)?.intent_code ||
+    (understandingResult as any)?.intent_code ||
+    null;
+
+  if (
+    effectiveHasLandContext &&
+    canonicalContext &&
+    clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION &&
+    resolvedIntent &&
+    resolvedIntent !== 'UNKNOWN' &&
+    resolvedIntent !== 'UNKNOWN_OBSERVATION'
+  ) {
     try {
-      console.log(`   🧠 Using DYNAMIC clarification generator with canonical context`);
-      
-      // P0-3: Build agronomic context FROM canonical context (read-only extraction)
-      const agronomicContext: AgronomicContext = {
-        crop_name: canonicalContext.crop_name,
-        crop_code: canonicalContext.crop_code,
-        growth_stage: canonicalContext.growth_stage,
+      console.log(`   🧠 [R1] Intent-driven clarification via intent_observation_mapping → intent=${resolvedIntent}, crop=${canonicalContext.crop_code}, stage=${canonicalContext.growth_stage}, das=${canonicalContext.days_since_sowing}`);
+
+      const resolved = await resolveIntentToObservations({
+        intent_code: resolvedIntent,
+        crop_code: canonicalContext.crop_code || canonicalContext.crop_name || 'all',
         days_since_sowing: canonicalContext.days_since_sowing || 0,
-        ndvi_value: canonicalContext.ndvi.value ?? undefined,
-        ndvi_trend: canonicalContext.ndvi.trend as any ?? undefined,
-        soil_n: canonicalContext.soil.nitrogen ?? undefined,
-        soil_p: canonicalContext.soil.phosphorus ?? undefined,
-        soil_k: canonicalContext.soil.potassium ?? undefined,
-        temperature: canonicalContext.weather.temperature ?? undefined,
-        humidity: canonicalContext.weather.humidity ?? undefined
-      };
-      
-      // Log NDVI passthrough for debugging
-      console.log(`   📊 NDVI data in agronomic context:`, {
-        ndvi_value: agronomicContext.ndvi_value,
-        ndvi_trend: agronomicContext.ndvi_trend
+        growth_stage: canonicalContext.growth_stage || undefined
       });
-      
-      const dynamicResult = await generateDynamicClarification({
-        scope: clarificationPlan.scope,
-        farmer_message: farmerMessage || '',
-        language,
-        agronomic_context: agronomicContext,
-        max_options: 3
-      });
-      
-      // CRITICAL FIX: Detect deprecated stub returning empty data
-      if (!dynamicResult.question && dynamicResult.options.length === 0) {
-        console.warn('   ⚠️ [DynamicClarification] Empty result detected (deprecated stub) - falling back to template renderer');
-        throw new Error('Dynamic clarification returned empty result');
+
+      if (resolved.success && resolved.observation_codes.length > 0) {
+        // Top-N by confidence_rank (mapping rows are pre-ordered ASC by resolver)
+        const topCodes = resolved.observation_codes.slice(0, 6);
+
+        const url = Deno.env.get('SUPABASE_URL');
+        const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        if (url && key) {
+          const client = createSupabaseClient(url, key);
+          const labelMap = await loadObservationLabels(client, topCodes, language);
+
+          const optionLabels: string[] = [];
+          for (const code of topCodes) {
+            const lbl = labelMap.get(code.toUpperCase());
+            if (lbl?.display_text) optionLabels.push(lbl.display_text);
+            if (optionLabels.length >= 3) break;
+          }
+
+          // Diagnosis-leakage gate (unchanged contract)
+          const leakageValidation = validateClarificationOptions(optionLabels);
+          if (!leakageValidation.valid) {
+            console.warn(`   ⚠️ [R1] Diagnosis leakage in DB-resolved options → falling back to template renderer:`, leakageValidation.leaked);
+          } else if (optionLabels.length > 0) {
+            console.log(`   ✅ [R1] Intent-resolver options ready (${optionLabels.length}) for lang=${language}`);
+
+            // Render the question via the async renderer so framing + DB
+            // label resolution stays consistent, then OVERRIDE the options
+            // with the intent-curated set.
+            const renderResult = await renderClarificationAsync({
+              scope: clarificationPlan.scope,
+              target_observation_keys: clarificationPlan.target_keys,
+              language_code: language,
+              max_options: 3,
+              turn_count: turnCount,
+              constraints: { no_diagnosis: true, no_treatment: true, no_assumptions: true },
+              cropContext
+            });
+
+            const acknowledgment = ACKNOWLEDGMENT_TEMPLATES[language] || ACKNOWLEDGMENT_TEMPLATES.en;
+            return {
+              response_text: `${acknowledgment}\n\n${renderResult.question}`,
+              options: optionLabels.slice(0, 3),
+              photo_requested: false,
+              clarification_prompt: renderResult.question,
+              scope: clarificationPlan.scope,
+              validation_passed: true
+            };
+          }
+        }
+      } else {
+        console.warn(`   ⚠️ [R1] resolveIntentToObservations returned 0 curated codes for intent=${resolvedIntent} (${resolved.error || 'no rows'}) — falling back`);
       }
-      
-      console.log(`   ✅ Dynamic options generated: ${dynamicResult.options.length} (${dynamicResult.generated_by})`);
-      
-      // ═══════════════════════════════════════════════════════════════════════════
-      // PHASE-16: CRITICAL - Validate options for diagnosis leakage
-      // This prevents pest/disease names from appearing in clarification options
-      // ═══════════════════════════════════════════════════════════════════════════
-      const optionLabels = dynamicResult.options.map(o => o.label);
-      const leakageValidation = validateClarificationOptions(optionLabels);
-      
-      if (!leakageValidation.valid) {
-        console.error(`   ❌ DIAGNOSIS LEAKAGE DETECTED in dynamic options:`, leakageValidation.leaked);
-        console.error(`   ⚠️ Falling back to template-based clarification`);
-        // Fall through to template-based rendering which is safer
-        throw new Error('Diagnosis leakage detected - using safe fallback');
-      }
-      
-      console.log(`   ✅ Options validated - no diagnosis leakage`);
-      console.log(`   ✅ Final clarification input (CanonicalContext LOCKED):`, {
-        hasCropContext: effectiveHasLandContext,
-        crop: canonicalContext.crop_code,
-        stage: canonicalContext.growth_stage,
-        ndvi_level: agronomicContext.ndvi_trend || 'unknown'
-      });
-      
-      // Return dynamic result
-      const acknowledgment = '🌾 Understood.';
-      return {
-        response_text: `${acknowledgment}\n\n${dynamicResult.question}`,
-        options: optionLabels,
-        photo_requested: false,
-        clarification_prompt: dynamicResult.question,
-        scope: clarificationPlan.scope,
-        validation_passed: true
-      };
-    } catch (dynamicError) {
-      console.error(`   ⚠️ Dynamic clarification failed, falling back to templates:`, dynamicError);
-      // Fall through to template-based rendering
+    } catch (intentErr) {
+      console.error(`   ⚠️ [R1] Intent-driven clarification failed, falling back to renderer:`, intentErr);
     }
+  } else if (clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
+    console.warn(`   ⚠️ [R1] Skipping intent path (intent=${resolvedIntent || 'NONE'}, hasContext=${effectiveHasLandContext})`);
   }
+
   
   console.log(`   Clarification plan: scope=${clarificationPlan.scope}, reason=${clarificationPlan.reason}`);
   
