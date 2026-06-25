@@ -125,18 +125,18 @@ export async function lookupMarketProducts(
   }
 
   try {
-    // Query master_products - search active_ingredients JSONB text and brand
-    // Using ::text cast for ILIKE on JSONB
+    // Phase G — G5: PostgREST cannot apply `ilike` to a `jsonb::text` cast
+    // ("operator does not exist: jsonb ~~* text"). Fetch a bounded candidate
+    // set keyed on scalar indexed columns, then keyword-filter in memory.
     const cropNorm = (cropCode || '').toUpperCase().replace(/[_\s-]+/g, '');
 
     const { data, error } = await supabase
       .from('master_products')
-      .select('brand, active_ingredients, suitable_crops, ai_metadata')
+      .select('brand, active_ingredients, suitable_crops, ai_metadata, effectiveness_rating')
       .eq('ai_recommendable', true)
       .eq('status', 'active')
-      .ilike('active_ingredients::text', `%${keyword}%`)
       .order('effectiveness_rating', { ascending: false })
-      .limit(10);
+      .limit(500);
 
     if (error) {
       console.warn(`[MarketProductLookup] DB error: ${error.message}`);
@@ -144,7 +144,18 @@ export async function lookupMarketProducts(
       return { found: false, products: [], ingredient: activeIngredient, source: 'fallback' };
     }
 
-    if (!data || data.length === 0) {
+    // In-memory keyword scan over active_ingredients JSONB payload (any shape).
+    const keywordLc = keyword.toLowerCase();
+    const ingredientMatched = (data || []).filter((p: any) => {
+      const ai = p.active_ingredients;
+      if (ai == null) return false;
+      try {
+        const s = typeof ai === 'string' ? ai : JSON.stringify(ai);
+        return s.toLowerCase().includes(keywordLc);
+      } catch { return false; }
+    });
+
+    if (ingredientMatched.length === 0) {
       console.log(`[MarketProductLookup] No products found for ingredient "${keyword}"`);
       setCache(cacheKey, []);
       return { found: false, products: [], ingredient: activeIngredient, source: 'fallback' };
@@ -152,14 +163,14 @@ export async function lookupMarketProducts(
 
     // Filter by crop (in-memory for flexible matching)
     const cropFiltered = cropNorm
-      ? data.filter((p: any) => {
+      ? ingredientMatched.filter((p: any) => {
           const crops = p.suitable_crops || [];
           return crops.includes('ALL_CROPS') ||
             crops.some((c: string) => c.toUpperCase().replace(/[_\s-]+/g, '').includes(cropNorm));
         })
-      : data;
+      : ingredientMatched;
 
-    const candidates = cropFiltered.length > 0 ? cropFiltered : data; // fallback to all crops
+    const candidates = cropFiltered.length > 0 ? cropFiltered : ingredientMatched; // fallback to all crops
 
     // Extract brand names, split "/" delimiter, flatten, dedupe
     const brandNames: string[] = [];

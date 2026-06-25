@@ -5452,7 +5452,8 @@ export class AIAgentOrchestrator {
         const isPrescriptionGateOverride = prescriptionGate.allowed && 
           canonicalState.data_confidence === 'LOW';
         
-        // PHASE-18: Pre-load ETL standards + agro zones + baselines from DB (cached after first call)
+        // PHASE-18 / Phase G — G4: Pre-load knowledge caches with PER-CACHE isolation.
+        // Promise.allSettled ensures a single failed cache does NOT mask the others.
         try {
           const [
             { loadETLStandards },
@@ -5465,14 +5466,24 @@ export class AIAgentOrchestrator {
             import('../utils/baseline-guidelines-cache.ts'),
             import('../utils/crop-synonyms-cache.ts')
           ]);
-          await Promise.all([
+          const settled = await Promise.allSettled([
             loadETLStandards(this.supabase),
             loadAgroZones(this.supabase),
             loadBaselineGuidelines(this.supabase),
             loadCropSynonyms(this.supabase)
           ]);
+          const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms'];
+          settled.forEach((s, i) => {
+            if (s.status === 'rejected') {
+              const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+              console.warn(`[KNOWLEDGE_PRELOAD] ${names[i]} FAILED: ${msg}`);
+              try { requestCtx.ledger.lose('KNOWLEDGE_PRELOAD', names[i], null, msg); } catch {/* non-fatal */}
+            } else {
+              console.log(`[KNOWLEDGE_PRELOAD] ${names[i]} OK`);
+            }
+          });
         } catch (e) {
-          console.warn(`⚠️ Knowledge base pre-load failed:`, e instanceof Error ? e.message : 'unknown');
+          console.warn(`⚠️ Knowledge base pre-load orchestration failed:`, e instanceof Error ? e.message : 'unknown');
         }
         
         // ═══════════════════════════════════════════════════════════════════
@@ -5536,6 +5547,19 @@ export class AIAgentOrchestrator {
         console.log(`      Diagnoses: ${safeDiagnoses.map(d => `${d?.cause || 'unknown'}(${((d?.confidence || 0) * 100).toFixed(0)}%)`).join(', ') || 'none'}`);
         console.log(`      Final Diagnosis: ${layeredRuleResult.final_diagnosis?.cause || 'none'}`);
         console.log(`      Prescription Allowed: ${layeredRuleResult.prescription_allowed}`);
+
+        // Phase G — G7: one-line end-of-rule-stage BRAIN_TRACE
+        try {
+          const winner = layeredRuleResult.primary_decision;
+          console.log(
+            `[BRAIN_TRACE][PIPELINE_RULE_STAGE] intent=${activeIntentForRules} ` +
+            `crop=${canonicalState.crop_type ?? '?'} stage=${canonicalState.crop_stage ?? '?'} ` +
+            `candidates_in=${rulesToEvaluate.length} after_intent=${rulesAfterIntent.length} ` +
+            `evaluated=${layeredRuleResult.rules_evaluated || 0} matched=${layeredRuleResult.rules_matched || 0} ` +
+            `winner=${winner?.rule_id ?? 'none'} winner_score=${(winner?.weighted_confidence ?? winner?.confidence_score ?? 0).toFixed?.(3) ?? 'n/a'} ` +
+            `winner_action_text=${winner?.action_text ? 'present' : 'EMPTY'}`
+          );
+        } catch (_) { /* trace must never throw */ }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures

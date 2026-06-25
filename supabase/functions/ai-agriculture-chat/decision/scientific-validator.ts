@@ -68,13 +68,20 @@ const TOLERANCE = 0.5; // ±50% of baseline before rejection
 function pickBaseline(
   cache: BaselineGuideline[] | undefined,
   stage: string | null | undefined,
-  das: number | null | undefined
-): BaselineGuideline | null {
-  if (!cache || cache.length === 0) return null;
+  das: number | null | undefined,
+  ruleIdForLog?: string
+): { row: BaselineGuideline | null; reason: 'EXACT_STAGE' | 'DAS_WINDOW' | 'FIRST_AVAILABLE' | 'NO_CACHE' } {
+  if (!cache || cache.length === 0) {
+    console.log(`[SCIENTIFIC_GATE][BASELINE_PICK] rule=${ruleIdForLog ?? '?'} reason=NO_CACHE`);
+    return { row: null, reason: 'NO_CACHE' };
+  }
   const stageKey = (stage || '').toLowerCase();
   // 1) exact stage match
   let match = cache.find((g) => g.growth_stage?.toLowerCase() === stageKey);
-  if (match) return match;
+  if (match) {
+    console.log(`[SCIENTIFIC_GATE][BASELINE_PICK] rule=${ruleIdForLog ?? '?'} reason=EXACT_STAGE stage=${stageKey}`);
+    return { row: match, reason: 'EXACT_STAGE' };
+  }
   // 2) DAS window match
   if (typeof das === 'number') {
     match = cache.find(
@@ -82,9 +89,13 @@ function pickBaseline(
         (g.das_start ?? -Infinity) <= das &&
         (g.das_end ?? Infinity) >= das
     );
-    if (match) return match;
+    if (match) {
+      console.log(`[SCIENTIFIC_GATE][BASELINE_PICK] rule=${ruleIdForLog ?? '?'} reason=DAS_WINDOW das=${das}`);
+      return { row: match, reason: 'DAS_WINDOW' };
+    }
   }
-  return cache[0] ?? null;
+  console.log(`[SCIENTIFIC_GATE][BASELINE_PICK] rule=${ruleIdForLog ?? '?'} reason=FIRST_AVAILABLE (stage_miss=${stageKey}, das_miss=${das ?? 'null'})`);
+  return { row: cache[0] ?? null, reason: 'FIRST_AVAILABLE' };
 }
 
 function violatesRange(
@@ -115,7 +126,7 @@ export async function evaluateScientificGate(
 
   for (const cand of candidates) {
     const baselines: BaselineGuideline[] = getBaselineForCrop(cand.crop_code);
-    const baseline = pickBaseline(baselines, cand.growth_stage, cand.das ?? null);
+    const { row: baseline } = pickBaseline(baselines, cand.growth_stage, cand.das ?? null, cand.rule_id);
 
     const violations: string[] = [];
     if (baseline) {

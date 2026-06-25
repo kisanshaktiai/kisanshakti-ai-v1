@@ -1295,22 +1295,42 @@ export function findRulesForCause(cause: string): ExecutableRule[] {
 // Backward-compatible: when no intent is supplied, behaves exactly like
 // the legacy filter.
 // ═══════════════════════════════════════════════════════════════════════════
+// Intent-incompatibility list. Some intents are agronomically exclusive:
+// a farmer reporting "seed never emerged" can never be served by a
+// "cyclone recovery" or "stress recovery" rule, even if every other
+// condition technically matches. Listed at the intent ID layer only — no
+// per-crop agronomic constants.
+const INTENT_INCOMPATIBLE: Record<string, ReadonlySet<string>> = {
+  emergence_failure: new Set([
+    'cyclone_recovery',
+    'stress_recovery',
+    'post_harvest',
+    'harvest_planning',
+  ]),
+};
+
 export function filterRulesByIntent(
   rules: ExecutableRule[],
   intent?: string | null,
 ): ExecutableRule[] {
   if (!intent) return rules;
   const intentKey = intent.toLowerCase();
+  const incompat = INTENT_INCOMPATIBLE[intentKey] ?? new Set<string>();
   const out: ExecutableRule[] = [];
-  let kept = 0, demoted = 0, dropped = 0;
+  let kept = 0, demoted = 0, dropped = 0, incompatDropped = 0;
   for (const r of rules) {
     const ri = ((r as any).rule_intent ?? null);
+    const riLc = ri == null ? null : String(ri).toLowerCase();
+    if (riLc && incompat.has(riLc)) {
+      incompatDropped++;
+      continue;
+    }
     if (ri == null) {
       // Generic rule — keep but mark for arbiter penalty.
       (r as any)._genericPenalty = true;
       out.push(r);
       demoted++;
-    } else if (String(ri).toLowerCase() === intentKey) {
+    } else if (riLc === intentKey) {
       out.push(r);
       kept++;
     } else {
@@ -1318,7 +1338,7 @@ export function filterRulesByIntent(
     }
   }
   console.log(
-    `[BRAIN_TRACE][RULE_INTENT_GATE] intent="${intentKey}" kept=${kept} demoted=${demoted} dropped=${dropped}`
+    `[BRAIN_TRACE][RULE_INTENT_GATE] intent="${intentKey}" kept=${kept} demoted=${demoted} dropped=${dropped} incompat_dropped=${incompatDropped}`
   );
   return out;
 }
