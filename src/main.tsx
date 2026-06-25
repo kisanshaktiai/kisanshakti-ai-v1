@@ -129,44 +129,74 @@ if (isNativeApp()) {
 console.log('📱 [PWA] Using static manifest.json (no dynamic API calls)');
 
 // Explicit Service Worker Registration - Single source of truth
+// IMPORTANT: do NOT register in dev, inside an iframe, or on Lovable
+// preview/sandbox hosts. The app SW caches GET responses including the
+// Vite dev modules, which breaks the Lovable preview (white screen / stale
+// bundles after a reload). For returning visitors on those hosts we also
+// proactively unregister any previously-installed app SW.
+const shouldSkipServiceWorker = () => {
+  try {
+    if (!import.meta.env.PROD) return true;
+    if (window.top !== window.self) return true; // inside iframe (Lovable preview)
+    const host = window.location.hostname;
+    if (
+      host.startsWith('id-preview--') ||
+      host.startsWith('preview--') ||
+      host === 'lovableproject.com' || host.endsWith('.lovableproject.com') ||
+      host === 'lovableproject-dev.com' || host.endsWith('.lovableproject-dev.com') ||
+      host === 'beta.lovable.dev' || host.endsWith('.beta.lovable.dev')
+    ) return true;
+    if (new URLSearchParams(window.location.search).get('sw') === 'off') return true;
+  } catch {
+    return true;
+  }
+  return false;
+};
+
+const unregisterAppServiceWorkers = async () => {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const reg of regs) {
+      const url =
+        reg.active?.scriptURL ||
+        reg.installing?.scriptURL ||
+        reg.waiting?.scriptURL ||
+        '';
+      // Only touch our own app-shell SW; leave messaging workers (FCM/OneSignal) alone.
+      if (url.endsWith('/sw.js') || url.endsWith('/service-worker.js')) {
+        console.log('🗑️ [PWA] Unregistering app SW:', url);
+        await reg.unregister();
+      }
+    }
+  } catch (e) {
+    console.warn('[PWA] unregister failed', e);
+  }
+};
+
 const registerServiceWorker = async () => {
   if (!('serviceWorker' in navigator)) {
     console.warn('⚠️ [PWA] Service Worker not supported');
     return;
   }
+  if (shouldSkipServiceWorker()) {
+    console.log('🚫 [PWA] Skipping SW registration (dev/preview/iframe)');
+    await unregisterAppServiceWorkers();
+    return;
+  }
 
   try {
-    // Unregister any old service workers first
-    const existingRegistrations = await navigator.serviceWorker.getRegistrations();
-    for (const reg of existingRegistrations) {
-      if (reg.active?.scriptURL && !reg.active.scriptURL.endsWith('/sw.js')) {
-        console.log('🗑️ [PWA] Unregistering old SW:', reg.active.scriptURL);
-        await reg.unregister();
-      }
-    }
-
-    const registration = await navigator.serviceWorker.register('/sw.js', { 
+    const registration = await navigator.serviceWorker.register('/sw.js', {
       scope: '/',
-      updateViaCache: 'none' // Always fetch fresh SW
+      updateViaCache: 'none'
     });
-    
     console.log('✅ [PWA] Service Worker registered:', registration.scope);
-    console.log('📊 [PWA] SW State:', {
-      installing: !!registration.installing,
-      waiting: !!registration.waiting,
-      active: !!registration.active
-    });
-    
-    // Listen for updates
+
     registration.addEventListener('updatefound', () => {
       const newWorker = registration.installing;
-      console.log('🔄 [PWA] New Service Worker installing...');
-      
       if (newWorker) {
         newWorker.addEventListener('statechange', () => {
-          console.log('📊 [PWA] SW state changed:', newWorker.state);
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('✨ [PWA] New version available!');
             window.dispatchEvent(new CustomEvent('pwa-update-available'));
           }
         });
@@ -177,10 +207,7 @@ const registerServiceWorker = async () => {
   }
 };
 
-// PWA Debug Logging
-console.log('🔧 [PWA] Checking PWA installability...');
 console.log('🔧 [PWA] SW supported:', 'serviceWorker' in navigator);
-console.log('🔧 [PWA] beforeinstallprompt supported:', 'onbeforeinstallprompt' in window);
 
 // Register SW on load (no dynamic manifest calls)
 window.addEventListener('load', () => {
