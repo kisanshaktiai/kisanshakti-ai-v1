@@ -102,13 +102,15 @@ export function getStageKnowledge(crop: string, stage: string): StageKnowledgeRo
   return cache.knowledgeByCropStage.get(k(crop, stage)) ?? null;
 }
 
-/** DB-first stage category lookup. Returns null when DB has no row. */
+/** DB-first stage category lookup. Returns null when DB has no row.
+ *  Note: crop_stage_master has no `stage_category` column — returns the
+ *  growth_stage itself uppercased, which is what downstream callers compare. */
 export function getStageCategoryFromDB(
   crop: string,
   stage: string
 ): string | null {
   const row = getStageRow(crop, stage);
-  return row?.stage_category ? row.stage_category.toUpperCase() : null;
+  return row?.growth_stage ? row.growth_stage.toUpperCase() : null;
 }
 
 /** DB-first DAS → stage lookup. */
@@ -117,12 +119,13 @@ export function getStageByDAS(crop: string, das: number): StageMasterRow | null 
   const cropKey = (crop || '').toLowerCase();
   for (const r of cache.master) {
     if (r.crop_code?.toLowerCase() !== cropKey) continue;
-    if ((r.das_start ?? -Infinity) <= das && (r.das_end ?? Infinity) >= das) {
+    if ((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das) {
       return r;
     }
   }
   return null;
 }
+
 
 export function isStageKnowledgeLoaded(): boolean {
   return !!cache && cache.master.length > 0;
