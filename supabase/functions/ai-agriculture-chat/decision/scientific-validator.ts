@@ -109,18 +109,12 @@ export async function evaluateScientificGate(
 
   // Ensure baselines are loaded (idempotent, cached 10min).
   await loadBaselineGuidelines(supabase);
-  // Re-import cache accessor lazily to keep this file decoupled.
-  const { getBaselineForCrop } = await import('../utils/baseline-guidelines-cache.ts')
-    .then((m) => ({ getBaselineForCrop: (m as any).getBaselineForCrop }))
-    .catch(() => ({ getBaselineForCrop: undefined }));
 
   const approved: CandidateRecommendation[] = [];
   const rejected: Array<{ candidate: CandidateRecommendation; reasons: string[] }> = [];
 
   for (const cand of candidates) {
-    const baselines: BaselineGuideline[] | undefined = getBaselineForCrop
-      ? getBaselineForCrop(cand.crop_code)
-      : undefined;
+    const baselines: BaselineGuideline[] = getBaselineForCrop(cand.crop_code);
     const baseline = pickBaseline(baselines, cand.growth_stage, cand.das ?? null);
 
     const violations: string[] = [];
