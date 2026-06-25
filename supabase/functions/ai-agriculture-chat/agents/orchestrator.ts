@@ -1115,10 +1115,47 @@ export class AIAgentOrchestrator {
     const requestCtx: RequestContext = createRequestContext(traceId);
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
-    
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase H — Fix 7 (Knowledge Initialization)
+    // Pre-load all knowledge caches at request init so every execution path
+    // (clarification / irrigation / diagnosis / advisory) shares the same
+    // warm runtime context. Promise.allSettled → per-cache isolation.
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const [
+        { loadETLStandards },
+        { loadAgroZones },
+        { loadBaselineGuidelines },
+        { loadCropSynonyms }
+      ] = await Promise.all([
+        import('../decision/etl-gate.ts'),
+        import('../utils/agro-zone-cache.ts'),
+        import('../utils/baseline-guidelines-cache.ts'),
+        import('../utils/crop-synonyms-cache.ts')
+      ]);
+      const settled = await Promise.allSettled([
+        loadETLStandards(this.supabase),
+        loadAgroZones(this.supabase),
+        loadBaselineGuidelines(this.supabase),
+        loadCropSynonyms(this.supabase)
+      ]);
+      const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms'];
+      settled.forEach((s, i) => {
+        if (s.status === 'rejected') {
+          const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+          console.warn(`[KNOWLEDGE_PRELOAD] ${names[i]} FAILED: ${msg}`);
+          try { requestCtx.ledger.lose('KNOWLEDGE_PRELOAD', names[i], null, msg); } catch {/* non-fatal */}
+        } else {
+          console.log(`[KNOWLEDGE_PRELOAD] ${names[i]} OK`);
+        }
+      });
+    } catch (e) {
+      console.warn(`⚠️ Knowledge base pre-load orchestration failed:`, e instanceof Error ? e.message : 'unknown');
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
-    // Valid flows: text input, image-only, option-click, monitoring mode, system continuation
     // ═══════════════════════════════════════════════════════════════════════════
     const safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
     const hasTextInput = hasTextContent(safeFarmerMessage);
