@@ -114,6 +114,13 @@ export interface ScopedClarificationInput {
    * be sourced from this frozen object and never recomputed.
    */
   conversationState?: import('../runtime/conversation-state.ts').ConversationState;
+  /**
+   * R1 FIX — Canonical intent_code resolved upstream (semantic extraction / NLU).
+   * Required to drive the intent_observation_mapping path; when present, the
+   * clarification engine queries curated DB observations for this intent
+   * BEFORE falling back to template/decision-rule heuristics.
+   */
+  intent_code?: string;
 }
 
 export interface ClarificationOutput {
