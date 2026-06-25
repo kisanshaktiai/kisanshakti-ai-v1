@@ -250,6 +250,30 @@ const STAGE_NORMALIZATION_MAP: Record<string, string> = {
   'post_harvest': 'post_harvest',
 };
 
+// R3 FIX: expose ALL biologically equivalent stages so DB queries don't drop rows
+// curated against synonymous names (e.g. SEEDLING ↔ nursery ↔ germination).
+const STAGE_SYNONYM_GROUPS: Record<string, string[]> = {
+  seedling:     ['seedling', 'nursery', 'germination', 'emergence'],
+  germination:  ['germination', 'nursery', 'seedling', 'emergence'],
+  nursery:      ['nursery', 'seedling', 'germination'],
+  emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
+  vegetative:   ['vegetative', 'tillering'],
+  tillering:    ['tillering', 'vegetative'],
+  flowering:    ['flowering', 'reproductive', 'grand_growth'],
+  reproductive: ['reproductive', 'flowering', 'grand_growth'],
+  grand_growth: ['grand_growth', 'flowering', 'reproductive'],
+  maturity:     ['maturity', 'ripening', 'maturation'],
+  ripening:     ['ripening', 'maturity', 'maturation'],
+  maturation:   ['maturation', 'maturity', 'ripening'],
+  harvest:      ['harvest', 'harvesting'],
+};
+
+function expandStageSynonyms(stage: string): string[] {
+  const key = (stage || '').toLowerCase().trim().replace(/[\s-]/g, '_');
+  const syn = STAGE_SYNONYM_GROUPS[key] || [key];
+  return Array.from(new Set([...syn, 'all'].filter(Boolean)));
+}
+
 function normalizeStageForDB(stage: string): string {
   const normalized = stage.toLowerCase().trim().replace(/[\s-]/g, '_');
   return STAGE_NORMALIZATION_MAP[normalized] || normalized;
