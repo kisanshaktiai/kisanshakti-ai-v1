@@ -311,34 +311,39 @@ export async function resolveIntentToObservations(
 export async function isObservationValidForCropStage(
   observationCode: string,
   cropCode: string,
-  das: number
+  das: number,
+  growthStage?: string | null
 ): Promise<{ valid: boolean; reason_code: string }> {
   const supabase = getSupabaseClient();
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HOTFIX: Query by observation_code + is_active ONLY
-  // crop_code/das_min/das_max columns don't exist yet. Re-enable after migration.
-  // ═══════════════════════════════════════════════════════════════════════════
+
+  // R4 FIX: filter by crop_code + growth_stage variants + DAS range.
+  const cropLower = (cropCode || '').toLowerCase();
+  const cropVariants = Array.from(new Set([cropLower, 'all'].filter(Boolean)));
+  const stageVariants = expandStageSynonyms(growthStage);
+
   const { data, error } = await supabase
     .from('intent_observation_mapping')
-    .select('id')
+    .select('id, das_min, das_max')
     .eq('observation_code', observationCode)
     .eq('is_active', true)
-    .limit(1);
-  
+    .in('crop_code', cropVariants)
+    .in('growth_stage', stageVariants);
+
   if (error) {
     console.error(`[IntentResolver] Validation DB error: ${error.message}`);
     return { valid: false, reason_code: 'VALIDATION_UNAVAILABLE' };
   }
-  
-  if (data && data.length > 0) {
-    return { valid: true, reason_code: 'VALID_FOR_OBSERVATION' };
-  }
-  
-  return {
-    valid: false,
-    reason_code: 'OBSERVATION_NOT_MAPPED'
-  };
+
+  const dasOk = (data || []).some((r: any) => {
+    if (typeof das !== 'number' || !isFinite(das)) return true;
+    const lo = typeof r.das_min === 'number' ? r.das_min : 0;
+    const hi = typeof r.das_max === 'number' ? r.das_max : 9999;
+    return das >= lo && das <= hi;
+  });
+
+  if (dasOk) return { valid: true, reason_code: 'VALID_FOR_CROP_STAGE_DAS' };
+
+  return { valid: false, reason_code: 'OBSERVATION_NOT_MAPPED_FOR_CONTEXT' };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
