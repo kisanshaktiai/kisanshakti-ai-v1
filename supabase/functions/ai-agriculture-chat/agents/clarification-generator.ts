@@ -50,13 +50,17 @@ import { ObservationKey } from '../decision/observation-ontology.ts';
 // PHASE-8.1: Import CropContextAuthority
 import type { CropContextAuthority } from '../decision/context-authority.ts';
 
-// PHASE-15: Import Dynamic Clarification Generator
+// PHASE-15: Import Dynamic Clarification Generator (LEGACY — kept only for type re-exports)
 import {
-  generateDynamicClarification,
   buildAgronomicContext,
   type AgronomicContext,
   type DynamicClarificationOutput
 } from './dynamic-clarification-generator.ts';
+
+// R1 FIX: Wire intent_observation_mapping through the canonical intent resolver.
+import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
+import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
+import { createClient as createSupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 // PHASE-16: Import Clarification Validator to prevent diagnosis leakage
 import {
