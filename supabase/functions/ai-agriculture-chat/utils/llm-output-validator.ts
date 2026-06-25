@@ -147,14 +147,23 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
 
   const loadPromise = (async () => {
     try {
+      // CANONICAL-CONTEXT FIX: decision_rules.crop_code and intent_observation_mapping.crop_code
+      // are stored LOWERCASE in the DB. Runtime canonicalContext.crop_code is UPPERCASE
+      // ("RICE"), which silently returned 0 rows and produced the
+      // "[LLM_VALIDATOR] Loaded 0 crop-applicable observations for RICE" log.
+      // Query case-insensitively so the validator works regardless of upstream casing.
+      const cropLower = (cropCode || '').toLowerCase();
+      const cropUpper = (cropCode || '').toUpperCase();
+      const cropVariants = Array.from(new Set([cropLower, cropUpper].filter(Boolean)));
+
       // Get observations that have rules for this crop
       const { data, error } = await supabase
         .from('decision_rules')
         .select('observable_characteristics')
-        .eq('crop_code', cropCode)
+        .in('crop_code', cropVariants)
         .eq('is_active', true)
         .limit(2000);
-      
+
       if (error) {
         console.error(`[LLM_VALIDATOR] Failed to load crop-applicable observations for ${cropCode}: ${error.message}`);
         return cached?.data || new Set<string>();
@@ -168,10 +177,10 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
           for (const [key, value] of Object.entries(obs)) {
             if (Array.isArray(value)) {
               for (const v of value) {
-                if (typeof v === 'string') applicableCodes.add(v);
+                if (typeof v === 'string') applicableCodes.add(v.toUpperCase());
               }
             } else if (typeof value === 'string') {
-              applicableCodes.add(value);
+              applicableCodes.add(value.toUpperCase());
             }
           }
         }
@@ -181,16 +190,17 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       const { data: mappingData } = await supabase
         .from('intent_observation_mapping')
         .select('observation_code')
-        .eq('crop_code', cropCode)
+        .in('crop_code', cropVariants)
         .eq('is_active', true);
       
       for (const row of (mappingData || [])) {
-        if (row.observation_code) applicableCodes.add(row.observation_code);
+        if (row.observation_code) applicableCodes.add(String(row.observation_code).toUpperCase());
       }
       
-      console.log(`[LLM_VALIDATOR] Loaded ${applicableCodes.size} crop-applicable observations for ${cropCode}`);
+      console.log(`[LLM_VALIDATOR][CANONICAL_CONTEXT_TRACE] Loaded ${applicableCodes.size} crop-applicable observations for ${cropCode} (queried as ${JSON.stringify(cropVariants)})`);
       cropApplicabilityCache.set(cropCode, { data: applicableCodes, loadedAt: Date.now() });
       return applicableCodes;
+
     } catch (e) {
       console.error(`[LLM_VALIDATOR] Crop applicability cache load error: ${e}`);
       return cached?.data || new Set<string>();
