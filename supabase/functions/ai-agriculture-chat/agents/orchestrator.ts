@@ -5475,11 +5475,53 @@ export class AIAgentOrchestrator {
           console.warn(`⚠️ Knowledge base pre-load failed:`, e instanceof Error ? e.message : 'unknown');
         }
         
-        layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE C, GATE #2 — INTENT FILTER before scoring
+        // Replaces direct evaluateRulesLayered() with an intent-filtered list.
+        // Generic rules (rule_intent == null) survive but carry a penalty flag
+        // that the layered scorer multiplies by 0.85 (see Phase D).
+        // ═══════════════════════════════════════════════════════════════════
+        const activeIntentForRules = (typeof intentCode !== 'undefined' && intentCode)
+          ? String(intentCode) : 'GENERAL_QUERY';
+        const rulesAfterIntent = filterRulesByIntent(rulesToEvaluate as any, activeIntentForRules);
+        requestCtx.ledger.create('RULE_INTENT_FILTER', `intent:${activeIntentForRules}`,
+          { input: rulesToEvaluate.length, kept: rulesAfterIntent.length });
+        console.log(`   🎯 [INTENT_FILTER] intent=${activeIntentForRules} ${rulesToEvaluate.length} → ${rulesAfterIntent.length}`);
+
+        layeredRuleResult = evaluateRulesLayered(rulesAfterIntent as any, canonicalStateWithQuery as any, {
           prescriptionGateOverride: isPrescriptionGateOverride,
           traceId: traceId
         });
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE C, GATE #3 — SCIENTIFIC VALIDATOR (after rules, before authority)
+        // Cross-checks rule outputs against crop_baseline_guidelines_v2.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          const candidates: CandidateRecommendation[] = (layeredRuleResult.matched_responses || [])
+            .map((r: any) => ({
+              rule_id: r?.rule_id || r?.id,
+              crop: canonicalState.crop_type,
+              stage: canonicalState.crop_stage,
+              action_codes: r?.action_codes || r?.actions || [],
+              numeric_claims: r?.numeric_claims || {},
+            }));
+          if (candidates.length > 0) {
+            await evaluateScientificGate({
+              candidates,
+              supabase: this.supabase,
+              ledger: requestCtx.ledger,
+              chain: requestCtx.chain,
+            });
+          } else {
+            requestCtx.chain.set('scientific', 1);
+          }
+        } catch (sciErr) {
+          console.warn('[SCIENTIFIC_GATE] non-fatal failure', sciErr instanceof Error ? sciErr.message : sciErr);
+        }
+        requestCtx.chain.set('rules',
+          (layeredRuleResult.rules_matched || 0) > 0 ? 0.85 : 0.4);
         
         // PHASE-16: Safe array access with null checks
         const safeRulesApplied = Array.isArray(layeredRuleResult.rules_applied) ? layeredRuleResult.rules_applied : [];
