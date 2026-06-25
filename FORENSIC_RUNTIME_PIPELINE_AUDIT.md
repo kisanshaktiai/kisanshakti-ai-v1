@@ -1,8 +1,6 @@
-
 # FORENSIC_RUNTIME_PIPELINE_AUDIT — v4.0 (Pipeline-First)
 
 > Scope locked to read-only: **no code, SQL, or schema changes**. Every claim below is backed by a direct DB query or a `file:line` reference. Anything I could not confirm is marked **NOT VERIFIED**.
-> Plan-mode constraint: I cannot create `FORENSIC_RUNTIME_PIPELINE_AUDIT.md` on disk until you approve this plan. On approval I will simply write the markdown file with the body below — no code or DB changes will be made.
 
 ---
 
@@ -98,53 +96,53 @@ Confirmed: the report you reviewed earlier ("schema 100% lower_snake_case comple
 ## 4. Current runtime pipeline (reverse-engineered, every arrow has a file:line)
 
 ```text
-Farmer Message  ─┐
-                 │  index.ts (entry)
-                 ▼
-Language Detection                     index.ts → services/language-detector
-                 ▼
-Translation (in)                        services/regional-translator.ts:160 (observation_translations cache)
-                 ▼
-Crop Detection                          utils/crop-synonyms-cache.ts + utils/crop-vocabulary-cache.ts
-                 ▼
-Intent Classification                   agents/intent-classifier.ts:47 (observation_intent_master whitelist)
-                 ▼
-Intent Resolution                       decision/intent-resolver.ts:99  (crop_stage_master for DAS→stage)
-                 │                       └─ DB_INTENT_OBSERVATIONS:
-                 │                          intent_observation_mapping  (LITERAL / DIFFERENTIAL)
-                 ▼
-Observation Extraction                  agents/observation-extractor.ts
-                 ▼
-Cross-crop Symptom Mapping              agents/cross-crop-symptom-mapper.ts → orchestrator.ts:1801
-                 ▼
-Canonical Code Resolution               runtime/observation-resolver.ts  (observation_aliases)
-                 ▼
-Understanding / Readiness Gate          decision/decision-readiness-gate.ts
-                 ▼
-Hypothesis Generation                   decision/causal-hypothesis-engine.ts:205-237
-                                          ├─ hypothesis_master
-                                          ├─ hypothesis_conditions
-                                          ├─ hypothesis_contradictions
-                                          └─ hypothesis_rule_mapping
-                 ▼
-Hypothesis Evaluation                   decision/hypothesis-evaluator.ts:544 (decision_rules)
-                 ▼
-Layered Rule Evaluation                 agents/layered-rule-evaluator.ts:1374 (required_observation_category)
-                                        bundled-rules/loader.ts:105 (decision_rules bulk loader)
-                                        decision/symbolic-reasoner.ts:653/793
-                 ▼
-Unified Decision Gate                   decision/unified-decision-gate.ts
-                 ▼
-Deterministic Response Builder          agents/deterministic-response-builder.ts (renders TREAT + ingredient)
-                 ▼  (writes payload BEFORE authority demotes)
-Diagnostic Decision Authority           index.ts → decision/diagnostic-decision-authority.ts
-                 ▼  (overrides state fields ONLY, not payload — see Bug B-6)
-LLM Render-only Formatting              decision/diagnosis-first-generator.ts
-                 ▼
-forceTranslate (out)                    services/regional-translator → LLM (timed-out in trace)
-                 ▼
-Validation Gate                         utils/llm-output-validator.ts (7 checks, passed despite wrong rule)
-                 ▼
+Farmer Message
+  │  index.ts (entry)
+  ▼
+Language Detection                 index.ts → services/language-detector
+  ▼
+Translation (in)                   services/regional-translator.ts:160 (observation_translations cache)
+  ▼
+Crop Detection                     utils/crop-synonyms-cache.ts + utils/crop-vocabulary-cache.ts
+  ▼
+Intent Classification              agents/intent-classifier.ts:47 (observation_intent_master whitelist)
+  ▼
+Intent Resolution                  decision/intent-resolver.ts:99 (crop_stage_master for DAS→stage)
+  │                                  └─ DB_INTENT_OBSERVATIONS:
+  │                                     intent_observation_mapping (LITERAL / DIFFERENTIAL)
+  ▼
+Observation Extraction             agents/observation-extractor.ts
+  ▼
+Cross-crop Symptom Mapping         agents/cross-crop-symptom-mapper.ts → orchestrator.ts:1801
+  ▼
+Canonical Code Resolution          runtime/observation-resolver.ts  (observation_aliases)
+  ▼
+Understanding / Readiness Gate     decision/decision-readiness-gate.ts
+  ▼
+Hypothesis Generation              decision/causal-hypothesis-engine.ts:205-237
+                                     ├─ hypothesis_master
+                                     ├─ hypothesis_conditions
+                                     ├─ hypothesis_contradictions
+                                     └─ hypothesis_rule_mapping
+  ▼
+Hypothesis Evaluation              decision/hypothesis-evaluator.ts:544 (decision_rules)
+  ▼
+Layered Rule Evaluation            agents/layered-rule-evaluator.ts:1374 (required_observation_category)
+                                   bundled-rules/loader.ts:105 (decision_rules bulk loader)
+                                   decision/symbolic-reasoner.ts:653/793
+  ▼
+Unified Decision Gate              decision/unified-decision-gate.ts
+  ▼
+Deterministic Response Builder     agents/deterministic-response-builder.ts (renders TREAT + ingredient)
+  ▼  (writes payload BEFORE authority demotes)
+Diagnostic Decision Authority      index.ts → decision/diagnostic-decision-authority.ts
+  ▼  (overrides state fields ONLY, not payload — see Bug B-6)
+LLM Render-only Formatting         decision/diagnosis-first-generator.ts
+  ▼
+forceTranslate (out)               services/regional-translator → LLM (timed-out in trace)
+  ▼
+Validation Gate                    utils/llm-output-validator.ts (7 checks, passed despite wrong rule)
+  ▼
 Farmer
 ```
 
@@ -191,7 +189,7 @@ Stages from target architecture that are **missing or bypassed**: see §5.
 | **`intent_assertion_pattern`** | **No** | — | — | — | Lane routing hardcoded | No | **0 %** |
 | **`crop_baseline_guidelines_v2`** | Loaded into cache | `baseline-guidelines-cache.ts:70` | **Never consulted by any gate** | n/a | No | No | **10 %** |
 | **`rule_product_mapping`** | **No + empty** | — | — | — | `market-product-lookup` does ILIKE on `master_products.active_ingredients::text` | No | **0 %** |
-| **`emergency_observation_codes`** | **No** | — | — | — | Hardcoded emergency map in `emergency-diagnostic-registry` (per prior memory) | No | **0 %** |
+| **`emergency_observation_codes`** | **No** | — | — | — | Hardcoded emergency map in `emergency-diagnostic-registry` | No | **0 %** |
 | `observation_translations` | Yes | 8+ sites | Yes | No | No | Yes (display) | **95 %** |
 | `master_products` | Yes | market-product-lookup | Yes | No | Brand fallback strings | Yes | **40 %** (broken — Bug B-5) |
 | `weather_observations` | Yes | authoritative-state-loader | Yes | No | Fallback to `weather_current` | Yes | **85 %** |
@@ -203,10 +201,8 @@ Stages from target architecture that are **missing or bypassed**: see §5.
 
 ## 7. Knowledge-graph consistency (does runtime respect the layer order?)
 
-The required chain is:
-`Intent → Observation → Semantic → Hypothesis → Rule → Scientific Validation → Safety → Builder → Translation`.
+Required chain: `Intent → Observation → Semantic → Hypothesis → Rule → Scientific Validation → Safety → Builder → Translation`.
 
-Runtime today:
 - **Semantic node skipped:** no use of `intent_semantic_class_allowlist` or `observation_master.semantic_class` between Intent and Hypothesis.
 - **Scientific-Validation node skipped:** `crop_baseline_guidelines_v2` is cache-loaded but never gates the recommendation.
 - **Authority node out-of-order:** runs after Builder rather than before, so it can demote `recommendation_allowed=false` *after* the Mancozeb payload was already produced (see Bug B-6).
@@ -220,17 +216,17 @@ Farmer (mr): **"भात अजून उगवले नाही"** ("Rice ha
 
 | Phase | File / function | Result | Source line |
 |---|---|---|---|
-| NLU | intent-classifier | `EMERGENCE_FAILURE` @ 0.82 (HIGH) | log line `[IntentResolver] Found 29 observation codes for intent=EMERGENCE_FAILURE` |
+| NLU | intent-classifier | `EMERGENCE_FAILURE` @ 0.82 (HIGH) | log: `[IntentResolver] Found 29 observation codes for intent=EMERGENCE_FAILURE` |
 | Crop normalisation | crop-synonyms-cache | `crop=Rice/RICE/rice` (3 casings observed) | logs |
 | DAS→Stage | `crop_stage_master` via `intent-resolver.ts:99` | stage=**SEEDLING** | Check-5 log |
 | Stage shown elsewhere | OBS_SURVIVAL | stage=**TILLERING** ⚠ inconsistent | log JSON |
 | `DB_INTENT_OBSERVATIONS` | `intent_observation_mapping` | +6 LITERAL +0 STRONG +3 candidate → 10 confirmed, 3 candidate | log |
 | Observation expansion | `observation_aliases` | mapped 4 → expanded 9 → pre-auth 19 → confirmed 14 + 5 synthetic | log |
 | Rule evaluation | `bundled-rules/loader.ts` + `layered-rule-evaluator.ts` | 201 rules evaluated, 19 matched | log Funnel |
-| Primary rule chosen | symbolic-reasoner | **RICE_STRESS_CYCLONE_RECOVERY_001** (`category=stress`, `growth_stage=NULL`, `action_type=urgent_action`, ingredient=Mancozeb 75 % WP @ 400 g/acre) | DB row verified |
+| Primary rule chosen | symbolic-reasoner | **RICE_STRESS_CYCLONE_RECOVERY_001** (`category=stress`, `growth_stage=NULL`, `action_type=urgent_action`, Mancozeb 75 % WP @ 400 g/acre) | DB row verified |
 | MarketProductLookup | `market-product-lookup.ts:137` | DB error: `operator does not exist: jsonb ~~* unknown` → fallback | log |
 | Deterministic builder | `deterministic-response-builder.ts` | rendered 1 008-char `TREAT` response | log |
-| Authority | `diagnostic-decision-authority` | stripped `recommendation_allowed=false`, `response_mode=OBSERVATION`, certainty 0.295 — **after** builder already serialised the response | log |
+| Authority | `diagnostic-decision-authority` | stripped `recommendation_allowed=false`, `response_mode=OBSERVATION`, certainty 0.295 — **after** builder serialised the response | log |
 | forceTranslate | `regional-translator → LLM` | aborted (`The signal has been aborted`) → English text retained | log |
 | Validation gate | `utils/llm-output-validator.ts` | 7 checks passed (structural only, not semantic) | log |
 | Farmer | sees `RICE_STRESS_CYCLONE_RECOVERY_001` advice in English | wrong rule + wrong language | log |
@@ -241,20 +237,20 @@ Why germination input picked cyclone-recovery rule: the cyclone rule has `growth
 
 ## 9. Critical bug register (evidence-based)
 
-| ID | Severity | Description | Evidence | Location | Pipeline stage | Farmer impact | Future fix (no-impl) |
-|----|---------|------------|----------|----------|----------------|---------------|----------------------|
-| **B-1** | CRITICAL | Wrong-domain rule selected because `decision_rules.rule_intent` is never enforced and stage-agnostic rules can win germination queries | DB column exists, `rg` returns 0 code refs; trace picks `RICE_STRESS_CYCLONE_RECOVERY_001` | `agents/layered-rule-evaluator.ts:1374` (only checks `required_observation_category`) | Rule layer | Farmer gets fungicide for emergence failure | Add intent-category gate using existing `rule_intent` column |
-| **B-2** | CRITICAL | Stage normalisation drift — two different stages within the same turn (SEEDLING vs TILLERING) | log lines 264 vs 1416 | `utils/stage-normalizer.ts` vs `decision/intent-resolver.ts:99` vs OBS_SURVIVAL emitter | Stage layer | Stage-specific rules silently filtered wrong | Make `crop_stage_master` + `crop_stage_knowledge.aliases` joint SSOT |
+| ID | Severity | Description | Evidence | Location | Stage | Farmer impact | Future fix |
+|----|---------|------------|----------|----------|-------|---------------|------------|
+| **B-1** | CRITICAL | Wrong-domain rule selected because `decision_rules.rule_intent` is never enforced and stage-agnostic rules can win germination queries | DB column exists, `rg` returns 0 code refs; trace picks `RICE_STRESS_CYCLONE_RECOVERY_001` | `agents/layered-rule-evaluator.ts:1374` (only `required_observation_category`) | Rule layer | Fungicide for emergence failure | Add intent-category gate using existing `rule_intent` |
+| **B-2** | CRITICAL | Stage normalisation drift — two different stages within the same turn (SEEDLING vs TILLERING) | log lines 264 vs 1416 | `utils/stage-normalizer.ts` vs `decision/intent-resolver.ts:99` vs OBS_SURVIVAL emitter | Stage | Stage-specific rules silently mis-filtered | Make `crop_stage_master` + `crop_stage_knowledge.aliases` joint SSOT |
 | **B-3** | HIGH | `crop_stage_knowledge` (newly created, 79 rows) is never queried — hardcoded advice still used | `rg` returns only doc comment | `agents/crop-stage-advisor.ts:13` | Crop knowledge | Stale agronomy | Wire advisor to DB; add `action_codes` col |
-| **B-4** | HIGH | Sparse germination rule coverage: only 3 active rules for `rice/germination`; 134 rules have NULL `growth_stage` and can match anything | `SELECT … FROM decision_rules WHERE crop_code='rice'` | DB | Rule data | Forces wide fallback | Backfill stage on stress rules; add germination rules |
-| **B-5** | HIGH | MarketProductLookup uses `.ilike('active_ingredients::text', …)` — PostgREST rejects jsonb cast inside ilike | log `[MarketProductLookup] DB error: operator does not exist: jsonb ~~* unknown` | `agents/market-product-lookup.ts:137` | Product lookup | Brand names lost from narration | Use `.contains` or RPC with `jsonb_path_exists` |
-| **B-6** | CRITICAL | DiagnosticDecisionAuthority runs AFTER DeterministicBuilder; it nulls state flags but does not strip the rendered payload | trace: builder logs at 1782368296101, authority overrides at 1782368296942 | `index.ts` ordering, `decision/diagnostic-decision-authority.ts` | Authority | Wrong recommendation reaches farmer even when authority demoted to OBSERVATION | Move authority before builder, or have builder consult authority |
-| **B-7** | HIGH | forceTranslate aborts on timeout with no Marathi fallback — English template delivered verbatim | log `forceTranslate LLM translation failed: The signal has been aborted` | `services/regional-translator.ts` | Translation | Marathi UX broken for high-priority turns | Increase abort budget + deterministic fallback dictionary |
+| **B-4** | HIGH | Sparse germination rule coverage: only 3 active rules for `rice/germination`; 134 rules have NULL `growth_stage` | `SELECT … FROM decision_rules WHERE crop_code='rice'` | DB | Rule data | Forces wide fallback | Backfill stage on stress rules; add germination rules |
+| **B-5** | HIGH | MarketProductLookup uses `.ilike('active_ingredients::text', …)` — PostgREST rejects jsonb cast | log `operator does not exist: jsonb ~~* unknown` | `agents/market-product-lookup.ts:137` | Product lookup | Brand names lost | Use `.contains` or RPC with `jsonb_path_exists` |
+| **B-6** | CRITICAL | DiagnosticDecisionAuthority runs AFTER DeterministicBuilder; nulls state flags but does not strip payload | trace: builder logs at 1782368296101, authority overrides at 1782368296942 | `index.ts` ordering, `decision/diagnostic-decision-authority.ts` | Authority | Wrong recommendation reaches farmer | Move authority before builder, or have builder consult authority |
+| **B-7** | HIGH | forceTranslate aborts on timeout with no Marathi fallback — English template delivered verbatim | log `forceTranslate LLM translation failed: The signal has been aborted` | `services/regional-translator.ts` | Translation | Marathi UX broken | Larger abort budget + deterministic fallback dictionary |
 | **B-8** | HIGH | 2 mappings still point to inactive rules (`SC_DIAG_ESB_001`, `SC_NUTRITION_NITROGEN_025`) | join `hypothesis_rule_mapping × decision_rules WHERE is_active=false` → 2 | DB | Hypothesis layer | Sugarcane hypotheses silently unbacked | Reactivate or delete mappings |
 | **B-9** | MEDIUM | Twelve authoritative tables not exercised at runtime → graph 38 % dead | §6 utilization scores | DB + code | Knowledge graph | Investment without consumer | Wire each one in or drop |
-| **B-10** | MEDIUM | `crop_stage_knowledge`, `intent_assertion_pattern`, `intent_semantic_class_allowlist`, `intent_observation_mapping_audit`, `emergency_observation_codes`, `observation_differential_questions`, `agricultural_decisions`, `observation_vocabulary_gaps` have `last_analyze IS NULL` | `pg_stat_get_last_analyze_time` | DB | Planner | Wrong index plans | `ANALYZE` |
+| **B-10** | MEDIUM | 8 tables (`crop_stage_knowledge`, `intent_assertion_pattern`, `intent_semantic_class_allowlist`, …) have `last_analyze IS NULL` | `pg_stat_get_last_analyze_time` | DB | Planner | Wrong index plans | `ANALYZE` |
 | **B-11** | MEDIUM | None of the symbolic tables are in `supabase_realtime` publication | `pg_publication_tables` query returned empty | DB | Cache invalidation | Edge cache cannot refresh on agronomist edits | Add to publication |
-| **B-12** | MEDIUM | `crop_baseline_guidelines_v2` loaded into cache but never gates the recommendation | only `baseline-guidelines-cache.ts:70`, no consumer | Code | Scientific Validation | Unscientific advice leaks (cyclone fungicide on a 17-day seedling) | Add pre-builder gate |
+| **B-12** | MEDIUM | `crop_baseline_guidelines_v2` loaded into cache but never gates the recommendation | only `baseline-guidelines-cache.ts:70`, no consumer | Code | Scientific Validation | Unscientific advice leaks (cyclone fungicide on 17-day seedling) | Add pre-builder gate |
 | **B-13** | MEDIUM | `rule_product_mapping` has 0 rows AND is not referenced | DB count 0, `rg` 0 hits | DB+code | Product layer | Forces ILIKE fallback (B-5) | Populate or remove |
 | **B-14** | LOW | Schema column drift: code references `decision_action` and `observation_label`, neither exists | `information_schema.columns` | code | Builder/Diag generators | Silent `undefined` → generic narration | Rename or drop refs |
 | **B-15** | LOW | Crop-code casing drift (`rice` vs `RICE` vs `Rice`) | logs | several sites | All layers | Missed `.eq()` matches | Canonicalise at boundaries |
@@ -301,8 +297,8 @@ Why germination input picked cyclone-recovery rule: the cyclone rule has `growth
 | Current | Target | Gap | Priority | Complexity | Risk | Blocking deps |
 |---|---|---|---|---|---|---|
 | `rule_intent` ignored | Intent ↔ rule gate | Add filter in `layered-rule-evaluator` | P0 | Low | Low | none |
-| Authority after builder | Authority before builder | Reorder in `index.ts` | P0 | Medium | Medium (touches every turn) | Builder must accept authority hints |
-| `crop_baseline_guidelines_v2` cache-only | Pre-builder scientific gate | Add gate function | P0 | Medium | Medium | Define accept/reject schema |
+| Authority after builder | Authority before builder | Reorder in `index.ts` | P0 | Medium | Medium | Builder must accept authority hints |
+| `crop_baseline_guidelines_v2` cache-only | Pre-builder scientific gate | Add gate function | P0 | Medium | Medium | Accept/reject schema |
 | `crop_stage_knowledge` dark | Advisor uses DB | Wire `crop-stage-advisor` to DB; add `action_codes` col | P1 | Low | Low | Agronomist sign-off |
 | MarketProductLookup ILIKE broken | jsonb-safe lookup | RPC or `.contains` | P1 | Low | Low | none |
 | forceTranslate abort silent | Deterministic Marathi fallback | Dictionary table or longer abort | P1 | Medium | Low | observation_translations coverage |
@@ -321,8 +317,8 @@ The live trace `trace_mqt41o60_ezkjqa` (Marathi farmer: *"rice has not germinate
 3. Produces a Mancozeb fungicide prescription that the Authority later tries to demote — too late, because the builder ran first (Bug B-6).
 4. Fails the Marathi translation silently (Bug B-7), shipping wrong advice in English.
 
-The previous "all-green" audit reflected **column-name** correctness, not **runtime utilisation**. This audit shows 12 of the 32 authoritative tables (notably `intent_semantic_class_allowlist`, `crop_baseline_guidelines_v2` as a gate, `crop_stage_knowledge`, `intent_assertion_pattern`, `emergency_observation_codes`, `rule_product_mapping`) are inert. The DB recently grew (24 migrations in the last 12 days, including the new `crop_stage_knowledge`) but the orchestrator code has not been wired to the new surfaces.
+The previous "all-green" audit reflected **column-name** correctness, not **runtime utilisation**. This audit shows 12 of the 32 authoritative tables (notably `intent_semantic_class_allowlist`, `crop_baseline_guidelines_v2` as a gate, `crop_stage_knowledge`, `intent_assertion_pattern`, `emergency_observation_codes`, `rule_product_mapping`) are inert. The DB recently grew (24 migrations in 12 days, including the new `crop_stage_knowledge`) but the orchestrator has not been wired to the new surfaces.
 
 Current production readiness: **5.0 / 10** — safe to keep online for non-prescriptive turns, but unsafe for chemical-recommendation turns until B-1, B-6, B-7 are remediated.
 
-> No code, SQL or schema was modified to produce this report. Approve this plan to have me save it as `FORENSIC_RUNTIME_PIPELINE_AUDIT.md` (file write only, still no code/DB change).
+> No code, SQL or schema was modified to produce this report.
