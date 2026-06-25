@@ -10,6 +10,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
 
+// Phase H — Canonical Conversation State (single runtime authority)
+import { buildConversationState, type ConversationState } from '../runtime/conversation-state.ts';
+import { computeCoverage, isInformative as isInformativeObs } from '../runtime/evidence-coverage.ts';
+import { emitBrainTrace } from '../runtime/brain-trace.ts';
+
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
 import { processVisualAgent } from './visual-agent.ts';
