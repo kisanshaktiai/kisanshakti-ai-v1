@@ -4237,7 +4237,10 @@ export class AIAgentOrchestrator {
           farmerMessage: farmerMessage,
           // Phase J — Hand the frozen ConversationState to the clarification
           // subsystem so it stops reading legacy observation/session state.
-          conversationState: (this as any).__conversationState
+          conversationState: (this as any).__conversationState,
+          // R1 FIX — pass canonical intent_code so the clarification engine
+          // can query intent_observation_mapping for curated observations.
+          intent_code: intentCode
         };
         
         // P0 FIX: Properly await the async function (was causing Promise leak)
