@@ -22,12 +22,14 @@
 
 import { ObservationKey } from '../decision/observation-ontology.ts';
 import { type CropContextAuthority, formatCropContextFrame } from '../decision/context-authority.ts';
-import { 
-  getClarificationOptions, 
+import {
+  getClarificationOptions,
   loadObservationKeysFromDB,
   getObservationKeyLabels,
-  type ClarificationOption 
+  type ClarificationOption
 } from './canonical-observation-loader.ts';
+import { loadObservationLabels, DEFAULT_CLARIFICATION_CODES } from '../i18n/observation-label-loader.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export const CLARIFICATION_RENDERER_VERSION = '3.0.0'; // Phase-18: DB-driven canonical observation keys
 
@@ -637,7 +639,37 @@ export async function getContextAwareTemplateFromDB(
     }
   }
 
-  // Fallback to hardcoded templates
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Phase J — Localization safeguard. For non-English farmers, NEVER fall back
+  // to the English-only BASE_TEMPLATES. Resolve canonical default codes via
+  // observation_translations in the requested language so no English labels
+  // reach a Marathi / Hindi / regional UI.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const lang = (language || 'en').toLowerCase();
+  if (lang !== 'en') {
+    try {
+      const url = Deno.env.get('SUPABASE_URL');
+      const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (url && key) {
+        const client = createClient(url, key);
+        const labels = await loadObservationLabels(client, DEFAULT_CLARIFICATION_CODES, lang);
+        const localized: string[] = [];
+        for (const code of DEFAULT_CLARIFICATION_CODES) {
+          const l = labels.get(code.toUpperCase());
+          if (l?.display_text) localized.push(l.display_text);
+        }
+        if (localized.length > 0) {
+          console.log(`   ✅ [CLARIFICATION_TRACE] Localized fallback for lang=${lang} (${localized.length} options from observation_translations)`);
+          const templateQuestion = getTemplateQuestion(scope, lang, cropContext);
+          return { question: templateQuestion, options: localized.slice(0, 3) };
+        }
+      }
+    } catch (locErr) {
+      console.error(`   ⚠️ [CLARIFICATION_TRACE] Localized fallback failed:`, locErr);
+    }
+  }
+
+  // English path: legacy template fallback
   return getContextAwareTemplate(scope, language, cropContext);
 }
 
