@@ -3164,6 +3164,37 @@ export class AIAgentOrchestrator {
       console.log(`      Symptoms: ${observationExtraction.raw_symptom_text.length} extracted`);
       console.log(`      Affected part: ${observationExtraction.affected_part}, Distribution: ${observationExtraction.symptom_distribution}`);
       console.log(`      Severity words: ${observationExtraction.severity_words.join(', ') || 'none'}`);
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE C, GATE #1 — SEMANTIC VALIDATOR
+      // Runs immediately after observation extraction. Drops observations whose
+      // semantic_class is not allow-listed for the active intent. Fails OPEN
+      // when the allowlist is unseeded so the pipeline is never blocked.
+      // ═══════════════════════════════════════════════════════════════════════
+      requestCtx.ledger.create('OBSERVATION_EXTRACT', 'extraction',
+        { symptoms: observationExtraction.raw_symptom_text.length, crop: observationExtraction.crop_mentioned },
+        { source: 'observation-extractor' });
+      requestCtx.chain.set('observation',
+        observationExtraction.raw_symptom_text.length > 0 ? 0.9 : 0.5);
+      try {
+        const semObs = (observationExtraction.raw_symptom_text || []).map((t: string) => ({
+          code: String(t).toLowerCase().replace(/\s+/g, '_'),
+          semantic_class: null,
+          source: 'observation-extractor',
+        }));
+        const semResult = await evaluateSemanticGate({
+          intent: (typeof intentCode !== 'undefined' ? String(intentCode) : 'GENERAL_QUERY'),
+          observations: semObs,
+          supabase: this.supabase,
+          ledger: requestCtx.ledger,
+          chain: requestCtx.chain,
+        });
+        if (semResult.dropped.length > 0) {
+          console.log(`      🚦 [SEMANTIC_GATE] dropped ${semResult.dropped.length} cross-class observations`);
+        }
+      } catch (semErr) {
+        console.warn('[SEMANTIC_GATE] non-fatal failure', semErr instanceof Error ? semErr.message : semErr);
+      }
       
       // PHASE-17 FIX: Detect urgency for adaptive gates
       const urgencyKeywords = ['मेला', 'मेले', 'मेलेला', 'dead', 'dying', 'died', 'मर गया', 'मर रहा'];
