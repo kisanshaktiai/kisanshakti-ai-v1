@@ -5501,11 +5501,10 @@ export class AIAgentOrchestrator {
         try {
           const candidates: CandidateRecommendation[] = (layeredRuleResult.matched_responses || [])
             .map((r: any) => ({
-              rule_id: r?.rule_id || r?.id,
-              crop: canonicalState.crop_type,
-              stage: canonicalState.crop_stage,
-              action_codes: r?.action_codes || r?.actions || [],
-              numeric_claims: r?.numeric_claims || {},
+              rule_id: r?.rule_id || r?.id || 'unknown',
+              crop_code: String(canonicalState.crop_type || 'UNKNOWN'),
+              growth_stage: canonicalState.crop_stage || null,
+              ...(r?.numeric_claims || {}),
             }));
           if (candidates.length > 0) {
             await evaluateScientificGate({
