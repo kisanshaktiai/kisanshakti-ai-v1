@@ -10,6 +10,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
 
+// Phase H — Canonical Conversation State (single runtime authority)
+import { buildConversationState, type ConversationState } from '../runtime/conversation-state.ts';
+import { computeCoverage, isInformative as isInformativeObs } from '../runtime/evidence-coverage.ts';
+import { emitBrainTrace } from '../runtime/brain-trace.ts';
+
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
 import { processVisualAgent } from './visual-agent.ts';
@@ -1110,10 +1115,47 @@ export class AIAgentOrchestrator {
     const requestCtx: RequestContext = createRequestContext(traceId);
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
-    
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase H — Fix 7 (Knowledge Initialization)
+    // Pre-load all knowledge caches at request init so every execution path
+    // (clarification / irrigation / diagnosis / advisory) shares the same
+    // warm runtime context. Promise.allSettled → per-cache isolation.
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const [
+        { loadETLStandards },
+        { loadAgroZones },
+        { loadBaselineGuidelines },
+        { loadCropSynonyms }
+      ] = await Promise.all([
+        import('../decision/etl-gate.ts'),
+        import('../utils/agro-zone-cache.ts'),
+        import('../utils/baseline-guidelines-cache.ts'),
+        import('../utils/crop-synonyms-cache.ts')
+      ]);
+      const settled = await Promise.allSettled([
+        loadETLStandards(this.supabase),
+        loadAgroZones(this.supabase),
+        loadBaselineGuidelines(this.supabase),
+        loadCropSynonyms(this.supabase)
+      ]);
+      const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms'];
+      settled.forEach((s, i) => {
+        if (s.status === 'rejected') {
+          const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+          console.warn(`[KNOWLEDGE_PRELOAD] ${names[i]} FAILED: ${msg}`);
+          try { requestCtx.ledger.lose('KNOWLEDGE_PRELOAD', names[i], null, msg); } catch {/* non-fatal */}
+        } else {
+          console.log(`[KNOWLEDGE_PRELOAD] ${names[i]} OK`);
+        }
+      });
+    } catch (e) {
+      console.warn(`⚠️ Knowledge base pre-load orchestration failed:`, e instanceof Error ? e.message : 'unknown');
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
-    // Valid flows: text input, image-only, option-click, monitoring mode, system continuation
     // ═══════════════════════════════════════════════════════════════════════════
     const safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
     const hasTextInput = hasTextContent(safeFarmerMessage);
@@ -3692,17 +3734,30 @@ export class AIAgentOrchestrator {
       
       // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
-      
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Phase H — Fix 1: Direct-mode VETO on symptom signal.
+      // Re-evaluate directModeBypass now that observations are extracted.
+      // A symptom report mis-classified as GENERAL_CROP_INFO must NOT enter
+      // GENERAL_INFO advisory routing. Content beats label.
+      // ═══════════════════════════════════════════════════════════════════════════
+      {
+        const informativeNow = [...allObservationsForPreAuth].filter((c: string) => isInformativeObs(c));
+        if (directModeBypass && informativeNow.length > 0) {
+          console.log(`   🛑 [DIRECT_MODE_VETO] Symptom signal detected (${informativeNow.length} informative obs) — overriding directModeBypass for intent=${intentCode}`);
+          directModeBypass = false;
+          bypassClarification = false;
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
-      // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage
+      // Phase H — Fix 3: confirmed-only, *_UNKNOWN placeholders excluded.
       // ═══════════════════════════════════════════════════════════════════════════
       const authorityBasedCodes = authoredObservations.getConfirmedAndExtractedCodes();
-      // SPRINT 3 FIX: Adaptive denominator — see comments at lines ~2647 / 2738.
-      const evidenceCoverage = authorityBasedCodes.length > 0 
-        ? Math.min(1.0, authorityBasedCodes.length / Math.max(4, Math.min(8, authorityBasedCodes.length))) 
-        : 0;
-      console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED only): ${(evidenceCoverage * 100).toFixed(0)}% (${authorityBasedCodes.length} codes)`);
+      const informativeAuthorityCodes = authorityBasedCodes.filter((c: string) => isInformativeObs(c));
+      const evidenceCoverage = computeCoverage(informativeAuthorityCodes);
+      console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED, informative-only): ${(evidenceCoverage * 100).toFixed(0)}% (${informativeAuthorityCodes.length}/${authorityBasedCodes.length} informative)`);
       
       // REFINEMENT 3: Functional coverage gate - blocks diagnosis if evidence too low
       let shouldBlockDiagnosis = false;
@@ -3721,6 +3776,55 @@ export class AIAgentOrchestrator {
       
       // Log authority breakdown
       console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Phase H — Canonical ConversationState (frozen, single runtime authority)
+      // Computed exactly once. Every downstream module should read from this.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const __advisoryIntentForState =
+        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
+        isAdvisoryRoute(intentCode);
+      const __stageForState =
+        (landContext as any)?.growth_stage ||
+        (canonicalContext as any)?.stage ||
+        null;
+      const __stageSourceForState =
+        (landContext as any)?.growth_stage ? 'landContext'
+        : (canonicalContext as any)?.stage  ? 'crop_stage_master'
+        : 'default';
+      const __cropForState =
+        (landContext as any)?.current_crop ||
+        (canonicalContext as any)?.crop ||
+        (landContext as any)?.crop_name ||
+        null;
+      const __dasForState =
+        (landContext as any)?.days_after_sowing ??
+        (canonicalContext as any)?.das ??
+        null;
+      const conversationState: ConversationState = buildConversationState({
+        trace_id: traceId,
+        intent: String(intentCode || 'UNKNOWN'),
+        intent_confidence: Number(intentConf || 0),
+        advisory_intent: __advisoryIntentForState,
+        confirmed: confirmedObsCodes,
+        inferred:  syntheticObsCodes,
+        hypotheses: [],
+        stage: __stageForState,
+        stage_source: __stageSourceForState,
+        crop:  __cropForState,
+        das:   __dasForState,
+        semantic_status: 'OK',
+        authority_status: authoredObservations.toSummary?.() || 'UNCONFIRMED',
+      });
+      (this as any).__conversationState = conversationState; // accessible to trace emit
+      console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${conversationState.mode} clarify=${conversationState.clarification_required}(${conversationState.clarification_reason}) coverage=${conversationState.coverage.toFixed(2)} confirmed=${conversationState.confirmed.length} unknown=${conversationState.unknown.length}`);
+      emitBrainTrace(conversationState, { total_ms: Date.now() - startTime });
+
+      // Phase H — Fix 2: ConversationState owns clarification. Sync the
+      // legacy boolean so downstream gates stay consistent without recomputing.
+      if (conversationState.clarification_required && !bypassClarification) {
+        shouldBlockDiagnosis = shouldBlockDiagnosis || true;
+      }
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
       const cropDamageResult = detectCropDamageWithAuthority(
@@ -5452,39 +5556,9 @@ export class AIAgentOrchestrator {
         const isPrescriptionGateOverride = prescriptionGate.allowed && 
           canonicalState.data_confidence === 'LOW';
         
-        // PHASE-18 / Phase G — G4: Pre-load knowledge caches with PER-CACHE isolation.
-        // Promise.allSettled ensures a single failed cache does NOT mask the others.
-        try {
-          const [
-            { loadETLStandards },
-            { loadAgroZones },
-            { loadBaselineGuidelines },
-            { loadCropSynonyms }
-          ] = await Promise.all([
-            import('../decision/etl-gate.ts'),
-            import('../utils/agro-zone-cache.ts'),
-            import('../utils/baseline-guidelines-cache.ts'),
-            import('../utils/crop-synonyms-cache.ts')
-          ]);
-          const settled = await Promise.allSettled([
-            loadETLStandards(this.supabase),
-            loadAgroZones(this.supabase),
-            loadBaselineGuidelines(this.supabase),
-            loadCropSynonyms(this.supabase)
-          ]);
-          const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms'];
-          settled.forEach((s, i) => {
-            if (s.status === 'rejected') {
-              const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
-              console.warn(`[KNOWLEDGE_PRELOAD] ${names[i]} FAILED: ${msg}`);
-              try { requestCtx.ledger.lose('KNOWLEDGE_PRELOAD', names[i], null, msg); } catch {/* non-fatal */}
-            } else {
-              console.log(`[KNOWLEDGE_PRELOAD] ${names[i]} OK`);
-            }
-          });
-        } catch (e) {
-          console.warn(`⚠️ Knowledge base pre-load orchestration failed:`, e instanceof Error ? e.message : 'unknown');
-        }
+        // Phase H — Fix 7: knowledge caches are now pre-loaded at request init.
+        // This block is intentionally a no-op (single-source preload upstream).
+        console.log('[KNOWLEDGE_PRELOAD] using request-init caches (Phase H Fix 7)');
         
         // ═══════════════════════════════════════════════════════════════════
         // PHASE C, GATE #2 — INTENT FILTER before scoring
