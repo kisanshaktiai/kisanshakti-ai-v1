@@ -101,22 +101,19 @@ export interface ScopedClarificationInput {
   understandingResult: UnderstandingCheckResult;
   diagnosisRulesFired: boolean;
   clarificationState?: ClarificationState;
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // v6.0: SINGLE CANONICAL CONTEXT (IMMUTABLE, BUILT IN PHASE-1)
-  // This replaces: hasLandContext, landContext, hasCropContext, cropContext
-  // ═══════════════════════════════════════════════════════════════════════════
-  /** 
-   * The SINGLE canonical context object built in orchestrator Phase-1.
-   * This is IMMUTABLE and passed by reference. Do NOT rebuild or infer.
-   * If null, this is a general chat without land context.
-   */
+
   canonicalContext: CanonicalContext | null;
-  
+
   /** PHASE-8.1: Crop context for stage-aware framing (DEPRECATED - use canonicalContext) */
   cropContext?: CropContextAuthority | null;
   /** PHASE-15: Farmer message for LLM context */
   farmerMessage?: string;
+  /**
+   * Phase J — Canonical ConversationState (single runtime authority).
+   * When provided, clarification stage / crop / language / observations MUST
+   * be sourced from this frozen object and never recomputed.
+   */
+  conversationState?: import('../runtime/conversation-state.ts').ConversationState;
 }
 
 export interface ClarificationOutput {
