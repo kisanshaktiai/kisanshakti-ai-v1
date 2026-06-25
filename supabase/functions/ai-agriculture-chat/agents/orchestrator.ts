@@ -218,6 +218,17 @@ import { getAuditLogger } from './audit-logger.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE B/C/E WIRING — request context, mandatory gates, stage SSOT
+// ═══════════════════════════════════════════════════════════════════════════
+import { createRequestContext, snapshotContext, type RequestContext } from '../decision/request-context.ts';
+import { evaluateSemanticGate } from '../decision/semantic-validator.ts';
+import { evaluateScientificGate, type CandidateRecommendation } from '../decision/scientific-validator.ts';
+import { filterRulesByIntent } from '../bundled-rules/loader.ts';
+import * as StageKnowledgeCache from '../utils/stage-knowledge-cache.ts';
+// Expose cache to stage-normalizer (DB-first fallback path).
+(globalThis as any).__stageKnowledgeCacheRef = StageKnowledgeCache;
+
 // STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
 import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
 
