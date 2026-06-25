@@ -149,36 +149,35 @@ export function getStageCategory(
 ): StageCategory {
   if (!stage) return 'UNKNOWN';
 
-  // 1) DB-first when both crop+stage are known.
+  // 1) DB-first when both crop+stage are known. SINGLE provenance emit.
   if (crop) {
     try {
-      // Lazy require to avoid a hard dep cycle with the cache module.
-      // The cache is populated by orchestrator pre-load at request start.
       // deno-lint-ignore no-explicit-any
       const cache = (globalThis as any).__stageKnowledgeCacheRef;
       if (cache && typeof cache.getStageCategoryFromDB === 'function') {
         const cat = cache.getStageCategoryFromDB(crop, stage);
-        if (cat) return cat as StageCategory;
+        if (cat) {
+          console.log(`[STAGE_SSOT] source=crop_stage_master result=HIT crop=${crop} stage=${stage} category=${cat}`);
+          return cat as StageCategory;
+        }
       }
     } catch { /* fall through to static map */ }
   }
 
   const normalizedStage = stage.toLowerCase().trim().replace(/[\s-]+/g, '_');
 
+  let resolved: StageCategory = 'UNKNOWN';
   if (SEEDLING_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    return 'SEEDLING';
+    resolved = 'SEEDLING';
+  } else if (VEGETATIVE_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
+    resolved = 'VEGETATIVE';
+  } else if (REPRODUCTIVE_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
+    resolved = 'REPRODUCTIVE';
+  } else if (MATURITY_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
+    resolved = 'MATURITY';
   }
-  if (VEGETATIVE_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    return 'VEGETATIVE';
-  }
-  if (REPRODUCTIVE_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    return 'REPRODUCTIVE';
-  }
-  if (MATURITY_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    return 'MATURITY';
-  }
-
-  return 'UNKNOWN';
+  console.log(`[STAGE_SSOT] source=crop_stage_master result=MISS fallback=static_lists crop=${crop ?? 'null'} stage=${stage} category=${resolved}`);
+  return resolved;
 }
 
 /**
