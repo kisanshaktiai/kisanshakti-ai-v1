@@ -4233,8 +4233,11 @@ export class AIAgentOrchestrator {
           observations: observationExtraction,
           understandingResult: understandingResult,
           canonicalContext: canonicalContext, // PHASE-21: Single canonical context (read-only)
-          diagnosisRulesFired: false, // No diagnosis rules have fired yet
-          farmerMessage: farmerMessage // Farmer message for LLM context
+          diagnosisRulesFired: false,
+          farmerMessage: farmerMessage,
+          // Phase J — Hand the frozen ConversationState to the clarification
+          // subsystem so it stops reading legacy observation/session state.
+          conversationState: (this as any).__conversationState
         };
         
         // P0 FIX: Properly await the async function (was causing Promise leak)
