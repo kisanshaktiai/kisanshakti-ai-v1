@@ -22,12 +22,14 @@
 
 import { ObservationKey } from '../decision/observation-ontology.ts';
 import { type CropContextAuthority, formatCropContextFrame } from '../decision/context-authority.ts';
-import { 
-  getClarificationOptions, 
+import {
+  getClarificationOptions,
   loadObservationKeysFromDB,
   getObservationKeyLabels,
-  type ClarificationOption 
+  type ClarificationOption
 } from './canonical-observation-loader.ts';
+import { loadObservationLabels, DEFAULT_CLARIFICATION_CODES } from '../i18n/observation-label-loader.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export const CLARIFICATION_RENDERER_VERSION = '3.0.0'; // Phase-18: DB-driven canonical observation keys
 
