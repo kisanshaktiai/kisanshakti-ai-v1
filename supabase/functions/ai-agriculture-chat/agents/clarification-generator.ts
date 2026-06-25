@@ -278,7 +278,7 @@ export async function generateScopedClarification(
           // Diagnosis-leakage gate (unchanged contract)
           const leakageValidation = validateClarificationOptions(optionLabels);
           if (!leakageValidation.valid) {
-            console.warn(`   ⚠️ [R1] Diagnosis leakage in DB-resolved options → falling back to template renderer:`, leakageValidation.leaked);
+            console.warn(`   ⚠️ [R1] Diagnosis leakage in DB-resolved options → falling back to template renderer:`, leakageValidation.violations);
           } else if (optionLabels.length > 0) {
             console.log(`   ✅ [R1] Intent-resolver options ready (${optionLabels.length}) for lang=${language}`);
 
