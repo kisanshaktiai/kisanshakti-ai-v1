@@ -5452,7 +5452,8 @@ export class AIAgentOrchestrator {
         const isPrescriptionGateOverride = prescriptionGate.allowed && 
           canonicalState.data_confidence === 'LOW';
         
-        // PHASE-18: Pre-load ETL standards + agro zones + baselines from DB (cached after first call)
+        // PHASE-18 / Phase G — G4: Pre-load knowledge caches with PER-CACHE isolation.
+        // Promise.allSettled ensures a single failed cache does NOT mask the others.
         try {
           const [
             { loadETLStandards },
@@ -5465,14 +5466,24 @@ export class AIAgentOrchestrator {
             import('../utils/baseline-guidelines-cache.ts'),
             import('../utils/crop-synonyms-cache.ts')
           ]);
-          await Promise.all([
+          const settled = await Promise.allSettled([
             loadETLStandards(this.supabase),
             loadAgroZones(this.supabase),
             loadBaselineGuidelines(this.supabase),
             loadCropSynonyms(this.supabase)
           ]);
+          const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms'];
+          settled.forEach((s, i) => {
+            if (s.status === 'rejected') {
+              const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+              console.warn(`[KNOWLEDGE_PRELOAD] ${names[i]} FAILED: ${msg}`);
+              try { requestCtx.ledger.lose('KNOWLEDGE_PRELOAD', names[i], null, msg); } catch {/* non-fatal */}
+            } else {
+              console.log(`[KNOWLEDGE_PRELOAD] ${names[i]} OK`);
+            }
+          });
         } catch (e) {
-          console.warn(`⚠️ Knowledge base pre-load failed:`, e instanceof Error ? e.message : 'unknown');
+          console.warn(`⚠️ Knowledge base pre-load orchestration failed:`, e instanceof Error ? e.message : 'unknown');
         }
         
         // ═══════════════════════════════════════════════════════════════════
