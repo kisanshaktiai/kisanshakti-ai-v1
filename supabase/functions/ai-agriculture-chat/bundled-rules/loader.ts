@@ -343,7 +343,10 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         // ═══════════════════════════════════════════════════════════════════════
         required_observation_category: row.required_observation_category || null,
         required_plant_part: row.required_plant_part || null,
-        
+
+        // PHASE C, gate #2 — preserve rule_intent so filterRulesByIntent can read it
+        rule_intent: row.rule_intent ?? null,
+
         is_active: row.is_active
       };
     });
