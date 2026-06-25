@@ -144,11 +144,11 @@ class ChatSyncService {
         
         // Notify caller of new messages
         if (onNewMessages) {
-          onNewMessages(newMessages as AIChatMessageData[]);
+          onNewMessages(newMessages as unknown as AIChatMessageData[]);
         }
         
         return { 
-          newMessages: newMessages as AIChatMessageData[], 
+          newMessages: newMessages as unknown as AIChatMessageData[], 
           syncedCount: newMessages.length, 
           errors 
         };
