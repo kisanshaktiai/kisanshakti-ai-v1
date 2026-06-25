@@ -20,6 +20,7 @@
 
 import {
   loadBaselineGuidelines,
+  getBaselineForCrop,
   type BaselineGuideline,
 } from '../utils/baseline-guidelines-cache.ts';
 import type { EvidenceLedger } from './evidence-ledger.ts';
