@@ -1975,6 +1975,37 @@ export class AIAgentOrchestrator {
           
           // CRITICAL FIX: Check for matched_responses even when prescriptions are empty
           const hasMatchedResponses = ruleResult.matched_responses && ruleResult.matched_responses.length > 0;
+
+          // ═══════════════════════════════════════════════════════════════════════════
+          // PHASE H — Emit canonical ConversationState on OPTION_SELECTED short-circuit
+          // so the [CONVERSATION_STATE] + [BRAIN_TRACE] invariants are observable on
+          // every execution path (not only the main pipeline at line ~3804).
+          // ═══════════════════════════════════════════════════════════════════════════
+          try {
+            const optionStateInferred = (ruleResult.diagnoses || [])
+              .map((d: any) => d?.diagnosis_code || d?.code)
+              .filter(Boolean);
+            const optionConvState = buildConversationState({
+              trace_id: traceId,
+              intent: 'CLARIFICATION_REPLY',
+              intent_confidence: 1,
+              advisory_intent: false,
+              confirmed: allObservations,
+              inferred: optionStateInferred,
+              hypotheses: (ruleResult.diagnoses || []).map((d: any) => d?.rule_id).filter(Boolean),
+              stage: growthStage,
+              stage_source: stageSource,
+              crop: cropName,
+              das: landContextForOptionSelection?.days_since_sowing ?? null,
+              semantic_status: 'SKIPPED',
+              authority_status: authorityDecision.authority_status,
+            });
+            console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${optionConvState.mode} clarify=${optionConvState.clarification_required}(${optionConvState.clarification_reason}) coverage=${optionConvState.coverage.toFixed(2)} confirmed=${optionConvState.confirmed.length} unknown=${optionConvState.unknown.length} (path=OPTION_SELECTED)`);
+            emitBrainTrace(optionConvState, { total_ms: Date.now() - startTime });
+          } catch (e) {
+            console.warn(`   ⚠️ [CONVERSATION_STATE] OPTION_SELECTED emit failed: ${e instanceof Error ? e.message : e}`);
+          }
+
           
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: DECISION GATE ALIGNMENT

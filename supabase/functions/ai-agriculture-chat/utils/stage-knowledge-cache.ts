@@ -14,18 +14,18 @@
 
 export interface StageMasterRow {
   crop_code: string;
-  stage_code: string;
-  stage_category?: string | null;
-  das_start?: number | null;
-  das_end?: number | null;
-  display_name?: string | null;
+  growth_stage: string;
+  das_min?: number | null;
+  das_max?: number | null;
+  stage_description?: string | null;
 }
 
 export interface StageKnowledgeRow {
   crop_code: string;
-  stage_code: string;
-  action_codes?: string[] | null;
-  risk_codes?: string[] | null;
+  growth_stage: string;
+  critical_actions?: string[] | null;
+  pest_watch?: string[] | null;
+  disease_watch?: string[] | null;
   [k: string]: unknown;
 }
 
@@ -54,9 +54,13 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
   try {
     const { data, error } = await supabase
       .from('crop_stage_master')
-      .select('crop_code, stage_code, stage_category, das_start, das_end, display_name')
+      .select('crop_code, growth_stage, stage_description, das_min, das_max')
       .limit(5000);
-    if (!error && Array.isArray(data)) master.push(...data);
+    if (error) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_master select error:', error.message);
+    } else if (Array.isArray(data)) {
+      master.push(...data);
+    }
   } catch (e) {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_master load failed', e);
   }
@@ -66,22 +70,27 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
       .from('crop_stage_knowledge')
       .select('*')
       .limit(5000);
-    if (!error && Array.isArray(data)) knowledge.push(...data);
+    if (error) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_knowledge select error:', error.message);
+    } else if (Array.isArray(data)) {
+      knowledge.push(...data);
+    }
   } catch (e) {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_knowledge load failed', e);
   }
 
   const byCropStage = new Map<string, StageMasterRow>();
-  for (const r of master) byCropStage.set(k(r.crop_code, r.stage_code), r);
+  for (const r of master) byCropStage.set(k(r.crop_code, r.growth_stage), r);
 
   const knowledgeByCropStage = new Map<string, StageKnowledgeRow>();
-  for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.stage_code), r);
+  for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.growth_stage), r);
 
   cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage };
   console.log(
     `[STAGE_KNOWLEDGE] loaded master=${master.length} knowledge=${knowledge.length}`
   );
 }
+
 
 export function getStageRow(crop: string, stage: string): StageMasterRow | null {
   if (!cache) return null;
@@ -93,13 +102,15 @@ export function getStageKnowledge(crop: string, stage: string): StageKnowledgeRo
   return cache.knowledgeByCropStage.get(k(crop, stage)) ?? null;
 }
 
-/** DB-first stage category lookup. Returns null when DB has no row. */
+/** DB-first stage category lookup. Returns null when DB has no row.
+ *  Note: crop_stage_master has no `stage_category` column — returns the
+ *  growth_stage itself uppercased, which is what downstream callers compare. */
 export function getStageCategoryFromDB(
   crop: string,
   stage: string
 ): string | null {
   const row = getStageRow(crop, stage);
-  return row?.stage_category ? row.stage_category.toUpperCase() : null;
+  return row?.growth_stage ? row.growth_stage.toUpperCase() : null;
 }
 
 /** DB-first DAS → stage lookup. */
@@ -108,12 +119,13 @@ export function getStageByDAS(crop: string, das: number): StageMasterRow | null 
   const cropKey = (crop || '').toLowerCase();
   for (const r of cache.master) {
     if (r.crop_code?.toLowerCase() !== cropKey) continue;
-    if ((r.das_start ?? -Infinity) <= das && (r.das_end ?? Infinity) >= das) {
+    if ((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das) {
       return r;
     }
   }
   return null;
 }
+
 
 export function isStageKnowledgeLoaded(): boolean {
   return !!cache && cache.master.length > 0;

@@ -56,15 +56,19 @@ async function loadAllowlist(supabase: any): Promise<Map<string, Set<string>>> {
   try {
     const { data, error } = await supabase
       .from('intent_semantic_class_allowlist')
-      .select('intent, semantic_class')
+      .select('intent_code, allowed_classes')
       .limit(5000);
     if (error) throw error;
     for (const row of data ?? []) {
-      const intent = String(row.intent || '').toLowerCase();
-      const sc = String(row.semantic_class || '').toLowerCase();
-      if (!intent || !sc) continue;
+      const intent = String(row.intent_code || '').toLowerCase();
+      if (!intent) continue;
+      const classes = Array.isArray(row.allowed_classes) ? row.allowed_classes : [];
       if (!byIntent.has(intent)) byIntent.set(intent, new Set());
-      byIntent.get(intent)!.add(sc);
+      const set = byIntent.get(intent)!;
+      for (const c of classes) {
+        const sc = String(c || '').toLowerCase();
+        if (sc) set.add(sc);
+      }
     }
   } catch (e) {
     console.error('[SEMANTIC_GATE] allowlist load failed', e);
@@ -72,6 +76,7 @@ async function loadAllowlist(supabase: any): Promise<Map<string, Set<string>>> {
   allowlistCache = { loadedAt: now, byIntent };
   return byIntent;
 }
+
 
 export async function evaluateSemanticGate(
   input: SemanticGateInput
