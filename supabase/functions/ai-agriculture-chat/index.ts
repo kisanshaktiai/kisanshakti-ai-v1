@@ -3581,7 +3581,17 @@ function transformOrchestratorResponseWithContent(
     try {
       const decisionOutput = response.decision_output as any;
       const primaryDecision = decisionOutput?.primary_decision;
-      if (primaryDecision?.rule_id) {
+
+      // PHASE D: Authority gate BEFORE deterministic builder.
+      // If upstream Authority blocked treatments (SAFETY/LAND), do NOT render a
+      // prescription card — fall through to text-only narration.
+      const authDecision = decisionOutput?.authority_decision || primaryDecision?.authority_decision;
+      const treatmentsAllowed = authDecision ? authDecision.treatments_allowed !== false : true;
+      if (authDecision && !treatmentsAllowed) {
+        console.log(`🛑 [AUTHORITY_GATE] treatments_allowed=false (authority=${authDecision.authority}) — skipping structured advisory build`);
+      }
+
+      if (primaryDecision?.rule_id && treatmentsAllowed) {
         const appDetails = primaryDecision.application_details || {};
         const richData = extractRichRuleData(primaryDecision, appDetails);
         
@@ -3589,6 +3599,7 @@ function transformOrchestratorResponseWithContent(
         console.log(`🔍 [ADVISORY_BUILD_TRACE] rule_id=${richData.rule_id} | active_ingredient=${richData.active_ingredient || 'NONE'} | dosage_per_acre=${richData.dosage_per_acre || 'NONE'} | appDetails_rule=${appDetails.rule_id || 'NONE'}`);
         
         if (hasAdequateRuleContent(richData)) {
+
           const landAreaAcres = response.dataAudit?.land?.area_acres || undefined;
           const cropCtx: CropContext | undefined = response.dataAudit?.land?.days_since_sowing ? {
             days_since_sowing: response.dataAudit.land.days_since_sowing,

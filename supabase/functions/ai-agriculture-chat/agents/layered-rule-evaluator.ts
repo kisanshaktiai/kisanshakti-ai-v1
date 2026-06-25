@@ -966,13 +966,17 @@ export function evaluateRulesLayered(
       // Only counts REQUIRED conditions in denominator
       // ═══════════════════════════════════════════════════════════════════
       const ledger = getConditionLedger(r.rule_id);
+      // PHASE D: generic-rule penalty (set by bundled-rules/loader.ts when a rule
+      // lacks rule_intent or required_observation_category). Demote so specific
+      // intent-bound rules win when both pass the same conditions.
+      const genericPenalty = ((r as any)._genericPenalty === true) ? 0.85 : 1.0;
       if (ledger && ledger.length > 0) {
         const requiredEntries = ledger.filter(e => e.required);
         const passedRequired = requiredEntries.filter(e => e.status === ConditionStatus.PASSED).length;
         const totalRequired = requiredEntries.length;
         const normalizedScore = totalRequired > 0 ? Math.min(1.0, passedRequired / totalRequired) : (r.confidence_score ?? 0.5);
         const contentBonus = ((r.action_text ? 0.02 : 0) + (r.reason_text ? 0.015 : 0) + (r.knowledge_text ? 0.015 : 0));
-        const finalScore = Math.min(1.0, normalizedScore + contentBonus);
+        const finalScore = Math.min(1.0, (normalizedScore + contentBonus) * genericPenalty);
         return { response: r, evidenceScore: finalScore, matchedConditions: passedRequired, totalConditions: totalRequired };
       }
       
@@ -996,9 +1000,10 @@ export function evaluateRulesLayered(
       }
       const normalizedScore = totalConditions > 0 ? Math.min(1.0, matchedConditions / totalConditions) : (r.confidence_score ?? 0.5);
       const contentBonus = ((r.action_text ? 0.02 : 0) + (r.reason_text ? 0.015 : 0) + (r.knowledge_text ? 0.015 : 0));
-      const finalScore = Math.min(1.0, normalizedScore + contentBonus);
+      const finalScore = Math.min(1.0, (normalizedScore + contentBonus) * genericPenalty);
       return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // AUDIT FIX: Sort by data_authority_rank DESC first, then evidence score

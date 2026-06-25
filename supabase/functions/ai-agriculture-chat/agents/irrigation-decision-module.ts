@@ -9,8 +9,14 @@
  * - Weather forecast
  * - ICAR irrigation schedules by crop
  * 
- * VERSION: 1.0.0 - Production implementation
+ * VERSION: 1.1.0 - Phase E: DB baselines (crop_baseline_guidelines_v2) override
+ *                  hardcoded CROP_IRRIGATION_PROFILES when available.
  */
+
+// PHASE E: DB-driven baselines from crop_baseline_guidelines_v2 (synchronous,
+// reads from preloaded baseline-guidelines-cache).
+import { getBaselineForCrop } from '../utils/baseline-guidelines-cache.ts';
+
 
 export interface IrrigationContext {
   crop_code: string;
@@ -164,9 +170,32 @@ export function calculateIrrigationRecommendation(context: IrrigationContext): I
     Math.floor(context.days_after_sowing / 30),
     profile.stages.length - 1
   )];
-  
+
+  // PHASE E: Override hardcoded ICAR profile with DB baseline when available.
+  // crop_baseline_guidelines_v2 is the SSOT; the in-file profiles act only as
+  // a last-resort fallback when the DB has no row for this crop+stage.
+  try {
+    const baselineRows = getBaselineForCrop(context.crop_code, currentStage.stage);
+    const baseline = baselineRows[0];
+    if (baseline) {
+      const dbWaterPerDay = (baseline.water_requirement_mm != null && baseline.irrigation_interval_days)
+        ? baseline.water_requirement_mm / Math.max(1, baseline.irrigation_interval_days)
+        : null;
+      if (dbWaterPerDay != null && Number.isFinite(dbWaterPerDay)) {
+        currentStage.water_requirement_mm_per_day = dbWaterPerDay;
+      }
+      if (baseline.irrigation_interval_days != null) {
+        currentStage.irrigation_interval_days = baseline.irrigation_interval_days;
+      }
+      console.log(`[IRRIGATION_BASELINE] DB override applied: crop=${context.crop_code} stage=${currentStage.stage} mm/day=${currentStage.water_requirement_mm_per_day} interval=${currentStage.irrigation_interval_days}d`);
+    }
+  } catch (e) {
+    console.warn('[IRRIGATION_BASELINE] DB override skipped:', e instanceof Error ? e.message : e);
+  }
+
   const isCriticalStage = profile.drought_sensitive_stages.includes(currentStage.stage);
   const warnings: string[] = [];
+
   
   // Calculate days since last irrigation
   let daysSinceLastIrrigation = 0;
