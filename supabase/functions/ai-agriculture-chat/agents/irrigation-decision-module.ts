@@ -9,8 +9,14 @@
  * - Weather forecast
  * - ICAR irrigation schedules by crop
  * 
- * VERSION: 1.0.0 - Production implementation
+ * VERSION: 1.1.0 - Phase E: DB baselines (crop_baseline_guidelines_v2) override
+ *                  hardcoded CROP_IRRIGATION_PROFILES when available.
  */
+
+// PHASE E: DB-driven baselines from crop_baseline_guidelines_v2 (synchronous,
+// reads from preloaded baseline-guidelines-cache).
+import { getBaselineForCrop } from '../utils/baseline-guidelines-cache.ts';
+
 
 export interface IrrigationContext {
   crop_code: string;
