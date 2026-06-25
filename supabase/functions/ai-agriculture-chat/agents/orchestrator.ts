@@ -5494,39 +5494,9 @@ export class AIAgentOrchestrator {
         const isPrescriptionGateOverride = prescriptionGate.allowed && 
           canonicalState.data_confidence === 'LOW';
         
-        // PHASE-18 / Phase G — G4: Pre-load knowledge caches with PER-CACHE isolation.
-        // Promise.allSettled ensures a single failed cache does NOT mask the others.
-        try {
-          const [
-            { loadETLStandards },
-            { loadAgroZones },
-            { loadBaselineGuidelines },
-            { loadCropSynonyms }
-          ] = await Promise.all([
-            import('../decision/etl-gate.ts'),
-            import('../utils/agro-zone-cache.ts'),
-            import('../utils/baseline-guidelines-cache.ts'),
-            import('../utils/crop-synonyms-cache.ts')
-          ]);
-          const settled = await Promise.allSettled([
-            loadETLStandards(this.supabase),
-            loadAgroZones(this.supabase),
-            loadBaselineGuidelines(this.supabase),
-            loadCropSynonyms(this.supabase)
-          ]);
-          const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms'];
-          settled.forEach((s, i) => {
-            if (s.status === 'rejected') {
-              const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
-              console.warn(`[KNOWLEDGE_PRELOAD] ${names[i]} FAILED: ${msg}`);
-              try { requestCtx.ledger.lose('KNOWLEDGE_PRELOAD', names[i], null, msg); } catch {/* non-fatal */}
-            } else {
-              console.log(`[KNOWLEDGE_PRELOAD] ${names[i]} OK`);
-            }
-          });
-        } catch (e) {
-          console.warn(`⚠️ Knowledge base pre-load orchestration failed:`, e instanceof Error ? e.message : 'unknown');
-        }
+        // Phase H — Fix 7: knowledge caches are now pre-loaded at request init.
+        // This block is intentionally a no-op (single-source preload upstream).
+        console.log('[KNOWLEDGE_PRELOAD] using request-init caches (Phase H Fix 7)');
         
         // ═══════════════════════════════════════════════════════════════════
         // PHASE C, GATE #2 — INTENT FILTER before scoring
