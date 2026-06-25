@@ -85,13 +85,21 @@ export async function loadObservationLabels(
   }
   
   try {
+    // CANONICAL-CONTEXT FIX: observation_translations.observation_code is stored
+    // LOWERCASE in the DB (verified: 5145/5145 rows lowercase, 0 uppercase).
+    // Runtime carries codes in UPPERCASE, so an `.in(upperCodes)` filter returned
+    // zero rows and every label fell back to the raw "TUNGRO YELLOW STUNT" form
+    // — the single source of English leakage to mr/hi users. Query both cases
+    // and match case-insensitively so the loader is canonical-case-agnostic.
     const upperCodes = observationCodes.map(c => c.toUpperCase());
+    const lowerCodes = observationCodes.map(c => c.toLowerCase());
+    const queryCodes = Array.from(new Set([...upperCodes, ...lowerCodes]));
     const normalizedLanguage = (language || 'en').toLowerCase();
 
     const { data: translations, error } = await supabaseClient
       .from('observation_translations')
       .select('observation_code, display_text, description_text')
-      .in('observation_code', upperCodes)
+      .in('observation_code', queryCodes)
       .eq('language_code', normalizedLanguage);
 
     if (error) {
@@ -104,7 +112,7 @@ export async function loadObservationLabels(
     for (const code of observationCodes) {
       const upperCode = code.toUpperCase();
       const translation = translations?.find(
-        (t: any) => t.observation_code?.toUpperCase() === upperCode
+        (t: any) => (t.observation_code || '').toUpperCase() === upperCode
       );
       const icon = OBSERVATION_ICONS[upperCode] || '❓';
 
@@ -130,9 +138,10 @@ export async function loadObservationLabels(
           description_text: '',
           icon
         });
-        console.warn(`   ⚠️ No translation found for ${upperCode} in ${normalizedLanguage} - using code fallback`);
+        console.warn(`   ⚠️ [CANONICAL_CONTEXT_TRACE] No ${normalizedLanguage} translation for ${upperCode} — using code fallback (check observation_translations seeding)`);
       }
     }
+
 
     console.log(`   ✅ Loaded ${labelMap.size} labels from database`);
 
