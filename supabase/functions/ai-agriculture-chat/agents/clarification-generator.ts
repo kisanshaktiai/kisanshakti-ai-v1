@@ -50,12 +50,11 @@ import { ObservationKey } from '../decision/observation-ontology.ts';
 // PHASE-8.1: Import CropContextAuthority
 import type { CropContextAuthority } from '../decision/context-authority.ts';
 
-// PHASE-15: Import Dynamic Clarification Generator (LEGACY — kept only for type re-exports)
-import {
-  buildAgronomicContext,
-  type AgronomicContext,
-  type DynamicClarificationOutput
-} from './dynamic-clarification-generator.ts';
+// PHASE-15: Dynamic clarification generator removed (R1 FIX). The deprecated
+// `generateDynamicClarification` stub returned empty data and forced the
+// pipeline into the English template fallback. Intent-driven clarification
+// now runs through `resolveIntentToObservations` against
+// `intent_observation_mapping`. The legacy module is no longer imported.
 
 // R1 FIX: Wire intent_observation_mapping through the canonical intent resolver.
 import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
