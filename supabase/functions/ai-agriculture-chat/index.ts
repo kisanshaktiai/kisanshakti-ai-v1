@@ -77,6 +77,10 @@ import {
 } from './decision/context-authority.ts';
 
 
+// PHASE F: Cold-start self-check — asserts gates and SSOT are wired
+import { runPipelineSelfCheck } from './decision/pipeline-self-check.ts';
+
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token, x-client-domain, if-none-match, origin, cache-control, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -218,6 +222,20 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // PHASE F: Cold-start self-check (memoized — runs once per cold start).
+  // Failures are logged loudly but do NOT 5xx; orchestrator degrades to
+  // safe-mode clarification when degradeToSafeMode is set.
+  try {
+    const sb = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    await runPipelineSelfCheck({ supabase: sb });
+  } catch (e) {
+    console.error('[PIPELINE_SELF_CHECK] threw', e instanceof Error ? e.message : e);
+  }
+
 
   const startTime = Date.now();
   const traceId = generateTraceId();
