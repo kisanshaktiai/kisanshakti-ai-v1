@@ -5547,6 +5547,19 @@ export class AIAgentOrchestrator {
         console.log(`      Diagnoses: ${safeDiagnoses.map(d => `${d?.cause || 'unknown'}(${((d?.confidence || 0) * 100).toFixed(0)}%)`).join(', ') || 'none'}`);
         console.log(`      Final Diagnosis: ${layeredRuleResult.final_diagnosis?.cause || 'none'}`);
         console.log(`      Prescription Allowed: ${layeredRuleResult.prescription_allowed}`);
+
+        // Phase G — G7: one-line end-of-rule-stage BRAIN_TRACE
+        try {
+          const winner = layeredRuleResult.primary_decision;
+          console.log(
+            `[BRAIN_TRACE][PIPELINE_RULE_STAGE] intent=${activeIntentForRules} ` +
+            `crop=${canonicalState.crop_type ?? '?'} stage=${canonicalState.crop_stage ?? '?'} ` +
+            `candidates_in=${rulesToEvaluate.length} after_intent=${rulesAfterIntent.length} ` +
+            `evaluated=${layeredRuleResult.rules_evaluated || 0} matched=${layeredRuleResult.rules_matched || 0} ` +
+            `winner=${winner?.rule_id ?? 'none'} winner_score=${(winner?.weighted_confidence ?? winner?.confidence_score ?? 0).toFixed?.(3) ?? 'n/a'} ` +
+            `winner_action_text=${winner?.action_text ? 'present' : 'EMPTY'}`
+          );
+        } catch (_) { /* trace must never throw */ }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures
