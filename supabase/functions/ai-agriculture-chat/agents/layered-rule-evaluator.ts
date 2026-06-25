@@ -1687,6 +1687,15 @@ function mapBundledCategory(category: string): RuleCategory {
     'resistance_mgmt': RuleCategory.PRESCRIPTION,   // Resistance management protocols
     'weed_management': RuleCategory.PRESCRIPTION,   // Weed treatment rules
     'physiology': RuleCategory.DIAGNOSIS,            // Physiological disorder identification
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase H — Fix 11: Category canonicalization. Explicit mapping for the
+    // categories that were silently coerced to DIAGNOSIS (one warning per request).
+    // ═══════════════════════════════════════════════════════════════════════
+    'crop_rotation':         RuleCategory.PRESCRIPTION,
+    'proactive_pest':        RuleCategory.WARNING,
+    'proactive_monitoring':  RuleCategory.OBSERVATION,
+    'management':            RuleCategory.PRESCRIPTION,
   };
   
   const mapped = map[category?.toLowerCase()];
