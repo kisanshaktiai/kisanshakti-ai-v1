@@ -634,8 +634,23 @@ export function buildDeterministicResponse(
   };
   
   // Section 2: Action
+  // Phase G — G2: action-text coalescer. If the primary rule was approved but
+  // `action_text` is empty, fall back to reason_text/knowledge_text/cause so we
+  // never emit an empty action object for an approved decision.
+  const coalescedActionText =
+    (ruleData.action_text && ruleData.action_text.trim()) ||
+    (ruleData.reason_text && ruleData.reason_text.trim()) ||
+    (ruleData.knowledge_text && ruleData.knowledge_text.trim()) ||
+    (ruleData.cause && String(ruleData.cause).trim()) ||
+    '';
+  if (!ruleData.action_text && coalescedActionText) {
+    console.warn(`[BRAIN_TRACE][BUILDER][ACTION_COALESCED] rule=${ruleData.rule_id} source=${ruleData.reason_text ? 'reason_text' : (ruleData.knowledge_text ? 'knowledge_text' : 'cause')}`);
+  }
+  if (ruleData.rule_id && !coalescedActionText) {
+    console.error(`[BRAIN_TRACE][BUILDER][ACTION_LOSS] rule=${ruleData.rule_id} approved but no action/reason/knowledge text — emitting empty action`);
+  }
   const action = {
-    action_text: ruleData.action_text || '',
+    action_text: coalescedActionText,
     action_type: ruleData.action_type,
     treatment_type: ruleData.treatment_type || undefined,
     is_treatment: isTreatment
