@@ -1102,6 +1102,14 @@ export class AIAgentOrchestrator {
     const startTime = Date.now();
     const agentsUsed: string[] = [];
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
+    // Every stage below contributes to this ctx instead of resetting confidence.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const requestCtx: RequestContext = createRequestContext(traceId);
+    // Pre-load stage knowledge cache (idempotent, 10min TTL).
+    try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
