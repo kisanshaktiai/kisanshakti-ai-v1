@@ -159,7 +159,7 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 export async function generateScopedClarification(
   input: ScopedClarificationInput
 ): Promise<ClarificationOutput> {
-  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage, conversationState } = input;
+  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage, conversationState, intent_code } = input;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Phase J — ConversationState is the single runtime authority.
