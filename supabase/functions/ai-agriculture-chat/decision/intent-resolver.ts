@@ -118,46 +118,104 @@ export async function getStageFromDASDatabase(
 interface ObservationMapping {
   observation_code: string;
   confidence_rank: number;
+  growth_stage?: string;
+  crop_code?: string;
+  assertion_strength?: string;
 }
 
 /**
- * Get valid observation codes for an intent + crop + DAS from database
- * Returns ONLY codes and confidence ranks - NO translations
+ * Stage synonyms — pass ALL biologically equivalent stages to the DB so we
+ * don't drop curated rows (e.g. SEEDLING also matches nursery + germination).
+ */
+const STAGE_SYNONYMS: Record<string, string[]> = {
+  seedling:     ['seedling', 'nursery', 'germination', 'emergence'],
+  nursery:      ['nursery', 'seedling', 'germination'],
+  germination:  ['germination', 'nursery', 'seedling', 'emergence'],
+  emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
+  vegetative:   ['vegetative', 'tillering'],
+  tillering:    ['tillering', 'vegetative'],
+  flowering:    ['flowering', 'reproductive', 'grand_growth'],
+  reproductive: ['reproductive', 'flowering', 'grand_growth'],
+  grand_growth: ['grand_growth', 'flowering', 'reproductive'],
+  maturity:     ['maturity', 'ripening', 'maturation'],
+  ripening:     ['ripening', 'maturity', 'maturation'],
+  maturation:   ['maturation', 'maturity', 'ripening'],
+  harvest:      ['harvest', 'harvesting'],
+};
+
+export function expandStageSynonyms(stage?: string | null): string[] {
+  if (!stage) return ['all'];
+  const key = String(stage).toLowerCase().trim().replace(/[\s-]/g, '_');
+  const syn = STAGE_SYNONYMS[key] || [key];
+  return Array.from(new Set([...syn, 'all']));
+}
+
+/**
+ * Get valid observation codes for an intent + crop + stage + DAS from database.
+ * Returns ONLY codes and confidence ranks - NO translations.
+ *
+ * R4 FIX: Filters by crop_code, growth_stage (with synonyms), and DAS range.
+ * These columns DO exist on intent_observation_mapping (verified in DB).
  */
 export async function getValidObservationCodes(
   intentCode: string,
   cropCode: string,
-  das: number
+  das: number,
+  growthStage?: string | null
 ): Promise<ObservationMapping[]> {
   const supabase = getSupabaseClient();
-  
-  console.log(`📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropCode}, DAS=${das}`);
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HOTFIX: Query by intent_code + is_active ONLY
-  // The crop_code, das_min, das_max columns do not exist yet in this table.
-  // Once migration adds them, re-enable crop/DAS filtering.
-  // ═══════════════════════════════════════════════════════════════════════════
+
+  // intent_observation_mapping.intent_code is stored UPPERCASE in DB.
+  const intentUpper = (intentCode || '').trim().toUpperCase();
+  const cropLower = (cropCode || '').toLowerCase();
+  const cropVariants = Array.from(new Set([cropLower, 'all'].filter(Boolean)));
+  const stageVariants = expandStageSynonyms(growthStage);
+
+  console.log(`📊 [IntentResolver] Querying: intent=${intentUpper}, crop=${cropVariants.join('|')}, stages=${stageVariants.join('|')}, DAS=${das}`);
+
   const { data: mappings, error: mapError } = await supabase
     .from('intent_observation_mapping')
-    .select('observation_code, confidence_rank')
-    .eq('intent_code', intentCode)
+    .select('observation_code, confidence_rank, growth_stage, crop_code, das_min, das_max, assertion_strength')
+    .eq('intent_code', intentUpper)
     .eq('is_active', true)
+    .in('crop_code', cropVariants)
+    .in('growth_stage', stageVariants)
     .order('confidence_rank', { ascending: true });
-  
+
   if (mapError) {
     console.error(`[IntentResolver] Mapping query error: ${mapError.message}`);
     return [];
   }
-  
+
   if (!mappings || mappings.length === 0) {
-    console.log(`[IntentResolver] No mappings found for intent=${intentCode}`);
+    console.log(`[IntentResolver] No mappings found for intent=${intentCode}, crop=${cropLower}, stage=${growthStage}`);
     return [];
   }
-  
-  console.log(`✅ [IntentResolver] Found ${mappings.length} observation codes for intent=${intentCode}`);
-  
-  return mappings;
+
+  // DAS gate (done in-memory to avoid raw SQL)
+  const dasFiltered = (mappings as any[]).filter((m: any) => {
+    if (typeof das !== 'number' || !isFinite(das)) return true;
+    const lo = typeof m.das_min === 'number' ? m.das_min : 0;
+    const hi = typeof m.das_max === 'number' ? m.das_max : 9999;
+    return das >= lo && das <= hi;
+  });
+
+  // Dedupe by observation_code, keep best (lowest) confidence_rank
+  const byCode = new Map<string, ObservationMapping>();
+  for (const m of dasFiltered) {
+    const prev = byCode.get(m.observation_code);
+    if (!prev || (m.confidence_rank ?? 99) < (prev.confidence_rank ?? 99)) {
+      byCode.set(m.observation_code, m as ObservationMapping);
+    }
+  }
+
+  const result = Array.from(byCode.values()).sort(
+    (a, b) => (a.confidence_rank ?? 99) - (b.confidence_rank ?? 99)
+  );
+
+  console.log(`✅ [IntentResolver] Found ${result.length} observation codes (raw=${mappings.length}, das_filtered=${dasFiltered.length}) for intent=${intentCode}`);
+
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -185,11 +243,12 @@ export async function resolveIntentToObservations(
     
     console.log(`   Stage: ${growthStage}`);
     
-    // 2. Get valid observation codes for this intent + crop + DAS
+    // 2. Get valid observation codes for this intent + crop + DAS + stage
     const mappings = await getValidObservationCodes(
       intent_code,
       crop_code,
-      days_since_sowing
+      days_since_sowing,
+      growthStage
     );
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -254,34 +313,39 @@ export async function resolveIntentToObservations(
 export async function isObservationValidForCropStage(
   observationCode: string,
   cropCode: string,
-  das: number
+  das: number,
+  growthStage?: string | null
 ): Promise<{ valid: boolean; reason_code: string }> {
   const supabase = getSupabaseClient();
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HOTFIX: Query by observation_code + is_active ONLY
-  // crop_code/das_min/das_max columns don't exist yet. Re-enable after migration.
-  // ═══════════════════════════════════════════════════════════════════════════
+
+  // R4 FIX: filter by crop_code + growth_stage variants + DAS range.
+  const cropLower = (cropCode || '').toLowerCase();
+  const cropVariants = Array.from(new Set([cropLower, 'all'].filter(Boolean)));
+  const stageVariants = expandStageSynonyms(growthStage);
+
   const { data, error } = await supabase
     .from('intent_observation_mapping')
-    .select('id')
+    .select('id, das_min, das_max')
     .eq('observation_code', observationCode)
     .eq('is_active', true)
-    .limit(1);
-  
+    .in('crop_code', cropVariants)
+    .in('growth_stage', stageVariants);
+
   if (error) {
     console.error(`[IntentResolver] Validation DB error: ${error.message}`);
     return { valid: false, reason_code: 'VALIDATION_UNAVAILABLE' };
   }
-  
-  if (data && data.length > 0) {
-    return { valid: true, reason_code: 'VALID_FOR_OBSERVATION' };
-  }
-  
-  return {
-    valid: false,
-    reason_code: 'OBSERVATION_NOT_MAPPED'
-  };
+
+  const dasOk = (data || []).some((r: any) => {
+    if (typeof das !== 'number' || !isFinite(das)) return true;
+    const lo = typeof r.das_min === 'number' ? r.das_min : 0;
+    const hi = typeof r.das_max === 'number' ? r.das_max : 9999;
+    return das >= lo && das <= hi;
+  });
+
+  if (dasOk) return { valid: true, reason_code: 'VALID_FOR_CROP_STAGE_DAS' };
+
+  return { valid: false, reason_code: 'OBSERVATION_NOT_MAPPED_FOR_CONTEXT' };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
