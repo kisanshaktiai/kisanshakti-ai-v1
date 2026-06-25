@@ -3734,17 +3734,30 @@ export class AIAgentOrchestrator {
       
       // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
-      
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Phase H — Fix 1: Direct-mode VETO on symptom signal.
+      // Re-evaluate directModeBypass now that observations are extracted.
+      // A symptom report mis-classified as GENERAL_CROP_INFO must NOT enter
+      // GENERAL_INFO advisory routing. Content beats label.
+      // ═══════════════════════════════════════════════════════════════════════════
+      {
+        const informativeNow = [...allObservationsForPreAuth].filter((c: string) => isInformativeObs(c));
+        if (directModeBypass && informativeNow.length > 0) {
+          console.log(`   🛑 [DIRECT_MODE_VETO] Symptom signal detected (${informativeNow.length} informative obs) — overriding directModeBypass for intent=${intentCode}`);
+          directModeBypass = false;
+          bypassClarification = false;
+        }
+      }
+
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
-      // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage
+      // Phase H — Fix 3: confirmed-only, *_UNKNOWN placeholders excluded.
       // ═══════════════════════════════════════════════════════════════════════════
       const authorityBasedCodes = authoredObservations.getConfirmedAndExtractedCodes();
-      // SPRINT 3 FIX: Adaptive denominator — see comments at lines ~2647 / 2738.
-      const evidenceCoverage = authorityBasedCodes.length > 0 
-        ? Math.min(1.0, authorityBasedCodes.length / Math.max(4, Math.min(8, authorityBasedCodes.length))) 
-        : 0;
-      console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED only): ${(evidenceCoverage * 100).toFixed(0)}% (${authorityBasedCodes.length} codes)`);
+      const informativeAuthorityCodes = authorityBasedCodes.filter((c: string) => isInformativeObs(c));
+      const evidenceCoverage = computeCoverage(informativeAuthorityCodes);
+      console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED, informative-only): ${(evidenceCoverage * 100).toFixed(0)}% (${informativeAuthorityCodes.length}/${authorityBasedCodes.length} informative)`);
       
       // REFINEMENT 3: Functional coverage gate - blocks diagnosis if evidence too low
       let shouldBlockDiagnosis = false;
