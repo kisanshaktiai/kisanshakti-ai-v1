@@ -113,8 +113,12 @@ async function loadValidObservationCodes(supabase: any): Promise<Set<string>> {
         return observationCache.entry?.data || new Set<string>();
       }
       
-      const codes = new Set<string>((data || []).map((r: any) => r.observation_code));
-      console.log(`[LLM_VALIDATOR] Loaded ${codes.size} valid observation codes`);
+      // CANONICAL-CONTEXT FIX: observation_master.observation_code is stored
+      // lowercase in the DB but runtime canonical case is UPPERCASE. Normalize
+      // on load so the validity check stops false-rejecting every observation.
+      const codes = new Set<string>((data || []).map((r: any) => String(r.observation_code || '').toUpperCase()).filter(Boolean));
+      console.log(`[LLM_VALIDATOR][CANONICAL_CONTEXT_TRACE] Loaded ${codes.size} valid observation codes (normalized to UPPERCASE)`);
+
       observationCache.entry = { data: codes, loadedAt: Date.now() };
       return codes;
     } catch (e) {
