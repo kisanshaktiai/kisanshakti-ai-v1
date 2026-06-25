@@ -14,18 +14,18 @@
 
 export interface StageMasterRow {
   crop_code: string;
-  stage_code: string;
-  stage_category?: string | null;
-  das_start?: number | null;
-  das_end?: number | null;
-  display_name?: string | null;
+  growth_stage: string;
+  das_min?: number | null;
+  das_max?: number | null;
+  stage_description?: string | null;
 }
 
 export interface StageKnowledgeRow {
   crop_code: string;
-  stage_code: string;
-  action_codes?: string[] | null;
-  risk_codes?: string[] | null;
+  growth_stage: string;
+  critical_actions?: string[] | null;
+  pest_watch?: string[] | null;
+  disease_watch?: string[] | null;
   [k: string]: unknown;
 }
 
@@ -54,9 +54,13 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
   try {
     const { data, error } = await supabase
       .from('crop_stage_master')
-      .select('crop_code, stage_code, stage_category, das_start, das_end, display_name')
+      .select('crop_code, growth_stage, stage_description, das_min, das_max')
       .limit(5000);
-    if (!error && Array.isArray(data)) master.push(...data);
+    if (error) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_master select error:', error.message);
+    } else if (Array.isArray(data)) {
+      master.push(...data);
+    }
   } catch (e) {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_master load failed', e);
   }
@@ -66,22 +70,27 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
       .from('crop_stage_knowledge')
       .select('*')
       .limit(5000);
-    if (!error && Array.isArray(data)) knowledge.push(...data);
+    if (error) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_knowledge select error:', error.message);
+    } else if (Array.isArray(data)) {
+      knowledge.push(...data);
+    }
   } catch (e) {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_knowledge load failed', e);
   }
 
   const byCropStage = new Map<string, StageMasterRow>();
-  for (const r of master) byCropStage.set(k(r.crop_code, r.stage_code), r);
+  for (const r of master) byCropStage.set(k(r.crop_code, r.growth_stage), r);
 
   const knowledgeByCropStage = new Map<string, StageKnowledgeRow>();
-  for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.stage_code), r);
+  for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.growth_stage), r);
 
   cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage };
   console.log(
     `[STAGE_KNOWLEDGE] loaded master=${master.length} knowledge=${knowledge.length}`
   );
 }
+
 
 export function getStageRow(crop: string, stage: string): StageMasterRow | null {
   if (!cache) return null;
