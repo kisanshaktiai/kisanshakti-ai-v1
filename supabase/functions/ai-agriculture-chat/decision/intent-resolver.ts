@@ -241,11 +241,12 @@ export async function resolveIntentToObservations(
     
     console.log(`   Stage: ${growthStage}`);
     
-    // 2. Get valid observation codes for this intent + crop + DAS
+    // 2. Get valid observation codes for this intent + crop + DAS + stage
     const mappings = await getValidObservationCodes(
       intent_code,
       crop_code,
-      days_since_sowing
+      days_since_sowing,
+      growthStage
     );
     
     // ═══════════════════════════════════════════════════════════════════════════
