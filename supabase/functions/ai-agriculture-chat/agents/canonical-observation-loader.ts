@@ -300,16 +300,17 @@ export async function loadObservationKeysFromDB(
     console.log(`[CanonicalLoader v${CANONICAL_LOADER_VERSION}] Stage normalization: ${stage} → ${dbStage}, language=${language}`);
     
     const crop = cropCode.toLowerCase();
-    const stageVariants = Array.from(
-      new Set([dbStage, 'all'].filter(Boolean))
-    );
+    // R3 FIX: pass ALL synonymous stages (e.g. seedling, nursery, germination) so
+    // curated rows under any alias survive the filter.
+    const stageVariants = expandStageSynonyms(stage).concat(expandStageSynonyms(dbStage));
+    const uniqueStageVariants = Array.from(new Set(stageVariants.filter(Boolean)));
 
-    console.log(`[CanonicalLoader] Querying for crop=${crop}, stages=${stageVariants.join(',')}`);
+    console.log(`[CanonicalLoader] Querying for crop=${crop}, stages=${uniqueStageVariants.join(',')}`);
 
     let data: any[] | null = null;
     let lastError: any = null;
 
-    for (const st of stageVariants) {
+    for (const st of uniqueStageVariants) {
       const res = await supabase
         .from('decision_rules')
         .select('observable_characteristics')
@@ -340,17 +341,29 @@ export async function loadObservationKeysFromDB(
 
     console.log(`[CanonicalLoader] Found ${data.length} rules with observable_characteristics`);
     
-    // Extract unique keys
+    // R2 FIX: observable_characteristics can be either:
+    //   - string[]                         (legacy seed)
+    //   - { observations: string[], ... }  (current JSONB schema)
+    //   - { keys: string[] } / object map  (defensive)
+    // Accept all shapes so curated rules aren't silently dropped.
     const uniqueKeys = new Set<string>();
-    for (const rule of data || []) {
-      const chars = rule.observable_characteristics;
-      if (Array.isArray(chars)) {
-        for (const key of chars) {
-          if (typeof key === 'string') {
-            uniqueKeys.add(key.toUpperCase());
-          }
+    const collectKeys = (val: unknown): void => {
+      if (!val) return;
+      if (Array.isArray(val)) {
+        for (const k of val) {
+          if (typeof k === 'string' && k.trim()) uniqueKeys.add(k.trim().toUpperCase());
         }
+        return;
       }
+      if (typeof val === 'object') {
+        const obj = val as Record<string, unknown>;
+        if (Array.isArray(obj.observations)) collectKeys(obj.observations);
+        if (Array.isArray(obj.keys))         collectKeys(obj.keys);
+        if (Array.isArray((obj as any).codes)) collectKeys((obj as any).codes);
+      }
+    };
+    for (const rule of data || []) {
+      collectKeys(rule.observable_characteristics);
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
