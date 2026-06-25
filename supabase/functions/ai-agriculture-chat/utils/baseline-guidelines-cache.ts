@@ -83,7 +83,12 @@ export async function loadBaselineGuidelines(supabase: any): Promise<void> {
         entries.set(row.crop_code, existing);
       }
       
-      console.log(`[BASELINE] ✅ Loaded ${(data || []).length} guidelines for ${entries.size} crops`);
+      const rowCount = (data || []).length;
+      if (rowCount === 0) {
+        console.warn(`[BASELINE] ⚠️ Loaded 0 guidelines from crop_baseline_guidelines_v2 — scientific validator will skip checks`);
+      } else {
+        console.log(`[BASELINE] ✅ Loaded ${rowCount} guidelines for ${entries.size} crops`);
+      }
       cache = { entries, loadedAt: Date.now() };
     } catch (e) {
       console.error(`[BASELINE] ❌ Cache error:`, e instanceof Error ? e.message : 'unknown');
