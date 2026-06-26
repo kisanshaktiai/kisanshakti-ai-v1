@@ -1849,23 +1849,58 @@ export class AIAgentOrchestrator {
             landContextForOptionSelection = await this.fetchComprehensiveLandContext(options.landId, farmerId) || undefined;
           }
           
-          // P0-2 FIX: Determine crop and stage with source tracking
-          // CLARIFICATION-FIRST: Use locked stage from clarification-strategy if available
+          // ─────────────────────────────────────────────────────────────
+          // Phase H — LAND-FIRST priority. CanonicalContext (land-derived)
+          // is authoritative. lockedCropContext is a wire-compat artifact
+          // and only used when land is unavailable. Old order
+          // (strategy > locked > land) caused crop/stage divergence
+          // between turns documented in the audit.
+          // ─────────────────────────────────────────────────────────────
           const lockedStageFromStrategy = getLockedStage();
-          const cropName = lockedStageFromStrategy?.crop_code || 
-                          lockedCropContext?.crop_name || 
-                          landContextForOptionSelection?.current_crop || 'UNKNOWN';
-          
-          // STAGE-LOCKED: Use locked stage from clarification strategy, else fall back
-          const growthStage = lockedStageFromStrategy?.growth_stage ||
-                              lockedCropContext?.growth_stage || 
-                              landContextForOptionSelection?.growth_stage || 'VEGETATIVE';
-          const hasAuthorativeStage = !!(lockedStageFromStrategy?.growth_stage || 
-                                         lockedCropContext?.growth_stage || 
-                                         landContextForOptionSelection?.growth_stage);
-          const stageSource = lockedStageFromStrategy?.growth_stage ? 'LOCKED_STRATEGY' :
-                              lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT' : 
-                              landContextForOptionSelection?.growth_stage ? 'LAND_CONTEXT' : 'DEFAULT';
+          const canonicalCropForOption = graph.canonical_context?.crop_code;
+          const canonicalStageForOption = graph.canonical_context?.growth_stage;
+          const cropName =
+            canonicalCropForOption ||
+            landContextForOptionSelection?.current_crop ||
+            lockedStageFromStrategy?.crop_code ||
+            lockedCropContext?.crop_name ||
+            'UNKNOWN';
+
+          const growthStage =
+            canonicalStageForOption ||
+            landContextForOptionSelection?.growth_stage ||
+            lockedStageFromStrategy?.growth_stage ||
+            lockedCropContext?.growth_stage ||
+            'VEGETATIVE';
+          const hasAuthorativeStage = !!(
+            canonicalStageForOption ||
+            landContextForOptionSelection?.growth_stage ||
+            lockedStageFromStrategy?.growth_stage ||
+            lockedCropContext?.growth_stage
+          );
+          const stageSource = canonicalStageForOption ? 'CANONICAL_LAND'
+            : landContextForOptionSelection?.growth_stage ? 'LAND_CONTEXT'
+            : lockedStageFromStrategy?.growth_stage ? 'LOCKED_STRATEGY'
+            : lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT'
+            : 'DEFAULT';
+          // SSOT trace: detect any divergence between authorities for visibility.
+          if (
+            lockedCropContext?.crop_name &&
+            canonicalCropForOption &&
+            lockedCropContext.crop_name.toUpperCase() !== canonicalCropForOption.toUpperCase()
+          ) {
+            console.warn(
+              `[SSOT_TRACE][${traceId}] OPTION_SELECTED crop divergence ignored: ` +
+                `canonical=${canonicalCropForOption} session.locked=${lockedCropContext.crop_name} → using canonical`
+            );
+            try {
+              requestCtx.ledger.ignore(
+                'OPTION_SELECTED',
+                `crop_divergence:${lockedCropContext.crop_name}`,
+                'land-SSOT: lockedCropContext overridden by canonical'
+              );
+            } catch {/* non-fatal */}
+          }
           
           // LOGGING: Track clarification event
           logClarificationEvent(
