@@ -965,7 +965,7 @@ serve(async (req) => {
                   detected_language: _safeLang,
                   intent_label: _rtc.context?.intent?.code ?? orchestratorResponse.type ?? null,
                   observations: [],
-                  nlu_confidence: _rtc.context?.intent?.confidence ?? null,
+                  nlu_confidence: typeof _rtc.context?.intent?.confidence === 'number' ? _rtc.context.intent.confidence : null,
                   locked_intent: _rtc.context?.intent?.code ?? null,
                   allowed_scopes: [],
                   forbidden_actions: [],
@@ -989,12 +989,16 @@ serve(async (req) => {
               } else {
                 console.log(`✅ [SafetyNet] ai_chat_audit_logs inserted trace=${_rtc.header.trace_id}`);
               }
+            } else {
+              console.log(`✅ [SafetyNet] ai_chat_audit_logs stamped rows=${_auditRows.length} trace=${_rtc.header.trace_id}`);
             }
             console.log(`✅ [SafetyNet] ai_decision_log persisted id=${_persistedId} trace=${_rtc.header?.trace_id}`);
           }
         }
       }
-    } catch (_e) { /* non-blocking */ }
+    } catch (_e: any) {
+      console.warn(`⚠️ [SafetyNet] RuntimeTrace safety-net crashed: ${_e?.message || _e}`);
+    }
 
 
 
