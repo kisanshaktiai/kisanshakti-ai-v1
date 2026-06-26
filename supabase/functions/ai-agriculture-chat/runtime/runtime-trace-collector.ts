@@ -391,6 +391,10 @@ export class RuntimeTraceCollector {
             ...legacyDecisionRow,
             id: (insertedDecisionId = crypto.randomUUID()),
             decision_type: normalizeLegacyDecisionType(rawDecisionType),
+            // Trace/execution columns were added in 20260626115447; include even on schema-fallback path
+            trace_id: this.header.trace_id,
+            execution_id: this.header.execution_id,
+            runtime_version: this.header.runtime_version,
             reasoning: `${legacyDecisionRow.reasoning} trace_id=${this.header.trace_id} execution_id=${this.header.execution_id}`,
           });
         error = retry.error;
@@ -409,6 +413,10 @@ export class RuntimeTraceCollector {
             schedule_id: null,
             decision_type: normalizeLegacyDecisionType(rawDecisionType),
             model_version: this.header.runtime_version,
+            // Always stamp Phase-Y identifiers even on minimal fallback so traces are joinable
+            trace_id: this.header.trace_id,
+            execution_id: this.header.execution_id,
+            runtime_version: this.header.runtime_version,
             input_data: { farmer_message: extra.farmer_message ?? null, trace_id: this.header.trace_id },
             output_data: this.decision ?? this.builderOutput ?? { trace_id: this.header.trace_id },
             reasoning: nonEmptyReasoning(legacyDecisionRow.reasoning, this.context?.intent?.code, 'Minimal runtime trace fallback'),
@@ -424,7 +432,33 @@ export class RuntimeTraceCollector {
           error = null;
           insertedDecisionId = minimalId;
         } else {
-          error = retry.error;
+          // Last resort: drop the new Phase-Y columns in case the deployed DB still lacks them
+          console.warn(`⚠️ [RuntimeTrace] minimal-with-trace insert failed (${retry.error.code}): ${retry.error.message}; retrying without Phase-Y columns`);
+          const bareId = crypto.randomUUID();
+          const bare = await supabase
+            .from('ai_decision_log')
+            .insert({
+              id: bareId,
+              tenant_id: tenantId,
+              farmer_id: safeUuid(extra.farmer_id ?? ctx.farmer_id),
+              land_id: safeUuid(extra.land_id ?? ctx.land_id),
+              schedule_id: null,
+              decision_type: normalizeLegacyDecisionType(rawDecisionType),
+              model_version: this.header.runtime_version,
+              input_data: { farmer_message: extra.farmer_message ?? null, trace_id: this.header.trace_id },
+              output_data: this.decision ?? this.builderOutput ?? { trace_id: this.header.trace_id },
+              reasoning: `${nonEmptyReasoning(legacyDecisionRow.reasoning, this.context?.intent?.code, 'Bare runtime trace fallback')} trace_id=${this.header.trace_id}`,
+              confidence_score: confidenceScore,
+              execution_time_ms: totalLatency,
+              success: (extra.validation_passed ?? true) && !(this.decision?.failed),
+              error_message: this.decision?.error ?? null,
+            });
+          if (!bare.error) {
+            error = null;
+            insertedDecisionId = bareId;
+          } else {
+            error = bare.error;
+          }
         }
       }
 
