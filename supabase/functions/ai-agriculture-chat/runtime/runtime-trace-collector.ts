@@ -89,6 +89,22 @@ function normalizeDecisionType(raw: any): string {
   return 'unknown';
 }
 
+function normalizeLegacyDecisionType(raw: any): string {
+  const upper = String(raw || '').toUpperCase();
+  if (/SCHEDULE/.test(upper)) return 'schedule_generation';
+  if (/ALERT|PROACTIVE/.test(upper)) return 'alert_generation';
+  if (/MARKET/.test(upper)) return 'marketing_prediction';
+  if (/PEST|INSECT|BORER|APHID|MITE/.test(upper)) return 'pest_detection';
+  return 'disease_detection';
+}
+
+function isSchemaColumnError(error: any): boolean {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return error?.code === 'PGRST204'
+    || error?.code === '42703'
+    || message.includes('column') && (message.includes('schema cache') || message.includes('does not exist') || message.includes('not found'));
+}
+
 function normalizeConfidence(raw: any): number | null {
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
@@ -294,7 +310,7 @@ export class RuntimeTraceCollector {
         hyp?.confidence
       );
 
-      const decisionRow: Record<string, any> = {
+      const legacyDecisionRow: Record<string, any> = {
         tenant_id:       tenantId,
         farmer_id:       extra.farmer_id ?? ctx.farmer_id ?? null,
         land_id:         extra.land_id ?? ctx.land_id ?? null,
@@ -317,6 +333,10 @@ export class RuntimeTraceCollector {
         soil_data:       ctx.soil ?? null,
         success:         (extra.validation_passed ?? true) && !(this.decision?.failed),
         error_message:   this.decision?.error ?? null,
+      };
+
+      const decisionRow: Record<string, any> = {
+        ...legacyDecisionRow,
         hypothesis_id:            hyp?.hypothesis_id ?? hyp?.id ?? null,
         hypothesis_score:         normalizeConfidence(hyp?.score ?? hyp?.confidence),
         hypothesis_decision_path: this.hypotheses?.decision_path ?? null,
@@ -340,11 +360,37 @@ export class RuntimeTraceCollector {
         execution_id:           this.header.execution_id,
       };
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('ai_decision_log')
         .insert(decisionRow)
         .select('id')
         .single();
+
+      if (error && error.code === '23514' && String(error.message || '').includes('decision_type')) {
+        console.warn(`⚠️ [RuntimeTrace] decision_type constraint rejected '${decisionRow.decision_type}', retrying legacy-safe type trace=${this.header.trace_id}`);
+        const retry = await supabase
+          .from('ai_decision_log')
+          .insert({ ...decisionRow, decision_type: normalizeLegacyDecisionType(rawDecisionType) })
+          .select('id')
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error && isSchemaColumnError(error)) {
+        console.warn(`⚠️ [RuntimeTrace] ai_decision_log schema missing Phase-Y columns, retrying legacy insert trace=${this.header.trace_id}`);
+        const retry = await supabase
+          .from('ai_decision_log')
+          .insert({
+            ...legacyDecisionRow,
+            decision_type: normalizeLegacyDecisionType(rawDecisionType),
+            reasoning: `${legacyDecisionRow.reasoning} trace_id=${this.header.trace_id} execution_id=${this.header.execution_id}`,
+          })
+          .select('id')
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         if (error.code !== '42P01') {
