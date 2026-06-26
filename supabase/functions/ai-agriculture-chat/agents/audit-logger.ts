@@ -52,6 +52,20 @@ function normalizeAuditResponseSource(source: any): 'SYMBOLIC_TEMPLATE' | 'LLM_F
   return 'SYMBOLIC_TEMPLATE';
 }
 
+function normalizeAuditLanguage(language: any): 'mr' | 'hi' | 'en' {
+  const value = String(language || '').toLowerCase();
+  if (value.startsWith('mr')) return 'mr';
+  if (value.startsWith('hi')) return 'hi';
+  return 'en';
+}
+
+function normalizeAuditConfidence(confidence: any): number | null {
+  const n = Number(confidence);
+  if (!Number.isFinite(n)) return null;
+  const scaled = n > 1 && n <= 100 ? n / 100 : n;
+  return Math.max(0, Math.min(1, scaled));
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - Extended for Full Forensic Trail
@@ -635,11 +649,11 @@ export class AuditLogger {
       tenant_id: log.tenant_id,
       trace_id: log.trace_id,
       farmer_message: log.farmer_message,
-      detected_language: log.detected_language as string,
+      detected_language: normalizeAuditLanguage(log.detected_language),
       intent_label: log.nlu_output?.intent_label,
       observations: filterCanonicalForAudit(log.nlu_output?.observations),
 
-      nlu_confidence: log.nlu_output?.confidence,
+      nlu_confidence: normalizeAuditConfidence(log.nlu_output?.confidence),
       locked_intent: log.locked_intent,
       allowed_scopes: log.allowed_scopes,
       forbidden_actions: log.forbidden_actions,
