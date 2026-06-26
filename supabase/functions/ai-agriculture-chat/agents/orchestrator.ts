@@ -1135,6 +1135,17 @@ export class AIAgentOrchestrator {
     // ─────────────────────────────────────────────────────────────────
     const graph = new GraphRuntimeState(traceId);
     let graphCp = graphCheckpoint(graph);
+
+    // ─────────────────────────────────────────────────────────────────
+    // PHASE Y — RuntimeTraceCollector (single per request).
+    // Captures pipeline stages, snapshots, knowledge versions; persisted by
+    // audit-logger.completeTurn() into ai_decision_log. Never throws.
+    // ─────────────────────────────────────────────────────────────────
+    const runtimeTrace = resetRuntimeTraceCollector({
+      trace_id: traceId,
+      execution_mode: options.photoUrl ? 'live-vision' : 'live',
+      started_at_ms: startTime,
+    });
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
 
