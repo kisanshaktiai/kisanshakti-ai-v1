@@ -225,6 +225,13 @@ function isSchemaColumnError(error: any): boolean {
     || message.includes('column') && (message.includes('schema cache') || message.includes('does not exist') || message.includes('not found'));
 }
 
+function normalizeTraceConfidence(raw: any): number | null {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const scaled = n > 1 && n <= 100 ? n / 100 : n;
+  return Math.max(0, Math.min(1, scaled));
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
