@@ -6693,11 +6693,55 @@ export class AIAgentOrchestrator {
             };
           }
         }
-        
+
+        // ──────────────────────────────────────────────────────────────
+        // Phase I-7 — POST_DECISION drift guard. Capture the winning
+        // rule_id on the graph (once) and verify no module mutated the
+        // canonical_context / intent between extraction and decision.
+        // ──────────────────────────────────────────────────────────────
+        try {
+          const winnerRaw =
+            decisionOutput.primary_decision?.rule_id ||
+            decisionOutput.primary_decision?.application_details?.rule_id ||
+            null;
+          const winnerCanonical =
+            typeof winnerRaw === 'string' && /^[A-Z0-9_]+$/.test(winnerRaw)
+              ? winnerRaw
+              : null;
+          if (!graph.decision_node) {
+            graph.setDecision({
+              winner_rule_id: winnerCanonical,
+              decision_kind: 'DIAGNOSIS',
+              metadata: {
+                action_type: decisionOutput.primary_decision?.action_type ?? null,
+                weighted_confidence:
+                  decisionOutput.primary_decision?.weighted_confidence ?? null,
+                rules_applied_count: Array.isArray(decisionOutput.rules_applied)
+                  ? decisionOutput.rules_applied.length
+                  : 0,
+              },
+            });
+          }
+          graphCp = assertNoGraphDrift(graph, graphCp, 'POST_DECISION');
+          console.log(
+            `[SSOT_TRACE][${traceId}] POST_DECISION winner=${winnerCanonical ?? 'NULL'} ` +
+              `obs=${graph.observation_ledger.size()} hyp=${graph.hypothesis_graph.length}`
+          );
+        } catch (e) {
+          if (e instanceof GraphStateDriftError || e instanceof SymbolicIdLeakError) {
+            console.error(`🚨 ${e.name}: ${e.message}`);
+            throw e;
+          }
+          console.warn(
+            `⚠️ [POST_DECISION] non-fatal: ${e instanceof Error ? e.message : String(e)}`
+          );
+        }
+
         // Also attach matched_responses for additional recovery options
         if (layeredRuleResult.matched_responses && layeredRuleResult.matched_responses.length > 0) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
         }
+
         
         // ═══════════════════════════════════════════════════════════════════════════
         // BUG-3 FIX: Propagate rules_applied from layeredRuleResult → decisionOutput
