@@ -1314,10 +1314,18 @@ serve(async (req) => {
           days_since_sowing: 0,
         } : undefined;
         
-        const landContextSource = orchestratorResponse.dataAudit?.land?.found ? 'dataAudit' 
-          : lockedCropCtx ? 'lockedCropContext' 
+        const landContextSource = orchestratorResponse.dataAudit?.land?.found ? 'dataAudit'
+          : lockedCropCtx ? 'lockedCropContext'
           : sessionState?.last_crop ? 'sessionState' : 'NONE';
-        console.log(`   📊 [LandContext] Built from ${landContextSource}`);
+        // Phase H — SSOT_TRACE: surface every source that competed for crop/stage
+        // and which authority won. dataAudit (land) is the SSOT; the others are
+        // only used when land is unavailable.
+        console.log(
+          `[SSOT_TRACE][${traceId}] landContext_source=${landContextSource} ` +
+            `dataAudit_crop=${orchestratorResponse.dataAudit?.land?.current_crop ?? 'NULL'} ` +
+            `locked_crop=${lockedCropCtx?.crop_name ?? 'NULL'} ` +
+            `session_last_crop=${sessionState?.last_crop ?? 'NULL'}`
+        );
         if (landContext) {
           console.log(`      Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, Days: ${landContext.days_since_sowing}`);
         }
