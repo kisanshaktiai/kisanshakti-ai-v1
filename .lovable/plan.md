@@ -1,173 +1,61 @@
 
-# Phase H + Phase I — Land SSOT and Graph SSOT (Unified Refactor)
+## Root cause (confirmed by code + DB audit)
 
-The auditor is right: removing `lockedCropContext` / `last_crop` only fixes the **context** divergence. The logs (`trace_mqun0wzd_aqt2zr`: 76 rules loaded → 0 matched, `option_selected="🔍 TUNGRO YELLOW STUNT"`, label re-entering the symbolic stream) prove the **graph state itself** is fragmented across modules. We need one immutable per-request runtime graph that every module reads and only appends to.
+The auditor's hypothesis is correct. The clarification graph is sourcing options from `decision_rules` metadata without an `observation_master` gate, so diagnosis-level codes leak in as if they were farmer symptoms.
 
-This plan is now two phases delivered together. Scope stays inside the existing edge function — no new agents, no schema change, no LLM prompt change.
+Evidence chain:
 
----
+1. **`decision_rules.observable_characteristics` is null** for `RICE_DISEASE_TUNGRO_001` (verified: `SELECT observable_characteristics FROM decision_rules WHERE rule_id='RICE_DISEASE_TUNGRO_001'` → `nil`).
+2. `hypothesis-evaluator.ts:810-833` then falls back to `rule.conditions_json.observations` and synthesizes `ObservableCharacteristic` entries with `observation_key = obs.toUpperCase()`. Whatever string lives in that JSON (here `tungro_yellow_stunt`, which is a disease name) becomes a "farmer observable."
+3. `clarification-strategy.ts:462-522` iterates `candidate.observable_characteristics` and ships them straight to the UI. The only filters are `failure_class domain exclusion` and `stage compatibility` — neither checks `observation_master.is_farmer_observable`.
+4. The farmer taps "🔍 TUNGRO YELLOW STUNT", `OPTION_SELECTED` confirms `TUNGRO_YELLOW_STUNT`, but `observation_master` has no such row (verified: empty SELECT), so `[ObsValidation] Rule … references unknown observation: TUNGRO_YELLOW_STUNT` fires and **0 rules match** → `STAGE_FALLBACK`.
 
-## Phase H — Land SSOT (unchanged from prior plan, recap only)
+Two ontologies (`observation_master` vs `decision_rules.{observable_characteristics, conditions_json.observations}`) are running side-by-side and disagreeing. This is the graph corruption the report describes.
 
-Same as previously approved:
-- Make `CanonicalContext` (already built in `orchestrator.ts:1274` via `buildCanonicalContextContract`) the **only** authoritative reader of `crop_code` / `growth_stage` / `days_since_sowing` / `ndvi` / `soil` / `weather`.
-- Remove every read of `lockedCropContext` / `sessionState.last_crop` / `sessionState.previousCrop` as authoritative inputs in `orchestrator.ts` (~25 sites: 1717, 1788–1799, 2062, 2310, 2328, 2345, 2419, 2457, 2479–2486, 3305–3333, 3379, 4046–4047, 4466, 5524) and in `index.ts` (orchestrator-input builder at 891–898; dataAudit compose at 1282–1319).
-- Keep writing `lockedCropContext` to the wire `decision_output.metadata` for backward compatibility, derived from `CanonicalContext`, never read back.
-- Three fail-fast invariants reusing existing helpers in `decision/canonical-context-contract.ts`:
-  - INV-1 after Phase-1 build: `assertCanonicalContextLocked`.
-  - INV-2 before rule-eval: `assertNoContextDrift(canonical, land)`.
-  - INV-3 before deterministic builder: `decision_output.metadata.lockedCropContext` (if emitted) equals `CanonicalContext`.
-- New `[SSOT_TRACE]` log in `index.ts` and `[CANONICAL_FREEZE]` log in `orchestrator.ts` once per turn.
+The earlier transport fix (embedded ObservationKey) is intact — the bug is now strictly upstream in the **candidate generator**.
 
-## Phase I — Graph SSOT (new)
+## Fix — single invariant, enforced once
 
-### I-1. Introduce `GraphRuntimeState` (one object per request)
+> Every clarification option presented to the farmer MUST correspond to a row in `observation_master` with `is_active = true` AND `is_farmer_observable = true`. Anything else is dropped and logged as a vocabulary gap.
 
-New file: `supabase/functions/ai-agriculture-chat/runtime/graph-runtime-state.ts`.
-Single immutable container, built once at `orchestrator.ts:~1117` next to `requestCtx`:
+This is a presentation/symbolic-graph fix. No rule-engine, intent-router, or LLM prompt changes.
 
-```text
-GraphRuntimeState (frozen shell, append-only slots)
-├─ trace_id, request_id, started_at
-├─ canonical_context        (CanonicalContext, frozen)
-├─ snapshot_versions        (ontology, IOM, rules bundle, translations, language) — Phase D.5
-├─ observation_ledger       (append-only, ObservationNode[])
-├─ intent_node              (set once, never re-derived)
-├─ hypothesis_graph         (RuleCandidate[] with evolving scores, no rebuilds)
-├─ decision_node            (set once by Decision Authority)
-└─ presentation_node        (set once by the single builder)
-```
+### Changes
 
-The shell object is `Object.freeze`d; each slot is a typed setter that **throws** if already written (except the append-only ledger). This is the Graph Blackboard the auditor asked for, implemented as plain data — no new agents.
+**1. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`**
 
-### I-2. Per-request runtime snapshot (Phase D.5)
+- In `extractObservableCharacteristics()` (and the `conditions_json.observations` synthetic path at lines 810–833): after building the candidate `observation_key`s, filter them through `obsMetadataMap` (already loaded from `observation_master`). Keep only keys where the row exists, `is_active=true`, and `is_farmer_observable=true`.
+- Rejected keys are recorded once per request via a new `recordVocabularyGap(key, source_rule_id, reason)` helper that inserts into `observation_vocabulary_gaps` (table already exists) with reasons `NOT_IN_MASTER` / `NOT_FARMER_OBSERVABLE` / `INACTIVE`.
+- If a rule ends up with zero farmer-observable characteristics AND no other diagnostic signal, mark it `advisory_only` (already handled by the existing skip path) so it cannot drive clarification.
 
-In `GraphRuntimeState.snapshot_versions`, capture once before reasoning starts:
-- `ontology_version` (latest `observation_master.updated_at` max)
-- `iom_version` (latest `intent_observation_mapping.updated_at` max)
-- `rules_bundle_version` (from `bundled-rules/loader.ts` already-exposed bundle hash)
-- `translation_version` (latest `observation_translations.updated_at` max for the active language)
-- `canonical_context_hash`
-- `language`
+**2. `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts`**
 
-One DB round-trip using a single `SELECT max(updated_at)` per table, cached for 60 s. Stored on the response `decision_output.metadata.snapshot` for full replayability. No new tables.
+- Add a final "ontology gate" pass right before `allOptions` is returned (around line 522 and the regeneration block at 531–560): re-check each option's `observation_key` against `obsMetadataMap`/observation_master. Any key not satisfying the invariant is dropped with a `[CLARIFICATION_ONTOLOGY_VIOLATION]` log line and a vocabulary-gap record.
+- Replace the silent fallback that lets disease codes through with: if no valid farmer-observable options survive, return the existing failure-class fallback (`useHypothesisFallback`) — never emit a diagnosis-level option.
 
-### I-3. Append-only `ObservationLedger`
+**3. `supabase/functions/ai-agriculture-chat/agents/dynamic-clarification-generator.ts`**
 
-Replace the current pattern where extractor → mapper → validator → authority → clarification each **return new arrays** with a single ledger:
+- Same ontology gate applied to any code path that builds a candidate list (rule observable_characteristics, hypothesis_master, or NLU). One shared helper `assertFarmerObservable(keys, obsMetadataMap)` used by both files.
 
-```text
-ObservationNode = {
-  observation_code,           // canonical, the only ID carried
-  source: 'LLM'|'IOM'|'CLARIFICATION'|'INFERRED',
-  confidence,
-  confirmed: boolean,
-  rejected: boolean,
-  semantic_class,
-  crop_applicability,
-  validator_trail: string[],  // who touched it
-  created_at
-}
-```
+**4. `supabase/functions/ai-agriculture-chat/agents/clarification-renderer.ts`**
 
-API: `ledger.append(node)`, `ledger.confirm(code)`, `ledger.reject(code, reason)`, `ledger.view()` returns a frozen snapshot. **No rename, no replace, no drop.** Modules wanting to "transform" must append a derived node referencing the parent. This is exactly what stops the `POOR_GERMINATION → GERMINATION_FAILURE → UNKNOWN → TUNGRO` drift the auditor cited.
+- Defense in depth: refuse to render any option whose `observation_key` fails the gate, even if upstream missed it. Logs `[RENDERER_ONTOLOGY_GUARD]`.
 
-Wired into: `observation-extractor.ts`, `observation-key-mapper.ts`, `db-observation-validator.ts`, `clarification-generator.ts`, `layered-rule-evaluator.ts`. Each currently mutates its own array; switch them to read `graph.observation_ledger.view()` and append.
+**5. Observability**
 
-### I-4. Evolving `RuleCandidate` graph (one list, scored in place)
+- Add `[ONTOLOGY_GATE]` summary log per request: `{candidates_in, candidates_kept, dropped_diagnosis_level, dropped_unknown, dropped_not_observable}` so we can see the gate working on every turn.
+- No new tables. Reuses existing `observation_vocabulary_gaps`.
 
-Currently `bundled-rules/loader.ts`, `layered-rule-evaluator.ts`, `semantic-validator.ts`, `scientific-validator.ts`, and `unified-decision-gate.ts` each produce a new candidate list. Replace with one `graph.hypothesis_graph: RuleCandidate[]` where each candidate accumulates scores:
+### Out of scope (intentionally)
 
-```text
-RuleCandidate {
-  rule_id,
-  semantic_score, authority_score, scientific_score, completeness_score,
-  matched_observations: string[], missing_observations: string[],
-  ranking, status: 'CANDIDATE'|'WINNER'|'DROPPED', drop_reason
-}
-```
+- Rule engine / `layered-rule-evaluator.ts` — not the bug.
+- `intent_observation_mapping` — not the bug.
+- DB migrations — none required (the invariant is enforced in code against existing `observation_master` columns).
+- LLM prompts and translation paths.
 
-Validators set scores via `candidate.score('semantic', n)` — no list rebuilds. The winner is selected once by Decision Authority. This directly resolves the `Rules evaluated: 76` / `Rules matched: 0` divergence in `trace_mqun0wzd_aqt2zr` (today the rule loader, semantic gate, and authority gate run against three different in-memory lists keyed off three different crop strings).
+### Verification
 
-### I-5. Single deterministic builder (terminal renderer)
-
-Today the orchestrator has at least five build paths: clarification builder, diagnosis-first builder, fallback builder, rule builder, stage-fallback builder. Consolidate to **one** entry point:
-
-```text
-buildPresentation(graph: GraphRuntimeState) → UIResponse
-```
-
-Implemented in `agents/deterministic-response-builder.ts` (already exists). All other builders become **input adapters** that write to `graph.decision_node`; they no longer emit `UIResponse` directly. Then `buildPresentation` is the only function that reads `decision_node` + `observation_ledger.view()` + `canonical_context` and emits `UIResponse`. The LLM formatter receives the already-built `UIResponse` strings for narration only.
-
-### I-6. Eliminate Presentation→Logic backflow (the OPTION_SELECTED leak)
-
-Root of the `"🔍 TUNGRO YELLOW STUNT"` symptom:
-1. **Hard contract on the wire**: `ClarificationOption` must carry `{ id: observation_code, label }`. The client must echo back `{ option_id: observation_code }`, never the label.
-2. Update `agents/clarification-renderer.ts` and the client `ClarificationSelect` to send `option_id`.
-3. In `index.ts` OPTION_SELECTED branch and `orchestrator.ts:~1788`, **reject** any `option_selected` payload that does not resolve to a known `observation_code` in `pendingClarificationObservationKeys` for the active conversation. No heuristic label → code mapping. On rejection, emit a deterministic re-clarification.
-4. Delete `mapOptionToObservation()` (heuristic) and any label-string mapping in the OPTION_SELECTED path.
-
-### I-7. Runtime graph validator (drift guard between every phase)
-
-New helper `runtime/graph-runtime-state.ts#assertNoGraphDrift(graph, previousSnapshot, stage)`. Called at the boundary of each phase. It throws `GRAPH_STATE_DRIFT` with `{stage, field, before, after}` if any of these change after their slot is set:
-- `canonical_context.crop_code | growth_stage | days_since_sowing | language`
-- `intent_node.intent_code`
-- `observation_ledger` shrinks (must be append-only)
-- `hypothesis_graph` loses a candidate without a `drop_reason`
-
-Compared to existing scattered guards, this is one helper called from the existing 7 stage boundaries the orchestrator already has.
-
-### I-8. Activate the dark EvidenceLedger
-
-`decision/evidence-ledger.ts` exists and is instantiated at `orchestrator.ts:1117` but the auditor proved it is rarely written. Make it the **only** place that records evidence wins/losses, and route the new `ObservationLedger` confirmations through it (`ledger.win('OBSERVATION_CONFIRMED', code, source)` / `ledger.lose(...)`). All current ad-hoc `console.log("[EVIDENCE] …")` lines call the ledger instead. Output is attached to `decision_output.metadata.evidence_ledger` for traceability.
-
-### I-9. Canonical-IDs invariant
-
-Add a lint-style runtime check in `assertNoGraphDrift`: any value pushed into `observation_ledger`, `hypothesis_graph`, or `decision_node` whose `observation_code` / `rule_id` / `intent_code` is missing or does not match `/^[A-Z0-9_]+$/` throws `SYMBOLIC_ID_LEAK`. This makes label leakage a fail-fast error, not a silent fallback.
-
----
-
-## Files touched (build-mode scope)
-
-```text
-NEW   supabase/functions/ai-agriculture-chat/runtime/graph-runtime-state.ts
-EDIT  supabase/functions/ai-agriculture-chat/agents/orchestrator.ts            (~60 small edits across 7 phases)
-EDIT  supabase/functions/ai-agriculture-chat/index.ts                          (SSOT trace + reject session reads + option_id contract)
-EDIT  supabase/functions/ai-agriculture-chat/agents/observation-extractor.ts   (ledger.append)
-EDIT  supabase/functions/ai-agriculture-chat/agents/observation-key-mapper.ts  (ledger.append, no replace)
-EDIT  supabase/functions/ai-agriculture-chat/agents/clarification-generator.ts (read ledger, write option_id)
-EDIT  supabase/functions/ai-agriculture-chat/agents/clarification-renderer.ts  ({id, label} contract)
-EDIT  supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts  (in-place RuleCandidate scoring)
-EDIT  supabase/functions/ai-agriculture-chat/decision/semantic-validator.ts    (score in place)
-EDIT  supabase/functions/ai-agriculture-chat/decision/scientific-validator.ts  (score in place)
-EDIT  supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts (select winner, write decision_node)
-EDIT  supabase/functions/ai-agriculture-chat/agents/deterministic-response-builder.ts (single buildPresentation)
-EDIT  supabase/functions/ai-agriculture-chat/db-observation-validator.ts        (ledger.reject with reason)
-EDIT  client: components/chat ClarificationSelect → send {option_id}
-```
-
-No DB schema change. No new tables. No new edge function. No LLM prompt change. Existing request/response wire shape preserved (additive: `decision_output.metadata.snapshot` and `evidence_ledger`).
-
----
-
-## Validation plan
-
-1. **Replay `trace_mqun0wzd_aqt2zr`**:
-   - Expect non-zero matched rules for RICE/SEEDLING/18 DAS.
-   - Expect no `RULE_DATA_INTEGRITY_ERROR`.
-   - Expect `decision_output.metadata.snapshot.rules_bundle_version` populated.
-2. **Label-leak fuzz**: POST `option_selected="🔍 TUNGRO YELLOW STUNT"` with empty `pendingClarificationObservationKeys` → expect HTTP 200 with deterministic re-clarification and a `SYMBOLIC_ID_LEAK`-prevented branch (no heuristic accept).
-3. **Drift fuzz**: clear `sessionState.last_crop` mid-conversation → identical decision (land is SSOT).
-4. **Graph drift fuzz**: inject a mutated `crop_code` between Phase-2 and Phase-3 → expect `GRAPH_STATE_DRIFT` thrown with `{stage, field, before, after}`.
-5. **Observation immutability fuzz**: try to shrink the ledger → expect throw.
-6. **Snapshot replay**: take `decision_output.metadata.snapshot` from a failed prod request, re-run the pipeline against the same snapshot versions → identical output.
-7. **Edge log assertions per turn**: exactly one `[CANONICAL_FREEZE]`, exactly one `[GRAPH_FREEZE]`, zero `CANONICAL_CONTEXT_DRIFT`, zero `GRAPH_STATE_DRIFT`, zero `SYMBOLIC_ID_LEAK`.
-
----
-
-## Explicitly out of scope
-
-- No schema changes, no migrations, no new tables.
-- No new AI agents, no LLM prompt changes.
-- No replacement of rule-loader logic, hypothesis evaluator math, or clarification strategy — only their **state surface** changes (read graph, append, score in place).
-- Backward-compat fields on the wire (`lockedCropContext` inside `decision_output.metadata`) preserved as derived values; reads removed.
+1. Reproduce the trace: ask the same Rice/SEEDLING question that produced `trace_mquorxjh_dxgavf`. Expected: clarification options now contain only symptoms present in `observation_master` (e.g. `LEAF_YELLOWING`, `STUNTED_GROWTH`, `POOR_TILLERING`), never `TUNGRO_YELLOW_STUNT`.
+2. Edge function logs show `[ONTOLOGY_GATE] dropped_diagnosis_level >= 1` and a corresponding row in `observation_vocabulary_gaps`.
+3. After the farmer picks a real symptom, `[ObsValidation] references unknown observation` warnings disappear for that turn and the rule engine receives a consistent symbolic set.
+4. `tsgo --noEmit` clean on the three edited files.
