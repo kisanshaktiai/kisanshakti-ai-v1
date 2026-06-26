@@ -556,7 +556,44 @@ export async function generateDiagnosisFirstResponse(
   if (validatedDiagnoses.length !== labelDedupedDiagnoses.length) {
     console.log(`   🔄 [LabelDedup] Removed ${validatedDiagnoses.length - labelDedupedDiagnoses.length} duplicate options by cause_label`);
   }
-  
+
+  // ═══════════════════════════════════════════════════════════════
+  // FARMER-OBSERVABLE ONTOLOGY GATE (Phase X.2 — definitive enforcement)
+  // Drop any option whose observation_key is NOT in observation_master
+  // (i.e., diagnosis codes like TUNGRO_YELLOW_STUNT leaking from rules).
+  // The PHOTO option and the always-valid VISUAL_CHECK key bypass the gate.
+  // ═══════════════════════════════════════════════════════════════
+  let ontologyGatedDiagnoses = labelDedupedDiagnoses;
+  if (supabaseClient && labelDedupedDiagnoses.length > 0) {
+    try {
+      const candidateKeys = labelDedupedDiagnoses
+        .map(d => d.observation_key)
+        .filter(k => k && k !== 'VISUAL_CHECK');
+      if (candidateKeys.length > 0) {
+        const gate = await assertFarmerObservable(supabaseClient, candidateKeys, {
+          source: 'DIAGNOSIS_FIRST_GENERATOR',
+          crop_code,
+          stage: growth_stage,
+          rule_ids: labelDedupedDiagnoses.map(d => d.rule_id),
+          trace_id: traceIdFinal,
+        });
+        const valid = gate.validKeys;
+        ontologyGatedDiagnoses = labelDedupedDiagnoses.filter(d => {
+          const key = (d.observation_key || '').toUpperCase();
+          if (key === 'VISUAL_CHECK') return true;
+          if (valid.has(key)) return true;
+          console.warn(`   🚫 [OntologyGate] Dropping diagnosis-leak option: cause="${d.cause}" observation_key="${key}" rule=${d.rule_id}`);
+          return false;
+        });
+        if (ontologyGatedDiagnoses.length !== labelDedupedDiagnoses.length) {
+          console.log(`   🚪 [OntologyGate] Kept ${ontologyGatedDiagnoses.length}/${labelDedupedDiagnoses.length} options (dropped ${labelDedupedDiagnoses.length - ontologyGatedDiagnoses.length} non-farmer-observable)`);
+        }
+      }
+    } catch (gateErr) {
+      console.warn(`   ⚠️ [OntologyGate] Validation failed, passing through: ${gateErr}`);
+    }
+  }
+
   // Generate photo option (ALWAYS present)
   const photoOption: PhotoOption = {
     id: 'PHOTO_UPLOAD',
@@ -564,11 +601,11 @@ export async function generateDiagnosisFirstResponse(
     icon: '📷',
     description: PHOTO_LABEL.description
   };
-  
+
   // Generate question text
-  const questionText = getQuestionText(labelDedupedDiagnoses, language);
-  
-  console.log(`   ✅ Generated ${labelDedupedDiagnoses.length} diagnosis options (filtered from ${diagnoses.length}) + photo option`);
+  const questionText = getQuestionText(ontologyGatedDiagnoses, language);
+
+  console.log(`   ✅ Generated ${ontologyGatedDiagnoses.length} diagnosis options (filtered from ${diagnoses.length}) + photo option`);
   console.log(`   Question: "${questionText.substring(0, 60)}..."`);
   console.log(`═══════════════════════════════════════════════════════════════\n`);
   
