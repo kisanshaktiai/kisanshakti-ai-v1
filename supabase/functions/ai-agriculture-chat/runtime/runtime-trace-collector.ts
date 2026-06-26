@@ -193,7 +193,106 @@ export class RuntimeTraceCollector {
       );
     } catch {}
   }
+
+  /**
+   * Persist a single row into ai_decision_log. Idempotent — sets `persisted=true`
+   * on success and returns the inserted id. Never throws (swallow + warn).
+   *
+   * Called from:
+   *   - audit-logger.completeTurn() (primary, with full TurnAuditLog ctx), and
+   *   - index.ts safety-net after orch.orchestrate() returns, so OPTION_SELECTED
+   *     and other early-return paths that skip completeTurn still produce a row.
+   */
+  async persistDecisionLog(
+    supabase: any,
+    extra: {
+      tenant_id?: string | null;
+      farmer_id?: string | null;
+      land_id?: string | null;
+      farmer_message?: string | null;
+      observations?: any;
+      validation_passed?: boolean | null;
+      processing_time_ms?: number | null;
+      knowledge_versions?: any;
+    } = {}
+  ): Promise<string | null> {
+    if (this.persisted) return this.persistedDecisionId;
+    try {
+      const totalLatency = (extra.processing_time_ms ?? (Date.now() - this.header.started_at_ms)) | 0;
+      const knowledgeVersions = extra.knowledge_versions ?? this.knowledgeVersions ?? {};
+      const ctx = this.context || {};
+      const hyp = this.hypotheses?.winner || null;
+      const tenantId = extra.tenant_id ?? ctx.tenant_id ?? null;
+      if (!tenantId) {
+        // tenant_id is NOT NULL in ai_decision_log — without it we cannot insert.
+        return null;
+      }
+
+      const decisionRow: Record<string, any> = {
+        tenant_id:       tenantId,
+        farmer_id:       extra.farmer_id ?? ctx.farmer_id ?? null,
+        land_id:         extra.land_id ?? ctx.land_id ?? null,
+        schedule_id:     ctx.schedule_id ?? null,
+        decision_type:   this.decision?.decision_type
+                          || this.decision?.primary_decision?.action_type
+                          || 'AI_CHAT',
+        model_version:   this.header.runtime_version,
+        input_data:      { farmer_message: extra.farmer_message ?? null, observations: extra.observations ?? [] },
+        output_data:     this.decision ?? this.builderOutput ?? {},
+        reasoning:       this.decision?.reasoning ?? null,
+        confidence_score: this.decision?.confidence ?? this.decision?.confidence_score ?? null,
+        execution_time_ms: totalLatency,
+        weather_data:    ctx.weather ?? null,
+        ndvi_data:       ctx.ndvi ?? null,
+        soil_data:       ctx.soil ?? null,
+        success:         (extra.validation_passed ?? true) && !(this.decision?.failed),
+        error_message:   this.decision?.error ?? null,
+        hypothesis_id:            hyp?.hypothesis_id ?? hyp?.id ?? null,
+        hypothesis_score:         hyp?.score ?? hyp?.confidence ?? null,
+        hypothesis_decision_path: this.hypotheses?.decision_path ?? null,
+        runtime_trace:          this.buildRuntimeTrace(totalLatency),
+        graph_snapshot:         this.buildGraphSnapshot(),
+        pipeline_metrics:       this.buildPipelineMetrics(totalLatency),
+        context_snapshot:       ctx,
+        clarification_snapshot: this.clarification ?? null,
+        observation_snapshot:   this.observations ?? null,
+        rule_snapshot:          this.rules ?? null,
+        hypothesis_snapshot:    this.hypotheses ?? null,
+        decision_snapshot:      this.decision ?? null,
+        knowledge_versions:     knowledgeVersions,
+        pipeline_version:       this.header.pipeline_version,
+        graph_version:          this.header.graph_version,
+        runtime_version:        this.header.runtime_version,
+        execution_mode:         this.header.execution_mode,
+        trace_level:            this.header.trace_level,
+        created_runtime_ms:     totalLatency,
+        trace_id:               this.header.trace_id,
+        execution_id:           this.header.execution_id,
+      };
+
+      const { data, error } = await supabase
+        .from('ai_decision_log')
+        .insert(decisionRow)
+        .select('id')
+        .single();
+
+      if (error) {
+        if (error.code !== '42P01') {
+          console.warn(`⚠️ [RuntimeTrace] ai_decision_log insert failed (${error.code}): ${error.message}`);
+        }
+        return null;
+      }
+      this.persisted = true;
+      this.persistedDecisionId = data?.id ? String(data.id) : null;
+      this.finishLogLine(totalLatency);
+      return this.persistedDecisionId;
+    } catch (e: any) {
+      console.warn(`⚠️ [RuntimeTrace] persistDecisionLog crashed: ${e?.message || e}`);
+      return null;
+    }
+  }
 }
+
 
 // ─── request-scoped singleton ──────────────────────────────────────────────
 // Edge functions handle one request per isolate slot; this matches the
