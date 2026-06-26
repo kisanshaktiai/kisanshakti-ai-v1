@@ -53,6 +53,49 @@ export interface RuntimeTraceHeader {
   started_at_ms: number;
 }
 
+const AI_DECISION_LOG_TYPES = new Set([
+  'schedule_generation',
+  'schedule_refinement',
+  'alert_generation',
+  'marketing_prediction',
+  'pest_detection',
+  'disease_detection',
+  'diagnosis',
+  'advisory',
+  'clarification',
+  'observation_response',
+  'safety_block',
+  'prescription',
+  'monitoring',
+  'unknown',
+]);
+
+function normalizeDecisionType(raw: any): string {
+  const value = String(raw || '').trim();
+  const lower = value.toLowerCase();
+  if (AI_DECISION_LOG_TYPES.has(lower)) return lower;
+
+  const upper = value.toUpperCase();
+  if (/CLARIF|QUESTION|ASK/.test(upper)) return 'clarification';
+  if (/SAFETY|BLOCK/.test(upper)) return 'safety_block';
+  if (/MONITOR|OBSERV/.test(upper)) return 'monitoring';
+  if (/SPRAY|PRESCRI|TREAT|PESTICIDE|FUNGICIDE|INSECTICIDE|FERTILI|IRRIGAT|NUTRIENT|APPLICATION/.test(upper)) return 'prescription';
+  if (/PEST/.test(upper)) return 'pest_detection';
+  if (/DISEASE|FUNG|BACTERI|VIRUS/.test(upper)) return 'disease_detection';
+  if (/DIAGNOS/.test(upper)) return 'diagnosis';
+  if (/ADVIS/.test(upper)) return 'advisory';
+  if (/SCHEDULE/.test(upper)) return 'schedule_generation';
+  if (/ALERT|PROACTIVE/.test(upper)) return 'alert_generation';
+  return 'unknown';
+}
+
+function normalizeConfidence(raw: any): number | null {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const scaled = n > 1 && n <= 100 ? n / 100 : n;
+  return Math.max(0, Math.min(1, scaled));
+}
+
 export class RuntimeTraceCollector {
   readonly header: RuntimeTraceHeader;
   private stages: StageRecord[] = [];
@@ -225,22 +268,35 @@ export class RuntimeTraceCollector {
       const tenantId = extra.tenant_id ?? ctx.tenant_id ?? null;
       if (!tenantId) {
         // tenant_id is NOT NULL in ai_decision_log — without it we cannot insert.
+        console.warn(`⚠️ [RuntimeTrace] ai_decision_log insert skipped: missing tenant_id trace=${this.header.trace_id}`);
         return null;
       }
+
+      const rawDecisionType = this.decision?.decision_type
+        || this.decision?.primary_decision?.action_type
+        || this.rules?.winner?.action_type
+        || this.rules?.winner?.rule_id
+        || 'unknown';
+      const confidenceScore = normalizeConfidence(
+        this.decision?.confidence ??
+        this.decision?.confidence_score ??
+        this.decision?.primary_decision?.weighted_confidence ??
+        this.decision?.primary_decision?.confidence ??
+        hyp?.score ??
+        hyp?.confidence
+      );
 
       const decisionRow: Record<string, any> = {
         tenant_id:       tenantId,
         farmer_id:       extra.farmer_id ?? ctx.farmer_id ?? null,
         land_id:         extra.land_id ?? ctx.land_id ?? null,
         schedule_id:     ctx.schedule_id ?? null,
-        decision_type:   this.decision?.decision_type
-                          || this.decision?.primary_decision?.action_type
-                          || 'AI_CHAT',
+        decision_type:   normalizeDecisionType(rawDecisionType),
         model_version:   this.header.runtime_version,
         input_data:      { farmer_message: extra.farmer_message ?? null, observations: extra.observations ?? [] },
         output_data:     this.decision ?? this.builderOutput ?? {},
         reasoning:       this.decision?.reasoning ?? null,
-        confidence_score: this.decision?.confidence ?? this.decision?.confidence_score ?? null,
+        confidence_score: confidenceScore,
         execution_time_ms: totalLatency,
         weather_data:    ctx.weather ?? null,
         ndvi_data:       ctx.ndvi ?? null,
