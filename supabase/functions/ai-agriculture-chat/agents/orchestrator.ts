@@ -1746,15 +1746,23 @@ export class AIAgentOrchestrator {
           // CRITICAL: Clear pending options and continue with ONLY the selected option
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
-          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping
+          // CRITICAL FIX: Use embedded observation key if available, else use
+          // the per-index canonical key persisted at clarification render time.
+          // Heuristic label→code reconstruction is FORBIDDEN — it broke the
+          // symbolic identity. Only fall back when both DB-sourced channels
+          // are empty.
           let mappedObservationKey: string | null = null;
+          const persistedObsKeys = (options.sessionState as any)?.pendingClarificationObservationKeys || [];
           if (embeddedObservationKeys.length > 0) {
             mappedObservationKey = embeddedObservationKeys[0];
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
+          } else if (matchResult.option_index != null && persistedObsKeys[matchResult.option_index]) {
+            mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
+            console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
           } else {
-            // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+            // Last-resort label→code mapping (legacy paths without symbolic keys)
             mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-            console.log(`   📋 Mapped to ObservationKey (fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            console.log(`   📋 Mapped to ObservationKey (legacy fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
           }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
