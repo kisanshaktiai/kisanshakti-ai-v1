@@ -38,6 +38,7 @@ import {
   logTemporalFilteringSummary,
   type TemporalValidationInput
 } from './temporal-constraint-validator.ts';
+import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -882,12 +883,40 @@ export async function evaluateCandidateHypotheses(
     }
     
     const topCandidates = deduplicatedCandidates.slice(0, 4);
-    
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ONTOLOGY GATE — strip non-farmer-observable observation_keys from every
+    // candidate's observable_characteristics. Without this gate, synthetic
+    // entries built from `conditions_json.observations` (or stray entries in
+    // `observable_characteristics`) can promote diagnosis-level codes like
+    // TUNGRO_YELLOW_STUNT into the clarification UI.
+    // ═══════════════════════════════════════════════════════════════════════
+    const allCharKeys: string[] = [];
+    const allRuleIds: string[] = [];
+    for (const c of topCandidates) {
+      allRuleIds.push(c.rule_id);
+      for (const ch of c.observable_characteristics) allCharKeys.push(ch.observation_key);
+    }
+    if (allCharKeys.length > 0) {
+      const gate = await assertFarmerObservable(supabaseClient, allCharKeys, {
+        source: 'HYPOTHESIS_EVAL',
+        crop_code,
+        stage: growth_stage,
+        rule_ids: allRuleIds,
+        trace_id: traceId,
+      });
+      for (const c of topCandidates) {
+        c.observable_characteristics = c.observable_characteristics.filter(
+          ch => gate.validKeys.has(String(ch.observation_key).toUpperCase())
+        );
+      }
+    }
+
     console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} unique candidates (from ${scoredCandidates.length} scored, ${rulesRaw.length} loaded):`);
     topCandidates.forEach((c, i) => {
-      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%`);
+      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}% - farmer_observable_chars=${c.observable_characteristics.length}`);
     });
-    
+
     return {
       candidates: topCandidates,
       total_rules_evaluated: rulesRaw.length,  // Total loaded before temporal filtering

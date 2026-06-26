@@ -57,6 +57,7 @@ import {
   isObservationNDVIConsistent,
   getVisualObservabilityScore
 } from '../decision/hypothesis-evaluator.ts';
+import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
 export const CLARIFICATION_STRATEGY_VERSION = '4.0.0';
 
@@ -442,6 +443,31 @@ export async function fetchRuleDrivenClarificationOptions(
     console.log(`   ⚠️ [HypothesisFirst] No candidates - using failure class fallback`);
     return useHypothesisFallback(failureResult, stage, language, traceId, 'NO_CANDIDATES');
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ONTOLOGY GATE — single source of truth for farmer-observable codes.
+  // Reject any observation_key that is not present in observation_master with
+  // is_active=true AND is_farmer_observable=true. This is what stops
+  // diagnosis-level codes (e.g. TUNGRO_YELLOW_STUNT), system predictions
+  // (PREDICTED_NUTRIENT_DEMAND) and workflow concepts (WEEKLY_SUMMARY) from
+  // ever reaching the farmer as clarification options.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const candidateKeys: string[] = [];
+  const candidateRuleIds: string[] = [];
+  for (const c of candidates) {
+    candidateRuleIds.push(c.rule_id);
+    for (const ch of c.observable_characteristics) {
+      candidateKeys.push(ch.observation_key);
+    }
+  }
+  const gate = await assertFarmerObservable(supabaseClient, candidateKeys, {
+    source: 'CLARIFICATION_STRATEGY',
+    crop_code,
+    stage,
+    rule_ids: candidateRuleIds,
+    trace_id: traceId,
+  });
+  const farmerObservable: Set<string> = gate.validKeys;
   
   // Collect all observable characteristics from candidate rules
   interface ScoredHypothesisOption {
@@ -462,10 +488,16 @@ export async function fetchRuleDrivenClarificationOptions(
   for (const candidate of candidates) {
     for (const char of candidate.observable_characteristics) {
       const optionKey = char.observation_key.toUpperCase();
-      
+
       // Skip duplicates
       if (seenOptions.has(optionKey)) continue;
-      
+
+      // ONTOLOGY GATE: drop anything that is not a farmer-observable code
+      if (!farmerObservable.has(optionKey)) {
+        console.log(`   ⛔ [CLARIFICATION_ONTOLOGY_VIOLATION] dropping ${optionKey} from rule ${candidate.rule_id} (not in observation_master OR not farmer-observable)`);
+        continue;
+      }
+
       // STEP 3a: Exclude observations not compatible with failure class domain
       if (domain.excluded_observations.some(exc => optionKey.includes(exc))) {
         console.log(`   ⛔ Excluding ${char.observation_key} (excluded by ${failureResult.primary_class} domain)`);
@@ -529,20 +561,26 @@ export async function fetchRuleDrivenClarificationOptions(
   // ═══════════════════════════════════════════════════════════════════════════
   
   if (allOptions.length === 0 && candidates.length > 0) {
-    console.log(`   ⚠️ [HypothesisFirst] All options filtered - attempting regeneration from candidates`);
-    
+    console.log(`   ⚠️ [HypothesisFirst] All options filtered - attempting regeneration from candidates (ontology gate still enforced)`);
+
     // Try to extract ANY observation from candidates, relaxing some filters
+    // BUT NEVER relax the farmer-observable ontology gate.
     for (const candidate of candidates) {
       for (const char of candidate.observable_characteristics) {
+        const optionKey = char.observation_key.toUpperCase();
+
+        // Hard invariant — never present diagnosis codes to the farmer
+        if (!farmerObservable.has(optionKey)) continue;
+
         // Only apply stage filter (mandatory)
         if (!isObservationStageCompatible(char.observation_key, stage)) continue;
-        if (seenOptions.has(char.observation_key.toUpperCase())) continue;
-        if (current_symptoms.some(s => s.toUpperCase() === char.observation_key.toUpperCase())) continue;
-        
-        const label = char[`label_${language}` as keyof typeof char] as string || 
-                      char.label_en || 
+        if (seenOptions.has(optionKey)) continue;
+        if (current_symptoms.some(s => s.toUpperCase() === optionKey)) continue;
+
+        const label = char[`label_${language}` as keyof typeof char] as string ||
+                      char.label_en ||
                       char.observation_key;
-        
+
         allOptions.push({
           id: char.id,
           label,
@@ -554,9 +592,9 @@ export async function fetchRuleDrivenClarificationOptions(
           ndvi_consistent: true,
           total_score: 0.5
         });
-        
-        seenOptions.add(char.observation_key.toUpperCase());
-        
+
+        seenOptions.add(optionKey);
+
         // Stop after getting 3 options
         if (allOptions.length >= 3) break;
       }
