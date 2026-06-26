@@ -318,7 +318,7 @@ export class RuntimeTraceCollector {
         success:         (extra.validation_passed ?? true) && !(this.decision?.failed),
         error_message:   this.decision?.error ?? null,
         hypothesis_id:            hyp?.hypothesis_id ?? hyp?.id ?? null,
-        hypothesis_score:         hyp?.score ?? hyp?.confidence ?? null,
+        hypothesis_score:         normalizeConfidence(hyp?.score ?? hyp?.confidence),
         hypothesis_decision_path: this.hypotheses?.decision_path ?? null,
         runtime_trace:          this.buildRuntimeTrace(totalLatency),
         graph_snapshot:         this.buildGraphSnapshot(),
