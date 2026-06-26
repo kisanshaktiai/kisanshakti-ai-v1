@@ -937,6 +937,59 @@ serve(async (req) => {
           if (!_persistedId) {
             console.warn(`⚠️ [SafetyNet] persistDecisionLog returned null (tenant=${finalTenantId ?? 'NULL'})`);
           } else {
+            const _auditPatch = {
+              symbolic_decision_id: _persistedId,
+              execution_id: _rtc.header.execution_id,
+              pipeline_version: _rtc.header.pipeline_version,
+              graph_version: _rtc.header.graph_version,
+              runtime_version: _rtc.header.runtime_version,
+            };
+            const { data: _auditRows, error: _auditUpdateError } = await _sb
+              .from('ai_chat_audit_logs')
+              .update(_auditPatch)
+              .eq('trace_id', _rtc.header.trace_id)
+              .select('id');
+            if (_auditUpdateError) {
+              console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs stamp failed (${_auditUpdateError.code}): ${_auditUpdateError.message}`);
+            } else if (!_auditRows || _auditRows.length === 0) {
+              const _safeLang = ['mr', 'hi', 'en'].includes(detectedLanguage) ? detectedLanguage : 'en';
+              const { error: _auditInsertError } = await _sb
+                .from('ai_chat_audit_logs')
+                .insert({
+                  turn_id: `runtime_trace_${_rtc.header.execution_id}`,
+                  session_id: currentSessionId,
+                  farmer_id: finalFarmerId,
+                  tenant_id: finalTenantId,
+                  trace_id: _rtc.header.trace_id,
+                  farmer_message: userMessageContent,
+                  detected_language: _safeLang,
+                  intent_label: _rtc.context?.intent?.code ?? orchestratorResponse.type ?? null,
+                  observations: [],
+                  nlu_confidence: _rtc.context?.intent?.confidence ?? null,
+                  locked_intent: _rtc.context?.intent?.code ?? null,
+                  allowed_scopes: [],
+                  forbidden_actions: [],
+                  symbolic_decision_id: _persistedId,
+                  rules_fired: [],
+                  actions_returned: [],
+                  actions_filtered_out: [],
+                  validation_passed: true,
+                  validation_errors: [],
+                  response_source: orchestratorResponse.type === 'CLARIFICATION_QUESTION' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE',
+                  response_language_match: true,
+                  processing_time_ms: Date.now() - startTime,
+                  agents_used: orchestratorResponse.metadata?.agents_used ?? [],
+                  land_id: landId ?? null,
+                  crop_code: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
+                  growth_stage: orchestratorResponse.dataAudit?.land?.current_crop_stage ?? null,
+                  ..._auditPatch,
+                });
+              if (_auditInsertError) {
+                console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs insert failed (${_auditInsertError.code}): ${_auditInsertError.message}`);
+              } else {
+                console.log(`✅ [SafetyNet] ai_chat_audit_logs inserted trace=${_rtc.header.trace_id}`);
+              }
+            }
             console.log(`✅ [SafetyNet] ai_decision_log persisted id=${_persistedId} trace=${_rtc.header?.trace_id}`);
           }
         }
