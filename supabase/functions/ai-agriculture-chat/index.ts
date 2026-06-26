@@ -496,6 +496,8 @@ serve(async (req) => {
       recommendations_count?: number;
       // CRITICAL FIX 1: Add pending clarification options for option selection
       pending_clarification_options?: string[];
+      // SYMBOLIC IDENTITY: per-index observation_code captured at clarification render time
+      pending_clarification_observation_keys?: string[];
       // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
       lockedCropContext?: {
         crop_name?: string;
