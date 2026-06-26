@@ -220,6 +220,7 @@ import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
 import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstandingPrescriptionGate, UnderstandingConfidence } from './understanding-completeness-checker.ts';
 import { getAuditLogger } from './audit-logger.ts';
+import { resetRuntimeTraceCollector, getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
