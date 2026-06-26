@@ -220,6 +220,7 @@ import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
 import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstandingPrescriptionGate, UnderstandingConfidence } from './understanding-completeness-checker.ts';
 import { getAuditLogger } from './audit-logger.ts';
+import { resetRuntimeTraceCollector, getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
@@ -1135,6 +1136,17 @@ export class AIAgentOrchestrator {
     // ─────────────────────────────────────────────────────────────────
     const graph = new GraphRuntimeState(traceId);
     let graphCp = graphCheckpoint(graph);
+
+    // ─────────────────────────────────────────────────────────────────
+    // PHASE Y — RuntimeTraceCollector (single per request).
+    // Captures pipeline stages, snapshots, knowledge versions; persisted by
+    // audit-logger.completeTurn() into ai_decision_log. Never throws.
+    // ─────────────────────────────────────────────────────────────────
+    const runtimeTrace = resetRuntimeTraceCollector({
+      trace_id: traceId,
+      execution_mode: options.photoUrl ? 'live-vision' : 'live',
+      started_at_ms: startTime,
+    });
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
 
@@ -1308,6 +1320,25 @@ export class AIAgentOrchestrator {
       } else {
         console.log(`📋 [PHASE-21] No canonical context (general query mode)`);
       }
+
+      // PHASE Y — context snapshot
+      try {
+        runtimeTrace.setContext({
+          land_id:           options.landId ?? landContext?.id ?? null,
+          farmer_id:         farmerId ?? null,
+          conversation_id:   sessionId ?? null,
+          schedule_id:       (landContext as any)?.schedule_id ?? null,
+          language:          (options as any).language ?? normalizedInput?.detected_language ?? null,
+          crop:              canonicalContext?.crop_code ?? landContext?.current_crop ?? null,
+          stage:             canonicalContext?.growth_stage ?? landContext?.current_crop_stage ?? null,
+          das:               canonicalContext?.days_since_sowing ?? landContext?.days_since_sowing ?? null,
+          ndvi:              canonicalContext?.ndvi ?? null,
+          weather:           (landContext as any)?.weather_summary ?? null,
+          soil:              (landContext as any)?.soil_summary ?? null,
+          canonical:         canonicalContext ?? null,
+          intent:            null, // filled after intent lock
+        });
+      } catch {}
 
       // ═══════════════════════════════════════════════════════════════════════════
       // Phase H + I — Freeze canonical context onto the Graph SSOT blackboard.
@@ -4875,6 +4906,11 @@ export class AIAgentOrchestrator {
       // Lock the intent for this turn
       const intentLock = lockIntent(detectedIntent, intentConfidence);
       agentsUsed.push('INTENT_LOCK');
+      // PHASE Y — record intent on collector
+      try {
+        const rt = getRuntimeTraceCollector();
+        if (rt) { rt.context = { ...(rt.context || {}), intent: { code: detectedIntent, confidence: intentConfidence } }; }
+      } catch {}
       
       // ═══════════════════════════════════════════════════════════════════════════
       // AUDIT LOGGER INITIALIZATION - Include new Stage 1-4 data
@@ -6907,6 +6943,49 @@ export class AIAgentOrchestrator {
       
       layerTimings.layer3_rules = Date.now() - layer3Start;
       console.log(`   ✅ Layer 3 complete (${layerTimings.layer3_rules}ms)`);
+
+      // PHASE Y — rules + decision + hypothesis snapshots
+      try {
+        const rt = getRuntimeTraceCollector();
+        if (rt) {
+          rt.setRules({
+            candidates:     (decisionOutput as any).candidate_rules ?? null,
+            candidate_count: Array.isArray((decisionOutput as any).candidate_rules) ? (decisionOutput as any).candidate_rules.length : null,
+            matched_count:  decisionOutput.rules_applied?.length ?? 0,
+            applied:        decisionOutput.rules_applied ?? [],
+            blocked:        (decisionOutput as any).blocked_actions ?? [],
+            winner:         decisionOutput.primary_decision ? {
+              rule_id: decisionOutput.primary_decision.rule_id
+                       || decisionOutput.primary_decision.application_details?.rule_id
+                       || null,
+              action_type: decisionOutput.primary_decision.action_type ?? null,
+              confidence:  decisionOutput.primary_decision.weighted_confidence ?? decisionOutput.primary_decision.confidence ?? null,
+            } : null,
+            rejected: (decisionOutput as any).top_5_rejected_rules ?? null,
+          });
+          rt.setDecision({
+            decision_id:      (decisionOutput as any).decision_id ?? null,
+            decision_type:    decisionOutput.primary_decision?.action_type ?? null,
+            primary_decision: decisionOutput.primary_decision ?? null,
+            secondary_actions:(decisionOutput as any).secondary_actions ?? [],
+            confidence:       decisionOutput.primary_decision?.weighted_confidence ?? null,
+            status:           decisionOutput.status ?? null,
+            reasoning:        (decisionOutput as any).reasoning ?? null,
+          });
+          // Hypothesis (may be undefined if no arbitration ran)
+          try {
+            const hyp = (typeof hypothesisResult !== 'undefined') ? hypothesisResult : null;
+            if (hyp) {
+              rt.setHypotheses({
+                decision_path: (hyp as any).decision_path ?? null,
+                winner: (hyp as any).best_hypothesis ?? (hyp as any).winner ?? null,
+                candidates: (hyp as any).candidates ?? (hyp as any).all_hypotheses ?? null,
+                rejected: (hyp as any).rejected_hypotheses ?? null,
+              });
+            }
+          } catch {}
+        }
+      } catch {}
       
       // ═══════════════════════════════════════════════════════════════════════════
       // HARD INVARIANT: If PRIMARY_DECISION exists with valid rule_id, return NOW
