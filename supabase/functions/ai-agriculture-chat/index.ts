@@ -218,6 +218,13 @@ function generateTraceId(): string {
   return `trace_${timestamp}_${random}`;
 }
 
+function isSchemaColumnError(error: any): boolean {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return error?.code === 'PGRST204'
+    || error?.code === '42703'
+    || message.includes('column') && (message.includes('schema cache') || message.includes('does not exist') || message.includes('not found'));
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
