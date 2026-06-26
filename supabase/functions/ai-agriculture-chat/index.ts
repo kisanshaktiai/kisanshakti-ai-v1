@@ -885,6 +885,7 @@ serve(async (req) => {
           decisionState: sessionState.decision_state,
           // CRITICAL FIX 2: Pass pending clarification options for option matching
           pendingClarificationOptions: sessionState.pending_clarification_options || [],
+          pendingClarificationObservationKeys: sessionState.pending_clarification_observation_keys || [],
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
           // PART 10: Pass problems_discussed for session continuity
