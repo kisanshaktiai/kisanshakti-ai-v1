@@ -960,37 +960,47 @@ serve(async (req) => {
               console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs stamp failed (${_auditUpdateError.code}): ${_auditUpdateError.message}`);
             } else if (!_auditRows || _auditRows.length === 0) {
               const _safeLang = ['mr', 'hi', 'en'].includes(detectedLanguage) ? detectedLanguage : 'en';
-              const { error: _auditInsertError } = await _sb
+              const _auditInsertData: Record<string, any> = {
+                turn_id: `runtime_trace_${_rtc.header.execution_id}`,
+                session_id: currentSessionId,
+                farmer_id: finalFarmerId,
+                tenant_id: finalTenantId,
+                trace_id: _rtc.header.trace_id,
+                farmer_message: userMessageContent,
+                detected_language: _safeLang,
+                intent_label: _rtc.context?.intent?.code ?? orchestratorResponse.type ?? null,
+                observations: [],
+                nlu_confidence: typeof _rtc.context?.intent?.confidence === 'number' ? _rtc.context.intent.confidence : null,
+                locked_intent: _rtc.context?.intent?.code ?? null,
+                allowed_scopes: [],
+                forbidden_actions: [],
+                symbolic_decision_id: _persistedId,
+                rules_fired: [],
+                actions_returned: [],
+                actions_filtered_out: [],
+                validation_passed: true,
+                validation_errors: [],
+                response_source: orchestratorResponse.type === 'CLARIFICATION_QUESTION' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE',
+                response_language_match: true,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: orchestratorResponse.metadata?.agents_used ?? [],
+                land_id: landId ?? null,
+                crop_code: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
+                growth_stage: orchestratorResponse.dataAudit?.land?.current_crop_stage ?? null,
+                ..._auditPatch,
+              };
+              let { error: _auditInsertError } = await _sb
                 .from('ai_chat_audit_logs')
-                .insert({
-                  turn_id: `runtime_trace_${_rtc.header.execution_id}`,
-                  session_id: currentSessionId,
-                  farmer_id: finalFarmerId,
-                  tenant_id: finalTenantId,
-                  trace_id: _rtc.header.trace_id,
-                  farmer_message: userMessageContent,
-                  detected_language: _safeLang,
-                  intent_label: _rtc.context?.intent?.code ?? orchestratorResponse.type ?? null,
-                  observations: [],
-                  nlu_confidence: typeof _rtc.context?.intent?.confidence === 'number' ? _rtc.context.intent.confidence : null,
-                  locked_intent: _rtc.context?.intent?.code ?? null,
-                  allowed_scopes: [],
-                  forbidden_actions: [],
-                  symbolic_decision_id: _persistedId,
-                  rules_fired: [],
-                  actions_returned: [],
-                  actions_filtered_out: [],
-                  validation_passed: true,
-                  validation_errors: [],
-                  response_source: orchestratorResponse.type === 'CLARIFICATION_QUESTION' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE',
-                  response_language_match: true,
-                  processing_time_ms: Date.now() - startTime,
-                  agents_used: orchestratorResponse.metadata?.agents_used ?? [],
-                  land_id: landId ?? null,
-                  crop_code: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
-                  growth_stage: orchestratorResponse.dataAudit?.land?.current_crop_stage ?? null,
-                  ..._auditPatch,
-                });
+                .insert(_auditInsertData);
+              if (_auditInsertError && isSchemaColumnError(_auditInsertError)) {
+                console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs schema missing Phase-Y columns, retrying legacy insert`);
+                delete _auditInsertData.execution_id;
+                delete _auditInsertData.pipeline_version;
+                delete _auditInsertData.graph_version;
+                delete _auditInsertData.runtime_version;
+                const _retry = await _sb.from('ai_chat_audit_logs').insert(_auditInsertData);
+                _auditInsertError = _retry.error;
+              }
               if (_auditInsertError) {
                 console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs insert failed (${_auditInsertError.code}): ${_auditInsertError.message}`);
               } else {
