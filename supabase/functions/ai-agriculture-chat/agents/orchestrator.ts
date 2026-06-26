@@ -431,6 +431,19 @@ import {
 } from './cross-crop-symptom-mapper.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE H + I — Graph SSOT runtime blackboard
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  GraphRuntimeState,
+  checkpoint as graphCheckpoint,
+  assertNoGraphDrift,
+  loadSnapshotVersions,
+  hashCanonicalContext,
+  GraphStateDriftError,
+  SymbolicIdLeakError,
+} from '../runtime/graph-runtime-state.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-18: Rule Evaluation Layer - Clean wrapper for symbolic reasoning
 // ═══════════════════════════════════════════════════════════════════════════
 import {
