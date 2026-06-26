@@ -561,20 +561,26 @@ export async function fetchRuleDrivenClarificationOptions(
   // ═══════════════════════════════════════════════════════════════════════════
   
   if (allOptions.length === 0 && candidates.length > 0) {
-    console.log(`   ⚠️ [HypothesisFirst] All options filtered - attempting regeneration from candidates`);
-    
+    console.log(`   ⚠️ [HypothesisFirst] All options filtered - attempting regeneration from candidates (ontology gate still enforced)`);
+
     // Try to extract ANY observation from candidates, relaxing some filters
+    // BUT NEVER relax the farmer-observable ontology gate.
     for (const candidate of candidates) {
       for (const char of candidate.observable_characteristics) {
+        const optionKey = char.observation_key.toUpperCase();
+
+        // Hard invariant — never present diagnosis codes to the farmer
+        if (!farmerObservable.has(optionKey)) continue;
+
         // Only apply stage filter (mandatory)
         if (!isObservationStageCompatible(char.observation_key, stage)) continue;
-        if (seenOptions.has(char.observation_key.toUpperCase())) continue;
-        if (current_symptoms.some(s => s.toUpperCase() === char.observation_key.toUpperCase())) continue;
-        
-        const label = char[`label_${language}` as keyof typeof char] as string || 
-                      char.label_en || 
+        if (seenOptions.has(optionKey)) continue;
+        if (current_symptoms.some(s => s.toUpperCase() === optionKey)) continue;
+
+        const label = char[`label_${language}` as keyof typeof char] as string ||
+                      char.label_en ||
                       char.observation_key;
-        
+
         allOptions.push({
           id: char.id,
           label,
@@ -586,9 +592,9 @@ export async function fetchRuleDrivenClarificationOptions(
           ndvi_consistent: true,
           total_score: 0.5
         });
-        
-        seenOptions.add(char.observation_key.toUpperCase());
-        
+
+        seenOptions.add(optionKey);
+
         // Stop after getting 3 options
         if (allOptions.length >= 3) break;
       }
