@@ -1835,6 +1835,47 @@ export class AIAgentOrchestrator {
                 `"${mappedObservationKey || 'UNKNOWN'}" (legacy fallback)`
             );
           }
+          // ─────────────────────────────────────────────────────────────
+          // Phase I-3 — CLARIFICATION confirm on the ObservationLedger.
+          // The user's selection is the strongest possible signal for an
+          // observation. Append (or confirm) onto the append-only ledger
+          // so downstream modules see a single canonical confirmation
+          // node carrying source=CLARIFICATION and confidence≥0.9.
+          // Non-canonical (leaked label) values are skipped — the
+          // EvidenceLedger already recorded the SYMBOLIC_ID_LEAK above.
+          // ─────────────────────────────────────────────────────────────
+          try {
+            const CANON_RE_OPT = /^[A-Z0-9_]+$/;
+            if (mappedObservationKey && CANON_RE_OPT.test(mappedObservationKey)) {
+              const already = graph.observation_ledger
+                .latestByCode()
+                .has(mappedObservationKey);
+              if (!already) {
+                graph.observation_ledger.append({
+                  observation_code: mappedObservationKey,
+                  source: 'CLARIFICATION',
+                  confidence: 0.95,
+                  actor: 'orchestrator:OPTION_SELECTED',
+                });
+              }
+              graph.observation_ledger.confirm(
+                mappedObservationKey,
+                'orchestrator:OPTION_SELECTED'
+              );
+              console.log(
+                `[SSOT_TRACE][${traceId}] OPTION_SELECTED ledger.confirm ` +
+                  `code=${mappedObservationKey} ledger_size=${graph.observation_ledger.size()}`
+              );
+            }
+          } catch (e) {
+            if (e instanceof SymbolicIdLeakError) {
+              console.error(`🚨 ${e.name}: ${e.message}`);
+            } else {
+              console.warn(
+                `⚠️ [OPTION_SELECTED_LEDGER] non-fatal: ${e instanceof Error ? e.message : String(e)}`
+              );
+            }
+          }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
           // Log pre-clarification state and rebuild with new symbols
