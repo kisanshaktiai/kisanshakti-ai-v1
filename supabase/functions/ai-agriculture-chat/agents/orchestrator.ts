@@ -4405,20 +4405,26 @@ export class AIAgentOrchestrator {
             text_mr: responseText,
             text_hi: responseText,
             text_en: responseText,
-            options: await Promise.all(safeOptions.map(async (opt, idx) => {
+            options: await Promise.all(safeOptions.map(async (opt: any, idx: number) => {
               const rawLabel = typeof opt === 'string' ? opt : (opt.label || String(opt));
+              const obsKey = (typeof opt === 'object' && opt) ? (opt.observation_key || opt.value || undefined) : undefined;
               return {
                 value: String(idx + 1),
-                label: rawLabel
+                label: rawLabel,
+                observation_key: obsKey  // SYMBOLIC IDENTITY: preserve canonical code through to UI
               };
             })).then(async (opts) => {
-              // Translate raw observation codes to farmer language
+              // Translate raw observation codes to farmer language WITHOUT dropping observation_key.
               const translated = await translateClarificationOptions(
-                opts.map(o => o.label), 
-                options.language || 'mr', 
+                opts.map(o => ({ label: o.label, observation_key: o.observation_key })),
+                options.language || 'mr',
                 this.supabase
               );
-              return opts.map((o, i) => ({ ...o, label: typeof translated[i] === 'string' ? translated[i] as string : (translated[i] as any).label || o.label }));
+              return opts.map((o, i) => {
+                const t: any = translated[i];
+                const newLabel = typeof t === 'string' ? t : (t?.label || o.label);
+                return { ...o, label: newLabel };
+              });
             })
           },
           // ✅ CRITICAL FIX: Always include communication object with safe options
