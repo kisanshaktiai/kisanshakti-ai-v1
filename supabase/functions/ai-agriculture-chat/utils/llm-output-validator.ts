@@ -142,25 +142,25 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
   const now = Date.now();
   const cached = cropApplicabilityCache.get(cropCode);
   if (cached && (now - cached.loadedAt) < VALIDATOR_CACHE_TTL) {
+    console.log(`[LLM_VALIDATOR][CACHE_HIT] crop=${cropCode} size=${cached.data.size} ageMs=${now - cached.loadedAt}`);
     return cached.data;
   }
-  
+
   if (cached?.loadingPromise) {
+    console.log(`[LLM_VALIDATOR][CACHE_INFLIGHT] crop=${cropCode} awaiting in-flight load`);
     return cached.loadingPromise;
   }
 
+  console.log(`[LLM_VALIDATOR][CACHE_MISS] crop=${cropCode} → querying DB`);
+
   const loadPromise = (async () => {
     try {
-      // CANONICAL-CONTEXT FIX: decision_rules.crop_code and intent_observation_mapping.crop_code
-      // are stored LOWERCASE in the DB. Runtime canonicalContext.crop_code is UPPERCASE
-      // ("RICE"), which silently returned 0 rows and produced the
-      // "[LLM_VALIDATOR] Loaded 0 crop-applicable observations for RICE" log.
-      // Query case-insensitively so the validator works regardless of upstream casing.
       const cropLower = (cropCode || '').toLowerCase();
       const cropUpper = (cropCode || '').toUpperCase();
       const cropVariants = Array.from(new Set([cropLower, cropUpper].filter(Boolean)));
 
-      // Get observations that have rules for this crop
+      console.log(`[LLM_VALIDATOR][SQL] decision_rules WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true LIMIT 2000`);
+
       const { data, error } = await supabase
         .from('decision_rules')
         .select('observable_characteristics')
@@ -172,13 +172,14 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
         console.error(`[LLM_VALIDATOR] Failed to load crop-applicable observations for ${cropCode}: ${error.message}`);
         return cached?.data || new Set<string>();
       }
-      
+
+      console.log(`[LLM_VALIDATOR][SQL_RESULT] decision_rules rows=${(data || []).length}`);
+
       const applicableCodes = new Set<string>();
       for (const rule of (data || [])) {
         const obs = rule.observable_characteristics;
         if (obs && typeof obs === 'object') {
-          // Extract observation codes from rule conditions
-          for (const [key, value] of Object.entries(obs)) {
+          for (const [_key, value] of Object.entries(obs)) {
             if (Array.isArray(value)) {
               for (const v of value) {
                 if (typeof v === 'string') applicableCodes.add(v.toUpperCase());
@@ -189,19 +190,26 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
           }
         }
       }
+      console.log(`[LLM_VALIDATOR][NORMALIZE] after decision_rules → ${applicableCodes.size} uppercase codes`);
 
-      // Also pull from intent_observation_mapping for this crop
+      console.log(`[LLM_VALIDATOR][SQL] intent_observation_mapping WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true`);
       const { data: mappingData } = await supabase
         .from('intent_observation_mapping')
         .select('observation_code')
         .in('crop_code', cropVariants)
         .eq('is_active', true);
-      
+
+      console.log(`[LLM_VALIDATOR][SQL_RESULT] intent_observation_mapping rows=${(mappingData || []).length}`);
+
       for (const row of (mappingData || [])) {
         if (row.observation_code) applicableCodes.add(String(row.observation_code).toUpperCase());
       }
-      
+
+      const sampleCodes = Array.from(applicableCodes).slice(0, 25);
       console.log(`[LLM_VALIDATOR][CANONICAL_CONTEXT_TRACE] Loaded ${applicableCodes.size} crop-applicable observations for ${cropCode} (queried as ${JSON.stringify(cropVariants)})`);
+      console.log(`[LLM_VALIDATOR][NORMALIZED_CODES_SAMPLE] ${JSON.stringify(sampleCodes)}${applicableCodes.size > sampleCodes.length ? ' …(truncated)' : ''}`);
+      console.log(`[LLM_VALIDATOR][CONTAINS_CHECK] SEEDLING_DIED=${applicableCodes.has('SEEDLING_DIED')} STUNTED_PLANTS=${applicableCodes.has('STUNTED_PLANTS')}`);
+
       cropApplicabilityCache.set(cropCode, { data: applicableCodes, loadedAt: Date.now() });
       return applicableCodes;
 
@@ -210,13 +218,13 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       return cached?.data || new Set<string>();
     }
   })();
-  
-  cropApplicabilityCache.set(cropCode, { 
-    data: cached?.data || new Set(), 
-    loadedAt: cached?.loadedAt || 0, 
-    loadingPromise: loadPromise 
+
+  cropApplicabilityCache.set(cropCode, {
+    data: cached?.data || new Set(),
+    loadedAt: cached?.loadedAt || 0,
+    loadingPromise: loadPromise
   });
-  
+
   const result = await loadPromise;
   const entry = cropApplicabilityCache.get(cropCode);
   if (entry) delete entry.loadingPromise;

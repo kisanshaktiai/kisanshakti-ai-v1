@@ -581,6 +581,13 @@ serve(async (req) => {
           pending_options: pendingCount,
           turn: sessionState?.turn_count
         });
+        console.log(`🧭 [CANONICAL_CONTEXT_TRACE] ═══ NEXT-TURN LOADED STATE ═══`);
+        console.log(`   session_id:                 ${currentSessionId}`);
+        console.log(`   loaded_locked_context:      ${JSON.stringify(sessionState?.lockedCropContext)}`);
+        console.log(`   loaded_pending_options:     ${sessionState?.pending_clarification_options?.length || 0}`);
+        console.log(`   loaded_pending_obs_keys:    ${JSON.stringify(sessionState?.pending_clarification_observation_keys)}`);
+        console.log(`   loaded_decision_state:      ${sessionState?.decision_state}`);
+        console.log(`   ═══════════════════════════════════════════`);
       }
       
       // P0-A: Fetch messages ONLY from this validated session (land-isolated by design)
@@ -1897,8 +1904,15 @@ serve(async (req) => {
     const clarificationAnswered = sessionStateUpdateFromOrchestrator?.clarification_answered === true ||
       orchestratorResponse.decision_output?.metadata?.clarification_resolved === true;
     
-    // P0-3 FIX: Extract lockedCropContext for session persistence
-    const lockedCropContextForSession = 
+    // P0-3 FIX: Extract lockedCropContext for session persistence.
+    // CANONICAL CONTEXT PRESERVATION (Phase fix): for CLARIFICATION_QUESTION turns,
+    // the orchestrator response often omits land.found/dataAudit because it short-
+    // circuits on the clarification path. Previously we then fell through to `null`
+    // and wiped the prior session's lockedCropContext, forcing the next turn to
+    // re-detect crop/stage/DAS from scratch. Instead, fall back to the existing
+    // sessionState.lockedCropContext so the canonical (crop, stage, DAS) survives
+    // every clarification round-trip untouched.
+    const candidateLockedCropContextFromResponse =
       orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
       orchestratorResponse.metadata?.lockedCropContext ||
       (orchestratorResponse.dataAudit?.land?.found ? {
@@ -1906,6 +1920,28 @@ serve(async (req) => {
         growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
         days_since_sowing: orchestratorResponse.dataAudit.land.days_since_sowing
       } : null);
+
+    const priorLockedCropContext = sessionState?.lockedCropContext || null;
+
+    // Prefer response-provided context only when it actually carries a crop_name;
+    // otherwise preserve the prior canonical context. Never downgrade to null
+    // mid-clarification.
+    const lockedCropContextForSession =
+      (candidateLockedCropContextFromResponse && candidateLockedCropContextFromResponse.crop_name)
+        ? {
+            crop_name: candidateLockedCropContextFromResponse.crop_name ?? priorLockedCropContext?.crop_name,
+            growth_stage: candidateLockedCropContextFromResponse.growth_stage ?? priorLockedCropContext?.growth_stage,
+            days_since_sowing: candidateLockedCropContextFromResponse.days_since_sowing ?? priorLockedCropContext?.days_since_sowing,
+          }
+        : priorLockedCropContext;
+
+    console.log(`\n🧭 [CANONICAL_CONTEXT_TRACE] ═══ PRE-PERSIST CONTEXT ═══`);
+    console.log(`   response_type:           ${orchestratorResponse.type}`);
+    console.log(`   prior_session_context:   ${JSON.stringify(priorLockedCropContext)}`);
+    console.log(`   response_candidate_ctx:  ${JSON.stringify(candidateLockedCropContextFromResponse)}`);
+    console.log(`   resolved_persist_ctx:    ${JSON.stringify(lockedCropContextForSession)}`);
+    console.log(`   preserved_from_session:  ${!candidateLockedCropContextFromResponse?.crop_name && !!priorLockedCropContext}`);
+    console.log(`   ═══════════════════════════════════════════`);
     
     // ═══════════════════════════════════════════════════════════════════════════
     // DECISION STATE DETERMINATION - Session state is AUTHORITATIVE
@@ -2080,6 +2116,13 @@ serve(async (req) => {
         pending: decisionTracking.pending_user_action,
         turn: decisionTracking.turn_count
       });
+      console.log(`🧭 [CANONICAL_CONTEXT_TRACE] ═══ POST-PERSIST STATE ═══`);
+      console.log(`   session_id:                ${currentSessionId}`);
+      console.log(`   persisted_locked_context:  ${JSON.stringify(decisionTracking.lockedCropContext)}`);
+      console.log(`   persisted_pending_options: ${decisionTracking.pending_clarification_options?.length || 0}`);
+      console.log(`   persisted_pending_obs_keys:${JSON.stringify(decisionTracking.pending_clarification_observation_keys)}`);
+      console.log(`   persisted_decision_state:  ${decisionTracking.decision_state}`);
+      console.log(`   ═══════════════════════════════════════════`);
     } catch (sessionUpdateError) {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
     }
