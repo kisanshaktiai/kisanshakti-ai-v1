@@ -36,6 +36,8 @@ import { translateCause, initializeTranslationCache } from '../i18n/translation-
 type SupportedLanguage = string;
 // PHASE 4: DB-driven observation labels - replaces hardcoded OBSERVATION_LABELS dictionary
 import { loadObservationLabels, type ObservationLabel } from '../i18n/observation-label-loader.ts';
+// FARMER-OBSERVABLE ONTOLOGY GATE — single source of truth for clarification keys
+import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
 export const DIAGNOSIS_FIRST_VERSION = '2.0.0';  // v2.0.0: DB-driven i18n, removed hardcoded CAUSE_TRANSLATIONS and OBSERVATION_LABELS
 
