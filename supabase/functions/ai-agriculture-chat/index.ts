@@ -951,11 +951,21 @@ serve(async (req) => {
               graph_version: _rtc.header.graph_version,
               runtime_version: _rtc.header.runtime_version,
             };
-            const { data: _auditRows, error: _auditUpdateError } = await _sb
+            let { data: _auditRows, error: _auditUpdateError } = await _sb
               .from('ai_chat_audit_logs')
               .update(_auditPatch)
               .eq('trace_id', _rtc.header.trace_id)
               .select('id');
+            if (_auditUpdateError && isSchemaColumnError(_auditUpdateError)) {
+              console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs schema missing Phase-Y columns, retrying symbolic-only stamp`);
+              const _retryStamp = await _sb
+                .from('ai_chat_audit_logs')
+                .update({ symbolic_decision_id: _persistedId })
+                .eq('trace_id', _rtc.header.trace_id)
+                .select('id');
+              _auditRows = _retryStamp.data;
+              _auditUpdateError = _retryStamp.error;
+            }
             if (_auditUpdateError) {
               console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs stamp failed (${_auditUpdateError.code}): ${_auditUpdateError.message}`);
             } else if (!_auditRows || _auditRows.length === 0) {
