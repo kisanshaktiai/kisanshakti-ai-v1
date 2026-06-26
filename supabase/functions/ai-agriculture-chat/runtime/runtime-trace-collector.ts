@@ -120,6 +120,13 @@ function nonEmptyReasoning(...values: any[]): string {
   return 'Runtime trace persisted for AI agriculture chat turn.';
 }
 
+function safeUuid(raw: any): string | null {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null;
+}
+
 export class RuntimeTraceCollector {
   readonly header: RuntimeTraceHeader;
   private stages: StageRecord[] = [];
@@ -289,10 +296,10 @@ export class RuntimeTraceCollector {
       const knowledgeVersions = extra.knowledge_versions ?? this.knowledgeVersions ?? {};
       const ctx = this.context || {};
       const hyp = this.hypotheses?.winner || null;
-      const tenantId = extra.tenant_id ?? ctx.tenant_id ?? null;
+      const tenantId = safeUuid(extra.tenant_id ?? ctx.tenant_id);
       if (!tenantId) {
         // tenant_id is NOT NULL in ai_decision_log — without it we cannot insert.
-        console.warn(`⚠️ [RuntimeTrace] ai_decision_log insert skipped: missing tenant_id trace=${this.header.trace_id}`);
+        console.warn(`⚠️ [RuntimeTrace] ai_decision_log insert skipped: missing/invalid tenant_id trace=${this.header.trace_id}`);
         return null;
       }
 
@@ -310,11 +317,14 @@ export class RuntimeTraceCollector {
         hyp?.confidence
       );
 
+      const generatedDecisionId = crypto.randomUUID();
+
       const legacyDecisionRow: Record<string, any> = {
+        id:              generatedDecisionId,
         tenant_id:       tenantId,
-        farmer_id:       extra.farmer_id ?? ctx.farmer_id ?? null,
-        land_id:         extra.land_id ?? ctx.land_id ?? null,
-        schedule_id:     ctx.schedule_id ?? null,
+        farmer_id:       safeUuid(extra.farmer_id ?? ctx.farmer_id),
+        land_id:         safeUuid(extra.land_id ?? ctx.land_id),
+        schedule_id:     safeUuid(ctx.schedule_id),
         decision_type:   normalizeDecisionType(rawDecisionType),
         model_version:   this.header.runtime_version,
         input_data:      { farmer_message: extra.farmer_message ?? null, observations: extra.observations ?? [] },
@@ -360,21 +370,17 @@ export class RuntimeTraceCollector {
         execution_id:           this.header.execution_id,
       };
 
-      let { data, error } = await supabase
+      let { error } = await supabase
         .from('ai_decision_log')
-        .insert(decisionRow)
-        .select('id')
-        .single();
+        .insert(decisionRow);
 
       if (error && error.code === '23514' && String(error.message || '').includes('decision_type')) {
         console.warn(`⚠️ [RuntimeTrace] decision_type constraint rejected '${decisionRow.decision_type}', retrying legacy-safe type trace=${this.header.trace_id}`);
         const retry = await supabase
           .from('ai_decision_log')
-          .insert({ ...decisionRow, decision_type: normalizeLegacyDecisionType(rawDecisionType) })
-          .select('id')
-          .single();
-        data = retry.data;
+          .insert({ ...decisionRow, id: crypto.randomUUID(), decision_type: normalizeLegacyDecisionType(rawDecisionType) });
         error = retry.error;
+        if (!error) legacyDecisionRow.id = retry.data?.id ?? legacyDecisionRow.id;
       }
 
       if (error && isSchemaColumnError(error)) {
@@ -383,13 +389,43 @@ export class RuntimeTraceCollector {
           .from('ai_decision_log')
           .insert({
             ...legacyDecisionRow,
+            id: crypto.randomUUID(),
             decision_type: normalizeLegacyDecisionType(rawDecisionType),
             reasoning: `${legacyDecisionRow.reasoning} trace_id=${this.header.trace_id} execution_id=${this.header.execution_id}`,
-          })
-          .select('id')
-          .single();
-        data = retry.data;
+          });
         error = retry.error;
+      }
+
+      if (error) {
+        console.warn(`⚠️ [RuntimeTrace] ai_decision_log primary insert failed (${error.code}): ${error.message}; retrying minimal legacy-safe row trace=${this.header.trace_id}`);
+        const minimalId = crypto.randomUUID();
+        const retry = await supabase
+          .from('ai_decision_log')
+          .insert({
+            id: minimalId,
+            tenant_id: tenantId,
+            farmer_id: safeUuid(extra.farmer_id ?? ctx.farmer_id),
+            land_id: safeUuid(extra.land_id ?? ctx.land_id),
+            schedule_id: null,
+            decision_type: normalizeLegacyDecisionType(rawDecisionType),
+            model_version: this.header.runtime_version,
+            input_data: { farmer_message: extra.farmer_message ?? null, trace_id: this.header.trace_id },
+            output_data: this.decision ?? this.builderOutput ?? { trace_id: this.header.trace_id },
+            reasoning: nonEmptyReasoning(legacyDecisionRow.reasoning, this.context?.intent?.code, 'Minimal runtime trace fallback'),
+            confidence_score: confidenceScore,
+            execution_time_ms: totalLatency,
+            weather_data: null,
+            ndvi_data: null,
+            soil_data: null,
+            success: (extra.validation_passed ?? true) && !(this.decision?.failed),
+            error_message: this.decision?.error ?? null,
+          });
+        if (!retry.error) {
+          error = null;
+          decisionRow.id = minimalId;
+        } else {
+          error = retry.error;
+        }
       }
 
       if (error) {
@@ -399,7 +435,7 @@ export class RuntimeTraceCollector {
         return null;
       }
       this.persisted = true;
-      this.persistedDecisionId = data?.id ? String(data.id) : null;
+      this.persistedDecisionId = String(decisionRow.id || generatedDecisionId);
       this.finishLogLine(totalLatency);
       return this.persistedDecisionId;
     } catch (e: any) {
