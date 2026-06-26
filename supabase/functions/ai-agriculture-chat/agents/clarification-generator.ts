@@ -128,7 +128,13 @@ export interface ScopedClarificationInput {
 
 export interface ClarificationOutput {
   response_text: string;
-  options: string[];
+  /**
+   * SYMBOLIC IDENTITY PRESERVATION:
+   * Options may be plain strings (legacy template paths) OR objects carrying
+   * the canonical `observation_key`. Downstream consumers MUST prefer the
+   * `observation_key` over any heuristic label-to-code reconstruction.
+   */
+  options: Array<string | { label: string; observation_key?: string }>;
   photo_requested: boolean;
   clarification_prompt: string;
   scope?: ClarificationScope;
