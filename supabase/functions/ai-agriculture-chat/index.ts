@@ -549,6 +549,7 @@ serve(async (req) => {
         if (isGeneralSession && sessionState?.pending_clarification_options?.length > 0) {
           console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
           sessionState.pending_clarification_options = [];
+          sessionState.pending_clarification_observation_keys = [];
         }
         
         // Also clear land-specific context for general sessions
