@@ -1096,6 +1096,7 @@ export class AIAgentOrchestrator {
         decisionState?: string;
         // PHASE-9.1: Clarification state fields
         pendingClarificationOptions?: string[];
+        pendingClarificationObservationKeys?: string[];
         lockedCropContext?: {
           crop_name: string;
           growth_stage: string;
