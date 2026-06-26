@@ -2109,6 +2109,13 @@ serve(async (req) => {
         pending: decisionTracking.pending_user_action,
         turn: decisionTracking.turn_count
       });
+      console.log(`🧭 [CANONICAL_CONTEXT_TRACE] ═══ POST-PERSIST STATE ═══`);
+      console.log(`   session_id:                ${currentSessionId}`);
+      console.log(`   persisted_locked_context:  ${JSON.stringify(decisionTracking.lockedCropContext)}`);
+      console.log(`   persisted_pending_options: ${decisionTracking.pending_clarification_options?.length || 0}`);
+      console.log(`   persisted_pending_obs_keys:${JSON.stringify(decisionTracking.pending_clarification_observation_keys)}`);
+      console.log(`   persisted_decision_state:  ${decisionTracking.decision_state}`);
+      console.log(`   ═══════════════════════════════════════════`);
     } catch (sessionUpdateError) {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
     }
