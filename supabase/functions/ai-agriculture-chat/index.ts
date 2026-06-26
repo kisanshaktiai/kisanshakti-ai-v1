@@ -496,6 +496,8 @@ serve(async (req) => {
       recommendations_count?: number;
       // CRITICAL FIX 1: Add pending clarification options for option selection
       pending_clarification_options?: string[];
+      // SYMBOLIC IDENTITY: per-index observation_code captured at clarification render time
+      pending_clarification_observation_keys?: string[];
       // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
       lockedCropContext?: {
         crop_name?: string;
@@ -547,6 +549,7 @@ serve(async (req) => {
         if (isGeneralSession && sessionState?.pending_clarification_options?.length > 0) {
           console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
           sessionState.pending_clarification_options = [];
+          sessionState.pending_clarification_observation_keys = [];
         }
         
         // Also clear land-specific context for general sessions
@@ -883,6 +886,7 @@ serve(async (req) => {
           decisionState: sessionState.decision_state,
           // CRITICAL FIX 2: Pass pending clarification options for option matching
           pendingClarificationOptions: sessionState.pending_clarification_options || [],
+          pendingClarificationObservationKeys: sessionState.pending_clarification_observation_keys || [],
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
           // PART 10: Pass problems_discussed for session continuity
@@ -1875,6 +1879,11 @@ serve(async (req) => {
                                     orchestratorResponse.type === 'CLARIFICATION_NEEDED';
     const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
+    // SYMBOLIC IDENTITY: persist observation_key per option index so the next
+    // turn's OPTION_SELECTED can use the canonical code directly without
+    // heuristic label-to-code reconstruction.
+    const clarificationObservationKeys: string[] =
+      orchestratorResponse.question?.options?.map((o: any) => (o?.observation_key || '')) || [];
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
@@ -2018,6 +2027,7 @@ serve(async (req) => {
       timestamp: now,
       // CRITICAL FIX: Clear pending options when clarification is answered
       pending_clarification_options: (isClarificationResponse && !clarificationAnswered) ? clarificationOptions : [],
+      pending_clarification_observation_keys: (isClarificationResponse && !clarificationAnswered) ? clarificationObservationKeys : [],
       // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
       lockedCropContext: lockedCropContextForSession,
       // Track clarification resolution

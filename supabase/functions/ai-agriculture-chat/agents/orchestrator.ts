@@ -936,6 +936,7 @@ export interface OrchestratorResponse {
     trace_id?: string;           // For observability
     // PHASE-9.1: Clarification state passthrough
     pendingClarificationOptions?: string[];
+    pendingClarificationObservationKeys?: string[];
     lockedCropContext?: {
       crop_name: string;
       growth_stage: string;
@@ -1095,6 +1096,7 @@ export class AIAgentOrchestrator {
         decisionState?: string;
         // PHASE-9.1: Clarification state fields
         pendingClarificationOptions?: string[];
+        pendingClarificationObservationKeys?: string[];
         lockedCropContext?: {
           crop_name: string;
           growth_stage: string;
@@ -1746,15 +1748,23 @@ export class AIAgentOrchestrator {
           // CRITICAL: Clear pending options and continue with ONLY the selected option
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
-          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping
+          // CRITICAL FIX: Use embedded observation key if available, else use
+          // the per-index canonical key persisted at clarification render time.
+          // Heuristic label→code reconstruction is FORBIDDEN — it broke the
+          // symbolic identity. Only fall back when both DB-sourced channels
+          // are empty.
           let mappedObservationKey: string | null = null;
+          const persistedObsKeys = (options.sessionState as any)?.pendingClarificationObservationKeys || [];
           if (embeddedObservationKeys.length > 0) {
             mappedObservationKey = embeddedObservationKeys[0];
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
+          } else if (matchResult.option_index != null && persistedObsKeys[matchResult.option_index]) {
+            mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
+            console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
           } else {
-            // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+            // Last-resort label→code mapping (legacy paths without symbolic keys)
             mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-            console.log(`   📋 Mapped to ObservationKey (fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            console.log(`   📋 Mapped to ObservationKey (legacy fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
           }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
@@ -4405,20 +4415,26 @@ export class AIAgentOrchestrator {
             text_mr: responseText,
             text_hi: responseText,
             text_en: responseText,
-            options: await Promise.all(safeOptions.map(async (opt, idx) => {
+            options: await Promise.all(safeOptions.map(async (opt: any, idx: number) => {
               const rawLabel = typeof opt === 'string' ? opt : (opt.label || String(opt));
+              const obsKey = (typeof opt === 'object' && opt) ? (opt.observation_key || opt.value || undefined) : undefined;
               return {
                 value: String(idx + 1),
-                label: rawLabel
+                label: rawLabel,
+                observation_key: obsKey  // SYMBOLIC IDENTITY: preserve canonical code through to UI
               };
             })).then(async (opts) => {
-              // Translate raw observation codes to farmer language
+              // Translate raw observation codes to farmer language WITHOUT dropping observation_key.
               const translated = await translateClarificationOptions(
-                opts.map(o => o.label), 
-                options.language || 'mr', 
+                opts.map(o => ({ label: o.label, observation_key: o.observation_key })),
+                options.language || 'mr',
                 this.supabase
               );
-              return opts.map((o, i) => ({ ...o, label: typeof translated[i] === 'string' ? translated[i] as string : (translated[i] as any).label || o.label }));
+              return opts.map((o, i) => {
+                const t: any = translated[i];
+                const newLabel = typeof t === 'string' ? t : (t?.label || o.label);
+                return { ...o, label: newLabel };
+              });
             })
           },
           // ✅ CRITICAL FIX: Always include communication object with safe options
