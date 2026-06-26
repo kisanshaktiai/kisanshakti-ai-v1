@@ -613,7 +613,7 @@ export async function generateDiagnosisFirstResponse(
     mode: 'DIAGNOSIS_FIRST',
     source: 'DECISION_RULES',
     question_text: questionText,
-    diagnoses: labelDedupedDiagnoses,
+    diagnoses: ontologyGatedDiagnoses,
     photo_option: photoOption,
     crop_code,
     growth_stage,
