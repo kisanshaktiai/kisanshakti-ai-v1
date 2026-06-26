@@ -2023,6 +2023,7 @@ serve(async (req) => {
       timestamp: now,
       // CRITICAL FIX: Clear pending options when clarification is answered
       pending_clarification_options: (isClarificationResponse && !clarificationAnswered) ? clarificationOptions : [],
+      pending_clarification_observation_keys: (isClarificationResponse && !clarificationAnswered) ? clarificationObservationKeys : [],
       // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
       lockedCropContext: lockedCropContextForSession,
       // Track clarification resolution
