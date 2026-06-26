@@ -979,7 +979,7 @@ serve(async (req) => {
               const _safeLang = ['mr', 'hi', 'en'].includes(detectedLanguage) ? detectedLanguage : 'en';
               const _auditInsertData: Record<string, any> = {
                 turn_id: `runtime_trace_${_rtc.header.execution_id}`,
-                session_id: currentSessionId,
+                session_id: currentSessionId || `runtime_trace_${_rtc.header.execution_id}`,
                 farmer_id: finalFarmerId,
                 tenant_id: finalTenantId,
                 trace_id: _rtc.header.trace_id,
@@ -987,7 +987,7 @@ serve(async (req) => {
                 detected_language: _safeLang,
                 intent_label: _rtc.context?.intent?.code ?? orchestratorResponse.type ?? null,
                 observations: [],
-                nlu_confidence: typeof _rtc.context?.intent?.confidence === 'number' ? _rtc.context.intent.confidence : null,
+                nlu_confidence: normalizeTraceConfidence(_rtc.context?.intent?.confidence),
                 locked_intent: _rtc.context?.intent?.code ?? null,
                 allowed_scopes: [],
                 forbidden_actions: [],
