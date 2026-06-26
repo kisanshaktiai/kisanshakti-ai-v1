@@ -44,6 +44,14 @@ function filterCanonicalForAudit(obs: any): string[] {
   return out;
 }
 
+function normalizeAuditResponseSource(source: any): 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR' {
+  const value = String(source || '').toUpperCase();
+  if (value === 'LLM_FORMATTED') return 'LLM_FORMATTED';
+  if (value === 'CLARIFICATION' || value.includes('CLARIF')) return 'CLARIFICATION';
+  if (value === 'ERROR' || value.includes('ERROR') || value.includes('FAILED')) return 'ERROR';
+  return 'SYMBOLIC_TEMPLATE';
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - Extended for Full Forensic Trail
@@ -642,7 +650,7 @@ export class AuditLogger {
       observation_mapping: log.observation_mapping,
       validation_passed: log.validation_passed,
       validation_errors: log.validation_errors,
-      response_source: log.response_source,
+      response_source: normalizeAuditResponseSource(log.response_source),
       response_language_match: log.response_language_match,
       llm_model_used: log.llm_model_used,
       processing_time_ms: log.processing_time_ms,
