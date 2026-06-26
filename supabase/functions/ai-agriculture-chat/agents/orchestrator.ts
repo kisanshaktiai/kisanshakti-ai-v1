@@ -1321,6 +1321,25 @@ export class AIAgentOrchestrator {
         console.log(`📋 [PHASE-21] No canonical context (general query mode)`);
       }
 
+      // PHASE Y — context snapshot
+      try {
+        runtimeTrace.setContext({
+          land_id:           options.landId ?? landContext?.id ?? null,
+          farmer_id:         farmerId ?? null,
+          conversation_id:   sessionId ?? null,
+          schedule_id:       (landContext as any)?.schedule_id ?? null,
+          language:          (options as any).language ?? normalizedInput?.detected_language ?? null,
+          crop:              canonicalContext?.crop_code ?? landContext?.current_crop ?? null,
+          stage:             canonicalContext?.growth_stage ?? landContext?.current_crop_stage ?? null,
+          das:               canonicalContext?.days_since_sowing ?? landContext?.days_since_sowing ?? null,
+          ndvi:              canonicalContext?.ndvi ?? null,
+          weather:           (landContext as any)?.weather_summary ?? null,
+          soil:              (landContext as any)?.soil_summary ?? null,
+          canonical:         canonicalContext ?? null,
+          intent:            null, // filled after intent lock
+        });
+      } catch {}
+
       // ═══════════════════════════════════════════════════════════════════════════
       // Phase H + I — Freeze canonical context onto the Graph SSOT blackboard.
       // Capture per-request snapshot versions (ontology / IOM / translations) so
