@@ -581,6 +581,13 @@ serve(async (req) => {
           pending_options: pendingCount,
           turn: sessionState?.turn_count
         });
+        console.log(`🧭 [CANONICAL_CONTEXT_TRACE] ═══ NEXT-TURN LOADED STATE ═══`);
+        console.log(`   session_id:                 ${currentSessionId}`);
+        console.log(`   loaded_locked_context:      ${JSON.stringify(sessionState?.lockedCropContext)}`);
+        console.log(`   loaded_pending_options:     ${sessionState?.pending_clarification_options?.length || 0}`);
+        console.log(`   loaded_pending_obs_keys:    ${JSON.stringify(sessionState?.pending_clarification_observation_keys)}`);
+        console.log(`   loaded_decision_state:      ${sessionState?.decision_state}`);
+        console.log(`   ═══════════════════════════════════════════`);
       }
       
       // P0-A: Fetch messages ONLY from this validated session (land-isolated by design)
