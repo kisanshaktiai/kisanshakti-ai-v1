@@ -303,10 +303,16 @@ export class RuntimeTraceCollector {
         return null;
       }
 
+      // Derive a meaningful decision_type even on early returns (e.g., clarification
+      // turns where no rule has fired yet) so traces never collapse to 'unknown'.
       const rawDecisionType = this.decision?.decision_type
         || this.decision?.primary_decision?.action_type
         || this.rules?.winner?.action_type
         || this.rules?.winner?.rule_id
+        || (this.clarification ? 'clarification' : null)
+        || (this.hypotheses?.candidates?.length ? 'hypothesis_ranked' : null)
+        || (this.observations ? 'observation_collected' : null)
+        || (this.context?.intent?.code ? `intent_${this.context.intent.code}` : null)
         || 'unknown';
       const confidenceScore = normalizeConfidence(
         this.decision?.confidence ??
