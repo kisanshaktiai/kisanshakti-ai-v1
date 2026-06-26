@@ -274,23 +274,29 @@ export async function generateScopedClarification(
           const client = createSupabaseClient(url, key);
           const labelMap = await loadObservationLabels(client, topCodes, language);
 
-          const optionLabels: string[] = [];
+          // Build options as { label, observation_key } so the canonical
+          // observation_code survives all the way to the frontend (and is
+          // echoed back via the [obs_keys:...] tag on OPTION_SELECTED).
+          const optionObjects: Array<{ label: string; observation_key: string }> = [];
           for (const code of topCodes) {
-            const lbl = labelMap.get(code.toUpperCase());
-            if (lbl?.display_text) optionLabels.push(lbl.display_text);
-            if (optionLabels.length >= 3) break;
+            const canonical = code.toUpperCase();
+            const lbl = labelMap.get(canonical);
+            if (lbl?.display_text) {
+              optionObjects.push({ label: lbl.display_text, observation_key: canonical });
+            }
+            if (optionObjects.length >= 3) break;
           }
 
-          // Diagnosis-leakage gate (unchanged contract)
-          const leakageValidation = validateClarificationOptions(optionLabels);
+          // Diagnosis-leakage gate (unchanged contract — validate the labels only)
+          const leakageValidation = validateClarificationOptions(optionObjects.map(o => o.label));
           if (!leakageValidation.valid) {
             console.warn(`   ⚠️ [R1] Diagnosis leakage in DB-resolved options → falling back to template renderer:`, leakageValidation.violations);
-          } else if (optionLabels.length > 0) {
-            console.log(`   ✅ [R1] Intent-resolver options ready (${optionLabels.length}) for lang=${language}`);
+          } else if (optionObjects.length > 0) {
+            console.log(`   ✅ [R1] Intent-resolver options ready (${optionObjects.length}) for lang=${language} → codes=${optionObjects.map(o => o.observation_key).join(',')}`);
 
             // Render the question via the async renderer so framing + DB
             // label resolution stays consistent, then OVERRIDE the options
-            // with the intent-curated set.
+            // with the intent-curated set (label + observation_key).
             const renderResult = await renderClarificationAsync({
               scope: clarificationPlan.scope,
               target_observation_keys: clarificationPlan.target_keys,
@@ -304,7 +310,7 @@ export async function generateScopedClarification(
             const acknowledgment = ACKNOWLEDGMENT_TEMPLATES[language] || ACKNOWLEDGMENT_TEMPLATES.en;
             return {
               response_text: `${acknowledgment}\n\n${renderResult.question}`,
-              options: optionLabels.slice(0, 3),
+              options: optionObjects.slice(0, 3),
               photo_requested: false,
               clarification_prompt: renderResult.question,
               scope: clarificationPlan.scope,
