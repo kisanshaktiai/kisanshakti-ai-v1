@@ -96,6 +96,14 @@ function normalizeConfidence(raw: any): number | null {
   return Math.max(0, Math.min(1, scaled));
 }
 
+function nonEmptyReasoning(...values: any[]): string {
+  for (const v of values) {
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (v != null && typeof v !== 'object') return String(v);
+  }
+  return 'Runtime trace persisted for AI agriculture chat turn.';
+}
+
 export class RuntimeTraceCollector {
   readonly header: RuntimeTraceHeader;
   private stages: StageRecord[] = [];
@@ -295,7 +303,13 @@ export class RuntimeTraceCollector {
         model_version:   this.header.runtime_version,
         input_data:      { farmer_message: extra.farmer_message ?? null, observations: extra.observations ?? [] },
         output_data:     this.decision ?? this.builderOutput ?? {},
-        reasoning:       this.decision?.reasoning ?? null,
+        reasoning:       nonEmptyReasoning(
+          this.decision?.reasoning,
+          this.decision?.primary_decision?.reasoning,
+          this.decision?.explanation,
+          this.clarification?.reason,
+          this.context?.intent?.code
+        ),
         confidence_score: confidenceScore,
         execution_time_ms: totalLatency,
         weather_data:    ctx.weather ?? null,
