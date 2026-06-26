@@ -18,6 +18,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { NLUDecisionGraphInput, SymbolicDecisionOutput } from './decision-representation.ts';
+import { getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
+import { getKnowledgeVersions } from '../runtime/knowledge-versions.ts';
 
 export const AUDIT_LOGGER_VERSION = '2.0.0';
 
