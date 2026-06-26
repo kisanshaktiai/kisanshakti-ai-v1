@@ -370,6 +370,7 @@ export class RuntimeTraceCollector {
         execution_id:           this.header.execution_id,
       };
 
+      let insertedDecisionId = generatedDecisionId;
       let { error } = await supabase
         .from('ai_decision_log')
         .insert(decisionRow);
@@ -378,9 +379,8 @@ export class RuntimeTraceCollector {
         console.warn(`⚠️ [RuntimeTrace] decision_type constraint rejected '${decisionRow.decision_type}', retrying legacy-safe type trace=${this.header.trace_id}`);
         const retry = await supabase
           .from('ai_decision_log')
-          .insert({ ...decisionRow, id: crypto.randomUUID(), decision_type: normalizeLegacyDecisionType(rawDecisionType) });
+          .insert({ ...decisionRow, id: (insertedDecisionId = crypto.randomUUID()), decision_type: normalizeLegacyDecisionType(rawDecisionType) });
         error = retry.error;
-        if (!error) legacyDecisionRow.id = retry.data?.id ?? legacyDecisionRow.id;
       }
 
       if (error && isSchemaColumnError(error)) {
@@ -389,7 +389,7 @@ export class RuntimeTraceCollector {
           .from('ai_decision_log')
           .insert({
             ...legacyDecisionRow,
-            id: crypto.randomUUID(),
+            id: (insertedDecisionId = crypto.randomUUID()),
             decision_type: normalizeLegacyDecisionType(rawDecisionType),
             reasoning: `${legacyDecisionRow.reasoning} trace_id=${this.header.trace_id} execution_id=${this.header.execution_id}`,
           });
@@ -422,7 +422,7 @@ export class RuntimeTraceCollector {
           });
         if (!retry.error) {
           error = null;
-          decisionRow.id = minimalId;
+          insertedDecisionId = minimalId;
         } else {
           error = retry.error;
         }
@@ -435,7 +435,7 @@ export class RuntimeTraceCollector {
         return null;
       }
       this.persisted = true;
-      this.persistedDecisionId = String(decisionRow.id || generatedDecisionId);
+      this.persistedDecisionId = String(insertedDecisionId);
       this.finishLogLine(totalLatency);
       return this.persistedDecisionId;
     } catch (e: any) {
