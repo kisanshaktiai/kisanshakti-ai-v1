@@ -524,7 +524,7 @@ export class AuditLogger {
    * Log response generation
    */
   logResponse(response: {
-    source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR';
+    source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR' | string;
     language_match: boolean;
     llm_model?: string;
   }): void {
