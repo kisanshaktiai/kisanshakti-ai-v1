@@ -1875,6 +1875,11 @@ serve(async (req) => {
                                     orchestratorResponse.type === 'CLARIFICATION_NEEDED';
     const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
+    // SYMBOLIC IDENTITY: persist observation_key per option index so the next
+    // turn's OPTION_SELECTED can use the canonical code directly without
+    // heuristic label-to-code reconstruction.
+    const clarificationObservationKeys: string[] =
+      orchestratorResponse.question?.options?.map((o: any) => (o?.observation_key || '')) || [];
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
