@@ -1814,9 +1814,25 @@ export class AIAgentOrchestrator {
             mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
             console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
           } else {
-            // Last-resort label→code mapping (legacy paths without symbolic keys)
+            // Phase I-6: Heuristic label→code mapping is a SYMBOLIC_ID_LEAK.
+            // Record it in the EvidenceLedger so it shows up in the trace and
+            // emit a structured warning. The mapping is kept ONLY as a legacy
+            // safety net until the wire contract is migrated to {option_id}.
             mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-            console.log(`   📋 Mapped to ObservationKey (legacy fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            try {
+              requestCtx.ledger.lose(
+                'OPTION_SELECTED',
+                `observation:${matchResult.matched_option}`,
+                { matched_option: matchResult.matched_option, pendingScope },
+                'SYMBOLIC_ID_LEAK: heuristic label→code mapping used because ' +
+                  'pendingClarificationObservationKeys was empty. Migrate client to ' +
+                  'echo option_id (canonical observation_code) instead of label.'
+              );
+            } catch {/* ledger never throws fatally */}
+            console.warn(
+              `   ⚠️ [SYMBOLIC_ID_LEAK] heuristic-mapped "${matchResult.matched_option}" → ` +
+                `"${mappedObservationKey || 'UNKNOWN'}" (legacy fallback)`
+            );
           }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
