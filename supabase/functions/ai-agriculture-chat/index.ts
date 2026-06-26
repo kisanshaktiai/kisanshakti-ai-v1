@@ -916,18 +916,33 @@ serve(async (req) => {
     try {
       const _rtc = getRuntimeTraceCollector();
       if (_rtc && !_rtc.persisted) {
-        const _sb = (orch as any)?.supabase ?? (globalThis as any)?.__supabase ?? null;
-        if (_sb) {
-          await _rtc.persistDecisionLog(_sb, {
+        // Prefer the orchestrator's exposed service-role client. Fall back to
+        // private-field/global only if a future orchestrator build forgets to
+        // expose getSupabase() — keeps the safety net resilient.
+        const _sb =
+          (typeof (orch as any)?.getSupabase === 'function' ? (orch as any).getSupabase() : null) ??
+          (orch as any)?.supabase ??
+          (globalThis as any)?.__supabase ??
+          null;
+        if (!_sb) {
+          console.warn('⚠️ [SafetyNet] No Supabase client available; ai_decision_log row skipped.');
+        } else {
+          const _persistedId = await _rtc.persistDecisionLog(_sb, {
             tenant_id: finalTenantId,
             farmer_id: finalFarmerId,
             land_id: landId ?? null,
             farmer_message: userMessageContent,
             processing_time_ms: Date.now() - startTime,
           });
+          if (!_persistedId) {
+            console.warn(`⚠️ [SafetyNet] persistDecisionLog returned null (tenant=${finalTenantId ?? 'NULL'})`);
+          } else {
+            console.log(`✅ [SafetyNet] ai_decision_log persisted id=${_persistedId} trace=${_rtc.header?.trace_id}`);
+          }
         }
       }
     } catch (_e) { /* non-blocking */ }
+
 
 
     // ═══════════════════════════════════════════════════════════════════════════

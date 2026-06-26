@@ -987,6 +987,16 @@ export class AIAgentOrchestrator {
     this.feedbackEngine = new FeedbackLearningEngine();
     this.safetyGuardian = new SafetyGuardian();
   }
+
+  /**
+   * PHASE Y SAFETY NET: expose the orchestrator's service-role Supabase client
+   * so external callers (e.g. the index.ts persistence safety net) can persist
+   * RuntimeTrace rows on early-return paths without relying on private-field
+   * casts or globalThis lookups.
+   */
+  public getSupabase(): ReturnType<typeof createClient> {
+    return this.supabase;
+  }
   
   /**
    * Create a per-request DiagnosticFlowController
