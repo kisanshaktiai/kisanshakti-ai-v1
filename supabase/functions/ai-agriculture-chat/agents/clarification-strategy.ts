@@ -57,6 +57,7 @@ import {
   isObservationNDVIConsistent,
   getVisualObservabilityScore
 } from '../decision/hypothesis-evaluator.ts';
+import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
 export const CLARIFICATION_STRATEGY_VERSION = '4.0.0';
 
