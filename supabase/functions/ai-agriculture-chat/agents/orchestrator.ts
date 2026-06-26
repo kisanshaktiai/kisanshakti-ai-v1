@@ -1128,6 +1128,12 @@ export class AIAgentOrchestrator {
     // Every stage below contributes to this ctx instead of resetting confidence.
     // ═══════════════════════════════════════════════════════════════════════════
     const requestCtx: RequestContext = createRequestContext(traceId);
+    // ─────────────────────────────────────────────────────────────────
+    // Phase I — Graph SSOT blackboard. ONE per request. Shared by every
+    // stage. Frozen-shell + append-only ledger + drift guards.
+    // ─────────────────────────────────────────────────────────────────
+    const graph = new GraphRuntimeState(traceId);
+    let graphCp = graphCheckpoint(graph);
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
 
