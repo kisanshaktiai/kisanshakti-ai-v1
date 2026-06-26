@@ -488,10 +488,16 @@ export async function fetchRuleDrivenClarificationOptions(
   for (const candidate of candidates) {
     for (const char of candidate.observable_characteristics) {
       const optionKey = char.observation_key.toUpperCase();
-      
+
       // Skip duplicates
       if (seenOptions.has(optionKey)) continue;
-      
+
+      // ONTOLOGY GATE: drop anything that is not a farmer-observable code
+      if (!farmerObservable.has(optionKey)) {
+        console.log(`   ⛔ [CLARIFICATION_ONTOLOGY_VIOLATION] dropping ${optionKey} from rule ${candidate.rule_id} (not in observation_master OR not farmer-observable)`);
+        continue;
+      }
+
       // STEP 3a: Exclude observations not compatible with failure class domain
       if (domain.excluded_observations.some(exc => optionKey.includes(exc))) {
         console.log(`   ⛔ Excluding ${char.observation_key} (excluded by ${failureResult.primary_class} domain)`);
