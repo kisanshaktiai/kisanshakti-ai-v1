@@ -1307,6 +1307,39 @@ export class AIAgentOrchestrator {
       } else {
         console.log(`📋 [PHASE-21] No canonical context (general query mode)`);
       }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Phase H + I — Freeze canonical context onto the Graph SSOT blackboard.
+      // Capture per-request snapshot versions (ontology / IOM / translations) so
+      // every decision is replayable. assertNoGraphDrift() will fail-fast if any
+      // later stage tries to mutate crop/stage/DAS/language/intent.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        graph.freezeCanonicalContext(canonicalContext ?? null);
+        const language = (options as any).language ?? null;
+        const cch = hashCanonicalContext(canonicalContext ?? null);
+        const versions = await loadSnapshotVersions(this.supabase, {
+          language,
+          canonicalContextHash: cch,
+          rulesBundleVersion: null,
+        });
+        graph.setSnapshotVersions(versions);
+        console.log(
+          `[SSOT_TRACE][${traceId}] canonical_hash=${cch} ` +
+            `ontology=${versions.ontology_version} iom=${versions.iom_version} ` +
+            `translations=${versions.translation_version} language=${language}`
+        );
+        graphCp = assertNoGraphDrift(graph, graphCp, 'CANONICAL_FREEZE');
+      } catch (e) {
+        if (e instanceof GraphStateDriftError || e instanceof SymbolicIdLeakError) {
+          console.error(`🚨 ${e.name}: ${e.message}`);
+          throw e;
+        }
+        console.warn(
+          `⚠️ [GRAPH_FREEZE] non-fatal init issue: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+
       
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: PHOTO ANALYSIS EARLY PATH
