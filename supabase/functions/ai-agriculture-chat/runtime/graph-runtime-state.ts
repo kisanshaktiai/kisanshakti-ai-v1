@@ -23,7 +23,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import type { CanonicalContextContract } from '../decision/canonical-context-contract.ts';
+import type { CanonicalContext } from '../decision/canonical-context-contract.ts';
+export type CanonicalContextContract = CanonicalContext;
 
 // ──────────────────────────────────────────────────────────────────────────
 // CANONICAL ID INVARIANT — only [A-Z0-9_]+ allowed for codes carried on
