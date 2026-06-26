@@ -772,6 +772,26 @@ serve(async (req) => {
     // App language from client is the canonical language. Script detection only disambiguates.
     const canonicalLanguage = detectLanguage(userMessageContent, language);
     const detectedLanguage = canonicalLanguage;
+
+    // PHASE Y HARD GUARANTEE: initialize trace collector before any symbolic
+    // short-circuit can return. The orchestrator will reset/re-seed this for
+    // the normal path, but proactive/early paths need their own collector.
+    try {
+      const earlyRuntimeTrace = resetRuntimeTraceCollector({
+        trace_id: traceId,
+        execution_mode: imageUrl ? 'live-vision' : 'live',
+        started_at_ms: startTime,
+      });
+      earlyRuntimeTrace.setContext({
+        tenant_id: finalTenantId,
+        farmer_id: finalFarmerId,
+        land_id: landId ?? null,
+        language: detectedLanguage,
+        intent: { code: 'PENDING_ORCHESTRATOR', confidence: null },
+      });
+    } catch (_traceInitErr) {
+      console.warn(`[${traceId}] RuntimeTrace early init failed`, _traceInitErr);
+    }
     
     // BUG-4 FIX: DEPRECATED - normalizeToEnglish only had ~23 hardcoded mappings,
     // creating half-translated hybrid strings. LLM Semantic Extractor (Stage 1.5) 
@@ -965,6 +985,34 @@ serve(async (req) => {
           ]);
         } catch (persistErr) {
           console.error(`[${traceId}] PROACTIVE_NARRATION persist error`, persistErr);
+        }
+
+        try {
+          const proactiveTrace = getRuntimeTraceCollector();
+          proactiveTrace?.setDecision({
+            decision_type: 'alert_generation',
+            action_type: 'PROACTIVE_ALERT_NARRATION',
+            confidence: 1,
+            reasoning: proactiveAlert.decision_reasoning || proactiveAlert.message_en || 'Proactive alert narration from Decision-Brain payload',
+            output: { alert_id: proactiveAlert.id, category: proactiveAlert.alert_category, condition_code: td.condition_code },
+          });
+          await persistRuntimeTraceSafetyNet({
+            supabase,
+            traceLabel: 'PROACTIVE_ALERT_NARRATION',
+            tenantId: finalTenantId,
+            farmerId: finalFarmerId,
+            landId: landId ?? null,
+            sessionId: currentSessionId,
+            farmerMessage: userMessageContent,
+            detectedLanguage: lang,
+            startTime,
+            responseType: 'PROACTIVE_ALERT_NARRATION',
+            agentsUsed: ['proactive_alert_narrator'],
+            cropCode: metadata?.landContext?.crop_name ?? null,
+            growthStage: metadata?.landContext?.current_crop_stage ?? null,
+          });
+        } catch (tracePersistErr) {
+          console.warn(`[${traceId}] PROACTIVE_NARRATION trace persist error`, tracePersistErr);
         }
 
         return new Response(
