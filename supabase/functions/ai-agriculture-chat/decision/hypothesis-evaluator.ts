@@ -38,6 +38,7 @@ import {
   logTemporalFilteringSummary,
   type TemporalValidationInput
 } from './temporal-constraint-validator.ts';
+import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
