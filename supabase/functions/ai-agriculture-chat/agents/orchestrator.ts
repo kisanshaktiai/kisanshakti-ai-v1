@@ -441,6 +441,7 @@ import {
   hashCanonicalContext,
   GraphStateDriftError,
   SymbolicIdLeakError,
+  RuleCandidate,
 } from '../runtime/graph-runtime-state.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
