@@ -66,6 +66,13 @@ function normalizeAuditConfidence(confidence: any): number | null {
   return Math.max(0, Math.min(1, scaled));
 }
 
+function isSchemaColumnError(error: any): boolean {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return error?.code === 'PGRST204'
+    || error?.code === '42703'
+    || message.includes('column') && (message.includes('schema cache') || message.includes('does not exist') || message.includes('not found'));
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - Extended for Full Forensic Trail
@@ -677,9 +684,23 @@ export class AuditLogger {
     };
 
     // @ts-ignore - Supabase types may not match exactly
-    const { error } = await this.supabase
+    let { error } = await this.supabase
       .from('ai_chat_audit_logs')
       .insert(insertData);
+
+    if (error && isSchemaColumnError(error)) {
+      console.warn(`⚠️ [Audit] ai_chat_audit_logs schema missing Phase-Y columns, retrying legacy insert`);
+      const legacyInsertData = { ...insertData };
+      delete legacyInsertData.execution_id;
+      delete legacyInsertData.pipeline_version;
+      delete legacyInsertData.graph_version;
+      delete legacyInsertData.runtime_version;
+      // @ts-ignore - Supabase types may not match exactly
+      const retry = await this.supabase
+        .from('ai_chat_audit_logs')
+        .insert(legacyInsertData);
+      error = retry.error;
+    }
 
     if (error) {
       // Table might not exist - log warning only
