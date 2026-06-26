@@ -3880,6 +3880,73 @@ export class AIAgentOrchestrator {
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
 
       // ═══════════════════════════════════════════════════════════════════════════
+      // Phase I-8 — Seed the per-request ObservationLedger (append-only) from
+      // the flat pre-auth set, freeze intent on the graph, and assert no drift.
+      // Non-canonical (non UPPER_SNAKE) entries are recorded as SYMBOLIC_ID_LEAK
+      // on the evidence ledger and skipped — never silently mutated into the
+      // symbolic graph. This is the single SSOT entry-point for observations.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const CANON_RE = /^[A-Z0-9_]+$/;
+        const seenSeed = new Set<string>();
+        for (const raw of allObservationsForPreAuth) {
+          const code = typeof raw === 'string' ? raw : String(raw ?? '');
+          if (!code || seenSeed.has(code)) continue;
+          seenSeed.add(code);
+          if (!CANON_RE.test(code)) {
+            try {
+              requestCtx.ledger.lose(
+                'OBSERVATION_LEDGER_SEED',
+                `non_canonical:${code}`,
+                { code },
+                'SYMBOLIC_ID_LEAK: non-canonical observation code rejected from graph ledger'
+              );
+            } catch {/* non-fatal */}
+            continue;
+          }
+          try {
+            graph.observation_ledger.append({
+              observation_code: code,
+              source: 'IOM',
+              confidence: 0.7,
+              actor: 'orchestrator:POST_COLLECTION',
+            });
+          } catch (e) {
+            console.warn(
+              `⚠️ [LEDGER_SEED] skip ${code}: ${e instanceof Error ? e.message : String(e)}`
+            );
+          }
+        }
+        if (intentCode && CANON_RE.test(intentCode) && !graph.intent_node) {
+          try {
+            graph.setIntent({
+              intent_code: intentCode,
+              confidence: typeof intentConf === 'number' ? intentConf : 0.5,
+              source: 'orchestrator:POST_COLLECTION',
+            });
+          } catch (e) {
+            console.warn(
+              `⚠️ [GRAPH_INTENT] skip: ${e instanceof Error ? e.message : String(e)}`
+            );
+          }
+        }
+        console.log(
+          `[SSOT_TRACE][${traceId}] ledger_seed observations=${graph.observation_ledger.size()} ` +
+            `intent=${graph.intent_node?.intent_code ?? 'NULL'}`
+        );
+        graphCp = assertNoGraphDrift(graph, graphCp, 'POST_COLLECTION');
+      } catch (e) {
+        if (e instanceof GraphStateDriftError || e instanceof SymbolicIdLeakError) {
+          console.error(`🚨 ${e.name}: ${e.message}`);
+          throw e;
+        }
+        console.warn(
+          `⚠️ [LEDGER_SEED] non-fatal: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+
+
+      // ═══════════════════════════════════════════════════════════════════════════
       // Phase H — Fix 1: Direct-mode VETO on symptom signal.
       // Re-evaluate directModeBypass now that observations are extracted.
       // A symptom report mis-classified as GENERAL_CROP_INFO must NOT enter
