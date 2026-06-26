@@ -5845,6 +5845,101 @@ export class AIAgentOrchestrator {
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
 
         // ═══════════════════════════════════════════════════════════════════
+        // Phase I-4 — Seed the per-request hypothesis_graph with
+        // RuleCandidate nodes. Scores are mutated IN-PLACE downstream
+        // (scientific gate, authority, completeness, ranking). Validators
+        // never rebuild this list — they call candidate.score(...) /
+        // candidate.drop(reason). Non-canonical rule_ids are skipped
+        // (recorded as SYMBOLIC_ID_LEAK on the evidence ledger).
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          const RULE_ID_RE = /^[A-Z0-9_]+$/;
+          const safeApplied = Array.isArray(layeredRuleResult?.rules_applied)
+            ? layeredRuleResult.rules_applied
+            : [];
+          const safeMatched = Array.isArray(layeredRuleResult?.matched_responses)
+            ? layeredRuleResult.matched_responses
+            : [];
+          const candidateIds = new Set<string>();
+          for (const id of safeApplied) {
+            const s = typeof id === 'string' ? id : String(id ?? '');
+            if (s) candidateIds.add(s);
+          }
+          for (const r of safeMatched) {
+            const s = String((r as any)?.rule_id ?? (r as any)?.id ?? '');
+            if (s) candidateIds.add(s);
+          }
+          const existingIds = new Set(graph.hypothesis_graph.map((c) => c.rule_id));
+          for (const rid of candidateIds) {
+            if (existingIds.has(rid)) continue;
+            if (!RULE_ID_RE.test(rid)) {
+              try {
+                requestCtx.ledger.lose(
+                  'HYPOTHESIS_GRAPH_SEED',
+                  `non_canonical_rule:${rid}`,
+                  { rule_id: rid },
+                  'SYMBOLIC_ID_LEAK: non-canonical rule_id rejected from hypothesis_graph'
+                );
+              } catch {/* non-fatal */}
+              continue;
+            }
+            try {
+              const cand = new RuleCandidate(rid);
+              const matched = safeMatched.find(
+                (r: any) => (r?.rule_id ?? r?.id) === rid
+              ) as any;
+              if (matched) {
+                const conf = Number(
+                  matched.weighted_confidence ?? matched.confidence_score ?? 0
+                );
+                if (Number.isFinite(conf)) {
+                  cand.score('semantic', Math.max(0, Math.min(1, conf)));
+                }
+                if (Array.isArray(matched.matched_observations)) {
+                  cand.matched_observations = matched.matched_observations
+                    .map((x: any) => String(x))
+                    .filter((x: string) => /^[A-Z0-9_]+$/.test(x));
+                }
+                if (Array.isArray(matched.missing_observations)) {
+                  cand.missing_observations = matched.missing_observations
+                    .map((x: any) => String(x))
+                    .filter((x: string) => /^[A-Z0-9_]+$/.test(x));
+                }
+              }
+              const winnerId =
+                layeredRuleResult?.primary_decision?.rule_id ??
+                layeredRuleResult?.primary_decision?.application_details?.rule_id;
+              if (winnerId && winnerId === rid) {
+                cand.status = 'WINNER';
+                cand.ranking = 1;
+              }
+              graph.hypothesis_graph.push(cand);
+            } catch (e) {
+              if (e instanceof SymbolicIdLeakError) {
+                console.warn(`⚠️ [HYPOTHESIS_GRAPH] reject ${rid}: ${e.message}`);
+              } else {
+                console.warn(
+                  `⚠️ [HYPOTHESIS_GRAPH] skip ${rid}: ${e instanceof Error ? e.message : String(e)}`
+                );
+              }
+            }
+          }
+          console.log(
+            `[SSOT_TRACE][${traceId}] hypothesis_graph_seed candidates=${graph.hypothesis_graph.length} ` +
+              `winner=${graph.hypothesis_graph.find((c) => c.status === 'WINNER')?.rule_id ?? 'NONE'}`
+          );
+        } catch (e) {
+          if (e instanceof GraphStateDriftError) {
+            console.error(`🚨 ${e.name}: ${e.message}`);
+            throw e;
+          }
+          console.warn(
+            `⚠️ [HYPOTHESIS_GRAPH_SEED] non-fatal: ${e instanceof Error ? e.message : String(e)}`
+          );
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════════
         // PHASE C, GATE #3 — SCIENTIFIC VALIDATOR (after rules, before authority)
         // Cross-checks rule outputs against crop_baseline_guidelines_v2.
         // ═══════════════════════════════════════════════════════════════════
