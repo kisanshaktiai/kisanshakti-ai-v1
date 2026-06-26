@@ -44,6 +44,35 @@ function filterCanonicalForAudit(obs: any): string[] {
   return out;
 }
 
+function normalizeAuditResponseSource(source: any): 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR' {
+  const value = String(source || '').toUpperCase();
+  if (value === 'LLM_FORMATTED') return 'LLM_FORMATTED';
+  if (value === 'CLARIFICATION' || value.includes('CLARIF')) return 'CLARIFICATION';
+  if (value === 'ERROR' || value.includes('ERROR') || value.includes('FAILED')) return 'ERROR';
+  return 'SYMBOLIC_TEMPLATE';
+}
+
+function normalizeAuditLanguage(language: any): 'mr' | 'hi' | 'en' {
+  const value = String(language || '').toLowerCase();
+  if (value.startsWith('mr')) return 'mr';
+  if (value.startsWith('hi')) return 'hi';
+  return 'en';
+}
+
+function normalizeAuditConfidence(confidence: any): number | null {
+  const n = Number(confidence);
+  if (!Number.isFinite(n)) return null;
+  const scaled = n > 1 && n <= 100 ? n / 100 : n;
+  return Math.max(0, Math.min(1, scaled));
+}
+
+function isSchemaColumnError(error: any): boolean {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return error?.code === 'PGRST204'
+    || error?.code === '42703'
+    || message.includes('column') && (message.includes('schema cache') || message.includes('does not exist') || message.includes('not found'));
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - Extended for Full Forensic Trail
@@ -201,7 +230,7 @@ export interface TurnAuditLog {
   prescription_gate_passed?: boolean;
   
   // Response
-  response_source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR';
+  response_source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR' | string;
   response_language_match: boolean;
   llm_model_used?: string;
   
@@ -502,7 +531,7 @@ export class AuditLogger {
    * Log response generation
    */
   logResponse(response: {
-    source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR';
+    source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR' | string;
     language_match: boolean;
     llm_model?: string;
   }): void {
@@ -627,11 +656,11 @@ export class AuditLogger {
       tenant_id: log.tenant_id,
       trace_id: log.trace_id,
       farmer_message: log.farmer_message,
-      detected_language: log.detected_language as string,
+      detected_language: normalizeAuditLanguage(log.detected_language),
       intent_label: log.nlu_output?.intent_label,
       observations: filterCanonicalForAudit(log.nlu_output?.observations),
 
-      nlu_confidence: log.nlu_output?.confidence,
+      nlu_confidence: normalizeAuditConfidence(log.nlu_output?.confidence),
       locked_intent: log.locked_intent,
       allowed_scopes: log.allowed_scopes,
       forbidden_actions: log.forbidden_actions,
@@ -642,7 +671,7 @@ export class AuditLogger {
       observation_mapping: log.observation_mapping,
       validation_passed: log.validation_passed,
       validation_errors: log.validation_errors,
-      response_source: log.response_source,
+      response_source: normalizeAuditResponseSource(log.response_source),
       response_language_match: log.response_language_match,
       llm_model_used: log.llm_model_used,
       processing_time_ms: log.processing_time_ms,
@@ -655,9 +684,23 @@ export class AuditLogger {
     };
 
     // @ts-ignore - Supabase types may not match exactly
-    const { error } = await this.supabase
+    let { error } = await this.supabase
       .from('ai_chat_audit_logs')
       .insert(insertData);
+
+    if (error && isSchemaColumnError(error)) {
+      console.warn(`⚠️ [Audit] ai_chat_audit_logs schema missing Phase-Y columns, retrying legacy insert`);
+      const legacyInsertData = { ...insertData };
+      delete legacyInsertData.execution_id;
+      delete legacyInsertData.pipeline_version;
+      delete legacyInsertData.graph_version;
+      delete legacyInsertData.runtime_version;
+      // @ts-ignore - Supabase types may not match exactly
+      const retry = await this.supabase
+        .from('ai_chat_audit_logs')
+        .insert(legacyInsertData);
+      error = retry.error;
+    }
 
     if (error) {
       // Table might not exist - log warning only

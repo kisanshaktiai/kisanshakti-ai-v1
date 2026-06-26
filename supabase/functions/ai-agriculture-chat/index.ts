@@ -218,6 +218,20 @@ function generateTraceId(): string {
   return `trace_${timestamp}_${random}`;
 }
 
+function isSchemaColumnError(error: any): boolean {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return error?.code === 'PGRST204'
+    || error?.code === '42703'
+    || message.includes('column') && (message.includes('schema cache') || message.includes('does not exist') || message.includes('not found'));
+}
+
+function normalizeTraceConfidence(raw: any): number | null {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const scaled = n > 1 && n <= 100 ? n / 100 : n;
+  return Math.max(0, Math.min(1, scaled));
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -915,7 +929,7 @@ serve(async (req) => {
     // ───────────────────────────────────────────────────────────────────
     try {
       const _rtc = getRuntimeTraceCollector();
-      if (_rtc && !_rtc.persisted) {
+      if (_rtc) {
         // Prefer the orchestrator's exposed service-role client. Fall back to
         // private-field/global only if a future orchestrator build forgets to
         // expose getSupabase() — keeps the safety net resilient.
@@ -927,21 +941,98 @@ serve(async (req) => {
         if (!_sb) {
           console.warn('⚠️ [SafetyNet] No Supabase client available; ai_decision_log row skipped.');
         } else {
-          const _persistedId = await _rtc.persistDecisionLog(_sb, {
-            tenant_id: finalTenantId,
-            farmer_id: finalFarmerId,
-            land_id: landId ?? null,
-            farmer_message: userMessageContent,
-            processing_time_ms: Date.now() - startTime,
-          });
+          const _persistedId = _rtc.persistedDecisionId || await _rtc.persistDecisionLog(_sb, {
+              tenant_id: finalTenantId,
+              farmer_id: finalFarmerId,
+              land_id: landId ?? null,
+              farmer_message: userMessageContent,
+              processing_time_ms: Date.now() - startTime,
+            });
           if (!_persistedId) {
             console.warn(`⚠️ [SafetyNet] persistDecisionLog returned null (tenant=${finalTenantId ?? 'NULL'})`);
           } else {
+            const _auditPatch = {
+              symbolic_decision_id: _persistedId,
+              execution_id: _rtc.header.execution_id,
+              pipeline_version: _rtc.header.pipeline_version,
+              graph_version: _rtc.header.graph_version,
+              runtime_version: _rtc.header.runtime_version,
+            };
+            let { data: _auditRows, error: _auditUpdateError } = await _sb
+              .from('ai_chat_audit_logs')
+              .update(_auditPatch)
+              .eq('trace_id', _rtc.header.trace_id)
+              .select('id');
+            if (_auditUpdateError && isSchemaColumnError(_auditUpdateError)) {
+              console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs schema missing Phase-Y columns, retrying symbolic-only stamp`);
+              const _retryStamp = await _sb
+                .from('ai_chat_audit_logs')
+                .update({ symbolic_decision_id: _persistedId })
+                .eq('trace_id', _rtc.header.trace_id)
+                .select('id');
+              _auditRows = _retryStamp.data;
+              _auditUpdateError = _retryStamp.error;
+            }
+            if (_auditUpdateError) {
+              console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs stamp failed (${_auditUpdateError.code}): ${_auditUpdateError.message}`);
+            } else if (!_auditRows || _auditRows.length === 0) {
+              const _safeLang = ['mr', 'hi', 'en'].includes(detectedLanguage) ? detectedLanguage : 'en';
+              const _auditInsertData: Record<string, any> = {
+                turn_id: `runtime_trace_${_rtc.header.execution_id}`,
+                session_id: currentSessionId || `runtime_trace_${_rtc.header.execution_id}`,
+                farmer_id: finalFarmerId,
+                tenant_id: finalTenantId,
+                trace_id: _rtc.header.trace_id,
+                farmer_message: userMessageContent,
+                detected_language: _safeLang,
+                intent_label: _rtc.context?.intent?.code ?? orchestratorResponse.type ?? null,
+                observations: [],
+                nlu_confidence: normalizeTraceConfidence(_rtc.context?.intent?.confidence),
+                locked_intent: _rtc.context?.intent?.code ?? null,
+                allowed_scopes: [],
+                forbidden_actions: [],
+                symbolic_decision_id: _persistedId,
+                rules_fired: [],
+                actions_returned: [],
+                actions_filtered_out: [],
+                validation_passed: true,
+                validation_errors: [],
+                response_source: orchestratorResponse.type === 'CLARIFICATION_QUESTION' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE',
+                response_language_match: true,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: orchestratorResponse.metadata?.agents_used ?? [],
+                land_id: landId ?? null,
+                crop_code: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
+                growth_stage: orchestratorResponse.dataAudit?.land?.current_crop_stage ?? null,
+                ..._auditPatch,
+              };
+              let { error: _auditInsertError } = await _sb
+                .from('ai_chat_audit_logs')
+                .insert(_auditInsertData);
+              if (_auditInsertError && isSchemaColumnError(_auditInsertError)) {
+                console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs schema missing Phase-Y columns, retrying legacy insert`);
+                delete _auditInsertData.execution_id;
+                delete _auditInsertData.pipeline_version;
+                delete _auditInsertData.graph_version;
+                delete _auditInsertData.runtime_version;
+                const _retry = await _sb.from('ai_chat_audit_logs').insert(_auditInsertData);
+                _auditInsertError = _retry.error;
+              }
+              if (_auditInsertError) {
+                console.warn(`⚠️ [SafetyNet] ai_chat_audit_logs insert failed (${_auditInsertError.code}): ${_auditInsertError.message}`);
+              } else {
+                console.log(`✅ [SafetyNet] ai_chat_audit_logs inserted trace=${_rtc.header.trace_id}`);
+              }
+            } else {
+              console.log(`✅ [SafetyNet] ai_chat_audit_logs stamped rows=${_auditRows.length} trace=${_rtc.header.trace_id}`);
+            }
             console.log(`✅ [SafetyNet] ai_decision_log persisted id=${_persistedId} trace=${_rtc.header?.trace_id}`);
           }
         }
       }
-    } catch (_e) { /* non-blocking */ }
+    } catch (_e: any) {
+      console.warn(`⚠️ [SafetyNet] RuntimeTrace safety-net crashed: ${_e?.message || _e}`);
+    }
 
 
 
