@@ -223,7 +223,7 @@ export interface TurnAuditLog {
   prescription_gate_passed?: boolean;
   
   // Response
-  response_source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR';
+  response_source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR' | string;
   response_language_match: boolean;
   llm_model_used?: string;
   
