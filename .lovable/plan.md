@@ -1,61 +1,175 @@
 
-## Root cause (confirmed by code + DB audit)
+# Phase Y — Runtime Trace & Decision Forensics (No New Tables)
 
-The auditor's hypothesis is correct. The clarification graph is sourcing options from `decision_rules` metadata without an `observation_master` gate, so diagnosis-level codes leak in as if they were farmer symptoms.
+Pure observability upgrade. Zero changes to agronomic logic, rules, decisions, or the symbolic graph. Reuses `ai_decision_log` and `ai_chat_audit_logs` as the permanent forensic store.
 
-Evidence chain:
+---
 
-1. **`decision_rules.observable_characteristics` is null** for `RICE_DISEASE_TUNGRO_001` (verified: `SELECT observable_characteristics FROM decision_rules WHERE rule_id='RICE_DISEASE_TUNGRO_001'` → `nil`).
-2. `hypothesis-evaluator.ts:810-833` then falls back to `rule.conditions_json.observations` and synthesizes `ObservableCharacteristic` entries with `observation_key = obs.toUpperCase()`. Whatever string lives in that JSON (here `tungro_yellow_stunt`, which is a disease name) becomes a "farmer observable."
-3. `clarification-strategy.ts:462-522` iterates `candidate.observable_characteristics` and ships them straight to the UI. The only filters are `failure_class domain exclusion` and `stage compatibility` — neither checks `observation_master.is_farmer_observable`.
-4. The farmer taps "🔍 TUNGRO YELLOW STUNT", `OPTION_SELECTED` confirms `TUNGRO_YELLOW_STUNT`, but `observation_master` has no such row (verified: empty SELECT), so `[ObsValidation] Rule … references unknown observation: TUNGRO_YELLOW_STUNT` fires and **0 rules match** → `STAGE_FALLBACK`.
+## Current state (verified)
 
-Two ontologies (`observation_master` vs `decision_rules.{observable_characteristics, conditions_json.observations}`) are running side-by-side and disagreeing. This is the graph corruption the report describes.
+`ai_decision_log` already has: `tenant_id, farmer_id, land_id, schedule_id, decision_type, model_version, input_data, output_data, reasoning, confidence_score, execution_time_ms, weather_data, ndvi_data, soil_data, success, error_message, top_5_rejected_rules, evaluation_trace, missing_data_fields, prompt_version, hypothesis_id, hypothesis_score, hypothesis_decision_path, variety_resistance_applied`.
 
-The earlier transport fix (embedded ObservationKey) is intact — the bug is now strictly upstream in the **candidate generator**.
+`ai_chat_audit_logs` already has: `turn_id, session_id, farmer_id, tenant_id, trace_id, intent_label, observations, nlu_confidence, locked_intent, allowed_scopes, forbidden_actions, symbolic_decision_id, rules_fired, actions_returned, actions_filtered_out, observation_mapping, validation_passed, validation_errors, response_source, llm_model_used, processing_time_ms, agents_used, land_id, crop_code, growth_stage, gate_decisions`.
 
-## Fix — single invariant, enforced once
+Persistence today lives in `supabase/functions/ai-agriculture-chat/agents/audit-logger.ts` and the in-request `EvidenceLedger` / `ConfidenceChain` already in `decision/`. The forensic columns `hypothesis_id`, `hypothesis_score`, `hypothesis_decision_path`, and `symbolic_decision_id` exist but are not being written.
 
-> Every clarification option presented to the farmer MUST correspond to a row in `observation_master` with `is_active = true` AND `is_farmer_observable = true`. Anything else is dropped and logged as a vocabulary gap.
+---
 
-This is a presentation/symbolic-graph fix. No rule-engine, intent-router, or LLM prompt changes.
+## Database changes — single additive migration
 
-### Changes
+Extend the two existing tables only (no new tables, no column drops, no type changes).
 
-**1. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`**
+```sql
+ALTER TABLE public.ai_decision_log
+  ADD COLUMN IF NOT EXISTS runtime_trace          jsonb,
+  ADD COLUMN IF NOT EXISTS graph_snapshot         jsonb,
+  ADD COLUMN IF NOT EXISTS pipeline_metrics       jsonb,
+  ADD COLUMN IF NOT EXISTS context_snapshot       jsonb,
+  ADD COLUMN IF NOT EXISTS clarification_snapshot jsonb,
+  ADD COLUMN IF NOT EXISTS observation_snapshot   jsonb,
+  ADD COLUMN IF NOT EXISTS rule_snapshot          jsonb,
+  ADD COLUMN IF NOT EXISTS hypothesis_snapshot    jsonb,
+  ADD COLUMN IF NOT EXISTS decision_snapshot      jsonb,
+  ADD COLUMN IF NOT EXISTS knowledge_versions     jsonb,
+  ADD COLUMN IF NOT EXISTS pipeline_version       text,
+  ADD COLUMN IF NOT EXISTS graph_version          text,
+  ADD COLUMN IF NOT EXISTS runtime_version        text,
+  ADD COLUMN IF NOT EXISTS execution_mode         text,
+  ADD COLUMN IF NOT EXISTS trace_level            text,
+  ADD COLUMN IF NOT EXISTS created_runtime_ms     integer,
+  ADD COLUMN IF NOT EXISTS trace_id               text,
+  ADD COLUMN IF NOT EXISTS execution_id           text;
 
-- In `extractObservableCharacteristics()` (and the `conditions_json.observations` synthetic path at lines 810–833): after building the candidate `observation_key`s, filter them through `obsMetadataMap` (already loaded from `observation_master`). Keep only keys where the row exists, `is_active=true`, and `is_farmer_observable=true`.
-- Rejected keys are recorded once per request via a new `recordVocabularyGap(key, source_rule_id, reason)` helper that inserts into `observation_vocabulary_gaps` (table already exists) with reasons `NOT_IN_MASTER` / `NOT_FARMER_OBSERVABLE` / `INACTIVE`.
-- If a rule ends up with zero farmer-observable characteristics AND no other diagnostic signal, mark it `advisory_only` (already handled by the existing skip path) so it cannot drive clarification.
+ALTER TABLE public.ai_chat_audit_logs
+  ADD COLUMN IF NOT EXISTS execution_id     text,
+  ADD COLUMN IF NOT EXISTS pipeline_version text,
+  ADD COLUMN IF NOT EXISTS graph_version    text,
+  ADD COLUMN IF NOT EXISTS runtime_version  text;
 
-**2. `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts`**
+-- Indices for replay queries (small, payload-free)
+CREATE INDEX IF NOT EXISTS idx_adl_trace_id        ON public.ai_decision_log(trace_id);
+CREATE INDEX IF NOT EXISTS idx_adl_execution_id    ON public.ai_decision_log(execution_id);
+CREATE INDEX IF NOT EXISTS idx_adl_land_created    ON public.ai_decision_log(land_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_acal_execution_id   ON public.ai_chat_audit_logs(execution_id);
+CREATE INDEX IF NOT EXISTS idx_acal_symbolic_dec   ON public.ai_chat_audit_logs(symbolic_decision_id);
+```
 
-- Add a final "ontology gate" pass right before `allOptions` is returned (around line 522 and the regeneration block at 531–560): re-check each option's `observation_key` against `obsMetadataMap`/observation_master. Any key not satisfying the invariant is dropped with a `[CLARIFICATION_ONTOLOGY_VIOLATION]` log line and a vocabulary-gap record.
-- Replace the silent fallback that lets disease codes through with: if no valid farmer-observable options survive, return the existing failure-class fallback (`useHypothesisFallback`) — never emit a diagnosis-level option.
+No RLS changes (existing policies still apply). No grants needed (no new tables).
 
-**3. `supabase/functions/ai-agriculture-chat/agents/dynamic-clarification-generator.ts`**
+---
 
-- Same ontology gate applied to any code path that builds a candidate list (rule observable_characteristics, hypothesis_master, or NLU). One shared helper `assertFarmerObservable(keys, obsMetadataMap)` used by both files.
+## Code changes (forensic only, agronomic-neutral)
 
-**4. `supabase/functions/ai-agriculture-chat/agents/clarification-renderer.ts`**
+All work confined to `supabase/functions/ai-agriculture-chat/`.
 
-- Defense in depth: refuse to render any option whose `observation_key` fails the gate, even if upstream missed it. Logs `[RENDERER_ONTOLOGY_GUARD]`.
+### 1. New module — `runtime/runtime-trace-collector.ts`
 
-**5. Observability**
+Single per-request collector. Owns `trace_id`, `execution_id`, a stage stack, and the nine snapshot buffers.
 
-- Add `[ONTOLOGY_GATE]` summary log per request: `{candidates_in, candidates_kept, dropped_diagnosis_level, dropped_unknown, dropped_not_observable}` so we can see the gate working on every turn.
-- No new tables. Reuses existing `observation_vocabulary_gaps`.
+API:
+- `RuntimeTraceCollector.start(req)` → returns collector seeded with `trace_id`, `execution_id`, `pipeline_version`, `graph_version`, `runtime_version`, `execution_mode`, `trace_level`.
+- `collector.beginStage(name, owner)` / `collector.endStage(name, {inputs, outputs, confidence, warnings, errors})` — records start/end/latency.
+- Typed setters: `setContext()`, `setClarification()`, `setObservations()`, `setRules()`, `setHypotheses()`, `setDecision()`, `setBuilderOutput()`, `setKnowledgeVersions()`.
+- Wraps the existing `EvidenceLedger` + `ConfidenceChain` (does not replace them) so the ledger snapshot and confidence chain become two fields of `graph_snapshot` instead of separate state.
+- `collector.finish()` → returns the full `RuntimeTraceRecord` and emits one `[RUNTIME_TRACE]` line (no per-stage console spam).
 
-### Out of scope (intentionally)
+Snapshot shapes match the user's spec exactly (`graph_snapshot`, `pipeline_metrics`, `context_snapshot`, `clarification_snapshot`, `observation_snapshot`, `rule_snapshot`, `hypothesis_snapshot`, `decision_snapshot`, `knowledge_versions`).
 
-- Rule engine / `layered-rule-evaluator.ts` — not the bug.
-- `intent_observation_mapping` — not the bug.
-- DB migrations — none required (the invariant is enforced in code against existing `observation_master` columns).
-- LLM prompts and translation paths.
+### 2. Knowledge version probe — `runtime/knowledge-versions.ts`
 
-### Verification
+One read per request (cached for the lifetime of the edge instance, ~5 min TTL). Pulls a cheap `max(updated_at)` per source: `decision_rules`, `observation_master`, `intent_observation_mapping`, `crop_stage_knowledge`, `observation_translations`. Returns hashes used as `knowledge_versions`.
 
-1. Reproduce the trace: ask the same Rice/SEEDLING question that produced `trace_mquorxjh_dxgavf`. Expected: clarification options now contain only symptoms present in `observation_master` (e.g. `LEAF_YELLOWING`, `STUNTED_GROWTH`, `POOR_TILLERING`), never `TUNGRO_YELLOW_STUNT`.
-2. Edge function logs show `[ONTOLOGY_GATE] dropped_diagnosis_level >= 1` and a corresponding row in `observation_vocabulary_gaps`.
-3. After the farmer picks a real symptom, `[ObsValidation] references unknown observation` warnings disappear for that turn and the rule engine receives a consistent symbolic set.
-4. `tsgo --noEmit` clean on the three edited files.
+### 3. Wiring — single edit per pipeline stage
+
+For each existing stage call site, wrap with `beginStage`/`endStage`. No logic changes. Stages and owners:
+
+```text
+INTENT_CLASSIFY        owner=intent-classifier
+CANONICAL_CONTEXT      owner=land-context
+HYPOTHESIS_EVAL        owner=hypothesis-evaluator
+CAUSAL_ENGINE          owner=causal-hypothesis-engine
+DISCRIMINATOR          owner=hypothesis-discriminator
+CLARIFICATION          owner=clarification-generator
+OBSERVATION_AUTHORITY  owner=observation-authority
+SEMANTIC_GATE          owner=semantic-validator
+SCIENTIFIC_GATE        owner=scientific-validator
+RULE_EVAL              owner=rule-evaluator
+DECISION_BUILDER       owner=decision-builder
+LLM_FORMAT             owner=llm-response-formatter
+```
+
+Files touched (wrap-only): `agents/orchestrator.ts`, `decision/hypothesis-evaluator.ts`, `decision/causal-hypothesis-engine.ts`, `decision/discriminator.ts`, `agents/clarification-generator.ts`, `decision/observation-authority.ts`, `decision/semantic-validator.ts`, `decision/scientific-validator.ts`, `decision/rule-evaluator.ts`, `decision/decision-builder.ts`, `narration/llm-response-formatter.ts`.
+
+### 4. Persistence — `agents/audit-logger.ts`
+
+Replace the existing direct write with one `collector.finish()` → one insert into `ai_decision_log` populating:
+
+- existing columns unchanged,
+- new snapshot columns,
+- `hypothesis_id`, `hypothesis_score`, `hypothesis_decision_path` set from `hypothesis_snapshot.winner`,
+- `land_id`, `schedule_id` set from `context_snapshot` (never null when present in request),
+- `trace_id`, `execution_id`, `pipeline_version`, `graph_version`, `runtime_version`, `execution_mode`, `trace_level`, `created_runtime_ms` set from collector header.
+
+Same call site also updates the matching `ai_chat_audit_logs` row by `trace_id` to populate `symbolic_decision_id` (= inserted `ai_decision_log.id::text`), `execution_id`, `pipeline_version`, `graph_version`, `runtime_version`. If the audit row hasn't been inserted yet, append these fields to the insert payload instead.
+
+### 5. Single runtime log line
+
+`finish()` emits exactly one structured line — replaces the existing scattered `[BRAIN_TRACE]` summary already in `runtime/brain-trace.ts`:
+
+```text
+[RUNTIME_TRACE] trace=… exec=… pv=… gv=… latency_ms=… intent=… winner_rule=… winner_hyp=… clarification_owner=… candidates=… matched=… decision=… confidence=…
+```
+
+Per-stage `[BRAIN_TRACE][LEDGER]` lines from `evidence-ledger.ts` stay (they are already gated to one line per ledger mutation, not per stage entry).
+
+---
+
+## Replay contract (acceptance test)
+
+Given a `trace_id`, the following query reproduces a full request end-to-end:
+
+```sql
+SELECT runtime_trace, graph_snapshot, pipeline_metrics, context_snapshot,
+       clarification_snapshot, observation_snapshot, rule_snapshot,
+       hypothesis_snapshot, decision_snapshot, knowledge_versions,
+       hypothesis_id, hypothesis_score, hypothesis_decision_path
+FROM ai_decision_log
+WHERE trace_id = $1;
+```
+
+Plus the matching audit row:
+
+```sql
+SELECT symbolic_decision_id, execution_id, gate_decisions
+FROM ai_chat_audit_logs
+WHERE trace_id = $1;
+```
+
+`symbolic_decision_id = ai_decision_log.id::text` must be true for every request that produced a symbolic decision.
+
+---
+
+## Acceptance criteria (mirrors the spec)
+
+1. Exactly one `RuntimeTraceCollector` per request.
+2. `ai_decision_log` populates: `hypothesis_id`, `hypothesis_score`, `hypothesis_decision_path`, `runtime_trace`, `graph_snapshot`, `pipeline_metrics`, plus all snapshot fields.
+3. `ai_chat_audit_logs.symbolic_decision_id` never null when a symbolic decision exists.
+4. `land_id` is non-null on `ai_decision_log` whenever the request carried land context.
+5. Pipeline stages all show `start_ms`, `end_ms`, `latency_ms`, `owner` in `runtime_trace.stages[]`.
+6. Knowledge versions captured per request; identical inputs against the same versions reproduce the same decision.
+7. No new tables; no schema removals; no logic, rule, decision, or graph changes.
+
+---
+
+## Risk & rollout
+
+- All new columns are `NULLABLE`; backfill is unnecessary. Old rows continue to read fine.
+- Collector failures are wrapped in `try/catch`; an instrumentation crash never blocks a farmer response.
+- `trace_level` defaults to `'standard'`; setting it to `'minimal'` via env (`RUNTIME_TRACE_LEVEL`) skips the large snapshots and keeps only header + metrics, giving an instant kill-switch if payload size becomes a concern.
+- One migration → wire `RuntimeTraceCollector` in orchestrator → wrap stages → flip `audit-logger.ts` to consume the collector → verify on one live trace.
+
+## Out of scope (explicit)
+
+- No edits to rule evaluation, hypothesis scoring, clarification logic, semantic/scientific gates, or LLM prompts.
+- No new tables, no RLS changes, no edge-function ACL changes.
+- No frontend changes.
