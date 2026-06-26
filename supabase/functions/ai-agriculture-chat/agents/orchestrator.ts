@@ -936,6 +936,7 @@ export interface OrchestratorResponse {
     trace_id?: string;           // For observability
     // PHASE-9.1: Clarification state passthrough
     pendingClarificationOptions?: string[];
+    pendingClarificationObservationKeys?: string[];
     lockedCropContext?: {
       crop_name: string;
       growth_stage: string;
