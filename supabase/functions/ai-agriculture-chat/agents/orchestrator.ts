@@ -431,6 +431,19 @@ import {
 } from './cross-crop-symptom-mapper.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE H + I — Graph SSOT runtime blackboard
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  GraphRuntimeState,
+  checkpoint as graphCheckpoint,
+  assertNoGraphDrift,
+  loadSnapshotVersions,
+  hashCanonicalContext,
+  GraphStateDriftError,
+  SymbolicIdLeakError,
+} from '../runtime/graph-runtime-state.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-18: Rule Evaluation Layer - Clean wrapper for symbolic reasoning
 // ═══════════════════════════════════════════════════════════════════════════
 import {
@@ -1115,6 +1128,12 @@ export class AIAgentOrchestrator {
     // Every stage below contributes to this ctx instead of resetting confidence.
     // ═══════════════════════════════════════════════════════════════════════════
     const requestCtx: RequestContext = createRequestContext(traceId);
+    // ─────────────────────────────────────────────────────────────────
+    // Phase I — Graph SSOT blackboard. ONE per request. Shared by every
+    // stage. Frozen-shell + append-only ledger + drift guards.
+    // ─────────────────────────────────────────────────────────────────
+    const graph = new GraphRuntimeState(traceId);
+    let graphCp = graphCheckpoint(graph);
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
 
@@ -1288,6 +1307,39 @@ export class AIAgentOrchestrator {
       } else {
         console.log(`📋 [PHASE-21] No canonical context (general query mode)`);
       }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Phase H + I — Freeze canonical context onto the Graph SSOT blackboard.
+      // Capture per-request snapshot versions (ontology / IOM / translations) so
+      // every decision is replayable. assertNoGraphDrift() will fail-fast if any
+      // later stage tries to mutate crop/stage/DAS/language/intent.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        graph.freezeCanonicalContext(canonicalContext ?? null);
+        const language = (options as any).language ?? null;
+        const cch = hashCanonicalContext(canonicalContext ?? null);
+        const versions = await loadSnapshotVersions(this.supabase, {
+          language,
+          canonicalContextHash: cch,
+          rulesBundleVersion: null,
+        });
+        graph.setSnapshotVersions(versions);
+        console.log(
+          `[SSOT_TRACE][${traceId}] canonical_hash=${cch} ` +
+            `ontology=${versions.ontology_version} iom=${versions.iom_version} ` +
+            `translations=${versions.translation_version} language=${language}`
+        );
+        graphCp = assertNoGraphDrift(graph, graphCp, 'CANONICAL_FREEZE');
+      } catch (e) {
+        if (e instanceof GraphStateDriftError || e instanceof SymbolicIdLeakError) {
+          console.error(`🚨 ${e.name}: ${e.message}`);
+          throw e;
+        }
+        console.warn(
+          `⚠️ [GRAPH_FREEZE] non-fatal init issue: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+
       
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: PHOTO ANALYSIS EARLY PATH
@@ -1762,9 +1814,25 @@ export class AIAgentOrchestrator {
             mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
             console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
           } else {
-            // Last-resort label→code mapping (legacy paths without symbolic keys)
+            // Phase I-6: Heuristic label→code mapping is a SYMBOLIC_ID_LEAK.
+            // Record it in the EvidenceLedger so it shows up in the trace and
+            // emit a structured warning. The mapping is kept ONLY as a legacy
+            // safety net until the wire contract is migrated to {option_id}.
             mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-            console.log(`   📋 Mapped to ObservationKey (legacy fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            try {
+              requestCtx.ledger.lose(
+                'OPTION_SELECTED',
+                `observation:${matchResult.matched_option}`,
+                { matched_option: matchResult.matched_option, pendingScope },
+                'SYMBOLIC_ID_LEAK: heuristic label→code mapping used because ' +
+                  'pendingClarificationObservationKeys was empty. Migrate client to ' +
+                  'echo option_id (canonical observation_code) instead of label.'
+              );
+            } catch {/* ledger never throws fatally */}
+            console.warn(
+              `   ⚠️ [SYMBOLIC_ID_LEAK] heuristic-mapped "${matchResult.matched_option}" → ` +
+                `"${mappedObservationKey || 'UNKNOWN'}" (legacy fallback)`
+            );
           }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
@@ -1781,23 +1849,58 @@ export class AIAgentOrchestrator {
             landContextForOptionSelection = await this.fetchComprehensiveLandContext(options.landId, farmerId) || undefined;
           }
           
-          // P0-2 FIX: Determine crop and stage with source tracking
-          // CLARIFICATION-FIRST: Use locked stage from clarification-strategy if available
+          // ─────────────────────────────────────────────────────────────
+          // Phase H — LAND-FIRST priority. CanonicalContext (land-derived)
+          // is authoritative. lockedCropContext is a wire-compat artifact
+          // and only used when land is unavailable. Old order
+          // (strategy > locked > land) caused crop/stage divergence
+          // between turns documented in the audit.
+          // ─────────────────────────────────────────────────────────────
           const lockedStageFromStrategy = getLockedStage();
-          const cropName = lockedStageFromStrategy?.crop_code || 
-                          lockedCropContext?.crop_name || 
-                          landContextForOptionSelection?.current_crop || 'UNKNOWN';
-          
-          // STAGE-LOCKED: Use locked stage from clarification strategy, else fall back
-          const growthStage = lockedStageFromStrategy?.growth_stage ||
-                              lockedCropContext?.growth_stage || 
-                              landContextForOptionSelection?.growth_stage || 'VEGETATIVE';
-          const hasAuthorativeStage = !!(lockedStageFromStrategy?.growth_stage || 
-                                         lockedCropContext?.growth_stage || 
-                                         landContextForOptionSelection?.growth_stage);
-          const stageSource = lockedStageFromStrategy?.growth_stage ? 'LOCKED_STRATEGY' :
-                              lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT' : 
-                              landContextForOptionSelection?.growth_stage ? 'LAND_CONTEXT' : 'DEFAULT';
+          const canonicalCropForOption = graph.canonical_context?.crop_code;
+          const canonicalStageForOption = graph.canonical_context?.growth_stage;
+          const cropName =
+            canonicalCropForOption ||
+            landContextForOptionSelection?.current_crop ||
+            lockedStageFromStrategy?.crop_code ||
+            lockedCropContext?.crop_name ||
+            'UNKNOWN';
+
+          const growthStage =
+            canonicalStageForOption ||
+            landContextForOptionSelection?.growth_stage ||
+            lockedStageFromStrategy?.growth_stage ||
+            lockedCropContext?.growth_stage ||
+            'VEGETATIVE';
+          const hasAuthorativeStage = !!(
+            canonicalStageForOption ||
+            landContextForOptionSelection?.growth_stage ||
+            lockedStageFromStrategy?.growth_stage ||
+            lockedCropContext?.growth_stage
+          );
+          const stageSource = canonicalStageForOption ? 'CANONICAL_LAND'
+            : landContextForOptionSelection?.growth_stage ? 'LAND_CONTEXT'
+            : lockedStageFromStrategy?.growth_stage ? 'LOCKED_STRATEGY'
+            : lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT'
+            : 'DEFAULT';
+          // SSOT trace: detect any divergence between authorities for visibility.
+          if (
+            lockedCropContext?.crop_name &&
+            canonicalCropForOption &&
+            lockedCropContext.crop_name.toUpperCase() !== canonicalCropForOption.toUpperCase()
+          ) {
+            console.warn(
+              `[SSOT_TRACE][${traceId}] OPTION_SELECTED crop divergence ignored: ` +
+                `canonical=${canonicalCropForOption} session.locked=${lockedCropContext.crop_name} → using canonical`
+            );
+            try {
+              requestCtx.ledger.ignore(
+                'OPTION_SELECTED',
+                `crop_divergence:${lockedCropContext.crop_name}`,
+                'land-SSOT: lockedCropContext overridden by canonical'
+              );
+            } catch {/* non-fatal */}
+          }
           
           // LOGGING: Track clarification event
           logClarificationEvent(
