@@ -57,6 +57,11 @@ export class RuntimeTraceCollector {
   readonly header: RuntimeTraceHeader;
   private stages: StageRecord[] = [];
   private openStages = new Map<string, StageRecord>();
+  /** Set once the trace has been written to ai_decision_log; prevents duplicate inserts. */
+  persisted = false;
+  /** id of the inserted ai_decision_log row (string) once persisted. */
+  persistedDecisionId: string | null = null;
+
 
   context: any         = null;
   clarification: any   = null;
