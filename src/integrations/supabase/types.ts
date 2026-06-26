@@ -1264,10 +1264,12 @@ export type Database = {
           created_at: string | null
           crop_code: string | null
           detected_language: string | null
+          execution_id: string | null
           farmer_id: string
           farmer_message: string | null
           forbidden_actions: string[] | null
           gate_decisions: Json
+          graph_version: string | null
           growth_stage: string | null
           id: string
           intent_label: string | null
@@ -1277,10 +1279,12 @@ export type Database = {
           nlu_confidence: number | null
           observation_mapping: Json | null
           observations: Json | null
+          pipeline_version: string | null
           processing_time_ms: number | null
           response_language_match: boolean | null
           response_source: string | null
           rules_fired: string[] | null
+          runtime_version: string | null
           session_id: string
           symbolic_decision_id: string | null
           tenant_id: string
@@ -1297,10 +1301,12 @@ export type Database = {
           created_at?: string | null
           crop_code?: string | null
           detected_language?: string | null
+          execution_id?: string | null
           farmer_id: string
           farmer_message?: string | null
           forbidden_actions?: string[] | null
           gate_decisions?: Json
+          graph_version?: string | null
           growth_stage?: string | null
           id?: string
           intent_label?: string | null
@@ -1310,10 +1316,12 @@ export type Database = {
           nlu_confidence?: number | null
           observation_mapping?: Json | null
           observations?: Json | null
+          pipeline_version?: string | null
           processing_time_ms?: number | null
           response_language_match?: boolean | null
           response_source?: string | null
           rules_fired?: string[] | null
+          runtime_version?: string | null
           session_id: string
           symbolic_decision_id?: string | null
           tenant_id: string
@@ -1330,10 +1338,12 @@ export type Database = {
           created_at?: string | null
           crop_code?: string | null
           detected_language?: string | null
+          execution_id?: string | null
           farmer_id?: string
           farmer_message?: string | null
           forbidden_actions?: string[] | null
           gate_decisions?: Json
+          graph_version?: string | null
           growth_stage?: string | null
           id?: string
           intent_label?: string | null
@@ -1343,10 +1353,12 @@ export type Database = {
           nlu_confidence?: number | null
           observation_mapping?: Json | null
           observations?: Json | null
+          pipeline_version?: string | null
           processing_time_ms?: number | null
           response_language_match?: boolean | null
           response_source?: string | null
           rules_fired?: string[] | null
+          runtime_version?: string | null
           session_id?: string
           symbolic_decision_id?: string | null
           tenant_id?: string
@@ -1587,92 +1599,146 @@ export type Database = {
       }
       ai_decision_log: {
         Row: {
+          clarification_snapshot: Json | null
           confidence_score: number | null
+          context_snapshot: Json | null
           created_at: string | null
+          created_runtime_ms: number | null
+          decision_snapshot: Json | null
           decision_type: string
           error_message: string | null
           evaluation_trace: Json | null
+          execution_id: string | null
+          execution_mode: string | null
           execution_time_ms: number | null
           farmer_id: string | null
           feedback_comment: string | null
           feedback_score: number | null
+          graph_snapshot: Json | null
+          graph_version: string | null
           hypothesis_decision_path: string | null
           hypothesis_id: string | null
           hypothesis_score: number | null
+          hypothesis_snapshot: Json | null
           id: string
           input_data: Json
+          knowledge_versions: Json | null
           land_id: string | null
           missing_data_fields: string[] | null
           model_version: string | null
           ndvi_data: Json | null
+          observation_snapshot: Json | null
           output_data: Json
+          pipeline_metrics: Json | null
+          pipeline_version: string | null
           prompt_version: string | null
           reasoning: string | null
+          rule_snapshot: Json | null
+          runtime_trace: Json | null
+          runtime_version: string | null
           schedule_id: string | null
           soil_data: Json | null
           success: boolean | null
           tenant_id: string
           top_5_rejected_rules: Json | null
+          trace_id: string | null
+          trace_level: string | null
           variety_resistance_applied: Json | null
           weather_data: Json | null
         }
         Insert: {
+          clarification_snapshot?: Json | null
           confidence_score?: number | null
+          context_snapshot?: Json | null
           created_at?: string | null
+          created_runtime_ms?: number | null
+          decision_snapshot?: Json | null
           decision_type: string
           error_message?: string | null
           evaluation_trace?: Json | null
+          execution_id?: string | null
+          execution_mode?: string | null
           execution_time_ms?: number | null
           farmer_id?: string | null
           feedback_comment?: string | null
           feedback_score?: number | null
+          graph_snapshot?: Json | null
+          graph_version?: string | null
           hypothesis_decision_path?: string | null
           hypothesis_id?: string | null
           hypothesis_score?: number | null
+          hypothesis_snapshot?: Json | null
           id?: string
           input_data: Json
+          knowledge_versions?: Json | null
           land_id?: string | null
           missing_data_fields?: string[] | null
           model_version?: string | null
           ndvi_data?: Json | null
+          observation_snapshot?: Json | null
           output_data: Json
+          pipeline_metrics?: Json | null
+          pipeline_version?: string | null
           prompt_version?: string | null
           reasoning?: string | null
+          rule_snapshot?: Json | null
+          runtime_trace?: Json | null
+          runtime_version?: string | null
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
           tenant_id: string
           top_5_rejected_rules?: Json | null
+          trace_id?: string | null
+          trace_level?: string | null
           variety_resistance_applied?: Json | null
           weather_data?: Json | null
         }
         Update: {
+          clarification_snapshot?: Json | null
           confidence_score?: number | null
+          context_snapshot?: Json | null
           created_at?: string | null
+          created_runtime_ms?: number | null
+          decision_snapshot?: Json | null
           decision_type?: string
           error_message?: string | null
           evaluation_trace?: Json | null
+          execution_id?: string | null
+          execution_mode?: string | null
           execution_time_ms?: number | null
           farmer_id?: string | null
           feedback_comment?: string | null
           feedback_score?: number | null
+          graph_snapshot?: Json | null
+          graph_version?: string | null
           hypothesis_decision_path?: string | null
           hypothesis_id?: string | null
           hypothesis_score?: number | null
+          hypothesis_snapshot?: Json | null
           id?: string
           input_data?: Json
+          knowledge_versions?: Json | null
           land_id?: string | null
           missing_data_fields?: string[] | null
           model_version?: string | null
           ndvi_data?: Json | null
+          observation_snapshot?: Json | null
           output_data?: Json
+          pipeline_metrics?: Json | null
+          pipeline_version?: string | null
           prompt_version?: string | null
           reasoning?: string | null
+          rule_snapshot?: Json | null
+          runtime_trace?: Json | null
+          runtime_version?: string | null
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
           tenant_id?: string
           top_5_rejected_rules?: Json | null
+          trace_id?: string | null
+          trace_level?: string | null
           variety_resistance_applied?: Json | null
           weather_data?: Json | null
         }
