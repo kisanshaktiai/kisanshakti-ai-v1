@@ -6943,6 +6943,49 @@ export class AIAgentOrchestrator {
       
       layerTimings.layer3_rules = Date.now() - layer3Start;
       console.log(`   ✅ Layer 3 complete (${layerTimings.layer3_rules}ms)`);
+
+      // PHASE Y — rules + decision + hypothesis snapshots
+      try {
+        const rt = getRuntimeTraceCollector();
+        if (rt) {
+          rt.setRules({
+            candidates:     (decisionOutput as any).candidate_rules ?? null,
+            candidate_count: Array.isArray((decisionOutput as any).candidate_rules) ? (decisionOutput as any).candidate_rules.length : null,
+            matched_count:  decisionOutput.rules_applied?.length ?? 0,
+            applied:        decisionOutput.rules_applied ?? [],
+            blocked:        (decisionOutput as any).blocked_actions ?? [],
+            winner:         decisionOutput.primary_decision ? {
+              rule_id: decisionOutput.primary_decision.rule_id
+                       || decisionOutput.primary_decision.application_details?.rule_id
+                       || null,
+              action_type: decisionOutput.primary_decision.action_type ?? null,
+              confidence:  decisionOutput.primary_decision.weighted_confidence ?? decisionOutput.primary_decision.confidence ?? null,
+            } : null,
+            rejected: (decisionOutput as any).top_5_rejected_rules ?? null,
+          });
+          rt.setDecision({
+            decision_id:      (decisionOutput as any).decision_id ?? null,
+            decision_type:    decisionOutput.primary_decision?.action_type ?? null,
+            primary_decision: decisionOutput.primary_decision ?? null,
+            secondary_actions:(decisionOutput as any).secondary_actions ?? [],
+            confidence:       decisionOutput.primary_decision?.weighted_confidence ?? null,
+            status:           decisionOutput.status ?? null,
+            reasoning:        (decisionOutput as any).reasoning ?? null,
+          });
+          // Hypothesis (may be undefined if no arbitration ran)
+          try {
+            const hyp = (typeof hypothesisResult !== 'undefined') ? hypothesisResult : null;
+            if (hyp) {
+              rt.setHypotheses({
+                decision_path: (hyp as any).decision_path ?? null,
+                winner: (hyp as any).best_hypothesis ?? (hyp as any).winner ?? null,
+                candidates: (hyp as any).candidates ?? (hyp as any).all_hypotheses ?? null,
+                rejected: (hyp as any).rejected_hypotheses ?? null,
+              });
+            }
+          } catch {}
+        }
+      } catch {}
       
       // ═══════════════════════════════════════════════════════════════════════════
       // HARD INVARIANT: If PRIMARY_DECISION exists with valid rule_id, return NOW
