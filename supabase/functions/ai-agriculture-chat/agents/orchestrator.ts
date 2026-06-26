@@ -4906,6 +4906,11 @@ export class AIAgentOrchestrator {
       // Lock the intent for this turn
       const intentLock = lockIntent(detectedIntent, intentConfidence);
       agentsUsed.push('INTENT_LOCK');
+      // PHASE Y — record intent on collector
+      try {
+        const rt = getRuntimeTraceCollector();
+        if (rt) { rt.context = { ...(rt.context || {}), intent: { code: detectedIntent, confidence: intentConfidence } }; }
+      } catch {}
       
       // ═══════════════════════════════════════════════════════════════════════════
       // AUDIT LOGGER INITIALIZATION - Include new Stage 1-4 data
