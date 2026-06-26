@@ -160,13 +160,21 @@ async function recordVocabularyGaps(
   context: { source: string; crop_code?: string; rule_ids?: string[] }
 ) {
   const rows: any[] = [];
+  const now = new Date().toISOString();
   const stamp = (key: string, reason: string) => ({
-    observation_key: key,
-    reason,
-    source: context.source,
-    crop_code: context.crop_code || null,
-    rule_ids: context.rule_ids && context.rule_ids.length > 0 ? context.rule_ids : null,
-    detected_at: new Date().toISOString(),
+    token_raw: key,
+    token_normalized: key,
+    language: 'en',
+    source: `ONTOLOGY_GATE:${context.source}`,
+    occurrences: 1,
+    first_seen_at: now,
+    last_seen_at: now,
+    resolved: false,
+    metadata: {
+      reason,
+      crop_code: context.crop_code || null,
+      rule_ids: context.rule_ids && context.rule_ids.length > 0 ? context.rule_ids : null,
+    },
   });
   for (const k of report.dropped_unknown) rows.push(stamp(k, 'NOT_IN_MASTER'));
   for (const k of report.dropped_not_observable) rows.push(stamp(k, 'NOT_FARMER_OBSERVABLE'));
@@ -174,7 +182,6 @@ async function recordVocabularyGaps(
   if (rows.length === 0) return;
 
   try {
-    // observation_vocabulary_gaps schema may evolve; tolerate failures silently.
     await supabaseClient.from('observation_vocabulary_gaps').insert(rows);
   } catch (e) {
     // Non-fatal — diagnostics only.
