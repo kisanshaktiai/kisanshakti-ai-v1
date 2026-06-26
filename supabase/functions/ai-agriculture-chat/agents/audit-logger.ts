@@ -574,13 +574,109 @@ export class AuditLogger {
   }
   
   /**
-   * Save audit log to database
+   * Save audit log to database.
+   * PHASE Y: First persists ai_decision_log (sourced from RuntimeTraceCollector
+   * if present), then stamps symbolic_decision_id onto the ai_chat_audit_logs row.
    */
   private async saveToDatabase(log: TurnAuditLog): Promise<void> {
-    // Try to insert into audit table
-    // Table may not exist yet - that's OK
-    // Use type assertion to bypass strict Supabase type checking
-    const insertData = {
+    // ─── PHASE Y: persist ai_decision_log first ─────────────────────────────
+    const collector = getRuntimeTraceCollector();
+    let symbolicDecisionId: string | null = log.symbolic_decision_id || null;
+    let decisionLogExtras: {
+      execution_id?: string;
+      pipeline_version?: string;
+      graph_version?: string;
+      runtime_version?: string;
+    } = {};
+
+    if (collector) {
+      try {
+        const totalLatency = (log.processing_time_ms ?? (Date.now() - collector.header.started_at_ms)) | 0;
+        const knowledgeVersions = await getKnowledgeVersions().catch(() => ({}));
+        collector.setKnowledgeVersions(knowledgeVersions);
+
+        const graphSnapshot     = collector.buildGraphSnapshot();
+        const pipelineMetrics   = collector.buildPipelineMetrics(totalLatency);
+        const runtimeTrace      = collector.buildRuntimeTrace(totalLatency);
+        const ctx               = collector.context || {};
+        const hyp               = collector.hypotheses?.winner || null;
+
+        const decisionRow: Record<string, any> = {
+          tenant_id:       log.tenant_id ?? null,
+          farmer_id:       log.farmer_id ?? null,
+          land_id:         (ctx.land_id ?? log.land_id) ?? null,
+          schedule_id:     ctx.schedule_id ?? null,
+          decision_type:   collector.decision?.decision_type
+                            || collector.decision?.primary_decision?.action_type
+                            || 'AI_CHAT',
+          model_version:   collector.header.runtime_version,
+          input_data:      { farmer_message: log.farmer_message, observations: log.nlu_output?.observations ?? [] },
+          output_data:     collector.decision ?? null,
+          reasoning:       collector.decision?.reasoning ?? null,
+          confidence_score: collector.decision?.confidence
+                            ?? collector.decision?.confidence_score
+                            ?? null,
+          execution_time_ms: totalLatency,
+          weather_data:    ctx.weather ?? null,
+          ndvi_data:       ctx.ndvi ?? null,
+          soil_data:       ctx.soil ?? null,
+          success:         (log.validation_passed ?? true) && !(collector.decision?.failed),
+          error_message:   collector.decision?.error ?? null,
+          // hypothesis tracking (previously unpopulated)
+          hypothesis_id:              hyp?.hypothesis_id ?? hyp?.id ?? null,
+          hypothesis_score:           hyp?.score ?? hyp?.confidence ?? null,
+          hypothesis_decision_path:   collector.hypotheses?.decision_path ?? null,
+          // PHASE Y snapshot columns
+          runtime_trace:          runtimeTrace,
+          graph_snapshot:         graphSnapshot,
+          pipeline_metrics:       pipelineMetrics,
+          context_snapshot:       ctx,
+          clarification_snapshot: collector.clarification ?? null,
+          observation_snapshot:   collector.observations ?? null,
+          rule_snapshot:          collector.rules ?? null,
+          hypothesis_snapshot:    collector.hypotheses ?? null,
+          decision_snapshot:      collector.decision ?? null,
+          knowledge_versions:     knowledgeVersions,
+          pipeline_version:       collector.header.pipeline_version,
+          graph_version:          collector.header.graph_version,
+          runtime_version:        collector.header.runtime_version,
+          execution_mode:         collector.header.execution_mode,
+          trace_level:            collector.header.trace_level,
+          created_runtime_ms:     totalLatency,
+          trace_id:               collector.header.trace_id,
+          execution_id:           collector.header.execution_id,
+        };
+
+        // @ts-ignore - extended columns added via Phase Y migration
+        const { data: decisionInserted, error: decisionErr } = await this.supabase
+          .from('ai_decision_log')
+          .insert(decisionRow)
+          .select('id')
+          .single();
+
+        if (decisionErr) {
+          if (decisionErr.code !== '42P01') {
+            console.warn(`⚠️ [Audit] ai_decision_log insert failed:`, decisionErr.message);
+          }
+        } else if (decisionInserted?.id) {
+          symbolicDecisionId = String(decisionInserted.id);
+        }
+
+        decisionLogExtras = {
+          execution_id:     collector.header.execution_id,
+          pipeline_version: collector.header.pipeline_version,
+          graph_version:    collector.header.graph_version,
+          runtime_version:  collector.header.runtime_version,
+        };
+
+        collector.finishLogLine(totalLatency, { intent: log.nlu_output?.intent_label });
+      } catch (e: any) {
+        console.warn(`⚠️ [Audit] RuntimeTraceCollector persist failed (non-blocking):`, e?.message || e);
+      }
+    }
+
+    // ─── ai_chat_audit_logs (existing behaviour + Phase Y columns) ──────────
+    const insertData: Record<string, any> = {
       turn_id: log.turn_id,
       session_id: log.session_id,
       farmer_id: log.farmer_id,
@@ -595,7 +691,7 @@ export class AuditLogger {
       locked_intent: log.locked_intent,
       allowed_scopes: log.allowed_scopes,
       forbidden_actions: log.forbidden_actions,
-      symbolic_decision_id: log.symbolic_decision_id,
+      symbolic_decision_id: symbolicDecisionId,
       rules_fired: log.rules_fired,
       actions_returned: log.actions_returned,
       actions_filtered_out: log.actions_filtered_out,
@@ -610,14 +706,15 @@ export class AuditLogger {
       land_id: log.land_id,
       crop_code: log.crop_code,
       growth_stage: log.growth_stage,
-      created_at: log.timestamp
+      created_at: log.timestamp,
+      ...decisionLogExtras,
     };
-    
+
     // @ts-ignore - Supabase types may not match exactly
     const { error } = await this.supabase
       .from('ai_chat_audit_logs')
       .insert(insertData);
-    
+
     if (error) {
       // Table might not exist - log warning only
       if (error.code === '42P01') {
