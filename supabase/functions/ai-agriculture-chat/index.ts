@@ -21,6 +21,7 @@ import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } fro
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
+import { getRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
@@ -905,6 +906,29 @@ serve(async (req) => {
     );
 
     console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
+
+    // ───────────────────────────────────────────────────────────────────
+    // PHASE Y SAFETY NET: ensure a RuntimeTrace row lands in ai_decision_log
+    // even on early-return paths (OPTION_SELECTED, sanitize-blocked, etc.)
+    // that bypass auditLogger.completeTurn(). `persistDecisionLog` is
+    // idempotent — if completeTurn already wrote the row, this is a no-op.
+    // ───────────────────────────────────────────────────────────────────
+    try {
+      const _rtc = getRuntimeTraceCollector();
+      if (_rtc && !_rtc.persisted) {
+        const _sb = (orch as any)?.supabase ?? (globalThis as any)?.__supabase ?? null;
+        if (_sb) {
+          await _rtc.persistDecisionLog(_sb, {
+            tenant_id: finalTenantId,
+            farmer_id: finalFarmerId,
+            land_id: landId ?? null,
+            farmer_message: userMessageContent,
+            processing_time_ms: Date.now() - startTime,
+          });
+        }
+      }
+    } catch (_e) { /* non-blocking */ }
+
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 3: STORE MESSAGES FOR TRAINING & ANALYSIS
