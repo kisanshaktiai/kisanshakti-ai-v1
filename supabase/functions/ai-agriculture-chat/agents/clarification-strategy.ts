@@ -443,6 +443,31 @@ export async function fetchRuleDrivenClarificationOptions(
     console.log(`   ⚠️ [HypothesisFirst] No candidates - using failure class fallback`);
     return useHypothesisFallback(failureResult, stage, language, traceId, 'NO_CANDIDATES');
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ONTOLOGY GATE — single source of truth for farmer-observable codes.
+  // Reject any observation_key that is not present in observation_master with
+  // is_active=true AND is_farmer_observable=true. This is what stops
+  // diagnosis-level codes (e.g. TUNGRO_YELLOW_STUNT), system predictions
+  // (PREDICTED_NUTRIENT_DEMAND) and workflow concepts (WEEKLY_SUMMARY) from
+  // ever reaching the farmer as clarification options.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const candidateKeys: string[] = [];
+  const candidateRuleIds: string[] = [];
+  for (const c of candidates) {
+    candidateRuleIds.push(c.rule_id);
+    for (const ch of c.observable_characteristics) {
+      candidateKeys.push(ch.observation_key);
+    }
+  }
+  const gate = await assertFarmerObservable(supabaseClient, candidateKeys, {
+    source: 'CLARIFICATION_STRATEGY',
+    crop_code,
+    stage,
+    rule_ids: candidateRuleIds,
+    trace_id: traceId,
+  });
+  const farmerObservable: Set<string> = gate.validKeys;
   
   // Collect all observable characteristics from candidate rules
   interface ScoredHypothesisOption {
