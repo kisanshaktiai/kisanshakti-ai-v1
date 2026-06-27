@@ -209,7 +209,7 @@ export function filterHypothesesByIOM<
 
   for (const h of hypotheses) {
     const keys = (h.observable_characteristics || [])
-      .map((o) => String(o?.observation_key || '').toUpperCase())
+      .map((o) => String(o?.observation_key || '').trim().toLowerCase().replace(/[\s-]+/g, '_'))
       .filter(Boolean);
     const hit = keys.some((k) => allowedSet.has(k));
     if (hit) {
