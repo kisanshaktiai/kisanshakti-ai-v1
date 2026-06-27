@@ -579,6 +579,12 @@ import {
   type DiagnosisOption
 } from '../decision/diagnosis-first-generator.ts';
 
+import {
+  loadClarificationCandidates,
+  assertClarificationContract,
+  canonicalizeObservationKey,
+} from '../runtime/clarification-contract.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
 // UPDATED: Now maps to actual VisualSymptom enum values from canonical-state-builder
