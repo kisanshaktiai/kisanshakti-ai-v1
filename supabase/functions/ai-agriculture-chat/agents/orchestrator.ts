@@ -4425,17 +4425,43 @@ export class AIAgentOrchestrator {
               description: opt.description,
               diagnostic_power: opt.diagnostic_power || 'MEDIUM'
             }));
-            
+
+            // ═══════════════════════════════════════════════════════════════════
+            // Phase Y — Fix G: never leak guardrail / block-rule labels into the
+            // farmer-facing option list. Internal labels like
+            // "A blocking rule is active." or "Block all CIB&RC banned chemicals
+            // on rice" must be filtered out before translation. This is a
+            // belt-and-braces filter in addition to the upstream sanitizers.
+            // ═══════════════════════════════════════════════════════════════════
+            const GUARDRAIL_LABEL_PATTERNS = [
+              /blocking rule is active/i,
+              /\bblock\b.*\b(cib&?rc|banned|chemical|pesticide|fertili[sz]er)/i,
+              /\bcib&?rc\b/i,
+              /^block\s+all\b/i,
+              /^guardrail[:\s]/i,
+              /^risk[_\s]safety/i,
+            ];
+            const isGuardrailLabel = (s: string) =>
+              typeof s === 'string' && GUARDRAIL_LABEL_PATTERNS.some((re) => re.test(s));
+            const preFilter = diagnosisOptions.length;
+            diagnosisOptions = diagnosisOptions.filter(
+              (o: any) => !isGuardrailLabel(o?.label) && !isGuardrailLabel(o?.observation_key),
+            );
+            if (diagnosisOptions.length !== preFilter) {
+              console.warn(`   🛡️ [DIAG_FIRST] dropped ${preFilter - diagnosisOptions.length} guardrail labels from farmer-facing options`);
+            }
+
             // FIX 33: Translate diagnosis-first options (was skipped - caused raw English codes in Marathi UI)
             try {
               diagnosisOptions = await translateClarificationOptions(
-                diagnosisOptions, 
-                options.language || 'mr', 
+                diagnosisOptions,
+                options.language || 'mr',
                 this.supabase
               );
             } catch (transErr) {
               console.warn(`⚠️ [DIAG_FIRST] Translation failed, using raw labels: ${transErr}`);
             }
+
             
             return {
               type: 'CLARIFICATION_QUESTION',
