@@ -144,7 +144,12 @@ export async function loadIOMAllowed(
     const allowedRanked = Array.from(byCode.values()).sort(
       (a, b) => a.confidence_rank - b.confidence_rank,
     );
-    const allowedSet = new Set(allowedRanked.map((r) => r.observation_code.toUpperCase()));
+    // Canonical lower_snake_case to match observation_master.observation_code.
+    const allowedSet = new Set(
+      allowedRanked.map((r) =>
+        String(r.observation_code || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+      ),
+    );
 
     meta.rows = allowedRanked.length;
 
@@ -204,7 +209,7 @@ export function filterHypothesesByIOM<
 
   for (const h of hypotheses) {
     const keys = (h.observable_characteristics || [])
-      .map((o) => String(o?.observation_key || '').toUpperCase())
+      .map((o) => String(o?.observation_key || '').trim().toLowerCase().replace(/[\s-]+/g, '_'))
       .filter(Boolean);
     const hit = keys.some((k) => allowedSet.has(k));
     if (hit) {

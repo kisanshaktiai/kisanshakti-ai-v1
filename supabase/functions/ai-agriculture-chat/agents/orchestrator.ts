@@ -579,6 +579,12 @@ import {
   type DiagnosisOption
 } from '../decision/diagnosis-first-generator.ts';
 
+import {
+  loadClarificationCandidates,
+  assertClarificationContract,
+  canonicalizeObservationKey,
+} from '../runtime/clarification-contract.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
 // UPDATED: Now maps to actual VisualSymptom enum values from canonical-state-builder
@@ -4496,6 +4502,50 @@ export class AIAgentOrchestrator {
             );
             if (diagnosisOptions.length !== preFilter) {
               console.warn(`   🛡️ [DIAG_FIRST] dropped ${preFilter - diagnosisOptions.length} guardrail labels from farmer-facing options`);
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
+            // ONTOLOGY CONTRACT — Clarification options must originate from the
+            // farmer-observation ontology (intent_observation_mapping), never
+            // from diagnosis names or rule metadata. Replace diagnosis labels
+            // with curated, observation_master-gated farmer observations for
+            // the current (intent, crop, stage, das) cell. If the contract
+            // returns nothing we DROP the diagnosis labels entirely rather
+            // than leak rule metadata to the UI.
+            // ═══════════════════════════════════════════════════════════════════
+            try {
+              const contractOptions = await loadClarificationCandidates({
+                supabase: this.supabase,
+                intent_code: intentCode,
+                crop_code: cropCode,
+                growth_stage: growthStage,
+                das: (landContext as any)?.das ?? null,
+                language: options.language || 'mr',
+                max: 5,
+              });
+              if (contractOptions.length > 0) {
+                diagnosisOptions = contractOptions.map((o) => ({
+                  label: o.label,
+                  value: o.observation_key,
+                  observation_key: o.observation_key,
+                  description: undefined,
+                  diagnostic_power: 'HIGH',
+                }));
+                console.log(
+                  `   ✅ [CLARIFICATION_CONTRACT] diagnosis-first replaced with ${diagnosisOptions.length} farmer-observation options`,
+                );
+              } else {
+                const allowed = new Set<string>();
+                diagnosisOptions = assertClarificationContract(diagnosisOptions, allowed, {
+                  intent: intentCode, crop: cropCode, stage: growthStage,
+                });
+                console.warn(
+                  `   🛡️ [CLARIFICATION_CONTRACT] no IOM candidates — diagnosis-first options dropped to preserve ontology ownership`,
+                );
+              }
+            } catch (contractErr) {
+              console.error(`   ❌ [CLARIFICATION_CONTRACT] failed:`, contractErr);
+              diagnosisOptions = [];
             }
 
             // FIX 33: Translate diagnosis-first options (was skipped - caused raw English codes in Marathi UI)

@@ -39,8 +39,11 @@ export interface OntologyGateResult {
   report: OntologyGateReport;
 }
 
+// Canonical observation identifier: lower_snake_case.
+// `observation_master.observation_code` is stored lowercase; comparisons
+// must therefore use lowercase to avoid silent gate-drops.
 const normalize = (k: string): string =>
-  String(k || '').trim().toUpperCase().replace(/[\s-]/g, '_');
+  String(k || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 
 /**
  * Bulk-validate candidate observation keys against `observation_master`.
@@ -98,7 +101,7 @@ export async function assertFarmerObservable(
 
   const seen = new Map<string, { is_active: boolean; is_farmer_observable: boolean }>();
   for (const r of rows) {
-    seen.set(String(r.observation_code).toUpperCase(), {
+    seen.set(normalize(String(r.observation_code)), {
       is_active: r.is_active !== false,
       is_farmer_observable: r.is_farmer_observable === true,
     });
