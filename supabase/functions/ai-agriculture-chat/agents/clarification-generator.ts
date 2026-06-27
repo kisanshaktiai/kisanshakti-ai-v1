@@ -56,17 +56,16 @@ import type { CropContextAuthority } from '../decision/context-authority.ts';
 // now runs through `resolveIntentToObservations` against
 // `intent_observation_mapping`. The legacy module is no longer imported.
 
-// R1 FIX: Wire intent_observation_mapping through the canonical intent resolver.
-import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
-import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
-import { createClient as createSupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
-
-// PHASE-16: Import Clarification Validator to prevent diagnosis leakage
+// CLARIFICATION ONTOLOGY CONTRACT — single producer of farmer options.
+// REFINE_OBSERVATION clarifications MUST come from
+// intent_observation_mapping → observation_master → observation_translations.
+// No other source is allowed.
 import {
-  validateClarificationOptions,
-  validateAndSanitizeClarification,
-  DIAGNOSIS_KEYWORDS
-} from '../decision/clarification-validator.ts';
+  loadClarificationCandidates,
+  canonicalizeObservationKey,
+  type ClarificationOption
+} from '../runtime/clarification-contract.ts';
+import { createClient as createSupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // v6.0: CANONICAL CONTEXT CONTRACT (IMMUTABLE, PASSED BY REFERENCE)
