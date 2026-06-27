@@ -1186,14 +1186,29 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
       if (supabaseUrl && serviceRoleKey) {
         const supabase = createClient(supabaseUrl, serviceRoleKey);
         
-        // Load observation aliases
-        // AUDIT FIX: observation_aliases table has NO is_active column
-        // Removed .eq('is_active', true) which silently returned 0 rows
-        const { data: aliases } = await supabase
-          .from('observation_aliases')
-          .select('alias_code, canonical_code');
-        
-        if (aliases && aliases.length > 0) {
+        // Load observation aliases — observation_aliases has ~14,023 rows
+        // but PostgREST caps responses at 1,000 rows by default, silently
+        // dropping ~93% of the alias bridge. Paginate via .range() to load
+        // the full set. (Fix D — Phase Y forensic audit.)
+        const PAGE = 1000;
+        const aliases: Array<{ alias_code: string; canonical_code: string; active?: boolean }> = [];
+        for (let from = 0; ; from += PAGE) {
+          const { data: page, error: pageErr } = await supabase
+            .from('observation_aliases')
+            .select('alias_code, canonical_code, active')
+            .eq('active', true)
+            .order('alias_code', { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (pageErr) {
+            console.warn(`⚠️ [RuleLoader] alias page ${from} error:`, pageErr.message);
+            break;
+          }
+          if (!page || page.length === 0) break;
+          aliases.push(...page);
+          if (page.length < PAGE) break;
+        }
+
+        if (aliases.length > 0) {
           const aliasMap: Record<string, string[]> = {};
           for (const row of aliases) {
             if (!aliasMap[row.alias_code]) aliasMap[row.alias_code] = [];
@@ -1206,22 +1221,35 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           }
           cachedObservationAliases = aliasMap;
           aliasesCacheExpiry = now + CACHE_TTL;
-          console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB`);
+          console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB (paginated)`);
         }
-        
+
         // ═══════════════════════════════════════════════════════════════════
         // PHASE 7: Load observation_master codes for validation
+        // (Also paginated — table has ~1,997 active rows, default cap 1,000.)
         // ═══════════════════════════════════════════════════════════════════
         if (!cachedObservationCodes || now >= obsCacheExpiry) {
-          const { data: obsCodes } = await supabase
-            .from('observation_master')
-            .select('observation_code')
-            .eq('is_active', true);
-          
-          if (obsCodes && obsCodes.length > 0) {
-            cachedObservationCodes = new Set(obsCodes.map(r => r.observation_code.toUpperCase()));
+          const obsCodes: Array<{ observation_code: string }> = [];
+          for (let from = 0; ; from += PAGE) {
+            const { data: page, error: pageErr } = await supabase
+              .from('observation_master')
+              .select('observation_code')
+              .eq('is_active', true)
+              .order('observation_code', { ascending: true })
+              .range(from, from + PAGE - 1);
+            if (pageErr) {
+              console.warn(`⚠️ [RuleLoader] obs_master page ${from} error:`, pageErr.message);
+              break;
+            }
+            if (!page || page.length === 0) break;
+            obsCodes.push(...page);
+            if (page.length < PAGE) break;
+          }
+
+          if (obsCodes.length > 0) {
+            cachedObservationCodes = new Set(obsCodes.map((r) => r.observation_code.toUpperCase()));
             obsCacheExpiry = now + CACHE_TTL;
-            console.log(`✅ [RuleLoader] Cached ${obsCodes.length} observation_master codes for validation`);
+            console.log(`✅ [RuleLoader] Cached ${obsCodes.length} observation_master codes for validation (paginated)`);
           }
         }
       }

@@ -4288,8 +4288,23 @@ export class AIAgentOrchestrator {
         try {
           const cropCode = canonicalContext?.crop_code || landContext?.current_crop?.toUpperCase() || 'UNKNOWN';
           const growthStage = canonicalContext?.growth_stage || landContext?.growth_stage || 'UNKNOWN';
-          const currentObservations = [...allObservationsForPreAuth].map(o => String(o));
-          
+
+          // ═══════════════════════════════════════════════════════════════════
+          // Phase Y — Fix C: bridge generic NLU codes (poor_germination,
+          // germination_failure, …) into the crop's IOM canonical vocabulary
+          // (obs_rice_no_emergence, …) BEFORE hypothesis evaluation. Without
+          // this, rice extracts emit "physiology" codes that the rice IOM
+          // ("phenology") allowlist will never match, and the diagnosis
+          // pipeline reaches for unrelated diseases like Tungro.
+          // ═══════════════════════════════════════════════════════════════════
+          const { bridgeCodes } = await import('../decision/concept-bridge.ts');
+          const rawObservations = [...allObservationsForPreAuth].map((o) => String(o));
+          const currentObservations = bridgeCodes(cropCode, rawObservations);
+          if (rawObservations.length !== currentObservations.length ||
+              rawObservations.some((c, i) => c !== currentObservations[i])) {
+            console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${rawObservations.join(',')} → ${currentObservations.join(',')}`);
+          }
+
           // ═══════════════════════════════════════════════════════════════════════════
           // CRITICAL BUG FIX: DAS propagation - use ?? (nullish) not || (falsy)
           // Also add robust fallback chain with logging to trace DAS source
@@ -4318,7 +4333,30 @@ export class AIAgentOrchestrator {
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
           
-          console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses`);
+          console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
+
+          // ═══════════════════════════════════════════════════════════════════
+          // Phase Y — Fix B (PRIMARY): enforce intent_observation_mapping as a
+          // hard allowlist on the candidate set. IOM is the curated, agronomically
+          // valid set for (intent, crop, stage, DAS). For GENERAL_CROP_INFO +
+          // rice + seedling + DAS≤21 it correctly returns
+          // {obs_rice_no_emergence, obs_rice_patchy_emergence,
+          //  obs_rice_seedling_damping_off} and ZERO Tungro rows — so this gate
+          // is what physically removes "Tungro on an ungerminated crop".
+          // ═══════════════════════════════════════════════════════════════════
+          try {
+            const { loadIOMAllowed, filterHypothesesByIOM } = await import('../decision/iom-gate.ts');
+            const iomIntent = intentCode || (intentMetaFromDB as any)?.intent_code || 'GENERAL_CROP_INFO';
+            const iom = await loadIOMAllowed(this.supabase, iomIntent, cropCode, growthStage, resolvedDAS);
+            const { kept, dropped } = filterHypothesesByIOM(hypothesisResult.candidates as any[], iom.allowedSet, iom.traceMeta);
+            if (dropped.length > 0 && iom.allowedSet.size > 0) {
+              hypothesisResult.candidates = kept as typeof hypothesisResult.candidates;
+              console.log(`   🛡️ [IOM_GATE] ${kept.length} candidates kept after enforcement (${dropped.length} dropped — including any leaked diagnosis like Tungro on ungerminated rice)`);
+            }
+          } catch (iomErr) {
+            console.warn(`   ⚠️ [IOM_GATE] enforcement failed (continuing without IOM filter): ${iomErr instanceof Error ? iomErr.message : iomErr}`);
+          }
+
           
           // Generate diagnosis-first response
           let diagnosisFirstOutput: DiagnosisFirstOutput | null = null;
@@ -4387,17 +4425,43 @@ export class AIAgentOrchestrator {
               description: opt.description,
               diagnostic_power: opt.diagnostic_power || 'MEDIUM'
             }));
-            
+
+            // ═══════════════════════════════════════════════════════════════════
+            // Phase Y — Fix G: never leak guardrail / block-rule labels into the
+            // farmer-facing option list. Internal labels like
+            // "A blocking rule is active." or "Block all CIB&RC banned chemicals
+            // on rice" must be filtered out before translation. This is a
+            // belt-and-braces filter in addition to the upstream sanitizers.
+            // ═══════════════════════════════════════════════════════════════════
+            const GUARDRAIL_LABEL_PATTERNS = [
+              /blocking rule is active/i,
+              /\bblock\b.*\b(cib&?rc|banned|chemical|pesticide|fertili[sz]er)/i,
+              /\bcib&?rc\b/i,
+              /^block\s+all\b/i,
+              /^guardrail[:\s]/i,
+              /^risk[_\s]safety/i,
+            ];
+            const isGuardrailLabel = (s: string) =>
+              typeof s === 'string' && GUARDRAIL_LABEL_PATTERNS.some((re) => re.test(s));
+            const preFilter = diagnosisOptions.length;
+            diagnosisOptions = diagnosisOptions.filter(
+              (o: any) => !isGuardrailLabel(o?.label) && !isGuardrailLabel(o?.observation_key),
+            );
+            if (diagnosisOptions.length !== preFilter) {
+              console.warn(`   🛡️ [DIAG_FIRST] dropped ${preFilter - diagnosisOptions.length} guardrail labels from farmer-facing options`);
+            }
+
             // FIX 33: Translate diagnosis-first options (was skipped - caused raw English codes in Marathi UI)
             try {
               diagnosisOptions = await translateClarificationOptions(
-                diagnosisOptions, 
-                options.language || 'mr', 
+                diagnosisOptions,
+                options.language || 'mr',
                 this.supabase
               );
             } catch (transErr) {
               console.warn(`⚠️ [DIAG_FIRST] Translation failed, using raw labels: ${transErr}`);
             }
+
             
             return {
               type: 'CLARIFICATION_QUESTION',
