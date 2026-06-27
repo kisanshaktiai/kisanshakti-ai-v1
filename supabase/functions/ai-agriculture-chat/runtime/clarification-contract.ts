@@ -249,3 +249,86 @@ export function assertClarificationContract<
   }
   return kept;
 }
+
+// ─── buildOptions — vocabulary + i18n only, consumed by the Decision Graph
+//     Navigator. The ONLY allowed emitter of ClarificationOption[] from
+//     navigator-ranked evidence keys. No humanization, no template fallback.
+// ──────────────────────────────────────────────────────────────────────────
+export interface BuildOptionsInput {
+  supabase: any;
+  evidence_keys: string[];           // canonical lower_snake_case, navigator-ordered
+  language: string;
+  max?: number;
+}
+
+export async function buildOptions(
+  input: BuildOptionsInput,
+): Promise<ClarificationOption[]> {
+  const { supabase, evidence_keys, language, max = 3 } = input;
+  if (!supabase || !Array.isArray(evidence_keys) || evidence_keys.length === 0) return [];
+
+  const langLower = String(language || 'en').trim().toLowerCase();
+  const keys = Array.from(new Set(
+    evidence_keys.map(canonicalizeObservationKey).filter(Boolean),
+  ));
+  if (keys.length === 0) return [];
+
+  try {
+    // observation_master gate (defence-in-depth — navigator already filtered)
+    const { data: masterRows, error: masterErr } = await supabase
+      .from('observation_master')
+      .select('observation_code, is_active, is_farmer_observable')
+      .in('observation_code', keys);
+    if (masterErr) {
+      console.error(`[CLARIFICATION_CONTRACT.buildOptions] master error: ${masterErr.message}`);
+      return [];
+    }
+    const valid = new Set<string>();
+    for (const m of masterRows || []) {
+      const k = canonicalizeObservationKey(m.observation_code);
+      if (k && m.is_active !== false && m.is_farmer_observable !== false) valid.add(k);
+    }
+    const gated = keys.filter(k => valid.has(k));
+    if (gated.length === 0) {
+      console.warn(`[CLARIFICATION_CONTRACT.buildOptions] all ${keys.length} keys dropped by master gate`);
+      return [];
+    }
+
+    const { data: trRows, error: trErr } = await supabase
+      .from('observation_translations')
+      .select('observation_code, display_text, description_text, language_code')
+      .in('observation_code', gated)
+      .in('language_code', Array.from(new Set([langLower, 'en'])));
+    if (trErr) {
+      console.error(`[CLARIFICATION_CONTRACT.buildOptions] translation error: ${trErr.message}`);
+    }
+    const labelByKey = new Map<string, string>();
+    const fallbackByKey = new Map<string, string>();
+    for (const t of trRows || []) {
+      const k = canonicalizeObservationKey(t.observation_code);
+      if (!k) continue;
+      const text = (t.display_text || t.description_text || '').trim();
+      if (!text) continue;
+      if (t.language_code === langLower) labelByKey.set(k, text);
+      else if (t.language_code === 'en') fallbackByKey.set(k, text);
+    }
+
+    const out: ClarificationOption[] = [];
+    let rank = 0;
+    for (const k of gated) {
+      const label = labelByKey.get(k) || fallbackByKey.get(k);
+      if (!label) continue;
+      out.push({ observation_key: k, label, confidence_rank: rank++ });
+      if (out.length >= max) break;
+    }
+    console.log(
+      `[CLARIFICATION_CONTRACT.buildOptions] in=${keys.length} gated=${gated.length} ` +
+      `returned=${out.length} keys=[${out.map(o => o.observation_key).join(',')}]`,
+    );
+    return out;
+  } catch (e) {
+    console.error('[CLARIFICATION_CONTRACT.buildOptions] exception:', e);
+    return [];
+  }
+}
+
