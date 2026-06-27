@@ -222,6 +222,7 @@ import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstan
 import { getAuditLogger } from './audit-logger.ts';
 import { resetRuntimeTraceCollector, getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
 import { runNavigator as runDecisionGraphNavigator } from '../runtime/navigator-adapter.ts';
+import { buildNavigatorOverride } from '../runtime/navigator-response.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
