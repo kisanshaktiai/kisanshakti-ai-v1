@@ -3152,12 +3152,18 @@ export class AIAgentOrchestrator {
         (canonicalContext as any)?.crop ||
         (landContext as any)?.crop_schedule?.crop_name ||
         (landContext as any)?.crop_name;
+      // Fix F: DIRECT-hard bypass — clarification_mode=DIRECT AND max_clarification_rounds=0
+      // means this intent contract NEVER allows the diagnosis clarification loop.
+      const directHardBypass =
+        intentMetaFromDB?.clarification_mode === 'DIRECT' &&
+        (intentMetaFromDB?.max_clarification_rounds ?? -1) === 0;
       if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
         directModeBypass = true;
         bypassClarification = true;
-        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass})`);
+        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass}, hardBypass=${directHardBypass}, maxRounds=${intentMetaFromDB?.max_clarification_rounds ?? 'n/a'})`);
         console.log(`   Crop: ${cropFromAnyLayer}, Stage: ${(landContext as any)?.growth_stage || (canonicalContext as any)?.stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
+        if (directHardBypass) agentsUsed.push('DIRECT_HARD_BYPASS');
       }
 
       
