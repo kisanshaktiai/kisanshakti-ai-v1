@@ -1304,12 +1304,40 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             );
             
             if (!hasWildcard) {
-              // Strict stage matching - rule MUST be applicable to current stage
-              const stageMatch = normalizedApplicableStages.includes(currentStage);
+              // ───────────────────────────────────────────────────────────
+              // Phase Z FIX (H3): Stage-family equivalence.
+              // Rules tagged for an early-life stage (emergence/seedling)
+              // must remain reachable when the canonical stage is a
+              // semantically-equivalent neighbour (germination / nursery /
+              // establishment). The runtime previously used a strict
+              // `.includes()` which hard-blocked every emergence-failure
+              // rule when the land's current_crop_stage = GERMINATION.
+              // The family map MUST stay symmetric and crop-independent.
+              // ───────────────────────────────────────────────────────────
+              const STAGE_FAMILIES: Record<string, string[]> = {
+                GERMINATION:   ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
+                EMERGENCE:     ['EMERGENCE', 'GERMINATION', 'SEEDLING', 'NURSERY', 'ESTABLISHMENT'],
+                SEEDLING:      ['SEEDLING', 'NURSERY', 'GERMINATION', 'EMERGENCE', 'ESTABLISHMENT'],
+                NURSERY:       ['NURSERY', 'SEEDLING', 'GERMINATION', 'EMERGENCE'],
+                ESTABLISHMENT: ['ESTABLISHMENT', 'SEEDLING', 'EMERGENCE', 'GERMINATION'],
+                TILLERING:     ['TILLERING', 'VEGETATIVE'],
+                VEGETATIVE:    ['VEGETATIVE', 'TILLERING'],
+                FLOWERING:     ['FLOWERING', 'REPRODUCTIVE', 'PANICLE_INITIATION', 'BOOTING'],
+                REPRODUCTIVE:  ['REPRODUCTIVE', 'FLOWERING', 'BOOTING', 'PANICLE_INITIATION'],
+                BOOTING:       ['BOOTING', 'PANICLE_INITIATION', 'FLOWERING', 'REPRODUCTIVE'],
+                PANICLE_INITIATION: ['PANICLE_INITIATION', 'BOOTING', 'FLOWERING', 'REPRODUCTIVE'],
+                GRAIN_FILLING: ['GRAIN_FILLING', 'MILK', 'DOUGH', 'MATURITY'],
+                MATURITY:      ['MATURITY', 'HARVEST', 'GRAIN_FILLING'],
+                HARVEST:       ['HARVEST', 'MATURITY'],
+              };
+              const family = STAGE_FAMILIES[currentStage] || [currentStage];
+              const stageMatch = normalizedApplicableStages.some((s: string) =>
+                s === currentStage || family.includes(s)
+              );
               
               if (!stageMatch) {
                 if (bundled.priority && bundled.priority > 70) {
-                  console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage}`);
+                  console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
                 }
                 return false; // HARD GATE - Rule cannot fire at this stage
               }
