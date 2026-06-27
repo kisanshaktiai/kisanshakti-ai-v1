@@ -4318,7 +4318,7 @@ export class AIAgentOrchestrator {
         // Force bypass clarification
         understandingResult.clarification_required = false;
         bypassClarification = true;
-      } else if (diagnosisWithOptionalClarification) {
+      } else if (diagnosisWithOptionalClarification && !directHardBypass) {
         console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
