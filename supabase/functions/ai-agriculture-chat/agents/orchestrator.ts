@@ -221,6 +221,7 @@ import { extractObservations, validateObservationExtraction } from './observatio
 import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstandingPrescriptionGate, UnderstandingConfidence } from './understanding-completeness-checker.ts';
 import { getAuditLogger } from './audit-logger.ts';
 import { resetRuntimeTraceCollector, getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
+import { runNavigator as runDecisionGraphNavigator } from '../runtime/navigator-adapter.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
@@ -6144,6 +6145,45 @@ export class AIAgentOrchestrator {
             `⚠️ [HYPOTHESIS_GRAPH_SEED] non-fatal: ${e instanceof Error ? e.message : String(e)}`
           );
         }
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // v3 PHASE 2/3 — DECISION GRAPH NAVIGATOR (shadow + flag-gated)
+        // ───────────────────────────────────────────────────────────────────
+        // Always runs in SHADOW mode (logs navigator decision into
+        // runtime_trace.navigator_shadow) so we can replay-compare against
+        // the legacy clarification producers. When the
+        // DECISION_GRAPH_NAVIGATOR env flag (or tenant allowlist) is ON the
+        // adapter additionally marks the result as ACTIVE for downstream
+        // consumers — orchestrator does NOT yet swap the response path
+        // (that flip happens in Phase 4 of the migration plan).
+        //
+        // Fire-and-forget: failures are swallowed inside the adapter.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          const navIntent = (typeof intentCode !== 'undefined' && intentCode)
+            ? String(intentCode) : (activeIntentForRules || 'GENERAL_QUERY');
+          const navTurn = Number(
+            (canonicalStateWithQuery as any)?.conversation_turn
+              ?? (canonicalState as any)?.conversation_turn
+              ?? 1,
+          );
+          await runDecisionGraphNavigator({
+            supabase: this.getSupabase(),
+            graph,
+            intent_code: navIntent,
+            turn: Number.isFinite(navTurn) && navTurn > 0 ? navTurn : 1,
+            tenant_id: (canonicalState as any)?.tenant_id ?? null,
+            runtimeTrace,
+          });
+        } catch (navErr) {
+          console.warn(
+            `⚠️ [NAVIGATOR_SHADOW] non-fatal: ${navErr instanceof Error ? navErr.message : String(navErr)}`
+          );
+        }
+
+
+
 
 
         // ═══════════════════════════════════════════════════════════════════
