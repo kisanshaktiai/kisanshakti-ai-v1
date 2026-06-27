@@ -5311,7 +5311,61 @@ export class AIAgentOrchestrator {
           };
           
           ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);
-          
+
+          // ═══════════════════════════════════════════════════════════════
+          // v3 PHASE 4 — NAVIGATOR ACTIVE-MODE OVERRIDE (rule-driven path)
+          // ───────────────────────────────────────────────────────────────
+          // Same contract as the scoped path: when the navigator flag is
+          // ACTIVE and the navigator produced ranked evidence, swap the
+          // rule-driven options for graph-pruning-ranked ones.
+          // ═══════════════════════════════════════════════════════════════
+          try {
+            if (!(this as any).__navigatorOutput) {
+              const navIntentRD = intentCode || 'GENERAL_QUERY';
+              (this as any).__navigatorOutput = await runDecisionGraphNavigator({
+                supabase: this.getSupabase(),
+                graph,
+                intent_code: String(navIntentRD),
+                turn: 1,
+                tenant_id: (canonicalState as any)?.tenant_id ?? null,
+                runtimeTrace,
+              }).catch(() => null);
+            }
+            const navOverrideRD = await buildNavigatorOverride({
+              supabase: this.getSupabase(),
+              navOutput: (this as any).__navigatorOutput,
+              language: options.language || 'mr',
+              max: 3,
+              ctx: {
+                intent: intentCode,
+                crop: lockedStage?.crop_code,
+                stage: lockedStage?.growth_stage || null,
+              },
+            });
+            if (navOverrideRD.override) {
+              console.log(
+                `[NAV_OVERRIDE][rule_driven] decision=${navOverrideRD.decision} ` +
+                `options=${(navOverrideRD.options || []).length} reason=${navOverrideRD.reason}`,
+              );
+              if (navOverrideRD.decision === 'ASK' && (navOverrideRD.options?.length || 0) > 0) {
+                ruleDrivenClarification = {
+                  options: (navOverrideRD.options || []).map(o => ({
+                    label: o.label,
+                    observation_key: o.observation_key,
+                  })),
+                } as any;
+              } else {
+                // CONTEXT_CONTRADICTION / INSUFFICIENT_EVIDENCE → drop options;
+                // downstream NLU fallback path handles the empty case.
+                ruleDrivenClarification = null;
+              }
+            }
+          } catch (navOvrRDErr) {
+            console.warn(
+              `[NAV_OVERRIDE][rule_driven] non-fatal: ${navOvrRDErr instanceof Error ? navOvrRDErr.message : String(navOvrRDErr)}`,
+            );
+          }
+
           if (ruleDrivenClarification) {
             console.log(`   ✅ PHASE-20: Rule-driven clarification generated with ${ruleDrivenClarification.options.length} options`);
             logClarificationEvent(
