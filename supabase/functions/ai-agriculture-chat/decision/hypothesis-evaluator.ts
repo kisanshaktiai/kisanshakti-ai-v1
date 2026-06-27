@@ -804,34 +804,17 @@ export async function evaluateCandidateHypotheses(
       const observableChars = extractObservableCharacteristics(rule.observable_characteristics, obsMetadataMap);
       
       // ═══════════════════════════════════════════════════════════════════════
-      // CRITICAL BUG FIX: Do NOT skip rules with empty observable_characteristics
-      // Instead, generate synthetic observations from conditions_json.observations
-      // This ensures nutrition, irrigation, and soil rules are included
+      // CLARIFICATION ONTOLOGY CONTRACT:
+      // Rule predicates (conditions_json.observations) are INTERNAL — they
+      // MUST NOT be synthesized into farmer observations. Rules with no
+      // farmer-observable characteristics are kept as internal candidates
+      // (effectiveObsChars=[]); they cannot contribute UI clarification
+      // options. Clarification UI options come exclusively from
+      // intent_observation_mapping via runtime/clarification-contract.ts.
       // ═══════════════════════════════════════════════════════════════════════
-      let effectiveObsChars = observableChars;
+      const effectiveObsChars = observableChars;
       if (effectiveObsChars.length === 0) {
-        // Try to extract observations from conditions_json
-        const condObs = rule.conditions_json?.observations;
-        if (condObs && Array.isArray(condObs) && condObs.length > 0) {
-          effectiveObsChars = condObs.map((obs: string, idx: number) => ({
-            id: obs.toUpperCase(),
-            observation_key: obs.toUpperCase(),
-            label_en: obs.replace(/_/g, ' ').toLowerCase(),
-            is_visual: true,
-            diagnostic_power: 'MEDIUM' as const,
-            confidence_boost: 0.12
-          }));
-        } else {
-          // ═══════════════════════════════════════════════════════════════
-          // FIX: Do NOT generate synthetic observation keys from `cause`.
-          // Rules with no observable_characteristics AND no conditions_json
-          // observations are advisory/safety rules, not diagnostic hypotheses.
-          // Generating keys from cause text produces untranslatable garbage
-          // like "ZINC_DEFICIENCY_CAUSES_CHLOROS" in the farmer UI.
-          // ═══════════════════════════════════════════════════════════════
-          console.log(`   ⏭️ Skipping rule ${rule.rule_id}: no observable evidence (advisory-only rule)`);
-          continue;
-        }
+        console.log(`   ℹ️ Rule ${rule.rule_id}: no farmer-observable characteristics — kept as internal candidate (no UI options will be derived from it)`);
       }
       
       // Calculate total score
