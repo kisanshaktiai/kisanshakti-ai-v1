@@ -3107,7 +3107,7 @@ export class AIAgentOrchestrator {
       // PATCH 2: STAGE CONTEXT GUARD
       // If intent metadata requires stage context and we don't have it, ask farmer
       // ═══════════════════════════════════════════════════════════════════════════
-      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string } | null = null;
+      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string; max_clarification_rounds?: number } | null = null;
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -3115,7 +3115,7 @@ export class AIAgentOrchestrator {
         
         const { data: intentRow } = await supabaseClient
           .from('observation_intent_master')
-          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode')
+          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode, max_clarification_rounds')
           .eq('intent_code', intentCode)
           .eq('is_active', true)
           .maybeSingle();
