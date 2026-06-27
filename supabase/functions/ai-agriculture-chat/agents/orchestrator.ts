@@ -4672,6 +4672,61 @@ export class AIAgentOrchestrator {
         // P0 FIX: Properly await the async function (was causing Promise leak)
         const clarificationResponse = await generateScopedClarification(scopedClarificationInput);
         agentsUsed.push('SCOPED_CLARIFICATION');
+
+        // ═══════════════════════════════════════════════════════════════════
+        // v3 PHASE 4 — DECISION GRAPH NAVIGATOR ACTIVE-MODE OVERRIDE
+        // ───────────────────────────────────────────────────────────────────
+        // If the navigator flag is ACTIVE for this tenant and the navigator
+        // produced a result (run earlier in the pipeline OR via a no-op
+        // pre-pass below), swap the legacy clarification options for the
+        // graph-pruning-ranked options. CONTEXT_CONTRADICTION /
+        // INSUFFICIENT_EVIDENCE collapse to an empty option set so the
+        // response collapses to a deterministic reconciliation prompt.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          // Pre-pass: trigger navigator now if it has not yet captured a
+          // result (orchestrator-late shadow path may not have run yet on
+          // this code branch). Safe — adapter swallows failures and skips
+          // when prerequisites are missing.
+          if (!(this as any).__navigatorOutput) {
+            const navIntentEarly = intentCode || 'GENERAL_QUERY';
+            (this as any).__navigatorOutput = await runDecisionGraphNavigator({
+              supabase: this.getSupabase(),
+              graph,
+              intent_code: String(navIntentEarly),
+              turn: 1,
+              tenant_id: (canonicalState as any)?.tenant_id ?? null,
+              runtimeTrace,
+            }).catch(() => null);
+          }
+          const navOverride = await buildNavigatorOverride({
+            supabase: this.getSupabase(),
+            navOutput: (this as any).__navigatorOutput,
+            language: normalizedInput.detected_language,
+            max: 3,
+            ctx: {
+              intent: intentCode,
+              crop: canonicalContext?.crop_code,
+              stage: canonicalContext?.growth_stage || null,
+              das: canonicalContext?.days_since_sowing ?? null,
+            },
+          });
+          if (navOverride.override) {
+            console.log(
+              `[NAV_OVERRIDE][scoped] decision=${navOverride.decision} ` +
+              `options=${(navOverride.labels || []).length} reason=${navOverride.reason}`,
+            );
+            clarificationResponse.options = navOverride.labels || [];
+            (clarificationResponse as any).navigator_decision = navOverride.decision;
+            (clarificationResponse as any).navigator_reason = navOverride.reason;
+            (clarificationResponse as any).observation_keys = navOverride.observation_keys || [];
+            clarificationResponse.validation_passed = true;
+          }
+        } catch (navOvrErr) {
+          console.warn(
+            `[NAV_OVERRIDE][scoped] non-fatal: ${navOvrErr instanceof Error ? navOvrErr.message : String(navOvrErr)}`,
+          );
+        }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // VALIDATION FIX: Use sanitization instead of all-or-nothing validation
