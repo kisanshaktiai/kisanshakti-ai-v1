@@ -1696,20 +1696,39 @@ function mapBundledCategory(category: string): RuleCategory {
     'proactive_pest':        RuleCategory.WARNING,
     'proactive_monitoring':  RuleCategory.OBSERVATION,
     'management':            RuleCategory.PRESCRIPTION,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase Y — Fix E: rest of the proactive_* family + nutrition/irrigation
+    // were silently falling through to the DIAGNOSIS default, re-typing
+    // advisory rules as diagnoses. Map the whole family explicitly.
+    // ═══════════════════════════════════════════════════════════════════════
+    'proactive_irrigation':  RuleCategory.PRESCRIPTION,
+    'proactive_nutrition':   RuleCategory.PRESCRIPTION,
+    'proactive_disease':     RuleCategory.WARNING,
+    'proactive_weed':        RuleCategory.WARNING,
+    'proactive_weather':     RuleCategory.WARNING,
   };
-  
-  const mapped = map[category?.toLowerCase()];
-  if (!mapped) {
-    // ═══════════════════════════════════════════════════════════════════════
-    // PRODUCTION FIX v7.5: Unknown categories default to DIAGNOSIS (not OBSERVATION)
-    // OBSERVATION phase does NOT collect matched_responses, causing rules to
-    // silently disappear from the decision pipeline. DIAGNOSIS phase collects
-    // responses and allows rules to compete for primary decision selection.
-    // ═══════════════════════════════════════════════════════════════════════
-    console.warn(`⚠️ [mapBundledCategory] Unknown category '${category}' → defaulting to DIAGNOSIS (was OBSERVATION)`);
-    return RuleCategory.DIAGNOSIS;
+
+  const norm = category?.toLowerCase()?.trim();
+  const mapped = norm ? map[norm] : undefined;
+  if (mapped) return mapped;
+
+  // Family fallback before the unknown-default — anything proactive_* is a
+  // warning, not a diagnosis.
+  if (norm && norm.startsWith('proactive_')) {
+    console.warn(`⚠️ [mapBundledCategory] Unmapped proactive family '${category}' → WARNING (family fallback)`);
+    return RuleCategory.WARNING;
   }
-  return mapped;
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Phase Y — Fix E: unknown categories MUST NOT silently become DIAGNOSIS.
+  // That misroutes advisory/observational rules into the diagnosis pipeline
+  // and is one of the documented contributors to the "Tungro for
+  // ungerminated rice" failure. Default to OBSERVATION; a rule that genuinely
+  // wants to be a diagnosis must declare it explicitly.
+  // ═══════════════════════════════════════════════════════════════════════
+  console.warn(`⚠️ [mapBundledCategory] Unmapped category '${category}' → OBSERVATION (safe default; was DIAGNOSIS)`);
+  return RuleCategory.OBSERVATION;
 }
 
 // ==================== KEYWORD FALLBACK ====================

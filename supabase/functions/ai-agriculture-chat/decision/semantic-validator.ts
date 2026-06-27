@@ -86,18 +86,48 @@ export async function evaluateSemanticGate(
   const byIntent = await loadAllowlist(supabase);
   const allowed = byIntent.get(intentKey);
 
-  // Fail-open when the allowlist is unseeded — never block diagnosis on
-  // an empty governance table. Logged loudly so it's caught in audits.
+  // FAIL-CLOSED (Phase X.4 hardening). A previously fail-open empty/error
+  // allowlist let pest- and disease-class observations through for advisory
+  // intents (e.g. GENERAL_CROP_INFO), feeding the diagnosis pipeline with
+  // semantically wrong classes. We now apply a conservative default set
+  // when the governance table is unseeded or the lookup errored, AND we
+  // emit a degraded confidence so downstream gates know not to trust this
+  // signal at face value. We never propagate semanticConfidence=1.
   if (!allowed || allowed.size === 0) {
+    const CONSERVATIVE_DEFAULT_CLASSES = new Set([
+      'physiology',
+      'phenology',
+      'general',
+      'ndvi',
+      'weather_damage',
+    ]);
+    const kept: ObservationCandidate[] = [];
+    const dropped: Array<ObservationCandidate & { reason: string }> = [];
+    for (const obs of observations) {
+      const sc = (obs.semantic_class || '').toLowerCase();
+      if (!sc) {
+        kept.push(obs);
+        ledger?.ignore('SEMANTIC_GATE', `observation:${obs.code}`, 'missing semantic_class metadata');
+        continue;
+      }
+      if (CONSERVATIVE_DEFAULT_CLASSES.has(sc)) {
+        kept.push(obs);
+      } else {
+        const reason = `FAIL_CLOSED conservative default: semantic_class="${sc}" not in {${[...CONSERVATIVE_DEFAULT_CLASSES].join(',')}}`;
+        dropped.push({ ...obs, reason });
+        ledger?.lose('SEMANTIC_GATE', `observation:${obs.code}`, obs, reason);
+      }
+    }
+    const conf = observations.length === 0 ? 0.5 : Math.min(0.5, kept.length / observations.length);
+    chain?.set('semantic', conf);
     console.warn(
-      `[BRAIN_TRACE][SEMANTIC_GATE] FAIL_OPEN intent="${intentKey}" — no allowlist rows; ` +
-        `keeping ${observations.length} observations.`
+      `[BRAIN_TRACE][SEMANTIC_GATE] FAIL_CLOSED intent="${intentKey}" — no/failed allowlist rows; ` +
+        `kept=${kept.length} dropped=${dropped.length} conf=${conf.toFixed(3)} (gate_degraded=true)`,
     );
-    chain?.set('semantic', 1);
     return {
-      kept: observations,
-      dropped: [],
-      semanticConfidence: 1,
+      kept,
+      dropped,
+      semanticConfidence: conf,
       fallbackOpen: true,
     };
   }
