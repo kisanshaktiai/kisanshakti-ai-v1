@@ -222,6 +222,7 @@ import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstan
 import { getAuditLogger } from './audit-logger.ts';
 import { resetRuntimeTraceCollector, getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
 import { runNavigator as runDecisionGraphNavigator } from '../runtime/navigator-adapter.ts';
+import { buildNavigatorOverride } from '../runtime/navigator-response.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
@@ -4671,6 +4672,61 @@ export class AIAgentOrchestrator {
         // P0 FIX: Properly await the async function (was causing Promise leak)
         const clarificationResponse = await generateScopedClarification(scopedClarificationInput);
         agentsUsed.push('SCOPED_CLARIFICATION');
+
+        // ═══════════════════════════════════════════════════════════════════
+        // v3 PHASE 4 — DECISION GRAPH NAVIGATOR ACTIVE-MODE OVERRIDE
+        // ───────────────────────────────────────────────────────────────────
+        // If the navigator flag is ACTIVE for this tenant and the navigator
+        // produced a result (run earlier in the pipeline OR via a no-op
+        // pre-pass below), swap the legacy clarification options for the
+        // graph-pruning-ranked options. CONTEXT_CONTRADICTION /
+        // INSUFFICIENT_EVIDENCE collapse to an empty option set so the
+        // response collapses to a deterministic reconciliation prompt.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          // Pre-pass: trigger navigator now if it has not yet captured a
+          // result (orchestrator-late shadow path may not have run yet on
+          // this code branch). Safe — adapter swallows failures and skips
+          // when prerequisites are missing.
+          if (!(this as any).__navigatorOutput) {
+            const navIntentEarly = intentCode || 'GENERAL_QUERY';
+            (this as any).__navigatorOutput = await runDecisionGraphNavigator({
+              supabase: this.getSupabase(),
+              graph,
+              intent_code: String(navIntentEarly),
+              turn: 1,
+              tenant_id: (canonicalState as any)?.tenant_id ?? null,
+              runtimeTrace,
+            }).catch(() => null);
+          }
+          const navOverride = await buildNavigatorOverride({
+            supabase: this.getSupabase(),
+            navOutput: (this as any).__navigatorOutput,
+            language: normalizedInput.detected_language,
+            max: 3,
+            ctx: {
+              intent: intentCode,
+              crop: canonicalContext?.crop_code,
+              stage: canonicalContext?.growth_stage || null,
+              das: canonicalContext?.days_since_sowing ?? null,
+            },
+          });
+          if (navOverride.override) {
+            console.log(
+              `[NAV_OVERRIDE][scoped] decision=${navOverride.decision} ` +
+              `options=${(navOverride.labels || []).length} reason=${navOverride.reason}`,
+            );
+            clarificationResponse.options = navOverride.labels || [];
+            (clarificationResponse as any).navigator_decision = navOverride.decision;
+            (clarificationResponse as any).navigator_reason = navOverride.reason;
+            (clarificationResponse as any).observation_keys = navOverride.observation_keys || [];
+            clarificationResponse.validation_passed = true;
+          }
+        } catch (navOvrErr) {
+          console.warn(
+            `[NAV_OVERRIDE][scoped] non-fatal: ${navOvrErr instanceof Error ? navOvrErr.message : String(navOvrErr)}`,
+          );
+        }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // VALIDATION FIX: Use sanitization instead of all-or-nothing validation
@@ -5255,7 +5311,61 @@ export class AIAgentOrchestrator {
           };
           
           ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);
-          
+
+          // ═══════════════════════════════════════════════════════════════
+          // v3 PHASE 4 — NAVIGATOR ACTIVE-MODE OVERRIDE (rule-driven path)
+          // ───────────────────────────────────────────────────────────────
+          // Same contract as the scoped path: when the navigator flag is
+          // ACTIVE and the navigator produced ranked evidence, swap the
+          // rule-driven options for graph-pruning-ranked ones.
+          // ═══════════════════════════════════════════════════════════════
+          try {
+            if (!(this as any).__navigatorOutput) {
+              const navIntentRD = intentCode || 'GENERAL_QUERY';
+              (this as any).__navigatorOutput = await runDecisionGraphNavigator({
+                supabase: this.getSupabase(),
+                graph,
+                intent_code: String(navIntentRD),
+                turn: 1,
+                tenant_id: (canonicalState as any)?.tenant_id ?? null,
+                runtimeTrace,
+              }).catch(() => null);
+            }
+            const navOverrideRD = await buildNavigatorOverride({
+              supabase: this.getSupabase(),
+              navOutput: (this as any).__navigatorOutput,
+              language: options.language || 'mr',
+              max: 3,
+              ctx: {
+                intent: intentCode,
+                crop: lockedStage?.crop_code,
+                stage: lockedStage?.growth_stage || null,
+              },
+            });
+            if (navOverrideRD.override) {
+              console.log(
+                `[NAV_OVERRIDE][rule_driven] decision=${navOverrideRD.decision} ` +
+                `options=${(navOverrideRD.options || []).length} reason=${navOverrideRD.reason}`,
+              );
+              if (navOverrideRD.decision === 'ASK' && (navOverrideRD.options?.length || 0) > 0) {
+                ruleDrivenClarification = {
+                  options: (navOverrideRD.options || []).map(o => ({
+                    label: o.label,
+                    observation_key: o.observation_key,
+                  })),
+                } as any;
+              } else {
+                // CONTEXT_CONTRADICTION / INSUFFICIENT_EVIDENCE → drop options;
+                // downstream NLU fallback path handles the empty case.
+                ruleDrivenClarification = null;
+              }
+            }
+          } catch (navOvrRDErr) {
+            console.warn(
+              `[NAV_OVERRIDE][rule_driven] non-fatal: ${navOvrRDErr instanceof Error ? navOvrRDErr.message : String(navOvrRDErr)}`,
+            );
+          }
+
           if (ruleDrivenClarification) {
             console.log(`   ✅ PHASE-20: Rule-driven clarification generated with ${ruleDrivenClarification.options.length} options`);
             logClarificationEvent(
@@ -6168,7 +6278,7 @@ export class AIAgentOrchestrator {
               ?? (canonicalState as any)?.conversation_turn
               ?? 1,
           );
-          await runDecisionGraphNavigator({
+          const navOutput = await runDecisionGraphNavigator({
             supabase: this.getSupabase(),
             graph,
             intent_code: navIntent,
@@ -6176,10 +6286,18 @@ export class AIAgentOrchestrator {
             tenant_id: (canonicalState as any)?.tenant_id ?? null,
             runtimeTrace,
           });
+          // v3 Phase 4 — expose to downstream emission sites for active-mode override.
+          (this as any).__navigatorOutput = navOutput;
+          console.log(
+            `[NAVIGATOR_CAPTURE] active=${navOutput?.flag?.active} shadow=${navOutput?.flag?.shadow} ` +
+            `ran=${navOutput?.ran} decision=${navOutput?.result?.decision || 'n/a'} ` +
+            `skip=${navOutput?.skip_reason || 'none'}`,
+          );
         } catch (navErr) {
           console.warn(
             `⚠️ [NAVIGATOR_SHADOW] non-fatal: ${navErr instanceof Error ? navErr.message : String(navErr)}`
           );
+          (this as any).__navigatorOutput = null;
         }
 
 

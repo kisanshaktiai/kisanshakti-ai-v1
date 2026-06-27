@@ -180,3 +180,20 @@ Persist per turn into existing `ai_decision_log`: `decision`, `reason`, `ranked`
 - Knowledge preload at session start uses existing paginated loaders (rules, observation_master, IOM) — already cached per (crop, stage).
 - `RuntimeGraphState` is per-turn allocation, freed after response; no global mutation.
 - All DB reads remain indexed `.in()` lookups (IOM, master, translations) — unchanged from contract.
+
+## 12. Implementation status
+
+- Phase 1 — `runtime/graph-runtime-state.ts` promoted to `RuntimeGraphState`; orchestrator routes through it. ✅
+- Phase 2 — Shadow logging via `runtime/navigator-adapter.ts` stamping `runtime_trace.navigator_shadow`. ✅
+- Phase 3 — Flag-gated active mode via `runtime/navigator-flag.ts` (`DECISION_GRAPH_NAVIGATOR`, `DECISION_GRAPH_NAVIGATOR_TENANTS`). ✅
+- Phase 4 — Active-mode response override via `runtime/navigator-response.ts` wired into both clarification emission sites in `agents/orchestrator.ts` (scoped + rule-driven). Legacy producers still live; navigator wins only when flag is ACTIVE for the tenant. ✅
+- Phase 5 — Contradiction engine (`runtime/contradiction-engine.ts`) runs inside the adapter pre-navigation; `CONTEXT_CONTRADICTION` decisions short-circuit to empty options via the override helper. ✅
+- Phase 6 — Deferred until §10 acceptance passes for 7 days (no schema changes).
+
+To enable in production for a tenant:
+```
+DECISION_GRAPH_NAVIGATOR_TENANTS="tenant_uuid_1,tenant_uuid_2"
+# or globally:
+DECISION_GRAPH_NAVIGATOR="on"
+```
+Verify via `[NAVIGATOR_CAPTURE]` and `[NAV_OVERRIDE]` log lines and the `navigator_shadow` payload in `ai_decision_log`.
