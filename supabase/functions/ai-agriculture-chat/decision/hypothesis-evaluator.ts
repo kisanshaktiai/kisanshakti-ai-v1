@@ -890,7 +890,9 @@ export async function evaluateCandidateHypotheses(
       });
       for (const c of topCandidates) {
         c.observable_characteristics = c.observable_characteristics.filter(
-          ch => gate.validKeys.has(String(ch.observation_key).toUpperCase())
+          ch => gate.validKeys.has(
+            String(ch.observation_key || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+          )
         );
       }
     }
