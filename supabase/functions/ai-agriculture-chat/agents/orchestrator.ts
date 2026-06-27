@@ -3107,7 +3107,7 @@ export class AIAgentOrchestrator {
       // PATCH 2: STAGE CONTEXT GUARD
       // If intent metadata requires stage context and we don't have it, ask farmer
       // ═══════════════════════════════════════════════════════════════════════════
-      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string } | null = null;
+      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string; max_clarification_rounds?: number } | null = null;
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -3115,7 +3115,7 @@ export class AIAgentOrchestrator {
         
         const { data: intentRow } = await supabaseClient
           .from('observation_intent_master')
-          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode')
+          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode, max_clarification_rounds')
           .eq('intent_code', intentCode)
           .eq('is_active', true)
           .maybeSingle();
@@ -3152,12 +3152,18 @@ export class AIAgentOrchestrator {
         (canonicalContext as any)?.crop ||
         (landContext as any)?.crop_schedule?.crop_name ||
         (landContext as any)?.crop_name;
+      // Fix F: DIRECT-hard bypass — clarification_mode=DIRECT AND max_clarification_rounds=0
+      // means this intent contract NEVER allows the diagnosis clarification loop.
+      const directHardBypass =
+        intentMetaFromDB?.clarification_mode === 'DIRECT' &&
+        (intentMetaFromDB?.max_clarification_rounds ?? -1) === 0;
       if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
         directModeBypass = true;
         bypassClarification = true;
-        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass})`);
+        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass}, hardBypass=${directHardBypass}, maxRounds=${intentMetaFromDB?.max_clarification_rounds ?? 'n/a'})`);
         console.log(`   Crop: ${cropFromAnyLayer}, Stage: ${(landContext as any)?.growth_stage || (canonicalContext as any)?.stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
+        if (directHardBypass) agentsUsed.push('DIRECT_HARD_BYPASS');
       }
 
       
@@ -4037,10 +4043,51 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       {
         const informativeNow = [...allObservationsForPreAuth].filter((c: string) => isInformativeObs(c));
-        if (directModeBypass && informativeNow.length > 0) {
+        if (directModeBypass && informativeNow.length > 0 && !directHardBypass) {
           console.log(`   🛑 [DIRECT_MODE_VETO] Symptom signal detected (${informativeNow.length} informative obs) — overriding directModeBypass for intent=${intentCode}`);
           directModeBypass = false;
           bypassClarification = false;
+        } else if (directHardBypass && informativeNow.length > 0) {
+          console.log(`   🔒 [DIRECT_HARD_BYPASS] Intent contract (clarification_mode=DIRECT, max_rounds=0) blocks VETO — staying in advisory route despite ${informativeNow.length} symptom signals.`);
+        }
+
+        // Fix F: For DIRECT-hard intents (e.g. GENERAL_CROP_INFO), seed the rule
+        // engine input with IOM-allowed observations so the advisory comes from
+        // the curated intent×crop×stage×DAS set instead of the raw intent code.
+        if (directHardBypass) {
+          try {
+            const { loadIOMAllowed } = await import('../decision/iom-gate.ts');
+            const _crop = (
+              (landContext as any)?.current_crop ||
+              (canonicalContext as any)?.crop_code ||
+              (canonicalContext as any)?.crop ||
+              ''
+            ).toString().toLowerCase();
+            const _stage = (
+              (landContext as any)?.growth_stage ||
+              (canonicalContext as any)?.growth_stage ||
+              (canonicalContext as any)?.stage ||
+              null
+            );
+            const _das = (
+              (landContext as any)?.days_after_sowing ??
+              (canonicalContext as any)?.das ??
+              null
+            );
+            const iomSeed = await loadIOMAllowed(this.supabase, intentCode, _crop, _stage, _das);
+            const topAllowed = iomSeed.allowedRanked.slice(0, 5);
+            for (const r of topAllowed) {
+              const code = r.observation_code;
+              if (!allObservationsForPreAuth.has(code)) {
+                allObservationsForPreAuth.add(code);
+                authoredObservations.add(code, ObservationAuthority.INFERRED, 'DIRECT_HARD_IOM_SEED');
+              }
+            }
+            agentsUsed.push('DIRECT_HARD_IOM_SEED');
+            console.log(`   🌱 [DIRECT_HARD_IOM_SEED] intent=${intentCode} crop=${_crop} stage=${_stage} das=${_das} → seeded ${topAllowed.length} IOM observations: ${topAllowed.map(r => r.observation_code).join(', ')}`);
+          } catch (e) {
+            console.warn(`   ⚠️ [DIRECT_HARD_IOM_SEED] failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
         }
       }
 
@@ -4271,7 +4318,7 @@ export class AIAgentOrchestrator {
         // Force bypass clarification
         understandingResult.clarification_required = false;
         bypassClarification = true;
-      } else if (diagnosisWithOptionalClarification) {
+      } else if (diagnosisWithOptionalClarification && !directHardBypass) {
         console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
