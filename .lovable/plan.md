@@ -1,175 +1,111 @@
 
-# Phase Y — Runtime Trace & Decision Forensics (No New Tables)
+# Fix "Tungro for ungerminated rice" — Neuro-Symbolic Decision Brain Repair
 
-Pure observability upgrade. Zero changes to agronomic logic, rules, decisions, or the symbolic graph. Reuses `ai_decision_log` and `ai_chat_audit_logs` as the permanent forensic store.
+One sentence: the correct differentials already live in `intent_observation_mapping` (IOM); we just need to enforce IOM on candidate generation and bridge the extractor's vocabulary to the crop-specific allowlist codes — then close the surrounding gaps (semantic gate column, alias pagination, category map, label leak, confidence model).
 
----
+## Phase 0 — Read-only investigation (no edits)
 
-## Current state (verified)
+Before any edit, confirm each root cause with grep + read-only SQL and capture findings for the PR description.
 
-`ai_decision_log` already has: `tenant_id, farmer_id, land_id, schedule_id, decision_type, model_version, input_data, output_data, reasoning, confidence_score, execution_time_ms, weather_data, ndvi_data, soil_data, success, error_message, top_5_rejected_rules, evaluation_trace, missing_data_fields, prompt_version, hypothesis_id, hypothesis_score, hypothesis_decision_path, variety_resistance_applied`.
+1. **Grep signatures** to locate the modules (filenames may differ):
+   - Semantic gate: `intent_semantic_class_allowlist`, `SEMANTIC_GATE`, `FAIL_OPEN` (known: `decision/semantic-validator.ts` — already uses `intent_code`; verify call sites still align).
+   - IOM usage: `intent_observation_mapping`, `confidence_rank`, `assertion_strength` — confirm it is NOT consulted by candidate/diagnosis assembly (only by LLM allow-list validators today).
+   - Loader: `observation_aliases`, `.select(`, `.limit(`, `cachedObservationAliases`, `cachedObservationCodes` — confirm no `.range()` pagination.
+   - Category map: `mapBundledCategory`, `was OBSERVATION`, `RuleCategory`.
+   - Diag-first / label leak: `DIAG_FIRST`, `A blocking rule is active`, `CIB&RC`, `using raw labels`.
+   - Confidence: `UnderstandingChecker`, `ConfidenceBridge`, `semantic=`, `DECISION_PROVIDED`.
 
-`ai_chat_audit_logs` already has: `turn_id, session_id, farmer_id, tenant_id, trace_id, intent_label, observations, nlu_confidence, locked_intent, allowed_scopes, forbidden_actions, symbolic_decision_id, rules_fired, actions_returned, actions_filtered_out, observation_mapping, validation_passed, validation_errors, response_source, llm_model_used, processing_time_ms, agents_used, land_id, crop_code, growth_stage, gate_decisions`.
+2. **Read-only SQL** (SELECT only) to capture the numbers cited in the report:
+   - Column list on `intent_semantic_class_allowlist`.
+   - `allowed_classes` for `GENERAL_CROP_INFO` (expect `disease` present → class gate alone won't block Tungro).
+   - IOM rows for `GENERAL_CROP_INFO + rice + das∈[das_min..das_max] for 18` (expect 3 germination differentials).
+   - `COUNT(*)` Tungro rows for `GENERAL_CROP_INFO` (expect 0).
+   - `observation_master` rows for the 6 codes (expose vocabulary/class split).
+   - `COUNT(*)` from `observation_aliases` (expect ~14,023) and `observation_master` active (expect ~1,997).
 
-Persistence today lives in `supabase/functions/ai-agriculture-chat/agents/audit-logger.ts` and the in-request `EvidenceLedger` / `ConfidenceChain` already in `decision/`. The forensic columns `hypothesis_id`, `hypothesis_score`, `hypothesis_decision_path`, and `symbolic_decision_id` exist but are not being written.
+Output of Phase 0 is captured verbatim into the PR description. No code touched yet.
 
----
+## Phase 1 — Apply the 8 fixes (small, independently revertable commits, in this order)
 
-## Database changes — single additive migration
+### Commit 1 — Fix B (PRIMARY): Enforce IOM on candidate generation
+- New helper `decision/iom-gate.ts` exporting `getAllowedObservations(supabase, intent, crop, stage, das)` querying `intent_observation_mapping` with the documented filters and rank-ordering.
+- Call it in the candidate/diagnosis assembly path (the clarification generator + hypothesis evaluator candidate paths — exact insertion point confirmed in Phase 0; likely `agents/clarification-generator.ts` R1 path and `decision/hypothesis-evaluator.ts`).
+- Hard-filter `rawCandidates` against `allowedSet`; if `safeCandidates` is empty AND `allowed` is non-empty, surface the rank-ordered `allowed` set as the differentials.
+- Emit `[IOM_GATE]` trace with intent/crop/stage/das/allowed/dropped.
 
-Extend the two existing tables only (no new tables, no column drops, no type changes).
+### Commit 2 — Fix A: Semantic gate column + fail-CLOSED
+- `decision/semantic-validator.ts` is already on `intent_code` (good). Change `loadAllowlist` failure path from FAIL_OPEN to FAIL_CLOSED with a `CONSERVATIVE_DEFAULT_CLASSES` set (`physiology`, `phenology`, `general`, `ndvi`, `weather_damage`) and emit a `gate_degraded=true` flag downstream instead of `semanticConfidence=1`.
+- Update the FAIL_OPEN early-return to use the conservative set, log `[SEMANTIC_GATE] FAIL_CLOSED`.
 
-```sql
-ALTER TABLE public.ai_decision_log
-  ADD COLUMN IF NOT EXISTS runtime_trace          jsonb,
-  ADD COLUMN IF NOT EXISTS graph_snapshot         jsonb,
-  ADD COLUMN IF NOT EXISTS pipeline_metrics       jsonb,
-  ADD COLUMN IF NOT EXISTS context_snapshot       jsonb,
-  ADD COLUMN IF NOT EXISTS clarification_snapshot jsonb,
-  ADD COLUMN IF NOT EXISTS observation_snapshot   jsonb,
-  ADD COLUMN IF NOT EXISTS rule_snapshot          jsonb,
-  ADD COLUMN IF NOT EXISTS hypothesis_snapshot    jsonb,
-  ADD COLUMN IF NOT EXISTS decision_snapshot      jsonb,
-  ADD COLUMN IF NOT EXISTS knowledge_versions     jsonb,
-  ADD COLUMN IF NOT EXISTS pipeline_version       text,
-  ADD COLUMN IF NOT EXISTS graph_version          text,
-  ADD COLUMN IF NOT EXISTS runtime_version        text,
-  ADD COLUMN IF NOT EXISTS execution_mode         text,
-  ADD COLUMN IF NOT EXISTS trace_level            text,
-  ADD COLUMN IF NOT EXISTS created_runtime_ms     integer,
-  ADD COLUMN IF NOT EXISTS trace_id               text,
-  ADD COLUMN IF NOT EXISTS execution_id           text;
+### Commit 3 — Fix C: Concept bridge (extractor → crop vocab)
+- New `decision/concept-bridge.ts` with `CONCEPT_BRIDGE` map (rice germination family → `obs_rice_*`) and `bridgeToCropVocab(cropCode, code)` helper.
+- Apply to each extracted observation BEFORE `getAllowedObservations`/IOM matching.
+- PR notes the durable follow-up: data-driven `canonical_group`/`concept_id` resolution (listed under §3 data migrations, not applied).
 
-ALTER TABLE public.ai_chat_audit_logs
-  ADD COLUMN IF NOT EXISTS execution_id     text,
-  ADD COLUMN IF NOT EXISTS pipeline_version text,
-  ADD COLUMN IF NOT EXISTS graph_version    text,
-  ADD COLUMN IF NOT EXISTS runtime_version  text;
+### Commit 4 — Fix D: Paginate the rule loader
+- In the rule loader module, replace single `.select()` with `fetchAllRows(supabase, table, columns, { activeCol, orderCol })` helper using `.range(from, from+999)` loop until short page.
+- Apply to `observation_aliases` (activeCol `active`) and `observation_master` (activeCol `is_active`).
+- Log `[RuleLoader] aliases=%d obs_codes=%d (paginated)`; expect ≈14023 and ≈1997.
+- Optional: exclude `XLAT_*`/`XDESC_*`/`XMASTER_*` machine tokens from the in-memory match set (keep for trigram lookup only if used).
 
--- Indices for replay queries (small, payload-free)
-CREATE INDEX IF NOT EXISTS idx_adl_trace_id        ON public.ai_decision_log(trace_id);
-CREATE INDEX IF NOT EXISTS idx_adl_execution_id    ON public.ai_decision_log(execution_id);
-CREATE INDEX IF NOT EXISTS idx_adl_land_created    ON public.ai_decision_log(land_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_acal_execution_id   ON public.ai_chat_audit_logs(execution_id);
-CREATE INDEX IF NOT EXISTS idx_acal_symbolic_dec   ON public.ai_chat_audit_logs(symbolic_decision_id);
-```
+### Commit 5 — Fix E: `mapBundledCategory` family map + non-DIAGNOSIS default
+- Extend `CATEGORY_MAP` with `proactive_irrigation` / `proactive_nutrition` → PRESCRIPTION, `proactive_disease`/`proactive_weed` → WARNING, `proactive_monitoring` → OBSERVATION.
+- Add `proactive_*` family fallback → WARNING.
+- Default for unknown categories → `OBSERVATION` (never `DIAGNOSIS`); remove the misleading "(was OBSERVATION)" log.
 
-No RLS changes (existing policies still apply). No grants needed (no new tables).
+### Commit 6 — Fix F: Honor intent contract
+- At symptom-path entry, read `observation_intent_master` config; if `clarification_mode === 'DIRECT'` and `max_clarification_rounds === 0`, build a DIRECT advisory from IOM-allowed observations and skip the diagnosis-clarification loop.
 
----
+### Commit 7 — Fix G: DIAG_FIRST scope + block guardrail-label leakage
+- Pass/import `supabase` into the translation function's scope (eliminate `ReferenceError: supabase is not defined`).
+- Filter candidate options to exclude guardrail/block rules (`category ∈ {risk_safety, block}` or block-rule id patterns) before building farmer-facing options.
+- Add assertion-style guard that strings `"A blocking rule is active"` and `"CIB&RC"` cannot appear in any user-facing field (filter at renderer).
 
-## Code changes (forensic only, agronomic-neutral)
+### Commit 8 — Fix H: Confidence model
+- Gate failure contributes `semantic = 0.5` + `gate_degraded` flag (never 1.000).
+- Class-aware completeness: germination/phenology/physiology observations require establishment fields (sowing method, seed source, depth, irrigation), NOT `affected_part`/`symptom_distribution`/`severity_words`/`time_reference`.
+- Response stamping: if `symbolic_confidence === 0` OR `rules_fired === 0`, emit `NO_DECISION` / `INSUFFICIENT_EVIDENCE` (never `DECISION_PROVIDED`); stop additive top-up over a 0% symbolic floor.
 
-All work confined to `supabase/functions/ai-agriculture-chat/`.
+## Phase 2 — Acceptance test (golden)
 
-### 1. New module — `runtime/runtime-trace-collector.ts`
+Add a test (`supabase/functions/ai-agriculture-chat/__tests__/golden-rice-germination.test.ts`) asserting for input `{crop=rice, das=18, stage=seedling, ndvi=0.184, intent=GENERAL_CROP_INFO, query="भात अजून उगवले नाही"}`:
 
-Single per-request collector. Owns `trace_id`, `execution_id`, a stage stack, and the nine snapshot buffers.
+- Candidates ⊆ `{obs_rice_no_emergence, obs_rice_patchy_emergence, obs_rice_seedling_damping_off}` after bridge.
+- `tungro_yellow_stunt` and any disease-class code absent from farmer-facing output.
+- `"A blocking rule is active"` and `"CIB&RC"` never appear in any user-facing field.
+- Response is DIRECT advisory (not empty stage fallback, not disease clarification).
+- Not `DECISION_PROVIDED` at 0% symbolic; semantic never 1.000 when gate failed.
+- Loader log emits ≈14023 aliases and ≈1997 obs codes.
 
-API:
-- `RuntimeTraceCollector.start(req)` → returns collector seeded with `trace_id`, `execution_id`, `pipeline_version`, `graph_version`, `runtime_version`, `execution_mode`, `trace_level`.
-- `collector.beginStage(name, owner)` / `collector.endStage(name, {inputs, outputs, confidence, warnings, errors})` — records start/end/latency.
-- Typed setters: `setContext()`, `setClarification()`, `setObservations()`, `setRules()`, `setHypotheses()`, `setDecision()`, `setBuilderOutput()`, `setKnowledgeVersions()`.
-- Wraps the existing `EvidenceLedger` + `ConfidenceChain` (does not replace them) so the ledger snapshot and confidence chain become two fields of `graph_snapshot` instead of separate state.
-- `collector.finish()` → returns the full `RuntimeTraceRecord` and emits one `[RUNTIME_TRACE]` line (no per-stage console spam).
+Regression test must still pass:
+- A real Tungro-positive scenario (rice at tillering with virus-consistent symptoms) still surfaces Tungro.
+- Sugarcane germination + other crops unaffected.
 
-Snapshot shapes match the user's spec exactly (`graph_snapshot`, `pipeline_metrics`, `context_snapshot`, `clarification_snapshot`, `observation_snapshot`, `rule_snapshot`, `hypothesis_snapshot`, `decision_snapshot`, `knowledge_versions`).
+Run after **each** commit so a regression bisects to one fix.
 
-### 2. Knowledge version probe — `runtime/knowledge-versions.ts`
+## Phase 3 — PR description checklist
 
-One read per request (cached for the lifetime of the edge instance, ~5 min TTL). Pulls a cheap `max(updated_at)` per source: `decision_rules`, `observation_master`, `intent_observation_mapping`, `crop_stage_knowledge`, `observation_translations`. Returns hashes used as `knowledge_versions`.
+- Grep hits (file:line) for each of A–H and whether they exist here.
+- Phase 0 SQL outputs proving B (3 germination rows, 0 tungro) and D (~14023 aliases).
+- Before/after of the golden test.
+- List anything not located (so a human can point us to it).
 
-### 3. Wiring — single edit per pipeline stage
+## Out of scope / needs human approval
 
-For each existing stage call site, wrap with `beginStage`/`endStage`. No logic changes. Stages and owners:
+Listed in PR, NOT applied:
+1. Data: add `concept_id`/canonical-group bridge aliases linking generic germination family → crop-specific `obs_*` codes (durable Fix C).
+2. Data: add `is_active` join guards where aliases/translations resolve (stop the ~586 dead-observation leaks).
+3. Data: backfill 75 active codes with missing translations; close en↔mr/hi gap.
 
-```text
-INTENT_CLASSIFY        owner=intent-classifier
-CANONICAL_CONTEXT      owner=land-context
-HYPOTHESIS_EVAL        owner=hypothesis-evaluator
-CAUSAL_ENGINE          owner=causal-hypothesis-engine
-DISCRIMINATOR          owner=hypothesis-discriminator
-CLARIFICATION          owner=clarification-generator
-OBSERVATION_AUTHORITY  owner=observation-authority
-SEMANTIC_GATE          owner=semantic-validator
-SCIENTIFIC_GATE        owner=scientific-validator
-RULE_EVAL              owner=rule-evaluator
-DECISION_BUILDER       owner=decision-builder
-LLM_FORMAT             owner=llm-response-formatter
-```
+## Operating rules in effect
 
-Files touched (wrap-only): `agents/orchestrator.ts`, `decision/hypothesis-evaluator.ts`, `decision/causal-hypothesis-engine.ts`, `decision/discriminator.ts`, `agents/clarification-generator.ts`, `decision/observation-authority.ts`, `decision/semantic-validator.ts`, `decision/scientific-validator.ts`, `decision/rule-evaluator.ts`, `decision/decision-builder.ts`, `narration/llm-response-formatter.ts`.
+- Verify before edit (re-grep + read-only SQL each fix).
+- No DROP/TRUNCATE/bulk UPDATE/ALTER; no schema changes.
+- Keep `[BRAIN_TRACE]`/`[SEMANTIC_GATE]`/`[RuleLoader]`/`[mapBundledCategory]` logging style; add `[IOM_GATE]`.
+- One commit per fix, golden test after each.
 
-### 4. Persistence — `agents/audit-logger.ts`
+## Technical notes
 
-Replace the existing direct write with one `collector.finish()` → one insert into `ai_decision_log` populating:
-
-- existing columns unchanged,
-- new snapshot columns,
-- `hypothesis_id`, `hypothesis_score`, `hypothesis_decision_path` set from `hypothesis_snapshot.winner`,
-- `land_id`, `schedule_id` set from `context_snapshot` (never null when present in request),
-- `trace_id`, `execution_id`, `pipeline_version`, `graph_version`, `runtime_version`, `execution_mode`, `trace_level`, `created_runtime_ms` set from collector header.
-
-Same call site also updates the matching `ai_chat_audit_logs` row by `trace_id` to populate `symbolic_decision_id` (= inserted `ai_decision_log.id::text`), `execution_id`, `pipeline_version`, `graph_version`, `runtime_version`. If the audit row hasn't been inserted yet, append these fields to the insert payload instead.
-
-### 5. Single runtime log line
-
-`finish()` emits exactly one structured line — replaces the existing scattered `[BRAIN_TRACE]` summary already in `runtime/brain-trace.ts`:
-
-```text
-[RUNTIME_TRACE] trace=… exec=… pv=… gv=… latency_ms=… intent=… winner_rule=… winner_hyp=… clarification_owner=… candidates=… matched=… decision=… confidence=…
-```
-
-Per-stage `[BRAIN_TRACE][LEDGER]` lines from `evidence-ledger.ts` stay (they are already gated to one line per ledger mutation, not per stage entry).
-
----
-
-## Replay contract (acceptance test)
-
-Given a `trace_id`, the following query reproduces a full request end-to-end:
-
-```sql
-SELECT runtime_trace, graph_snapshot, pipeline_metrics, context_snapshot,
-       clarification_snapshot, observation_snapshot, rule_snapshot,
-       hypothesis_snapshot, decision_snapshot, knowledge_versions,
-       hypothesis_id, hypothesis_score, hypothesis_decision_path
-FROM ai_decision_log
-WHERE trace_id = $1;
-```
-
-Plus the matching audit row:
-
-```sql
-SELECT symbolic_decision_id, execution_id, gate_decisions
-FROM ai_chat_audit_logs
-WHERE trace_id = $1;
-```
-
-`symbolic_decision_id = ai_decision_log.id::text` must be true for every request that produced a symbolic decision.
-
----
-
-## Acceptance criteria (mirrors the spec)
-
-1. Exactly one `RuntimeTraceCollector` per request.
-2. `ai_decision_log` populates: `hypothesis_id`, `hypothesis_score`, `hypothesis_decision_path`, `runtime_trace`, `graph_snapshot`, `pipeline_metrics`, plus all snapshot fields.
-3. `ai_chat_audit_logs.symbolic_decision_id` never null when a symbolic decision exists.
-4. `land_id` is non-null on `ai_decision_log` whenever the request carried land context.
-5. Pipeline stages all show `start_ms`, `end_ms`, `latency_ms`, `owner` in `runtime_trace.stages[]`.
-6. Knowledge versions captured per request; identical inputs against the same versions reproduce the same decision.
-7. No new tables; no schema removals; no logic, rule, decision, or graph changes.
-
----
-
-## Risk & rollout
-
-- All new columns are `NULLABLE`; backfill is unnecessary. Old rows continue to read fine.
-- Collector failures are wrapped in `try/catch`; an instrumentation crash never blocks a farmer response.
-- `trace_level` defaults to `'standard'`; setting it to `'minimal'` via env (`RUNTIME_TRACE_LEVEL`) skips the large snapshots and keeps only header + metrics, giving an instant kill-switch if payload size becomes a concern.
-- One migration → wire `RuntimeTraceCollector` in orchestrator → wrap stages → flip `audit-logger.ts` to consume the collector → verify on one live trace.
-
-## Out of scope (explicit)
-
-- No edits to rule evaluation, hypothesis scoring, clarification logic, semantic/scientific gates, or LLM prompts.
-- No new tables, no RLS changes, no edge-function ACL changes.
-- No frontend changes.
+- `decision/semantic-validator.ts` already references `intent_code` (Fix A's column issue may already be partially patched). The remaining piece is making it FAIL-CLOSED and stop emitting `confidence=1` on the empty-allowlist path.
+- The clarification path already has a `farmer-observable-gate.ts` ontology gate (per prior phases) on `clarification-strategy.ts`; the IOM gate is complementary — it filters by intent+stage+DAS relevance, not just "is this a farmer-observable code". Both should run; IOM first (semantic/agronomic relevance), then ontology gate (farmer-observable surface).
+- `decision/intent-resolver.ts::resolveIntentToObservations` exists but is orphan code per `CLARIFICATION_DATA_SOURCE_AUDIT.md`. We can either wire it in for Fix B or call IOM directly via the new `iom-gate.ts` helper — the plan chooses the new dedicated helper to keep stage/DAS filtering explicit and avoid the resolver's stale HOTFIX comments.
