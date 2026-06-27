@@ -223,21 +223,9 @@ export async function generateScopedClarification(
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // R1 FIX — Intent-driven clarification using intent_observation_mapping.
-  //
-  // The previous path called the deprecated `generateDynamicClarification`
-  // stub (which returns empty) and silently fell back to BASE_TEMPLATES,
-  // producing generic English options (e.g. "🔍 Insects visible"). The
-  // mapping table is healthy (e.g. 29 curated rows for
-  // EMERGENCE_FAILURE / RICE / SEEDLING / DAS 17) but was unreachable.
-  //
-  // We now route REFINE_OBSERVATION through the canonical resolver:
-  //   intent_code + crop_code + growth_stage + DAS
-  //     → intent_observation_mapping (crop / stage-synonym / DAS filtered)
-  //     → observation_translations (language-localized labels)
-  //
-  // Falls through to the legacy renderer if intent_code is missing or the
-  // mapping returns no curated rows for the context.
+  // CLARIFICATION ONTOLOGY CONTRACT — IOM is the SOLE source of options for
+  // REFINE_OBSERVATION. No decision_rules / observable_characteristics /
+  // conditions_json / synthetic key path may reach the UI.
   // ═══════════════════════════════════════════════════════════════════════════
   const resolvedIntent =
     intent_code ||
@@ -245,91 +233,85 @@ export async function generateScopedClarification(
     (understandingResult as any)?.intent_code ||
     null;
 
-  if (
-    effectiveHasLandContext &&
-    canonicalContext &&
-    clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION &&
-    resolvedIntent &&
-    resolvedIntent !== 'UNKNOWN' &&
-    resolvedIntent !== 'UNKNOWN_OBSERVATION'
-  ) {
-    try {
-      console.log(`   🧠 [R1] Intent-driven clarification via intent_observation_mapping → intent=${resolvedIntent}, crop=${canonicalContext.crop_code}, stage=${canonicalContext.growth_stage}, das=${canonicalContext.days_since_sowing}`);
+  if (clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
+    const acknowledgment = ACKNOWLEDGMENT_TEMPLATES[language] || ACKNOWLEDGMENT_TEMPLATES.en;
+    const url = Deno.env.get('SUPABASE_URL');
+    const srk = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-      const resolved = await resolveIntentToObservations({
-        intent_code: resolvedIntent,
-        crop_code: canonicalContext.crop_code || canonicalContext.crop_name || 'all',
-        days_since_sowing: canonicalContext.days_since_sowing || 0,
-        growth_stage: canonicalContext.growth_stage || undefined
-      });
+    if (
+      effectiveHasLandContext &&
+      canonicalContext &&
+      resolvedIntent &&
+      resolvedIntent !== 'UNKNOWN' &&
+      resolvedIntent !== 'UNKNOWN_OBSERVATION' &&
+      url && srk
+    ) {
+      try {
+        const client = createSupabaseClient(url, srk);
+        const candidates: ClarificationOption[] = await loadClarificationCandidates({
+          supabase: client,
+          intent_code: resolvedIntent,
+          crop_code: canonicalContext.crop_code || canonicalContext.crop_name || 'all',
+          growth_stage: canonicalContext.growth_stage || stateStage || null,
+          das: canonicalContext.days_since_sowing ?? null,
+          language,
+          max: 3,
+        });
 
-      if (resolved.success && resolved.observation_codes.length > 0) {
-        // Top-N by confidence_rank (mapping rows are pre-ordered ASC by resolver)
-        const topCodes = resolved.observation_codes.slice(0, 6);
+        if (candidates.length > 0) {
+          console.log(
+            `   ✅ [CLARIFICATION_CONTRACT] ${candidates.length} farmer-observation options ` +
+            `for intent=${resolvedIntent} crop=${canonicalContext.crop_code} stage=${canonicalContext.growth_stage}`,
+          );
 
-        const url = Deno.env.get('SUPABASE_URL');
-        const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-        if (url && key) {
-          const client = createSupabaseClient(url, key);
-          const labelMap = await loadObservationLabels(client, topCodes, language);
+          // Render the question framing only — options come from the contract.
+          const renderResult = await renderClarificationAsync({
+            scope: clarificationPlan.scope,
+            target_observation_keys: clarificationPlan.target_keys,
+            language_code: language,
+            max_options: 3,
+            turn_count: turnCount,
+            constraints: { no_diagnosis: true, no_treatment: true, no_assumptions: true },
+            cropContext
+          });
 
-          // Build options as { label, observation_key } so the canonical
-          // observation_code survives all the way to the frontend (and is
-          // echoed back via the [obs_keys:...] tag on OPTION_SELECTED).
-          const optionObjects: Array<{ label: string; observation_key: string }> = [];
-          for (const code of topCodes) {
-            const canonical = code.toUpperCase();
-            const lbl = labelMap.get(canonical);
-            if (lbl?.display_text) {
-              optionObjects.push({ label: lbl.display_text, observation_key: canonical });
-            }
-            if (optionObjects.length >= 3) break;
-          }
-
-          // Diagnosis-leakage gate (unchanged contract — validate the labels only)
-          const leakageValidation = validateClarificationOptions(optionObjects.map(o => o.label));
-          if (!leakageValidation.valid) {
-            console.warn(`   ⚠️ [R1] Diagnosis leakage in DB-resolved options → falling back to template renderer:`, leakageValidation.violations);
-          } else if (optionObjects.length > 0) {
-            console.log(`   ✅ [R1] Intent-resolver options ready (${optionObjects.length}) for lang=${language} → codes=${optionObjects.map(o => o.observation_key).join(',')}`);
-
-            // Render the question via the async renderer so framing + DB
-            // label resolution stays consistent, then OVERRIDE the options
-            // with the intent-curated set (label + observation_key).
-            const renderResult = await renderClarificationAsync({
-              scope: clarificationPlan.scope,
-              target_observation_keys: clarificationPlan.target_keys,
-              language_code: language,
-              max_options: 3,
-              turn_count: turnCount,
-              constraints: { no_diagnosis: true, no_treatment: true, no_assumptions: true },
-              cropContext
-            });
-
-            const acknowledgment = ACKNOWLEDGMENT_TEMPLATES[language] || ACKNOWLEDGMENT_TEMPLATES.en;
-            return {
-              response_text: `${acknowledgment}\n\n${renderResult.question}`,
-              options: optionObjects.slice(0, 3),
-              photo_requested: false,
-              clarification_prompt: renderResult.question,
-              scope: clarificationPlan.scope,
-              validation_passed: true
-            };
-          }
+          return {
+            response_text: `${acknowledgment}\n\n${renderResult.question}`,
+            options: candidates.map(c => ({ label: c.label, observation_key: c.observation_key })),
+            photo_requested: false,
+            clarification_prompt: renderResult.question,
+            scope: clarificationPlan.scope,
+            validation_passed: true,
+          };
         }
-      } else {
-        console.warn(`   ⚠️ [R1] resolveIntentToObservations returned 0 curated codes for intent=${resolvedIntent} (${resolved.error || 'no rows'}) — falling back`);
+
+        console.warn(
+          `   ⚠️ [CLARIFICATION_CONTRACT] 0 candidates for intent=${resolvedIntent} — returning neutral prompt (NO template fallback)`,
+        );
+      } catch (e) {
+        console.error('   ⚠️ [CLARIFICATION_CONTRACT] load failed — returning neutral prompt:', e);
       }
-    } catch (intentErr) {
-      console.error(`   ⚠️ [R1] Intent-driven clarification failed, falling back to renderer:`, intentErr);
+    } else {
+      console.warn(
+        `   ⚠️ [CLARIFICATION_CONTRACT] missing intent/context (intent=${resolvedIntent}, ctx=${effectiveHasLandContext}) — neutral prompt`,
+      );
     }
-  } else if (clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
-    console.warn(`   ⚠️ [R1] Skipping intent path (intent=${resolvedIntent || 'NONE'}, hasContext=${effectiveHasLandContext})`);
+
+    // No template fallback for REFINE_OBSERVATION. Return neutral monitoring
+    // prompt with empty options so no rule metadata leaks to UI.
+    const neutral = getMonitoringAdvice(language);
+    return {
+      response_text: `${acknowledgment}\n\n${neutral}`,
+      options: [],
+      photo_requested: true,
+      clarification_prompt: neutral,
+      scope: clarificationPlan.scope,
+      validation_passed: true,
+    };
   }
 
-  
   console.log(`   Clarification plan: scope=${clarificationPlan.scope}, reason=${clarificationPlan.reason}`);
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Handle STOP_ESCALATE (max turns or sufficient info)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -344,16 +326,15 @@ export async function generateScopedClarification(
       validation_passed: true
     };
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 4: Render clarification using ASYNC DB-driven renderer
-  // PHASE-18: Use renderClarificationAsync for DB-driven options
+  // STEP 4: Non-observation scopes (IDENTIFY_CROP/LOCATION/DISTRIBUTION/SEVERITY)
+  // — These are NOT the farmer-observation ontology and may use templates.
   // ═══════════════════════════════════════════════════════════════════════════
   const renderResult = await renderClarificationAsync({
     scope: clarificationPlan.scope,
     target_observation_keys: clarificationPlan.target_keys,
     language_code: language,
-    // PHASE-14: Enforce max 3 options per Farmer Interaction Engine rules
     max_options: 3,
     turn_count: turnCount,
     constraints: {
@@ -361,17 +342,13 @@ export async function generateScopedClarification(
       no_treatment: true,
       no_assumptions: true
     },
-    cropContext: cropContext // PHASE-8.1: For stage-aware framing
+    cropContext: cropContext
   });
-  
-  console.log(`   Rendered: validation_passed=${renderResult.validation_passed}, source=DB+Template`);
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 5: SAFETY VALIDATION (Hard Gate)
-  // ═══════════════════════════════════════════════════════════════════════════
+
+  console.log(`   Rendered: validation_passed=${renderResult.validation_passed}, source=Template`);
+
   if (!renderResult.validation_passed) {
     console.error(`   ❌ SAFETY VIOLATION: ${renderResult.violations.join(', ')}`);
-    // Return safe fallback - no options, just monitoring advice
     return {
       response_text: getMonitoringAdvice(language),
       options: [],
@@ -381,13 +358,10 @@ export async function generateScopedClarification(
       validation_passed: false
     };
   }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 6: Format final response
-  // ═══════════════════════════════════════════════════════════════════════════
+
   const acknowledgment = ACKNOWLEDGMENT_TEMPLATES[language] || ACKNOWLEDGMENT_TEMPLATES.en;
   const responseText = `${acknowledgment}\n\n${renderResult.question}`;
-  
+
   return {
     response_text: responseText,
     options: renderResult.options,
