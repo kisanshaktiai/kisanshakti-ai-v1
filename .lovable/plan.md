@@ -1,94 +1,182 @@
-# Clarification Ontology Contract — Production Refactor
+# v3 — Decision Graph Navigator Refactor (Neuro-Symbolic Brain)
 
-## Goal
+Supersedes v1 (Evidence Planner) and v2 (Evidence Selection Engine). Adopts reviewer verdict: the brain is a **Decision Graph**, not a hypothesis engine with an evidence layer. Reuses existing modules — no parallel state, no adapters, no new schema.
 
-Make `intent_observation_mapping` (IOM) the **only** producer of farmer clarification options. Stop rule metadata (`decision_rules.observable_characteristics`, `conditions_json.observations`), synthetic keys (`CROP_STAGE`, `MANAGEMENT_PLANNING`), diagnosis names (`TUNGRO_YELLOW_STUNT`), and English fallback templates from reaching the UI. Adopt `lower_snake_case` as the platform-wide canonical observation identifier.
+## 1. Reuse map (do NOT create duplicates)
 
-## Architectural Contract
+Existing files keep their identity; we extend them in place.
+
+| Concern | Existing file | Change |
+|---|---|---|
+| Single runtime state | `runtime/graph-runtime-state.ts` | **Promote to sole `RuntimeGraphState`** (context + hypotheses + confirmed/denied + active rule nodes + history + confidence). Freeze per turn. Append-only `applyEvent`. |
+| Conversation snapshot | `runtime/conversation-state.ts` | Demote to *view* over `RuntimeGraphState`; remove independent storage. |
+| Hypothesis production | `decision/hypothesis-evaluator.ts` | Emit graph-native nodes `{ id, prior, posterior, predicates[], blocks[], requires[] }` directly. **No adapter file.** |
+| Evidence ownership | `decision/evidence-ledger.ts` | Becomes the confirmed/denied store inside `RuntimeGraphState`. |
+| Ontology gate | `runtime/farmer-observable-gate.ts` + `decision/iom-gate.ts` | Keep as-is (already lower_snake_case). |
+| Clarification vocabulary | `runtime/clarification-contract.ts` | Add `buildOptions({ keys, ctx, language, supabase })`; keep `loadClarificationCandidates` + `assertClarificationContract`. |
+| Intent | `decision/intent-resolver.ts` | Unchanged. |
+
+New files (only two):
+
+| New file | Role |
+|---|---|
+| `runtime/decision-graph-navigator.ts` | The brain's top-level reasoning owner. Pure function over `RuntimeGraphState`. |
+| `runtime/contradiction-engine.ts` | Pre-navigation check: utterance vs locked context (stage/crop/DAS). |
+
+Files demoted/deleted:
+
+- `agents/clarification-strategy.ts::fetchRuleDrivenClarificationOptions` → `return null` + `[DEPRECATED]`.
+- `agents/clarification-renderer.ts` → drop `BASE_TEMPLATES.options` for DIAGNOSIS/REFINE scopes.
+- `agents/clarification-generator.ts::generateScopedClarification` REFINE branch → delegate to navigator+builder.
+- `decision/diagnosis-first-generator.ts::humanizeCode` UI emission paths → removed.
+
+## 2. Final pipeline (single owner = Decision Graph Navigator)
 
 ```text
-Farmer Query → Intent → CanonicalContext → Hypothesis (IDs+confidence ONLY)
-                                              │
-                                              ▼
-        intent_observation_mapping(intent, crop, stage, das)
-                                              │  (curated candidate observation_codes)
-                                              ▼
-              observation_master validation gate (active, farmer_observable)
-                                              │
-                                              ▼
-                          Clarification UI  (label + observation_key)
-                                              │
-                                              ▼
-                Farmer selection → Rule evaluation → Recommendation
+Farmer
+   → LLM Understanding
+   → Canonical Context Lock (land → crop → stage → DAS → weather)
+   → Contradiction Engine                ← halts on STAGE_MISMATCH etc.
+   → RuntimeGraphState.applyEvent(USER_TURN)
+   → Decision Graph Navigator            ← SOLE reasoning owner
+        ├─ activate reachable nodes (stage/crop/intent gates)
+        ├─ score hypotheses (existing evaluator, in-graph)
+        ├─ enumerate candidate evidence from active node predicates
+        ├─ rank by graph pruning power (#branches eliminated)
+        ├─ stopping-criterion check
+        └─ emit Decision ∈ { PROCEED | ASK | CONTEXT_CONTRADICTION | INSUFFICIENT_EVIDENCE }
+   → Clarification Builder (vocabulary + i18n only, IOM-gated)
+   → Outbound Contract Gate
+   → UI
+   → on farmer reply: RuntimeGraphState.applyEvent(OPTION_SELECTED) → loop
+   → PROCEED → Rule Evaluation → Recommendation
 ```
 
-Ownership (immutable):
-- `intent_observation_mapping` — only source of clarification candidates.
-- `observation_master` — validator + label/metadata lookup.
-- `decision_rules` / `conditions_json` / `observable_characteristics` — internal rule predicates only; never produce UI options.
-- Hypothesis engine — emits hypothesis IDs + confidence + intent. Never emits UI options.
+## 3. `RuntimeGraphState` (single SSOT)
 
-## Canonical Symbol Format
+Extend `runtime/graph-runtime-state.ts`:
 
-`lower_snake_case` (matches DB). All comparisons via a single `canonicalizeObservationKey()` helper. No `.toUpperCase()` on observation codes anywhere in the clarification path.
+```ts
+interface RuntimeGraphState {
+  readonly turn: number;
+  readonly context: CanonicalContext;            // frozen at lock
+  readonly hypotheses: GraphNode[];              // { id, prior, posterior, predicates, blocks, requires, stage_scope }
+  readonly confirmed: Map<string, EvidenceRecord>;
+  readonly denied:    Map<string, EvidenceRecord>;
+  readonly activeNodeIds: Set<string>;           // reachable given context + confirmed
+  readonly history: TurnEvent[];                 // append-only
+  readonly versions: SnapshotVersions;           // ontology/rules versions
+}
+applyEvent(prev, event): RuntimeGraphState      // pure, frozen result
+```
 
-## Files Modified
+Rule: **every reader (navigator, evaluator, narrator, audit) reads `RuntimeGraphState` only**. Delete any side caches in orchestrator that duplicate this.
 
-### 1. New: `supabase/functions/ai-agriculture-chat/runtime/clarification-contract.ts`
-Single enforcement module. Exports:
-- `canonicalizeObservationKey(s)` → `lower_snake_case`
-- `loadClarificationCandidates({ supabase, intent_code, crop_code, growth_stage, das, language, max=3 })` — does **only**:
-  1. Query IOM (intent + crop+'all' + stage synonyms + DAS, ordered by `confidence_rank`).
-  2. Inner-join filter against `observation_master` (`is_active=true`, `is_farmer_observable=true` if column present, else `is_active` only).
-  3. Load labels via `observation_translations` for `language` (fallback `en`).
-  4. Return `Array<{ observation_key: string /* canonical */, label: string, confidence_rank: number }>`.
-  5. Return `[]` on any failure. **Never** synthesizes, never humanizes codes.
-- `assertClarificationContract(options, ctx)` — drops any option whose key fails canonical/IOM/master gate. Logs `[CONTRACT_VIOLATION]` for each drop.
+## 4. Decision Graph Navigator (`runtime/decision-graph-navigator.ts`)
 
-Complexity: O(k) where k = candidate count for the (intent, crop, stage, das) cell; uses indexed `.in()` filters; no full-table scans.
+Pure, no DB IO at call time (knowledge pre-loaded into state):
 
-### 2. `supabase/functions/ai-agriculture-chat/agents/clarification-generator.ts`
-- Replace the R1 block (lines 243–329) with a single call to `loadClarificationCandidates(...)`.
-- If `resolvedIntent` is missing or IOM returns `[]`, return `{ options: [], response_text: <ack + neutral “please share more about your crop/issue” line>, photo_requested: false }`. **No** fallback to `renderClarificationAsync`.
-- Remove `STEP 4`/`STEP 5`/`STEP 6` template fallback for `REFINE_OBSERVATION` (still allowed for `IDENTIFY_CROP`, `IDENTIFY_LOCATION`, `IDENTIFY_DISTRIBUTION`, `IDENTIFY_SEVERITY` scopes which are not observation ontology).
+```ts
+interface NavigationResult {
+  decision: 'PROCEED' | 'ASK' | 'CONTEXT_CONTRADICTION' | 'INSUFFICIENT_EVIDENCE';
+  reason: string;
+  ranked: EvidenceRequest[];   // explainable graph
+  stopping: { confidence: number; margin: number; activeHypotheses: number; predicatesSatisfied: boolean };
+}
 
-### 3. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
-- **Delete** the synthetic-observation block (lines 808–825) that promotes `conditions_json.observations` via `obs.toUpperCase()` into `observable_characteristics`.
-- Rules with no `observable_characteristics` keep `effectiveObsChars = []`. They still match for internal evaluation; they simply cannot contribute UI options.
-- Keep the farmer-observable gate (already present at 891–910) but switch its comparison to `canonicalizeObservationKey()` instead of `.toUpperCase()`.
-- Add: hypothesis output type no longer carries any field consumed as a UI option. Mark `observable_characteristics` `@internal`.
+interface EvidenceRequest {
+  evidence_key: string;                    // canonical lower_snake_case
+  prunes_hypotheses: string[];             // node IDs eliminated if denied
+  confirms_hypotheses: string[];           // node IDs strongly supported if confirmed
+  graph_pruning_score: number;             // primary ranker — see §4.2
+  supporting: Array<{ hypothesis_id: string; reason: string }>;
+}
+```
 
-### 4. `supabase/functions/ai-agriculture-chat/decision/diagnosis-first-generator.ts`
-- Remove direct emission of `observable_characteristics` codes as UI clarification options. When the orchestrator calls into this module for "differentials", route through `loadClarificationCandidates` using the active hypothesis's `intent_code`.
-- Delete `humanizeCode()` paths that turn raw codes into labels for UI.
+### 4.1 Activation
+`activeNodeIds = { h ∈ hypotheses | stage ∈ h.stage_scope ∧ crop ∈ h.crop_scope ∧ !violates(confirmed ∪ denied, h.blocks) ∧ satisfies(confirmed, h.requires) }`.
 
-### 5. `supabase/functions/ai-agriculture-chat/agents/clarification-renderer.ts` + `canonical-observation-loader.ts`
-- `REFINE_OBSERVATION` scope: short-circuit — return empty options. Renderer is now only used for non-observation scopes (crop/location/distribution/severity). Remove `BASE_TEMPLATES.options` for `DIAGNOSIS` scope.
-- `canonical-observation-loader.ts`: keep for non-REFINE scopes; mark `loadObservationKeysFromDB` deprecated for clarification use.
+### 4.2 Ranking — graph pruning, not entropy
+For each candidate `evidence_key e` referenced by any active node's `predicates`:
 
-### 6. `supabase/functions/ai-agriculture-chat/runtime/farmer-observable-gate.ts`
-- Switch all key comparisons to `canonicalizeObservationKey()` (lower_snake_case). Match `observation_master.observation_code` in its native case.
+```text
+prunes(e)   = |{ h ∈ active | e ∈ h.blocks   ∨ (e ∈ h.requires ∧ denial would falsify h) }|
+confirms(e) = |{ h ∈ active | e ∈ h.requires ∧ confirmation would satisfy h }|
+score(e)    = prunes(e) + confirms(e) − redundancy(e, confirmed)
+```
 
-### 7. `supabase/functions/ai-agriculture-chat/decision/iom-gate.ts`
-- Replace `.toUpperCase()` on stored keys (lines ~140, ~200) with canonical lower_snake_case to match `observation_master`. Set `allowedSet` to canonical lowercase.
+Tie-break: lower elicitation cost via `observation_master.is_easy_to_observe` if present (no new column). Ontology-gate every candidate; drop those failing IOM/master.
 
-### 8. `supabase/functions/ai-agriculture-chat/index.ts` (response assembly)
-- Final outbound guard: before serializing `options`, run `assertClarificationContract`. If any option drops, the entire option list is dropped and an audit row is written. Prevents any future regression from leaking diagnosis tokens.
+### 4.3 Stopping criterion (`PROCEED`)
+ALL of:
+1. `|activeHypotheses| ≤ 1` OR `margin(top, second) ≥ θ_margin(stage)` (existing `stage_thresholds`).
+2. `requires(top) ⊆ confirmed` AND `blocks(top) ⊆ denied ∪ unknown`.
+3. Turn count ≤ `max_clarification_rounds(intent)`.
 
-## Validation (Rice / Germination scenario)
+### 4.4 Other decisions
+- `CONTEXT_CONTRADICTION`: returned only if Contradiction Engine flagged the turn (navigator skipped).
+- `INSUFFICIENT_EVIDENCE`: `activeHypotheses` empty OR `ranked` empty after ontology gate → deterministic insufficient-evidence response; never invent options.
+- `ASK`: otherwise. UI receives `ranked.slice(0, N)` via builder.
 
-Trace for `"भात अजून नाही उगवले"`, intent=`EMERGENCE_FAILURE`, crop=`rice`, das=`17`, stage=`seedling`:
+## 5. Contradiction Engine (`runtime/contradiction-engine.ts`)
 
-1. Hypothesis engine emits `{ intent_code: 'EMERGENCE_FAILURE', candidates: [...IDs] }`.
-2. `loadClarificationCandidates` queries IOM → 29 rows → top 3 after master-gate + dedupe: `seed_not_germinated`, `germination_failure`, `obs_rice_no_emergence`.
-3. `observation_translations` loads Marathi labels.
-4. UI receives `[{ observation_key:'seed_not_germinated', label:'…' }, …]`.
-5. `assertClarificationContract` passes; no diagnosis names; no `CROP_STAGE`; no `TUNGRO_YELLOW_STUNT`.
+Reads `intent_assertion_pattern.stage_compatibility` + `RuntimeGraphState.context`. Emits `CONTRADICTION { kind, assertion, context }` for mismatches (e.g., "hasn't germinated" with `stage=tillering`). Orchestrator surfaces deterministic reconciliation prompt **before** hypothesis activation. No symptom synthesis.
 
-## Scalability
+## 6. Orchestrator changes (`agents/orchestrator.ts`)
 
-Per-turn DB cost: 1 IOM query (≤30 rows), 1 master validate (`.in(codes)`), 1 translation lookup (`.in(codes)`). All indexed. Memory: O(candidates). No ontology pre-load. Safe for millions of concurrent users.
+Replace the three competing producers with one path:
 
-## Out of Scope
+```text
+state0 = RuntimeGraphState.fromTurn(canonicalContext, evaluator.preload(...))
+contradiction = contradictionEngine.check(utterance, state0)
+if contradiction: return reconciliationResponse(contradiction)
+state1 = applyEvent(state0, USER_TURN(utterance))
+nav   = decisionGraphNavigator.navigate(state1)
+switch nav.decision:
+  PROCEED               → existing rule evaluator on state1.hypotheses[0]
+  ASK                   → opts = clarificationContract.buildOptions(nav.ranked.slice(0,N), ctx)
+                          opts = assertClarificationContract(opts, allowed)
+                          return clarificationResponse(opts)
+  INSUFFICIENT_EVIDENCE → return insufficientEvidenceResponse()
+  CONTEXT_CONTRADICTION → already handled above
+```
 
-No schema changes. No LLM prompt edits. No frontend changes. No removal of `decision_rules` (still used for rule evaluation after farmer selection).
+Delete calls to: `fetchRuleDrivenClarificationOptions`, `generateScopedClarification` (REFINE), diagnosis-first IOM inline. Add single `[CLARIFICATION_OWNER] producer=DECISION_GRAPH_NAVIGATOR` log per turn.
+
+## 7. Audit (`runtime/runtime-trace-collector.ts` + `audit-logger.ts`)
+
+Persist per turn into existing `ai_decision_log`: `decision`, `reason`, `ranked` (full evidence graph JSON), `active_node_ids`, `stopping`. No schema migration — write into existing JSONB columns (`evidence_graph_json` already added in earlier Phase Y; reuse).
+
+## 8. What is explicitly NOT done
+
+- No new DB columns (`evidence_likelihood`, `elicitation_cost`) — defer until graph correctness is proven by replay.
+- No `HypothesisGraph` adapter file — evaluator emits graph-native nodes.
+- No entropy-only ranking — graph pruning is the primary signal (entropy retained as tie-break only if `posterior` is present).
+- No second state object — `SymbolicState` and `ConversationState` collapse into `RuntimeGraphState`.
+- No frontend, LLM-prompt, or rule-engine changes.
+
+## 9. Migration order (graph-correctness first)
+
+1. **Stabilize graph**: extend `graph-runtime-state.ts` to full `RuntimeGraphState`; route orchestrator through it (read-only at first, side caches kept for parity).
+2. **Prove graph**: shadow log every turn's `RuntimeGraphState`; replay 100 historical turns; assert state-divergence == 0 vs current behavior.
+3. **Ship navigator behind flag** `DECISION_GRAPH_NAVIGATOR=on` (default off). All three legacy producers still live.
+4. **Replace clarification**: flip flag per tenant; verify acceptance §10; delete legacy producers when zero `[CONTRACT_VIOLATION]` for 24h.
+5. **Add contradiction engine**: enable after step 4 stable.
+6. **Optional enrichment**: only after §10 passes for 7 days, consider `evidence_likelihood` / `elicitation_cost` columns.
+
+## 10. Acceptance criteria
+
+1. Rice / "hasn't germinated" / SEEDLING DAS 17 → `ASK`, options ⊆ {`seed_not_germinated`,`germination_failure`,`obs_rice_no_emergence`,`poor_germination`}. Zero `CROP_STAGE` / `MANAGEMENT_PLANNING` / `TUNGRO_*` / `block_rule_triggered`.
+2. Rice "hasn't germinated" with `stage=tillering` → `CONTEXT_CONTRADICTION`; reconciliation prompt; no hypothesis activation.
+3. Three close hypotheses → top question is the one whose denial/confirmation prunes the most active nodes (graph-pruning rank, verified in `ranked` JSON).
+4. One discriminating answer → `PROCEED`; no further clarification.
+5. `ai_decision_log` contains `ranked`, `active_node_ids`, `decision`, `reason`, `stopping` per turn.
+6. Grep checks: zero reads of `decision_rules.conditions_json` under `runtime/`; `fetchRuleDrivenClarificationOptions` returns `null` 100% of paths; no `BASE_TEMPLATES.options` reachable from REFINE/DIAGNOSIS scope.
+7. 100-turn replay across rice/sugarcane/cotton: zero `[CONTRACT_VIOLATION]`, zero state-divergence between legacy and navigator paths during shadow window.
+
+## 11. Scale notes (1M users)
+
+- Navigator is pure in-memory over a frozen state; no DB IO.
+- Knowledge preload at session start uses existing paginated loaders (rules, observation_master, IOM) — already cached per (crop, stage).
+- `RuntimeGraphState` is per-turn allocation, freed after response; no global mutation.
+- All DB reads remain indexed `.in()` lookups (IOM, master, translations) — unchanged from contract.
