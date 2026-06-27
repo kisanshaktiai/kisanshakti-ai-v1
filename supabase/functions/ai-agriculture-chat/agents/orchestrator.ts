@@ -6169,7 +6169,7 @@ export class AIAgentOrchestrator {
               ?? (canonicalState as any)?.conversation_turn
               ?? 1,
           );
-          await runDecisionGraphNavigator({
+          const navOutput = await runDecisionGraphNavigator({
             supabase: this.getSupabase(),
             graph,
             intent_code: navIntent,
@@ -6177,10 +6177,18 @@ export class AIAgentOrchestrator {
             tenant_id: (canonicalState as any)?.tenant_id ?? null,
             runtimeTrace,
           });
+          // v3 Phase 4 — expose to downstream emission sites for active-mode override.
+          (this as any).__navigatorOutput = navOutput;
+          console.log(
+            `[NAVIGATOR_CAPTURE] active=${navOutput?.flag?.active} shadow=${navOutput?.flag?.shadow} ` +
+            `ran=${navOutput?.ran} decision=${navOutput?.result?.decision || 'n/a'} ` +
+            `skip=${navOutput?.skip_reason || 'none'}`,
+          );
         } catch (navErr) {
           console.warn(
             `⚠️ [NAVIGATOR_SHADOW] non-fatal: ${navErr instanceof Error ? navErr.message : String(navErr)}`
           );
+          (this as any).__navigatorOutput = null;
         }
 
 
