@@ -101,7 +101,7 @@ export async function assertFarmerObservable(
 
   const seen = new Map<string, { is_active: boolean; is_farmer_observable: boolean }>();
   for (const r of rows) {
-    seen.set(String(r.observation_code).toUpperCase(), {
+    seen.set(normalize(String(r.observation_code)), {
       is_active: r.is_active !== false,
       is_farmer_observable: r.is_farmer_observable === true,
     });
