@@ -1130,6 +1130,15 @@ export class AIAgentOrchestrator {
         // PHASE-9.1: Clarification state fields
         pendingClarificationOptions?: string[];
         pendingClarificationObservationKeys?: string[];
+        // STRUCTURED SSOT — preferred. Per-option records with canonical
+        // observation_key preserved alongside label/value, so OPTION_SELECTED
+        // can resolve symbolic identity directly without label mapping.
+        pendingClarificationOptionsStructured?: Array<{
+          label: string;
+          value: string;
+          observation_key: string;
+          diagnostic_power?: string;
+        }>;
         lockedCropContext?: {
           crop_name: string;
           growth_stage: string;
