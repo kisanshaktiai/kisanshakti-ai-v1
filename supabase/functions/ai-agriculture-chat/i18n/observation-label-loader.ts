@@ -68,6 +68,25 @@ export interface ObservationLabel {
 }
 
 /**
+ * Strip technical artifacts (Latin binomials, parenthetical scientific names,
+ * trailing "— Pathogen + Pathogen" clauses) from a label that may have been
+ * sourced from `description_text`. Defensive safety net so chips never render
+ * with scientific jargon even if a future caller passes the long form.
+ */
+export function stripTechnicalArtifacts(text: string): string {
+  if (!text) return '';
+  let out = text;
+  // Remove "— ...Latin..." or "- ...Latin..." trailing clause when it contains a Latin word
+  out = out.replace(/\s*[—–-]\s*[^—–\-()]*\b[A-Z][a-z]+\s+[a-z]+\b[^—–\-()]*$/u, '');
+  // Remove parenthetical Latin binomials e.g. "(Dicladispa armigera)"
+  out = out.replace(/\s*\(\s*[A-Z][a-z]+\s+[a-z]+[^)]*\)/gu, '');
+  // Collapse whitespace
+  out = out.replace(/\s{2,}/g, ' ').trim();
+  // If we accidentally emptied it, return original
+  return out || text.trim();
+}
+
+/**
  * Load observation labels from database for given codes and language
  * SSOT: All display text comes from observation_translations table
  */
@@ -106,9 +125,15 @@ export async function loadObservationLabels(
       console.error(`   ❌ DB error: ${error.message}`);
     }
 
-    // Build map from database results
-    // CRITICAL FIX: Prefer description_text (farmer-friendly) over display_text (technical term)
-    // when description_text is available and substantive (>10 chars)
+    // Build map from database results.
+    // FIX (BUG A): `display_text` is the short, farmer-friendly chip label
+    // (e.g. "भात कोलमडले"). `description_text` is an agronomic note that
+    // frequently contains Latin pathogen names / virus IDs / pesticide hints
+    // and is appropriate only as a tooltip. The previous heuristic that
+    // promoted the longer field made chips render as full sentences with
+    // Latin names. Priority is now strictly: display_text → description_text
+    // → language-aware code fallback. description_text is preserved as the
+    // secondary field for tooltips.
     for (const code of observationCodes) {
       const upperCode = code.toUpperCase();
       const translation = translations?.find(
@@ -117,28 +142,25 @@ export async function loadObservationLabels(
       const icon = OBSERVATION_ICONS[upperCode] || '❓';
 
       if (translation) {
-        // Use description_text as display if it's more descriptive (farmer-friendly)
-        // description_text describes WHAT FARMER SEES, display_text is often a technical term
-        const hasGoodDescription = translation.description_text &&
-          translation.description_text.length > 10 &&
-          translation.description_text.length > (translation.display_text?.length || 0);
+        const display = (translation.display_text || '').trim();
+        const desc = (translation.description_text || '').trim();
+        const chip = stripTechnicalArtifacts(display || desc) ||
+                     formatCodeAsLabel(upperCode, normalizedLanguage);
 
         labelMap.set(upperCode, {
           observation_code: upperCode,
-          display_text: hasGoodDescription ? translation.description_text : translation.display_text,
-          description_text: hasGoodDescription ? translation.display_text : (translation.description_text || ''),
+          display_text: chip,
+          description_text: desc,
           icon
         });
       } else {
-        // Fallback: DO NOT generate English phrase for non-English UI.
-        // This avoids mixed-language symptom lists (e.g., Marathi UI + "Dead Heart").
         labelMap.set(upperCode, {
           observation_code: upperCode,
           display_text: formatCodeAsLabel(upperCode, normalizedLanguage),
           description_text: '',
           icon
         });
-        console.warn(`   ⚠️ [CANONICAL_CONTEXT_TRACE] No ${normalizedLanguage} translation for ${upperCode} — using code fallback (check observation_translations seeding)`);
+        console.warn(`   ⚠️ [OBS_LABEL_GAP] No ${normalizedLanguage} translation for ${upperCode} — using code fallback (seed observation_translations)`);
       }
     }
 
