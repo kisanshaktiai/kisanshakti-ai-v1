@@ -692,31 +692,44 @@ async function translateClarificationOptions(
 
   console.log(`🌐 [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
 
-  // Step 1: Try observation_translations DB lookup (SSOT)
-  const codesToLookup = Array.from(new Set(
+  // Step 1: Look up labels from observation_translations (SSOT).
+  // FIX (BUG B): DB stores observation_code lowercase; runtime carries
+  // UPPERCASE. Query both cases and match case-insensitively.
+  // FIX (BUG A): prefer display_text strictly over description_text — the
+  // long description often embeds Latin pathogen names that must never
+  // surface in a chip label.
+  const upperCodes = Array.from(new Set(
     needsTranslation
       .map(e => normalizeObservationCode(e.label, e.obsKey))
       .filter((c): c is string => !!c)
   ));
+  const codesToLookup = Array.from(new Set([
+    ...upperCodes,
+    ...upperCodes.map(c => c.toLowerCase()),
+  ]));
 
-  const labelMap = new Map<string, string>();
+  const labelMap = new Map<string, string>();      // primary chip label (lang)
+  const fallbackEnMap = new Map<string, string>(); // english fallback
 
   try {
     if (codesToLookup.length > 0) {
+      const wantLangs = Array.from(new Set([lang, 'en']));
       const { data, error } = await supabaseClient
         .from('observation_translations')
-        .select('observation_code, display_text, description_text')
+        .select('observation_code, language_code, display_text, description_text')
         .in('observation_code', codesToLookup)
-        .eq('language_code', lang);
+        .in('language_code', wantLangs);
 
       if (!error && data) {
         for (const row of data) {
           const code = (row.observation_code || '').toUpperCase();
-          // Prefer description_text (farmer-friendly) when substantive
-          const hasGoodDesc = row.description_text &&
-            row.description_text.length > 10 &&
-            row.description_text.length > (row.display_text?.length || 0);
-          labelMap.set(code, hasGoodDesc ? row.description_text : row.display_text);
+          const display = (row.display_text || '').trim();
+          const desc = (row.description_text || '').trim();
+          const label = display || desc;
+          if (!label) continue;
+          const rowLang = (row.language_code || 'en').toLowerCase();
+          if (rowLang === lang) labelMap.set(code, label);
+          else if (rowLang === 'en') fallbackEnMap.set(code, label);
         }
       }
     }
@@ -724,60 +737,18 @@ async function translateClarificationOptions(
     console.warn(`⚠️ [ClarificationTranslation] DB lookup failed: ${err}`);
   }
 
-  // Step 2: For codes without DB translation, use LLM translation
-  const untranslatedCodes = Array.from(new Set(
-    needsTranslation
-      .map(e => normalizeObservationCode(e.label, e.obsKey))
-      .filter((c): c is string => !!c)
-      .filter(code => !labelMap.has(code))
-  ));
-
-  if (untranslatedCodes.length > 0 && lang !== 'en') {
-    try {
-      const openAIKey = Deno.env.get('OPENAI_API_KEY');
-      if (openAIKey) {
-        const langName = getLanguageName(lang);
-
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAIKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              {
-                role: 'system',
-                content: `You translate agricultural observation codes to simple farmer-friendly ${langName}. Output ONLY a JSON object mapping each code to its translation. Use local rural agricultural vocabulary that farmers understand. No technical terms.`
-              },
-              {
-                role: 'user',
-                content: `Translate these agricultural observation codes to simple ${langName} that a rural farmer would understand:\n${untranslatedCodes.join('\n')}\n\nOutput JSON like: {"CODE": "translation"}`
-              }
-            ],
-            max_tokens: 300,
-            temperature: 0.3
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          const content = result.choices?.[0]?.message?.content || '';
-          const jsonMatch = content.match(/\{[^{}]*\}/s);
-          if (jsonMatch) {
-            const translations = JSON.parse(jsonMatch[0]);
-            for (const [code, translation] of Object.entries(translations)) {
-              if (typeof translation === 'string' && translation.length > 0) {
-                labelMap.set(code.toUpperCase(), translation);
-              }
-            }
-            console.log(`✅ [ClarificationTranslation] LLM translated ${Object.keys(translations).length} codes to ${langName}`);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn(`⚠️ [ClarificationTranslation] LLM translation failed: ${err}`);
+  // Step 2: Deterministic English fallback. The previous GPT-4o-mini
+  // "translate codes to rural language" path was the source of hallucinated,
+  // inconsistent farmer wording — it has been removed. Missing rows are
+  // logged so observation_translations can be seeded.
+  for (const code of upperCodes) {
+    if (labelMap.has(code)) continue;
+    const en = fallbackEnMap.get(code);
+    if (en) {
+      labelMap.set(code, en);
+      console.warn(`⚠️ [OBS_LABEL_GAP] ${code} missing ${lang} translation — using EN fallback`);
+    } else {
+      console.warn(`⚠️ [OBS_LABEL_GAP] ${code} has no ${lang} or EN row in observation_translations — using code fallback`);
     }
   }
 
