@@ -233,11 +233,13 @@ export async function initializeTranslationCache(
         }
         const entry = grouped.get(code)!;
         const lang = (row.language_code || 'en').toLowerCase();
-        // Prefer description_text (farmer-friendly) over display_text (technical)
-        const hasGoodDescription = row.description_text && 
-          row.description_text.length > 10 && 
-          row.description_text.length > (row.display_text?.length || 0);
-        entry[lang] = hasGoodDescription ? row.description_text : row.display_text;
+        // FIX (BUG A): display_text is the chip-ready label; description_text
+        // is an agronomic note that often contains Latin names. Prefer
+        // display_text strictly and only fall back to description_text when
+        // display_text is empty.
+        const display = (row.display_text || '').trim();
+        const desc = (row.description_text || '').trim();
+        entry[lang] = display || desc;
       }
       
       // Merge into main translations map
