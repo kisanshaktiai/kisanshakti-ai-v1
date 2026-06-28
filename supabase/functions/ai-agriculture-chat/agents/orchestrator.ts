@@ -1866,9 +1866,22 @@ export class AIAgentOrchestrator {
           // are empty.
           let mappedObservationKey: string | null = null;
           const persistedObsKeys = (options.sessionState as any)?.pendingClarificationObservationKeys || [];
+          const persistedStructured: Array<{ label: string; value: string; observation_key: string }> =
+            (options.sessionState as any)?.pendingClarificationOptionsStructured || [];
           if (embeddedObservationKeys.length > 0) {
             mappedObservationKey = embeddedObservationKeys[0];
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
+          } else if (
+            matchResult.option_index != null &&
+            persistedStructured[matchResult.option_index]?.observation_key
+          ) {
+            mappedObservationKey = String(
+              persistedStructured[matchResult.option_index].observation_key
+            ).toUpperCase();
+            console.log(
+              `   📋 Using STRUCTURED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}" ` +
+              `(label="${persistedStructured[matchResult.option_index].label}")`
+            );
           } else if (matchResult.option_index != null && persistedObsKeys[matchResult.option_index]) {
             mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
             console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
