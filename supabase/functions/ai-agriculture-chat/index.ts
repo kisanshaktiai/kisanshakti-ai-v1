@@ -2109,13 +2109,25 @@ serve(async (req) => {
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
     const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
                                     orchestratorResponse.type === 'CLARIFICATION_NEEDED';
-    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
+    const rawOptions: any[] = orchestratorResponse.question?.options || [];
+    const clarificationOptions = rawOptions.map((o: any) => o?.label).filter(Boolean) ||
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
     // SYMBOLIC IDENTITY: persist observation_key per option index so the next
     // turn's OPTION_SELECTED can use the canonical code directly without
     // heuristic label-to-code reconstruction.
     const clarificationObservationKeys: string[] =
-      orchestratorResponse.question?.options?.map((o: any) => (o?.observation_key || '')) || [];
+      rawOptions.map((o: any) => (o?.observation_key || ''));
+    // STRUCTURED SSOT — full per-option record. This is what the next turn's
+    // option-selection resolver MUST consult; the parallel arrays above are
+    // kept only for backwards compatibility.
+    const clarificationOptionsStructured = rawOptions
+      .map((o: any) => ({
+        label: String(o?.label ?? ''),
+        value: String(o?.value ?? o?.label ?? ''),
+        observation_key: String(o?.observation_key ?? ''),
+        diagnostic_power: o?.diagnostic_power,
+      }))
+      .filter((o) => o.label || o.observation_key);
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
