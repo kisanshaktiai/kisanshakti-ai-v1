@@ -2359,6 +2359,7 @@ serve(async (req) => {
       console.log(`   persisted_locked_context:  ${JSON.stringify(decisionTracking.lockedCropContext)}`);
       console.log(`   persisted_pending_options: ${decisionTracking.pending_clarification_options?.length || 0}`);
       console.log(`   persisted_pending_obs_keys:${JSON.stringify(decisionTracking.pending_clarification_observation_keys)}`);
+      console.log(`   persisted_pending_structured:${decisionTracking.pending_clarification_options_structured?.length || 0} records`);
       console.log(`   persisted_decision_state:  ${decisionTracking.decision_state}`);
       console.log(`   ═══════════════════════════════════════════`);
     } catch (sessionUpdateError) {
