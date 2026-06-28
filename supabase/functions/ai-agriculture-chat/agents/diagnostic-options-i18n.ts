@@ -127,26 +127,35 @@ export async function getDiagnosticOptionsForCropStage(
     optionSet = GENERIC_TERMINAL_DAMAGE_OPTIONS;
   }
   
-  // Collect all observation_keys to fetch labels from DB
+  // Collect all observation_keys to fetch labels from DB.
+  // FIX (BUG B): observation_translations.observation_code is stored lowercase
+  // in the DB; runtime carries UPPERCASE. Query both cases and match
+  // case-insensitively so we don't fall back to the formatted-code path.
   const observationKeys = optionSet.map(opt => opt.observation_key);
-  
+  const queryCodes = Array.from(new Set([
+    ...observationKeys.map(k => k.toUpperCase()),
+    ...observationKeys.map(k => k.toLowerCase()),
+  ]));
+
   // Load labels from observation_translations (SSOT)
   const labelMap = new Map<string, string>();
   try {
     const { data, error } = await supabaseClient
       .from('observation_translations')
       .select('observation_code, display_text, description_text')
-      .in('observation_code', observationKeys)
+      .in('observation_code', queryCodes)
       .eq('language_code', normalizedLang);
-    
+
     if (!error && data) {
       for (const row of data) {
-        const code = row.observation_code?.toUpperCase();
-        // Prefer description_text (farmer-friendly) when it's substantive
-        const hasGoodDescription = row.description_text && 
-          row.description_text.length > 10 &&
-          row.description_text.length > (row.display_text?.length || 0);
-        labelMap.set(code, hasGoodDescription ? row.description_text : row.display_text);
+        const code = (row.observation_code || '').toUpperCase();
+        // FIX (BUG A): prefer display_text strictly; description_text only
+        // when display_text is missing. Length-based promotion of
+        // description_text caused Latin pathogen names to surface as chips.
+        const display = (row.display_text || '').trim();
+        const desc = (row.description_text || '').trim();
+        const label = display || desc;
+        if (label) labelMap.set(code, label);
       }
     }
   } catch (err) {
