@@ -452,6 +452,17 @@ export function evaluateRulesLayered(
     console.warn('⚠️ [LayeredRuleEvaluator] No rules to evaluate - returning empty result');
     return result;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // [CANDIDATE_FUNNEL] FORENSIC INSTRUMENTATION (read-only)
+  // Tally how many rules survive each pre-filter stage so we can pinpoint
+  // exactly where candidates collapse to 0. Does NOT mutate rules.
+  // ═══════════════════════════════════════════════════════════════════════════
+  try {
+    logCandidateFunnel(safeRules, state as any, traceId);
+  } catch (e) {
+    console.warn(`[CANDIDATE_FUNNEL] instrumentation error: ${e instanceof Error ? e.message : String(e)}`);
+  }
   
   // PHASE-17: Graph control context - track fired rules and their blocking relationships
   const firedRules = new Map<string, string[]>(); // rule_id -> blocks_rule_ids
