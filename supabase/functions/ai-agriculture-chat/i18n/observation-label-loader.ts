@@ -68,6 +68,25 @@ export interface ObservationLabel {
 }
 
 /**
+ * Strip technical artifacts (Latin binomials, parenthetical scientific names,
+ * trailing "— Pathogen + Pathogen" clauses) from a label that may have been
+ * sourced from `description_text`. Defensive safety net so chips never render
+ * with scientific jargon even if a future caller passes the long form.
+ */
+export function stripTechnicalArtifacts(text: string): string {
+  if (!text) return '';
+  let out = text;
+  // Remove "— ...Latin..." or "- ...Latin..." trailing clause when it contains a Latin word
+  out = out.replace(/\s*[—–-]\s*[^—–\-()]*\b[A-Z][a-z]+\s+[a-z]+\b[^—–\-()]*$/u, '');
+  // Remove parenthetical Latin binomials e.g. "(Dicladispa armigera)"
+  out = out.replace(/\s*\(\s*[A-Z][a-z]+\s+[a-z]+[^)]*\)/gu, '');
+  // Collapse whitespace
+  out = out.replace(/\s{2,}/g, ' ').trim();
+  // If we accidentally emptied it, return original
+  return out || text.trim();
+}
+
+/**
  * Load observation labels from database for given codes and language
  * SSOT: All display text comes from observation_translations table
  */
