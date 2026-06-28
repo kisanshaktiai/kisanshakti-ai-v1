@@ -2172,6 +2172,13 @@ export class AIAgentOrchestrator {
             known_observations: allObservations,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
+          console.log(
+            `   🔎 [SELECTION_TRACE] resolved_key=${stateWithQuery.primary_symptom} ` +
+            `visual_symptoms=${(stateWithQuery.visual_symptoms || []).length} ` +
+            `confirmed=${(stateWithQuery.confirmed_observations || []).length} ` +
+            `crop=${(canonicalState as any).crop_code || (canonicalState as any).crop} ` +
+            `stage=${(canonicalState as any).growth_stage || (canonicalState as any).crop_stage}`
+          );
           const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
