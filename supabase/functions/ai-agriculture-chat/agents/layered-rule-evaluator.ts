@@ -406,111 +406,6 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
  * PHASE-17: Enhanced rule evaluation with graph control, ETL, and safety
  * CRITICAL: All array operations are now null-safe to prevent crashes
  */
-// ═══════════════════════════════════════════════════════════════════════════
-// [CANDIDATE_FUNNEL] — forensic per-stage drop counter.
-// Read-only. Walks the same pre-filters as convertBundledToRule.when.custom
-// so we can prove which gate eliminates candidates for a given turn.
-// ═══════════════════════════════════════════════════════════════════════════
-function logCandidateFunnel(rules: any[], state: any, traceId: string): void {
-  const cropCodeAliases: Record<string, string[]> = {
-    'SC': ['SUGARCANE', 'SUGAR_CANE', 'USCANE', 'CANE'],
-    'CTN': ['COTTON', 'KAPAS'],
-    'WH': ['WHEAT', 'GEHUN'],
-    'RIC': ['RICE', 'PADDY', 'DHAN'],
-    'SOY': ['SOYBEAN', 'SOYA'],
-    'MAZ': ['MAIZE', 'CORN', 'MAKKA'],
-    'GRN': ['GROUNDNUT', 'PEANUT'],
-    'ON': ['ONION', 'KANDA'],
-    'TOM': ['TOMATO'],
-    'POT': ['POTATO', 'ALOO'],
-  };
-  const STAGE_FAMILIES: Record<string, string[]> = {
-    GERMINATION:   ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
-    EMERGENCE:     ['EMERGENCE', 'GERMINATION', 'SEEDLING', 'NURSERY', 'ESTABLISHMENT'],
-    SEEDLING:      ['SEEDLING', 'NURSERY', 'GERMINATION', 'EMERGENCE', 'ESTABLISHMENT'],
-    NURSERY:       ['NURSERY', 'SEEDLING', 'GERMINATION', 'EMERGENCE'],
-    ESTABLISHMENT: ['ESTABLISHMENT', 'SEEDLING', 'EMERGENCE', 'GERMINATION'],
-    TILLERING:     ['TILLERING', 'VEGETATIVE'],
-    VEGETATIVE:    ['VEGETATIVE', 'TILLERING'],
-    FLOWERING:     ['FLOWERING', 'REPRODUCTIVE', 'PANICLE_INITIATION', 'BOOTING'],
-    REPRODUCTIVE:  ['REPRODUCTIVE', 'FLOWERING', 'BOOTING', 'PANICLE_INITIATION'],
-    BOOTING:       ['BOOTING', 'PANICLE_INITIATION', 'FLOWERING', 'REPRODUCTIVE'],
-    PANICLE_INITIATION: ['PANICLE_INITIATION', 'BOOTING', 'FLOWERING', 'REPRODUCTIVE'],
-    GRAIN_FILLING: ['GRAIN_FILLING', 'MILK', 'DOUGH', 'MATURITY'],
-    MATURITY:      ['MATURITY', 'HARVEST', 'GRAIN_FILLING'],
-    HARVEST:       ['HARVEST', 'MATURITY'],
-  };
-  const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
-
-  const stateCropCode = (state?.crop_type || '').toString().toUpperCase();
-  const currentStage  = (state?.crop_stage || '').toString().toUpperCase().replace(/[\s-]/g, '_');
-  const isAuthoritativeStage = !!currentStage && !DEFAULT_STAGES.has(currentStage);
-  const family = STAGE_FAMILIES[currentStage] || [currentStage];
-
-  const confirmed: string[] = Array.isArray(state?.confirmed_observations) ? state.confirmed_observations : [];
-  const visual: string[]    = Array.isArray(state?.visual_symptoms)        ? state.visual_symptoms        : [];
-  const synthetic: string[] = Array.isArray(state?.synthetic_observations) ? state.synthetic_observations : [];
-  const allObs = Array.from(new Set([...confirmed, ...visual, ...synthetic].filter(Boolean)))
-    .map(s => String(s).toUpperCase().replace(/[\s-]/g, '_'));
-
-  const total = rules.length;
-  let afterCrop = 0;
-  let afterStage = 0;
-  const dropByCrop: Record<string, number> = {};
-  const dropByStage: Record<string, number> = {};
-  const sampleDropped: string[] = [];
-
-  for (const r of rules) {
-    // The rules passed here are already convertBundledToRule outputs. We need
-    // the raw bundled metadata — store it via the closure on convertBundledToRule.
-    // Fall back to inspecting `r.id` only; richer data lives on `r._bundled`.
-    const b = (r as any)._bundled || {};
-    const ruleCrop  = (b.crop_code || '').toString().toUpperCase();
-    const stageApp: string[] = Array.isArray(b.stage_applicable) ? b.stage_applicable : [];
-
-    // ── Crop variant gate
-    const universalCrop = !ruleCrop || ruleCrop === '*' || ruleCrop === 'ALL' || ruleCrop === 'UNIVERSAL';
-    let cropOk = universalCrop;
-    if (!cropOk && stateCropCode) {
-      if (ruleCrop === stateCropCode) cropOk = true;
-      else if (cropCodeAliases[ruleCrop]?.includes(stateCropCode)) cropOk = true;
-      else if (Object.entries(cropCodeAliases).some(([code, aliases]) =>
-        aliases.includes(stateCropCode) && code === ruleCrop)) cropOk = true;
-    }
-    if (!cropOk) {
-      dropByCrop[ruleCrop || 'EMPTY'] = (dropByCrop[ruleCrop || 'EMPTY'] || 0) + 1;
-      if (sampleDropped.length < 5) sampleDropped.push(`CROP:${r.id}(${ruleCrop})`);
-      continue;
-    }
-    afterCrop++;
-
-    // ── Stage family gate
-    let stageOk = true;
-    if (stageApp.length > 0 && isAuthoritativeStage) {
-      const norm = stageApp.map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
-      const wildcard = norm.some(s => s === '*' || s === 'ALL' || s === 'UNIVERSAL' || s === 'ANY');
-      if (!wildcard) {
-        stageOk = norm.some(s => s === currentStage || family.includes(s));
-        if (!stageOk) {
-          const key = norm.join('|');
-          dropByStage[key] = (dropByStage[key] || 0) + 1;
-          if (sampleDropped.length < 10) sampleDropped.push(`STAGE:${r.id}(${key})`);
-        }
-      }
-    }
-    if (stageOk) afterStage++;
-  }
-
-  console.log(
-    `[CANDIDATE_FUNNEL] trace=${traceId} crop=${stateCropCode || '?'} stage=${currentStage || '?'} ` +
-    `das=${state?.days_since_sowing ?? '?'} ` +
-    `loaded_total=${total} after_crop_variants=${afterCrop} after_stage_family=${afterStage} ` +
-    `confirmed_obs=[${allObs.join(',')}] ` +
-    `drop_by_crop=${JSON.stringify(dropByCrop)} drop_by_stage_keys=${Object.keys(dropByStage).length} ` +
-    `samples=[${sampleDropped.join(' ')}]`
-  );
-}
-
 export function evaluateRulesLayered(
   rules: Rule[], 
   state: CanonicalState,
@@ -556,17 +451,6 @@ export function evaluateRulesLayered(
   if (safeRules.length === 0) {
     console.warn('⚠️ [LayeredRuleEvaluator] No rules to evaluate - returning empty result');
     return result;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // [CANDIDATE_FUNNEL] FORENSIC INSTRUMENTATION (read-only)
-  // Tally how many rules survive each pre-filter stage so we can pinpoint
-  // exactly where candidates collapse to 0. Does NOT mutate rules.
-  // ═══════════════════════════════════════════════════════════════════════════
-  try {
-    logCandidateFunnel(safeRules, state as any, traceId);
-  } catch (e) {
-    console.warn(`[CANDIDATE_FUNNEL] instrumentation error: ${e instanceof Error ? e.message : String(e)}`);
   }
   
   // PHASE-17: Graph control context - track fired rules and their blocking relationships
@@ -1420,40 +1304,12 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             );
             
             if (!hasWildcard) {
-              // ───────────────────────────────────────────────────────────
-              // Phase Z FIX (H3): Stage-family equivalence.
-              // Rules tagged for an early-life stage (emergence/seedling)
-              // must remain reachable when the canonical stage is a
-              // semantically-equivalent neighbour (germination / nursery /
-              // establishment). The runtime previously used a strict
-              // `.includes()` which hard-blocked every emergence-failure
-              // rule when the land's current_crop_stage = GERMINATION.
-              // The family map MUST stay symmetric and crop-independent.
-              // ───────────────────────────────────────────────────────────
-              const STAGE_FAMILIES: Record<string, string[]> = {
-                GERMINATION:   ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
-                EMERGENCE:     ['EMERGENCE', 'GERMINATION', 'SEEDLING', 'NURSERY', 'ESTABLISHMENT'],
-                SEEDLING:      ['SEEDLING', 'NURSERY', 'GERMINATION', 'EMERGENCE', 'ESTABLISHMENT'],
-                NURSERY:       ['NURSERY', 'SEEDLING', 'GERMINATION', 'EMERGENCE'],
-                ESTABLISHMENT: ['ESTABLISHMENT', 'SEEDLING', 'EMERGENCE', 'GERMINATION'],
-                TILLERING:     ['TILLERING', 'VEGETATIVE'],
-                VEGETATIVE:    ['VEGETATIVE', 'TILLERING'],
-                FLOWERING:     ['FLOWERING', 'REPRODUCTIVE', 'PANICLE_INITIATION', 'BOOTING'],
-                REPRODUCTIVE:  ['REPRODUCTIVE', 'FLOWERING', 'BOOTING', 'PANICLE_INITIATION'],
-                BOOTING:       ['BOOTING', 'PANICLE_INITIATION', 'FLOWERING', 'REPRODUCTIVE'],
-                PANICLE_INITIATION: ['PANICLE_INITIATION', 'BOOTING', 'FLOWERING', 'REPRODUCTIVE'],
-                GRAIN_FILLING: ['GRAIN_FILLING', 'MILK', 'DOUGH', 'MATURITY'],
-                MATURITY:      ['MATURITY', 'HARVEST', 'GRAIN_FILLING'],
-                HARVEST:       ['HARVEST', 'MATURITY'],
-              };
-              const family = STAGE_FAMILIES[currentStage] || [currentStage];
-              const stageMatch = normalizedApplicableStages.some((s: string) =>
-                s === currentStage || family.includes(s)
-              );
+              // Strict stage matching - rule MUST be applicable to current stage
+              const stageMatch = normalizedApplicableStages.includes(currentStage);
               
               if (!stageMatch) {
                 if (bundled.priority && bundled.priority > 70) {
-                  console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
+                  console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage}`);
                 }
                 return false; // HARD GATE - Rule cannot fire at this stage
               }
@@ -1753,10 +1609,8 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       product_reference: bundled.rule_id
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
-    active: true,
-    // [CANDIDATE_FUNNEL] expose raw bundled metadata for forensic per-stage tally
-    _bundled: { crop_code: bundled.crop_code, stage_applicable: bundled.stage_applicable },
-  } as any;
+    active: true
+  };
 }
 
 function mapBundledCategory(category: string): RuleCategory {

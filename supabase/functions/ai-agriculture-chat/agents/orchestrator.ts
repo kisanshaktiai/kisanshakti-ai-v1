@@ -2166,17 +2166,10 @@ export class AIAgentOrchestrator {
           
           // Pass user_query AND visual_symptoms for rule matching
           // CRITICAL: visual_symptoms array is what evaluateConditionsJson checks!
-          // Phase Z FIX (H4): also propagate `confirmed_observations` so the
-          // bundled-rule evaluator (layered-rule-evaluator.ts:1439-1452) and
-          // the hypothesis evaluator both see the farmer-confirmed symbol set.
-          // Without this the bundle path silently fell back to visual_symptom
-          // = 'UNKNOWN' and hard-failed every conditions_json.observations[] check.
           const stateWithQuery = { 
             ...canonicalState, 
             user_query: farmerMessage,
             visual_symptoms: allObservations,
-            confirmed_observations: allObservations,
-            known_observations: allObservations,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
           const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);

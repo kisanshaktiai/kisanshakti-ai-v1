@@ -1,97 +1,199 @@
+# v3 — Decision Graph Navigator Refactor (Neuro-Symbolic Brain)
 
-# Candidate Rule Retrieval — Forensic Audit & Fix
+Supersedes v1 (Evidence Planner) and v2 (Evidence Selection Engine). Adopts reviewer verdict: the brain is a **Decision Graph**, not a hypothesis engine with an evidence layer. Reuses existing modules — no parallel state, no adapters, no new schema.
 
-## Problem (from production replay)
+## 1. Reuse map (do NOT create duplicates)
 
-```
-Intent ✅ → Clarification ✅ → Observation confirmed ✅ → Symbol merged ✅
-→ Rule cache loaded ✅ → Candidate rules = 0 ❌ → Generic monitoring response
-```
+Existing files keep their identity; we extend them in place.
 
-`SuppressionGuard SSOT check: rules=0, actions=0, responses=0` for crop=RICE, stage=SEEDLING, das=19. The break is **between rule cache load and `matchesConditions` invocation** — i.e. inside the `convertBundledToRule(...).when.custom` pre-filter funnel and/or the pre-filter that runs in `getAllRulesWithBundled(cropCode)`.
-
-## Scope
-
-Audit and fix **only** the candidate retrieval funnel:
-
-```
-getAllRulesWithBundled(cropCode)   ← crop variant filter
-  └─ convertBundledToRule().when.custom()
-        ├─ STAGE pre-filter        (stage_applicable / STAGE_FAMILIES)
-        ├─ CROP pre-filter         (cropCodeAliases)
-        ├─ OBSERVATION CATEGORY    (required_observation_category)
-        └─ PLANT PART              (required_plant_part)
-  └─ matchesConditions(rule, state) in evaluateRulesLayered
-```
-
-Out of scope: orchestrator, NLU, clarification, navigator, LLM, ontology, UI.
-
-## Phase 1 — Instrument the funnel (read-only)
-
-Add structured per-stage counters (single log block per turn, gated on `traceId`):
-
-```
-[CANDIDATE_FUNNEL] trace=… crop=RICE stage=SEEDLING das=19
-  loaded_total=…
-  after_crop_variants=…       (drop reason counts)
-  after_stage_family=…        (drop reason counts: stage_mismatch_N)
-  after_crop_alias=…
-  after_obs_category=…        (inferred_cats=[…])
-  after_plant_part=…          (inferred_parts=[…])
-  after_matchesConditions=…
-  state.visual_symptoms=[…] state.confirmed_observations=[…]
-  state.crop_type=… state.crop_stage=…
-```
-
-Counters are pure additions inside the existing `getAllRulesWithBundled` and the `when.custom` closure — no logic changes.
-
-## Phase 2 — Replay & diagnose
-
-1. Re-run the failing Marathi turn (RICE / SEEDLING / das=19, confirmed observation from clarification).
-2. Read the `[CANDIDATE_FUNNEL]` block and identify the **single transition** where the count collapses to 0.
-3. Confirm the runtime values used by the funnel match the symbolic state:
-   - `state.crop_type` vs rule `crop_code` (alias table covers `RICE` ↔ `RIC` ↔ `PADDY`?)
-   - `state.crop_stage` vs `stage_applicable` (family map covers `SEEDLING`?)
-   - `state.visual_symptoms` actually contains the confirmed observation code (not a UI label, not a canonical key only carried in `confirmed_observations`)
-   - `required_observation_category` / `required_plant_part` are derivable from the confirmed code
-
-## Phase 3 — Six targeted hypotheses
-
-| # | Hypothesis | Where to verify |
+| Concern | Existing file | Change |
 |---|---|---|
-| H1 | Confirmed observation lands in `state.confirmed_observations` but **not** in `state.visual_symptoms`, so category/plant-part inference returns ∅ and every rule with `required_observation_category` is dropped. | `convertBundledToRule.when.custom` lines 1388-1455 + the orchestrator site that builds `stateWithQuery` |
-| H2 | `getCropCodeVariants('RICE')` does not emit the short code `RIC` used in `bundled-rules`, so `getAllRulesWithBundled('RICE')` drops every rice rule at the loader stage. | `crop-code-normalizer` + `getAllRulesWithBundled` line 1256-1263 |
-| H3 | `cropCodeAliases['RIC']` exists (`['RICE','PADDY','DHAN']`) but the inverse (`state.crop_type='RICE'`, rule `crop_code='RIC'`) returns `false` because the reverse-alias branch tests `code === ruleCropCode` after the forward check already failed. Edge case for short-code rules. | lines 1367-1382 |
-| H4 | Confirmed code is canonical (e.g. `RICE_SEEDLING_NOT_EMERGED`) but the CATEGORY_PATTERNS keyword list has no token matching it, so `inferredCategories=∅` and any rule that declares `required_observation_category` is excluded. | lines 1395-1411 |
-| H5 | `stage_applicable` on the relevant emergence-failure rules is something the family map doesn't include (e.g. `PRE_EMERGENCE`, `SOWING`), so the Phase Z family fix still misses. | lines 1317-1336 |
-| H6 | DEFAULT_STAGES includes `''` only, but the runtime stage arrives lowercase (`seedling`) and normalizes correctly — verify there isn't a second path that bypasses normalization. | line 1289 |
+| Single runtime state | `runtime/graph-runtime-state.ts` | **Promote to sole `RuntimeGraphState`** (context + hypotheses + confirmed/denied + active rule nodes + history + confidence). Freeze per turn. Append-only `applyEvent`. |
+| Conversation snapshot | `runtime/conversation-state.ts` | Demote to *view* over `RuntimeGraphState`; remove independent storage. |
+| Hypothesis production | `decision/hypothesis-evaluator.ts` | Emit graph-native nodes `{ id, prior, posterior, predicates[], blocks[], requires[] }` directly. **No adapter file.** |
+| Evidence ownership | `decision/evidence-ledger.ts` | Becomes the confirmed/denied store inside `RuntimeGraphState`. |
+| Ontology gate | `runtime/farmer-observable-gate.ts` + `decision/iom-gate.ts` | Keep as-is (already lower_snake_case). |
+| Clarification vocabulary | `runtime/clarification-contract.ts` | Add `buildOptions({ keys, ctx, language, supabase })`; keep `loadClarificationCandidates` + `assertClarificationContract`. |
+| Intent | `decision/intent-resolver.ts` | Unchanged. |
 
-Only the hypotheses confirmed by the Phase 1 trace get a fix.
+New files (only two):
 
-## Phase 4 — Minimal in-place fix
+| New file | Role |
+|---|---|
+| `runtime/decision-graph-navigator.ts` | The brain's top-level reasoning owner. Pure function over `RuntimeGraphState`. |
+| `runtime/contradiction-engine.ts` | Pre-navigation check: utterance vs locked context (stage/crop/DAS). |
 
-Apply the **single** correction proven by the trace. Examples per hypothesis (only the proven one is applied):
+Files demoted/deleted:
 
-- H1: ensure `state.visual_symptoms` is populated from `confirmed_observations ∪ inferred` at the same `stateWithQuery` site we already touched in the previous fix. No new data source.
-- H2: extend `getCropCodeVariants` (or the loader filter) so DB short codes (`RIC`, `SC`, …) are always included alongside the long form — driven by the existing `cropCodeAliases` table, not a new hardcode.
-- H3: collapse the alias check into one symmetric lookup (`aliasMatches(ruleCropCode, stateCropCode)`).
-- H4: when `required_observation_category` is set but `inferredCategories` is empty, fall through to `matchesConditions` instead of hard-dropping — the inner predicate evaluator already handles category mismatch correctly via `conditions_json`. Pre-filter must never reject on absence of inference signal.
-- H5: extend `STAGE_FAMILIES` rows in place (no new abstraction) for any missing neighbor proven by trace.
+- `agents/clarification-strategy.ts::fetchRuleDrivenClarificationOptions` → `return null` + `[DEPRECATED]`.
+- `agents/clarification-renderer.ts` → drop `BASE_TEMPLATES.options` for DIAGNOSIS/REFINE scopes.
+- `agents/clarification-generator.ts::generateScopedClarification` REFINE branch → delegate to navigator+builder.
+- `decision/diagnosis-first-generator.ts::humanizeCode` UI emission paths → removed.
 
-No fallback recommendations. No crop hardcoding. No bypass of the symbolic graph.
+## 2. Final pipeline (single owner = Decision Graph Navigator)
 
-## Phase 5 — Verify
+```text
+Farmer
+   → LLM Understanding
+   → Canonical Context Lock (land → crop → stage → DAS → weather)
+   → Contradiction Engine                ← halts on STAGE_MISMATCH etc.
+   → RuntimeGraphState.applyEvent(USER_TURN)
+   → Decision Graph Navigator            ← SOLE reasoning owner
+        ├─ activate reachable nodes (stage/crop/intent gates)
+        ├─ score hypotheses (existing evaluator, in-graph)
+        ├─ enumerate candidate evidence from active node predicates
+        ├─ rank by graph pruning power (#branches eliminated)
+        ├─ stopping-criterion check
+        └─ emit Decision ∈ { PROCEED | ASK | CONTEXT_CONTRADICTION | INSUFFICIENT_EVIDENCE }
+   → Clarification Builder (vocabulary + i18n only, IOM-gated)
+   → Outbound Contract Gate
+   → UI
+   → on farmer reply: RuntimeGraphState.applyEvent(OPTION_SELECTED) → loop
+   → PROCEED → Rule Evaluation → Recommendation
+```
 
-1. Replay the failing RICE/SEEDLING turn → assert `[CANDIDATE_FUNNEL]` shows `after_… > 0` at every stage and `rules_matched ≥ 1`.
-2. Replay one sugarcane turn and one cotton turn → assert no regression in their funnel counts.
-3. Negative test: a deliberately mismatched observation (wrong category) must still produce a structured `INSUFFICIENT_EVIDENCE` proof listing the eliminating filter — never a silent monitoring fallback.
+## 3. `RuntimeGraphState` (single SSOT)
 
-## Deliverables
+Extend `runtime/graph-runtime-state.ts`:
 
-- One instrumented `[CANDIDATE_FUNNEL]` log block (kept in production at INFO).
-- One targeted fix in `layered-rule-evaluator.ts` (and/or `crop-code-normalizer.ts`) for the proven hypothesis.
-- Edge function deployed; replay screenshot of the funnel counts before/after.
+```ts
+interface RuntimeGraphState {
+  readonly turn: number;
+  readonly context: CanonicalContext;            // frozen at lock
+  readonly hypotheses: GraphNode[];              // { id, prior, posterior, predicates, blocks, requires, stage_scope }
+  readonly confirmed: Map<string, EvidenceRecord>;
+  readonly denied:    Map<string, EvidenceRecord>;
+  readonly activeNodeIds: Set<string>;           // reachable given context + confirmed
+  readonly history: TurnEvent[];                 // append-only
+  readonly versions: SnapshotVersions;           // ontology/rules versions
+}
+applyEvent(prev, event): RuntimeGraphState      // pure, frozen result
+```
 
-## Out of scope (do not touch)
+Rule: **every reader (navigator, evaluator, narrator, audit) reads `RuntimeGraphState` only**. Delete any side caches in orchestrator that duplicate this.
 
-Orchestrator, NLU, clarification, navigator, ontology, LLM narration, UI, schema, new tables, new abstractions.
+## 4. Decision Graph Navigator (`runtime/decision-graph-navigator.ts`)
+
+Pure, no DB IO at call time (knowledge pre-loaded into state):
+
+```ts
+interface NavigationResult {
+  decision: 'PROCEED' | 'ASK' | 'CONTEXT_CONTRADICTION' | 'INSUFFICIENT_EVIDENCE';
+  reason: string;
+  ranked: EvidenceRequest[];   // explainable graph
+  stopping: { confidence: number; margin: number; activeHypotheses: number; predicatesSatisfied: boolean };
+}
+
+interface EvidenceRequest {
+  evidence_key: string;                    // canonical lower_snake_case
+  prunes_hypotheses: string[];             // node IDs eliminated if denied
+  confirms_hypotheses: string[];           // node IDs strongly supported if confirmed
+  graph_pruning_score: number;             // primary ranker — see §4.2
+  supporting: Array<{ hypothesis_id: string; reason: string }>;
+}
+```
+
+### 4.1 Activation
+`activeNodeIds = { h ∈ hypotheses | stage ∈ h.stage_scope ∧ crop ∈ h.crop_scope ∧ !violates(confirmed ∪ denied, h.blocks) ∧ satisfies(confirmed, h.requires) }`.
+
+### 4.2 Ranking — graph pruning, not entropy
+For each candidate `evidence_key e` referenced by any active node's `predicates`:
+
+```text
+prunes(e)   = |{ h ∈ active | e ∈ h.blocks   ∨ (e ∈ h.requires ∧ denial would falsify h) }|
+confirms(e) = |{ h ∈ active | e ∈ h.requires ∧ confirmation would satisfy h }|
+score(e)    = prunes(e) + confirms(e) − redundancy(e, confirmed)
+```
+
+Tie-break: lower elicitation cost via `observation_master.is_easy_to_observe` if present (no new column). Ontology-gate every candidate; drop those failing IOM/master.
+
+### 4.3 Stopping criterion (`PROCEED`)
+ALL of:
+1. `|activeHypotheses| ≤ 1` OR `margin(top, second) ≥ θ_margin(stage)` (existing `stage_thresholds`).
+2. `requires(top) ⊆ confirmed` AND `blocks(top) ⊆ denied ∪ unknown`.
+3. Turn count ≤ `max_clarification_rounds(intent)`.
+
+### 4.4 Other decisions
+- `CONTEXT_CONTRADICTION`: returned only if Contradiction Engine flagged the turn (navigator skipped).
+- `INSUFFICIENT_EVIDENCE`: `activeHypotheses` empty OR `ranked` empty after ontology gate → deterministic insufficient-evidence response; never invent options.
+- `ASK`: otherwise. UI receives `ranked.slice(0, N)` via builder.
+
+## 5. Contradiction Engine (`runtime/contradiction-engine.ts`)
+
+Reads `intent_assertion_pattern.stage_compatibility` + `RuntimeGraphState.context`. Emits `CONTRADICTION { kind, assertion, context }` for mismatches (e.g., "hasn't germinated" with `stage=tillering`). Orchestrator surfaces deterministic reconciliation prompt **before** hypothesis activation. No symptom synthesis.
+
+## 6. Orchestrator changes (`agents/orchestrator.ts`)
+
+Replace the three competing producers with one path:
+
+```text
+state0 = RuntimeGraphState.fromTurn(canonicalContext, evaluator.preload(...))
+contradiction = contradictionEngine.check(utterance, state0)
+if contradiction: return reconciliationResponse(contradiction)
+state1 = applyEvent(state0, USER_TURN(utterance))
+nav   = decisionGraphNavigator.navigate(state1)
+switch nav.decision:
+  PROCEED               → existing rule evaluator on state1.hypotheses[0]
+  ASK                   → opts = clarificationContract.buildOptions(nav.ranked.slice(0,N), ctx)
+                          opts = assertClarificationContract(opts, allowed)
+                          return clarificationResponse(opts)
+  INSUFFICIENT_EVIDENCE → return insufficientEvidenceResponse()
+  CONTEXT_CONTRADICTION → already handled above
+```
+
+Delete calls to: `fetchRuleDrivenClarificationOptions`, `generateScopedClarification` (REFINE), diagnosis-first IOM inline. Add single `[CLARIFICATION_OWNER] producer=DECISION_GRAPH_NAVIGATOR` log per turn.
+
+## 7. Audit (`runtime/runtime-trace-collector.ts` + `audit-logger.ts`)
+
+Persist per turn into existing `ai_decision_log`: `decision`, `reason`, `ranked` (full evidence graph JSON), `active_node_ids`, `stopping`. No schema migration — write into existing JSONB columns (`evidence_graph_json` already added in earlier Phase Y; reuse).
+
+## 8. What is explicitly NOT done
+
+- No new DB columns (`evidence_likelihood`, `elicitation_cost`) — defer until graph correctness is proven by replay.
+- No `HypothesisGraph` adapter file — evaluator emits graph-native nodes.
+- No entropy-only ranking — graph pruning is the primary signal (entropy retained as tie-break only if `posterior` is present).
+- No second state object — `SymbolicState` and `ConversationState` collapse into `RuntimeGraphState`.
+- No frontend, LLM-prompt, or rule-engine changes.
+
+## 9. Migration order (graph-correctness first)
+
+1. **Stabilize graph**: extend `graph-runtime-state.ts` to full `RuntimeGraphState`; route orchestrator through it (read-only at first, side caches kept for parity).
+2. **Prove graph**: shadow log every turn's `RuntimeGraphState`; replay 100 historical turns; assert state-divergence == 0 vs current behavior.
+3. **Ship navigator behind flag** `DECISION_GRAPH_NAVIGATOR=on` (default off). All three legacy producers still live.
+4. **Replace clarification**: flip flag per tenant; verify acceptance §10; delete legacy producers when zero `[CONTRACT_VIOLATION]` for 24h.
+5. **Add contradiction engine**: enable after step 4 stable.
+6. **Optional enrichment**: only after §10 passes for 7 days, consider `evidence_likelihood` / `elicitation_cost` columns.
+
+## 10. Acceptance criteria
+
+1. Rice / "hasn't germinated" / SEEDLING DAS 17 → `ASK`, options ⊆ {`seed_not_germinated`,`germination_failure`,`obs_rice_no_emergence`,`poor_germination`}. Zero `CROP_STAGE` / `MANAGEMENT_PLANNING` / `TUNGRO_*` / `block_rule_triggered`.
+2. Rice "hasn't germinated" with `stage=tillering` → `CONTEXT_CONTRADICTION`; reconciliation prompt; no hypothesis activation.
+3. Three close hypotheses → top question is the one whose denial/confirmation prunes the most active nodes (graph-pruning rank, verified in `ranked` JSON).
+4. One discriminating answer → `PROCEED`; no further clarification.
+5. `ai_decision_log` contains `ranked`, `active_node_ids`, `decision`, `reason`, `stopping` per turn.
+6. Grep checks: zero reads of `decision_rules.conditions_json` under `runtime/`; `fetchRuleDrivenClarificationOptions` returns `null` 100% of paths; no `BASE_TEMPLATES.options` reachable from REFINE/DIAGNOSIS scope.
+7. 100-turn replay across rice/sugarcane/cotton: zero `[CONTRACT_VIOLATION]`, zero state-divergence between legacy and navigator paths during shadow window.
+
+## 11. Scale notes (1M users)
+
+- Navigator is pure in-memory over a frozen state; no DB IO.
+- Knowledge preload at session start uses existing paginated loaders (rules, observation_master, IOM) — already cached per (crop, stage).
+- `RuntimeGraphState` is per-turn allocation, freed after response; no global mutation.
+- All DB reads remain indexed `.in()` lookups (IOM, master, translations) — unchanged from contract.
+
+## 12. Implementation status
+
+- Phase 1 — `runtime/graph-runtime-state.ts` promoted to `RuntimeGraphState`; orchestrator routes through it. ✅
+- Phase 2 — Shadow logging via `runtime/navigator-adapter.ts` stamping `runtime_trace.navigator_shadow`. ✅
+- Phase 3 — Flag-gated active mode via `runtime/navigator-flag.ts` (`DECISION_GRAPH_NAVIGATOR`, `DECISION_GRAPH_NAVIGATOR_TENANTS`). ✅
+- Phase 4 — Active-mode response override via `runtime/navigator-response.ts` wired into both clarification emission sites in `agents/orchestrator.ts` (scoped + rule-driven). Legacy producers still live; navigator wins only when flag is ACTIVE for the tenant. ✅
+- Phase 5 — Contradiction engine (`runtime/contradiction-engine.ts`) runs inside the adapter pre-navigation; `CONTEXT_CONTRADICTION` decisions short-circuit to empty options via the override helper. ✅
+- Phase 6 — Deferred until §10 acceptance passes for 7 days (no schema changes).
+
+To enable in production for a tenant:
+```
+DECISION_GRAPH_NAVIGATOR_TENANTS="tenant_uuid_1,tenant_uuid_2"
+# or globally:
+DECISION_GRAPH_NAVIGATOR="on"
+```
+Verify via `[NAVIGATOR_CAPTURE]` and `[NAV_OVERRIDE]` log lines and the `navigator_shadow` payload in `ai_decision_log`.
