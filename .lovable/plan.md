@@ -1,91 +1,97 @@
 
-# Mission
+# Candidate Rule Retrieval — Forensic Audit & Fix
 
-Clarification generation is correct. After the farmer confirms a valid observation, the pipeline still returns a generic monitoring response instead of executing a symbolic rule. Find the exact stage that drops the confirmed symbol or fails to advance the decision graph, fix it in place, and prove the fix by replaying the failing turn end-to-end. No new architecture, no hardcoded crop logic, no LLM shortcuts.
+## Problem (from production replay)
 
-# Phase 1 — Forensic trace of one failing turn (read-only)
+```
+Intent ✅ → Clarification ✅ → Observation confirmed ✅ → Symbol merged ✅
+→ Rule cache loaded ✅ → Candidate rules = 0 ❌ → Generic monitoring response
+```
 
-Goal: produce a single execution graph of the live production path for the failing Marathi turn ("या शेतातील पिक अजून उगवले नाही" → confirmed observation → generic response).
+`SuppressionGuard SSOT check: rules=0, actions=0, responses=0` for crop=RICE, stage=SEEDLING, das=19. The break is **between rule cache load and `matchesConditions` invocation** — i.e. inside the `convertBundledToRule(...).when.custom` pre-filter funnel and/or the pre-filter that runs in `getAllRulesWithBundled(cropCode)`.
 
-Steps:
-1. Replay the conversation via `supabase--curl_edge_functions` against `ai-agriculture-chat` with the actual conversation_id and selected option, capturing the full `runtimeTrace` and `brain-trace` output.
-2. Walk the active code path in order and record input/output/owner at each stage:
-   - `index.ts` request handler
-   - `orchestrator.processQuery`
-   - LLM understanding (`llm-understanding-layer.ts`, `nlu-agent.ts`)
-   - Canonical context lock (`canonical-state-builder.ts`, `context-manager.ts`)
-   - `runtime/contradiction-engine.ts`
-   - Clarification path on the **reply turn** — confirm whether `OPTION_SELECTED` is treated as a confirmed observation or re-enters the clarification loop
-   - `runtime/graph-runtime-state.ts::applyEvent` — confirm the confirmed symbol enters `confirmed` map with the canonical key
-   - `decision/hypothesis-evaluator.ts` — confirm it consumes the updated state
-   - `agents/rule-engine-executor.ts` / `decision/symbolic-reasoner.ts` — confirm candidate retrieval scope
-   - `agents/layered-rule-evaluator.ts` — per-predicate PASS/FAIL/NOT_APPLICABLE
-   - `agents/deterministic-response-builder.ts` vs `agents/llm-response-generator.ts` — which branch produced the final response, and why
-3. At each stage record: did the confirmed symbol propagate unchanged? If renamed/dropped, where exactly?
+## Scope
 
-Deliverable: a single annotated trace document (markdown) with file:line citations and the **proven failure stage**.
+Audit and fix **only** the candidate retrieval funnel:
 
-# Phase 2 — Targeted hypotheses to confirm or reject
+```
+getAllRulesWithBundled(cropCode)   ← crop variant filter
+  └─ convertBundledToRule().when.custom()
+        ├─ STAGE pre-filter        (stage_applicable / STAGE_FAMILIES)
+        ├─ CROP pre-filter         (cropCodeAliases)
+        ├─ OBSERVATION CATEGORY    (required_observation_category)
+        └─ PLANT PART              (required_plant_part)
+  └─ matchesConditions(rule, state) in evaluateRulesLayered
+```
 
-Each hypothesis is checked against the Phase 1 trace; we fix only the ones the trace proves.
+Out of scope: orchestrator, NLU, clarification, navigator, LLM, ontology, UI.
 
-H1. Reply-turn intent misclassification: the option-selection reply is re-classified by NLU instead of being treated as an `OPTION_SELECTED` event, so the previously selected observation never reaches `confirmed`.
+## Phase 1 — Instrument the funnel (read-only)
 
-H2. Canonical key mismatch on write: clarification options carry one casing/shape (e.g. `crop_not_emerged`) but `applyEvent` writes a different key (uppercase code or display string), so `confirmed.has(canonical)` is false in the evaluator.
+Add structured per-stage counters (single log block per turn, gated on `traceId`):
 
-H3. Hypothesis activation gate drops all candidates after confirmation: `requires`/`blocks` are evaluated against a key shape the state doesn't contain, so `activeNodeIds` collapses to ∅ → `INSUFFICIENT_EVIDENCE` → narrator falls through to generic monitoring.
+```
+[CANDIDATE_FUNNEL] trace=… crop=RICE stage=SEEDLING das=19
+  loaded_total=…
+  after_crop_variants=…       (drop reason counts)
+  after_stage_family=…        (drop reason counts: stage_mismatch_N)
+  after_crop_alias=…
+  after_obs_category=…        (inferred_cats=[…])
+  after_plant_part=…          (inferred_parts=[…])
+  after_matchesConditions=…
+  state.visual_symptoms=[…] state.confirmed_observations=[…]
+  state.crop_type=… state.crop_stage=…
+```
 
-H4. Rule candidate retrieval scope query excludes germination/emergence stage family (stage equivalence not applied at the SQL/in-memory filter step) so zero candidate rules load for the confirmed symbol.
+Counters are pure additions inside the existing `getAllRulesWithBundled` and the `when.custom` closure — no logic changes.
 
-H5. Predicate evaluator returns "no rule matched" without per-predicate verdicts, and the orchestrator's fallback branch converts that into a monitoring narration instead of a deterministic `INSUFFICIENT_EVIDENCE` response with rejection reasons.
+## Phase 2 — Replay & diagnose
 
-H6. A legacy fallback path (e.g. `llm-response-generator.ts::generateLLMResponse` or a `generic_monitoring` template in `deterministic-response-builder.ts`) is still reachable after the navigator emits PROCEED-but-no-rule, silently overriding the symbolic verdict.
+1. Re-run the failing Marathi turn (RICE / SEEDLING / das=19, confirmed observation from clarification).
+2. Read the `[CANDIDATE_FUNNEL]` block and identify the **single transition** where the count collapses to 0.
+3. Confirm the runtime values used by the funnel match the symbolic state:
+   - `state.crop_type` vs rule `crop_code` (alias table covers `RICE` ↔ `RIC` ↔ `PADDY`?)
+   - `state.crop_stage` vs `stage_applicable` (family map covers `SEEDLING`?)
+   - `state.visual_symptoms` actually contains the confirmed observation code (not a UI label, not a canonical key only carried in `confirmed_observations`)
+   - `required_observation_category` / `required_plant_part` are derivable from the confirmed code
 
-# Phase 3 — Minimal in-place fixes
+## Phase 3 — Six targeted hypotheses
 
-Only the hypotheses Phase 1 proves get patched. Patches are constrained to existing files (no new abstractions):
+| # | Hypothesis | Where to verify |
+|---|---|---|
+| H1 | Confirmed observation lands in `state.confirmed_observations` but **not** in `state.visual_symptoms`, so category/plant-part inference returns ∅ and every rule with `required_observation_category` is dropped. | `convertBundledToRule.when.custom` lines 1388-1455 + the orchestrator site that builds `stateWithQuery` |
+| H2 | `getCropCodeVariants('RICE')` does not emit the short code `RIC` used in `bundled-rules`, so `getAllRulesWithBundled('RICE')` drops every rice rule at the loader stage. | `crop-code-normalizer` + `getAllRulesWithBundled` line 1256-1263 |
+| H3 | `cropCodeAliases['RIC']` exists (`['RICE','PADDY','DHAN']`) but the inverse (`state.crop_type='RICE'`, rule `crop_code='RIC'`) returns `false` because the reverse-alias branch tests `code === ruleCropCode` after the forward check already failed. Edge case for short-code rules. | lines 1367-1382 |
+| H4 | Confirmed code is canonical (e.g. `RICE_SEEDLING_NOT_EMERGED`) but the CATEGORY_PATTERNS keyword list has no token matching it, so `inferredCategories=∅` and any rule that declares `required_observation_category` is excluded. | lines 1395-1411 |
+| H5 | `stage_applicable` on the relevant emergence-failure rules is something the family map doesn't include (e.g. `PRE_EMERGENCE`, `SOWING`), so the Phase Z family fix still misses. | lines 1317-1336 |
+| H6 | DEFAULT_STAGES includes `''` only, but the runtime stage arrives lowercase (`seedling`) and normalizes correctly — verify there isn't a second path that bypasses normalization. | line 1289 |
 
-- Reply-turn handling: ensure orchestrator routes "option selected" replies straight to `RuntimeGraphState.applyEvent(OPTION_SELECTED)` with the canonical observation key from the prior turn's options metadata, **before** NLU re-classification can override it.
-- Canonical key normalization: single `canonicalizeObservationKey` call at the write site in `graph-runtime-state.ts::applyEvent` and at every read site (hypothesis activation, predicate eval, candidate retrieval). Remove any local lowercase/uppercase variants.
-- Stage-family equivalence: reuse the existing `STAGE_FAMILIES` table from `navigator-adapter.ts` inside candidate retrieval and predicate evaluation so germination/nursery/seedling/emergence/establishment are treated as one family (per existing memory rule).
-- Per-predicate verdicts: ensure `layered-rule-evaluator.ts` returns `{PASS|FAIL|NOT_APPLICABLE, reason}` for every predicate and that the orchestrator surfaces these into `runtimeTrace.rule_evaluation` instead of collapsing to "no rule matched".
-- Remove the silent monitoring fallback: when the navigator emits `INSUFFICIENT_EVIDENCE` or the evaluator produces zero winners, the orchestrator must return a deterministic insufficient-evidence response built from the rejection report, **never** call the LLM monitoring template. Delete or guard the offending fallback branch in `orchestrator.ts` / `deterministic-response-builder.ts`.
+Only the hypotheses confirmed by the Phase 1 trace get a fix.
 
-Each patch is a search-replace inside the existing file; no new files, no new schema, no crop-specific code.
+## Phase 4 — Minimal in-place fix
 
-# Phase 4 — Verification
+Apply the **single** correction proven by the trace. Examples per hypothesis (only the proven one is applied):
 
-1. Replay the failing Marathi conversation via `supabase--curl_edge_functions` and assert:
-   - `runtimeTrace.confirmed` contains the canonical observation key after the selection turn.
-   - `runtimeTrace.rule_evaluation` lists ≥1 candidate rule with per-predicate verdicts.
-   - Final response is either a deterministic recommendation **or** a deterministic insufficient-evidence response with the rejection report — never the generic monitoring narration.
-2. Run two additional replays on different crops/stages (e.g. sugarcane shoot-borer turn, rice tillering turn) to confirm no crop-specific regression.
-3. Spot-check `[CLARIFICATION_OWNER]` and `[BRAIN_TRACE]` edge logs for any remaining legacy producer or fallback marker.
+- H1: ensure `state.visual_symptoms` is populated from `confirmed_observations ∪ inferred` at the same `stateWithQuery` site we already touched in the previous fix. No new data source.
+- H2: extend `getCropCodeVariants` (or the loader filter) so DB short codes (`RIC`, `SC`, …) are always included alongside the long form — driven by the existing `cropCodeAliases` table, not a new hardcode.
+- H3: collapse the alias check into one symmetric lookup (`aliasMatches(ruleCropCode, stateCropCode)`).
+- H4: when `required_observation_category` is set but `inferredCategories` is empty, fall through to `matchesConditions` instead of hard-dropping — the inner predicate evaluator already handles category mismatch correctly via `conditions_json`. Pre-filter must never reject on absence of inference signal.
+- H5: extend `STAGE_FAMILIES` rows in place (no new abstraction) for any missing neighbor proven by trace.
 
-# Phase 5 — Dead-code sweep (only what Phase 1 proves dead)
+No fallback recommendations. No crop hardcoding. No bypass of the symbolic graph.
 
-Remove or `[DEPRECATED]`-guard any legacy execution path the trace shows is bypassed (e.g. legacy `fetchRuleDrivenClarificationOptions`, any second response-builder branch). No speculative deletions.
+## Phase 5 — Verify
 
-# Out of scope
+1. Replay the failing RICE/SEEDLING turn → assert `[CANDIDATE_FUNNEL]` shows `after_… > 0` at every stage and `rules_matched ≥ 1`.
+2. Replay one sugarcane turn and one cotton turn → assert no regression in their funnel counts.
+3. Negative test: a deliberately mismatched observation (wrong category) must still produce a structured `INSUFFICIENT_EVIDENCE` proof listing the eliminating filter — never a silent monitoring fallback.
 
-- New schema, new tables, new abstractions.
-- Architectural redesign.
-- Any crop-, pest-, disease-, observation-specific hardcoding.
-- LLM-generated agronomic recommendations.
+## Deliverables
 
-# Technical references
+- One instrumented `[CANDIDATE_FUNNEL]` log block (kept in production at INFO).
+- One targeted fix in `layered-rule-evaluator.ts` (and/or `crop-code-normalizer.ts`) for the proven hypothesis.
+- Edge function deployed; replay screenshot of the funnel counts before/after.
 
-- Pipeline owner: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-- Single state SSOT: `supabase/functions/ai-agriculture-chat/runtime/graph-runtime-state.ts`
-- Navigator: `supabase/functions/ai-agriculture-chat/runtime/decision-graph-navigator.ts` + `navigator-adapter.ts`
-- Evaluators: `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`, `agents/layered-rule-evaluator.ts`, `agents/rule-engine-executor.ts`
-- Response builders: `agents/deterministic-response-builder.ts`, `agents/llm-response-generator.ts`
-- Canonical keys: `runtime/clarification-contract.ts::canonicalizeObservationKey`
-- Stage-family table: `runtime/navigator-adapter.ts::STAGE_FAMILIES`
+## Out of scope (do not touch)
 
-# Deliverables
-
-1. Annotated execution-graph trace of the failing turn with proven root cause(s).
-2. Minimal in-place patch set across existing files only.
-3. Replay verification log for the failing turn + 2 cross-crop turns.
-4. Short dead-code removal note listing each deleted/guarded path with justification from the trace.
+Orchestrator, NLU, clarification, navigator, ontology, LLM narration, UI, schema, new tables, new abstractions.
