@@ -630,6 +630,17 @@ serve(async (req) => {
       pending_clarification_options?: string[];
       // SYMBOLIC IDENTITY: per-index observation_code captured at clarification render time
       pending_clarification_observation_keys?: string[];
+      // STRUCTURED SSOT: full option records preserving canonical observation_key
+      // alongside label/value. This is the authoritative source for resolving
+      // farmer selections back to symbolic observation codes — no heuristic
+      // label-to-key reconstruction. Legacy parallel arrays above are kept for
+      // backwards compatibility during rollout.
+      pending_clarification_options_structured?: Array<{
+        label: string;
+        value: string;
+        observation_key: string;
+        diagnostic_power?: string;
+      }>;
       // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
       lockedCropContext?: {
         crop_name?: string;
@@ -682,6 +693,7 @@ serve(async (req) => {
           console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
           sessionState.pending_clarification_options = [];
           sessionState.pending_clarification_observation_keys = [];
+          sessionState.pending_clarification_options_structured = [];
         }
         
         // Also clear land-specific context for general sessions
@@ -1074,6 +1086,7 @@ serve(async (req) => {
           // CRITICAL FIX 2: Pass pending clarification options for option matching
           pendingClarificationOptions: sessionState.pending_clarification_options || [],
           pendingClarificationObservationKeys: sessionState.pending_clarification_observation_keys || [],
+          pendingClarificationOptionsStructured: sessionState.pending_clarification_options_structured || [],
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
           // PART 10: Pass problems_discussed for session continuity
@@ -2096,13 +2109,25 @@ serve(async (req) => {
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
     const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
                                     orchestratorResponse.type === 'CLARIFICATION_NEEDED';
-    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
+    const rawOptions: any[] = orchestratorResponse.question?.options || [];
+    const clarificationOptions = rawOptions.map((o: any) => o?.label).filter(Boolean) ||
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
     // SYMBOLIC IDENTITY: persist observation_key per option index so the next
     // turn's OPTION_SELECTED can use the canonical code directly without
     // heuristic label-to-code reconstruction.
     const clarificationObservationKeys: string[] =
-      orchestratorResponse.question?.options?.map((o: any) => (o?.observation_key || '')) || [];
+      rawOptions.map((o: any) => (o?.observation_key || ''));
+    // STRUCTURED SSOT — full per-option record. This is what the next turn's
+    // option-selection resolver MUST consult; the parallel arrays above are
+    // kept only for backwards compatibility.
+    const clarificationOptionsStructured = rawOptions
+      .map((o: any) => ({
+        label: String(o?.label ?? ''),
+        value: String(o?.value ?? o?.label ?? ''),
+        observation_key: String(o?.observation_key ?? ''),
+        diagnostic_power: o?.diagnostic_power,
+      }))
+      .filter((o) => o.label || o.observation_key);
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
@@ -2276,6 +2301,7 @@ serve(async (req) => {
       // CRITICAL FIX: Clear pending options when clarification is answered
       pending_clarification_options: (isClarificationResponse && !clarificationAnswered) ? clarificationOptions : [],
       pending_clarification_observation_keys: (isClarificationResponse && !clarificationAnswered) ? clarificationObservationKeys : [],
+      pending_clarification_options_structured: (isClarificationResponse && !clarificationAnswered) ? clarificationOptionsStructured : [],
       // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
       lockedCropContext: lockedCropContextForSession,
       // Track clarification resolution
@@ -2333,6 +2359,7 @@ serve(async (req) => {
       console.log(`   persisted_locked_context:  ${JSON.stringify(decisionTracking.lockedCropContext)}`);
       console.log(`   persisted_pending_options: ${decisionTracking.pending_clarification_options?.length || 0}`);
       console.log(`   persisted_pending_obs_keys:${JSON.stringify(decisionTracking.pending_clarification_observation_keys)}`);
+      console.log(`   persisted_pending_structured:${decisionTracking.pending_clarification_options_structured?.length || 0} records`);
       console.log(`   persisted_decision_state:  ${decisionTracking.decision_state}`);
       console.log(`   ═══════════════════════════════════════════`);
     } catch (sessionUpdateError) {
