@@ -1753,8 +1753,10 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       product_reference: bundled.rule_id
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
-    active: true
-  };
+    active: true,
+    // [CANDIDATE_FUNNEL] expose raw bundled metadata for forensic per-stage tally
+    _bundled: { crop_code: bundled.crop_code, stage_applicable: bundled.stage_applicable },
+  } as any;
 }
 
 function mapBundledCategory(category: string): RuleCategory {
