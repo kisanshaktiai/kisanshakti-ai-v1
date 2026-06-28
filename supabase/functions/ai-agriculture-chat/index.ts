@@ -630,6 +630,17 @@ serve(async (req) => {
       pending_clarification_options?: string[];
       // SYMBOLIC IDENTITY: per-index observation_code captured at clarification render time
       pending_clarification_observation_keys?: string[];
+      // STRUCTURED SSOT: full option records preserving canonical observation_key
+      // alongside label/value. This is the authoritative source for resolving
+      // farmer selections back to symbolic observation codes — no heuristic
+      // label-to-key reconstruction. Legacy parallel arrays above are kept for
+      // backwards compatibility during rollout.
+      pending_clarification_options_structured?: Array<{
+        label: string;
+        value: string;
+        observation_key: string;
+        diagnostic_power?: string;
+      }>;
       // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
       lockedCropContext?: {
         crop_name?: string;
