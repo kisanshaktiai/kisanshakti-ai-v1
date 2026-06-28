@@ -100,19 +100,38 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     }
     
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-    
-    const { data, error } = await supabase
-      .from('decision_rules')
-      .select('*')
-      .eq('is_active', true)
-      .limit(3000);
-    
-    if (error) {
-      console.error('❌ [RuleLoader] Database error:', error.message);
-      return [];
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase-Z FIX 1 — Paginate decision_rules.
+    // PostgREST hard-caps at 1000 rows per request regardless of .limit().
+    // Without .range() pagination, large rule tables (1800+) are silently
+    // truncated to 1000, losing ~45% of crop-specific rules and producing
+    // "Rules matched: 0" for queries whose winner sits past row 1000.
+    // Mirrors the alias / observation_master paginators below.
+    // ═══════════════════════════════════════════════════════════════════════
+    const PAGE = 1000;
+    const MAX_PAGES = 5; // safety cap (5000 rules)
+    const allRows: any[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const { data: pageRows, error } = await supabase
+        .from('decision_rules')
+        .select('*')
+        .eq('is_active', true)
+        .order('rule_id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) {
+        console.error(`❌ [RuleLoader] Database error on page ${page}:`, error.message);
+        if (allRows.length === 0) return [];
+        break;
+      }
+      const chunk = pageRows || [];
+      allRows.push(...chunk);
+      if (chunk.length < PAGE) break;
     }
-    
-    console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database`);
+    const data = allRows;
+
+    console.log(`✅ [RuleLoader] Loaded ${data.length} rules from database (paginated)`);
     return (data || []).map(row => {
       // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
