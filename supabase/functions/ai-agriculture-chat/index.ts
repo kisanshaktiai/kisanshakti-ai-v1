@@ -693,6 +693,7 @@ serve(async (req) => {
           console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
           sessionState.pending_clarification_options = [];
           sessionState.pending_clarification_observation_keys = [];
+          sessionState.pending_clarification_options_structured = [];
         }
         
         // Also clear land-specific context for general sessions
