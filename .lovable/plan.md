@@ -1,101 +1,74 @@
-## Forensic Audit — Observation Labels + Post-Selection Decision-Rule Flow
+## Root Cause — verified against latest edge logs
 
-### 1. What I verified against the live DB
+The query "या शेतातील पिक अजून उगवले नाही" (rice not germinated) trace in the latest deploy:
 
-**`observation_translations` schema and content**
-- Columns: `observation_code, language_code, display_text, description_text, crop_code`.
-- Row counts: `en=1287`, `hi=1929`, `mr=1929`. ≥99% have non-empty `description_text` longer than `display_text`.
-- All `observation_code` values are stored **lowercase snake_case** (e.g. `rice_lodging`, `chilli_obs_aphid`, `rice_hispa_scraping`). 0 uppercase rows.
-- Real field semantics (sampled in mr):
-
-  | code | `display_text` (chip-ready short label) | `description_text` (agronomic note / tooltip) |
-  |---|---|---|
-  | `rice_lodging` | भात कोलमडले | वारा/पावसानंतर रोप तळाशी झुकले — जास्त नायट्रोजन व कमजोर खोडे |
-  | `chilli_obs_aphid` | मिरची मावा | कोवळ्या शेंड्यांवर माव्याच्या वसाहती; मधुस्राव व काळी काजळी, **CMV विषाणूचा वाहक** |
-  | `chilli_obs_damping_off` | मिरची रोप गलन (आर्द्र गलन) | नर्सरीत … जमिनीच्या पातळीवर कुजून पडते — **Pythium + Rhizoctonia** |
-  | `rice_hispa_scraping` | भात हिस्पा (खरडलेले पट्टे) | पानांवर पांढरे समांतर खरडलेले पट्टे — **Dicladispa armigera** |
-
-  **Conclusion**: `display_text` IS the farmer-friendly chip label. `description_text` is a longer agronomic explanation that frequently contains Latin pathogen names, virus IDs, pesticide hints — appropriate for a tooltip/help line, never for a chip.
-
-**`decision_rules` matching contract**
-- Authoritative match field: `conditions_json.observations[]`, also stored **lowercase snake_case** (e.g. `["bph_hopper_burn"]`, `["wbph_infestation"]`).
-- `agents/layered-rule-evaluator.ts` (lines 961, 991, 1298, 1388) normalizes BOTH the rule's observations AND the incoming `state.visual_symptoms` via `toUpperCase().replace(/[\s-]/g,'_')` before comparison. So as long as the symbol *reaches* the evaluator, case is not the problem.
-
-**Selection path (frontend → backend → rule engine)**
-- Frontend sends: `"<label> [obs_keys:OBSERVATION_KEY]"` (uppercased key).
-- `index.ts` extracts via `/\[obs_keys:([^\]]+)\]/`; falls back to `pending_clarification_options_structured[idx].observation_key` then to legacy parallel arrays (lines 1839–1879).
-- `orchestrator.ts` `OPTION_SELECTED` (lines 2189–2215) injects the resolved key into `state.visual_symptoms`, `confirmed_observations`, `known_observations`, and `primary_symptom`, then runs `evaluateRulesLayered`. **This pipeline is sound on paper.** The fallback responses observed in the last logs are coming from a different turn (first message, `symptoms=0` before any selection — not a post-selection turn).
-
-### 2. The real bugs (two, both presentation-layer / lookup-layer)
-
-#### BUG A — Inverted `display_text` ↔ `description_text` swap (5 sites)
-
-A "prefer the longer text as farmer-friendly" heuristic was bolted on top of the loaders. Because `description_text` is almost always longer than `display_text`, the branch fires on ~99% of rows and chips render as full sentences containing Latin names — exactly the "wrong wording, not practical farming" the user is reporting.
-
-```ts
-const hasGoodDescription = description_text &&
-  description_text.length > 10 &&
-  description_text.length > (display_text?.length || 0);
-// then: pick description_text as the chip label
+```
+Intent: GENERAL_CROP_INFO
+PHASE 3 SKIPPED — symbolic/advisory path active (rules=5, symptom_free=true, bypass=true)
+Layer 3 → 0/31 rules fired
+SymbolicBridge matchRulesByKeywords → 26 rules matched
+selectBestAction → "No rules with action_type - using fallback"
+convertToPrimaryDecision → Rule CROT_AFTER_SUGARCANE_SOYBEAN_003 missing action_type — deriving from product_type → URGENT_ACTION
+[INVARIANT] PRIMARY_DECISION valid → returns immediately
+Validation: FAILED  → UI sees final fallback msg
+[ObservationContract] BLOCKED 1 non-canonical entries at audit boundary: भात अजून उगवले नाही
 ```
 
-Sites:
-- `supabase/functions/ai-agriculture-chat/i18n/observation-label-loader.ts` (`loadObservationLabels`).
-- `supabase/functions/ai-agriculture-chat/i18n/translation-loader.ts` (`initializeTranslationCache` SOURCE 1).
-- `supabase/functions/ai-agriculture-chat/agents/diagnostic-options-i18n.ts` (~L146).
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (~L715, inside `translateClarificationOptions`).
-- `supabase/functions/ai-agriculture-chat/runtime/clarification-contract.ts` — already correct (`display_text || description_text`); keep as-is.
+So **the recent translation fix is not what removed the chips** — the chips never had a chance to render because:
 
-#### BUG B — Case-sensitive lookup against a lowercase table, then LLM "translation" fills the void
+1. Intent classifier maps the germination question to `GENERAL_CROP_INFO`.
+2. Intent contract for `GENERAL_CROP_INFO` is `clarification_mode=DIRECT, max_clarification_rounds=0` → `directHardBypass=true` (orchestrator L3170-3182).
+3. `DIRECT_MODE_VETO` (L4061) refuses to lift `directHardBypass` even when informative symptom observations are present.
+4. The chip-producing path `DIAGNOSIS-FIRST MODE` (L4336) is explicitly gated `&& !directHardBypass`, so it is skipped.
+5. The IOM hard-seed (L4072) drops 5 canonical obs codes into the rule input, but Layer 3 matches zero rules.
+6. `SymbolicBridge.matchRulesByKeywords` then matches 26 generic rules (flood prep, crop rotation), conflict-resolver finds **no rule has an `action_type`**, falls back to the first rule, `convertToPrimaryDecision` synthesises `URGENT_ACTION` from `product_type`.
+7. The HARD INVARIANT at L7330-7341 sees `primaryRuleId && primaryActionType` and returns immediately — bypassing the deferred-clarification gate at L6870 that would have shown chips.
+8. Downstream validation rejects the synthesized decision and the UI shows the final fallback message.
 
-`agents/orchestrator.ts:705-712` inside `translateClarificationOptions`:
-```ts
-const { data } = await supabaseClient
-  .from('observation_translations')
-  .select('observation_code, display_text, description_text')
-  .in('observation_code', codesToLookup)   // ← UPPERCASED codes
-  .eq('language_code', lang);
-```
-DB stores `observation_code` only in lowercase, so `.in()` returns **0 rows**. The function then falls through to its **GPT-4o-mini "translate these codes to rural language" path** (~L737), which hallucinates farmer wording for codes like `EMERGENCE_FAILURE`, `MUD_TUBES_PRESENT`, `WBPH_INFESTATION`. That's the "LLM is translating in realtime" effect the user noticed — and it produces inconsistent, non-practical phrasing every turn.
+Secondary leak: a raw Marathi sentence "भात अजून उगवले नाही" is being inserted into the observations array (audit logger blocks it). This means some upstream extractor is treating user text as an observation key — needs fixing so the audit isn't reporting drift on every turn.
 
-The same case-sensitivity exists in `diagnostic-options-i18n.ts:138`. `observation-label-loader.ts` already queries both cases (correct), and `clarification-contract.ts` normalizes to lowercase end-to-end (correct).
+## Fix Plan — minimal, behind named guards, no UI work
 
-### 3. Out-of-scope (verified working, do not touch)
+### 1. Stop synthesising PRIMARY_DECISION from rules with no real `action_type` (orchestrator.ts L7330-7341, conflict-resolver.ts `selectBestAction` / `convertToPrimaryDecision`)
 
-- LLM narration of the **response body** via `forceTranslate` — correct by design.
-- `OPTION_SELECTED` injection of `visual_symptoms` / `confirmed_observations` / `primary_symptom` into the rule engine — correct.
-- Case normalization inside `layered-rule-evaluator.ts` — correct.
-- `runtime/clarification-contract.ts` label resolution — correct.
-- No DB schema migration needed; data is sound.
+- In `conflict-resolver.ts`, when `selectBestAction` falls into the "no rules with action_type" branch, return `null` (or `{ status: 'NO_ACTIONABLE_RULE' }`) instead of forcing the first symbolic-bridge rule through `convertToPrimaryDecision`. Remove the `derive action_type from product_type` heuristic when the original rule had none — that is the source of the bogus `URGENT_ACTION`.
+- In the orchestrator HARD INVARIANT (L7334), additionally require:
+  - `decisionOutput.primary_decision.weighted_confidence >= 0.5`, AND
+  - the winner's rule had at least one matched observation (`primary_decision.application_details?.matched_observations?.length > 0` or `layeredRuleResult.rules_matched > 0`).
+- If any of those fail, do **not** return; fall through to the existing deferred-clarification path (L6870 / L4336).
 
-### 4. Fix Plan
+### 2. Allow chips to surface for symptom-laden `GENERAL_CROP_INFO` queries (orchestrator.ts L4060-4106, L4336)
 
-**Goal**: chips always render the short, farmer-friendly `display_text` in the requested language, sourced deterministically from the DB; `description_text` is exposed only as a secondary tooltip line. The LLM "translate codes" fallback is disabled because it is the source of wrong wording.
+Two scoped changes, both gated to "DIRECT-hard intent + informative observations present + no real rule fired":
 
-1. **Invert the heuristic in all 4 broken sites** so the chip label is the simple priority chain `display_text → description_text → formatted code fallback`. Files:
-   - `i18n/observation-label-loader.ts`
-   - `i18n/translation-loader.ts`
-   - `agents/diagnostic-options-i18n.ts`
-   - `agents/orchestrator.ts` (inside `translateClarificationOptions`)
+- **DIRECT_HARD_BYPASS soft-VETO**: in the block at L4059-4067, when `directHardBypass=true` AND `informativeNow.length > 0` AND the bridged IOM seed produced ≥ 2 canonical observations, set a new flag `directHardClarify=true` (do NOT clear `directHardBypass` — keep advisory routing intact for genuine "tell me about my crop" queries).
+- Change the `else if (diagnosisWithOptionalClarification && !directHardBypass)` gate at L4336 to also fire when `directHardClarify=true`. This lets the DIAGNOSIS-FIRST hypothesis-driven chip path (which already calls `loadIOMAllowed`, `evaluateCandidateHypotheses`, `formatForClarificationUI` and routes through `translateClarificationOptions` → DB labels) render the chips for ungerminated/poor-emergence queries.
 
-2. **Make `observation_translations` lookups case-insensitive everywhere.** In `orchestrator.ts` `translateClarificationOptions` and `diagnostic-options-i18n.ts`, query with both cases (or normalize codes to lowercase before `.in()`), then case-fold on the read side to map back. This is the proven pattern already used in `i18n/observation-label-loader.ts`.
+### 3. Defensive fallback at the deferred-clarification gate (orchestrator.ts L6870)
 
-3. **Disable the GPT-4o-mini "translate codes" fallback** inside `orchestrator.ts.translateClarificationOptions`. Replace with a deterministic chain:
-   1. Lowercase the code, look up in `observation_translations` for the requested language.
-   2. Fall back to English row.
-   3. Fall back to a language-aware code-formatter that DOES NOT title-case for non-English (already implemented in `observation-label-loader.formatCodeAsLabel`).
-   When nothing matches, log a `[OBS_LABEL_GAP]` warning so missing rows can be seeded later — never invent wording at runtime.
+When `pendingClarificationResponse` is null but `totalRulesMatched === 0` AND IOM seed produced ≥ 2 observations, build a minimal `pendingClarificationResponse` on the fly from the IOM allowed list (already loaded above as `iomSeed.allowedRanked`). Run those codes through `translateClarificationOptions` so labels stay DB-sourced (`display_text` per the recent BUG A/B fix). This is the safety net that guarantees a chip is shown instead of the URGENT_ACTION fallback even if a future routing change re-introduces a similar bypass.
 
-4. **Preserve dual output for UI**. Keep returning both `display_text` (chip) and `description_text` (secondary detail) in `ObservationLabel` and through `translateClarificationOptions` so the frontend can render the long form as a tooltip/sub-label without truncation.
+### 4. Stop the Marathi-text observation leak (audit log noise)
 
-5. **Add a strip-Latin safety net** for any path that still surfaces `description_text` as a chip label (defensive only): remove `— LatinName`, `(Latin Name)`, and trailing `;`-separated technical clauses before display. This protects against future loader regressions.
+`[ObservationContract] BLOCKED ... भात अजून उगवले नाही` shows raw farmer text is being added to the observations array somewhere. Grep `allObservationsForPreAuth.add(`, `confirmed_observations.push(`, `state.visual_symptoms.push(`, `authoredObservations.add(` for any path that pushes `farmerMessage` / `nluOutput.raw_text` / `intent.matched_text`. Reject anything that isn't `/^[A-Z][A-Z0-9_]+$/` at the source; do not just rely on the audit-time filter.
 
-6. **Post-selection invariant assertion (no behavior change, log only)**: in `orchestrator.ts` `OPTION_SELECTED`, after building `stateWithQuery`, log `[SELECTION_TRACE] resolved_key=<key> visual_symptoms=<n> primary_symptom=<x>`. This makes the next "fallback after selection" report trivially attributable to a missing key vs. a missing rule.
+### 5. `[SELECTION_TRACE]` for the new path
 
-### 5. Verification
+Add one log line at the new `directHardClarify` branch so the next forensic trace shows: `[DIRECT_HARD_CLARIFY] intent=<x> informative_obs=<n> iom_seed=<n> chips_emitted=<n>`.
 
-- Repro the failing mr session "या शेतातील पिक अजून उगवले नाही" and select one option.
-- Confirm chip text matches `observation_translations.display_text` row-for-row (e.g. `भात कोलमडले`, `मिरची मावा`) and NOT a long sentence with Latin/virus names.
-- Confirm `[SELECTION_TRACE]` log shows the chosen key and a non-zero `visual_symptoms` count.
-- Confirm `evaluateRulesLayered` matches the expected rule (e.g. for rice germination → `RICE_GERMINATION_DIAGNOSTIC_001`) and produces a structured response, not a unified-gate fallback.
-- Confirm the GPT-4o-mini "translate codes" call no longer appears in edge logs.
+## Verification
+
+- Replay "या शेतातील पिक अजून उगवले नाही" in mr.
+- Edge logs should show `[DIRECT_HARD_CLARIFY]` then `[DIAGNOSIS-FIRST]` then `Returning clarification with N options`.
+- UI receives a `CLARIFICATION_QUESTION` with chips whose labels come from `observation_translations.display_text` in Marathi (e.g. `भात उगवले नाही`, `अंकुरण कमी`, `रोपवाटिकेत मर`), not raw codes or fabricated URGENT_ACTION text.
+- `[ObservationContract] BLOCKED ...` no longer fires on this turn.
+- The "PRIMARY_DECISION RECOVERY: Using layered_rule_result.primary_decision" / `convertToPrimaryDecision missing action_type — deriving from product_type` log lines no longer appear for this query.
+- A normal advisory query like "मेरे खेत की मिट्टी कैसी है" still goes through DIRECT-hard advisory (no chips, no regression).
+
+### Files touched
+
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (sections 1–3, 5)
+- `supabase/functions/ai-agriculture-chat/agents/conflict-resolver.ts` (section 1)
+- One extractor file located by the grep in section 4 (likely `runtime/observation-ledger.ts` or `agents/intent-resolver.ts`)
+
+No DB migration. No UI changes. No edits to the recent BUG A/B label-loader fix.
