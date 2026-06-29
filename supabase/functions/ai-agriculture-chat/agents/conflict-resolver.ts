@@ -155,6 +155,17 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
       if (nonSprayAlternatives.length > 0) {
         // Non-spray alternatives exist - use the best one instead
         const bestNonSpray = selectBestAction(nonSprayAlternatives);
+        if (!bestNonSpray) {
+          // No non-spray alternative has a real action_type either – downgrade to monitoring
+          warnings.push(`⏱️ ${p2Delay.reason}`);
+          return {
+            status: 'SUCCESS',
+            primary_decision: createMonitoringDecision(),
+            blocked_actions,
+            secondary_actions,
+            warnings
+          };
+        }
         console.log(`🔄 [ConflictResolver] Switching from spray to non-spray: ${bestNonSpray.cause}`);
         
         // Add spray postponement warning
