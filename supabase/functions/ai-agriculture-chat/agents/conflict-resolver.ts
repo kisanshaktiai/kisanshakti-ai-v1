@@ -321,7 +321,7 @@ function getActionTypePriority(actionType?: string): number {
   return ACTION_TYPE_PRIORITY[actionType] ?? 50; // Default middle priority for unknown types
 }
 
-function selectBestAction(viableActions: RuleResult[]): RuleResult {
+function selectBestAction(viableActions: RuleResult[]): RuleResult | null {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRODUCTION HARDENING: Filter out rules without valid action_type FIRST
   // Then apply priority-based selection
@@ -336,10 +336,15 @@ function selectBestAction(viableActions: RuleResult[]): RuleResult {
     return hasActionType;
   });
   
-  // If no valid actions remain, return first viable action (fallback)
+  // CRITICAL FIX (Forensic 2026-06-28): When NO rule has a real action_type,
+  // do NOT promote the first viable rule and let convertToPrimaryDecision
+  // synthesise a bogus URGENT_ACTION (root cause of "germination → flood prep
+  // / crop rotation" misfires). Return null so the caller can short-circuit
+  // to a monitoring-only response and let the orchestrator fall through to
+  // the deferred-clarification path.
   if (validActions.length === 0) {
-    console.warn(`⚠️ [selectBestAction] No rules with action_type - using fallback`);
-    return viableActions[0];
+    console.warn(`⚠️ [selectBestAction] No rules with action_type - returning null (no actionable rule synthesis)`);
+    return null;
   }
   
   // Step 2: Score by action_type priority FIRST, then IPM level, then confidence
