@@ -121,8 +121,23 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   // are never blocked by weather when spray alternatives exist
   // ─────────────────────────────────────────────────────────────────────────
   const selectedAction = selectBestAction(viableActions);
+
+  // CRITICAL FIX (Forensic 2026-06-28): If no viable action has a real action_type,
+  // do NOT synthesise a URGENT_ACTION from product_type. Return a monitoring-only
+  // decision so the orchestrator's HARD INVARIANT fails the "has actionable rule"
+  // check and falls through to deferred clarification / chip rendering.
+  if (!selectedAction) {
+    return {
+      status: 'SUCCESS',
+      primary_decision: createMonitoringDecision(),
+      blocked_actions,
+      secondary_actions,
+      warnings: warnings.length > 0 ? warnings : ['No actionable rule fired for this query. Awaiting clarification.']
+    };
+  }
+
   const selectedIsSpray = isSprayAction(selectedAction);
-  
+
   console.log(`🎯 [ConflictResolver] Selected action: ${selectedAction.cause}, isSpray: ${selectedIsSpray}`);
   
   // ─────────────────────────────────────────────────────────────────────────
