@@ -121,8 +121,23 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   // are never blocked by weather when spray alternatives exist
   // ─────────────────────────────────────────────────────────────────────────
   const selectedAction = selectBestAction(viableActions);
+
+  // CRITICAL FIX (Forensic 2026-06-28): If no viable action has a real action_type,
+  // do NOT synthesise a URGENT_ACTION from product_type. Return a monitoring-only
+  // decision so the orchestrator's HARD INVARIANT fails the "has actionable rule"
+  // check and falls through to deferred clarification / chip rendering.
+  if (!selectedAction) {
+    return {
+      status: 'SUCCESS',
+      primary_decision: createMonitoringDecision(),
+      blocked_actions,
+      secondary_actions,
+      warnings: warnings.length > 0 ? warnings : ['No actionable rule fired for this query. Awaiting clarification.']
+    };
+  }
+
   const selectedIsSpray = isSprayAction(selectedAction);
-  
+
   console.log(`🎯 [ConflictResolver] Selected action: ${selectedAction.cause}, isSpray: ${selectedIsSpray}`);
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -140,6 +155,17 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
       if (nonSprayAlternatives.length > 0) {
         // Non-spray alternatives exist - use the best one instead
         const bestNonSpray = selectBestAction(nonSprayAlternatives);
+        if (!bestNonSpray) {
+          // No non-spray alternative has a real action_type either – downgrade to monitoring
+          warnings.push(`⏱️ ${p2Delay.reason}`);
+          return {
+            status: 'SUCCESS',
+            primary_decision: createMonitoringDecision(),
+            blocked_actions,
+            secondary_actions,
+            warnings
+          };
+        }
         console.log(`🔄 [ConflictResolver] Switching from spray to non-spray: ${bestNonSpray.cause}`);
         
         // Add spray postponement warning
@@ -321,7 +347,7 @@ function getActionTypePriority(actionType?: string): number {
   return ACTION_TYPE_PRIORITY[actionType] ?? 50; // Default middle priority for unknown types
 }
 
-function selectBestAction(viableActions: RuleResult[]): RuleResult {
+function selectBestAction(viableActions: RuleResult[]): RuleResult | null {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRODUCTION HARDENING: Filter out rules without valid action_type FIRST
   // Then apply priority-based selection
@@ -336,10 +362,15 @@ function selectBestAction(viableActions: RuleResult[]): RuleResult {
     return hasActionType;
   });
   
-  // If no valid actions remain, return first viable action (fallback)
+  // CRITICAL FIX (Forensic 2026-06-28): When NO rule has a real action_type,
+  // do NOT promote the first viable rule and let convertToPrimaryDecision
+  // synthesise a bogus URGENT_ACTION (root cause of "germination → flood prep
+  // / crop rotation" misfires). Return null so the caller can short-circuit
+  // to a monitoring-only response and let the orchestrator fall through to
+  // the deferred-clarification path.
   if (validActions.length === 0) {
-    console.warn(`⚠️ [selectBestAction] No rules with action_type - using fallback`);
-    return viableActions[0];
+    console.warn(`⚠️ [selectBestAction] No rules with action_type - returning null (no actionable rule synthesis)`);
+    return null;
   }
   
   // Step 2: Score by action_type priority FIRST, then IPM level, then confidence
