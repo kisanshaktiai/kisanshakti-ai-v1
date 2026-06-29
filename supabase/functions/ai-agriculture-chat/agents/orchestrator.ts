@@ -7330,11 +7330,30 @@ export class AIAgentOrchestrator {
       const primaryRuleId = decisionOutput.primary_decision?.rule_id || 
                             decisionOutput.primary_decision?.application_details?.rule_id;
       const primaryActionType = decisionOutput.primary_decision?.action_type;
-      
-      if (primaryRuleId && primaryActionType) {
+
+      // ─────────────────────────────────────────────────────────────────────
+      // FORENSIC FIX (2026-06-28): Add confidence + observation-evidence guard
+      // to the HARD INVARIANT. Previously, keyword-matched rules without any
+      // confirmed observation (e.g. flood prep / crop rotation fired by a
+      // generic Marathi query) were promoted to PRIMARY_DECISION, then
+      // rejected downstream → final fallback message reached the farmer
+      // instead of the clarification chips.
+      // ─────────────────────────────────────────────────────────────────────
+      const invariantObsCount = Array.from(allObservationsForPreAuth || []).length;
+      const invariantRulesMatched = (layeredRuleResult as any)?.rules_matched
+        ?? (layeredRuleResult as any)?.matched_rules?.length
+        ?? 0;
+      const invariantConfidence = decisionOutput.primary_decision?.weighted_confidence
+        ?? (decisionOutput.primary_decision as any)?.confidence
+        ?? 0;
+      const hasEvidence = invariantObsCount > 0 || invariantRulesMatched > 0;
+      const confidenceOk = invariantConfidence >= 0.5 || primaryActionType === 'MONITOR_ONLY';
+
+      if (primaryRuleId && primaryActionType && hasEvidence && confidenceOk) {
         console.log(`\n✅ [INVARIANT] PRIMARY_DECISION valid - generating immediate response`);
         console.log(`   rule_id: ${primaryRuleId}`);
         console.log(`   action_type: ${primaryActionType}`);
+        console.log(`   obs=${invariantObsCount} rules_matched=${invariantRulesMatched} conf=${invariantConfidence}`);
         
         // Complete audit trail
         await auditLogger.completeTurn(Date.now() - startTime);
