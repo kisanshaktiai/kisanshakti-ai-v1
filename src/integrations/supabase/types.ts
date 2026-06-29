@@ -4986,6 +4986,7 @@ export type Database = {
           created_at: string | null
           critical_moisture_percent: number | null
           crop_code: string
+          das_authoritative: boolean
           das_end: number | null
           das_start: number | null
           growth_stage: string
@@ -5008,6 +5009,7 @@ export type Database = {
           soil_ph_max: number | null
           soil_ph_min: number | null
           source_reference: string | null
+          stage_master_id: string | null
           sulphur_optimal: number | null
           updated_at: string | null
           variety_id: string | null
@@ -5018,6 +5020,7 @@ export type Database = {
           created_at?: string | null
           critical_moisture_percent?: number | null
           crop_code: string
+          das_authoritative?: boolean
           das_end?: number | null
           das_start?: number | null
           growth_stage: string
@@ -5040,6 +5043,7 @@ export type Database = {
           soil_ph_max?: number | null
           soil_ph_min?: number | null
           source_reference?: string | null
+          stage_master_id?: string | null
           sulphur_optimal?: number | null
           updated_at?: string | null
           variety_id?: string | null
@@ -5050,6 +5054,7 @@ export type Database = {
           created_at?: string | null
           critical_moisture_percent?: number | null
           crop_code?: string
+          das_authoritative?: boolean
           das_end?: number | null
           das_start?: number | null
           growth_stage?: string
@@ -5072,6 +5077,7 @@ export type Database = {
           soil_ph_max?: number | null
           soil_ph_min?: number | null
           source_reference?: string | null
+          stage_master_id?: string | null
           sulphur_optimal?: number | null
           updated_at?: string | null
           variety_id?: string | null
@@ -5079,6 +5085,13 @@ export type Database = {
           zinc_optimal?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "crop_baseline_guidelines_v2_stage_master_id_fkey"
+            columns: ["stage_master_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "crop_baseline_guidelines_v2_variety_id_fkey"
             columns: ["variety_id"]
@@ -6493,6 +6506,107 @@ export type Database = {
           },
         ]
       }
+      crop_stage_aliases: {
+        Row: {
+          alias_text: string
+          canonical_id: string
+          confidence: number | null
+          created_at: string | null
+          crop_code: string
+          id: string
+          language_code: string
+          origin_system: string | null
+          source_type: string
+        }
+        Insert: {
+          alias_text: string
+          canonical_id: string
+          confidence?: number | null
+          created_at?: string | null
+          crop_code: string
+          id?: string
+          language_code?: string
+          origin_system?: string | null
+          source_type?: string
+        }
+        Update: {
+          alias_text?: string
+          canonical_id?: string
+          confidence?: number | null
+          created_at?: string | null
+          crop_code?: string
+          id?: string
+          language_code?: string
+          origin_system?: string | null
+          source_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_stage_aliases_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_stage_graph: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          crop_code: string
+          crop_cycle: string | null
+          edge_type: string
+          from_stage_id: string
+          id: string
+          max_duration_days: number | null
+          min_duration_days: number | null
+          notes: string | null
+          to_stage_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          crop_code: string
+          crop_cycle?: string | null
+          edge_type: string
+          from_stage_id: string
+          id?: string
+          max_duration_days?: number | null
+          min_duration_days?: number | null
+          notes?: string | null
+          to_stage_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          crop_code?: string
+          crop_cycle?: string | null
+          edge_type?: string
+          from_stage_id?: string
+          id?: string
+          max_duration_days?: number | null
+          min_duration_days?: number | null
+          notes?: string | null
+          to_stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_stage_graph_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_graph_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crop_stage_knowledge: {
         Row: {
           aliases: string[]
@@ -6558,36 +6672,98 @@ export type Database = {
       }
       crop_stage_master: {
         Row: {
+          canonical_stage_id: string | null
           created_at: string | null
           crop_code: string
+          crop_cycle: string
           das_max: number
           das_min: number
           growth_stage: string
           id: string
+          is_active: boolean
+          next_stage_id: string | null
+          ontology_id: string | null
+          parent_stage_id: string | null
+          phenology_index: number | null
+          prev_stage_id: string | null
+          reference_system: string
+          stage_code: string | null
           stage_description: string | null
+          stage_node_type: string
           updated_at: string
         }
         Insert: {
+          canonical_stage_id?: string | null
           created_at?: string | null
           crop_code: string
+          crop_cycle?: string
           das_max: number
           das_min: number
           growth_stage: string
           id?: string
+          is_active?: boolean
+          next_stage_id?: string | null
+          ontology_id?: string | null
+          parent_stage_id?: string | null
+          phenology_index?: number | null
+          prev_stage_id?: string | null
+          reference_system?: string
+          stage_code?: string | null
           stage_description?: string | null
+          stage_node_type?: string
           updated_at?: string
         }
         Update: {
+          canonical_stage_id?: string | null
           created_at?: string | null
           crop_code?: string
+          crop_cycle?: string
           das_max?: number
           das_min?: number
           growth_stage?: string
           id?: string
+          is_active?: boolean
+          next_stage_id?: string | null
+          ontology_id?: string | null
+          parent_stage_id?: string | null
+          phenology_index?: number | null
+          prev_stage_id?: string | null
+          reference_system?: string
+          stage_code?: string | null
           stage_description?: string | null
+          stage_node_type?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "crop_stage_master_canonical_stage_id_fkey"
+            columns: ["canonical_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_master_next_stage_id_fkey"
+            columns: ["next_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_master_parent_stage_id_fkey"
+            columns: ["parent_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_master_prev_stage_id_fkey"
+            columns: ["prev_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crop_synonyms: {
         Row: {
