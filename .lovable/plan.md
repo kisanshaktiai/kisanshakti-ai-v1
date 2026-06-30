@@ -1,105 +1,128 @@
-## Architectural premise (corrected)
+# KisanShakti AI — Ontology, Crop-Stage & Variety Forensic Audit
 
-`crop_stage_master` is the **ontology SSOT** (stage definitions, DAS windows, ontology_id). It is **not** the runtime SSOT.
-The **runtime SSOT** is a single SQL function `resolve_crop_stage_full(land_id, as_of_date)` that returns a structured RECORD. Every subsystem (orchestrator, decision brain, rule evaluator, clarification, scheduler, alerts, logs, UI) reads stage **only** from that record. `lands.crop_stage` and `conversation_state.growth_stage` (text) become deprecated read-only caches.
+**Scope:** runtime brain path (orchestrator → stage resolver → rule evaluator → decision brain → scheduler → AI chat). **Mode:** evidence-only, no code, no migration.
+
+## 0. Executive Summary
+
+The Runtime SSOT (`resolve_crop_stage_full()` + `lands.stage_uuid` + sync triggers, migration `20260630084234`) is **landed in the DB but unread by the brain**. `rg` across `supabase/functions/ai-agriculture-chat/` returns **0 hits** for `resolve_crop_stage_full`, `stage_uuid`, `phenology_index`. The orchestrator still reads `landContext.growth_stage` (recomputed in `authoritative-state-loader.ts:615`) and falls back to legacy `lands.crop_stage`.
+
+The **Variety dimension is effectively absent at runtime**:
+- `master_products`: 113 varieties with `maturity_days_min/max`, `disease_resistance`, `yield_potential` — never read by the brain.
+- `lands.current_crop_variety_id`: only 2 rows populated, never read.
+- `crop_baseline_guidelines_v2.variety_id`: column exists, **0 rows populated**.
+- `variety_resistance` (183), `variety_translations` (904) — orphaned from brain.
+
+Ontology is crop-level only. Short-duration (90d) and long-duration (160d) rice resolve to identical stages, DAS bands and rules — the central scientific defect.
+
+**Verdict:** Stage SSOT fixed in DB. Variety phenology / stage operations / stage transition conditions / GDD: **no SSOT exists**. Four new ontology objects + two columns are required. All proposed changes are additive — production keeps working.
+
+## 1. Existing Schema (evidence)
+
+| Table | Rows | Role | SSOT? |
+|---|---|---|---|
+| `crop_stage_master` | 120 (12 crops, sugarcane 2 cycles) | DAS-banded stages | Ontology SSOT ✅ |
+| `crop_stage_graph` | 56 edges | Transitions (duration only) | Underused |
+| `crop_stage_aliases` | 195 | Alias → canonical_id | Used ✅ |
+| `crop_baseline_guidelines_v2` | 97 (variety_id=0) | Nutrient/water windows | `variety_id` unused ⚠ |
+| `crop_stage_knowledge` | RLS off | Pre-ontology cache | Duplicates master ⚠ |
+| `lands.crop_stage` (text) | legacy | Now trigger-overwritten ✅ | Was the bug |
+| `lands.stage_uuid` (FK) | trigger-maintained | Runtime SSOT cache | ✅ (unread by TS) |
+| `master_products` | 196 (113 varieties) | Has maturity_days_min/max, resistance, yields | Unread |
+| `variety_resistance` | 183 | `(variety_id, observation_code, resistance_level)` | Unread |
+| `crop_schedules.crop_variety` (text) | 28 | Free text, no FK | Ungoverned |
+
+## 2. Stage Dependency Graph (40 files; 0 read the new SSOT)
 
 ```text
-ontology (defs)         runtime inputs              SSOT function          consumers
-─────────────           ──────────────              ─────────────          ─────────
-crop_stage_master  ─┐   crop_schedules ─┐                                ┌─ orchestrator
-crop_stage_aliases ─┼─▶ lands           ─┼─▶ resolve_crop_stage_full ─▶ ├─ decision brain
-crop_stage_graph   ─┘   current_date    ─┘     RECORD (stage_uuid,      ├─ rule evaluator
-                                                growth_stage, das,      ├─ clarification
-                                                reference_system,       ├─ scheduler
-                                                phenology_index,        ├─ smart alerts
-                                                ontology_id,            ├─ decision logs
-                                                next/prev_uuid,         └─ UI display
-                                                resolver_version,
-                                                confidence)
-                                                       │
-                                                       ▼  trigger / nightly cron
-                                                lands.stage_uuid (cache)
-                                                ai_chat_sessions.stage_uuid (cache)
+Client SmartLandConfirmCard → cropStage.ts (heuristic)
+   ↓
+lands.crop_stage (legacy text, now overwritten)   lands.stage_uuid (UNREAD ✗)
+   ↓
+authoritative-state-loader.ts:615
+  "FIXED: Compute growth_stage from sowing_date since current_stage column doesn't exist"
+   ↓
+landContext.growth_stage
+   ↓
+canonical-context-contract.ts → canonicalContext.growth_stage
+   ↓
+orchestrator.ts:1331  stage = canonicalContext?.growth_stage ?? landContext?.current_crop_stage
+orchestrator.ts:1945-1968  4-way fallback chain
+   ↓
+ConversationState.stage → layered-rule-evaluator / hypothesis-evaluator
+                       → clarification-generator / deterministic-response-builder
 ```
 
-## Evidence that forced this rewrite
+## 3. SSOT Violations
 
-1. `lands.crop_stage` is NULL on 7/10 active schedules; the 3 populated rows all say `"Germination"` regardless of DAS (one sugarcane land at DAS=175 should be `grand_growth`). The client heuristic is still writing.
-2. `crop_schedules` has **no** `transplant_date`. Without it, DAS for transplanted crops (rice/onion/tomato/brinjal/chilli) is wrong by ~21 days. Phase 0 must add it.
-3. `lands.current_crop` ≠ `crop_schedules.crop_name` on 2/10 rows. The resolver MUST take crop from the active `crop_schedules` row, not `lands.current_crop`.
-4. `lands` already has 21 BEFORE triggers — new sync trigger must order safely in the chain.
-5. `crop_stage_master.reference_system` exists with values `DAS|DAT|DAP|DAE` — must branch on it.
-6. `crop_stage_graph` has 56 `STAGE_PRECEDES` edges — resolver can return `next/prev_stage_uuid` in one call.
-7. `crop_stage_master` has **no rows for groundnut** but `crop_schedules` has active Groundnut rows — silent NULL failure if resolver ships first.
+| Concept | Should own it | Other places | Drift |
+|---|---|---|---|
+| Stage code | `crop_stage_master.stage_code` | `lands.crop_stage`, `crop_schedules.*`, `conversation_state.stage` | HIGH |
+| DAS | resolver | `lands.das`, recomputed in TS | MEDIUM |
+| Maturity duration | `master_products` (variety) | `crops.duration_days` (1 row), `cropStage.ts` heuristic | HIGH |
+| Stage aliases | `crop_stage_aliases` | static maps in `stage-normalizer.ts`, `STAGE_FAMILIES` | MEDIUM |
+| Variety identity | `master_products.id` | `crop_schedules.crop_variety` free text | HIGH |
+| Variety phenology | — | — | **BLOCKER (missing)** |
+| Stage operations | — | implicit in `decision_rules`, scheduler | **HIGH (missing)** |
+| Stage transitions | `crop_stage_graph` (duration) | no GDD/event triggers | Incomplete |
+| GDD | — | — | **BLOCKER (missing)** |
 
-## Phase 0 — Pre-flight (must ship before Phase 1)
+## 4. Variety & Phenology Audit
 
-1. Migration: `ALTER TABLE lands ADD COLUMN transplant_date DATE`; `ALTER TABLE crop_schedules ADD COLUMN transplant_date DATE`.
-2. Backfill `lands.transplant_date` from `cultivation_date`/`planting_date` **only** for crops whose `crop_stage_master.reference_system='DAT'`.
-3. Seed groundnut into `crop_stage_master` (Kharif ICAR-DGR Junagadh): `germination 0-10, seedling 10-20, vegetative 20-45, flowering 45-65, pegging 60-75, pod_development 75-100, pod_filling 100-120, maturity 120-135, harvest 125-140` — all `lower_snake_case`, `reference_system='DAS'`, with `ontology_id`, `phenology_index`, `stage_node_type='biological'`.
-4. Sweep `crop_stage_master` for any other crops referenced by active `crop_schedules` rows but missing stage rows; report and seed.
+Structurally impossible today: variety-specific DAS windows, hybrid vs OPV stage curves, ratoon disambiguation (no `lands.crop_cycle`), DSR vs transplanted rice differentiation beyond `transplant_date`, perennials (not in master), GDD, variety-aware nutrient curves, resistance-aware hypothesis pruning. DAS is calendar-only — a 2030 brain must accumulate GDD and modulate stages by variety.
 
-## Phase 1 — Runtime SSOT function (`resolve_crop_stage_full`)
+## 5. Proposed Ontology — Decision Matrix
 
-`CREATE FUNCTION public.resolve_crop_stage_full(p_land_id uuid, p_as_of_date date DEFAULT current_date) RETURNS TABLE(stage_uuid uuid, growth_stage text, ontology_id text, phenology_index numeric, stage_node_type text, crop_cycle text, reference_system text, das integer, next_stage_uuid uuid, prev_stage_uuid uuid, resolver_version text, confidence numeric) SECURITY DEFINER SET search_path = public`.
+| # | Object | Decision | Priority | Justification |
+|---|---|---|---|---|
+| **T1** | `variety_phenology_profile` (variety_id × crop_stage_id → das/gdd overrides) | **CREATE NOW** | CRITICAL | Unlocks variety-aware resolver; N×M can't fit elsewhere |
+| **T2** | `stage_operations` (sow/transplant/spray/harvest windows per stage) | **CREATE NOW** | CRITICAL | Backbone for scheduler; replaces free-form gen |
+| T3 | `stage_transition_conditions` (triggers: days/gdd/observation/event) | LATER (Phase 2) | HIGH | Replaces graph duration-only after GDD lands |
+| T4 | `stage_validation_rules` (window/plausibility guards) | LATER (Phase 2) | HIGH | Centralises scattered TS guards |
+| T5 | `stage_expected_conditions` | **REJECT** | — | Extend `crop_baseline_guidelines_v2` (already has stage+variety FKs) |
+| T6 | `variety_stage_profile` | **REJECT** | — | Subsumed by T1 |
+| **C1** | `lands.crop_cycle` (`plant\|ratoon1\|ratoon2`) | **CREATE NOW** | CRITICAL | Sugarcane ratoon disambiguation already broken |
+| **C2** | `crop_stage_master.base_temperature_c` | CREATE NOW | HIGH | Pre-req for GDD |
+| C3 | `crop_stage_master.requires_photoperiod` | LATER | MEDIUM | Photoperiod-sensitive crops |
+| C4 | Backfill `crop_baseline_guidelines_v2.variety_id` | DATA TASK | HIGH | Column exists, 0 rows |
 
-Algorithm:
-1. Resolve `(crop_name, sowing_date)` from latest `crop_schedules` row where `land_id=p_land_id AND is_active=true` (NOT from `lands.current_crop`).
-2. Detect `reference_system` from `crop_stage_master` for that crop (`DAS` default).
-3. Compute day count by reference:
-   - `DAS` → `as_of_date - sowing_date`
-   - `DAT` → `as_of_date - COALESCE(lands.transplant_date, sowing_date)`
-   - `DAP`/`DAE` → analogous columns once seeded
-4. Pick row from `crop_stage_master` where `crop_code = lower(crop_name) AND stage_node_type='biological' AND das BETWEEN das_min AND das_max`, ordered by `phenology_index DESC` (most advanced match).
-5. Look up `next/prev_stage_uuid` via `crop_stage_graph` where `edge_type='STAGE_PRECEDES'`.
-6. Return RECORD with `resolver_version='2.0'`. Return zero rows when crop is unknown or unseeded — never invent.
+## 6. Backward Compatibility
 
-Hard constraint: this is the **only** function allowed to compute stage at runtime. Add a comment + repo lint rule.
+All additive. New tables: no impact. New columns: nullable + defaulted. `resolve_crop_stage_full()` v2/v3 appends fields; existing callers unaffected. No deprecations this phase.
 
-## Phase 2 — Caches & triggers (lands + sessions)
+## 7. Migration Roadmap (each step independently deployable, zero downtime)
 
-1. `ALTER TABLE lands ADD COLUMN stage_uuid uuid REFERENCES crop_stage_master(id)`, `phenology_index numeric`, `reference_system text`, `stage_resolved_at timestamptz`, `resolver_version text`.
-2. BEFORE INSERT/UPDATE trigger `sync_land_stage_cache` (added to existing 21-trigger chain after `prevent_land_overlap`): when `crop_code`, `last_sowing_date`, `planting_date`, `cultivation_date`, or `transplant_date` changes, call `resolve_crop_stage_full(NEW.id)` and write `stage_uuid`, `crop_stage` (text mirror), `phenology_index`, `reference_system`, `stage_resolved_at`, `resolver_version`. **Silent overwrite** if a client-supplied `crop_stage` disagrees — never RAISE EXCEPTION (would break new-land flow when ontology gap exists). When resolver returns nothing: leave existing values, log `[STAGE_SSOT] source=null reason=no_schedule|ontology_gap`.
-3. CHECK `crop_stage ~ '^[a-z_]+$' OR crop_stage IS NULL` (added AFTER the cleanup UPDATE so the 3 "Germination" rows are first overwritten by the trigger).
-4. `pg_cron` nightly job at 00:30 IST: `UPDATE lands SET (...) = (SELECT ... FROM resolve_crop_stage_full(id)) WHERE is_active=true AND deleted_at IS NULL` — keeps cache honest on passive days (the DAS=175/"Germination" class of bug).
-5. `ai_chat_sessions.conversation_state` JSONB gains: `stage_uuid`, `resolver_version`, `ontology_version`, `das_snapshot`, `reference_system`, `resolved_at`. No schema migration — JSONB shape only. Old `growth_stage` text key kept read-only for one release for replay compatibility.
+| Step | Action | Type |
+|---|---|---|
+| **0** | **Wire orchestrator to read `resolve_crop_stage_full()` / `lands.stage_uuid`** | Code only |
+| 1 | Add `lands.crop_cycle` + `crop_stage_master.base_temperature_c` | Migration |
+| 2 | Create `variety_phenology_profile` (T1), seed top varieties for rice/cotton/sugarcane | Migration + data |
+| 3 | Extend resolver to honour T1 via `lands.current_crop_variety_id` | DB function |
+| 4 | Create `stage_operations` (T2), seed 12 crops | Migration + data |
+| 5 | Refactor scheduler to read T2 | Code only |
+| 6 | Backfill `crop_baseline_guidelines_v2.variety_id` | Data |
+| 7 | Add `requires_photoperiod` + GDD accumulator cron; resolver v3 returns `gdd_accumulated` | Migration + cron |
+| 8 | Create `stage_transition_conditions` (T3) | Migration |
+| 9 | Create `stage_validation_rules` (T4); retire scattered TS guards | Migration + code |
+| 10 | Hook `variety_resistance` into hypothesis-evaluator | Code only |
 
-## Phase 3 — Edge function refactor (`ai-agriculture-chat`)
+## 8. Validation Gate (all 4 proposed tables pass)
 
-1. `agents/canonical-state-builder.ts`: on session bootstrap, call `resolve_crop_stage_full(land_id)` **once**, store the full RECORD in `canonicalContext.stage` (object, not string). No string remap, no Title-Case fallback.
-2. `agents/orchestrator.ts:1331`: delete `?? landContext?.current_crop_stage`. Source of stage is `canonicalContext.stage.stage_uuid` only. When `stage_uuid` is null → route to `STAGE_UNKNOWN` clarification (new branch); never default.
-3. `utils/stage-normalizer.ts`: delete hardcoded `SEEDLING/VEGETATIVE/REPRODUCTIVE/MATURITY` regex and `STAGE_DB_MAP`. `getStageCategory(stage, crop)` returns `getStageCategoryFromDB` or `null`.
-4. `utils/stage-knowledge-cache.ts`: `getStageByDAS` is deprecated for orchestrator use — only `resolve_crop_stage_full` may compute. Cache stays for the knowledge map (`crop_stage_knowledge` lookups by `stage_uuid`).
-5. `layered-rule-evaluator.ts`: keep `stage_applicable TEXT[]` schema, but resolve every token through `crop_stage_aliases` → `stage_uuid` before comparing against `canonicalContext.stage.stage_uuid`. UUID equality replaces the `toUpperCase().replace(/[\s-]/g,'_')` string match. `STAGE_FAMILIES` rewritten as `stage_uuid → stage_uuid[]` map sourced from `crop_stage_graph`.
-6. `decision/intent-resolver.ts`, `decision/db-observation-validator.ts`, `decision/hypothesis-evaluator.ts`, `decision/symbolic-reasoner.ts`, `decision/pipeline-self-check.ts`, `runtime/conversation-state.ts`, `runtime/clarification-contract.ts`, `runtime/decision-graph-navigator.ts`, `runtime/runtime-trace-collector.ts`: all stage reads switch to `canonicalContext.stage.stage_uuid` + `growth_stage` (display only).
-7. `runtime/conversation-state.ts::stage_source` enum: ADD `'resolver_v2'`. Keep legacy values for one release for forensics, but log `[STAGE_SSOT] WARN legacy_source=...` whenever they appear.
-8. Structured forensic log at every stage read site:
-   `[STAGE_SSOT] land_id, crop, sowing_date, transplant_date, reference_system, das, stage_uuid, growth_stage, ontology_id, phenology_index, resolver_version, source, alias_used, confidence`.
+T1–T4 each: no duplication, solves real defect, improves symbolic reasoning, supports all crops + varieties + sensors + GDD + DAS/DAP/DAT + multilingual + brain integration. T5/T6 fail (duplication) → rejected.
 
-## Phase 4 — Client retirement & schema lock-down
+## 9. Risks & Mitigations
 
-1. Delete `stageFromProgress()` in `src/lib/cropStage.ts`. `deriveCropCycle` keeps only `expectedHarvestDate`, `daysSinceSowing`, `progressPercent`, `plantingDate`, `cultivationDate`, `lastSowingDate` — no `stage`/`stageKey`.
-2. `SmartLandConfirmCard.tsx:242` stops sending `crop_stage`. Adds `transplant_date` field (conditional on crop's reference_system).
-3. `src/services/landsApi.ts` + `supabase/functions/lands-api/index.ts`: drop `crop_stage` from writable payload schema; ignore any inbound value (defence-in-depth alongside the trigger).
-4. New `useCropStageLabel(stage_uuid, lang)` hook → joins `crop_stage_master.stage_description` + i18n keys. UI never computes, only displays.
-5. i18n: add per-`growth_stage` keys for en/hi/mr (e.g. `germination` → "अंकुरण", "उगवण").
+| Risk | Mitigation |
+|---|---|
+| Variety curation bandwidth | Seed top-10 per major crop; fall back to `crop_stage_master` when T1 absent |
+| Resolver signature drift | Append-only fields |
+| GDD weather cost | Daily Tmax/Tmin from `weather_aggregates` suffices |
+| TS still reads legacy `growth_stage` | Step 0 fixes this BEFORE any new table lands |
 
-## Phase 5 — Decision-rules bridge (no schema change)
+## 10. Deliverables on Approval
 
-`decision_rules.stage_applicable` stays `TEXT[]` for now. The evaluator resolves each token via `crop_stage_aliases` to a `stage_uuid` set at load time and compares UUIDs. Long-term migration to `rule_stage_mapping(rule_uuid, stage_uuid)` is tracked as a separate epic; not blocking.
+On approval (build mode), I will:
 
-## Phase 6 — Verification
+1. Write the full report to `/mnt/documents/ONTOLOGY_STAGE_VARIETY_FORENSIC_AUDIT.md` and emit a `<presentation-artifact>` so you can download it.
+2. **Stop and wait** before any code or migration changes — Steps 0/1/2 each ship as separate approval cycles.
 
-1. SQL parity: `SELECT id FROM lands WHERE stage_uuid IS DISTINCT FROM (resolve_crop_stage_full(id)).stage_uuid` → 0 rows.
-2. SQL vocabulary: `SELECT DISTINCT crop_stage FROM lands` ⊂ `crop_stage_master.growth_stage ∪ {NULL}`.
-3. Reference-system test: insert rice land with `sowing_date=today-50d`, `transplant_date=today-29d` → resolver returns `active_tillering` via `DAT=29`, not nursery via `DAS=50`.
-4. Sugarcane regression: the DAS=175 land becomes `grand_growth` (`phenology_index=4.0`, `ontology_id=AG_STAGE_SC008`) on next cron run.
-5. Edge replay: a missing-DAS query routes to `STAGE_UNKNOWN` clarification with zero `landContext` / `default` source lines in logs.
-6. Forensic log: every request emits exactly one `[STAGE_SSOT] source=resolver_v2` line per stage read.
-7. UI smoke: Marathi farmer creates new land → card shows DB-resolved Devanagari label, never the old 7-bucket English string.
-
-## Explicitly out of scope (later epics)
-- Replacing `stage_applicable TEXT[]` with `rule_stage_mapping(uuid)`.
-- Dropping `lands.crop_stage` text column entirely.
-- Migrating `crop_schedules.crop_name` to FK on `crops`.
-- Ontology versioning beyond `resolver_version='2.0'` (recorded but not yet used for replay branching).
+No edits will happen until you say "go".
