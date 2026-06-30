@@ -6183,6 +6183,7 @@ export type Database = {
           training_batch_id: string | null
           training_excluded_reason: string | null
           training_processed: boolean | null
+          transplant_date: string | null
           updated_at: string | null
           variety_id: string | null
           vermicompost_kg: number | null
@@ -6296,6 +6297,7 @@ export type Database = {
           training_batch_id?: string | null
           training_excluded_reason?: string | null
           training_processed?: boolean | null
+          transplant_date?: string | null
           updated_at?: string | null
           variety_id?: string | null
           vermicompost_kg?: number | null
@@ -6409,6 +6411,7 @@ export type Database = {
           training_batch_id?: string | null
           training_excluded_reason?: string | null
           training_processed?: boolean | null
+          transplant_date?: string | null
           updated_at?: string | null
           variety_id?: string | null
           vermicompost_kg?: number | null
@@ -13481,6 +13484,7 @@ export type Database = {
           current_crop_id: string | null
           current_crop_variety_id: string | null
           current_moisture_status: string | null
+          das: number | null
           deleted_at: string | null
           district: string | null
           district_id: string | null
@@ -13519,6 +13523,7 @@ export type Database = {
           notes: string | null
           organic_carbon_percent: number | null
           ownership_type: string | null
+          phenology_index: number | null
           phosphorus_kg_per_ha: number | null
           planting_date: string | null
           potassium_kg_per_ha: number | null
@@ -13530,6 +13535,9 @@ export type Database = {
           soil_ph: number | null
           soil_tested: boolean | null
           soil_type: string | null
+          stage_resolved_at: string | null
+          stage_source: string | null
+          stage_uuid: string | null
           state: string | null
           state_id: string | null
           survey_number: string | null
@@ -13538,6 +13546,7 @@ export type Database = {
           tenant_id: string
           tile_id: string | null
           tile_ids: string[] | null
+          transplant_date: string | null
           updated_at: string
           village: string | null
           village_id: string | null
@@ -13564,6 +13573,7 @@ export type Database = {
           current_crop_id?: string | null
           current_crop_variety_id?: string | null
           current_moisture_status?: string | null
+          das?: number | null
           deleted_at?: string | null
           district?: string | null
           district_id?: string | null
@@ -13602,6 +13612,7 @@ export type Database = {
           notes?: string | null
           organic_carbon_percent?: number | null
           ownership_type?: string | null
+          phenology_index?: number | null
           phosphorus_kg_per_ha?: number | null
           planting_date?: string | null
           potassium_kg_per_ha?: number | null
@@ -13613,6 +13624,9 @@ export type Database = {
           soil_ph?: number | null
           soil_tested?: boolean | null
           soil_type?: string | null
+          stage_resolved_at?: string | null
+          stage_source?: string | null
+          stage_uuid?: string | null
           state?: string | null
           state_id?: string | null
           survey_number?: string | null
@@ -13621,6 +13635,7 @@ export type Database = {
           tenant_id: string
           tile_id?: string | null
           tile_ids?: string[] | null
+          transplant_date?: string | null
           updated_at?: string
           village?: string | null
           village_id?: string | null
@@ -13647,6 +13662,7 @@ export type Database = {
           current_crop_id?: string | null
           current_crop_variety_id?: string | null
           current_moisture_status?: string | null
+          das?: number | null
           deleted_at?: string | null
           district?: string | null
           district_id?: string | null
@@ -13685,6 +13701,7 @@ export type Database = {
           notes?: string | null
           organic_carbon_percent?: number | null
           ownership_type?: string | null
+          phenology_index?: number | null
           phosphorus_kg_per_ha?: number | null
           planting_date?: string | null
           potassium_kg_per_ha?: number | null
@@ -13696,6 +13713,9 @@ export type Database = {
           soil_ph?: number | null
           soil_tested?: boolean | null
           soil_type?: string | null
+          stage_resolved_at?: string | null
+          stage_source?: string | null
+          stage_uuid?: string | null
           state?: string | null
           state_id?: string | null
           survey_number?: string | null
@@ -13704,6 +13724,7 @@ export type Database = {
           tenant_id?: string
           tile_id?: string | null
           tile_ids?: string[] | null
+          transplant_date?: string | null
           updated_at?: string
           village?: string | null
           village_id?: string | null
@@ -13835,6 +13856,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crop_varieties"
             referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "lands_stage_uuid_fkey"
+            columns: ["stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -32243,6 +32271,20 @@ export type Database = {
       remove_onboarding_workflow: {
         Args: { p_workflow_id: string }
         Returns: Json
+      }
+      resolve_crop_stage_full: {
+        Args: { p_as_of?: string; p_land_id: string }
+        Returns: {
+          crop_code: string
+          das: number
+          growth_stage: string
+          next_stage_id: string
+          phenology_index: number
+          prev_stage_id: string
+          source: string
+          stage_code: string
+          stage_uuid: string
+        }[]
       }
       resolve_farmer_entitlements: {
         Args: { p_farmer: string; p_tenant: string }
