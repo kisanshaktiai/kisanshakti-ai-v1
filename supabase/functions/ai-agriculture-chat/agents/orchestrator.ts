@@ -8406,13 +8406,39 @@ export class AIAgentOrchestrator {
       
       // CRITICAL FIX: Calculate NDVI trend from history
       const ndviTrend = this.calculateNDVITrend(ndviHistory || []);
-      
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE A — Runtime SSOT: resolve_crop_phenology()
+      // Authoritative stage from crop_stage_master ontology.
+      // Overrides any client-heuristic stage stored on lands.crop_stage.
+      // ═══════════════════════════════════════════════════════════════════════════
+      let phenology: any = null;
+      try {
+        const { data: phenRows, error: phenErr } = await this.supabase
+          .rpc('resolve_crop_phenology', { p_land_id: landId });
+        if (phenErr) {
+          console.warn(`⚠️ [PHENOLOGY_SSOT] resolver error: ${phenErr.message}`);
+        } else if (Array.isArray(phenRows) && phenRows.length > 0) {
+          phenology = phenRows[0];
+          console.log(`✅ [PHENOLOGY_SSOT] stage=${phenology.growth_stage} (${phenology.stage_code}) crop=${phenology.crop_code} das=${phenology.current_das} conf=${phenology.confidence} src=${phenology.source} v${phenology.resolver_version}`);
+        } else {
+          console.warn(`⚠️ [PHENOLOGY_SSOT] resolver returned no row for land=${landId}`);
+        }
+      } catch (e) {
+        console.warn(`⚠️ [PHENOLOGY_SSOT] resolver threw: ${(e as Error).message}`);
+      }
+
       // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Prioritize crop_schedules, but FALLBACK to lands.current_crop
       // This ensures crop context is available even without a formal schedule
       // ═══════════════════════════════════════════════════════════════════════════
       const effectiveCropName = cropSchedule?.crop_name || land.current_crop || null;
       const effectiveCropVariety = cropSchedule?.crop_variety || null;
+
+      // Phenology SSOT overrides client-heuristic growth_stage / DAS when present.
+      const authoritativeStage = phenology?.growth_stage || growthStage;
+      const authoritativeDas   = phenology?.current_das ?? daysSinceSowing;
+      const stageAuthority     = phenology ? 'phenology_ssot' : (cropSchedule ? 'schedule_heuristic' : 'lands_fallback');
       
       const context = {
         land_id: landId,
@@ -8424,9 +8450,14 @@ export class AIAgentOrchestrator {
         // CRITICAL FIX: Use effectiveCropName with fallback to lands.current_crop
         current_crop: effectiveCropName,
         crop_variety: effectiveCropVariety,
-        sowing_date: cropSchedule?.sowing_date || null,  // Only from crop_schedules
-        days_since_sowing: daysSinceSowing,
-        growth_stage: growthStage,
+        crop_cycle: (land as any).crop_cycle || null,
+        sowing_date: cropSchedule?.sowing_date || land.last_sowing_date || land.planting_date || null,
+        transplant_date: (land as any).transplant_date || null,
+        days_since_sowing: authoritativeDas,
+        growth_stage: authoritativeStage,
+        stage_authority: stageAuthority,
+        phenology: phenology,          // full Phase-A resolver record (frozen shape)
+        stage_uuid: phenology?.stage_uuid || (land as any).stage_uuid || null,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
