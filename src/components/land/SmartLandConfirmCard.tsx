@@ -239,7 +239,9 @@ export function SmartLandConfirmCard({
         irrigation_type: form.irrigation_type,
         current_crop: form.current_crop,
         current_crop_id: form.current_crop_id,
-        crop_stage: cycle.stage !== '—' ? cycle.stage : undefined,
+        // crop_stage: intentionally omitted — DB trigger `sync_land_stage_cache`
+        // computes it from `crop_stage_master` (Runtime SSOT, Phase A).
+        // Client-side heuristic in `deriveCropCycle` is only used for UI hints.
         planting_date: cycle.plantingDate || undefined,
         last_sowing_date: cycle.lastSowingDate || undefined,
         cultivation_date: cycle.cultivationDate || undefined,
