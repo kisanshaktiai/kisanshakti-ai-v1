@@ -8450,9 +8450,14 @@ export class AIAgentOrchestrator {
         // CRITICAL FIX: Use effectiveCropName with fallback to lands.current_crop
         current_crop: effectiveCropName,
         crop_variety: effectiveCropVariety,
-        sowing_date: cropSchedule?.sowing_date || null,  // Only from crop_schedules
-        days_since_sowing: daysSinceSowing,
-        growth_stage: growthStage,
+        crop_cycle: (land as any).crop_cycle || null,
+        sowing_date: cropSchedule?.sowing_date || land.last_sowing_date || land.planting_date || null,
+        transplant_date: (land as any).transplant_date || null,
+        days_since_sowing: authoritativeDas,
+        growth_stage: authoritativeStage,
+        stage_authority: stageAuthority,
+        phenology: phenology,          // full Phase-A resolver record (frozen shape)
+        stage_uuid: phenology?.stage_uuid || (land as any).stage_uuid || null,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
