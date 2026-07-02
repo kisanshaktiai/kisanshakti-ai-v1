@@ -6675,12 +6675,19 @@ export type Database = {
       }
       crop_stage_master: {
         Row: {
+          base_temperature_c: number | null
           canonical_stage_id: string | null
           created_at: string | null
           crop_code: string
           crop_cycle: string
           das_max: number
           das_min: number
+          expected_height_cm_max: number | null
+          expected_height_cm_min: number | null
+          expected_leaf_count_max: number | null
+          expected_leaf_count_min: number | null
+          expected_ndvi_max: number | null
+          expected_ndvi_min: number | null
           growth_stage: string
           id: string
           is_active: boolean
@@ -6688,6 +6695,7 @@ export type Database = {
           ontology_id: string | null
           parent_stage_id: string | null
           phenology_index: number | null
+          phenology_model: string | null
           prev_stage_id: string | null
           reference_system: string
           stage_code: string | null
@@ -6696,12 +6704,19 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          base_temperature_c?: number | null
           canonical_stage_id?: string | null
           created_at?: string | null
           crop_code: string
           crop_cycle?: string
           das_max: number
           das_min: number
+          expected_height_cm_max?: number | null
+          expected_height_cm_min?: number | null
+          expected_leaf_count_max?: number | null
+          expected_leaf_count_min?: number | null
+          expected_ndvi_max?: number | null
+          expected_ndvi_min?: number | null
           growth_stage: string
           id?: string
           is_active?: boolean
@@ -6709,6 +6724,7 @@ export type Database = {
           ontology_id?: string | null
           parent_stage_id?: string | null
           phenology_index?: number | null
+          phenology_model?: string | null
           prev_stage_id?: string | null
           reference_system?: string
           stage_code?: string | null
@@ -6717,12 +6733,19 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          base_temperature_c?: number | null
           canonical_stage_id?: string | null
           created_at?: string | null
           crop_code?: string
           crop_cycle?: string
           das_max?: number
           das_min?: number
+          expected_height_cm_max?: number | null
+          expected_height_cm_min?: number | null
+          expected_leaf_count_max?: number | null
+          expected_leaf_count_min?: number | null
+          expected_ndvi_max?: number | null
+          expected_ndvi_min?: number | null
           growth_stage?: string
           id?: string
           is_active?: boolean
@@ -6730,6 +6753,7 @@ export type Database = {
           ontology_id?: string | null
           parent_stage_id?: string | null
           phenology_index?: number | null
+          phenology_model?: string | null
           prev_stage_id?: string | null
           reference_system?: string
           stage_code?: string | null
@@ -13478,6 +13502,7 @@ export type Database = {
           country: string
           country_code: string
           created_at: string
+          crop_cycle: string | null
           crop_stage: string | null
           cultivation_date: string | null
           current_crop: string | null
@@ -13567,6 +13592,7 @@ export type Database = {
           country?: string
           country_code?: string
           created_at?: string
+          crop_cycle?: string | null
           crop_stage?: string | null
           cultivation_date?: string | null
           current_crop?: string | null
@@ -13656,6 +13682,7 @@ export type Database = {
           country?: string
           country_code?: string
           created_at?: string
+          crop_cycle?: string | null
           crop_stage?: string | null
           cultivation_date?: string | null
           current_crop?: string | null
@@ -32271,6 +32298,35 @@ export type Database = {
       remove_onboarding_workflow: {
         Args: { p_workflow_id: string }
         Returns: Json
+      }
+      resolve_crop_phenology: {
+        Args: { p_as_of?: string; p_land_id: string }
+        Returns: {
+          confidence: number
+          crop_code: string
+          crop_cycle: string
+          current_das: number
+          current_dat: number
+          current_gdd: number
+          evidence_sources: string[]
+          expected_height_cm_max: number
+          expected_height_cm_min: number
+          expected_leaf_count_max: number
+          expected_leaf_count_min: number
+          expected_ndvi_max: number
+          expected_ndvi_min: number
+          expected_transition_date: string
+          growth_stage: string
+          next_stage_uuid: string
+          phenology_index: number
+          phenology_model: string
+          previous_stage_uuid: string
+          reference_system: string
+          resolver_version: number
+          source: string
+          stage_code: string
+          stage_uuid: string
+        }[]
       }
       resolve_crop_stage_full: {
         Args: { p_as_of?: string; p_land_id: string }
