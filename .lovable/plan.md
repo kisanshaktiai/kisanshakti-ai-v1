@@ -1,128 +1,98 @@
-# KisanShakti AI — Ontology, Crop-Stage & Variety Forensic Audit
+# Phase D — GDD Accumulator & Weather-Driven Phenology (DB-Only, No Edge Function)
 
-**Scope:** runtime brain path (orchestrator → stage resolver → rule evaluator → decision brain → scheduler → AI chat). **Mode:** evidence-only, no code, no migration.
+## Constraint
+Project is at the 100 edge-function cap. **No new edge function can be created.** All Phase D compute must live inside Postgres and be driven by `pg_cron` calling SQL directly (no `pg_net`, no HTTP hop).
 
-## 0. Executive Summary
+## Goal
+Move stage progression from calendar-only (DAS) to thermal-time (GDD). Per-land daily Tmax/Tmin from `weather_aggregates` + `crop_stage_master.base_temperature_c` (added in Phase A) feed a daily GDD accumulator entirely in SQL. The phenology resolver becomes variety- **and** weather-aware. Zero new HTTP surface.
 
-The Runtime SSOT (`resolve_crop_stage_full()` + `lands.stage_uuid` + sync triggers, migration `20260630084234`) is **landed in the DB but unread by the brain**. `rg` across `supabase/functions/ai-agriculture-chat/` returns **0 hits** for `resolve_crop_stage_full`, `stage_uuid`, `phenology_index`. The orchestrator still reads `landContext.growth_stage` (recomputed in `authoritative-state-loader.ts:615`) and falls back to legacy `lands.crop_stage`.
+---
 
-The **Variety dimension is effectively absent at runtime**:
-- `master_products`: 113 varieties with `maturity_days_min/max`, `disease_resistance`, `yield_potential` — never read by the brain.
-- `lands.current_crop_variety_id`: only 2 rows populated, never read.
-- `crop_baseline_guidelines_v2.variety_id`: column exists, **0 rows populated**.
-- `variety_resistance` (183), `variety_translations` (904) — orphaned from brain.
+## What ships this phase
 
-Ontology is crop-level only. Short-duration (90d) and long-duration (160d) rice resolve to identical stages, DAS bands and rules — the central scientific defect.
+### 1. Schema — single migration (approval required)
 
-**Verdict:** Stage SSOT fixed in DB. Variety phenology / stage operations / stage transition conditions / GDD: **no SSOT exists**. Four new ontology objects + two columns are required. All proposed changes are additive — production keeps working.
+**New table `public.land_gdd_daily`** — one row per land per day.
+- Columns: `land_id`, `obs_date`, `tmax_c`, `tmin_c`, `base_temp_c`, `upper_cap_c`, `daily_gdd`, `cumulative_gdd`, `days_from_anchor`, `anchor_type` (`sowing`|`transplant`), `anchor_date`, `method` (`single_triangle`), `source` (`weather_aggregates`|`imputed`), `created_at`.
+- PK `(land_id, obs_date)`. RLS on. Farmer read via land ownership; service-role write. Grants: `SELECT` to `authenticated`, `ALL` to `service_role`.
 
-## 1. Existing Schema (evidence)
+**New columns on `public.lands`**:
+- `current_gdd numeric` (nullable)
+- `gdd_anchor_type text` (nullable, check `('sowing','transplant')`)
+- `gdd_anchor_date date` (nullable)
+- `gdd_last_computed_at timestamptz` (nullable)
 
-| Table | Rows | Role | SSOT? |
-|---|---|---|---|
-| `crop_stage_master` | 120 (12 crops, sugarcane 2 cycles) | DAS-banded stages | Ontology SSOT ✅ |
-| `crop_stage_graph` | 56 edges | Transitions (duration only) | Underused |
-| `crop_stage_aliases` | 195 | Alias → canonical_id | Used ✅ |
-| `crop_baseline_guidelines_v2` | 97 (variety_id=0) | Nutrient/water windows | `variety_id` unused ⚠ |
-| `crop_stage_knowledge` | RLS off | Pre-ontology cache | Duplicates master ⚠ |
-| `lands.crop_stage` (text) | legacy | Now trigger-overwritten ✅ | Was the bug |
-| `lands.stage_uuid` (FK) | trigger-maintained | Runtime SSOT cache | ✅ (unread by TS) |
-| `master_products` | 196 (113 varieties) | Has maturity_days_min/max, resistance, yields | Unread |
-| `variety_resistance` | 183 | `(variety_id, observation_code, resistance_level)` | Unread |
-| `crop_schedules.crop_variety` (text) | 28 | Free text, no FK | Ungoverned |
+**New columns on `public.crop_stage_master`**:
+- `gdd_min numeric` (nullable)
+- `gdd_max numeric` (nullable)
 
-## 2. Stage Dependency Graph (40 files; 0 read the new SSOT)
+**SQL function `public.accumulate_gdd_for_land(p_land_id uuid, p_lookback_days int default 365)`** — `SECURITY DEFINER`, `SET search_path = public`.
+- Resolves anchor: `lands.transplant_date` if present, else `crop_schedules.sowing_date`, else `lands.last_sowing_date`. Aborts silently (returns `0`) if no anchor.
+- Resolves `base_temp_c` from `crop_stage_master` for the crop (min across stages if multiple), fallback `8`. Upper cap `30`.
+- Loops days from `greatest(anchor_date, current_date - p_lookback_days)` to `current_date`, joins `weather_aggregates` on `(land_id, obs_date)`.
+- Single-triangle GDD: `daily = greatest(0, ((least(tmax,cap) + greatest(tmin,base))/2) - base)`. Missing day → interpolate from ±3-day window; if still missing mark `source='imputed'` with `daily_gdd=0`.
+- `INSERT ... ON CONFLICT (land_id, obs_date) DO UPDATE` idempotent.
+- Recomputes `cumulative_gdd` window and writes `lands.current_gdd`, `gdd_anchor_type`, `gdd_anchor_date`, `gdd_last_computed_at`.
+- Returns `bigint` (days processed).
 
-```text
-Client SmartLandConfirmCard → cropStage.ts (heuristic)
-   ↓
-lands.crop_stage (legacy text, now overwritten)   lands.stage_uuid (UNREAD ✗)
-   ↓
-authoritative-state-loader.ts:615
-  "FIXED: Compute growth_stage from sowing_date since current_stage column doesn't exist"
-   ↓
-landContext.growth_stage
-   ↓
-canonical-context-contract.ts → canonicalContext.growth_stage
-   ↓
-orchestrator.ts:1331  stage = canonicalContext?.growth_stage ?? landContext?.current_crop_stage
-orchestrator.ts:1945-1968  4-way fallback chain
-   ↓
-ConversationState.stage → layered-rule-evaluator / hypothesis-evaluator
-                       → clarification-generator / deterministic-response-builder
+**SQL function `public.accumulate_gdd_batch(p_limit int default 500)`** — `SECURITY DEFINER`.
+- Selects active lands (`last_sowing_date IS NOT NULL AND coalesce(harvest_status,'') <> 'harvested'`) ordered by oldest `gdd_last_computed_at` (nulls first). Calls `accumulate_gdd_for_land` for each. Logs `{lands_processed, days_total, elapsed_ms}` into `system_health_events`.
+
+**`resolve_crop_phenology` → v4** (append-only, frozen return shape).
+- Reads `lands.current_gdd`, `gdd_anchor_date`, `gdd_last_computed_at`.
+- When `variety_phenology_profile.gdd_target` is present for the resolved stage, sets `stage_progress_pct` from GDD; otherwise keeps DAS-based value.
+- Populates already-existing `current_gdd` field (previously always `NULL`). Adds `gdd_source` to `evidence_sources` when used. `resolver_version` bumped to `4`.
+
+### 2. Cron via `pg_cron` — installed inside the migration
+
+- Guarded: `CREATE EXTENSION IF NOT EXISTS pg_cron`. **We do NOT need `pg_net`** — the job calls the SQL function directly.
+- Job `gdd-accumulator-6h` — `0 */6 * * *` — body: `SELECT public.accumulate_gdd_batch(500);`
+- Idempotent registration: `DELETE FROM cron.job WHERE jobname = 'gdd-accumulator-6h'` before `cron.schedule(...)`.
+- No secrets, no URL, no anon key required — the whole job stays inside the DB. Safe on remix (no user-specific values), so it can ship in a normal migration.
+
+### 3. Client / orchestrator wiring — pure code edits, no new function
+
+- `landContext.gdd = { current_gdd, anchor_type, anchor_date, last_computed_at }` — read from the extended phenology payload returned by resolver v4. Passed through the canonical context contract unchanged in shape (add optional field).
+- `morphology-reconciler.ts` (Phase C) gains an optional GDD-vs-DAS drift check: when `current_gdd` and a variety `gdd_target` for the current stage are both present, emit a `stage_shift_hint` if progress deviates >25% from the DAS-based expectation. Pure module — no I/O.
+- No changes to any existing edge function's deployment; only source edits to `ai-agriculture-chat/agents/orchestrator.ts` and `decision/morphology-reconciler.ts`.
+
+---
+
+## Explicitly OUT of Phase D
+- `stage_transition_conditions` (T3) — Phase E.
+- Photoperiod calc — Phase G.
+- Backfill of historical weather beyond `p_lookback_days` (365) — enough for the current season.
+- Any new edge function (blocked by the 100-fn cap).
+- `pg_net` HTTP calls (unnecessary; direct SQL job replaces the HTTP hop).
+
+---
+
+## Technical details
+
+**GDD formula (single-triangle, McMaster–Wilhelm):**
 ```
+tmean = ( least(tmax, upper_cap) + greatest(tmin, base) ) / 2
+daily_gdd = greatest(0, tmean - base)
+```
+Base = `crop_stage_master.base_temperature_c` (fallback `8°C`). Upper cap = `30°C`.
 
-## 3. SSOT Violations
+**Anchor precedence:** `lands.transplant_date` → `crop_schedules.sowing_date` (latest active) → `lands.last_sowing_date`.
 
-| Concept | Should own it | Other places | Drift |
-|---|---|---|---|
-| Stage code | `crop_stage_master.stage_code` | `lands.crop_stage`, `crop_schedules.*`, `conversation_state.stage` | HIGH |
-| DAS | resolver | `lands.das`, recomputed in TS | MEDIUM |
-| Maturity duration | `master_products` (variety) | `crops.duration_days` (1 row), `cropStage.ts` heuristic | HIGH |
-| Stage aliases | `crop_stage_aliases` | static maps in `stage-normalizer.ts`, `STAGE_FAMILIES` | MEDIUM |
-| Variety identity | `master_products.id` | `crop_schedules.crop_variety` free text | HIGH |
-| Variety phenology | — | — | **BLOCKER (missing)** |
-| Stage operations | — | implicit in `decision_rules`, scheduler | **HIGH (missing)** |
-| Stage transitions | `crop_stage_graph` (duration) | no GDD/event triggers | Incomplete |
-| GDD | — | — | **BLOCKER (missing)** |
+**Imputation:** missing day → mean of ±3-day window; still missing → `source='imputed'`, `daily_gdd=0`. Long gaps (>5 consecutive missing) stop accumulation and record a gap row.
 
-## 4. Variety & Phenology Audit
+**Ordering (batch fairness):** `ORDER BY gdd_last_computed_at NULLS FIRST` so freshly-planted lands and never-computed lands catch up on the next cron tick.
 
-Structurally impossible today: variety-specific DAS windows, hybrid vs OPV stage curves, ratoon disambiguation (no `lands.crop_cycle`), DSR vs transplanted rice differentiation beyond `transplant_date`, perennials (not in master), GDD, variety-aware nutrient curves, resistance-aware hypothesis pruning. DAS is calendar-only — a 2030 brain must accumulate GDD and modulate stages by variety.
+**Cost:** 6 tick/day × up to 500 lands = 3,000 function calls/day, each ~365-day loop bounded by lookback. Cheap; runs in-process, no HTTP.
 
-## 5. Proposed Ontology — Decision Matrix
+**Approval order (single approval):**
+1. Migration (schema + functions + resolver v4 + cron.schedule) — one atomic file.
+2. Orchestrator + reconciler source edits — no approval, no redeploy of a new function.
 
-| # | Object | Decision | Priority | Justification |
-|---|---|---|---|---|
-| **T1** | `variety_phenology_profile` (variety_id × crop_stage_id → das/gdd overrides) | **CREATE NOW** | CRITICAL | Unlocks variety-aware resolver; N×M can't fit elsewhere |
-| **T2** | `stage_operations` (sow/transplant/spray/harvest windows per stage) | **CREATE NOW** | CRITICAL | Backbone for scheduler; replaces free-form gen |
-| T3 | `stage_transition_conditions` (triggers: days/gdd/observation/event) | LATER (Phase 2) | HIGH | Replaces graph duration-only after GDD lands |
-| T4 | `stage_validation_rules` (window/plausibility guards) | LATER (Phase 2) | HIGH | Centralises scattered TS guards |
-| T5 | `stage_expected_conditions` | **REJECT** | — | Extend `crop_baseline_guidelines_v2` (already has stage+variety FKs) |
-| T6 | `variety_stage_profile` | **REJECT** | — | Subsumed by T1 |
-| **C1** | `lands.crop_cycle` (`plant\|ratoon1\|ratoon2`) | **CREATE NOW** | CRITICAL | Sugarcane ratoon disambiguation already broken |
-| **C2** | `crop_stage_master.base_temperature_c` | CREATE NOW | HIGH | Pre-req for GDD |
-| C3 | `crop_stage_master.requires_photoperiod` | LATER | MEDIUM | Photoperiod-sensitive crops |
-| C4 | Backfill `crop_baseline_guidelines_v2.variety_id` | DATA TASK | HIGH | Column exists, 0 rows |
+---
 
-## 6. Backward Compatibility
+## Roadmap after Phase D
+- Phase E: `stage_transition_conditions` (event/GDD/observation triggers), still DB-only, replaces scattered TS stage guards.
+- Phase F: wire `variety_resistance` into hypothesis-evaluator (code-only inside existing `ai-agriculture-chat`).
+- Phase G: photoperiod + `stage_validation_rules`.
 
-All additive. New tables: no impact. New columns: nullable + defaulted. `resolve_crop_stage_full()` v2/v3 appends fields; existing callers unaffected. No deprecations this phase.
-
-## 7. Migration Roadmap (each step independently deployable, zero downtime)
-
-| Step | Action | Type |
-|---|---|---|
-| **0** | **Wire orchestrator to read `resolve_crop_stage_full()` / `lands.stage_uuid`** | Code only |
-| 1 | Add `lands.crop_cycle` + `crop_stage_master.base_temperature_c` | Migration |
-| 2 | Create `variety_phenology_profile` (T1), seed top varieties for rice/cotton/sugarcane | Migration + data |
-| 3 | Extend resolver to honour T1 via `lands.current_crop_variety_id` | DB function |
-| 4 | Create `stage_operations` (T2), seed 12 crops | Migration + data |
-| 5 | Refactor scheduler to read T2 | Code only |
-| 6 | Backfill `crop_baseline_guidelines_v2.variety_id` | Data |
-| 7 | Add `requires_photoperiod` + GDD accumulator cron; resolver v3 returns `gdd_accumulated` | Migration + cron |
-| 8 | Create `stage_transition_conditions` (T3) | Migration |
-| 9 | Create `stage_validation_rules` (T4); retire scattered TS guards | Migration + code |
-| 10 | Hook `variety_resistance` into hypothesis-evaluator | Code only |
-
-## 8. Validation Gate (all 4 proposed tables pass)
-
-T1–T4 each: no duplication, solves real defect, improves symbolic reasoning, supports all crops + varieties + sensors + GDD + DAS/DAP/DAT + multilingual + brain integration. T5/T6 fail (duplication) → rejected.
-
-## 9. Risks & Mitigations
-
-| Risk | Mitigation |
-|---|---|
-| Variety curation bandwidth | Seed top-10 per major crop; fall back to `crop_stage_master` when T1 absent |
-| Resolver signature drift | Append-only fields |
-| GDD weather cost | Daily Tmax/Tmin from `weather_aggregates` suffices |
-| TS still reads legacy `growth_stage` | Step 0 fixes this BEFORE any new table lands |
-
-## 10. Deliverables on Approval
-
-On approval (build mode), I will:
-
-1. Write the full report to `/mnt/documents/ONTOLOGY_STAGE_VARIETY_FORENSIC_AUDIT.md` and emit a `<presentation-artifact>` so you can download it.
-2. **Stop and wait** before any code or migration changes — Steps 0/1/2 each ship as separate approval cycles.
-
-No edits will happen until you say "go".
+All remaining phases planned as **DB-only** or **code-only inside existing edge functions** to respect the 100-function cap.
