@@ -27879,6 +27879,95 @@ export type Database = {
           },
         ]
       }
+      variety_phenology_profile: {
+        Row: {
+          base_temperature_c_override: number | null
+          created_at: string
+          crop_code: string
+          crop_cycle: string | null
+          das_max_override: number | null
+          das_min_override: number | null
+          expected_height_cm_max: number | null
+          expected_height_cm_min: number | null
+          expected_leaf_count_max: number | null
+          expected_leaf_count_min: number | null
+          expected_ndvi_max: number | null
+          expected_ndvi_min: number | null
+          gdd_target: number | null
+          id: string
+          is_active: boolean
+          maturity_class: string | null
+          notes: string | null
+          phenology_model_override: string | null
+          source: string | null
+          stage_code: string | null
+          stage_uuid: string | null
+          updated_at: string
+          variety_id: string | null
+          variety_name: string | null
+        }
+        Insert: {
+          base_temperature_c_override?: number | null
+          created_at?: string
+          crop_code: string
+          crop_cycle?: string | null
+          das_max_override?: number | null
+          das_min_override?: number | null
+          expected_height_cm_max?: number | null
+          expected_height_cm_min?: number | null
+          expected_leaf_count_max?: number | null
+          expected_leaf_count_min?: number | null
+          expected_ndvi_max?: number | null
+          expected_ndvi_min?: number | null
+          gdd_target?: number | null
+          id?: string
+          is_active?: boolean
+          maturity_class?: string | null
+          notes?: string | null
+          phenology_model_override?: string | null
+          source?: string | null
+          stage_code?: string | null
+          stage_uuid?: string | null
+          updated_at?: string
+          variety_id?: string | null
+          variety_name?: string | null
+        }
+        Update: {
+          base_temperature_c_override?: number | null
+          created_at?: string
+          crop_code?: string
+          crop_cycle?: string | null
+          das_max_override?: number | null
+          das_min_override?: number | null
+          expected_height_cm_max?: number | null
+          expected_height_cm_min?: number | null
+          expected_leaf_count_max?: number | null
+          expected_leaf_count_min?: number | null
+          expected_ndvi_max?: number | null
+          expected_ndvi_min?: number | null
+          gdd_target?: number | null
+          id?: string
+          is_active?: boolean
+          maturity_class?: string | null
+          notes?: string | null
+          phenology_model_override?: string | null
+          source?: string | null
+          stage_code?: string | null
+          stage_uuid?: string | null
+          updated_at?: string
+          variety_id?: string | null
+          variety_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_phenology_profile_stage_uuid_fkey"
+            columns: ["stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       variety_resistance: {
         Row: {
           canonical_observation_code: string | null
