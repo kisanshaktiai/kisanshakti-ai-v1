@@ -21,6 +21,7 @@ import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } fro
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
+import { blockStageWriteIfLocked, isBiologicalStateLocked } from './agents/biological-state.ts';
 import { getRuntimeTraceCollector, resetRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
