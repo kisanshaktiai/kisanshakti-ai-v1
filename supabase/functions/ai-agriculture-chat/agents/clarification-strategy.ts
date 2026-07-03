@@ -417,7 +417,8 @@ export async function fetchRuleDrivenClarificationOptions(
     known_observations: current_symptoms,
     user_query: input.user_query || '',
     supabaseClient,
-    trace_id: traceId
+    trace_id: traceId,
+    variety_id: input.variety_id ?? null,
   });
   
   const candidates = hypothesisResult.candidates;
