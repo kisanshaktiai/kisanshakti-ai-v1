@@ -982,14 +982,43 @@ export async function evaluateCandidateHypotheses(
     }
     
     // ═══════════════════════════════════════════════════════════════════════
+    // PHASE F — VARIETY RESISTANCE MODULATION
+    // Apply bounded multiplier BEFORE sort/dedup so the highest post-adjustment
+    // candidate wins tie-breaks and dedup keeps the survivor. Skipped when no
+    // variety_id is provided or the variety has no curated resistance rows.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (input.variety_id) {
+      const resistanceRows = await loadVarietyResistance(supabaseClient, input.variety_id);
+      if (resistanceRows.length > 0) {
+        let adjustedCount = 0;
+        for (const cand of scoredCandidates) {
+          const hit = findResistanceForCandidate(cand, resistanceRows, input.variety_id);
+          if (hit) {
+            const before = cand.total_score;
+            cand.total_score = Math.max(0, Math.min(1, before * hit.multiplier));
+            cand.resistance = hit;
+            adjustedCount++;
+            console.log(`   🧬 [Resistance] ${cand.cause.slice(0, 40)} lvl=${hit.level} ×${hit.multiplier} (${before.toFixed(3)} → ${cand.total_score.toFixed(3)}) via ${hit.match_kind}=${hit.matched_value}`);
+          }
+        }
+        if (adjustedCount === 0) {
+          console.log(`   🧬 [Resistance] variety ${input.variety_id}: ${resistanceRows.length} rows loaded, 0 candidates matched`);
+        }
+      } else {
+        console.log(`   🧬 [Resistance] variety ${input.variety_id}: no curated rows`);
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: DEDUPLICATE by normalized cause + Rank and return top 4 candidates
     // CRITICAL FIX: Multiple rules exist for same pest (e.g., EARLY_SHOOT_BORER,
     // early_shoot_borer_tillering, Early Shoot Borer infestation)
     // We MUST deduplicate to avoid showing duplicate options to farmers
     // ═══════════════════════════════════════════════════════════════════════
     
-    // Sort by score first
+    // Sort by score first (post-resistance)
     scoredCandidates.sort((a, b) => b.total_score - a.total_score);
+    
     
     // Deduplicate by normalized cause - keep highest scoring variant
     const normalizedCauseSeen = new Set<string>();
