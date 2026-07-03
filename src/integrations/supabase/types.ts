@@ -24482,6 +24482,54 @@ export type Database = {
           },
         ]
       }
+      stage_validation_rules: {
+        Row: {
+          active: boolean
+          confidence: number
+          created_at: string
+          crop_code: string
+          description: string | null
+          id: string
+          rule_code: string
+          rule_config: Json
+          rule_type: string
+          severity: string
+          source: string | null
+          stage_code: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          confidence?: number
+          created_at?: string
+          crop_code: string
+          description?: string | null
+          id?: string
+          rule_code: string
+          rule_config?: Json
+          rule_type: string
+          severity?: string
+          source?: string | null
+          stage_code: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          confidence?: number
+          created_at?: string
+          crop_code?: string
+          description?: string | null
+          id?: string
+          rule_code?: string
+          rule_config?: Json
+          rule_type?: string
+          severity?: string
+          source?: string | null
+          stage_code?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       staging_mgrs_tiles: {
         Row: {
           geometry: unknown
@@ -31441,7 +31489,7 @@ export type Database = {
         Returns: Json
       }
       aggregate_weather_data: { Args: never; Returns: undefined }
-      apply_stage_transitions: { Args: { p_land_id: string }; Returns: string }
+      apply_stage_transitions: { Args: { p_land_id: string }; Returns: Json }
       archive_tenant_data: {
         Args: {
           p_archive_location: string
@@ -31471,6 +31519,10 @@ export type Database = {
           reference_id?: string
         }
         Returns: undefined
+      }
+      calc_day_length_hours: {
+        Args: { p_date: string; p_lat: number }
+        Returns: number
       }
       calc_variety_completeness: {
         Args: { p_variety_id: string }
@@ -31812,6 +31864,10 @@ export type Database = {
           to_stage_uuid: string
           trigger_type: string
         }[]
+      }
+      evaluate_stage_validation: {
+        Args: { p_land_id: string; p_target_stage: string }
+        Returns: Json
       }
       expire_farmer_subscriptions: { Args: never; Returns: Json }
       expire_old_invites: { Args: never; Returns: number }
