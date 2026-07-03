@@ -5113,8 +5113,9 @@ export class AIAgentOrchestrator {
           const dayLengthResult = calculateDayLength(landContext.center_lat, new Date());
           const photoperiodTrigger = checkPhotoperiodTrigger(
             landContext.current_crop.toUpperCase(),
-            dayLengthResult.day_length_hours,
-            landContext.days_since_sowing || 0
+            landContext.center_lat,
+            landContext.days_since_sowing || 0,
+            landContext.current_stage
           );
           
           if (photoperiodTrigger.trigger_active) {
