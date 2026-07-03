@@ -8446,6 +8446,28 @@ export class AIAgentOrchestrator {
       const authoritativeStage = phenology?.growth_stage || growthStage;
       const authoritativeDas   = phenology?.current_das ?? daysSinceSowing;
       const stageAuthority     = phenology ? 'phenology_ssot' : (cropSchedule ? 'schedule_heuristic' : 'lands_fallback');
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE C — Morphology reconciliation
+      // Compare observed NDVI (and any user-supplied height/leaf count later)
+      // against expected bands from the phenology SSOT. Result is EVIDENCE,
+      // not a decision — feeds symbolic facts + confidence chain only.
+      // ═══════════════════════════════════════════════════════════════════════
+      const ndviLatestValue: number | null = Array.isArray(ndviHistory) && ndviHistory.length > 0
+        ? (ndviHistory[0]?.ndvi_value ?? ndviHistory[0]?.value ?? null)
+        : null;
+      let morphology_evidence: MorphologyEvidence | null = null;
+      try {
+        morphology_evidence = reconcileMorphology(
+          phenology,
+          { ndvi: ndviLatestValue, plant_height_cm: null, leaf_count: null }
+        );
+        console.log(
+          `🧬 [MORPHOLOGY] status=${morphology_evidence.overall_status} shift=${morphology_evidence.stage_shift_hint ?? 'none'} Δconf=${morphology_evidence.confidence_delta} ndvi=${morphology_evidence.ndvi.status}`
+        );
+      } catch (e) {
+        console.warn(`⚠️ [MORPHOLOGY] reconciler threw: ${(e as Error).message}`);
+      }
       
       const context = {
         land_id: landId,
