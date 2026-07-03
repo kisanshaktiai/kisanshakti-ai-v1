@@ -373,7 +373,15 @@ export function checkPhotoperiodTrigger(
 ): PhotoperiodResult {
   const analysis = analyzePhotoperiod(cropCode, latitude);
   const integration = integratePhotoperiodWithPhenology(cropCode, currentStage || '', latitude, das);
-  
+  const profile = getCropPhotoperiodProfile(cropCode);
+
+  // Legacy trigger-shape fields expected by orchestrator wiring
+  const triggerActive = !!profile && profile.sensitivity !== 'DAY_NEUTRAL' && analysis.threshold_met;
+  const triggerType = profile?.affected_stage ?? 'NONE';
+  const advice = integration.warning
+    ? `${integration.warning}${integration.adjustment ? ' — ' + integration.adjustment : ''}`
+    : analysis.recommendation;
+
   return {
     crop_code: cropCode,
     latitude,
@@ -386,7 +394,12 @@ export function checkPhotoperiodTrigger(
     photoperiod_suitable: integration.photoperiod_suitable,
     warning: integration.warning,
     adjustment: integration.adjustment,
-    confidence: analysis.confidence
+    confidence: analysis.confidence,
+    // legacy aliases
+    trigger_active: triggerActive,
+    trigger_type: triggerType,
+    advice,
+    day_length_hours: analysis.current_day_length,
   };
 }
 
@@ -407,4 +420,9 @@ export interface PhotoperiodResult {
   warning?: string;
   adjustment?: string;
   confidence: number;
+  // legacy aliases used by orchestrator
+  trigger_active: boolean;
+  trigger_type: string;
+  advice: string;
+  day_length_hours: number;
 }
