@@ -117,6 +117,8 @@ export interface RuleDrivenClarificationInput {
     humidity?: number;
     rain_mm?: number;
   };
+  // Phase F — variety-aware resistance modulation
+  variety_id?: string | null;
 }
 
 export interface RuleDrivenOption {
