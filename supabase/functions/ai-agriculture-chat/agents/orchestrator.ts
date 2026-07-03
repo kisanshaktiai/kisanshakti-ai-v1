@@ -5956,7 +5956,10 @@ export class AIAgentOrchestrator {
           } else {
             console.log(`   📊 G2 Growth Stage: ${contextValidation.reconciled_stage} (source: ${contextValidation.stage_source})`);
             if (landContext) {
-              landContext.growth_stage = contextValidation.reconciled_stage;
+              // PHASE 1 — biological SSOT lock takes precedence over reconciler.
+              if (!blockStageWriteIfLocked(landContext, 'context-validation-reconciler', contextValidation.reconciled_stage)) {
+                landContext.growth_stage = contextValidation.reconciled_stage;
+              }
             }
           }
         }
