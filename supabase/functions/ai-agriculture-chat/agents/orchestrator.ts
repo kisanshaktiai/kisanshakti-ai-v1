@@ -365,6 +365,14 @@ import {
   type PhotoperiodResult 
 } from './photoperiod-calculator.ts';
 
+// PHASE 1 — Immutable Biological State (single writer = resolve_crop_phenology)
+import {
+  buildBiologicalState,
+  blockStageWriteIfLocked,
+  isBiologicalStateLocked,
+  type BiologicalState,
+} from './biological-state.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANT: Emergency observation codes (used in both return paths)
 // ═══════════════════════════════════════════════════════════════════════════
