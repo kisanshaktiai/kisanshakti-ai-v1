@@ -8453,6 +8453,22 @@ export class AIAgentOrchestrator {
       }
 
       // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE 1 — Immutable BiologicalState (single writer = resolve_crop_phenology)
+      // Build EXACTLY ONCE here. Downstream code must read from
+      // landContext.biological_state instead of recomputing growth_stage.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const biological_state: BiologicalState | null = buildBiologicalState(landId, phenology);
+      if (biological_state) {
+        console.log(
+          `🔒 [BIO_STATE_LOCKED] land=${landId} stage=${biological_state.growth_stage} ` +
+            `code=${biological_state.stage_code} das=${biological_state.das} ` +
+            `conf=${biological_state.confidence} src=${biological_state.source}`,
+        );
+      } else {
+        console.warn(`⚠️ [BIO_STATE] no lock — resolver produced no phenology row for land=${landId}`);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Prioritize crop_schedules, but FALLBACK to lands.current_crop
       // This ensures crop context is available even without a formal schedule
       // ═══════════════════════════════════════════════════════════════════════════
