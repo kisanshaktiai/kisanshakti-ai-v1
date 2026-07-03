@@ -124,6 +124,135 @@ const HYPOTHESIS_CANONICAL_GROUPS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE F — VARIETY RESISTANCE MODULATION
+// Bounded multiplier applied to CandidateHypothesis.total_score based on the
+// farmer's current_crop_variety_id and matched threat/observation. This is
+// EVIDENCE-level modulation — resistance never eliminates a hypothesis;
+// susceptibility never invents one. All resistance rows come from the
+// curated `variety_resistance` table (columns: variety_id, threat_type,
+// observation_code, canonical_observation_code, threat_name, resistance_level).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RESISTANCE_MULTIPLIER: Record<VarietyResistanceLevel, number> = {
+  HR: 0.60,   // highly resistant → strong down-rank
+  R:  0.75,
+  MR: 0.90,
+  MS: 1.05,
+  S:  1.15,   // susceptible → mild up-rank
+};
+
+interface VarietyResistanceRow {
+  threat_type: string | null;
+  observation_code: string | null;
+  canonical_observation_code: string | null;
+  threat_name: string | null;
+  resistance_level: string | null;
+}
+
+function normalizeKey(v: string | null | undefined): string {
+  return String(v ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+async function loadVarietyResistance(
+  supabaseClient: any,
+  varietyId: string | null | undefined
+): Promise<VarietyResistanceRow[]> {
+  if (!varietyId) return [];
+  try {
+    const { data, error } = await supabaseClient
+      .from('variety_resistance')
+      .select('threat_type, observation_code, canonical_observation_code, threat_name, resistance_level')
+      .eq('variety_id', varietyId);
+    if (error) {
+      console.warn(`   ⚠️ [VarietyResistance] load failed: ${error.message}`);
+      return [];
+    }
+    return (data as VarietyResistanceRow[]) || [];
+  } catch (e) {
+    console.warn(`   ⚠️ [VarietyResistance] exception: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+function findResistanceForCandidate(
+  candidate: CandidateHypothesis,
+  rows: VarietyResistanceRow[],
+  varietyId: string
+): CandidateHypothesisResistance | null {
+  if (!rows.length) return null;
+
+  const obsKeys = new Set(
+    candidate.observable_characteristics
+      .map(c => normalizeKey(c.observation_key))
+      .filter(Boolean)
+  );
+  const canonicalGroup = normalizeKey(candidate.canonical_group);
+  const causeNorm = normalizeKey(candidate.cause);
+
+  // 1. Match by observation_code / canonical_observation_code (strongest signal)
+  for (const row of rows) {
+    const codes = [row.observation_code, row.canonical_observation_code]
+      .map(normalizeKey)
+      .filter(Boolean);
+    for (const code of codes) {
+      if (obsKeys.has(code)) {
+        const lvl = normalizeKey(row.resistance_level) as VarietyResistanceLevel;
+        if (RESISTANCE_MULTIPLIER[lvl] !== undefined) {
+          return {
+            level: lvl,
+            match_kind: 'observation_code',
+            matched_value: code,
+            multiplier: RESISTANCE_MULTIPLIER[lvl],
+            source: 'variety_resistance',
+            variety_id: varietyId,
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Fallback: match by threat_type against canonical_group
+  for (const row of rows) {
+    const tt = normalizeKey(row.threat_type);
+    if (tt && (tt === canonicalGroup || canonicalGroup.includes(tt) || tt.includes(canonicalGroup))) {
+      const lvl = normalizeKey(row.resistance_level) as VarietyResistanceLevel;
+      if (RESISTANCE_MULTIPLIER[lvl] !== undefined) {
+        return {
+          level: lvl,
+          match_kind: 'threat_type',
+          matched_value: tt,
+          multiplier: RESISTANCE_MULTIPLIER[lvl],
+          source: 'variety_resistance',
+          variety_id: varietyId,
+        };
+      }
+    }
+  }
+
+  // 3. Last resort: threat_name substring in cause (curated names, e.g. "SHOOT_BORER")
+  for (const row of rows) {
+    const tn = normalizeKey(row.threat_name);
+    if (tn && tn.length >= 4 && causeNorm.includes(tn)) {
+      const lvl = normalizeKey(row.resistance_level) as VarietyResistanceLevel;
+      if (RESISTANCE_MULTIPLIER[lvl] !== undefined) {
+        return {
+          level: lvl,
+          match_kind: 'threat_name',
+          matched_value: tn,
+          multiplier: RESISTANCE_MULTIPLIER[lvl],
+          source: 'variety_resistance',
+          variety_id: varietyId,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // STAGE COMPATIBILITY PATTERNS
 // ═══════════════════════════════════════════════════════════════════════════
 
