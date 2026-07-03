@@ -39,6 +39,11 @@ export interface PhenologyExpectedBands {
   stage_code?: string | null;
   source?: string | null;
   confidence?: number | null;
+  /** Phase D — real thermal-time accumulated for the land (nullable pre-anchor). */
+  current_gdd?: number | null;
+  current_das?: number | null;
+  /** Phase D — GDD-driven progress index (0..1) when variety gdd_target is present. */
+  phenology_index?: number | null;
 }
 
 export interface ObservedMorphology {
