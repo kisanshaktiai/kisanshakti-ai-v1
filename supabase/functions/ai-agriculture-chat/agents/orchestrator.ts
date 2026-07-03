@@ -8519,8 +8519,9 @@ export class AIAgentOrchestrator {
         growth_stage: authoritativeStage,
         stage_authority: stageAuthority,
         phenology: phenology,          // full Phase-A resolver record (frozen shape)
+        biological_state: biological_state, // PHASE 1 — immutable SSOT; do NOT mutate stage after this
         morphology_evidence: morphology_evidence, // PHASE C — reconciled bands + confidence delta
-        stage_uuid: phenology?.stage_uuid || (land as any).stage_uuid || null,
+        stage_uuid: biological_state?.stage_uuid ?? phenology?.stage_uuid ?? (land as any).stage_uuid ?? null,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
