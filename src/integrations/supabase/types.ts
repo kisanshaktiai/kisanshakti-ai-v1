@@ -6693,6 +6693,7 @@ export type Database = {
           growth_stage: string
           id: string
           is_active: boolean
+          is_photoperiod_sensitive: boolean
           next_stage_id: string | null
           ontology_id: string | null
           parent_stage_id: string | null
@@ -6724,6 +6725,7 @@ export type Database = {
           growth_stage: string
           id?: string
           is_active?: boolean
+          is_photoperiod_sensitive?: boolean
           next_stage_id?: string | null
           ontology_id?: string | null
           parent_stage_id?: string | null
@@ -6755,6 +6757,7 @@ export type Database = {
           growth_stage?: string
           id?: string
           is_active?: boolean
+          is_photoperiod_sensitive?: boolean
           next_stage_id?: string | null
           ontology_id?: string | null
           parent_stage_id?: string | null
