@@ -24313,6 +24313,175 @@ export type Database = {
         }
         Relationships: []
       }
+      stage_transition_conditions: {
+        Row: {
+          combinator: string
+          confidence: number
+          created_at: string
+          crop_code: string
+          crop_cycle: string | null
+          from_stage_uuid: string
+          id: string
+          is_active: boolean
+          notes: string | null
+          priority: number
+          source: string | null
+          to_stage_uuid: string
+          trigger_config: Json
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          combinator?: string
+          confidence?: number
+          created_at?: string
+          crop_code: string
+          crop_cycle?: string | null
+          from_stage_uuid: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          priority?: number
+          source?: string | null
+          to_stage_uuid: string
+          trigger_config?: Json
+          trigger_type: string
+          updated_at?: string
+        }
+        Update: {
+          combinator?: string
+          confidence?: number
+          created_at?: string
+          crop_code?: string
+          crop_cycle?: string | null
+          from_stage_uuid?: string
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          priority?: number
+          source?: string | null
+          to_stage_uuid?: string
+          trigger_config?: Json
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_transition_conditions_from_stage_uuid_fkey"
+            columns: ["from_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_conditions_to_stage_uuid_fkey"
+            columns: ["to_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stage_transition_log: {
+        Row: {
+          confidence: number | null
+          evaluated_at: string
+          evidence: Json | null
+          from_stage_uuid: string | null
+          id: string
+          land_id: string
+          rule_id: string | null
+          to_stage_uuid: string | null
+          trigger_type: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          evaluated_at?: string
+          evidence?: Json | null
+          from_stage_uuid?: string | null
+          id?: string
+          land_id: string
+          rule_id?: string | null
+          to_stage_uuid?: string | null
+          trigger_type?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          evaluated_at?: string
+          evidence?: Json | null
+          from_stage_uuid?: string | null
+          id?: string
+          land_id?: string
+          rule_id?: string | null
+          to_stage_uuid?: string | null
+          trigger_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_transition_log_from_stage_uuid_fkey"
+            columns: ["from_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "stage_transition_conditions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_to_stage_uuid_fkey"
+            columns: ["to_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staging_mgrs_tiles: {
         Row: {
           geometry: unknown
@@ -31272,6 +31441,7 @@ export type Database = {
         Returns: Json
       }
       aggregate_weather_data: { Args: never; Returns: undefined }
+      apply_stage_transitions: { Args: { p_land_id: string }; Returns: string }
       archive_tenant_data: {
         Args: {
           p_archive_location: string
@@ -31629,6 +31799,19 @@ export type Database = {
           p_user_id?: string
         }
         Returns: boolean
+      }
+      evaluate_stage_transitions: {
+        Args: { p_from_stage?: string; p_land_id: string }
+        Returns: {
+          confidence: number
+          evidence: Json
+          from_stage_uuid: string
+          matched: boolean
+          priority: number
+          rule_id: string
+          to_stage_uuid: string
+          trigger_type: string
+        }[]
       }
       expire_farmer_subscriptions: { Args: never; Returns: Json }
       expire_old_invites: { Args: never; Returns: number }
@@ -33193,6 +33376,17 @@ export type Database = {
             Returns: Json
           }
         | { Args: { p_tenant_id: string; p_version?: number }; Returns: string }
+      stc_eval_single: {
+        Args: {
+          p_cfg: Json
+          p_das: number
+          p_dat: number
+          p_gdd: number
+          p_land_id: string
+          p_type: string
+        }
+        Returns: boolean
+      }
       suspend_tenant: {
         Args: { p_reason?: string; p_tenant_id: string }
         Returns: Json
