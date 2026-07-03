@@ -59,6 +59,20 @@ export interface HypothesisEvaluationInput {
   user_query: string;
   supabaseClient: any;
   trace_id?: string;
+  // Phase F — variety-aware resistance modulation. Optional; when present,
+  // candidate scores get a bounded resistance multiplier from `variety_resistance`.
+  variety_id?: string | null;
+}
+
+export type VarietyResistanceLevel = 'HR' | 'R' | 'MR' | 'MS' | 'S';
+
+export interface CandidateHypothesisResistance {
+  level: VarietyResistanceLevel;
+  match_kind: 'observation_code' | 'threat_type' | 'threat_name';
+  matched_value: string;
+  multiplier: number;              // bounded [0.6, 1.15]
+  source: 'variety_resistance';
+  variety_id: string;
 }
 
 export interface CandidateHypothesis {
@@ -73,6 +87,8 @@ export interface CandidateHypothesis {
   differentiating_questions: any[];
   matched_conditions: string[];
   conditions_json: any;
+  /** Phase F — resistance adjustment applied to total_score, if any. */
+  resistance?: CandidateHypothesisResistance;
 }
 
 export interface ObservableCharacteristic {
@@ -106,6 +122,135 @@ const HYPOTHESIS_CANONICAL_GROUPS = [
   'viral', 'establishment', 'soil_borne', 'borer', 'mite',
   'weed', '06_weed', 'harvest', '11_harvest', 'economics'
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE F — VARIETY RESISTANCE MODULATION
+// Bounded multiplier applied to CandidateHypothesis.total_score based on the
+// farmer's current_crop_variety_id and matched threat/observation. This is
+// EVIDENCE-level modulation — resistance never eliminates a hypothesis;
+// susceptibility never invents one. All resistance rows come from the
+// curated `variety_resistance` table (columns: variety_id, threat_type,
+// observation_code, canonical_observation_code, threat_name, resistance_level).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RESISTANCE_MULTIPLIER: Record<VarietyResistanceLevel, number> = {
+  HR: 0.60,   // highly resistant → strong down-rank
+  R:  0.75,
+  MR: 0.90,
+  MS: 1.05,
+  S:  1.15,   // susceptible → mild up-rank
+};
+
+interface VarietyResistanceRow {
+  threat_type: string | null;
+  observation_code: string | null;
+  canonical_observation_code: string | null;
+  threat_name: string | null;
+  resistance_level: string | null;
+}
+
+function normalizeKey(v: string | null | undefined): string {
+  return String(v ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+async function loadVarietyResistance(
+  supabaseClient: any,
+  varietyId: string | null | undefined
+): Promise<VarietyResistanceRow[]> {
+  if (!varietyId) return [];
+  try {
+    const { data, error } = await supabaseClient
+      .from('variety_resistance')
+      .select('threat_type, observation_code, canonical_observation_code, threat_name, resistance_level')
+      .eq('variety_id', varietyId);
+    if (error) {
+      console.warn(`   ⚠️ [VarietyResistance] load failed: ${error.message}`);
+      return [];
+    }
+    return (data as VarietyResistanceRow[]) || [];
+  } catch (e) {
+    console.warn(`   ⚠️ [VarietyResistance] exception: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+function findResistanceForCandidate(
+  candidate: CandidateHypothesis,
+  rows: VarietyResistanceRow[],
+  varietyId: string
+): CandidateHypothesisResistance | null {
+  if (!rows.length) return null;
+
+  const obsKeys = new Set(
+    candidate.observable_characteristics
+      .map(c => normalizeKey(c.observation_key))
+      .filter(Boolean)
+  );
+  const canonicalGroup = normalizeKey(candidate.canonical_group);
+  const causeNorm = normalizeKey(candidate.cause);
+
+  // 1. Match by observation_code / canonical_observation_code (strongest signal)
+  for (const row of rows) {
+    const codes = [row.observation_code, row.canonical_observation_code]
+      .map(normalizeKey)
+      .filter(Boolean);
+    for (const code of codes) {
+      if (obsKeys.has(code)) {
+        const lvl = normalizeKey(row.resistance_level) as VarietyResistanceLevel;
+        if (RESISTANCE_MULTIPLIER[lvl] !== undefined) {
+          return {
+            level: lvl,
+            match_kind: 'observation_code',
+            matched_value: code,
+            multiplier: RESISTANCE_MULTIPLIER[lvl],
+            source: 'variety_resistance',
+            variety_id: varietyId,
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Fallback: match by threat_type against canonical_group
+  for (const row of rows) {
+    const tt = normalizeKey(row.threat_type);
+    if (tt && (tt === canonicalGroup || canonicalGroup.includes(tt) || tt.includes(canonicalGroup))) {
+      const lvl = normalizeKey(row.resistance_level) as VarietyResistanceLevel;
+      if (RESISTANCE_MULTIPLIER[lvl] !== undefined) {
+        return {
+          level: lvl,
+          match_kind: 'threat_type',
+          matched_value: tt,
+          multiplier: RESISTANCE_MULTIPLIER[lvl],
+          source: 'variety_resistance',
+          variety_id: varietyId,
+        };
+      }
+    }
+  }
+
+  // 3. Last resort: threat_name substring in cause (curated names, e.g. "SHOOT_BORER")
+  for (const row of rows) {
+    const tn = normalizeKey(row.threat_name);
+    if (tn && tn.length >= 4 && causeNorm.includes(tn)) {
+      const lvl = normalizeKey(row.resistance_level) as VarietyResistanceLevel;
+      if (RESISTANCE_MULTIPLIER[lvl] !== undefined) {
+        return {
+          level: lvl,
+          match_kind: 'threat_name',
+          matched_value: tn,
+          multiplier: RESISTANCE_MULTIPLIER[lvl],
+          source: 'variety_resistance',
+          variety_id: varietyId,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE COMPATIBILITY PATTERNS
@@ -837,14 +982,43 @@ export async function evaluateCandidateHypotheses(
     }
     
     // ═══════════════════════════════════════════════════════════════════════
+    // PHASE F — VARIETY RESISTANCE MODULATION
+    // Apply bounded multiplier BEFORE sort/dedup so the highest post-adjustment
+    // candidate wins tie-breaks and dedup keeps the survivor. Skipped when no
+    // variety_id is provided or the variety has no curated resistance rows.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (input.variety_id) {
+      const resistanceRows = await loadVarietyResistance(supabaseClient, input.variety_id);
+      if (resistanceRows.length > 0) {
+        let adjustedCount = 0;
+        for (const cand of scoredCandidates) {
+          const hit = findResistanceForCandidate(cand, resistanceRows, input.variety_id);
+          if (hit) {
+            const before = cand.total_score;
+            cand.total_score = Math.max(0, Math.min(1, before * hit.multiplier));
+            cand.resistance = hit;
+            adjustedCount++;
+            console.log(`   🧬 [Resistance] ${cand.cause.slice(0, 40)} lvl=${hit.level} ×${hit.multiplier} (${before.toFixed(3)} → ${cand.total_score.toFixed(3)}) via ${hit.match_kind}=${hit.matched_value}`);
+          }
+        }
+        if (adjustedCount === 0) {
+          console.log(`   🧬 [Resistance] variety ${input.variety_id}: ${resistanceRows.length} rows loaded, 0 candidates matched`);
+        }
+      } else {
+        console.log(`   🧬 [Resistance] variety ${input.variety_id}: no curated rows`);
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: DEDUPLICATE by normalized cause + Rank and return top 4 candidates
     // CRITICAL FIX: Multiple rules exist for same pest (e.g., EARLY_SHOOT_BORER,
     // early_shoot_borer_tillering, Early Shoot Borer infestation)
     // We MUST deduplicate to avoid showing duplicate options to farmers
     // ═══════════════════════════════════════════════════════════════════════
     
-    // Sort by score first
+    // Sort by score first (post-resistance)
     scoredCandidates.sort((a, b) => b.total_score - a.total_score);
+    
     
     // Deduplicate by normalized cause - keep highest scoring variant
     const normalizedCauseSeen = new Set<string>();

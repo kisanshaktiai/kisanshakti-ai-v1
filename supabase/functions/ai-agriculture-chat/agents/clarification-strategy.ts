@@ -117,6 +117,8 @@ export interface RuleDrivenClarificationInput {
     humidity?: number;
     rain_mm?: number;
   };
+  // Phase F — variety-aware resistance modulation
+  variety_id?: string | null;
 }
 
 export interface RuleDrivenOption {
@@ -415,7 +417,8 @@ export async function fetchRuleDrivenClarificationOptions(
     known_observations: current_symptoms,
     user_query: input.user_query || '',
     supabaseClient,
-    trace_id: traceId
+    trace_id: traceId,
+    variety_id: input.variety_id ?? null,
   });
   
   const candidates = hypothesisResult.candidates;
