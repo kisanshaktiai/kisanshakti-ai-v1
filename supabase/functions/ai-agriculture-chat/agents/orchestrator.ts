@@ -4397,7 +4397,11 @@ export class AIAgentOrchestrator {
             known_observations: currentObservations,
             user_query: farmerMessage,
             supabaseClient: this.supabase,
-            trace_id: traceId
+            trace_id: traceId,
+            // Phase F — variety-aware resistance modulation
+            variety_id: (landContext as any)?.current_crop_variety_id
+              ?? (landContext as any)?.variety_id
+              ?? null,
           });
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
