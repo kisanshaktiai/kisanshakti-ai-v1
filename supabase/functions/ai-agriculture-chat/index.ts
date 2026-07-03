@@ -1562,8 +1562,11 @@ serve(async (req) => {
         if (renderContext.authority_override_applied && landContext) {
           console.log(`   🔄 [Reconciliation] Updating landContext with authority values`);
           landContext.current_crop = renderContext.crop_name;
-          landContext.growth_stage = renderContext.growth_stage;
-          landContext.days_since_sowing = renderContext.days_since_sowing;
+          // PHASE 1 — biological SSOT lock takes precedence over render authority for stage/DAS.
+          if (!blockStageWriteIfLocked(landContext, 'render-authority-reconciliation', renderContext.growth_stage)) {
+            landContext.growth_stage = renderContext.growth_stage;
+            landContext.days_since_sowing = renderContext.days_since_sowing;
+          }
         }
         
         // Use renderContext values for response generation (authority-reconciled)
