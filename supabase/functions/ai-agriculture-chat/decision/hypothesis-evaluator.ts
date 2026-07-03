@@ -59,6 +59,20 @@ export interface HypothesisEvaluationInput {
   user_query: string;
   supabaseClient: any;
   trace_id?: string;
+  // Phase F — variety-aware resistance modulation. Optional; when present,
+  // candidate scores get a bounded resistance multiplier from `variety_resistance`.
+  variety_id?: string | null;
+}
+
+export type VarietyResistanceLevel = 'HR' | 'R' | 'MR' | 'MS' | 'S';
+
+export interface CandidateHypothesisResistance {
+  level: VarietyResistanceLevel;
+  match_kind: 'observation_code' | 'threat_type' | 'threat_name';
+  matched_value: string;
+  multiplier: number;              // bounded [0.6, 1.15]
+  source: 'variety_resistance';
+  variety_id: string;
 }
 
 export interface CandidateHypothesis {
@@ -73,6 +87,8 @@ export interface CandidateHypothesis {
   differentiating_questions: any[];
   matched_conditions: string[];
   conditions_json: any;
+  /** Phase F — resistance adjustment applied to total_score, if any. */
+  resistance?: CandidateHypothesisResistance;
 }
 
 export interface ObservableCharacteristic {
