@@ -39,6 +39,11 @@ export interface PhenologyExpectedBands {
   stage_code?: string | null;
   source?: string | null;
   confidence?: number | null;
+  /** Phase D — real thermal-time accumulated for the land (nullable pre-anchor). */
+  current_gdd?: number | null;
+  current_das?: number | null;
+  /** Phase D — GDD-driven progress index (0..1) when variety gdd_target is present. */
+  phenology_index?: number | null;
 }
 
 export interface ObservedMorphology {
@@ -180,6 +185,24 @@ export function reconcileMorphology(
 
   if (stage_shift_hint) {
     evidence.push(`stage_shift_hint=${stage_shift_hint}`);
+  }
+
+  // ─── Phase D — GDD-vs-DAS drift signal (informational; never a decision) ───
+  const gdd = typeof phen.current_gdd === 'number' ? phen.current_gdd : null;
+  const das = typeof phen.current_das === 'number' ? phen.current_das : null;
+  const phenIdx = typeof phen.phenology_index === 'number' ? phen.phenology_index : null;
+  if (gdd !== null) evidence.push(`gdd=${gdd.toFixed(1)}`);
+  if (gdd !== null && phenIdx !== null && das !== null && das > 0) {
+    // Rough DAS-based progress within a season heuristic (0..1 clipped).
+    // If GDD-driven phen_index disagrees with linear DAS position by >25%,
+    // emit a stage-shift hint (only when morphology gave none).
+    const dasProgress = Math.max(0, Math.min(1, das / 180));
+    const drift = phenIdx - dasProgress;
+    evidence.push(`gdd_vs_das_drift=${drift.toFixed(2)}`);
+    if (!stage_shift_hint && Math.abs(drift) >= 0.25) {
+      stage_shift_hint = drift > 0 ? 'AHEAD' : 'BEHIND';
+      evidence.push(`stage_shift_hint(gdd)=${stage_shift_hint}`);
+    }
   }
 
   return {

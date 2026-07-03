@@ -6688,6 +6688,8 @@ export type Database = {
           expected_leaf_count_min: number | null
           expected_ndvi_max: number | null
           expected_ndvi_min: number | null
+          gdd_max: number | null
+          gdd_min: number | null
           growth_stage: string
           id: string
           is_active: boolean
@@ -6717,6 +6719,8 @@ export type Database = {
           expected_leaf_count_min?: number | null
           expected_ndvi_max?: number | null
           expected_ndvi_min?: number | null
+          gdd_max?: number | null
+          gdd_min?: number | null
           growth_stage: string
           id?: string
           is_active?: boolean
@@ -6746,6 +6750,8 @@ export type Database = {
           expected_leaf_count_min?: number | null
           expected_ndvi_max?: number | null
           expected_ndvi_min?: number | null
+          gdd_max?: number | null
+          gdd_min?: number | null
           growth_stage?: string
           id?: string
           is_active?: boolean
@@ -13213,6 +13219,100 @@ export type Database = {
           },
         ]
       }
+      land_gdd_daily: {
+        Row: {
+          anchor_date: string
+          anchor_type: string
+          base_temp_c: number
+          created_at: string
+          cumulative_gdd: number
+          daily_gdd: number
+          days_from_anchor: number
+          land_id: string
+          method: string
+          obs_date: string
+          source: string
+          tmax_c: number | null
+          tmin_c: number | null
+          upper_cap_c: number
+        }
+        Insert: {
+          anchor_date: string
+          anchor_type: string
+          base_temp_c: number
+          created_at?: string
+          cumulative_gdd?: number
+          daily_gdd?: number
+          days_from_anchor: number
+          land_id: string
+          method?: string
+          obs_date: string
+          source?: string
+          tmax_c?: number | null
+          tmin_c?: number | null
+          upper_cap_c?: number
+        }
+        Update: {
+          anchor_date?: string
+          anchor_type?: string
+          base_temp_c?: number
+          created_at?: string
+          cumulative_gdd?: number
+          daily_gdd?: number
+          days_from_anchor?: number
+          land_id?: string
+          method?: string
+          obs_date?: string
+          source?: string
+          tmax_c?: number | null
+          tmin_c?: number | null
+          upper_cap_c?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       land_tile_intersections: {
         Row: {
           created_at: string | null
@@ -13508,6 +13608,7 @@ export type Database = {
           current_crop: string | null
           current_crop_id: string | null
           current_crop_variety_id: string | null
+          current_gdd: number | null
           current_moisture_status: string | null
           das: number | null
           deleted_at: string | null
@@ -13516,6 +13617,9 @@ export type Database = {
           elevation_meters: number | null
           expected_harvest_date: string | null
           farmer_id: string
+          gdd_anchor_date: string | null
+          gdd_anchor_type: string | null
+          gdd_last_computed_at: string | null
           gps_accuracy_meters: number | null
           gps_recorded_at: string | null
           harvest_date: string | null
@@ -13598,6 +13702,7 @@ export type Database = {
           current_crop?: string | null
           current_crop_id?: string | null
           current_crop_variety_id?: string | null
+          current_gdd?: number | null
           current_moisture_status?: string | null
           das?: number | null
           deleted_at?: string | null
@@ -13606,6 +13711,9 @@ export type Database = {
           elevation_meters?: number | null
           expected_harvest_date?: string | null
           farmer_id: string
+          gdd_anchor_date?: string | null
+          gdd_anchor_type?: string | null
+          gdd_last_computed_at?: string | null
           gps_accuracy_meters?: number | null
           gps_recorded_at?: string | null
           harvest_date?: string | null
@@ -13688,6 +13796,7 @@ export type Database = {
           current_crop?: string | null
           current_crop_id?: string | null
           current_crop_variety_id?: string | null
+          current_gdd?: number | null
           current_moisture_status?: string | null
           das?: number | null
           deleted_at?: string | null
@@ -13696,6 +13805,9 @@ export type Database = {
           elevation_meters?: number | null
           expected_harvest_date?: string | null
           farmer_id?: string
+          gdd_anchor_date?: string | null
+          gdd_anchor_type?: string | null
+          gdd_last_computed_at?: string | null
           gps_accuracy_meters?: number | null
           gps_recorded_at?: string | null
           harvest_date?: string | null
@@ -31108,6 +31220,11 @@ export type Database = {
         Returns: unknown
       }
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      accumulate_gdd_batch: { Args: { p_limit?: number }; Returns: Json }
+      accumulate_gdd_for_land: {
+        Args: { p_land_id: string; p_lookback_days?: number }
+        Returns: number
+      }
       addauth: { Args: { "": string }; Returns: boolean }
       addgeometrycolumn:
         | {
