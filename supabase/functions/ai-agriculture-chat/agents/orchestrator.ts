@@ -308,6 +308,13 @@ import {
   type PhenologyResult 
 } from './gdd-phenology-engine.ts';
 
+// PHASE C: Morphology reconciler — reconciles observed NDVI / height / leaf
+// count against expected bands from variety_phenology_profile.
+import {
+  reconcileMorphology,
+  type MorphologyEvidence
+} from '../decision/morphology-reconciler.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SAFE STRING UTILITIES - Production-grade guards against undefined/null
 // ═══════════════════════════════════════════════════════════════════════════
@@ -8439,6 +8446,28 @@ export class AIAgentOrchestrator {
       const authoritativeStage = phenology?.growth_stage || growthStage;
       const authoritativeDas   = phenology?.current_das ?? daysSinceSowing;
       const stageAuthority     = phenology ? 'phenology_ssot' : (cropSchedule ? 'schedule_heuristic' : 'lands_fallback');
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE C — Morphology reconciliation
+      // Compare observed NDVI (and any user-supplied height/leaf count later)
+      // against expected bands from the phenology SSOT. Result is EVIDENCE,
+      // not a decision — feeds symbolic facts + confidence chain only.
+      // ═══════════════════════════════════════════════════════════════════════
+      const ndviLatestValue: number | null = Array.isArray(ndviHistory) && ndviHistory.length > 0
+        ? (ndviHistory[0]?.ndvi_value ?? ndviHistory[0]?.value ?? null)
+        : null;
+      let morphology_evidence: MorphologyEvidence | null = null;
+      try {
+        morphology_evidence = reconcileMorphology(
+          phenology,
+          { ndvi: ndviLatestValue, plant_height_cm: null, leaf_count: null }
+        );
+        console.log(
+          `🧬 [MORPHOLOGY] status=${morphology_evidence.overall_status} shift=${morphology_evidence.stage_shift_hint ?? 'none'} Δconf=${morphology_evidence.confidence_delta} ndvi=${morphology_evidence.ndvi.status}`
+        );
+      } catch (e) {
+        console.warn(`⚠️ [MORPHOLOGY] reconciler threw: ${(e as Error).message}`);
+      }
       
       const context = {
         land_id: landId,
@@ -8457,6 +8486,7 @@ export class AIAgentOrchestrator {
         growth_stage: authoritativeStage,
         stage_authority: stageAuthority,
         phenology: phenology,          // full Phase-A resolver record (frozen shape)
+        morphology_evidence: morphology_evidence, // PHASE C — reconciled bands + confidence delta
         stage_uuid: phenology?.stage_uuid || (land as any).stage_uuid || null,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging

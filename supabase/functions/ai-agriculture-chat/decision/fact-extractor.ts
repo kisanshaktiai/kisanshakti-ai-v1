@@ -87,7 +87,18 @@ export class FactExtractor {
       all_observations: obsArray,
       has_pest_evidence: hasPestEvidence,
       user_query: userQuery,
-      recent_treatments: observation?.recent_actions || []
+      recent_treatments: observation?.recent_actions || [],
+      // PHASE C — pass-through morphology evidence when orchestrator attaches it
+      morphology_evidence: (observation?.morphology_evidence || (landState as any)?.morphology_evidence)
+        ? {
+            overall_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).overall_status,
+            stage_shift_hint: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).stage_shift_hint ?? null,
+            confidence_delta: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).confidence_delta ?? 0,
+            ndvi_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).ndvi?.status ?? 'UNKNOWN',
+            height_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).height_cm?.status ?? 'UNKNOWN',
+            leaf_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).leaf_count?.status ?? 'UNKNOWN',
+          }
+        : null
     };
   }
   
