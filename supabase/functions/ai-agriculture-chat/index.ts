@@ -1753,12 +1753,15 @@ serve(async (req) => {
               console.error(`   Overriding to GERMINATION stage in landContext`);
               
               // Override to safe stage in landContext for LLM
+              // PHASE 1 — biological SSOT lock wins; only the resolver may set stage.
               if (landContext) {
-                landContext.growth_stage = 'GERMINATION';
+                if (!blockStageWriteIfLocked(landContext, 'sanity-check-impossible-harvest', 'GERMINATION')) {
+                  landContext.growth_stage = 'GERMINATION';
+                }
               }
-              
-              // Also fix in dataAudit if present
-              if (orchestratorResponse.dataAudit?.land) {
+
+              // Also fix in dataAudit if present (only when SSOT is not locked)
+              if (orchestratorResponse.dataAudit?.land && !isBiologicalStateLocked(landContext)) {
                 orchestratorResponse.dataAudit.land.growth_stage = 'GERMINATION';
               }
             }
