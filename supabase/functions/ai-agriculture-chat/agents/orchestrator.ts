@@ -5325,7 +5325,11 @@ export class AIAgentOrchestrator {
             stage: lockedStage.growth_stage,
             current_symptoms: inductionResult.symptoms.map(s => s.symbol),
             language: options.language || 'mr',
-            supabaseClient: this.supabase
+            supabaseClient: this.supabase,
+            // Phase F — variety-aware resistance modulation
+            variety_id: (landContext as any)?.current_crop_variety_id
+              ?? (landContext as any)?.variety_id
+              ?? null,
           };
           
           ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);
