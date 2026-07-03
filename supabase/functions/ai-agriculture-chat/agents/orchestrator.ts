@@ -8486,6 +8486,7 @@ export class AIAgentOrchestrator {
         growth_stage: authoritativeStage,
         stage_authority: stageAuthority,
         phenology: phenology,          // full Phase-A resolver record (frozen shape)
+        morphology_evidence: morphology_evidence, // PHASE C — reconciled bands + confidence delta
         stage_uuid: phenology?.stage_uuid || (land as any).stage_uuid || null,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
