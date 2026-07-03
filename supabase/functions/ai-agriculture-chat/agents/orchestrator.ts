@@ -365,6 +365,14 @@ import {
   type PhotoperiodResult 
 } from './photoperiod-calculator.ts';
 
+// PHASE 1 — Immutable Biological State (single writer = resolve_crop_phenology)
+import {
+  buildBiologicalState,
+  blockStageWriteIfLocked,
+  isBiologicalStateLocked,
+  type BiologicalState,
+} from './biological-state.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANT: Emergency observation codes (used in both return paths)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -5095,7 +5103,10 @@ export class AIAgentOrchestrator {
           console.log(`   Critical irrigation: ${phenologyResult.critical_irrigation_needed}, Critical nutrition: ${phenologyResult.critical_nutrition_needed}`);
           
           // Override growth_stage in landContext with GDD-calculated stage
-          landContext.growth_stage = phenologyResult.current_stage;
+          // PHASE 1 — but only if the biological SSOT did NOT already lock the stage.
+          if (!blockStageWriteIfLocked(landContext, 'gdd-phenology-engine', phenologyResult.current_stage)) {
+            landContext.growth_stage = phenologyResult.current_stage;
+          }
           landContext.gdd_phenology = phenologyResult;
         } catch (gddError) {
           console.error('   ❌ GDD calculation failed, using DAS fallback:', gddError);
@@ -5945,7 +5956,10 @@ export class AIAgentOrchestrator {
           } else {
             console.log(`   📊 G2 Growth Stage: ${contextValidation.reconciled_stage} (source: ${contextValidation.stage_source})`);
             if (landContext) {
-              landContext.growth_stage = contextValidation.reconciled_stage;
+              // PHASE 1 — biological SSOT lock takes precedence over reconciler.
+              if (!blockStageWriteIfLocked(landContext, 'context-validation-reconciler', contextValidation.reconciled_stage)) {
+                landContext.growth_stage = contextValidation.reconciled_stage;
+              }
             }
           }
         }
@@ -8445,6 +8459,22 @@ export class AIAgentOrchestrator {
       }
 
       // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE 1 — Immutable BiologicalState (single writer = resolve_crop_phenology)
+      // Build EXACTLY ONCE here. Downstream code must read from
+      // landContext.biological_state instead of recomputing growth_stage.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const biological_state: BiologicalState | null = buildBiologicalState(landId, phenology);
+      if (biological_state) {
+        console.log(
+          `🔒 [BIO_STATE_LOCKED] land=${landId} stage=${biological_state.growth_stage} ` +
+            `code=${biological_state.stage_code} das=${biological_state.das} ` +
+            `conf=${biological_state.confidence} src=${biological_state.source}`,
+        );
+      } else {
+        console.warn(`⚠️ [BIO_STATE] no lock — resolver produced no phenology row for land=${landId}`);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Prioritize crop_schedules, but FALLBACK to lands.current_crop
       // This ensures crop context is available even without a formal schedule
       // ═══════════════════════════════════════════════════════════════════════════
@@ -8495,8 +8525,9 @@ export class AIAgentOrchestrator {
         growth_stage: authoritativeStage,
         stage_authority: stageAuthority,
         phenology: phenology,          // full Phase-A resolver record (frozen shape)
+        biological_state: biological_state, // PHASE 1 — immutable SSOT; do NOT mutate stage after this
         morphology_evidence: morphology_evidence, // PHASE C — reconciled bands + confidence delta
-        stage_uuid: phenology?.stage_uuid || (land as any).stage_uuid || null,
+        stage_uuid: biological_state?.stage_uuid ?? phenology?.stage_uuid ?? (land as any).stage_uuid ?? null,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),

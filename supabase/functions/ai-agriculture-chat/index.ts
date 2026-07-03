@@ -21,6 +21,7 @@ import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } fro
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
+import { blockStageWriteIfLocked, isBiologicalStateLocked } from './agents/biological-state.ts';
 import { getRuntimeTraceCollector, resetRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
@@ -1561,8 +1562,11 @@ serve(async (req) => {
         if (renderContext.authority_override_applied && landContext) {
           console.log(`   🔄 [Reconciliation] Updating landContext with authority values`);
           landContext.current_crop = renderContext.crop_name;
-          landContext.growth_stage = renderContext.growth_stage;
-          landContext.days_since_sowing = renderContext.days_since_sowing;
+          // PHASE 1 — biological SSOT lock takes precedence over render authority for stage/DAS.
+          if (!blockStageWriteIfLocked(landContext, 'render-authority-reconciliation', renderContext.growth_stage)) {
+            landContext.growth_stage = renderContext.growth_stage;
+            landContext.days_since_sowing = renderContext.days_since_sowing;
+          }
         }
         
         // Use renderContext values for response generation (authority-reconciled)
@@ -1749,12 +1753,15 @@ serve(async (req) => {
               console.error(`   Overriding to GERMINATION stage in landContext`);
               
               // Override to safe stage in landContext for LLM
+              // PHASE 1 — biological SSOT lock wins; only the resolver may set stage.
               if (landContext) {
-                landContext.growth_stage = 'GERMINATION';
+                if (!blockStageWriteIfLocked(landContext, 'sanity-check-impossible-harvest', 'GERMINATION')) {
+                  landContext.growth_stage = 'GERMINATION';
+                }
               }
-              
-              // Also fix in dataAudit if present
-              if (orchestratorResponse.dataAudit?.land) {
+
+              // Also fix in dataAudit if present (only when SSOT is not locked)
+              if (orchestratorResponse.dataAudit?.land && !isBiologicalStateLocked(landContext)) {
                 orchestratorResponse.dataAudit.land.growth_stage = 'GERMINATION';
               }
             }
