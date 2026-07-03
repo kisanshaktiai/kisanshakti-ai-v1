@@ -5103,7 +5103,10 @@ export class AIAgentOrchestrator {
           console.log(`   Critical irrigation: ${phenologyResult.critical_irrigation_needed}, Critical nutrition: ${phenologyResult.critical_nutrition_needed}`);
           
           // Override growth_stage in landContext with GDD-calculated stage
-          landContext.growth_stage = phenologyResult.current_stage;
+          // PHASE 1 — but only if the biological SSOT did NOT already lock the stage.
+          if (!blockStageWriteIfLocked(landContext, 'gdd-phenology-engine', phenologyResult.current_stage)) {
+            landContext.growth_stage = phenologyResult.current_stage;
+          }
           landContext.gdd_phenology = phenologyResult;
         } catch (gddError) {
           console.error('   ❌ GDD calculation failed, using DAS fallback:', gddError);
