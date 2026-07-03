@@ -308,6 +308,13 @@ import {
   type PhenologyResult 
 } from './gdd-phenology-engine.ts';
 
+// PHASE C: Morphology reconciler — reconciles observed NDVI / height / leaf
+// count against expected bands from variety_phenology_profile.
+import {
+  reconcileMorphology,
+  type MorphologyEvidence
+} from '../decision/morphology-reconciler.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SAFE STRING UTILITIES - Production-grade guards against undefined/null
 // ═══════════════════════════════════════════════════════════════════════════
