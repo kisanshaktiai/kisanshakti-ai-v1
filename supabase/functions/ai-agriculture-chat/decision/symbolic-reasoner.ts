@@ -90,6 +90,18 @@ export interface SymbolicFact {
   // Farmer action facts
   user_query: string;
   recent_treatments: string[];
+
+  // PHASE C — Morphology reconciliation evidence (optional; null when phenology
+  // or observed morphology is unavailable). Never drives a decision by itself;
+  // used to nudge confidence and hint at stage shift.
+  morphology_evidence?: {
+    overall_status: 'CONSISTENT' | 'MILD_DEVIATION' | 'MAJOR_DEVIATION' | 'INSUFFICIENT_DATA';
+    stage_shift_hint: 'AHEAD' | 'BEHIND' | null;
+    confidence_delta: number;
+    ndvi_status: 'BELOW' | 'IN_RANGE' | 'ABOVE' | 'UNKNOWN';
+    height_status: 'BELOW' | 'IN_RANGE' | 'ABOVE' | 'UNKNOWN';
+    leaf_status: 'BELOW' | 'IN_RANGE' | 'ABOVE' | 'UNKNOWN';
+  } | null;
 }
 
 export interface RuleCondition {
