@@ -39,7 +39,42 @@ export interface ContradictionInput {
   growth_stage: string;
   das?: number | null;
   trace_id?: string;
+  /** Confirmed observation codes for this turn (any casing). Enables
+   *  BIOLOGICAL_IMPOSSIBILITY detection (e.g. NO_GERMINATION at TILLERING). */
+  observations?: readonly string[];
 }
+
+// ─── BIOLOGICAL_IMPOSSIBILITY: observation ↔ stage incompatibilities ──────
+// Crop-agnostic biological invariants. If the farmer asserts observation X
+// but the frozen BiologicalState says stage Y, the assertion is impossible.
+// Stage family names are matched via STAGE_FAMILIES equivalence below.
+interface StageIncompat {
+  readonly obs_pattern: RegExp;               // matches farmer observation code
+  readonly incompat_stages: readonly string[]; // stage families that make obs impossible
+  readonly label: string;
+}
+const OBSERVATION_STAGE_INCOMPATIBILITIES: readonly StageIncompat[] = Object.freeze([
+  {
+    obs_pattern: /(NO_GERMINATION|GERMINATION_FAILURE|POOR_GERMINATION|NOT_GERMINATED|SEED_NOT_EMERGED|EMERGENCE_FAILURE)/,
+    incompat_stages: ['tillering', 'vegetative', 'grand_growth', 'flowering', 'reproductive', 'maturity', 'ripening', 'maturation', 'harvest'],
+    label: 'germination_failure_asserted_at_advanced_stage',
+  },
+  {
+    obs_pattern: /(SEEDLING_STAGE|NURSERY_STAGE)/,
+    incompat_stages: ['flowering', 'reproductive', 'maturity', 'ripening', 'harvest'],
+    label: 'seedling_asserted_at_reproductive_stage',
+  },
+  {
+    obs_pattern: /(HARVEST_READY|GRAIN_MATURE|CROP_MATURE)/,
+    incompat_stages: ['germination', 'nursery', 'seedling', 'emergence', 'establishment'],
+    label: 'maturity_asserted_at_germination_stage',
+  },
+  {
+    obs_pattern: /(FLOWERING|PANICLE_EMERGED|BOOTING)/,
+    incompat_stages: ['germination', 'nursery', 'seedling', 'emergence', 'establishment'],
+    label: 'reproductive_asserted_at_germination_stage',
+  },
+]);
 
 // Stage families — biologically equivalent stages, mirrors clarification-contract.
 const STAGE_FAMILIES: Record<string, string[]> = {
