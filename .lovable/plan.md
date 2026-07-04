@@ -1,172 +1,93 @@
+# Runtime-only fixes — Neuro-Symbolic Decision Brain
 
-## Root cause (verified against live DB)
+Scope guard: no changes to `decision_rules`, `observation_master`, `intent_observation_mapping`, `crop_stage_master` data, frontend, or translations. Runtime TypeScript only.
 
-For land `Shinghan Mal` (`30197c15-…`), the chat turn has:
-- `lands.planting_date = NULL`
-- `lands.last_sowing_date = NULL`
-- `lands.current_crop = 'Rice'`, `crop_stage = 'Germination'`
-- `crop_schedules` (active) has `sowing_date = 2026-06-08` — but **the RPC never reads this table**.
+---
 
-`public.resolve_crop_phenology()` line 40 computes:
-```
-v_sow_date := coalesce(v_land.planting_date, v_land.last_sowing_date);
-```
-then short-circuits at line 44 (`IF v_sow_date IS NULL THEN RETURN;`).
+## BUG 1 — Response delivery crash in `generateFollowUp()`
 
-Empty rowset returned → `phenology = null` in `orchestrator.ts:8517` → `buildBiologicalState()` returns `null` → `[BIO_STATE_LOCKED]` and `[PHENOLOGY_SSOT]` log lines are never emitted → `context.source` at `orchestrator.ts:8609` falls through to `'CROP_SCHEDULES'` or `'LAND_DATA'` → `GRAPH_FREEZE` captures the wrong authority.
+**File:** `supabase/functions/ai-agriculture-chat/agents/communication-generator.ts` (~L1246–L1322)
 
-This is a data-plumbing bug, **not** a stage-calculation bug. Every other land with a `crop_schedules` row but no `lands.planting_date` has the same silent failure.
+**Root cause:** `extractRepeatApplicationInfo(decision)` is typed `RepeatApplicationInfo | null`, but line 1316 dereferences `repeatInfo.may_need_repeat` unguarded. When it's `null`, the whole response builder throws and the pipeline falls back to the generic young-crop template — even though the symbolic decision succeeded.
 
-## Scope (surgical, per user constraints)
+**Fix:**
+1. Guard the dereference with `repeatInfo?.may_need_repeat`.
+2. Only build `repeatNote` when `repeatInfo` is non-null AND `interval_days` is present.
+3. Emit trace: `[FOLLOWUP_CONTEXT] available=<bool> repeat=<bool>` immediately after extraction.
+4. Wrap the entire `generateFollowUp` body in a try/catch that logs `[FOLLOWUP_BUILD_ERROR]` and returns a minimal `FollowUpPlan` shell so a downstream failure never nukes the symbolic decision, matched diagnosis, rule output, or BiologicalState.
 
-- Do NOT touch decision rules, observations, IOM, crop_stage_master, or client stage writers.
-- Only fix the one condition that prevents BiologicalState from being created, and make every failure loud + attributable.
+No other section builders touched.
 
-## Changes
+---
 
-### 1. Migration — extend `resolve_crop_phenology` sowing-date source chain
+## BUG 2 — Phenology SSOT: GDD stage must beat static DAS band
 
-Add `crop_schedules.sowing_date` (active row, latest) as a third fallback for `v_sow_date`, and record which source was used in `evidence_sources`. Signature unchanged; body edit only.
+**Files:**
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (around L8520–L8600, right after `resolve_crop_phenology` RPC and BEFORE `buildBiologicalState`)
+- `supabase/functions/ai-agriculture-chat/agents/biological-state.ts` (extend `PhenologyResolverRow` with optional `reconciled` fields; no data changes)
 
-```sql
--- inside resolve_crop_phenology, replace the v_sow_date computation
-SELECT cs.sowing_date
-  INTO v_schedule_sow_date
-  FROM public.crop_schedules cs
- WHERE cs.land_id = p_land_id
-   AND cs.is_active = true
- ORDER BY cs.sowing_date DESC
- LIMIT 1;
+**Root cause:** RPC returns a static-DAS row (`source='crop_stage_master'`, `confidence≈0.75`) because advanced tables are empty. `buildBiologicalState` then locks the wrong stage, and `[STAGE_DRIFT_BLOCKED]` protects it.
 
-v_sow_date := coalesce(
-  v_land.planting_date,
-  v_land.last_sowing_date,
-  v_schedule_sow_date
-);
+**Fix (generic, crop-agnostic reconciler — runtime only, no seed data):**
 
-IF v_sow_date IS NOT NULL THEN
-  v_evidence := v_evidence || ARRAY['sowing_source:' ||
-    CASE
-      WHEN v_land.planting_date     IS NOT NULL THEN 'lands.planting_date'
-      WHEN v_land.last_sowing_date  IS NOT NULL THEN 'lands.last_sowing_date'
-      ELSE 'crop_schedules.sowing_date'
-    END];
-END IF;
+1. New helper `runtime/phenology-reconciler.ts`:
+   - Input: `landId`, `cropCode`, `das`, `phenologyRow` (DAS-derived), Supabase client.
+   - Steps:
+     a. Query `land_gdd_daily` for latest `gdd_accumulated` (already used elsewhere in orchestrator L10185 — same source, no schema change).
+     b. Read `crop_stage_master` rows for the crop (READ-ONLY): pick the stage whose `min_gdd`..`max_gdd` window contains `gdd_accumulated`. If GDD columns are absent for the crop, skip GDD path (no invention).
+     c. Build candidate stages with confidence:
+        - `morphological_evidence` → 0.95
+        - `completed_stage_transitions` (from `stage_transition_log` if any) → 0.90
+        - `variety_phenology_profile` match → 0.85
+        - `gdd_model` → 0.80–0.90 (scaled by weather-data freshness)
+        - `crop_stage_master` DAS window → 0.70
+     d. Pick highest-confidence candidate.
+   - Output: `{ winner_stage, winner_source, winner_confidence, das_stage, gdd_stage, reason }`.
 
-IF v_crop_code = '' OR v_sow_date IS NULL THEN RETURN; END IF;
-```
+2. In `orchestrator.ts` after the RPC block:
+   - Call reconciler.
+   - If a higher-confidence stage exists AND differs from `phenology.growth_stage`, overwrite `phenology.growth_stage`/`stage_code`/`source`/`confidence` on the local object BEFORE `buildBiologicalState` (this is the single-writer window; invariant not yet locked).
+   - Emit `[PHENOLOGY_RECONCILIATION] das_stage=… gdd_stage=… winner=… source=… reason=…`.
+   - When no signals beyond DAS are available, log `winner=das_stage reason=only_das_available` and keep original — no behavior change.
 
-No new tables, no data mutation, no schema change beyond function body. Table alias `cs` avoids the OUT-parameter collision pattern that bit us before.
+No RPC edits, no DB writes, no crop-specific branches.
 
-### 2. `orchestrator.ts` — mandatory traces around BiologicalState build (fetchComprehensiveLandContext, ~lines 8500–8545)
+---
 
-Add three new log lines with the exact prefixes the user asked for. Every branch must emit exactly one `[BIO_STATE_CREATE_RESULT]`.
+## BUG 3 — Farmer evidence count inflated by metadata
 
-```ts
-// BEFORE RPC
-console.log(
-  `🌱 [BIO_STATE_START] land_id=${landId} ` +
-    `crop=${land.current_crop ?? 'null'} ` +
-    `das=${daysSinceSowing ?? 'null'} ` +
-    `sowing_date=${cropSchedule?.sowing_date ?? land.last_sowing_date ?? land.planting_date ?? 'null'}`
-);
+**Files:**
+- `supabase/functions/ai-agriculture-chat/runtime/evidence-coverage.ts` (already has `INFORMATIVE_PLACEHOLDERS` + `isInformative`) — reuse.
+- `supabase/functions/ai-agriculture-chat/agents/canonical-state-builder.ts` (`checkPrescriptionGate`, L1228–L1244) — replace ad-hoc filter.
+- Any single upstream site that sets `state.symptom_count` (search + point-fix so it stops using `array.length`).
 
-// AFTER RPC (both success and error paths)
-if (phenErr) {
-  console.error(
-    `❌ [BIO_STATE_RPC_RESULT] success=false land=${landId} ` +
-      `returned_stage=null error_code=${(phenErr as any).code ?? 'n/a'} ` +
-      `error_msg=${phenErr.message}`
-  );
-} else if (phenology) {
-  console.log(
-    `✅ [BIO_STATE_RPC_RESULT] success=true land=${landId} ` +
-      `returned_stage=${phenology.growth_stage} das=${phenology.current_das} ` +
-      `source=${phenology.source} v${phenology.resolver_version}`
-  );
-} else {
-  console.warn(
-    `⚠️ [BIO_STATE_RPC_RESULT] success=false land=${landId} ` +
-      `returned_stage=null error=NO_ROW_RETURNED ` +
-      `reason=resolver_short_circuited(likely_sowing_or_crop_missing)`
-  );
-}
+**Fix:**
 
-// BEFORE returning landContext
-if (biological_state) {
-  console.log(
-    `🧬 [BIO_STATE_CREATE_RESULT] created=true land=${landId} ` +
-      `stage=${biological_state.growth_stage} das=${biological_state.das}`
-  );
-} else {
-  const failureReason =
-    phenErr ? `rpc_error:${(phenErr as any).code ?? phenErr.message}`
-    : !phenology ? 'rpc_returned_no_row'
-    : 'buildBiologicalState_null';
-  console.error(
-    `🧬 [BIO_STATE_CREATE_RESULT] created=false land=${landId} ` +
-      `failure_reason=${failureReason} ` +
-      `sow_present=${!!(cropSchedule?.sowing_date || land.last_sowing_date || land.planting_date)} ` +
-      `crop_present=${!!land.current_crop}`
-  );
-}
-```
+1. Add generic classifier `classifyEvidence(codes: string[])` in `runtime/evidence-classifier.ts`:
+   - `REAL_OBSERVATION` if `isInformative(code)` AND code does NOT match `/(_UNKNOWN$|_NONE$|_NOT_PROVIDED$|^ACTION_|^CROP_IDENTIFIED$|^STAGE_IDENTIFIED$|^CONTEXT_|^PHOTO_)/i`.
+   - Returns `{ raw_count, real_symptom_count, ignored_metadata_count, real_codes, ignored_codes }`.
 
-`phenErr` must be lifted out of the try-block scope so the trailing log can read it (small refactor of the existing try/catch).
+2. In `checkPrescriptionGate`:
+   - Build a full codes list from `visual_symptom`, `secondary_symptoms`, and any `confirmed_observations` on state.
+   - Compute `confirmedObservationCount = classifyEvidence(codes).real_symptom_count` — do NOT fall back to `state.symptom_count`.
+   - Log `[EVIDENCE_CLASSIFICATION] raw_count=… real_symptom_count=… ignored_metadata_count=…`.
+   - Keep the existing `[EVIDENCE_COUNT_TRACE]` line and feed it the classified count.
 
-### 3. `orchestrator.ts` — remove the silent LAND_DATA fallback in `context.source`
+3. If a builder writes `state.symptom_count` from `array.length`, replace with classifier output at that single site (verified by grep before edit).
 
-Current line 8609:
-```ts
-source: biological_state ? 'BIOLOGICAL_STATE' : (cropSchedule ? 'CROP_SCHEDULES' : 'LAND_DATA'),
-```
+No changes to observation ontology or IOM — the classifier only filters by suffix/prefix patterns already documented in `evidence-coverage.ts`.
 
-Change to make failure explicit (no silent demotion). When biological_state is missing, tag the source with the reason so `GRAPH_FREEZE` / `[STAGE_AUTHORITY_VIOLATION]` can attribute it:
+---
 
-```ts
-source: biological_state
-  ? 'BIOLOGICAL_STATE'
-  : 'BIOLOGICAL_STATE_UNAVAILABLE',   // never silently 'LAND_DATA'
-source_fallback_reason: biological_state
-  ? null
-  : (phenErr ? 'rpc_error' : 'no_row'),
-source_fallback_used: biological_state ? null : (cropSchedule ? 'crop_schedules' : 'lands'),
-```
+## Validation
 
-`canonical-context-contract.ts` already accepts `'BIOLOGICAL_STATE'` in the source union; add `'BIOLOGICAL_STATE_UNAVAILABLE'` to the same union so the contract builder preserves the attribution instead of coercing to `'LAND_DATA'`. `[STAGE_AUTHORITY_VIOLATION]` (already present at line ~1391) will then correctly fire whenever the biological SSOT was unavailable, with a machine-readable reason attached.
+For a single "crop has not germinated" query on a tillering-stage rice land, the log must include, in order:
+1. `[BIO_STATE_LOCKED] … stage=<reconciled>`
+2. `[PHENOLOGY_RECONCILIATION] winner=<gdd_or_morph_stage>`
+3. `[STAGE_INVARIANT_PASS]`
+4. `[EVIDENCE_CLASSIFICATION] real_symptom_count=1`
+5. `[FOLLOWUP_CONTEXT] available=… repeat=false` (no crash)
+6. Final response coming from Symbolic Decision Graph — not the generic fallback template.
 
-No behavior downstream changes — heuristics still fall back functionally — but the fallback is no longer silent and no longer masquerades as `LAND_DATA`.
-
-### 4. Verification
-
-After deploy, one land-specific chat turn against `Shinghan Mal` must emit, in order:
-```
-🌱 [BIO_STATE_START] land_id=30197c15… crop=Rice das=null sowing_date=2026-06-08
-✅ [BIO_STATE_RPC_RESULT] success=true returned_stage=<resolved> …
-✅ [PHENOLOGY_SSOT] stage=<resolved> …
-🔒 [BIO_STATE_LOCKED] land_id=30197c15… crop=RICE stage=<resolved> …
-🧬 [BIO_STATE_CREATE_RESULT] created=true …
-[GRAPH_FREEZE] … source=BIOLOGICAL_STATE
-[PIPELINE_RULE_STAGE] … stage=<same>
-Rule Engine Input … stage=<same>
-```
-
-For any land where both `lands.planting_date`, `lands.last_sowing_date`, AND `crop_schedules.sowing_date` are all null, we must instead see:
-```
-🧬 [BIO_STATE_CREATE_RESULT] created=false failure_reason=rpc_returned_no_row sow_present=false crop_present=true
-⚠️ [STAGE_AUTHORITY_VIOLATION] canonical.source=BIOLOGICAL_STATE_UNAVAILABLE …
-```
-— i.e. the failure is loud and attributable, never silent.
-
-## Files touched
-
-- `supabase/migrations/<new>.sql` — extend `resolve_crop_phenology` sowing-date source chain (function body only).
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — three new trace lines (BIO_STATE_START / BIO_STATE_RPC_RESULT / BIO_STATE_CREATE_RESULT), lift `phenErr` scope, replace silent `'LAND_DATA'` fallback in `context.source` with explicit `'BIOLOGICAL_STATE_UNAVAILABLE'` + reason fields.
-- `supabase/functions/ai-agriculture-chat/decision/canonical-context-contract.ts` — add `'BIOLOGICAL_STATE_UNAVAILABLE'` to the `source` union type and pass-through in the contract builder.
-
-## Explicitly out of scope
-
-- No changes to decision rules, observations, IOM, crop_stage_master, variety_phenology_profile, stage_transition_conditions.
-- No changes to client-side stage writers (`SmartLandConfirmCard`, `src/lib/cropStage.ts`).
-- No changes to GDD engine, morphology reconciler, or rule engine normalisation.
-- No new tables or columns.
+## Out of scope
+`decision_rules`, `observation_master`, `intent_observation_mapping`, `crop_stage_master` data, translations, frontend, RPC bodies, and any new seed data.

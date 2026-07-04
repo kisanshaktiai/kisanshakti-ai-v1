@@ -14,6 +14,7 @@ import { getLanguageName } from '../utils/language-utils.ts';
 import { buildConversationState, type ConversationState } from '../runtime/conversation-state.ts';
 import { computeCoverage, isInformative as isInformativeObs } from '../runtime/evidence-coverage.ts';
 import { emitBrainTrace } from '../runtime/brain-trace.ts';
+import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
@@ -8557,6 +8558,41 @@ export class AIAgentOrchestrator {
       // Build EXACTLY ONCE here. Downstream code must read from
       // landContext.biological_state instead of recomputing growth_stage.
       // ═══════════════════════════════════════════════════════════════════════════
+      // BUG-2 FIX: adjudicate GDD-derived stage vs static-DAS stage BEFORE the
+      // BiologicalState invariant locks. Runtime only — no seed data, no
+      // per-crop branches. If a higher-confidence signal exists (GDD model,
+      // completed stage transitions) we overwrite the local phenology row.
+      if (phenology) {
+        try {
+          const recon = await reconcilePhenology(this.supabase, {
+            landId,
+            cropCode: phenology.crop_code ?? land.current_crop ?? null,
+            das: phenology.current_das ?? daysSinceSowing ?? null,
+            phenologyRow: phenology,
+          });
+          if (recon) {
+            console.log(
+              `[PHENOLOGY_RECONCILIATION] das_stage=${recon.das_stage ?? 'null'} ` +
+              `gdd_stage=${recon.gdd_stage ?? 'null'} ` +
+              `winner=${recon.winner.growth_stage ?? 'null'} ` +
+              `source=${recon.winner.source} ` +
+              `confidence=${recon.winner.confidence.toFixed(2)} ` +
+              `reason=${recon.reason} changed=${recon.changed}`,
+            );
+            if (recon.changed) {
+              phenology.growth_stage = recon.winner.growth_stage ?? phenology.growth_stage;
+              phenology.stage_code   = recon.winner.stage_code   ?? phenology.stage_code;
+              phenology.stage_uuid   = recon.winner.stage_uuid   ?? phenology.stage_uuid;
+              phenology.source       = recon.winner.source;
+              phenology.confidence   = recon.winner.confidence;
+            }
+          } else {
+            console.log(`[PHENOLOGY_RECONCILIATION] skipped reason=no_phenology_row_or_crop`);
+          }
+        } catch (e) {
+          console.warn(`[PHENOLOGY_RECONCILIATION] failed err=${(e as Error).message}`);
+        }
+      }
       const biological_state: BiologicalState | null = buildBiologicalState(landId, phenology);
       if (biological_state) {
         console.log(
