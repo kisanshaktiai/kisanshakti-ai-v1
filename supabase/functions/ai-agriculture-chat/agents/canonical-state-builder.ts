@@ -806,36 +806,50 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       : 'none';
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 2. STAGE SOURCE PRIORITY (UPDATED: canonicalContext > GDD > landContext)
+  // 2. STAGE SOURCE PRIORITY — BIOLOGICAL AUTHORITY FIRST
+  //   canonicalContext(locked) > landContext.biological_state(locked) >
+  //   landContext.growth_stage (crop_stage_master) > GDD (evidence, not authority) > flat
+  // GDD is DEMOTED: it may inform transitions/confidence but MUST NOT overwrite
+  // an authoritative stage produced by the phenology SSOT.
   // ═══════════════════════════════════════════════════════════════════════════
+  const bioState = landContext?.biological_state;
+  const bioStageLocked =
+    !!bioState?.is_locked && !!bioState?.growth_stage &&
+    String(bioState.growth_stage).toUpperCase() !== 'UNKNOWN';
+
   const cropStageRaw = 
     (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
-      ? canonicalCtx.growth_stage :        // ✅ HIGHEST: Locked canonical context
-    gddResult?.growth_stage ||             // a) GDD phenology result
-    gddResult?.stage_name ||               // a.1) alternative GDD field
-    landContext?.growth_stage ||           // b) landContext.growth_stage
-    landContext?.stage ||                  // b.1) alternative field name
-    input.cropStage ||                     // c) flat property fallback
+      ? canonicalCtx.growth_stage :
+    bioStageLocked
+      ? String(bioState!.growth_stage) :
+    landContext?.growth_stage ||
+    landContext?.stage ||
+    gddResult?.growth_stage ||               // demoted below SSOT sources
+    gddResult?.stage_name ||
+    input.cropStage ||
     'UNKNOWN';
   
   const stageSource = 
     (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
       ? 'canonicalContext'
-    : gddResult?.growth_stage || gddResult?.stage_name
-      ? 'GDD'
+    : bioStageLocked
+      ? 'biological_state_ssot'
     : landContext?.growth_stage || landContext?.stage
       ? 'landContext'
+    : gddResult?.growth_stage || gddResult?.stage_name
+      ? 'GDD'
     : input.cropStage
       ? 'flat_input'
       : 'none';
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 3. DAYS AFTER SOWING (UPDATED: canonicalContext has priority)
-  // FIX: Default to null instead of 0 to prevent false young-crop protection
+  // 3. DAYS AFTER SOWING (bioState locked > canonicalContext > landContext > flat)
   // ═══════════════════════════════════════════════════════════════════════════
   const daysAfterSowing = 
+    (bioState?.is_locked && bioState.das !== null && bioState.das !== undefined)
+      ? bioState.das :
     (canonicalCtx?.is_locked && canonicalCtx?.days_since_sowing !== null && canonicalCtx.days_since_sowing !== undefined)
-      ? canonicalCtx.days_since_sowing :   // ✅ HIGHEST: Locked canonical context
+      ? canonicalCtx.days_since_sowing :
     landContext?.days_since_sowing ??
     landContext?.days_after_sowing ??
     input.daysAfterSowing ??
