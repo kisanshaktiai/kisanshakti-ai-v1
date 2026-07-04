@@ -247,11 +247,28 @@ export function validateLanguageQuality(
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SAFE FALLBACK MESSAGE (English-only — LLM narration layer translates)
+// SAFE FALLBACK MESSAGE — LANGUAGE-AWARE (FIX 4)
+// Every fallback (normal, error, catch) MUST render in the farmer's language.
+// No English hardcoded string is ever returned when a language is provided.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function getSafeAskMoreInfoMessage(_language: string): string {
-  return '🙏 Please provide more details about your issue or send a photo. I will give you accurate advice.';
+const FALLBACK_ASK_MORE: Record<string, string> = {
+  mr: '🙏 कृपया आपल्या समस्येबद्दल अधिक माहिती द्या किंवा पिकाचा फोटो पाठवा. मी अचूक सल्ला देईन.',
+  hi: '🙏 कृपया अपनी समस्या के बारे में और जानकारी दें या फसल की फोटो भेजें। मैं सटीक सलाह दूंगा।',
+  ta: '🙏 உங்கள் பிரச்சினை பற்றி மேலும் தகவல் தரவும் அல்லது பயிரின் புகைப்படம் அனுப்பவும். சரியான ஆலோசனை தருகிறேன்.',
+  te: '🙏 దయచేసి మీ సమస్య గురించి మరింత సమాచారం ఇవ్వండి లేదా పంట ఫోటో పంపండి. నేను ఖచ్చితమైన సలహా ఇస్తాను.',
+  kn: '🙏 ದಯವಿಟ್ಟು ನಿಮ್ಮ ಸಮಸ್ಯೆಯ ಬಗ್ಗೆ ಹೆಚ್ಚಿನ ವಿವರ ನೀಡಿ ಅಥವಾ ಬೆಳೆಯ ಫೋಟೋ ಕಳುಹಿಸಿ.',
+  ml: '🙏 ദയവായി നിങ്ങളുടെ പ്രശ്നത്തെക്കുറിച്ച് കൂടുതൽ വിവരങ്ങൾ നൽകുക അല്ലെങ്കിൽ വിളയുടെ ഫോട്ടോ അയക്കുക.',
+  bn: '🙏 অনুগ্রহ করে আপনার সমস্যা সম্পর্কে আরও বিস্তারিত জানান বা ফসলের ছবি পাঠান।',
+  gu: '🙏 કૃપા કરીને તમારી સમસ્યા વિશે વધુ વિગતો આપો અથવા પાકનો ફોટો મોકલો.',
+  pa: '🙏 ਕਿਰਪਾ ਕਰਕੇ ਆਪਣੀ ਸਮੱਸਿਆ ਬਾਰੇ ਵਧੇਰੇ ਜਾਣਕਾਰੀ ਦਿਓ ਜਾਂ ਫ਼ਸਲ ਦੀ ਫੋਟੋ ਭੇਜੋ।',
+  or: '🙏 ଦୟାକରି ଆପଣଙ୍କ ସମସ୍ୟା ବିଷୟରେ ଅଧିକ ବିବରଣୀ ଦିଅନ୍ତୁ କିମ୍ବା ଫସଲର ଫଟୋ ପଠାନ୍ତୁ।',
+  en: '🙏 Please provide more details about your issue or send a photo. I will give you accurate advice.',
+};
+
+export function getSafeAskMoreInfoMessage(language: string): string {
+  const key = String(language || 'en').toLowerCase().split('-')[0];
+  return FALLBACK_ASK_MORE[key] || FALLBACK_ASK_MORE.en;
 }
 
 export default validateLanguageQuality;

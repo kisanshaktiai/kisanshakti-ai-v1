@@ -27,19 +27,34 @@ export const AUDIT_LOGGER_VERSION = '2.0.0';
 // FIX 2: OBSERVATION CONTRACT — block raw vernacular text from leaking into
 // ai_chat_audit_logs.observations. Only canonical English codes allowed.
 // ═══════════════════════════════════════════════════════════════════════════
+// FIX 1 (surgical): ObservationContract must NEVER "block" raw farmer text
+// in any language. Raw vernacular strings arriving at the audit boundary are
+// pre-canonical noise (not corruption) — silently drop them. Only truly
+// suspicious entries (ASCII garbage) are worth a warning.
+const VERNACULAR_RE = /[\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0980-\u09FF\u0A80-\u0AFF\u0A00-\u0A7F\u0B00-\u0B7F]/;
 function filterCanonicalForAudit(obs: any): string[] {
   if (!Array.isArray(obs)) return [];
   const out: string[] = [];
-  const blocked: string[] = [];
+  const suspicious: string[] = [];
+  const vernacularDropped: string[] = [];
   for (const o of obs) {
     if (typeof o === 'string' && /^[A-Z][A-Z0-9_]+$/.test(o) && o.length <= 80) {
       out.push(o);
     } else if (o != null) {
-      blocked.push(String(o).substring(0, 60));
+      const s = String(o);
+      if (VERNACULAR_RE.test(s) || /\s/.test(s)) {
+        // Raw farmer text (any script) — pre-canonical, not an audit violation.
+        vernacularDropped.push(s.substring(0, 40));
+      } else {
+        suspicious.push(s.substring(0, 60));
+      }
     }
   }
-  if (blocked.length > 0) {
-    console.error(`[ObservationContract] BLOCKED ${blocked.length} non-canonical entries at audit boundary: ${blocked.join(' | ')}`);
+  if (vernacularDropped.length > 0) {
+    console.log(`[ObservationContract] dropped ${vernacularDropped.length} pre-canonical vernacular entries at audit boundary (expected — not an error)`);
+  }
+  if (suspicious.length > 0) {
+    console.warn(`[ObservationContract] dropped ${suspicious.length} non-canonical entries at audit boundary: ${suspicious.join(' | ')}`);
   }
   return out;
 }

@@ -26,6 +26,7 @@
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
 import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
 import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
+import { getSafeAskMoreInfoMessage } from './language-quality-validator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STRICT INPUT CONTRACT - Symbolic Decision Payload
@@ -365,12 +366,9 @@ function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult 
   
   // CRASH-PROOF: fallback_text is optional - generate default if missing
   if (!input.symbolic_decision.fallback_text) {
-    console.warn('[NarrationLayer] Missing fallback_text - using default');
-    // Generate default based on language
-    const defaultFallbacks: Record<string, string> = {
-      en: '🙏 Please ask your question again.'
-    };
-    input.symbolic_decision.fallback_text = defaultFallbacks.en;
+    console.warn('[NarrationLayer] Missing fallback_text - using language-aware default');
+    // FIX 4: language-aware fallback — never leak English to non-EN farmers.
+    input.symbolic_decision.fallback_text = getSafeAskMoreInfoMessage(input.language || 'en');
   }
   
   // MONITOR_ONLY mode: Does NOT require primary_action or any decision text
@@ -740,8 +738,8 @@ export function requiresRuleEngine(intent: string, farmerMessage: string): boole
 export async function generateLLMResponse(input: LLMResponseInput): Promise<{ response_text: string; source: string }> {
   console.warn('[DEPRECATED] generateLLMResponse called - should migrate to generateNarratedResponse');
   
-  // Create a minimal symbolic input with generic fallback
-  const fallbackMessage = '🙏 Please ask your question again. I am ready to help you.';
+  // FIX 4: language-aware fallback (was hardcoded English).
+  const fallbackMessage = getSafeAskMoreInfoMessage(input.language || 'en');
   
   const symbolicInput: SymbolicNarrationInput = {
     language: input.language,

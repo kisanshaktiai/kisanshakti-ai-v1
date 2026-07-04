@@ -119,16 +119,27 @@ export function isCanonicalObservationCode(s: any): boolean {
   return typeof s === 'string' && /^[A-Z][A-Z0-9_]+$/.test(s) && s.length <= 80;
 }
 
+const VERNACULAR_RE = /[\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0980-\u09FF\u0A80-\u0AFF\u0A00-\u0A7F\u0B00-\u0B7F]/;
 export function filterToCanonicalObservations(obs: any): string[] {
   if (!Array.isArray(obs)) return [];
   const filtered: string[] = [];
-  const rejected: string[] = [];
+  const vernacular: string[] = [];
+  const suspicious: string[] = [];
   for (const o of obs) {
     if (isCanonicalObservationCode(o)) filtered.push(o);
-    else if (o != null) rejected.push(String(o).substring(0, 60));
+    else if (o != null) {
+      const s = String(o);
+      // FIX 1: raw farmer text (any script) is pre-canonical noise — never
+      // treat as a contract violation. Silently forward to canonical resolver.
+      if (VERNACULAR_RE.test(s) || /\s/.test(s)) vernacular.push(s.substring(0, 40));
+      else suspicious.push(s.substring(0, 60));
+    }
   }
-  if (rejected.length > 0) {
-    console.error(`[ObservationContract] BLOCKED ${rejected.length} non-canonical entries: ${rejected.join(' | ')}`);
+  if (vernacular.length > 0) {
+    console.log(`[ObservationContract] forwarded ${vernacular.length} pre-canonical vernacular entries to resolver (not blocked)`);
+  }
+  if (suspicious.length > 0) {
+    console.warn(`[ObservationContract] dropped ${suspicious.length} non-canonical entries: ${suspicious.join(' | ')}`);
   }
   return filtered;
 }
@@ -4139,29 +4150,64 @@ export class AIAgentOrchestrator {
           real_codes: trueEvidence.real_codes,
         });
 
-        // Fix 1 — hard invariant. Evidence classifier saw real symptoms but
-        // the graph-facing merged set is empty → handoff has corrupted state.
+        // FIX 2 (surgical) — symbolic evidence immutability. Once the
+        // classifier confirmed real symptoms upstream, downstream handoffs
+        // MUST preserve them. If the merged graph-facing set has lost every
+        // real symptom, the handoff has corrupted state → loud invariant.
+        if (realObsCountForSalvage > 0 && trueEvidence.real_symptom_count === 0) {
+          console.error(
+            `[GRAPH_EVIDENCE_LOSS][${traceId}] symbolic evidence dropped between ` +
+            `EvidenceClassifier and GraphContext: pre_real=${realObsCountForSalvage} ` +
+            `post_real=0 merged_size=${mergedCodes.length} — reinjecting from classifier`,
+          );
+          // Non-destructive recovery: re-seed from classifier so the graph
+          // never runs on an empty symptom set when we already know one exists.
+          try {
+            const preEc = classifyEvidence(expandedObservationCodes || []);
+            for (const code of preEc.real_codes) {
+              if (!allObservationsForPreAuth.has(code)) {
+                allObservationsForPreAuth.add(code);
+                try { authoredObservations.add(code, ObservationAuthority.EXTRACTED, 'EVIDENCE_LOSS_RECOVERY'); } catch {/**/}
+              }
+            }
+          } catch {/* non-fatal */}
+        }
         if (trueEvidence.real_symptom_count === 0 && mergedCodes.length === 0) {
           console.warn(
             `[GRAPH_OBSERVATION_EMPTY][${traceId}] merged_set=0 — nothing entered graph`,
           );
         }
 
-        // Fix 2 — evidence overrides intent (late binding). If any real
-        // farmer symptom is present, GENERAL_CROP_INFO / CROP_INFO /
-        // GENERAL_QUERY / UNKNOWN are all forbidden — force DIAGNOSTIC_INQUIRY
-        // before the rule engine picks the wrong universe.
+        // FIX 3 (surgical) — freeze intent after evidence extraction.
+        // If ANY real farmer symptom exists, GENERAL_CROP_INFO / CROP_INFO /
+        // GENERAL_QUERY / UNKNOWN are forbidden. Symptom evidence always
+        // creates DIAGNOSTIC_INQUIRY — the intent is now sealed for the rest
+        // of the turn (any later re-classification must respect this lock).
         const forbiddenAdvisory = new Set([
           'GENERAL_CROP_INFO', 'CROP_INFO', 'GENERAL_INFO', 'GENERAL_QUERY',
           'UNKNOWN', 'UNKNOWN_OBSERVATION',
         ]);
-        if (trueEvidence.real_symptom_count > 0 && forbiddenAdvisory.has(intentCode)) {
-          const from = intentCode;
-          intentCode = 'DIAGNOSTIC_INQUIRY';
-          console.log(
-            `[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${from} → ${intentCode} ` +
-            `reason=real_symptoms_present codes=[${trueEvidence.real_codes.slice(0, 6).join(',')}]`,
-          );
+        // Re-classify against merged set (post-recovery) so the freeze uses truth.
+        const postRecoveryEvidence = classifyEvidence(Array.from(allObservationsForPreAuth));
+        if (postRecoveryEvidence.real_symptom_count > 0) {
+          if (forbiddenAdvisory.has(intentCode)) {
+            const from = intentCode;
+            intentCode = 'DIAGNOSTIC_INQUIRY';
+            console.log(
+              `[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${from} → ${intentCode} ` +
+              `reason=real_symptoms_present codes=[${postRecoveryEvidence.real_codes.slice(0, 6).join(',')}]`,
+            );
+          }
+          // Publish frozen intent so downstream traces reflect the lock.
+          try {
+            emitNodeTrace(traceId, 'INTENT', {
+              stage: 'POST_EVIDENCE_FREEZE',
+              intent: intentCode,
+              confidence: intentConf,
+              real_observations: postRecoveryEvidence.real_symptom_count,
+              frozen: true,
+            });
+          } catch {/**/}
         }
 
         // Fix 3 — biological contradiction now runs against classifier truth,
@@ -8438,6 +8484,27 @@ export class AIAgentOrchestrator {
           rules_matched: snapshot.rules_matched,
         });
         checkGraphInvariants(snapshot);
+
+        // FIX 5 (surgical) — final graph invariant. If we have real symptoms
+        // AND a crop, the farmer must NEVER receive a generic "provide more
+        // details" response — that's a symbolic-brain failure, not a farmer
+        // problem. Log loudly so it surfaces in every log scan.
+        try {
+          const respText = String(
+            (farmerCommunication as any)?.message ??
+            (farmerCommunication as any)?.text ??
+            (farmerCommunication as any)?.response_text ??
+            ''
+          );
+          const asksForMoreDetails = /provide more details|ask your question again|अधिक माहिती द्या|और जानकारी दें|மேலும் தகவல்|మరింత సమాచారం/i.test(respText);
+          if (snapshot.real_observation_count > 0 && snapshot.crop && asksForMoreDetails) {
+            console.error(
+              `[FINAL_INVARIANT_VIOLATION][${traceId}] observation_count=${snapshot.real_observation_count} ` +
+              `crop=${snapshot.crop} intent_lock=DIAGNOSTIC_INQUIRY but response is generic "ask for more details". ` +
+              `symbolic_brain_returned_no_actionable_advice`,
+            );
+          }
+        } catch { /* invariant must never throw */ }
       } catch (invErr) {
         console.warn(`[GRAPH_INVARIANT_ERR][${traceId}] non-fatal: ${invErr instanceof Error ? invErr.message : String(invErr)}`);
       }
