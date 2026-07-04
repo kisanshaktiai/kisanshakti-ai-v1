@@ -7275,7 +7275,7 @@ export class AIAgentOrchestrator {
       // ========================================
       
       // Build once so it's available for both diagnostic and rule-engine paths
-      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
+      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence, intentCode as any);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX (Forensic Audit): Wire orchestrator's assembled observations
