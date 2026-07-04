@@ -14,6 +14,7 @@ import { getLanguageName } from '../utils/language-utils.ts';
 import { buildConversationState, type ConversationState } from '../runtime/conversation-state.ts';
 import { computeCoverage, isInformative as isInformativeObs } from '../runtime/evidence-coverage.ts';
 import { emitBrainTrace } from '../runtime/brain-trace.ts';
+import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
