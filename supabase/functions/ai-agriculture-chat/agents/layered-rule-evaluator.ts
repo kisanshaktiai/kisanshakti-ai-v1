@@ -1453,42 +1453,19 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             const inferredPlantParts = new Set<string>();
             
             /**
-             * @deprecated CATEGORY_PATTERNS — DO NOT ADD NEW AGRONOMY.
-             * Category resolution must come from observation_master.category
-             * (DB ontology). Retained temporarily until DB-backed lookup lands.
+             * CATEGORY_PATTERNS — REMOVED. Observation → category resolution
+             * MUST come from `observation_master.observation_category`.
+             * PLANT_PART_PATTERNS — REMOVED. Plant-part resolution MUST
+             * come from `observation_master.affected_plant_part`.
+             *
+             * Empty placeholders retained so the loops below run as no-ops:
+             * `inferredCategories` / `inferredPlantParts` stay empty and the
+             * downstream gates are skipped (they only apply when the
+             * inferred set is non-empty), which correctly defers to the
+             * rule's DB-level predicates instead of string-pattern matching.
              */
-            const CATEGORY_PATTERNS: Record<string, string[]> = {
-              'PEST': ['BORE', 'BORER', 'INSECT', 'LARVAE', 'GRUB', 'TERMITE', 'APHID', 'WHITEFLY', 
-                       'MEALYBUG', 'MITE', 'THRIPS', 'CATERPILLAR', 'FRASS', 'WEBBING', 'HONEYDEW',
-                       'SCALE', 'WOOLLY', 'CRAWLING', 'EGG_MASS', 'DEAD_HEART', 'MUD_TUBE', 'GNAW',
-                       'RAT', 'RODENT', 'SOOTY_MOLD', 'EXIT_HOLE', 'TUNNEL'],
-              'DISEASE': ['ROT', 'RUST', 'SMUT', 'WILT', 'BLIGHT', 'MOSAIC', 'STREAK', 'LESION',
-                          'PUSTULE', 'OOZE', 'GUMMOSIS', 'MILDEW', 'SCALD', 'POKKAH', 'GRASSY_SHOOT',
-                          'RED_INTERNAL', 'BLACK_WHIP', 'BACTERIAL', 'FUNGAL', 'VIRAL', 'WHIP_SMUT',
-                          'RED_PITH', 'ALCOHOL_SMELL', 'SOUR_SMELL', 'SPORE'],
-              'NUTRIENT': ['CHLOROSIS', 'INTERVEINAL', 'PURPLE_LEAVES', 'NUTRIENT', 'DEFICIENCY',
-                           'YELLOWING', 'REDDISH_PURPLE', 'CORKY', 'WHITE_BUD', 'KHAIRA'],
-              'ABIOTIC': ['WATERLOGGING', 'FROST', 'SALT', 'DROUGHT', 'HAIL', 'WIND_DAMAGE',
-                          'STANDING_WATER', 'FROZEN', 'ICE_CRYSTAL', 'SALINE'],
-              'PHYSIOLOGY': ['STUNTED', 'POOR_GROWTH', 'LODGING', 'GAPS', 'UNEVEN', 'DRYING',
-                             'WILTING', 'CURLING', 'BROWNING', 'TIP_BURN'],
-              'MANAGEMENT': ['WEED', 'SPACING', 'PLANTING', 'HARVEST']
-            };
-            
-            /**
-             * @deprecated PLANT_PART_PATTERNS — DO NOT ADD NEW AGRONOMY.
-             * Plant-part resolution must come from observation_master.plant_part
-             * (DB ontology). Retained temporarily until DB-backed lookup lands.
-             */
-            const PLANT_PART_PATTERNS: Record<string, string[]> = {
-              'STEM': ['STEM', 'INTERNODE', 'CANE', 'STALK', 'BORE_HOLE', 'TUNNEL', 'BORED'],
-              'LEAF': ['LEAF', 'FOLIAR', 'CHLOROSIS', 'YELLOWING', 'SPOT', 'RUST', 'CURL', 'SCALD'],
-              'ROOT': ['ROOT', 'BASAL', 'UNDERGROUND', 'TERMITE', 'GRUB'],
-              'WHOLE': ['WHOLE', 'PLANT_DEATH', 'WILT', 'STUNTED', 'DEATH', 'LODGING', 'GENERAL'],
-              'FRUIT': ['FRUIT', 'BOLL', 'GRAIN', 'SEED', 'POD'],
-              'FLOWER': ['FLOWER', 'PANICLE', 'TASSEL'],
-              'SOIL': ['SOIL', 'MUD_TUBE', 'SALT_CRUST', 'WATERLOGGING']
-            };
+            const CATEGORY_PATTERNS: Record<string, string[]> = {};
+            const PLANT_PART_PATTERNS: Record<string, string[]> = {};
             
             for (const symptom of visualSymptoms) {
               for (const [category, patterns] of Object.entries(CATEGORY_PATTERNS)) {
