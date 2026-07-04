@@ -4150,29 +4150,64 @@ export class AIAgentOrchestrator {
           real_codes: trueEvidence.real_codes,
         });
 
-        // Fix 1 — hard invariant. Evidence classifier saw real symptoms but
-        // the graph-facing merged set is empty → handoff has corrupted state.
+        // FIX 2 (surgical) — symbolic evidence immutability. Once the
+        // classifier confirmed real symptoms upstream, downstream handoffs
+        // MUST preserve them. If the merged graph-facing set has lost every
+        // real symptom, the handoff has corrupted state → loud invariant.
+        if (realObsCountForSalvage > 0 && trueEvidence.real_symptom_count === 0) {
+          console.error(
+            `[GRAPH_EVIDENCE_LOSS][${traceId}] symbolic evidence dropped between ` +
+            `EvidenceClassifier and GraphContext: pre_real=${realObsCountForSalvage} ` +
+            `post_real=0 merged_size=${mergedCodes.length} — reinjecting from classifier`,
+          );
+          // Non-destructive recovery: re-seed from classifier so the graph
+          // never runs on an empty symptom set when we already know one exists.
+          try {
+            const preEc = classifyEvidence(expandedObservationCodes || []);
+            for (const code of preEc.real_codes) {
+              if (!allObservationsForPreAuth.has(code)) {
+                allObservationsForPreAuth.add(code);
+                try { authoredObservations.add(code, ObservationAuthority.EXTRACTED, 'EVIDENCE_LOSS_RECOVERY'); } catch {/**/}
+              }
+            }
+          } catch {/* non-fatal */}
+        }
         if (trueEvidence.real_symptom_count === 0 && mergedCodes.length === 0) {
           console.warn(
             `[GRAPH_OBSERVATION_EMPTY][${traceId}] merged_set=0 — nothing entered graph`,
           );
         }
 
-        // Fix 2 — evidence overrides intent (late binding). If any real
-        // farmer symptom is present, GENERAL_CROP_INFO / CROP_INFO /
-        // GENERAL_QUERY / UNKNOWN are all forbidden — force DIAGNOSTIC_INQUIRY
-        // before the rule engine picks the wrong universe.
+        // FIX 3 (surgical) — freeze intent after evidence extraction.
+        // If ANY real farmer symptom exists, GENERAL_CROP_INFO / CROP_INFO /
+        // GENERAL_QUERY / UNKNOWN are forbidden. Symptom evidence always
+        // creates DIAGNOSTIC_INQUIRY — the intent is now sealed for the rest
+        // of the turn (any later re-classification must respect this lock).
         const forbiddenAdvisory = new Set([
           'GENERAL_CROP_INFO', 'CROP_INFO', 'GENERAL_INFO', 'GENERAL_QUERY',
           'UNKNOWN', 'UNKNOWN_OBSERVATION',
         ]);
-        if (trueEvidence.real_symptom_count > 0 && forbiddenAdvisory.has(intentCode)) {
-          const from = intentCode;
-          intentCode = 'DIAGNOSTIC_INQUIRY';
-          console.log(
-            `[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${from} → ${intentCode} ` +
-            `reason=real_symptoms_present codes=[${trueEvidence.real_codes.slice(0, 6).join(',')}]`,
-          );
+        // Re-classify against merged set (post-recovery) so the freeze uses truth.
+        const postRecoveryEvidence = classifyEvidence(Array.from(allObservationsForPreAuth));
+        if (postRecoveryEvidence.real_symptom_count > 0) {
+          if (forbiddenAdvisory.has(intentCode)) {
+            const from = intentCode;
+            intentCode = 'DIAGNOSTIC_INQUIRY';
+            console.log(
+              `[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${from} → ${intentCode} ` +
+              `reason=real_symptoms_present codes=[${postRecoveryEvidence.real_codes.slice(0, 6).join(',')}]`,
+            );
+          }
+          // Publish frozen intent so downstream traces reflect the lock.
+          try {
+            emitNodeTrace(traceId, 'INTENT', {
+              stage: 'POST_EVIDENCE_FREEZE',
+              intent: intentCode,
+              confidence: intentConf,
+              real_observations: postRecoveryEvidence.real_symptom_count,
+              frozen: true,
+            });
+          } catch {/**/}
         }
 
         // Fix 3 — biological contradiction now runs against classifier truth,
