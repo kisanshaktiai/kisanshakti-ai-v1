@@ -1,93 +1,79 @@
-# Runtime-only fixes — Neuro-Symbolic Decision Brain
+# Neuro-Symbolic Decision Brain — Forensic Fix Plan
 
-Scope guard: no changes to `decision_rules`, `observation_master`, `intent_observation_mapping`, `crop_stage_master` data, frontend, or translations. Runtime TypeScript only.
+Scope: runtime-only. No changes to `decision_rules`, `observation_master`, `observation_aliases`, IOM, `crop_stage_master`, translations, or frontend. No new tables. No new architecture.
 
----
+## Objective
 
-## BUG 1 — Response delivery crash in `generateFollowUp()`
+Make every node emit a single, uniform `[GRAPH_NODE_TRACE]` line keyed by `trace_id`, enforce the invariants below, and cut every code path that silently swaps a valid symbolic decision for a generic template.
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/communication-generator.ts` (~L1246–L1322)
+## Node-by-node fixes
 
-**Root cause:** `extractRepeatApplicationInfo(decision)` is typed `RepeatApplicationInfo | null`, but line 1316 dereferences `repeatInfo.may_need_repeat` unguarded. When it's `null`, the whole response builder throws and the pipeline falls back to the generic young-crop template — even though the symbolic decision succeeded.
+### 1. `intent-classifier.ts` / `intent-router.ts`
+- Emit `[GRAPH_NODE_TRACE] node=INTENT { intent, confidence, crop, query_type }`.
+- Invariant: if `intent=UNKNOWN` AND (crop present OR ≥1 real observation), reclassify to `DIAGNOSTIC_INQUIRY` before returning. Log `[INTENT_SALVAGE]` when this fires.
 
-**Fix:**
-1. Guard the dereference with `repeatInfo?.may_need_repeat`.
-2. Only build `repeatNote` when `repeatInfo` is non-null AND `interval_days` is present.
-3. Emit trace: `[FOLLOWUP_CONTEXT] available=<bool> repeat=<bool>` immediately after extraction.
-4. Wrap the entire `generateFollowUp` body in a try/catch that logs `[FOLLOWUP_BUILD_ERROR]` and returns a minimal `FollowUpPlan` shell so a downstream failure never nukes the symbolic decision, matched diagnosis, rule output, or BiologicalState.
+### 2. `observation-extractor.ts` + `canonical-observation-loader.ts` + `db-observation-validator.ts`
+- Emit `[GRAPH_NODE_TRACE] node=OBSERVATION { llm_observations, alias_resolved, canonical_observations, farmer_selected_observations, rejected_observations, rejection_reason }`.
+- Ensure `observation_aliases` resolution runs **before** validator rejection (currently a subset of aliases is checked after canonicalization).
+- Never drop a `farmer_selected_observation`; only strip metadata via `evidence-classifier.isRealObservation()`.
+- Invariant: after this node, `real_observation_count` is authoritative and passed forward on `ConversationState`.
 
-No other section builders touched.
+### 3. `biological-state.ts` + `orchestrator.ts` (already partially fixed)
+- Keep the reconciler as the sole stage writer. Add hard assertions in `gdd-phenology-engine.ts`, `crop-stage-advisor.ts`, and `context-validator.ts`: call `blockStageWriteIfLocked()` (existing helper) at every remaining `growth_stage` assignment site; log `[BIO_STATE_WRITE_BLOCKED]`.
+- Emit `[GRAPH_NODE_TRACE] node=BIO_STATE { crop, variety, das, gdd, biological_stage, stage_uuid, evidence_sources[], confidence }` once at lock time.
 
----
+### 4. Stage validation (`stage-knowledge-cache.ts`, `context-validator.ts`)
+- On empty result from `stage_transition_conditions` / `stage_validation_rules` / `variety_phenology_profile`, log `[STAGE_DECISION_REASON] fallback=generic_crop_das` explicitly instead of silently defaulting.
 
-## BUG 2 — Phenology SSOT: GDD stage must beat static DAS band
+### 5. `evidence-classifier.ts` (already added) + call sites in `canonical-state-builder.ts`, `layered-rule-evaluator.ts`, `decision/prescription-gate-enforcer.ts`
+- Replace remaining `observations.length` prescription/coverage checks with `classifyEvidence(codes).real_symptom_count`.
+- Rule: evidence classifier **must never delete** farmer-selected symptoms because of stage mismatch — only lower per-observation `confidence`. Add `evidence_downgraded=true` flag on the node rather than dropping.
+- Emit `[GRAPH_NODE_TRACE] node=EVIDENCE { accepted, rejected, downgraded }`.
 
-**Files:**
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (around L8520–L8600, right after `resolve_crop_phenology` RPC and BEFORE `buildBiologicalState`)
-- `supabase/functions/ai-agriculture-chat/agents/biological-state.ts` (extend `PhenologyResolverRow` with optional `reconciled` fields; no data changes)
+### 6. `hypothesis-evaluator` / `causal-hypothesis-engine.ts` / `observation-cause-mapper.ts`
+- Emit `[GRAPH_NODE_TRACE] node=HYPOTHESIS { input_observations, generated_hypotheses, blocked_hypotheses, block_reason }`.
+- Invariant: `real_observation_count > 0` AND `generated_hypotheses.length === 0` → log `[HYPOTHESIS_GAP]` with the miss reason (no matching cause row, stage filter, etc.). Never return silently.
 
-**Root cause:** RPC returns a static-DAS row (`source='crop_stage_master'`, `confidence≈0.75`) because advanced tables are empty. `buildBiologicalState` then locks the wrong stage, and `[STAGE_DRIFT_BLOCKED]` protects it.
+### 7. `layered-rule-evaluator.ts` + `rule-engine-executor.ts`
+- Emit `[GRAPH_NODE_TRACE] node=RULE_ENGINE { loaded, crop_scoped, stage_eligible, observation_matched, blocked, block_reasons[], winner }`.
+- Bio-contradiction path: if `real_observation` describes a stage-incompatible fact (e.g. `NO_GERMINATION` at TILLERING), route to `BIOLOGICAL_CONTRADICTION` clarification instead of dropping to generic fallback. Reuse existing contradiction engine output (already surfaced by navigator-adapter).
+- Stage mismatch alone must not zero-out diagnostic rules; keep them with `stage_penalty` applied.
 
-**Fix (generic, crop-agnostic reconciler — runtime only, no seed data):**
+### 8. Scientific gate (`decision/scientific-validator.ts`, `decision/prescription-gate-enforcer.ts`)
+- Split `allow_diagnosis` from `allow_treatment`. Missing product/chemical/baseline blocks treatment only. Diagnosis is emitted with `treatment_gated=true`.
+- Emit `[GRAPH_NODE_TRACE] node=SCIENTIFIC_GATE { allow_diagnosis, allow_treatment, block_reasons[] }`.
 
-1. New helper `runtime/phenology-reconciler.ts`:
-   - Input: `landId`, `cropCode`, `das`, `phenologyRow` (DAS-derived), Supabase client.
-   - Steps:
-     a. Query `land_gdd_daily` for latest `gdd_accumulated` (already used elsewhere in orchestrator L10185 — same source, no schema change).
-     b. Read `crop_stage_master` rows for the crop (READ-ONLY): pick the stage whose `min_gdd`..`max_gdd` window contains `gdd_accumulated`. If GDD columns are absent for the crop, skip GDD path (no invention).
-     c. Build candidate stages with confidence:
-        - `morphological_evidence` → 0.95
-        - `completed_stage_transitions` (from `stage_transition_log` if any) → 0.90
-        - `variety_phenology_profile` match → 0.85
-        - `gdd_model` → 0.80–0.90 (scaled by weather-data freshness)
-        - `crop_stage_master` DAS window → 0.70
-     d. Pick highest-confidence candidate.
-   - Output: `{ winner_stage, winner_source, winner_confidence, das_stage, gdd_stage, reason }`.
+### 9. `communication-generator.ts` + `llm-response-generator.ts` + `deterministic-response-builder.ts`
+- Add hard guard at the fallback branch: fallback allowed **only** when `!crop || real_observation_count===0 || hypotheses.length===0 || system_error`. Any other trigger throws `[FALLBACK_FORBIDDEN]` and returns the symbolic decision instead.
+- Emit `[FINAL_RESPONSE_CONTRACT] { symbolic_decision_available, diagnosis_available, fallback_trigger, fallback_reason, source }`.
+- `source` ∈ {`symbolic_decision_graph`, `clarification_graph`, `diagnosis_graph`}. `generic_template` is only permitted with the 4 explicit reasons above.
 
-2. In `orchestrator.ts` after the RPC block:
-   - Call reconciler.
-   - If a higher-confidence stage exists AND differs from `phenology.growth_stage`, overwrite `phenology.growth_stage`/`stage_code`/`source`/`confidence` on the local object BEFORE `buildBiologicalState` (this is the single-writer window; invariant not yet locked).
-   - Emit `[PHENOLOGY_RECONCILIATION] das_stage=… gdd_stage=… winner=… source=… reason=…`.
-   - When no signals beyond DAS are available, log `winner=das_stage reason=only_das_available` and keep original — no behavior change.
+## Invariant assertions (new `runtime/graph-invariants.ts`)
 
-No RPC edits, no DB writes, no crop-specific branches.
+Central helper called at end of orchestrator turn:
+- `assertNoFallbackWhenSymbolicAvailable(state)`
+- `assertRuleEngineTracedWhenLoaded(state)`
+- `assertObservationForwardedToRules(state)`
+- `assertBioLockedImpliesNoGenericFallback(state)`
 
----
+Assertion failure → `console.error('[GRAPH_INVARIANT_VIOLATION] ...')` and force `source=symbolic_decision_graph` when a symbolic decision exists.
 
-## BUG 3 — Farmer evidence count inflated by metadata
+## Trace unification
 
-**Files:**
-- `supabase/functions/ai-agriculture-chat/runtime/evidence-coverage.ts` (already has `INFORMATIVE_PLACEHOLDERS` + `isInformative`) — reuse.
-- `supabase/functions/ai-agriculture-chat/agents/canonical-state-builder.ts` (`checkPrescriptionGate`, L1228–L1244) — replace ad-hoc filter.
-- Any single upstream site that sets `state.symptom_count` (search + point-fix so it stops using `array.length`).
+Single helper `runtime/graph-node-trace.ts::emitNodeTrace(trace_id, node, payload)` used by every node above. Existing `brain-trace.ts` remains for the final summary line.
 
-**Fix:**
+## Non-goals
 
-1. Add generic classifier `classifyEvidence(codes: string[])` in `runtime/evidence-classifier.ts`:
-   - `REAL_OBSERVATION` if `isInformative(code)` AND code does NOT match `/(_UNKNOWN$|_NONE$|_NOT_PROVIDED$|^ACTION_|^CROP_IDENTIFIED$|^STAGE_IDENTIFIED$|^CONTEXT_|^PHOTO_)/i`.
-   - Returns `{ raw_count, real_symptom_count, ignored_metadata_count, real_codes, ignored_codes }`.
+- No DB migration.
+- No changes to rule content, ontology, IOM, crop_stage_master, translations, or any frontend file.
+- No new LLM prompts. No new fallback templates.
 
-2. In `checkPrescriptionGate`:
-   - Build a full codes list from `visual_symptom`, `secondary_symptoms`, and any `confirmed_observations` on state.
-   - Compute `confirmedObservationCount = classifyEvidence(codes).real_symptom_count` — do NOT fall back to `state.symptom_count`.
-   - Log `[EVIDENCE_CLASSIFICATION] raw_count=… real_symptom_count=… ignored_metadata_count=…`.
-   - Keep the existing `[EVIDENCE_COUNT_TRACE]` line and feed it the classified count.
+## Files touched
 
-3. If a builder writes `state.symptom_count` from `array.length`, replace with classifier output at that single site (verified by grep before edit).
+New: `runtime/graph-node-trace.ts`, `runtime/graph-invariants.ts`.
+Edited: `agents/intent-classifier.ts`, `agents/intent-router.ts`, `agents/observation-extractor.ts`, `agents/canonical-observation-loader.ts`, `agents/db-observation-validator.ts`, `agents/canonical-state-builder.ts`, `agents/orchestrator.ts`, `agents/gdd-phenology-engine.ts`, `agents/crop-stage-advisor.ts`, `decision/context-validator.ts`, `agents/layered-rule-evaluator.ts`, `agents/rule-engine-executor.ts`, `agents/causal-hypothesis-engine.ts` (or `hypothesis-evaluator.ts`), `decision/scientific-validator.ts`, `decision/prescription-gate-enforcer.ts`, `agents/communication-generator.ts`, `agents/llm-response-generator.ts`, `agents/deterministic-response-builder.ts`, `agents/stage-knowledge-cache.ts`.
 
-No changes to observation ontology or IOM — the classifier only filters by suffix/prefix patterns already documented in `evidence-coverage.ts`.
+## Verification
 
----
-
-## Validation
-
-For a single "crop has not germinated" query on a tillering-stage rice land, the log must include, in order:
-1. `[BIO_STATE_LOCKED] … stage=<reconciled>`
-2. `[PHENOLOGY_RECONCILIATION] winner=<gdd_or_morph_stage>`
-3. `[STAGE_INVARIANT_PASS]`
-4. `[EVIDENCE_CLASSIFICATION] real_symptom_count=1`
-5. `[FOLLOWUP_CONTEXT] available=… repeat=false` (no crash)
-6. Final response coming from Symbolic Decision Graph — not the generic fallback template.
-
-## Out of scope
-`decision_rules`, `observation_master`, `intent_observation_mapping`, `crop_stage_master` data, translations, frontend, RPC bodies, and any new seed data.
+After deploy, one Rice "crop has not germinated" turn must show in edge logs, in order:
+`INTENT_RESOLVED → OBSERVATION_CANONICALIZED → BIO_STATE_LOCKED → EVIDENCE_ACCEPTED(count>0) → HYPOTHESIS_CREATED → RULE_ENGINE_EXECUTED → SCIENTIFIC_GATE_DECISION → FINAL_RESPONSE source=symbolic_decision_graph` with `BIOLOGICAL_CONTRADICTION` clarification — no flood recommendation, no generic young-crop template.
