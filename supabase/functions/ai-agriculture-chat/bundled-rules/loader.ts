@@ -1384,6 +1384,21 @@ export function filterRulesByIntent(
       dropped++;
     }
   }
+  // FIX 4: intent-gate leakage guard. If NO rule matched the current intent
+  // (kept=0) but generic rules were demoted through, none of those may be
+  // promoted to a treatment/prescription decision — they must be flagged so
+  // the arbiter and prescription gate can route to clarification /
+  // information response instead of ever winning a treatment action.
+  if (kept === 0 && demoted > 0) {
+    for (const r of out) {
+      (r as any)._intentGateLeakage = true;
+      (r as any)._noTreatmentEligible = true;
+    }
+    console.warn(
+      `[BRAIN_TRACE][RULE_INTENT_GATE][LEAKAGE_GUARD] intent="${intentKey}" kept=0 demoted=${demoted} ` +
+      `→ all remaining rules marked _noTreatmentEligible (route to clarification or info response)`
+    );
+  }
   console.log(
     `[BRAIN_TRACE][RULE_INTENT_GATE] intent="${intentKey}" kept=${kept} demoted=${demoted} dropped=${dropped} incompat_dropped=${incompatDropped}`
   );

@@ -9327,7 +9327,11 @@ export class AIAgentOrchestrator {
     // ═══════════════════════════════════════════════════════════════════════════
     
     const landCurrentCrop = landContext?.current_crop;
-    const landCropStage = landContext?.growth_stage;
+    // FIX 2 (STAGE INVARIANT): BiologicalState is the sole authority for stage.
+    // Never let downstream fallbacks reintroduce a different stage.
+    const bioStageAuthoritative: string | undefined =
+      landContext?.biological_state?.growth_stage || landContext?.growth_stage;
+    const landCropStage = bioStageAuthoritative;
     
     // Validate crop context for training data quality
     const cropValidation = validateCropContext(landCurrentCrop, ids.landId);
@@ -9380,7 +9384,28 @@ export class AIAgentOrchestrator {
     const basicPestCode = normalizePestCode(rawPestCode);
     const basicDiseaseCode = normalizeDiseaseCode(rawDiseaseCode);
     const severity = normalizeSeverity(rawSeverity);
-    const cropStage = normalizeCropStage(rawCropStage);
+    // FIX 2: normalizeCropStage() collapses distinct biological stages (e.g.
+    // ACTIVE_TILLERING/GRAND_GROWTH/RICE_TRANSPLANTING → VEGETATIVE), which
+    // silently overwrites BiologicalState. When BiologicalState is present,
+    // we KEEP its stage verbatim and only emit a normalized form for legacy
+    // fallback code paths (never used to override the authoritative value).
+    const normalizedStage = normalizeCropStage(rawCropStage);
+    const cropStage = bioStageAuthoritative
+      ? String(bioStageAuthoritative).toUpperCase()
+      : normalizedStage;
+    if (bioStageAuthoritative && normalizedStage && String(bioStageAuthoritative).toUpperCase() !== normalizedStage) {
+      console.warn(
+        `[STAGE_DRIFT_BLOCKED] land=${ids.landId ?? 'n/a'} ` +
+        `bio_state=${bioStageAuthoritative} legacy_normalized=${normalizedStage} ` +
+        `→ keeping BIOLOGICAL_STATE (rule_engine_stage=${cropStage})`
+      );
+    } else {
+      console.log(
+        `[STAGE_INVARIANT_PASS] land=${ids.landId ?? 'n/a'} ` +
+        `bio_state=${bioStageAuthoritative ?? 'null'} canonical=${landContext?.growth_stage ?? 'null'} ` +
+        `rule_engine=${cropStage}`
+      );
+    }
     
     // UNIFIED: Normalize crop code to DB short code ONCE via single source of truth
     const canonicalCropShortCode = unifiedNormalizeCropCode(basicCropCode);

@@ -123,6 +123,11 @@ export async function evaluateScientificGate(
 
   const approved: CandidateRecommendation[] = [];
   const rejected: Array<{ candidate: CandidateRecommendation; reasons: string[] }> = [];
+  // FIX 5: track candidates that were APPROVED without a real baseline check.
+  // These must NOT contribute a confidence boost — missing reference data is
+  // "INSUFFICIENT_REFERENCE", not "PASS".
+  let approvedWithBaseline = 0;
+  let approvedWithoutBaseline = 0;
 
   for (const cand of candidates) {
     const baselines: BaselineGuideline[] = getBaselineForCrop(cand.crop_code);
@@ -151,16 +156,24 @@ export async function evaluateScientificGate(
         }
       }
     } else {
-      ledger?.ignore('SCIENTIFIC_GATE', `rule:${cand.rule_id}`, 'no baseline for crop/stage — skipped checks');
+      // FIX 5: no baseline available → INSUFFICIENT_REFERENCE. Do NOT block
+      // execution, but do NOT count as PASS for confidence calculation.
+      ledger?.ignore('SCIENTIFIC_GATE', `rule:${cand.rule_id}`, 'no baseline for crop/stage — INSUFFICIENT_REFERENCE (no confidence boost)');
+      console.log(
+        `[SCIENTIFIC_GATE][INSUFFICIENT_REFERENCE] rule=${cand.rule_id} crop=${cand.crop_code} ` +
+        `stage=${cand.growth_stage ?? 'null'} → passing through without confidence boost`
+      );
     }
 
     if (violations.length === 0) {
       approved.push(cand);
+      if (baseline) approvedWithBaseline++;
+      else approvedWithoutBaseline++;
       ledger?.record({
         stage: 'SCIENTIFIC_GATE',
         action: 'CREATE',
         key: `approved:${cand.rule_id}`,
-        after: { rule_id: cand.rule_id },
+        after: { rule_id: cand.rule_id, baseline_present: !!baseline },
         source: 'crop_baseline_guidelines_v2',
       });
     } else {
@@ -184,14 +197,21 @@ export async function evaluateScientificGate(
     }
   }
 
+  // FIX 5: confidence = (approved-with-baseline) / (candidates that had a
+  // baseline to check). Missing baseline == not evaluated → excluded from
+  // both numerator and denominator instead of counted as PASS=1.0.
+  const evaluated = approvedWithBaseline + rejected.length;
   const scientificConfidence = candidates.length === 0
     ? 1
-    : approved.length / candidates.length;
+    : (evaluated === 0
+        ? 0        // every candidate lacked a baseline → NO confidence signal
+        : approvedWithBaseline / evaluated);
   chain?.set('scientific', scientificConfidence);
 
   console.log(
-    `[BRAIN_TRACE][SCIENTIFIC_GATE] approved=${approved.length} rejected=${rejected.length} ` +
-      `conf=${scientificConfidence.toFixed(3)}`
+    `[BRAIN_TRACE][SCIENTIFIC_GATE] approved=${approved.length} ` +
+      `(with_baseline=${approvedWithBaseline}, insufficient_reference=${approvedWithoutBaseline}) ` +
+      `rejected=${rejected.length} conf=${scientificConfidence.toFixed(3)}`
   );
 
   return { approved, rejected, scientificConfidence };
