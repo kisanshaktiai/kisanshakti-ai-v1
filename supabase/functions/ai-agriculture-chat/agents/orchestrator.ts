@@ -10118,6 +10118,27 @@ export class AIAgentOrchestrator {
   ): OrchestratorResponse {
     console.error('❌ Orchestration error:', error.message);
     console.error('   Stack:', error.stack?.substring(0, 500));
+
+    // GRAPH CONTRACT — system-error fallback is legitimate. Emit the contract
+    // line so downstream log analysis attributes the generic_template branch
+    // to SYSTEM_ERROR rather than a silent symbolic-decision swap.
+    try {
+      emitFinalResponseContract({
+        trace_id: `err_${sessionId}`,
+        crop: landContext?.current_crop ?? null,
+        bio_state_locked: !!(landContext as any)?.biological_state?.is_locked,
+        real_observation_count: 0,
+        hypotheses_count: 0,
+        rules_loaded: 0,
+        rules_matched: 0,
+        symbolic_decision_available: false,
+        diagnosis_available: false,
+        final_source: 'generic_template',
+        fallback_reason: 'SYSTEM_ERROR',
+        system_error: true,
+      });
+    } catch {/* trace must not throw */}
+
     
     // PHASE-14: Log error to ai_chat_messages instead of nonexistent system_errors table
     // This ensures errors are visible in audit trail (non-blocking fire-and-forget)
