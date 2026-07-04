@@ -8447,7 +8447,11 @@ export class AIAgentOrchestrator {
         const { data: phenRows, error: phenErr } = await this.supabase
           .rpc('resolve_crop_phenology', { p_land_id: landId });
         if (phenErr) {
-          console.warn(`⚠️ [PHENOLOGY_SSOT] resolver error: ${phenErr.message}`);
+          console.error(
+            `❌ [BIO_STATE_RPC_ERROR] land=${landId} code=${(phenErr as any).code ?? 'n/a'} ` +
+              `msg=${phenErr.message} details=${(phenErr as any).details ?? ''} ` +
+              `hint=${(phenErr as any).hint ?? ''}`,
+          );
         } else if (Array.isArray(phenRows) && phenRows.length > 0) {
           phenology = phenRows[0];
           console.log(`✅ [PHENOLOGY_SSOT] stage=${phenology.growth_stage} (${phenology.stage_code}) crop=${phenology.crop_code} das=${phenology.current_das} conf=${phenology.confidence} src=${phenology.source} v${phenology.resolver_version}`);
@@ -8455,7 +8459,7 @@ export class AIAgentOrchestrator {
           console.warn(`⚠️ [PHENOLOGY_SSOT] resolver returned no row for land=${landId}`);
         }
       } catch (e) {
-        console.warn(`⚠️ [PHENOLOGY_SSOT] resolver threw: ${(e as Error).message}`);
+        console.error(`❌ [BIO_STATE_RPC_ERROR] land=${landId} threw=${(e as Error).message}`);
       }
 
       // ═══════════════════════════════════════════════════════════════════════════
@@ -8466,9 +8470,10 @@ export class AIAgentOrchestrator {
       const biological_state: BiologicalState | null = buildBiologicalState(landId, phenology);
       if (biological_state) {
         console.log(
-          `🔒 [BIO_STATE_LOCKED] land=${landId} stage=${biological_state.growth_stage} ` +
+          `🔒 [BIO_STATE_LOCKED] land_id=${landId} crop=${biological_state.crop_code} ` +
+            `stage=${biological_state.growth_stage} stage_uuid=${biological_state.stage_uuid} ` +
             `code=${biological_state.stage_code} das=${biological_state.das} ` +
-            `conf=${biological_state.confidence} src=${biological_state.source}`,
+            `conf=${biological_state.confidence} source=${biological_state.source}`,
         );
       } else {
         console.warn(`⚠️ [BIO_STATE] no lock — resolver produced no phenology row for land=${landId}`);
