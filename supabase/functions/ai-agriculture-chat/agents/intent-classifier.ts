@@ -87,14 +87,27 @@ export interface IntentClassification {
 
 function buildLandContextBlock(landContext?: IntentLandContext): string {
   if (!landContext || !landContext.current_crop) return '';
-  const lines: string[] = ["FARM CONTEXT (use this to interpret the farmer's message):"];
-  if (landContext.current_crop) lines.push(`- Crop: ${landContext.current_crop}`);
+  const lines: string[] = [
+    "═══════════════════════════════════════════════════════════════════════",
+    "AUTHORITATIVE LAND CONTEXT (this is the ONLY crop for this chat):",
+  ];
+  lines.push(`- crop_code: ${landContext.current_crop}`);
   if (landContext.growth_stage) {
-    const dasStr = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} days after sowing)` : '';
-    lines.push(`- Growth Stage: ${landContext.growth_stage}${dasStr}`);
+    const dasStr = landContext.days_since_sowing ? ` (DAS: ${landContext.days_since_sowing})` : '';
+    lines.push(`- stage: ${landContext.growth_stage}${dasStr}`);
   }
-  if (typeof landContext.ndvi_value === 'number') lines.push(`- NDVI: ${landContext.ndvi_value.toFixed(2)}`);
-  if (landContext.soil_type) lines.push(`- Soil: ${landContext.soil_type}`);
+  if (typeof landContext.ndvi_value === 'number') lines.push(`- ndvi: ${landContext.ndvi_value.toFixed(2)}`);
+  if (landContext.soil_type) lines.push(`- soil_type: ${landContext.soil_type}`);
+  lines.push("");
+  lines.push("BINDING RULE (mandatory):");
+  lines.push(`- If the farmer uses a GENERIC subject ("crop", "plant", "पिक", "फसल",`);
+  lines.push(`  "pik", "fasal", "pikat", "shet", "field", "मालाला", "पिकाला"), you MUST`);
+  lines.push(`  interpret it as the crop above (${landContext.current_crop}).`);
+  lines.push(`- Do NOT return GENERAL_CROP_INFO when the farmer describes a specific`);
+  lines.push(`  agronomic problem/state about this land's crop (emergence, growth,`);
+  lines.push(`  pest, disease, colour change, wilting, damage, yield). Route to the`);
+  lines.push(`  matching diagnostic intent instead.`);
+  lines.push("═══════════════════════════════════════════════════════════════════════");
   return lines.join('\n');
 }
 
@@ -125,6 +138,9 @@ ROUTING HINTS:
 - "water", "पाणी", "पानी", "irrigation timing" → IRRIGATION_QUERY or IRRIGATION_SCHEDULING_QUERY
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
   (COLOR_CHANGE, LEAF_MARKS_OR_SPOTS, WILTING_OR_DROOPING, STEM_DAMAGE, PEST_PRESENCE_VISIBLE, ...)
+- "not emerged", "did not germinate", "उगवले नाही", "उगवण नाही", "अंकुरण नहीं", "खराब उगवण"
+  → EMERGENCE_FAILURE (even when the subject is a generic word like "पिक" / "फसल" /
+  "crop" — the AUTHORITATIVE LAND CONTEXT above tells you which crop it is).
 - "when to harvest" → HARVEST_TIMING
 - Pure greeting / unclear → GENERAL_CROP_INFO
 

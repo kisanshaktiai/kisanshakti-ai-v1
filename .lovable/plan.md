@@ -1,137 +1,220 @@
-# Fix: neuro-symbolic graph plumbing only (no agronomy in TS)
+## Objective
 
-Three surgical runtime fixes. Zero new agriculture concepts in code. Existing hardcoded dictionaries are marked deprecated but left in place (removing them is a separate DB-migration pass).
+Make the neuro-symbolic brain **deterministic**: same agricultural meaning ⇒ same graph, regardless of wording. Achieved by installing a single immutable **GraphTruth** node, reordering execution so **land context precedes text**, and removing every code-side agronomy authority. All agronomy stays in the DB.
 
-## Fix 1 — `causal-hypothesis-engine.ts` OBSERVATION dual-shape reader
+Scope covers audit findings §1–§9 in `SYMBOLIC_DATA_FLOW_AUDIT.md`, but this plan does NOT touch schema, `decision_rules`, `crop_stage_master`, `variety_phenology_profile`, or ontology tables.
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/causal-hypothesis-engine.ts`
-**Lines:** 296–314 (`case 'OBSERVATION'`)
+---
 
-Current code reads only `value_json.code`. DB stores `value_json` as an array (`["obs_rice_no_emergence", ...]`) → `code` is `undefined` → condition always returns `FAILED`. This is why `RICE_GERMINATION_FAILURE` scores 0.
+## Deliverables
 
-Replace the block with a shape-agnostic reader supporting both `{code:"..."}` and `["...","..."]`. No observation names, crops, or agronomy introduced — pure JSON shape handling:
+1. `SYMBOLIC_DATA_FLOW_AUDIT.md` — appended with a new "Refactor Plan Execution" section (before/after graph trace).
+2. New runtime module: `supabase/functions/ai-agriculture-chat/runtime/graph-truth.ts` (immutable node + builder + validator + hash).
+3. Surgical edits to the ten primary files listed by the user (no new agronomy files).
+4. Two regression tests wired into the existing `scripts/regression-diagnostic-options.test.ts`.
+5. Deploy `ai-agriculture-chat` edge function.
 
-```ts
-case 'OBSERVATION': {
-  const raw = value_json as any;
-  const codes: string[] = Array.isArray(raw)
-    ? raw.filter((x) => typeof x === 'string')
-    : (typeof raw?.code === 'string' ? [raw.code]
-      : Array.isArray(raw?.codes) ? raw.codes.filter((x: any) => typeof x === 'string')
-      : []);
-  if (codes.length === 0) return HypothesisConditionStatus.FAILED;
+---
 
-  const obsLower = observations.map((o) => String(o).toLowerCase());
-  const codesLower = codes.map((c) => c.toLowerCase());
+## Task-by-task plan
 
-  if (operator === 'CONTAINS' || operator === 'IN' || operator === 'ANY_OF') {
-    return codesLower.some((c) => obsLower.includes(c))
-      ? HypothesisConditionStatus.PASSED
-      : HypothesisConditionStatus.FAILED;
-  }
-  if (operator === 'ALL_OF') {
-    return codesLower.every((c) => obsLower.includes(c))
-      ? HypothesisConditionStatus.PASSED
-      : HypothesisConditionStatus.FAILED;
-  }
-  if (operator === 'NOT_EXISTS' || operator === 'NOT_IN') {
-    return codesLower.every((c) => !obsLower.includes(c))
-      ? HypothesisConditionStatus.PASSED
-      : HypothesisConditionStatus.FAILED;
-  }
-  return HypothesisConditionStatus.FAILED;
+### T1 · Immutable `GraphTruth`
+
+Create `runtime/graph-truth.ts`:
+
+```text
+GraphTruth {
+  readonly land_id, crop_code, variety_id
+  readonly biological_stage, stage_uuid, DAS, GDD
+  readonly canonical_observations: readonly string[]
+  readonly hypothesis_candidates:  readonly string[]
+  readonly evidence_sources:       readonly {code, authority, source}[]
+  readonly locked_at, hash
 }
 ```
 
-## Fix 2 — `layered-rule-evaluator.ts` observation-code first evidence source
+- `buildGraphTruth(input)` runs ONCE per turn, then `Object.freeze()` (deep freeze of arrays).
+- Authority sources are asserted at build time — no field may be provided by any other source:
+  - crop / variety ⇐ landContext (fetchComprehensiveLandContext)
+  - stage / DAS / GDD ⇐ BiologicalState (`resolve_crop_phenology`)
+  - observations ⇐ observation_master via `bridgeCodesDb` + `resolveCropCanonicalObservations`
+  - hypotheses ⇐ hypothesis engine output only
+- Canonical hash: SHA-256 of `{crop_code, stage_uuid, DAS, sorted(canonical_observations)}`.
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-**Lines:** 1419 (ObsFilter source) and 1498–1521 (`input.visual_symptoms` / `input.observations`)
+### T2 · Fix execution order in `orchestrator.ts`
 
-Currently the ObsFilter reads `state.visual_symptoms` (undefined on `CanonicalState`), and the downstream `input` derives symptoms from a mix of confirmed + synthetic + `state.visual_symptom` legacy enum. Switch the evidence priority to a single ordered union — no observation → symptom conversion, no hardcoded names:
+Replace current `Text → Intent → Observation → Hypothesis` sequence with:
 
-Priority union (identical helper used at both 1419 and 1498–1511):
-
-```ts
-// Ontology-first evidence union. Order = authority.
-// NOTE: no observation-to-symptom mapping; codes are transported verbatim.
-const _obsCodes:   string[] = Array.isArray((state as any).observation_codes)     ? (state as any).observation_codes     : [];
-const _confirmed:  string[] = Array.isArray((state as any).confirmed_observations)? (state as any).confirmed_observations: [];
-const _synthetic:  string[] = Array.isArray((state as any).synthetic_observations)? (state as any).synthetic_observations: [];
-const _legacy:     string[] = (state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN')
-  ? [String(state.visual_symptom)] : [];
-
-const evidenceCodes = [..._obsCodes, ..._confirmed, ..._synthetic, ..._legacy]
-  .filter(Boolean)
-  .map((s: string) => String(s));
-const evidenceCodesUpper = [...new Set(evidenceCodes.map((s) => s.toUpperCase().replace(/[\s-]/g, '_')))];
+```text
+Land Context ─► BiologicalState ─► Farmer Text ─► Observation Resolver
+              └────────────────────────────────┴─► GraphTruth LOCK
+                                                     │
+                                              Hypothesis Engine
+                                                     │
+                                              Decision Rules
+                                                     │
+                                                 Response
 ```
 
-- Line 1419 `const visualSymptoms = ...` → `const visualSymptoms = evidenceCodesUpper;`
-- Lines 1498–1511 `uniqueVisualSymptoms` derivation → replace with `evidenceCodesUpper` (single source).
-- Lines 1518 & 1521: pass `evidenceCodesUpper` for both `visual_symptoms` and `observations` keys in `input`.
+Concretely:
 
-No new agronomy dictionaries. `CATEGORY_PATTERNS` / `PLANT_PART_PATTERNS` block is untouched — its input source is fixed, its content is deprecated (see Fix 4).
+1. Move `fetchComprehensiveLandContext` + `resolve_crop_phenology` block to the top of `runTurn` (already largely there — enforce ordering guard).
+2. Only AFTER `BiologicalState` is locked do we call `extractSemanticMeaning` / `classifyFarmerIntent`.
+3. Observation extraction → `bridgeCodesDb` → `resolveCropCanonicalObservations` → `buildGraphTruth()` → freeze.
+4. All later stages receive `graphTruth` by reference; they read, never write.
 
-## Fix 3 — Stage-family soft bypass (no new STAGE_FAMILIES entries)
+### T3 · Strip intent as agronomic authority
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-**Lines:** 1364–1374
+In `orchestrator.ts`:
 
-Currently: if exact match fails and family lookup misses → hard reject with `return false`. Change to a *soft* bypass so ontology-missing stage relationships never silently kill a rule; log once for future DB migration:
+- Delete hardcoded `intentToSymptom` map (~lines 4055-4072).
+- Delete hardcoded `advisoryIntents` / `symptomBasedIntents` arrays used to synthesize evidence.
+- Delete `causeToIntent` synthesis (if present) that back-fills observations.
+- Replace with DB call:
+  ```ts
+  intent_observation_mapping.rows
+    where intent_code = <intent>
+      and crop_code in (<landContext.current_crop>, 'universal')
+      and assertion_strength = 'LITERAL'
+      and is_active
+  ```
+  → returned `observation_code`s go through the same bridge pipeline and enter `GraphTruth.canonical_observations` with `authority = INFERRED, source = IOM_INTENT_TO_OBSERVATION`.
+- Intent's remaining roles (kept):
+  - clarification style selection (`clarification-generator.ts`)
+  - response formatting hint (narration only)
+  - question classification (`question-classifier.ts`)
 
-```ts
-const family = STAGE_FAMILIES[currentStage] || null;
-const familyMatch = family
-  ? normalizedApplicableStages.some((s: string) => s === currentStage || family.includes(s))
-  : false;
-const exactMatch = normalizedApplicableStages.includes(currentStage);
+### T4 · Land-specific chat contract
 
-if (!exactMatch && !familyMatch) {
-  if (!family) {
-    // Ontology-missing: DO NOT reject. Emit forensic log for DB-backed
-    // stage_relationships migration. Rule proceeds to condition evaluation
-    // where DB-level stage predicates (STAGE conditions) remain authoritative.
-    console.log(
-      `[STAGE_ONTOLOGY_MISSING] rule=${bundled.rule_id} current_stage=${currentStage} ` +
-      `applicable=[${normalizedApplicableStages.join(',')}] action=BYPASS_STAGE_GATE ` +
-      `reason=STAGE_FAMILIES_deprecated_awaiting_db_stage_relationships`,
-    );
-  } else {
-    // Family known and mismatched → keep existing hard gate for high-priority rules
-    if (bundled.priority && bundled.priority > 70) {
-      console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
-    }
-    return false;
-  }
-}
+- In `orchestrator.ts` (right after landContext fetch) install `enforceCropIdentityFromLand()`:
+  - `graphTruth.crop_code := landContext.current_crop` (or crop_schedule crop). No text-derived override.
+  - `induceCanonicalSymbols` crop output is **discarded** for authority; used only for contradiction detection.
+  - If extracted crop differs AND has high confidence AND is in `crop_synonyms` → raise `CROP_MISMATCH_CLARIFICATION` intent (existing clarifier), NEVER overwrite.
+- In `language-induction-layer.ts`: neither add to nor remove entries from `CROP_MAP`; instead export `induceCanonicalSymbols(text)` unchanged, but downstream ignores its crop field when `landContext.current_crop` exists.
+
+### T5 · Single stage authority
+
+- Confirm `biological-state.ts` `blockStageWriteIfLocked()` is called at every writer site. Per audit, six writers exist; three unguarded.
+- Add explicit calls in:
+  - `canonical-state-builder.ts` (stage write path)
+  - `context-authority.ts` (stage override path)
+  - `orchestrator.ts` GDD/session fallback branches
+- After `BIO_STATE_LOCKED` any competing write logs `[GRAPH_MUTATION_BLOCKED]` and returns without mutating.
+- `crop_stage_master` + `variety_phenology_profile` remain the sole DB truth (no schema change).
+
+### T6 · Remove TypeScript agronomy ontology (deprecation, not deletion)
+
+Per audit: `STAGE_SYNONYMS`, `STAGE_FAMILIES`, `CROP_KEYWORDS`, `CATEGORY_PATTERNS`, `PLANT_PART_PATTERNS`, 1000+ lines of pest/disease aliases in `entity-normalizer.ts`, and hardcoded enums in `symptom-enums.ts`.
+
+Approach (surgical, no big-bang delete):
+
+- Mark all agronomy constants `@deprecated - moved to DB` and route their readers through DB loaders that already exist:
+  - stage synonyms → `crop_stage_aliases`
+  - crop keywords → `crop_synonyms`
+  - observation vocabulary → `observation_aliases` / `observation_master`
+- Keep enums as **type-only** shapes (no value list drives reasoning). Consumers that switch on enum values must be refactored to read the code from GraphTruth / DB row.
+- Files touched: `symptom-enums.ts`, `entity-normalizer.ts`, `cross-crop-symptom-mapper.ts`, `iom-gate.ts`, `navigator-adapter.ts`, `contradiction-engine.ts`, `language-induction-layer.ts`.
+- Every removed reading site logs `[ONTOLOGY_SOURCE] table=<x>` so we can prove code isn't the source of truth anymore.
+
+### T7 · Correct observation graph pipeline
+
+Guarantee the pipeline is exactly:
+
+```text
+Raw farmer text
+ → observation-extractor
+ → observation_aliases (bridgeCodesDb)
+ → intent_observation_mapping LITERAL peers (resolveCropCanonicalObservations)
+ → hypothesis_conditions
 ```
 
-No new entries in `STAGE_FAMILIES`. `TRANSPLANTING` (and any other stage absent from the map) now falls into the bypass branch until DB-backed stage relationships arrive.
+- Forbid any code that rewrites one observation to another (e.g. `POOR_GERMINATION → STUNTED_GROWTH`). Audit removes any such swaps in `cross-crop-symptom-mapper.ts` / `entity-normalizer.ts`.
+- Observations are first-class nodes in `GraphTruth.canonical_observations`.
 
-## Fix 4 — Mark hardcoded agronomy dictionaries deprecated
+### T8 · Graph contract validator
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+Add `validateGraphTruth(before, after, callsite)` invoked before:
 
-Add block comments (no logic change) above:
-- `STAGE_FAMILIES` (~line 1348)
-- `cropCodeAliases` (~line 1382)
-- `CATEGORY_PATTERNS` and `PLANT_PART_PATTERNS` (~lines 1426, 1444)
+- hypothesis engine (`hypothesis-evaluator.ts`, `causal-hypothesis-engine.ts`)
+- rule engine (`layered-rule-evaluator.ts`)
+- response builder (`deterministic-response-builder.ts`)
 
-Each comment states: `@deprecated — DO NOT ADD NEW AGRONOMY. Replace with DB-backed lookup (crop_stage_master.stage_relationships / crop_synonyms / observation_master.category & plant_part). Tracked for ontology-migration pass.`
+If any authoritative field changed:
 
-## Explicitly NOT changing
+```text
+[GRAPH_CONTRACT_VIOLATION] field=<> before=<> after=<> file=<> function=<>
+```
 
-- No new stages, crops, observations, pests, diseases, or symptoms added to any TS file.
-- `canonical-state-builder.ts` — untouched (already carries `observation_codes` passthrough from earlier turn).
-- `orchestrator.ts` — untouched.
-- Database, `decision_rules`, `hypothesis_master`, `crop_stage_master`, `observation_master`, `intent_observation_mapping` — untouched.
+Throw in dev, warn+halt-mutation in prod (never silent-repair).
 
-## Expected outcome
+### T9 · Canonical-state hash regression test
 
-For `भात अजून उगवले नाही` (Rice, DAS=26, transplanting):
-- Bridge already emits `POOR_GERMINATION → obs_rice_no_emergence` into observations.
-- Fix 1 lets `RICE_GERMINATION_FAILURE`'s OBSERVATION array condition PASS.
-- Fix 2 lets the observation code reach the ObsFilter and downstream `input.observations`.
-- Fix 3 stops the transplanting stage from silently killing the germination rule (soft bypass with `[STAGE_ONTOLOGY_MISSING]` log for follow-up).
-- Winner becomes a diagnostic rule; `PROACTIVE_FLOOD_PREPAREDNESS_001` no longer trumps evidence.
+Extend `scripts/regression-diagnostic-options.test.ts` with three cases against a Rice land, DAS=26:
+
+- T-A: `"भात अजून उगवले नाही"`
+- T-B: `"या शेतातील पिक अजून उगवले नाही"`
+- T-C: `"खराब उगवण"`
+
+Assert:
+- identical `graphTruth.hash`
+- identical `canonical_observations` set (contains `obs_rice_no_emergence`)
+- identical `hypothesis_candidates` set
+- identical top rule id
+
+---
+
+## Files changed (exhaustive)
+
+Primary edits:
+- `runtime/graph-truth.ts` **(new)**
+- `agents/orchestrator.ts` — new pipeline order, remove `intentToSymptom` + `advisoryIntents`, wire GraphTruth, validators, hash trace
+- `agents/canonical-state-builder.ts` — stage-write guard
+- `agents/context-authority.ts` — stage-write guard
+- `llm-understanding-layer.ts` — LLM stays translate + intent-only; add crop-binding block from landContext
+- `agents/intent-classifier.ts` — prompt hardening: bind generic subjects to `landContext.current_crop`; do not emit crop as authority
+- `agents/language-induction-layer.ts` — downgrade `CROP_MAP` output from authority to contradiction-check hint
+- `decision/concept-bridge.ts` — no change (already DB-wired); consumer moves to GraphTruth builder
+- `agents/hypothesis-evaluator.ts` + `agents/causal-hypothesis-engine.ts` — read from GraphTruth; call `validateGraphTruth`
+- `agents/layered-rule-evaluator.ts` — read from GraphTruth; call `validateGraphTruth`
+
+Secondary (deprecation shims + DB routing):
+- `agents/symptom-enums.ts`, `agents/entity-normalizer.ts`, `agents/cross-crop-symptom-mapper.ts`
+- `runtime/iom-gate.ts` (or `agents/` equivalent), `agents/navigator-adapter.ts`, `agents/contradiction-engine.ts`
+
+Docs/tests:
+- `SYMBOLIC_DATA_FLOW_AUDIT.md` — appended "Refactor Plan Execution" with before/after graph trace
+- `scripts/regression-diagnostic-options.test.ts` — three new cases + hash assertions
+
+---
+
+## Traces added (for explainability)
+
+```text
+[GRAPH_TRUTH_BUILT]        crop=<> stage=<> DAS=<> obs=[..] hash=<>
+[GRAPH_TRUTH_LOCKED]       at=<phase> callsite=<>
+[GRAPH_CONTRACT_VIOLATION] field=<> before=<> after=<> file=<> function=<>
+[GRAPH_MUTATION_BLOCKED]   site=<> attempted=<>
+[ONTOLOGY_SOURCE]          table=<> reader=<>
+[INTENT_ROLE]              intent=<> role=<clarification|narration> agronomy_authority=false
+```
+
+---
+
+## Verification
+
+1. Typecheck (`tsgo` — auto).
+2. `supabase--test_edge_functions` on `ai-agriculture-chat` with the new regression file.
+3. Live curl to the deployed function for T-A and T-B; grep logs for identical `[GRAPH_TRUTH_BUILT]` hashes.
+4. Confirm zero `[GRAPH_CONTRACT_VIOLATION]` and zero `[GRAPH_MUTATION_BLOCKED]` in the happy-path traces.
+
+---
+
+## Strict rules honoured
+
+- No hardcoded crops/stages/symptoms/diseases/pests introduced.
+- No schema migrations, no changes to `decision_rules` / ontology tables.
+- No rice-only patches — all fixes are crop-agnostic and DB-driven.
+- No silent repair — violations throw or halt mutation with an explicit trace.
+- Intent is retained only for UX (clarification style, formatting); it is stripped of agronomic authority.
+
+Approving this plan will move me into build mode; I will then execute T1→T9 in order, deploy the edge function, and post the before/after graph trace back into `SYMBOLIC_DATA_FLOW_AUDIT.md`.

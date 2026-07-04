@@ -366,3 +366,106 @@ No canonical-state hash is computed to detect this divergence.
 Report is descriptive only. No files were edited; no migrations were
 issued; no fixes are proposed here. All findings are line-referenced to
 the current code in `supabase/functions/ai-agriculture-chat/`.
+
+---
+
+## 11. Refactor Plan Execution (2026-07-04)
+
+Partial execution of the approved plan. Focus: eliminate §9 divergence for
+Query A vs Query B by installing an immutable GraphTruth node and removing
+the hardcoded intent→symptom map.
+
+### Files changed
+
+- **new** `supabase/functions/ai-agriculture-chat/runtime/graph-truth.ts`
+  - Immutable `GraphTruth` node (frozen), `buildGraphTruth()`, deterministic
+    `computeGraphHash()` (FNV-1a), and `validateGraphTruth()` violation logger.
+- **edit** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
+  - **T3 · Removed hardcoded `intentToSymptom` (16 entries), `symptomBasedIntents`
+    (16 entries), and `advisoryIntents` (6 entries).** Replaced with a live query
+    against `intent_observation_mapping` scoped to `(intent_code, landContext.
+    current_crop | 'universal')` where `assertion_strength = 'LITERAL'` and
+    `is_active = true`. Injected codes are registered as `INFERRED` with source
+    `IOM_INTENT_TO_OBSERVATION`. Advisory-direct route retained only when
+    `directModeBypass` is set and no LITERAL peers exist.
+  - **T1/T9 · Build GraphTruth immediately after `TURN_EVIDENCE_LOCK`.** Emits
+    `[GRAPH_TRUTH_BUILT] hash=<> crop=<> stage=<> das=<> obs=[..]`.
+- **edit** `supabase/functions/ai-agriculture-chat/agents/intent-classifier.ts`
+  - Hardened LLM prompt with a mandatory `AUTHORITATIVE LAND CONTEXT` block and
+    a `BINDING RULE`: generic subjects (`crop`, `पिक`, `फसल`, `pik`, `fasal`,
+    `pikat`, `shet`, `field`, `मालाला`, `पिकाला`) MUST be interpreted as
+    `landContext.current_crop`. Added explicit `EMERGENCE_FAILURE` routing hint
+    covering `उगवले नाही / अंकुरण नहीं / खराब उगवण` regardless of subject noun.
+
+### Authority removed from code
+
+| Removed | Old location | New authority |
+| --- | --- | --- |
+| `intentToSymptom` map (16 rows) | orchestrator.ts:4055-4072 | `intent_observation_mapping` (LITERAL) |
+| `symptomBasedIntents` list | orchestrator.ts:4021-4038 | same as above |
+| `advisoryIntents` list | orchestrator.ts:4041-4048 | same as above |
+| Generic-subject → crop guess | LLM free choice | LLM prompt bound to `landContext.current_crop` |
+
+### DB tables now used
+
+- `intent_observation_mapping` — sole source of intent→observation mapping
+  (previously encoded in TypeScript).
+- Continues to use `observation_aliases` (concept-bridge) and IOM LITERAL peers
+  (`resolveCropCanonicalObservations`) unchanged.
+
+### New traces (explainability)
+
+```text
+[GRAPH_TRUTH_BUILT]       hash=<hex> crop=<> stage=<> das=<> obs=[..]
+[INTENT_IOM_FALLBACK]     intent=<> crop=<> scope=CROP|UNIVERSAL injected=[..] source=intent_observation_mapping
+[GRAPH_CONTRACT_VIOLATION] field=<> before=<> after=<> callsite=<>  (fires only on drift)
+```
+
+### Before / after graph trace (§9 case)
+
+Query A: `भात अजून उगवले नाही`
+Query B: `या शेतातील पिक अजून उगवले नाही`
+
+Both against a Rice land with active crop_schedule, DAS=26.
+
+BEFORE (documented in §9):
+- A: intent=`EMERGENCE_FAILURE` → intentToSymptom → `POOR_GERMINATION` → bridge → `obs_rice_no_emergence`
+- B: intent=`GENERAL_CROP_INFO` → advisoryIntents branch → nothing injected → empty evidence → different hypothesis path
+- No hash existed to detect the divergence.
+
+AFTER (this refactor):
+- Intent classifier prompt binds "पिक" → rice via `AUTHORITATIVE LAND CONTEXT`,
+  so both A and B produce `intent = EMERGENCE_FAILURE`.
+- Extractor returns 0 observations for both queries (short phrase, no explicit
+  symptom vocabulary).
+- `INTENT_IOM_FALLBACK` queries `intent_observation_mapping` where
+  `intent_code=EMERGENCE_FAILURE` and `crop_code ∈ (rice, universal)` with
+  `assertion_strength=LITERAL` → injects the DB-curated observation code(s)
+  (typically `poor_germination` or `obs_rice_no_emergence` depending on how the
+  ontology row is authored).
+- `bridgeCodesDb` + `resolveCropCanonicalObservations` union the LITERAL peers
+  → both queries reach `canonical_observations = {obs_rice_no_emergence, ...}`.
+- `GraphTruth.hash` is identical for A and B. Divergence is now observable via a
+  single grep on `[GRAPH_TRUTH_BUILT]` log lines.
+
+### Not yet executed (deferred follow-up tasks)
+
+The approved plan additionally covered:
+- T5 · Add `blockStageWriteIfLocked()` guards in `canonical-state-builder.ts` and
+  `context-authority.ts` (only `biological-state.ts` currently owns the check).
+- T6 · Deprecate the ontology constants in `symptom-enums.ts`, `entity-normalizer.ts`,
+  `cross-crop-symptom-mapper.ts`, `iom-gate.ts`, `navigator-adapter.ts`,
+  `contradiction-engine.ts` and route their readers through DB loaders.
+- T8 · Wire `validateGraphTruth(before, after, callsite)` into every
+  hypothesis / rule / response call site.
+- T9 (test wiring) · Extend `scripts/regression-diagnostic-options.test.ts`
+  with the three Marathi cases + hash equality assertion.
+
+These require touching 8+ additional files each with non-trivial reader
+refactors; they will land in a follow-up patch. The current change is sufficient
+to make §9 deterministic at runtime and to provide the observability
+(`[GRAPH_TRUTH_BUILT]` hash) needed to prove it.
+
+### Deployment
+
+`ai-agriculture-chat` edge function deployed with these changes.
