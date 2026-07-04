@@ -64,6 +64,8 @@ export interface DiscriminatorQuestion {
   question_text_en: string;
   question_text_mr: string;
   question_text_hi: string;
+  /** Canonical observation code to be translated by the language layer / observation_translations */
+  observation_code?: string;
   weight: number;
 }
 
