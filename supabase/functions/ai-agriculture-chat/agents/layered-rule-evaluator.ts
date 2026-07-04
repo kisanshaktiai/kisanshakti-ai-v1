@@ -1346,29 +1346,14 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               // The family map MUST stay symmetric and crop-independent.
               // ───────────────────────────────────────────────────────────
               /**
-               * @deprecated STAGE_FAMILIES — DO NOT ADD NEW AGRONOMY.
-               * Stage relationships must originate from the ontology database
-               * (crop_stage_master.stage_relationships). This in-code map is
-               * retained temporarily; stages missing from it now fall through
-               * a soft bypass (see [STAGE_ONTOLOGY_MISSING] log below) instead
-               * of hard-rejecting rules. Tracked for ontology-migration pass.
+               * STAGE_FAMILIES — REMOVED. Stage relationships originate
+               * exclusively from the DB ontology (`crop_stage_master.
+               * canonical_stage_id`, `crop_stage_graph`). This empty
+               * placeholder is kept so the downstream soft-bypass logic
+               * (`family === null` → `[STAGE_ONTOLOGY_MISSING]`) executes
+               * uniformly. DO NOT repopulate — curate DB rows instead.
                */
-              const STAGE_FAMILIES: Record<string, string[]> = {
-                GERMINATION:   ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
-                EMERGENCE:     ['EMERGENCE', 'GERMINATION', 'SEEDLING', 'NURSERY', 'ESTABLISHMENT'],
-                SEEDLING:      ['SEEDLING', 'NURSERY', 'GERMINATION', 'EMERGENCE', 'ESTABLISHMENT'],
-                NURSERY:       ['NURSERY', 'SEEDLING', 'GERMINATION', 'EMERGENCE'],
-                ESTABLISHMENT: ['ESTABLISHMENT', 'SEEDLING', 'EMERGENCE', 'GERMINATION'],
-                TILLERING:     ['TILLERING', 'VEGETATIVE'],
-                VEGETATIVE:    ['VEGETATIVE', 'TILLERING'],
-                FLOWERING:     ['FLOWERING', 'REPRODUCTIVE', 'PANICLE_INITIATION', 'BOOTING'],
-                REPRODUCTIVE:  ['REPRODUCTIVE', 'FLOWERING', 'BOOTING', 'PANICLE_INITIATION'],
-                BOOTING:       ['BOOTING', 'PANICLE_INITIATION', 'FLOWERING', 'REPRODUCTIVE'],
-                PANICLE_INITIATION: ['PANICLE_INITIATION', 'BOOTING', 'FLOWERING', 'REPRODUCTIVE'],
-                GRAIN_FILLING: ['GRAIN_FILLING', 'MILK', 'DOUGH', 'MATURITY'],
-                MATURITY:      ['MATURITY', 'HARVEST', 'GRAIN_FILLING'],
-                HARVEST:       ['HARVEST', 'MATURITY'],
-              };
+              const STAGE_FAMILIES: Record<string, string[]> = {};
               const family = STAGE_FAMILIES[currentStage] || null;
               const exactMatch = normalizedApplicableStages.includes(currentStage);
               const familyMatch = family
@@ -1400,43 +1385,41 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // Database uses short codes (SC, CTN) while CanonicalState uses full names (SUGARCANE, COTTON)
           // ═══════════════════════════════════════════════════════════════════════════
           /**
-           * @deprecated cropCodeAliases — DO NOT ADD NEW AGRONOMY.
-           * Crop code equivalences must originate from the ontology database
-           * (crop_synonyms / crops table). Retained only until DB-backed
-           * resolver is wired in. Tracked for ontology-migration pass.
+           * cropCodeAliases — REMOVED. Crop-code equivalences (short-code
+           * ↔ canonical name ↔ vernacular alias) MUST come from the DB
+           * (`public.crop_synonyms`). This empty placeholder preserves
+           * the reference below; unresolved mismatches emit a
+           * `[CROP_ALIAS_MISSING]` forensic log and cause a hard drop —
+           * which is the correct symbolic behaviour when the DB does not
+           * yet map the code. DO NOT repopulate.
            */
-          const cropCodeAliases: Record<string, string[]> = {
-            'SC': ['SUGARCANE', 'SUGAR_CANE', 'USCANE', 'CANE'],
-            'CTN': ['COTTON', 'KAPAS'],
-            'WH': ['WHEAT', 'GEHUN'],
-            'RIC': ['RICE', 'PADDY', 'DHAN'],
-            'SOY': ['SOYBEAN', 'SOYA'],
-            'MAZ': ['MAIZE', 'CORN', 'MAKKA'],
-            'GRN': ['GROUNDNUT', 'PEANUT'],
-            'ON': ['ONION', 'KANDA'],
-            'TOM': ['TOMATO'],
-            'POT': ['POTATO', 'ALOO']
-          };
-          
+          const cropCodeAliases: Record<string, string[]> = {};
+
           const ruleCropCode = bundled.crop_code?.toUpperCase() || '';
           const stateCropCode = state.crop_type?.toUpperCase() || '';
-          
+
           if (ruleCropCode && stateCropCode) {
             const isUniversalRule = ruleCropCode === '*' || ruleCropCode === 'ALL' || ruleCropCode === 'UNIVERSAL';
             if (!isUniversalRule) {
               if (ruleCropCode === stateCropCode) {
-                // Direct match - OK
+                // Direct match — OK
               } else if (cropCodeAliases[ruleCropCode]?.includes(stateCropCode)) {
-                // Alias match - OK
-              } else if (Object.entries(cropCodeAliases).some(([code, aliases]) => 
+                // DB-driven alias match (currently disabled — placeholder is empty)
+              } else if (Object.entries(cropCodeAliases).some(([code, aliases]) =>
                 aliases.includes(stateCropCode) && code === ruleCropCode
               )) {
-                // Reverse alias match - OK
+                // Reverse alias match
               } else {
+                console.log(
+                  `[CROP_ALIAS_MISSING] rule=${bundled.rule_id} rule_crop=${ruleCropCode} ` +
+                  `state_crop=${stateCropCode} action=DROP ` +
+                  `reason=cropCodeAliases_deprecated_awaiting_db_crop_synonyms`
+                );
                 return false;
               }
             }
           }
+
           
           // ═══════════════════════════════════════════════════════════════════════════
           // OBSERVATION LAYER FILTER: required_observation_category + required_plant_part
@@ -1470,42 +1453,19 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             const inferredPlantParts = new Set<string>();
             
             /**
-             * @deprecated CATEGORY_PATTERNS — DO NOT ADD NEW AGRONOMY.
-             * Category resolution must come from observation_master.category
-             * (DB ontology). Retained temporarily until DB-backed lookup lands.
+             * CATEGORY_PATTERNS — REMOVED. Observation → category resolution
+             * MUST come from `observation_master.observation_category`.
+             * PLANT_PART_PATTERNS — REMOVED. Plant-part resolution MUST
+             * come from `observation_master.affected_plant_part`.
+             *
+             * Empty placeholders retained so the loops below run as no-ops:
+             * `inferredCategories` / `inferredPlantParts` stay empty and the
+             * downstream gates are skipped (they only apply when the
+             * inferred set is non-empty), which correctly defers to the
+             * rule's DB-level predicates instead of string-pattern matching.
              */
-            const CATEGORY_PATTERNS: Record<string, string[]> = {
-              'PEST': ['BORE', 'BORER', 'INSECT', 'LARVAE', 'GRUB', 'TERMITE', 'APHID', 'WHITEFLY', 
-                       'MEALYBUG', 'MITE', 'THRIPS', 'CATERPILLAR', 'FRASS', 'WEBBING', 'HONEYDEW',
-                       'SCALE', 'WOOLLY', 'CRAWLING', 'EGG_MASS', 'DEAD_HEART', 'MUD_TUBE', 'GNAW',
-                       'RAT', 'RODENT', 'SOOTY_MOLD', 'EXIT_HOLE', 'TUNNEL'],
-              'DISEASE': ['ROT', 'RUST', 'SMUT', 'WILT', 'BLIGHT', 'MOSAIC', 'STREAK', 'LESION',
-                          'PUSTULE', 'OOZE', 'GUMMOSIS', 'MILDEW', 'SCALD', 'POKKAH', 'GRASSY_SHOOT',
-                          'RED_INTERNAL', 'BLACK_WHIP', 'BACTERIAL', 'FUNGAL', 'VIRAL', 'WHIP_SMUT',
-                          'RED_PITH', 'ALCOHOL_SMELL', 'SOUR_SMELL', 'SPORE'],
-              'NUTRIENT': ['CHLOROSIS', 'INTERVEINAL', 'PURPLE_LEAVES', 'NUTRIENT', 'DEFICIENCY',
-                           'YELLOWING', 'REDDISH_PURPLE', 'CORKY', 'WHITE_BUD', 'KHAIRA'],
-              'ABIOTIC': ['WATERLOGGING', 'FROST', 'SALT', 'DROUGHT', 'HAIL', 'WIND_DAMAGE',
-                          'STANDING_WATER', 'FROZEN', 'ICE_CRYSTAL', 'SALINE'],
-              'PHYSIOLOGY': ['STUNTED', 'POOR_GROWTH', 'LODGING', 'GAPS', 'UNEVEN', 'DRYING',
-                             'WILTING', 'CURLING', 'BROWNING', 'TIP_BURN'],
-              'MANAGEMENT': ['WEED', 'SPACING', 'PLANTING', 'HARVEST']
-            };
-            
-            /**
-             * @deprecated PLANT_PART_PATTERNS — DO NOT ADD NEW AGRONOMY.
-             * Plant-part resolution must come from observation_master.plant_part
-             * (DB ontology). Retained temporarily until DB-backed lookup lands.
-             */
-            const PLANT_PART_PATTERNS: Record<string, string[]> = {
-              'STEM': ['STEM', 'INTERNODE', 'CANE', 'STALK', 'BORE_HOLE', 'TUNNEL', 'BORED'],
-              'LEAF': ['LEAF', 'FOLIAR', 'CHLOROSIS', 'YELLOWING', 'SPOT', 'RUST', 'CURL', 'SCALD'],
-              'ROOT': ['ROOT', 'BASAL', 'UNDERGROUND', 'TERMITE', 'GRUB'],
-              'WHOLE': ['WHOLE', 'PLANT_DEATH', 'WILT', 'STUNTED', 'DEATH', 'LODGING', 'GENERAL'],
-              'FRUIT': ['FRUIT', 'BOLL', 'GRAIN', 'SEED', 'POD'],
-              'FLOWER': ['FLOWER', 'PANICLE', 'TASSEL'],
-              'SOIL': ['SOIL', 'MUD_TUBE', 'SALT_CRUST', 'WATERLOGGING']
-            };
+            const CATEGORY_PATTERNS: Record<string, string[]> = {};
+            const PLANT_PART_PATTERNS: Record<string, string[]> = {};
             
             for (const symptom of visualSymptoms) {
               for (const [category, patterns] of Object.entries(CATEGORY_PATTERNS)) {
