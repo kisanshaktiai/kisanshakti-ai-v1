@@ -366,12 +366,9 @@ function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult 
   
   // CRASH-PROOF: fallback_text is optional - generate default if missing
   if (!input.symbolic_decision.fallback_text) {
-    console.warn('[NarrationLayer] Missing fallback_text - using default');
-    // Generate default based on language
-    const defaultFallbacks: Record<string, string> = {
-      en: '🙏 Please ask your question again.'
-    };
-    input.symbolic_decision.fallback_text = defaultFallbacks.en;
+    console.warn('[NarrationLayer] Missing fallback_text - using language-aware default');
+    // FIX 4: language-aware fallback — never leak English to non-EN farmers.
+    input.symbolic_decision.fallback_text = getSafeAskMoreInfoMessage(input.language || 'en');
   }
   
   // MONITOR_ONLY mode: Does NOT require primary_action or any decision text
