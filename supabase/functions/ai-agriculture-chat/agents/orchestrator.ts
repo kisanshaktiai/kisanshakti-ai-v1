@@ -8651,8 +8651,18 @@ export class AIAgentOrchestrator {
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
-        // PHASE-1 SSOT: propagate canonical stage authority into canonical context
-        source: biological_state ? 'BIOLOGICAL_STATE' : (cropSchedule ? 'CROP_SCHEDULES' : 'LAND_DATA'),
+        // PHASE-1 SSOT: NEVER silently fall back to LAND_DATA. When BiologicalState
+        // is unavailable, mark the source explicitly with a machine-readable reason
+        // so [STAGE_AUTHORITY_VIOLATION] fires and downstream cannot confuse a
+        // heuristic stage for the biological SSOT.
+        source: biological_state ? 'BIOLOGICAL_STATE' : 'BIOLOGICAL_STATE_UNAVAILABLE',
+        source_fallback_reason: biological_state
+          ? null
+          : (phenThrew ? 'rpc_threw' : phenErr ? 'rpc_error' : 'no_row'),
+        source_fallback_used: biological_state
+          ? null
+          : (cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands' : 'none')),
+
         district: land.district,
         state: land.state,
         village: land.village,
