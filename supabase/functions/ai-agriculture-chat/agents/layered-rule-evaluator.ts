@@ -1216,7 +1216,38 @@ export function evaluateRulesLayered(
   console.log(`   Blocked by graph: ${result.rules_blocked_by_graph.length}`);
   console.log(`   Blocked by ETL: ${result.rules_blocked_by_etl.length}`);
   console.log(`   Safety warnings: ${result.safety_warnings.length}`);
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GRAPH_NODE_TRACE — RULE_ENGINE
+  // Emits one uniform node line for forensic pipeline reconstruction.
+  // Never silent: even zero-match still surfaces block_reasons so the
+  // orchestrator invariant checker can attribute the gap.
+  // ═══════════════════════════════════════════════════════════════════════════
+  try {
+    const blockReasons: string[] = [];
+    if (result.rules_blocked_by_graph.length) blockReasons.push(`graph:${result.rules_blocked_by_graph.length}`);
+    if (result.rules_blocked_by_etl.length)   blockReasons.push(`etl:${result.rules_blocked_by_etl.length}`);
+    if (result.safety_blocks.length)          blockReasons.push(`safety:${result.safety_blocks.length}`);
+    if (result.rules_evaluated > 0 && result.rules_matched === 0) blockReasons.push('no_condition_match');
+    if (result.rules_matched > 0 && eligibleResponses.length === 0) blockReasons.push('no_eligible_response');
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[GRAPH_NODE_TRACE][${traceId}] node=RULE_ENGINE ` +
+        JSON.stringify({
+          loaded: safeRules.length,
+          evaluated: result.rules_evaluated,
+          matched: result.rules_matched,
+          eligible: eligibleResponses.length,
+          winner: result.primary_decision?.rule_id ?? null,
+          blocked_by_graph: result.rules_blocked_by_graph.length,
+          blocked_by_etl: result.rules_blocked_by_etl.length,
+          safety_blocks: result.safety_blocks.length,
+          block_reasons: blockReasons,
+        }),
+    );
+  } catch {/* trace must not throw */}
+
   return result;
 }
 
