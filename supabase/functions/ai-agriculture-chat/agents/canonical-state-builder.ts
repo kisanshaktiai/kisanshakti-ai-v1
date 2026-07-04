@@ -298,14 +298,19 @@ export enum DiseasePresence {
 
 export interface CanonicalState {
   // Crop Context (MANDATORY)
-  crop_type: CropType;
-  crop_stage: CropStage;
+  // NEURO-SYMBOLIC CONTRACT: crop_type / crop_stage / visual_symptom are PASSTHROUGH
+  // strings sourced from the DB ontology (crop_ontology, crop_stage_master,
+  // observation_master). The enum members remain for legacy compatibility only —
+  // they are NOT the authority. Any canonical UPPER_SNAKE string produced by the
+  // ontology MUST flow through unchanged.
+  crop_type: CropType | string;
+  crop_stage: CropStage | string;
   days_after_sowing: DaysAfterSowingBucket;
   days_after_sowing_exact?: number;
   
   // Visual Symptom State
-  visual_symptom: VisualSymptom;
-  secondary_symptoms: VisualSymptom[];
+  visual_symptom: VisualSymptom | string;
+  secondary_symptoms: (VisualSymptom | string)[];
   symptom_distribution: SymptomDistribution;
   severity: SeverityLevel;
   affected_plant_parts: string[];
@@ -473,11 +478,12 @@ export function mapRainfallToEnum(mmLast7Days: number | undefined): RainfallRece
   return RainfallRecent.EXCESSIVE;
 }
 
-export function mapTemperatureToStress(tempC: number | undefined, cropType: CropType): TemperatureStress {
+export function mapTemperatureToStress(tempC: number | undefined, cropType: CropType | string): TemperatureStress {
   if (tempC === undefined || tempC === null || isNaN(tempC)) return TemperatureStress.UNKNOWN;
   
   // Crop-specific thresholds (simplified)
-  const isWarmSeasonCrop = [CropType.RICE, CropType.SUGARCANE, CropType.COTTON, CropType.MAIZE].includes(cropType);
+  const warmSeasonCrops: string[] = [CropType.RICE, CropType.SUGARCANE, CropType.COTTON, CropType.MAIZE];
+  const isWarmSeasonCrop = warmSeasonCrops.includes(String(cropType));
   
   if (isWarmSeasonCrop) {
     if (tempC < 10) return TemperatureStress.COLD_STRESS;
@@ -502,69 +508,67 @@ export function mapHumidityToEnum(humidity: number | undefined): HumidityLevel {
   return HumidityLevel.VERY_HIGH;
 }
 
-export function mapCropNameToEnum(cropName: string | undefined): CropType {
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP RESOLVER — DB ONTOLOGY PASSTHROUGH
+// Authority: crop_ontology / normalizer. No hardcoded enum map.
+// Returns the canonical DB crop code (string). If it happens to coincide with
+// a CropType enum member, TS accepts the assignment because enum values ARE
+// strings — but the function never "picks" an enum. It transports symbols.
+// ═══════════════════════════════════════════════════════════════════════════
+export function mapCropNameToEnum(cropName: string | undefined): CropType | string {
   if (!cropName) return CropType.UNKNOWN;
-  
-  // Use unified normalizer to get canonical English name, then map to enum
   const shortCode = unifiedNormalizeCropCode(cropName);
   const fullName = getFullCropName(shortCode);
-  
-  // Map full English name to CropType enum
-  const enumMap: Record<string, CropType> = {
-    'WHEAT': CropType.WHEAT, 'RICE': CropType.RICE, 'SUGARCANE': CropType.SUGARCANE,
-    'COTTON': CropType.COTTON, 'SOYBEAN': CropType.SOYBEAN, 'MAIZE': CropType.MAIZE,
-    'GROUNDNUT': CropType.GROUNDNUT, 'ONION': CropType.ONION, 'TOMATO': CropType.TOMATO,
-    'POTATO': CropType.POTATO, 'CHILLI': CropType.CHILLI, 'GRAPE': CropType.GRAPES,
-    'POMEGRANATE': CropType.POMEGRANATE, 'BANANA': CropType.BANANA, 'MANGO': CropType.MANGO,
-    'TURMERIC': CropType.TURMERIC, 'GINGER': CropType.GINGER, 'GRAM': CropType.CHICKPEA,
-    'TUR': CropType.PIGEON_PEA, 'MUSTARD': CropType.MUSTARD, 'SUNFLOWER': CropType.SUNFLOWER,
-  };
-  
-  return enumMap[fullName] || CropType.UNKNOWN;
+  // Pure passthrough: return the DB canonical string. No hidden alias map.
+  // Consumers comparing `state.crop_type === CropType.RICE` still work because
+  // CropType.RICE === 'RICE'.
+  return (fullName && fullName !== 'UNKNOWN') ? fullName : CropType.UNKNOWN;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STAGE ENUM RESOLVER — STRICT PASS-THROUGH
+// STAGE RESOLVER — STRICT DB PASSTHROUGH
 // Authority for crop stage lives in BiologicalState / crop_stage_master.
-// This function ONLY translates an already-canonical stage string into the
-// TypeScript enum. It MUST NOT infer stage from vernacular keywords.
+// This function ONLY normalizes casing/whitespace and returns the DB stage
+// string unchanged. Stages like `transplanting`, `panicle_initiation`,
+// `booting`, `grand_growth` MUST pass through — the closed enum is NOT the
+// authority. It is retained solely for legacy typing compatibility.
 // ═══════════════════════════════════════════════════════════════════════════
-export function mapStageToEnum(stage: string | undefined): CropStage {
+export function mapStageToEnum(stage: string | undefined): CropStage | string {
   if (!stage) return CropStage.UNKNOWN;
   const normalized = String(stage).trim().toUpperCase().replace(/[\s-]/g, '_');
-  if (normalized in CropStage) {
-    return CropStage[normalized as keyof typeof CropStage];
-  }
-  // No hardcoded keyword/vernacular inference — ontology is the SSOT.
-  console.warn(`[STAGE_ENUM_UNRESOLVED] raw=${stage} normalized=${normalized} → UNKNOWN (expected canonical stage from BiologicalState/crop_stage_master)`);
-  return CropStage.UNKNOWN;
+  if (!normalized) return CropStage.UNKNOWN;
+  // Pass ANY canonical DB stage through unchanged. Do NOT collapse unknowns
+  // into CropStage.UNKNOWN — that erases DB ontology intelligence.
+  return normalized;
 }
 
-// ==================== VISUAL SYMPTOM MAPPING (PASS-THROUGH) ====================
-// The neuro-symbolic contract requires that once the language layer /
-// observation_aliases / observation_master resolve a code, CanonicalState only
-// transports that code. No hidden dictionary from vernacular tokens or generic
-// synonyms to VisualSymptom — that authority belongs to the ontology tables.
-export function mapObservationsToSymptom(observations: string[]): { primary: VisualSymptom; secondary: VisualSymptom[] } {
+// ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION → SYMBOL — STRICT DB PASSTHROUGH
+// Authority: observation_master / observation_aliases / observation_translations.
+// By the time codes arrive here, the language-induction layer + alias resolver
+// have already produced canonical UPPER_SNAKE codes. This function only
+// transports them. Any code that fails the UPPER_SNAKE shape is dropped.
+// ═══════════════════════════════════════════════════════════════════════════
+export function mapObservationsToSymptom(observations: string[]): { primary: VisualSymptom | string; secondary: (VisualSymptom | string)[] } {
   if (!Array.isArray(observations) || observations.length === 0) {
     return { primary: VisualSymptom.UNKNOWN, secondary: [] };
   }
 
-  const detected: VisualSymptom[] = [];
-  const seen = new Set<VisualSymptom>();
+  const detected: string[] = [];
+  const seen = new Set<string>();
 
   for (const obs of observations) {
     if (obs === null || obs === undefined) continue;
     const raw = String(obs).trim();
     if (!raw) continue;
-    // Only accept already-canonical UPPER_SNAKE codes that map to an enum member.
     const normalized = raw.toUpperCase().replace(/[\s-]/g, '_');
-    if (!/^[A-Z0-9_]+$/.test(normalized)) continue;
-    if (!(normalized in VisualSymptom)) continue;
-    const symptom = VisualSymptom[normalized as keyof typeof VisualSymptom];
-    if (seen.has(symptom)) continue;
-    seen.add(symptom);
-    detected.push(symptom);
+    // Accept ANY canonical UPPER_SNAKE code produced by the ontology layer.
+    // Do NOT restrict to the closed VisualSymptom enum — the DB ontology is
+    // the authority (e.g. POOR_GERMINATION, DEAD_HEART_SC, etc.).
+    if (!/^[A-Z][A-Z0-9_]*$/.test(normalized)) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    detected.push(normalized);
   }
 
   if (detected.length === 0) {
@@ -575,96 +579,19 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
 
 
 /**
- * PHASE-12: Map a symptom string to VisualSymptom enum
- * Used when option selection provides a symptom name as string
- * UPDATED: Added all new insect observation symptoms
+ * Map a symptom string to a canonical symbol. PASSTHROUGH ONLY — no vernacular
+ * dictionaries. Vernacular resolution belongs to the language-induction layer
+ * and observation_translations / observation_aliases.
  */
-export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSymptom {
+export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSymptom | string {
   if (!symptom) return VisualSymptom.UNKNOWN;
-  
   const normalized = symptom.toUpperCase().replace(/-/g, '_').replace(/\s+/g, '_');
-  
-  // Direct enum match
-  if (normalized in VisualSymptom) {
-    return VisualSymptom[normalized as keyof typeof VisualSymptom];
+  if (!/^[A-Z][A-Z0-9_]*$/.test(normalized)) {
+    console.warn(`[CANONICAL_AUTHORITY] non-canonical symptom string rejected: "${symptom}" — resolve upstream via observation_aliases/observation_translations`);
+    return VisualSymptom.UNKNOWN;
   }
-  
-  // PHASE-12: Extended partial matching for common patterns
-  const symptomMappings: Record<string, VisualSymptom> = {
-    // Yellowing patterns
-    'YELLOWING': VisualSymptom.GENERAL_YELLOWING,
-    'YELLOW': VisualSymptom.GENERAL_YELLOWING,
-    'पिवळ': VisualSymptom.GENERAL_YELLOWING,
-    'पीला': VisualSymptom.GENERAL_YELLOWING,
-    
-    // Curling patterns
-    'CURLED': VisualSymptom.CURLED_LEAVES,
-    'CURLING': VisualSymptom.LEAF_CURLING,
-    'वळ': VisualSymptom.CURLED_LEAVES,
-    'मुड': VisualSymptom.CURLED_LEAVES,
-    
-    // Spots and damage
-    'SPOTS': VisualSymptom.SPOTS_IRREGULAR,
-    'SILVERING': VisualSymptom.SILVERING,
-    'WEBBING': VisualSymptom.WEBBING,
-    'WILTING': VisualSymptom.WILTING,
-    
-    // Holes
-    'HOLES': VisualSymptom.LEAF_HOLES,
-    'LEAF_HOLES': VisualSymptom.LEAF_HOLES,
-    'छिद्र': VisualSymptom.LEAF_HOLES,
-    'भोक': VisualSymptom.LEAF_HOLES,
-    'छेद': VisualSymptom.LEAF_HOLES,
-    
-    // Honeydew and sticky
-    'HONEYDEW': VisualSymptom.HONEYDEW,
-    'STICKY': VisualSymptom.STICKY_LEAVES,
-    'चिकट': VisualSymptom.STICKY_LEAVES,
-    'चिपचिप': VisualSymptom.STICKY_LEAVES,
-    
-    // Burns
-    'EDGE_BURN': VisualSymptom.LEAF_EDGE_BURN,
-    'TIP_BURN': VisualSymptom.LEAF_TIP_BURN,
-    
-    // Stem and structure
-    'STEM': VisualSymptom.STEM_DISCOLORATION,
-    'POWDER': VisualSymptom.POWDERY_COATING,
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PHASE-12: New insect observation mappings
-    // ═══════════════════════════════════════════════════════════════════════════
-    'FLYING_INSECTS': VisualSymptom.FLYING_INSECTS_VISIBLE,
-    'FLYING': VisualSymptom.FLYING_INSECTS_VISIBLE,
-    'उडत': VisualSymptom.FLYING_INSECTS_VISIBLE,
-    'उड़': VisualSymptom.FLYING_INSECTS_VISIBLE,
-    
-    'CRAWLING_INSECTS': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
-    'CRAWLING': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
-    'चालत': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
-    'रांग': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
-    'रेंग': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
-    
-    'JUMPING': VisualSymptom.JUMPING_INSECTS_VISIBLE,
-    'उड्या': VisualSymptom.JUMPING_INSECTS_VISIBLE,
-    
-    'SMALL_INSECTS': VisualSymptom.SMALL_INSECTS_VISIBLE,
-    'INSECTS_VISIBLE': VisualSymptom.SMALL_INSECTS_VISIBLE,
-    'किडे': VisualSymptom.SMALL_INSECTS_VISIBLE,
-    'कीड़े': VisualSymptom.SMALL_INSECTS_VISIBLE,
-    
-    'NO_DAMAGE': VisualSymptom.INSECT_PRESENT_NO_DAMAGE,
-    'MONITORING': VisualSymptom.INSECT_PRESENT_NO_DAMAGE,
-    'काहीही_नाही': VisualSymptom.INSECT_PRESENT_NO_DAMAGE,
-    'कुछ_नहीं': VisualSymptom.INSECT_PRESENT_NO_DAMAGE
-  };
-  
-  for (const [key, value] of Object.entries(symptomMappings)) {
-    if (normalized.includes(key)) {
-      return value;
-    }
-  }
-  
-  return VisualSymptom.UNKNOWN;
+  // Pass the canonical code through unchanged; do NOT re-map or infer.
+  return normalized;
 }
 
 // ==================== MAIN STATE BUILDER ====================
@@ -944,13 +871,14 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     Area: ${areaAcres ?? 'UNKNOWN'} acres
   `);
   
-  // Map crop and stage using the extracted values
+  // Map crop and stage using the extracted values (pure passthrough resolvers)
   const cropType = mapCropNameToEnum(cropNameRaw);
   const cropStage = mapStageToEnum(cropStageRaw);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // STAGE MUTATION INVARIANT — if BiologicalState locked the stage but our
-  // enum resolve dropped/changed it, log and restore the locked identity.
+  // CANONICAL_MUTATION_CHECK — STAGE
+  // If BiologicalState / canonical-context locked a stage, the resolver MUST
+  // pass it through unchanged. Any mutation is an architectural violation.
   // ═══════════════════════════════════════════════════════════════════════════
   const lockedStageRaw =
     (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
@@ -960,11 +888,26 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     const lockedNorm = lockedStageRaw.trim().toUpperCase().replace(/[\s-]/g, '_');
     const resolvedNorm = String(cropStage).toUpperCase();
     if (resolvedNorm !== lockedNorm) {
-      console.error(`[STAGE_MUTATION_BLOCKED] before=${lockedNorm} after=${resolvedNorm} source=canonicalContext_lock → restoring locked stage`);
+      throw new Error(
+        `CANONICAL_AUTHORITY_VIOLATION: stage mutated from "${lockedNorm}" to "${resolvedNorm}" — ` +
+        `crop_stage_master / BiologicalState is the SSOT; code must not reinterpret.`
+      );
+    }
+  }
+  // Also enforce input→output stage identity when no lock is present but a
+  // raw stage was supplied.
+  if (!lockedStageRaw && cropStageRaw && cropStageRaw !== 'UNKNOWN') {
+    const inputNorm = String(cropStageRaw).trim().toUpperCase().replace(/[\s-]/g, '_');
+    const resolvedNorm = String(cropStage).toUpperCase();
+    if (inputNorm && resolvedNorm !== 'UNKNOWN' && resolvedNorm !== inputNorm) {
+      throw new Error(
+        `CANONICAL_AUTHORITY_VIOLATION: stage mutated from "${inputNorm}" to "${resolvedNorm}" — ` +
+        `stage resolver must pass DB ontology strings through unchanged.`
+      );
     }
   }
 
-  // Map observations to symptoms
+  // Map observations to symptoms (pure passthrough from ontology layer)
   const allObservations = [
     ...(input.farmerObservations || []),
     ...(input.imageAnalysisSymptoms || [])
@@ -989,19 +932,22 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CANONICAL MUTATION INVARIANT — if farmer/sensor evidence provided a real
-  // code A and the resolved primary visual_symptom differs from A, log so we
-  // can trace hidden mutation. CanonicalState carries symbols; it does not
-  // invent meaning.
+  // CANONICAL_MUTATION_CHECK — OBSERVATION
+  // Input observation code A must emerge as primary symbol A. Any silent
+  // rewrite (e.g. POOR_GERMINATION → GENERAL_YELLOWING) is a hard violation.
   // ═══════════════════════════════════════════════════════════════════════════
   const firstRealCode = evidenceClass.real_codes[0];
   if (firstRealCode) {
     const beforeNorm = firstRealCode.toUpperCase();
     const afterNorm = String(visualSymptom).toUpperCase();
     if (afterNorm !== 'UNKNOWN' && afterNorm !== beforeNorm) {
-      console.error(`[CANONICAL_MUTATION_BLOCKED] before=${beforeNorm} after=${afterNorm} source=mapObservationsToSymptom`);
+      throw new Error(
+        `CANONICAL_AUTHORITY_VIOLATION: observation mutated from "${beforeNorm}" to "${afterNorm}" — ` +
+        `observation_master / observation_aliases is the SSOT; canonical-state must transport, not translate.`
+      );
     }
   }
+
 
 
   
