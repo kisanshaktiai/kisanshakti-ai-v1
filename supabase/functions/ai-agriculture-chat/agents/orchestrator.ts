@@ -2945,24 +2945,33 @@ export class AIAgentOrchestrator {
       const obsCodesList = expandedObservationCodes || [];
 
       // ═══════════════════════════════════════════════════════════════════════
-      // INTENT SALVAGE — if intent is UNKNOWN but we have crop + real
-      // observations, reclassify to DIAGNOSTIC_INQUIRY so the graph proceeds
-      // instead of collapsing to a generic template.
+      // INTENT SALVAGE + EVIDENCE OVERRIDE (Fix 2)
+      // - Legacy: reclassify UNKNOWN when crop or observations exist.
+      // - Fix 2: if the mapper returned any real farmer symptom, force a
+      //   diagnostic intent regardless of what the LLM classified. A visible
+      //   symptom is always diagnostic — never GENERAL_CROP_INFO / CROP_INFO.
       // ═══════════════════════════════════════════════════════════════════════
+      let realObsCountForSalvage = 0;
       try {
-        const realObsCount = classifyEvidence(obsCodesList).real_symptom_count;
+        const ec = classifyEvidence(obsCodesList);
+        realObsCountForSalvage = ec.real_symptom_count;
         const cropPresent = !!(canonicalContext?.crop_code || landContext?.current_crop);
         const isUnknown = intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION';
-        if (isUnknown && (cropPresent || realObsCount > 0)) {
-          const salvaged = realObsCount > 0 ? 'DIAGNOSTIC_INQUIRY' : 'GENERAL_CROP_INFO';
-          console.log(`[INTENT_SALVAGE][${traceId}] ${intentCode} → ${salvaged} (crop=${cropPresent} real_obs=${realObsCount})`);
+        const isAdvisoryLike = ['GENERAL_CROP_INFO', 'CROP_INFO', 'GENERAL_INFO', 'GENERAL_QUERY'].includes(intentCode);
+
+        if (isUnknown && (cropPresent || realObsCountForSalvage > 0)) {
+          const salvaged = realObsCountForSalvage > 0 ? 'DIAGNOSTIC_INQUIRY' : 'GENERAL_CROP_INFO';
+          console.log(`[INTENT_SALVAGE][${traceId}] ${intentCode} → ${salvaged} (crop=${cropPresent} real_obs=${realObsCountForSalvage})`);
           intentCode = salvaged;
+        } else if (isAdvisoryLike && realObsCountForSalvage > 0) {
+          console.log(`[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${intentCode} → DIAGNOSTIC_INQUIRY reason=real_symptoms_present codes=[${ec.real_codes.slice(0, 6).join(',')}]`);
+          intentCode = 'DIAGNOSTIC_INQUIRY';
         }
         emitNodeTrace(traceId, 'INTENT', {
           intent: intentCode,
           confidence: intentConf,
           crop: canonicalContext?.crop_code ?? landContext?.current_crop ?? null,
-          real_observations: realObsCount,
+          real_observations: realObsCountForSalvage,
         });
       } catch {/* trace must not throw */}
 
@@ -2977,6 +2986,9 @@ export class AIAgentOrchestrator {
       console.log(`      Mapping: ${mappedCodes?.mapping_method || 'UNKNOWN'}, Patterns: ${(mappedCodes?.patterns_matched || []).length}`);
 
       // GRAPH_NODE_TRACE — OBSERVATION (canonicalized set entering symbolic engine)
+      // Fix 1: hard invariant — if evidence classifier saw real symptoms but the
+      // graph-facing observation array is empty, the pipeline handoff has
+      // corrupted state. Log loudly (do not mask).
       try {
         const evidenceObs = classifyEvidence(expandedObservationCodes || []);
         emitNodeTrace(traceId, 'OBSERVATION', {
@@ -2986,7 +2998,45 @@ export class AIAgentOrchestrator {
           real_codes: evidenceObs.real_codes,
           mapping_method: mappedCodes?.mapping_method || 'UNKNOWN',
         });
+
+        // Fix 1 — handoff corruption invariant
+        if (realObsCountForSalvage > 0 && evidenceObs.real_symptom_count === 0) {
+          console.error(
+            `[GRAPH_STATE_CORRUPTION][${traceId}] observations lost between classifier and graph ` +
+            `pre=${realObsCountForSalvage} post=0 codes_pre=[${(obsCodesList || []).slice(0, 8).join(',')}]`,
+          );
+        }
+
+        // Fix 3 — biological contradiction gate (post-lock, non-destructive)
+        try {
+          const bio: any = (landContext as any)?.biological_state;
+          if (bio?.is_locked && bio?.growth_stage && evidenceObs.real_codes.length > 0) {
+            const EMERGENCE_FAIL_OBS = new Set([
+              'POOR_GERMINATION', 'GERMINATION_FAILURE', 'NO_GERMINATION',
+              'NO_EMERGENCE', 'EMERGENCE_FAILURE', 'SEEDLING_DEATH', 'PLANT_DEATH',
+            ]);
+            const POST_ESTABLISHMENT_STAGES = new Set([
+              'transplanting', 'tillering', 'vegetative', 'grand_growth',
+              'flowering', 'reproductive', 'maturity', 'ripening', 'maturation', 'harvest',
+            ]);
+            const stageKey = String(bio.growth_stage).toLowerCase().trim().replace(/[\s-]+/g, '_');
+            const contradicting = evidenceObs.real_codes.filter(c => EMERGENCE_FAIL_OBS.has(String(c).toUpperCase()));
+            if (contradicting.length > 0 && POST_ESTABLISHMENT_STAGES.has(stageKey)) {
+              const prevConf = typeof bio.confidence === 'number' ? bio.confidence : 0;
+              bio.contradiction_flag = true;
+              bio.contradiction_codes = contradicting;
+              bio.stage_confidence_before_contradiction = prevConf;
+              bio.confidence = Math.min(prevConf, 0.30);
+              console.warn(
+                `[BIO_STATE_CONTRADICTION][${traceId}] stage=${bio.growth_stage} ` +
+                `obs=[${contradicting.join(',')}] prev_conf=${prevConf.toFixed(2)} ` +
+                `new_conf=${bio.confidence.toFixed(2)} action=confidence_downgrade`,
+              );
+            }
+          }
+        } catch { /* contradiction gate must not throw */ }
       } catch {/* trace must not throw */}
+
 
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -6380,10 +6430,27 @@ export class AIAgentOrchestrator {
               }
             }
           }
+          const _seededCount = graph.hypothesis_graph.length;
           console.log(
-            `[SSOT_TRACE][${traceId}] hypothesis_graph_seed candidates=${graph.hypothesis_graph.length} ` +
+            `[SSOT_TRACE][${traceId}] hypothesis_graph_seed candidates=${_seededCount} ` +
               `winner=${graph.hypothesis_graph.find((c) => c.status === 'WINNER')?.rule_id ?? 'NONE'}`
           );
+          // Fix 4 — promotion invariant: candidate ids were produced by the
+          // rule evaluator but must survive into the active hypothesis_graph
+          // used downstream. If they collapse to zero the rule engine ran on
+          // the wrong universe and silently picked the wrong branch.
+          try {
+            (graph as any).__hypothesis_seeded_count = _seededCount;
+            const _candidatesFromEvaluator = candidateIds.size;
+            if (_candidatesFromEvaluator > 0 && _seededCount === 0) {
+              console.error(
+                `[HYPOTHESIS_PROMOTION_LOST][${traceId}] evaluator_candidates=${_candidatesFromEvaluator} ` +
+                `active=0 reason=all_dropped_during_seed`,
+              );
+            }
+          } catch { /* invariant must not throw */ }
+
+
         } catch (e) {
           if (e instanceof GraphStateDriftError) {
             console.error(`🚨 ${e.name}: ${e.message}`);
