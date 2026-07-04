@@ -4,6 +4,7 @@
 // This is the ONLY object allowed into the Decision Brain
 
 import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
+import { classifyEvidence } from '../runtime/evidence-classifier.ts';
 
 // ==================== CLOSED WORLD ENUMS ====================
 // These are the ONLY allowed values - no free text in decision brain
@@ -1034,7 +1035,18 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       .map(obs => String(obs || '').trim().toUpperCase())
       .filter(Boolean)
   );
-  const symptomCount = normalizedObservationSet.size;
+  // BUG-3 FIX: symptom_count MUST count real farmer/sensor evidence only.
+  // Metadata markers (*_UNKNOWN, *_NONE, *_NOT_PROVIDED, ACTION_*, CROP_IDENTIFIED,
+  // STAGE_IDENTIFIED, CONTEXT_*, PHOTO_*) are NOT symptoms.
+  const evidenceClass = classifyEvidence(Array.from(normalizedObservationSet));
+  const symptomCount = evidenceClass.real_symptom_count;
+  console.log(
+    `[EVIDENCE_CLASSIFICATION] raw_count=${evidenceClass.raw_count} ` +
+    `real_symptom_count=${evidenceClass.real_symptom_count} ` +
+    `ignored_metadata_count=${evidenceClass.ignored_metadata_count} ` +
+    `real=[${evidenceClass.real_codes.slice(0, 8).join(',')}] ` +
+    `ignored=[${evidenceClass.ignored_codes.slice(0, 8).join(',')}]`
+  );
   // SPRINT 3 FIX: Adaptive denominator (min 4) — see orchestrator coverage-gate notes.
   const symptomDataCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
