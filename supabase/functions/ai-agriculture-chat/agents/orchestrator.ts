@@ -4659,12 +4659,37 @@ export class AIAgentOrchestrator {
           // ("phenology") allowlist will never match, and the diagnosis
           // pipeline reaches for unrelated diseases like Tungro.
           // ═══════════════════════════════════════════════════════════════════
-          const { bridgeCodes } = await import('../decision/concept-bridge.ts');
-          const rawObservations = [...allObservationsForPreAuth].map((o) => String(o));
-          const currentObservations = bridgeCodes(cropCode, rawObservations);
-          if (rawObservations.length !== currentObservations.length ||
-              rawObservations.some((c, i) => c !== currentObservations[i])) {
-            console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${rawObservations.join(',')} → ${currentObservations.join(',')}`);
+          // ═══════════════════════════════════════════════════════════════════
+          // OBSERVATION BRIDGE — DB-BACKED (observation_aliases)
+          // Freezes evidence just before hypothesis evaluation:
+          //   real_codes                = raw farmer-derived symbols (EXTRACTED)
+          //   canonical_observation_codes = DB-resolved canonical codes (INFERRED)
+          // No hardcoded agronomy in TS. All mappings come from
+          // public.observation_aliases (see decision/concept-bridge.ts).
+          // ═══════════════════════════════════════════════════════════════════
+          const { bridgeCodesDb } = await import('../decision/concept-bridge.ts');
+          const real_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
+          const bridged = await bridgeCodesDb(this.supabase, cropCode, real_codes);
+          const canonical_observation_codes: string[] = bridged.map((b) => b.canonical_code);
+
+          // TURN_EVIDENCE_LOCK — ledger: INFERRED entries for any DB-bridged code
+          for (const b of bridged) {
+            if (b.source === 'observation_aliases' && b.canonical_code !== b.raw_code) {
+              authoredObservations.add(
+                b.canonical_code,
+                ObservationAuthority.INFERRED,
+                'OBSERVATION_ALIASES_BRIDGE',
+              );
+            }
+          }
+          Object.freeze(real_codes);
+          Object.freeze(canonical_observation_codes);
+          console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} canonical=${canonical_observation_codes.length}`);
+
+          const currentObservations = canonical_observation_codes;
+          if (real_codes.length !== currentObservations.length ||
+              real_codes.some((c, i) => c !== currentObservations[i])) {
+            console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${real_codes.join(',')} → ${currentObservations.join(',')}`);
           }
 
           // ═══════════════════════════════════════════════════════════════════════════
