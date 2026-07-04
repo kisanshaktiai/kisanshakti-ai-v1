@@ -129,29 +129,31 @@ interface HypothesisRuleMappingRow {
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
-const ENGINE_VERSION = '1.1.0'; // v1.1.0: Fixed subquery bug + crop_group normalization
+const ENGINE_VERSION = '1.2.0'; // v1.2.0: lowercase crop_group, ontology-bridged observations, SKIPPED penalty
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP GROUP NORMALIZER
-// Maps short crop codes to canonical crop_group values used in hypothesis_master
-// DB crop_groups: SUGARCANE, COTTON, RICE, WHEAT
+// DB `hypothesis_master.crop_group` stores lowercase canonical crop names
+// (rice, sugarcane, cotton, wheat, ...). We only normalize case + a tiny
+// alias set for short farmer codes; long-term source of truth is the crops
+// ontology in the DB, NOT this map.
 // ═══════════════════════════════════════════════════════════════════════════
-
-const CROP_CODE_TO_GROUP: Record<string, string> = {
-  'SC': 'SUGARCANE', 'SUGARCANE': 'SUGARCANE', 'sugarcane': 'SUGARCANE',
-  'CTN': 'COTTON', 'COTTON': 'COTTON', 'cotton': 'COTTON',
-  'RICE': 'RICE', 'rice': 'RICE', 'PADDY': 'RICE', 'paddy': 'RICE',
-  'WHEAT': 'WHEAT', 'wheat': 'WHEAT', 'WHT': 'WHEAT',
-  'SOYBEAN': 'SOYBEAN', 'soybean': 'SOYBEAN', 'SOY': 'SOYBEAN',
-  'MAIZE': 'MAIZE', 'maize': 'MAIZE', 'MZ': 'MAIZE',
-  'ONION': 'ONION', 'onion': 'ONION', 'ON': 'ONION',
-  'TOMATO': 'TOMATO', 'tomato': 'TOMATO', 'TM': 'TOMATO',
-  'TUR': 'TUR', 'tur': 'TUR', 'PIGEON_PEA': 'TUR',
+const CROP_CODE_ALIASES: Record<string, string> = {
+  sc: 'sugarcane',
+  ctn: 'cotton',
+  wht: 'wheat',
+  mz: 'maize',
+  soy: 'soybean',
+  paddy: 'rice',
+  pigeon_pea: 'tur',
 };
 
 function normalizeCropGroup(input: string): string {
-  return CROP_CODE_TO_GROUP[input] || CROP_CODE_TO_GROUP[input.toUpperCase()] || input.toUpperCase();
+  const lower = String(input || '').trim().toLowerCase();
+  if (!lower) return lower;
+  return CROP_CODE_ALIASES[lower] || lower;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE
