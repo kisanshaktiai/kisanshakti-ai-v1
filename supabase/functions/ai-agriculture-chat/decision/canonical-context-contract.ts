@@ -100,7 +100,7 @@ export interface CanonicalContext {
   // ═══════════════════════════════════════════════════════════════════════════
   readonly land_id: string | null;
   readonly farmer_id: string | null;
-  readonly source: 'BIOLOGICAL_STATE' | 'CROP_SCHEDULES' | 'LAND_DATA' | 'INFERRED';
+  readonly source: 'BIOLOGICAL_STATE' | 'BIOLOGICAL_STATE_UNAVAILABLE' | 'CROP_SCHEDULES' | 'LAND_DATA' | 'INFERRED';
   readonly created_at: number;
   
   // ═══════════════════════════════════════════════════════════════════════════
