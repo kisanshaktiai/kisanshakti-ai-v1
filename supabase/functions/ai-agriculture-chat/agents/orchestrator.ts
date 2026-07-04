@@ -8548,6 +8548,9 @@ export class AIAgentOrchestrator {
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
+        // PHASE-1 SSOT: propagate canonical stage authority into canonical context
+        source: biological_state ? 'BIOLOGICAL_STATE' : (cropSchedule ? 'CROP_SCHEDULES' : 'LAND_DATA'),
+        stage_authority: stageAuthority,
         district: land.district,
         state: land.state,
         village: land.village,
