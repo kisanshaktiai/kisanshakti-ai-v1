@@ -1244,10 +1244,28 @@ export class CommunicationGenerator {
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateFollowUp(decision: DecisionOutput, lang: SupportedLanguage): FollowUpPlan {
-    // EXTRACT follow-up schedule using extractor
-    const extractedSchedule = extractFollowUpSchedule(decision);
-    const repeatInfo = extractRepeatApplicationInfo(decision);
-    
+    // BUG-1 FIX: never dereference a possibly-null repeat context and never let
+    // a follow-up build failure discard the symbolic decision / matched
+    // diagnosis / rule output / BiologicalState.
+    let extractedSchedule: any = {};
+    let repeatInfo: any = null;
+    try {
+      extractedSchedule = extractFollowUpSchedule(decision) || {};
+    } catch (e) {
+      console.error(`[FOLLOWUP_BUILD_ERROR] extractFollowUpSchedule threw: ${(e as Error).message}`);
+      extractedSchedule = {};
+    }
+    try {
+      repeatInfo = extractRepeatApplicationInfo(decision); // may be null by contract
+    } catch (e) {
+      console.error(`[FOLLOWUP_BUILD_ERROR] extractRepeatApplicationInfo threw: ${(e as Error).message}`);
+      repeatInfo = null;
+    }
+    const repeatNeeded = !!(repeatInfo && (repeatInfo.needed ?? repeatInfo.may_need_repeat));
+    console.log(
+      `[FOLLOWUP_CONTEXT] available=${!!repeatInfo} repeat=${repeatNeeded}`,
+    );
+
     const schedule = decision.follow_up_schedule;
     const items = [];
     
@@ -1311,13 +1329,15 @@ export class CommunicationGenerator {
       }
     });
     
-    // Build repeat application note if needed
+    // Build repeat application note if needed — null-safe on all fields.
     let repeatNote: TrilingualText | undefined;
-    if (repeatInfo.may_need_repeat) {
+    if (repeatNeeded) {
+      const intervalDays =
+        (repeatInfo && (repeatInfo.intervalDays ?? repeatInfo.interval_days)) || 7;
       repeatNote = {
-        mr: `📅 ${repeatInfo.interval_days} दिवसांनी पुन्हा फवारणी आवश्यक असू शकते`,
-        hi: `📅 ${repeatInfo.interval_days} दिनों बाद फिर से छिड़काव जरूरी हो सकता है`,
-        en: `📅 Repeat spray may be needed after ${repeatInfo.interval_days} days`
+        mr: `📅 ${intervalDays} दिवसांनी पुन्हा फवारणी आवश्यक असू शकते`,
+        hi: `📅 ${intervalDays} दिनों बाद फिर से छिड़काव जरूरी हो सकता है`,
+        en: `📅 Repeat spray may be needed after ${intervalDays} days`
       };
     }
     
