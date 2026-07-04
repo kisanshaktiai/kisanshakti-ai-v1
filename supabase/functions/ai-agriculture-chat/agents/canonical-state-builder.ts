@@ -651,6 +651,15 @@ export interface BuildCanonicalStateInput {
     state?: string;
     irrigation_type?: string;
     farming_mode?: string;
+    // PHASE 1 — Immutable BiologicalState (SSOT). When is_locked=true, its
+    // growth_stage / das MUST override GDD and any heuristic writer.
+    biological_state?: {
+      is_locked?: boolean;
+      growth_stage?: string | null;
+      das?: number | null;
+      crop_code?: string | null;
+      source?: string;
+    } | null;
     ndvi?: {
       value?: number;
       mean_ndvi?: number;
