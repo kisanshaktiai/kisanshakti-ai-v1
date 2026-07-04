@@ -1076,6 +1076,29 @@ export async function evaluateCandidateHypotheses(
       console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}% - farmer_observable_chars=${c.observable_characteristics.length}`);
     });
 
+    // GRAPH_NODE_TRACE — HYPOTHESIS (uniform pipeline line)
+    try {
+      const blockReasons: string[] = [];
+      if (rulesRaw.length > 0 && rules.length === 0)          blockReasons.push('temporal_filter_dropped_all');
+      if (rules.length > 0 && scoredCandidates.length === 0)  blockReasons.push('no_observation_match');
+      if (scoredCandidates.length > 0 && topCandidates.length === 0) blockReasons.push('deduplication_dropped_all');
+      if (topCandidates.length === 0) {
+        console.warn(`[HYPOTHESIS_GAP][${traceId}] loaded=${rulesRaw.length} temporal=${rules.length} scored=${scoredCandidates.length} top=0 reasons=${blockReasons.join(',') || 'unknown'}`);
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `[GRAPH_NODE_TRACE][${traceId}] node=HYPOTHESIS ` +
+          JSON.stringify({
+            loaded_rules: rulesRaw.length,
+            after_temporal: rules.length,
+            scored: scoredCandidates.length,
+            generated: topCandidates.length,
+            top: topCandidates.slice(0, 5).map(c => ({ cause: c.cause, score: Number(c.total_score.toFixed(3)) })),
+            block_reasons: blockReasons,
+          }),
+      );
+    } catch {/* trace must not throw */}
+
     return {
       candidates: topCandidates,
       total_rules_evaluated: rulesRaw.length,  // Total loaded before temporal filtering
@@ -1088,6 +1111,13 @@ export async function evaluateCandidateHypotheses(
     
   } catch (err) {
     console.error(`   ❌ [HypothesisEval] Exception:`, err);
+    try {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[GRAPH_NODE_TRACE][${traceId}] node=HYPOTHESIS ` +
+          JSON.stringify({ generated: 0, block_reasons: ['exception'], error: err instanceof Error ? err.message : String(err) }),
+      );
+    } catch {/* */}
     return {
       candidates: [],
       total_rules_evaluated: 0,
