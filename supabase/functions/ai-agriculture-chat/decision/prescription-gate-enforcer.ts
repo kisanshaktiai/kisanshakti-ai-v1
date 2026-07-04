@@ -205,6 +205,35 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   const { symbolic_decision, crop_stage, days_since_sowing, crop_name, has_confirmed_diagnosis, land_id } = input;
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // GATE 0a: INTENT-GATE LEAKAGE GUARD (FIX 4)
+  // If the winning symbolic rule was flagged _noTreatmentEligible by
+  // filterRulesByIntent() (kept=0, demoted>0), no prescription may proceed
+  // regardless of downstream scoring. Route to clarification/information.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const winningRule: any =
+    (symbolic_decision as any)?.primary_decision?._sourceRule ||
+    (symbolic_decision as any)?.primary_decision;
+  if (winningRule && (winningRule._noTreatmentEligible === true || winningRule._intentGateLeakage === true)) {
+    console.warn(
+      `🚫 [PrescriptionGate] GATE 0a BLOCKED: winning rule ${winningRule.rule_id ?? '?'} carries ` +
+      `_noTreatmentEligible flag from RULE_INTENT_GATE (kept=0 leakage). Treatment prohibited.`
+    );
+    return {
+      allowed: false,
+      response_mode: ResponseMode.INFORMATION,
+      authority_confirmation: AuthorityConfirmation.UNCONFIRMED,
+      allowed_actions: ['PROVIDE_INFO', 'ASK_CLARIFICATION'],
+      blocked_actions: [...TREATMENT_ACTIONS],
+      allowed_products: [],
+      allowed_dosages: [],
+      reason: 'Intent-gate leakage: no rule matches the current intent — routing to clarification/information.',
+      stage_gate_triggered: false,
+      gate_version: PRESCRIPTION_GATE_VERSION,
+      checked_at: checkedAt
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 0: PRIMARY ACTION TYPE VALIDATION (CRITICAL - MUST BE FIRST)
   // PRODUCTION HARDENING: Block invalid rule output BEFORE any other gate
   // ═══════════════════════════════════════════════════════════════════════════
