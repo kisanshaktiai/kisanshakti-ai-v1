@@ -1283,7 +1283,12 @@ export class AIAgentOrchestrator {
           // Lock the growth stage for the entire turn to ensure consistent clarification
           // ═══════════════════════════════════════════════════════════════════════════
           if (landContext.growth_stage && landContext.current_crop) {
-            const stageSource = landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT';
+            // PHASE-1 SSOT: BiologicalState (when locked) is the sole stage authority.
+            // Only fall back to CROP_SCHEDULE/LAND_CONTEXT when resolver produced no row.
+            const _bioLocked = !!(landContext as any)?.biological_state?.is_locked;
+            const stageSource: 'BIOLOGICAL_STATE' | 'CROP_SCHEDULE' | 'LAND_CONTEXT' =
+              _bioLocked ? 'BIOLOGICAL_STATE'
+                : (landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT');
             lockStageForTurn(
               landContext.current_crop,
               landContext.growth_stage,
