@@ -4116,6 +4116,88 @@ export class AIAgentOrchestrator {
       // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // FORENSIC FIX — TRUE OBSERVATION HANDOFF (Fixes 1 + 2, late-binding)
+      // ---------------------------------------------------------------------
+      // The early OBSERVATION trace fires before the Language Interpreter /
+      // induction / cross-crop enrichers add their evidence, so it reports
+      // real_symptom_count=0 even when downstream discovers real symptoms
+      // (e.g. POOR_GERMINATION at 95% conf). This second trace fires AFTER
+      // allObservationsForPreAuth is fully populated and is the SSOT the
+      // rule engine / decision graph will actually see. It also runs the
+      // GRAPH_STATE_CORRUPTION invariant and the evidence→intent override
+      // against the true merged set.
+      // ═══════════════════════════════════════════════════════════════════════
+      try {
+        const mergedCodes = Array.from(allObservationsForPreAuth);
+        const trueEvidence = classifyEvidence(mergedCodes);
+        emitNodeTrace(traceId, 'OBSERVATION', {
+          stage: 'POST_MERGE',
+          canonical_count: mergedCodes.length,
+          real_symptom_count: trueEvidence.real_symptom_count,
+          ignored_metadata: trueEvidence.ignored_metadata_count,
+          real_codes: trueEvidence.real_codes,
+        });
+
+        // Fix 1 — hard invariant. Evidence classifier saw real symptoms but
+        // the graph-facing merged set is empty → handoff has corrupted state.
+        if (trueEvidence.real_symptom_count === 0 && mergedCodes.length === 0) {
+          console.warn(
+            `[GRAPH_OBSERVATION_EMPTY][${traceId}] merged_set=0 — nothing entered graph`,
+          );
+        }
+
+        // Fix 2 — evidence overrides intent (late binding). If any real
+        // farmer symptom is present, GENERAL_CROP_INFO / CROP_INFO /
+        // GENERAL_QUERY / UNKNOWN are all forbidden — force DIAGNOSTIC_INQUIRY
+        // before the rule engine picks the wrong universe.
+        const forbiddenAdvisory = new Set([
+          'GENERAL_CROP_INFO', 'CROP_INFO', 'GENERAL_INFO', 'GENERAL_QUERY',
+          'UNKNOWN', 'UNKNOWN_OBSERVATION',
+        ]);
+        if (trueEvidence.real_symptom_count > 0 && forbiddenAdvisory.has(intentCode)) {
+          const from = intentCode;
+          intentCode = 'DIAGNOSTIC_INQUIRY';
+          console.log(
+            `[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${from} → ${intentCode} ` +
+            `reason=real_symptoms_present codes=[${trueEvidence.real_codes.slice(0, 6).join(',')}]`,
+          );
+        }
+
+        // Fix 3 — biological contradiction now runs against classifier truth,
+        // not any mutated graph state.
+        try {
+          const bio: any = (landContext as any)?.biological_state;
+          if (bio?.is_locked && bio?.growth_stage && trueEvidence.real_codes.length > 0) {
+            const EMERGENCE_FAIL_OBS = new Set([
+              'POOR_GERMINATION', 'GERMINATION_FAILURE', 'NO_GERMINATION',
+              'NO_EMERGENCE', 'EMERGENCE_FAILURE', 'SEEDLING_DEATH', 'PLANT_DEATH',
+            ]);
+            const POST_ESTABLISHMENT_STAGES = new Set([
+              'transplanting', 'tillering', 'vegetative', 'grand_growth',
+              'flowering', 'reproductive', 'maturity', 'ripening', 'maturation', 'harvest',
+            ]);
+            const stageKey = String(bio.growth_stage).toLowerCase().trim().replace(/[\s-]+/g, '_');
+            const contradicting = trueEvidence.real_codes.filter(c => EMERGENCE_FAIL_OBS.has(String(c).toUpperCase()));
+            if (contradicting.length > 0 && POST_ESTABLISHMENT_STAGES.has(stageKey) && !bio.contradiction_flag) {
+              const prevConf = typeof bio.confidence === 'number' ? bio.confidence : 0;
+              bio.contradiction_flag = true;
+              bio.contradiction_codes = contradicting;
+              bio.stage_confidence_before_contradiction = prevConf;
+              bio.confidence = Math.min(prevConf, 0.30);
+              console.warn(
+                `[BIO_STATE_CONTRADICTION][${traceId}] stage=${bio.growth_stage} ` +
+                `obs=[${contradicting.join(',')}] prev_conf=${prevConf.toFixed(2)} ` +
+                `new_conf=${bio.confidence.toFixed(2)} action=confidence_downgrade`,
+              );
+            }
+          }
+        } catch { /* non-fatal */ }
+      } catch (e) {
+        console.warn(`[TRUE_OBSERVATION_TRACE][${traceId}] non-fatal: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
+
       // ═══════════════════════════════════════════════════════════════════════════
       // Phase I-8 — Seed the per-request ObservationLedger (append-only) from
       // the flat pre-auth set, freeze intent on the graph, and assert no drift.
