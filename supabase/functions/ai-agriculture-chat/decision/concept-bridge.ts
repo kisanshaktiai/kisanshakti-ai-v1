@@ -166,3 +166,104 @@ export function bridgeCodes(_cropCode: string | null | undefined, codes: string[
   }
   return out;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP-CANONICAL RESOLVER — intent_observation_mapping as ontology bridge
+// ═══════════════════════════════════════════════════════════════════════════
+// Extractor + observation_aliases yield generic observation codes (e.g.
+// `poor_germination`). Hypothesis conditions are authored against crop-
+// specific canonical codes (e.g. `obs_rice_no_emergence`). The equivalence
+// class between the two is curated in `intent_observation_mapping`: every
+// LITERAL row for a given (intent_code, crop_code) is a semantically
+// equivalent piece of evidence for that intent.
+//
+// This resolver takes the current canonical evidence set and — if any member
+// belongs to the LITERAL class for (intent, crop) — unions the whole LITERAL
+// class as INFERRED evidence, so hypothesis conditions written against any
+// LITERAL peer can match.
+//
+// NO hardcoded crop / stage / symptom / pest / disease is added here. The
+// ontology stays in the database.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface CanonicalResolved {
+  code: string;
+  source: 'input' | 'iom_literal_peer';
+}
+
+export async function resolveCropCanonicalObservations(
+  supabase: any,
+  intentCode: string | null | undefined,
+  cropCode: string | null | undefined,
+  canonicalCodes: ReadonlyArray<string>,
+): Promise<CanonicalResolved[]> {
+  const inputs: string[] = Array.from(
+    new Set((canonicalCodes ?? []).filter(Boolean).map((c) => String(c))),
+  );
+  const out: CanonicalResolved[] = inputs.map((c) => ({ code: c, source: 'input' }));
+
+  const intent = String(intentCode ?? '').trim();
+  const crop = String(cropCode ?? '').trim().toLowerCase();
+  if (!intent || !crop || crop === 'unknown' || inputs.length === 0) {
+    return out;
+  }
+
+  try {
+    const cropScopes = Array.from(new Set([crop, 'universal']));
+    const { data, error } = await supabase
+      .from('intent_observation_mapping')
+      .select('observation_code, crop_code, assertion_strength, is_active')
+      .eq('intent_code', intent)
+      .in('crop_code', cropScopes)
+      .eq('assertion_strength', 'LITERAL')
+      .eq('is_active', true);
+
+    if (error) {
+      console.warn(
+        `[OBSERVATION_CANONICAL_RESOLVE][DB_ERROR] intent=${intent} crop=${crop} error=${error.message}`,
+      );
+      return out;
+    }
+
+    const literalPeers = new Set<string>();
+    for (const row of (data ?? []) as Array<{ observation_code: string }>) {
+      if (row?.observation_code) literalPeers.add(String(row.observation_code));
+    }
+    if (literalPeers.size === 0) {
+      console.log(
+        `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} literal_peers=0 source=intent_observation_mapping`,
+      );
+      return out;
+    }
+
+    const inputLower = new Set(inputs.map((c) => c.toLowerCase()));
+    const peerLower = new Map<string, string>();
+    for (const p of literalPeers) peerLower.set(p.toLowerCase(), p);
+
+    const anchor = [...inputLower].some((c) => peerLower.has(c));
+    if (!anchor) {
+      console.log(
+        `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} anchor=NONE inputs=[${inputs.join(',')}] literal_peers=${literalPeers.size} source=intent_observation_mapping`,
+      );
+      return out;
+    }
+
+    const injected: string[] = [];
+    for (const [lower, original] of peerLower) {
+      if (inputLower.has(lower)) continue;
+      out.push({ code: original, source: 'iom_literal_peer' });
+      injected.push(original);
+    }
+
+    console.log(
+      `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} inputs=[${inputs.join(',')}] injected=[${injected.join(',')}] source=intent_observation_mapping`,
+    );
+    return out;
+  } catch (e) {
+    console.warn(
+      `[OBSERVATION_CANONICAL_RESOLVE][EXCEPTION] intent=${intent} crop=${crop} error=${(e as Error).message}`,
+    );
+    return out;
+  }
+}
+
