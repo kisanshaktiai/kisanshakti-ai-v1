@@ -1469,6 +1469,11 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             const inferredCategories = new Set<string>();
             const inferredPlantParts = new Set<string>();
             
+            /**
+             * @deprecated CATEGORY_PATTERNS — DO NOT ADD NEW AGRONOMY.
+             * Category resolution must come from observation_master.category
+             * (DB ontology). Retained temporarily until DB-backed lookup lands.
+             */
             const CATEGORY_PATTERNS: Record<string, string[]> = {
               'PEST': ['BORE', 'BORER', 'INSECT', 'LARVAE', 'GRUB', 'TERMITE', 'APHID', 'WHITEFLY', 
                        'MEALYBUG', 'MITE', 'THRIPS', 'CATERPILLAR', 'FRASS', 'WEBBING', 'HONEYDEW',
