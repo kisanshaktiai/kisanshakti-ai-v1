@@ -6435,18 +6435,21 @@ export class AIAgentOrchestrator {
             `[SSOT_TRACE][${traceId}] hypothesis_graph_seed candidates=${_seededCount} ` +
               `winner=${graph.hypothesis_graph.find((c) => c.status === 'WINNER')?.rule_id ?? 'NONE'}`
           );
-          // Fix 4 — promotion invariant: seed must survive into the active
-          // graph state used by the rule evaluator. If it collapses to zero,
-          // downstream will silently pick the wrong rule universe.
+          // Fix 4 — promotion invariant: candidate ids were produced by the
+          // rule evaluator but must survive into the active hypothesis_graph
+          // used downstream. If they collapse to zero the rule engine ran on
+          // the wrong universe and silently picked the wrong branch.
           try {
             (graph as any).__hypothesis_seeded_count = _seededCount;
-            if (_seededCount === 0 && Array.isArray((topHypotheses as any)) && (topHypotheses as any).length > 0) {
+            const _candidatesFromEvaluator = candidateIds.size;
+            if (_candidatesFromEvaluator > 0 && _seededCount === 0) {
               console.error(
-                `[HYPOTHESIS_PROMOTION_LOST][${traceId}] evaluator_top=${(topHypotheses as any).length} active=0 ` +
-                `reason=seed_dropped_all`,
+                `[HYPOTHESIS_PROMOTION_LOST][${traceId}] evaluator_candidates=${_candidatesFromEvaluator} ` +
+                `active=0 reason=all_dropped_during_seed`,
               );
             }
           } catch { /* invariant must not throw */ }
+
 
         } catch (e) {
           if (e instanceof GraphStateDriftError) {
