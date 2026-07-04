@@ -308,7 +308,18 @@ export interface CanonicalState {
   days_after_sowing: DaysAfterSowingBucket;
   days_after_sowing_exact?: number;
   
-  // Visual Symptom State
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEURO-SYMBOLIC PASSTHROUGH — FIRST-CLASS OBSERVATION CODES
+  // Ontology (observation_master / observation_aliases) is the SSOT. These are
+  // the ORIGINAL canonical codes as produced by language-induction — the rule
+  // engine and hypothesis evaluator MUST read from here, NOT from
+  // visual_symptom. Codes like `poor_germination`, `germination_failure`,
+  // `POOR_GERMINATION`, `DEAD_HEART_SC` are preserved verbatim.
+  // ═══════════════════════════════════════════════════════════════════════════
+  observation_codes: string[];
+
+  // Visual Symptom State — LEGACY COMPATIBILITY LABELS ONLY.
+  // Do NOT branch decisions on `visual_symptom`; use `observation_codes`.
   visual_symptom: VisualSymptom | string;
   secondary_symptoms: (VisualSymptom | string)[];
   symptom_distribution: SymptomDistribution;
