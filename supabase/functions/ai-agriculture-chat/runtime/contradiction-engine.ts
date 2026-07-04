@@ -116,10 +116,39 @@ function stagesEquivalent(a: string, b: string): boolean {
 export async function detectContradiction(
   input: ContradictionInput,
 ): Promise<Contradiction | null> {
-  const { supabase, intent_code, crop_code, growth_stage, das, trace_id } = input;
+  const { supabase, intent_code, crop_code, growth_stage, das, trace_id, observations } = input;
   const intentUpper = String(intent_code || '').trim().toUpperCase();
   const cropLower   = norm(crop_code);
   const stageLower  = norm(growth_stage);
+
+  // ─── BIOLOGICAL_IMPOSSIBILITY: crop-agnostic observation ↔ stage check ─
+  // Runs BEFORE DB lookups so it fires even when intent_assertion_pattern
+  // has no row for this intent. Prevents impossible facts (e.g. farmer
+  // says "not germinated" while BiologicalState says TILLERING) from
+  // entering rule scoring.
+  if (stageLower && Array.isArray(observations) && observations.length > 0) {
+    const obsUpper = observations.map(o => String(o || '').trim().toUpperCase()).filter(Boolean);
+    for (const rule of OBSERVATION_STAGE_INCOMPATIBILITIES) {
+      const hitObs = obsUpper.find(o => rule.obs_pattern.test(o));
+      if (!hitObs) continue;
+      const incompat = rule.incompat_stages.some(s => stagesEquivalent(s, stageLower));
+      if (!incompat) continue;
+      const c: Contradiction = Object.freeze({
+        kind: 'BIOLOGICAL_IMPOSSIBILITY',
+        assertion: hitObs,
+        assertion_label: rule.label,
+        context_field: 'growth_stage',
+        context_value: stageLower,
+        expected: Object.freeze([]),
+        reason: `observation ${hitObs} is biologically impossible when growth_stage=${stageLower}`,
+      });
+      console.log(
+        `[BIOLOGICAL_CONTRADICTION]${trace_id ? '[' + trace_id + ']' : ''} ` +
+        `obs=${hitObs} stage=${stageLower} label=${rule.label} → routing to clarification`,
+      );
+      return c;
+    }
+  }
 
   if (!intentUpper || !cropLower || !stageLower || !supabase) return null;
 
