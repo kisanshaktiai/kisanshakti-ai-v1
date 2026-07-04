@@ -1345,6 +1345,14 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               // rule when the land's current_crop_stage = GERMINATION.
               // The family map MUST stay symmetric and crop-independent.
               // ───────────────────────────────────────────────────────────
+              /**
+               * @deprecated STAGE_FAMILIES — DO NOT ADD NEW AGRONOMY.
+               * Stage relationships must originate from the ontology database
+               * (crop_stage_master.stage_relationships). This in-code map is
+               * retained temporarily; stages missing from it now fall through
+               * a soft bypass (see [STAGE_ONTOLOGY_MISSING] log below) instead
+               * of hard-rejecting rules. Tracked for ontology-migration pass.
+               */
               const STAGE_FAMILIES: Record<string, string[]> = {
                 GERMINATION:   ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
                 EMERGENCE:     ['EMERGENCE', 'GERMINATION', 'SEEDLING', 'NURSERY', 'ESTABLISHMENT'],
@@ -1361,16 +1369,28 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
                 MATURITY:      ['MATURITY', 'HARVEST', 'GRAIN_FILLING'],
                 HARVEST:       ['HARVEST', 'MATURITY'],
               };
-              const family = STAGE_FAMILIES[currentStage] || [currentStage];
-              const stageMatch = normalizedApplicableStages.some((s: string) =>
-                s === currentStage || family.includes(s)
-              );
-              
-              if (!stageMatch) {
-                if (bundled.priority && bundled.priority > 70) {
-                  console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
+              const family = STAGE_FAMILIES[currentStage] || null;
+              const exactMatch = normalizedApplicableStages.includes(currentStage);
+              const familyMatch = family
+                ? normalizedApplicableStages.some((s: string) => s === currentStage || family.includes(s))
+                : false;
+
+              if (!exactMatch && !familyMatch) {
+                if (!family) {
+                  // Ontology-missing: DO NOT reject. Emit forensic log for
+                  // future DB-backed stage_relationships migration. The rule
+                  // still faces DB-level STAGE predicates downstream.
+                  console.log(
+                    `[STAGE_ONTOLOGY_MISSING] rule=${bundled.rule_id} current_stage=${currentStage} ` +
+                    `applicable=[${normalizedApplicableStages.join(',')}] action=BYPASS_STAGE_GATE ` +
+                    `reason=STAGE_FAMILIES_deprecated_awaiting_db_stage_relationships`
+                  );
+                } else {
+                  if (bundled.priority && bundled.priority > 70) {
+                    console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
+                  }
+                  return false; // HARD GATE only when family is known and mismatches
                 }
-                return false; // HARD GATE - Rule cannot fire at this stage
               }
             }
           }
@@ -1379,6 +1399,12 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // CRITICAL FIX: ENFORCE crop_code matching with proper normalization
           // Database uses short codes (SC, CTN) while CanonicalState uses full names (SUGARCANE, COTTON)
           // ═══════════════════════════════════════════════════════════════════════════
+          /**
+           * @deprecated cropCodeAliases — DO NOT ADD NEW AGRONOMY.
+           * Crop code equivalences must originate from the ontology database
+           * (crop_synonyms / crops table). Retained only until DB-backed
+           * resolver is wired in. Tracked for ontology-migration pass.
+           */
           const cropCodeAliases: Record<string, string[]> = {
             'SC': ['SUGARCANE', 'SUGAR_CANE', 'USCANE', 'CANE'],
             'CTN': ['COTTON', 'KAPAS'],
@@ -1416,13 +1442,38 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // OBSERVATION LAYER FILTER: required_observation_category + required_plant_part
           // Prevents cross-domain rule matching (e.g., nutrient rules for pest symptoms)
           // ═══════════════════════════════════════════════════════════════════════════
-          const visualSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
+          // ─────────────────────────────────────────────────────────────
+          // Ontology-first evidence union. Priority = authority.
+          //   1. observation_codes[]         (canonical DB ontology codes)
+          //   2. confirmed_observations[]    (verified by farmer / vision)
+          //   3. synthetic_observations[]    (inferred by symbolic bridge)
+          //   4. visual_symptom              (legacy singular enum)
+          // NO observation → symptom conversion. Codes flow verbatim.
+          // ─────────────────────────────────────────────────────────────
+          const _obsCodes:  string[] = Array.isArray((state as any).observation_codes)      ? (state as any).observation_codes      : [];
+          const _confirmed: string[] = Array.isArray((state as any).confirmed_observations) ? (state as any).confirmed_observations : [];
+          const _synthetic: string[] = Array.isArray((state as any).synthetic_observations) ? (state as any).synthetic_observations : [];
+          const _secondary: string[] = Array.isArray(state.secondary_symptoms)
+            ? state.secondary_symptoms.map((s: any) => String(s)) : [];
+          const _legacy: string[] = (state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN')
+            ? [String(state.visual_symptom)] : [];
+          const evidenceCodesUpper: string[] = [...new Set(
+            [..._obsCodes, ..._confirmed, ..._synthetic, ..._secondary, ..._legacy]
+              .filter(Boolean)
+              .map((s: string) => String(s).toUpperCase().replace(/[\s-]/g, '_'))
+          )];
+          const visualSymptoms = evidenceCodesUpper;
           
           if (visualSymptoms.length > 0) {
             // Infer observation categories from symptom codes using keyword patterns
             const inferredCategories = new Set<string>();
             const inferredPlantParts = new Set<string>();
             
+            /**
+             * @deprecated CATEGORY_PATTERNS — DO NOT ADD NEW AGRONOMY.
+             * Category resolution must come from observation_master.category
+             * (DB ontology). Retained temporarily until DB-backed lookup lands.
+             */
             const CATEGORY_PATTERNS: Record<string, string[]> = {
               'PEST': ['BORE', 'BORER', 'INSECT', 'LARVAE', 'GRUB', 'TERMITE', 'APHID', 'WHITEFLY', 
                        'MEALYBUG', 'MITE', 'THRIPS', 'CATERPILLAR', 'FRASS', 'WEBBING', 'HONEYDEW',
@@ -1441,6 +1492,11 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               'MANAGEMENT': ['WEED', 'SPACING', 'PLANTING', 'HARVEST']
             };
             
+            /**
+             * @deprecated PLANT_PART_PATTERNS — DO NOT ADD NEW AGRONOMY.
+             * Plant-part resolution must come from observation_master.plant_part
+             * (DB ontology). Retained temporarily until DB-backed lookup lands.
+             */
             const PLANT_PART_PATTERNS: Record<string, string[]> = {
               'STEM': ['STEM', 'INTERNODE', 'CANE', 'STALK', 'BORE_HOLE', 'TUNNEL', 'BORED'],
               'LEAF': ['LEAF', 'FOLIAR', 'CHLOROSIS', 'YELLOWING', 'SPOT', 'RUST', 'CURL', 'SCALD'],
@@ -1495,20 +1551,9 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // Without this bridge, input.visual_symptoms was ALWAYS empty, causing
           // every observation-based condition to FAIL with SKIPPED_NO_DATA + required:true.
           // ═══════════════════════════════════════════════════════════════════
-          const confirmedObs: string[] = (state as any).confirmed_observations || [];
-          const syntheticObs: string[] = (state as any).synthetic_observations || [];
-          const secondarySyms: string[] = Array.isArray(state.secondary_symptoms) 
-            ? state.secondary_symptoms.map((s: any) => String(s)) : [];
-          const allVisualSymptoms = [
-            ...confirmedObs,
-            ...syntheticObs,
-            ...secondarySyms,
-            // Also include the primary visual_symptom if it's a real value
-            ...(state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN' 
-              ? [String(state.visual_symptom)] : [])
-          ];
-          // Deduplicate
-          const uniqueVisualSymptoms = [...new Set(allVisualSymptoms.filter(Boolean))];
+          // Reuse the ontology-first evidence union computed above so
+          // ObsFilter and the rule-condition evaluator see identical evidence.
+          const uniqueVisualSymptoms = evidenceCodesUpper;
           
           const input = {
             crop_code: state.crop_type?.toLowerCase() || '',

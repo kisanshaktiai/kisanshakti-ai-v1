@@ -1,105 +1,137 @@
-## Forensic findings (confirmed against code + DB + edge log)
+# Fix: neuro-symbolic graph plumbing only (no agronomy in TS)
 
-The neuro-symbolic contract is being violated by two hidden mini rule engines in code. Ontology tables are correct; the runtime keeps overriding them.
+Three surgical runtime fixes. Zero new agriculture concepts in code. Existing hardcoded dictionaries are marked deprecated but left in place (removing them is a separate DB-migration pass).
 
-**Evidence**
+## Fix 1 — `causal-hypothesis-engine.ts` OBSERVATION dual-shape reader
 
-- `canonical-state-builder.ts` contains hardcoded Marathi/Hindi/English → `VisualSymptom` map, including `poor_germination → STUNTED_GROWTH`, plus `mapStageToEnum()` doing `includes('grand'|'veget'|'flower'|...)` stage classification.
-- Log confirms `real=[POOR_GERMINATION]` becomes `Symptom: STUNTED_GROWTH`, and `stage=transplanting` (BIO_STATE) becomes `ACTIVE_TILLERING/TILLERING` downstream.
-- `causal-hypothesis-engine.ts` queries `.eq('crop_group', cropGroup)` where runtime passes `RICE` but DB stores `rice` → `📭 No hypotheses for crop_group=RICE`. `hypothesis_master` returned `[]` for `RICE` in a live DB check, confirming the case mismatch drops the entire graph.
-- With hypotheses empty, rule universe stays broad; `PROACTIVE_FLOOD_PREPAREDNESS_001` wins a no-germination turn.
-- DB rules `RICE_GERMINATION_DIAGNOSTIC_001` and `RICE_GERMINATION_RESOW_DECISION_001` exist keyed on `obs_rice_no_emergence`, but runtime never bridges `POOR_GERMINATION → obs_rice_no_emergence` before condition matching.
-- Farmer observations are appended to the ledger as `confirmed=false`, so `navigator-adapter` reports `confirmed=0` and returns `INSUFFICIENT_EVIDENCE`.
+**File:** `supabase/functions/ai-agriculture-chat/decision/causal-hypothesis-engine.ts`
+**Lines:** 296–314 (`case 'OBSERVATION'`)
 
-**Scope of change**
+Current code reads only `value_json.code`. DB stores `value_json` as an array (`["obs_rice_no_emergence", ...]`) → `code` is `undefined` → condition always returns `FAILED`. This is why `RICE_GERMINATION_FAILURE` scores 0.
 
-Runtime only. No changes to `decision_rules`, `observation_master`, `intent_observation_mapping`, `crop_stage_master`, `hypothesis_master`, BiologicalState, phenology resolver, or translations.
+Replace the block with a shape-agnostic reader supporting both `{code:"..."}` and `["...","..."]`. No observation names, crops, or agronomy introduced — pure JSON shape handling:
 
-## Repair plan
+```ts
+case 'OBSERVATION': {
+  const raw = value_json as any;
+  const codes: string[] = Array.isArray(raw)
+    ? raw.filter((x) => typeof x === 'string')
+    : (typeof raw?.code === 'string' ? [raw.code]
+      : Array.isArray(raw?.codes) ? raw.codes.filter((x: any) => typeof x === 'string')
+      : []);
+  if (codes.length === 0) return HypothesisConditionStatus.FAILED;
 
-### Phase 1 — Remove symptom authority from `canonical-state-builder.ts`
+  const obsLower = observations.map((o) => String(o).toLowerCase());
+  const codesLower = codes.map((c) => c.toLowerCase());
 
-- Delete the `symptomMap` inside `mapObservationsToSymptom()` and the Marathi/Hindi/English keyword lists.
-- New behavior: pass through the first already-canonical observation code unchanged (must match `/^[A-Z0-9_]+$/`); otherwise return `VisualSymptom.UNKNOWN`. Never guess.
-- Remove the `hasTerminalDamage` and `poor_germination → STUNTED_GROWTH` forcing branches in `orchestrator.ts` that override `canonicalState.visual_symptom`.
-- Add invariant in `buildCanonicalState`: if input `farmerObservations` contained a real code `A` (per `EvidenceClassifier.isRealObservation`) and output `visual_symptom !== A`, log `[CANONICAL_MUTATION_BLOCKED] before=A after=B` and restore `A`.
-
-### Phase 2 — Remove stage authority from `canonical-state-builder.ts`
-
-- Replace `mapStageToEnum()` body with a strict enum lookup only (exact `UPPER_SNAKE` match to `CropStage`); anything else returns `CropStage.UNKNOWN`.
-- Delete all `normalized.includes('grand'|'veget'|'flower'|'फुलोरा'|...)` branches.
-- `buildCanonicalState` must consume `canonicalContext.growth_stage` when locked, else `landContext.growth_stage`, else `null`. No calculation.
-- Add invariant: if `canonicalContext.is_locked` and resolved `crop_stage` differs, log `[STAGE_MUTATION_BLOCKED]` and force back to the locked value.
-
-### Phase 3 — Fix crop-group normalization in `causal-hypothesis-engine.ts`
-
-- Change `normalizeCropGroup()` to lower-case (`.toLowerCase()`), matching DB storage.
-- Update the `hypothesis_master` query and cache key to use the lowercase form. Remove the hardcoded `CROP_CODE_TO_GROUP` uppercase map; keep only a minimal alias table for short codes (`sc → sugarcane`, `paddy → rice`) that still returns lower-case.
-- Add trace: `[HYPOTHESIS_LOAD] input_crop=<raw> resolved_crop_group=<lower> hypothesis_count=<n>`.
-
-### Phase 4 — Ontology-driven observation matching (no hardcoded dictionary)
-
-- Add a lightweight resolver `resolveObservationCanonical(code, cropCode, supabase)` that, in order:
-  1. Applies existing `bridgeToCropVocab()` (`concept-bridge.ts`) for the crop.
-  2. Looks up `observation_aliases` (existing table) by alias → canonical.
-  3. Verifies against `observation_master.observation_code`.
-- Use this resolver in `causal-hypothesis-engine.ts` and in the layered evaluator condition matcher, replacing `string.includes()` / substring matching for observation codes.
-- Trace: `[OBSERVATION_BRIDGE] input=POOR_GERMINATION resolved=obs_rice_no_emergence source=concept_bridge|aliases|master`.
-- Bridge the observation set once, right after `POST_MERGE`, and reuse everywhere (avoid multiple partial bridges).
-
-### Phase 5 — Farmer evidence is confirmed in the graph ledger
-
-- In `orchestrator.ts` post-collection ledger seed loop, for every code originating from `EXTRACTED`, `CONFIRMED`, or `LLM_SEMANTIC_EXTRACTOR` (per `AuthoredObservationSet`), call `graph.observation_ledger.confirm(code, actor)` immediately after `append()`.
-- Keep `INFERRED`/`SYNTHETIC` as unconfirmed.
-- Trace: `[GRAPH_NODE_TRACE] node=OBSERVATION real_count=<n> confirmed=<n>`.
-
-### Phase 6 — Missing data becomes a confidence penalty
-
-- In `causal-hypothesis-engine.ts` scoring, `SKIPPED_NO_DATA` conditions must:
-  - Not set `is_eliminated=true`
-  - Reduce `weighted_score` by a bounded penalty proportional to the condition weight
-- Elimination remains only for `FAILED` required conditions or `CONTRADICTION`.
-
-### Phase 7 — Farmer-language safety in clarifications
-
-- Remove any English string-building for discriminator questions/options in `causal-hypothesis-engine.ts` and orchestrator’s fallback paths.
-- Route every clarification text through the existing `observation_translations` / `translateClarificationOptions()` layer using `options.language`. If translation fails, use language-aware safe fallback (`getSafeAskMoreInfoMessage`) already in `llm-response-generator.ts`.
-- Never emit an English response when farmer language is non-EN.
-
-### Phase 8 — Final graph consistency invariant
-
-- Before response persistence in `orchestrator.ts`, run a check:
-  - If `turnEvidence.real_codes` (from `EvidenceClassifier` at POST_MERGE) contains `A` and the response’s driving symptom/decision references a different symbolic identity `B` without a recorded bridge, log `[GRAPH_CONSISTENCY_ERROR] original=A resolved=B mutation_source=<stage>` and block the outgoing generic template.
-  - If farmer real evidence exists, forbid:
-    - generic ask-more-details template
-    - non-diagnostic proactive winners (`PROACTIVE_*`) unless they intersect real evidence
-    - English response for non-EN language
-  - Replace with: symbolic decision output, contradiction clarification, or the language-aware safe question.
-
-## Verification
-
-Run the same turn `भात अजून उगवले नाही` (Rice, DAS=26, transplanting) and confirm logs:
-
-```text
-[EVIDENCE_CLASSIFICATION] real=[POOR_GERMINATION]
-[OBSERVATION_BRIDGE] input=POOR_GERMINATION resolved=obs_rice_no_emergence source=concept_bridge
-[HYPOTHESIS_LOAD] input_crop=RICE resolved_crop_group=rice hypothesis_count>=0
-[GRAPH_NODE_TRACE] node=OBSERVATION real_count=1 confirmed=1
-[BIO_STATE_LOCKED] stage=transplanting
-No [CANONICAL_MUTATION_BLOCKED] fires (or fires with restore)
-No [STAGE_MUTATION_BLOCKED] fires
-No [GRAPH_CONSISTENCY_ERROR] fires
-Winner is a diagnostic/contradiction path, NOT PROACTIVE_FLOOD_PREPAREDNESS_001
-Final response is Marathi, specific to germination/contradiction
+  if (operator === 'CONTAINS' || operator === 'IN' || operator === 'ANY_OF') {
+    return codesLower.some((c) => obsLower.includes(c))
+      ? HypothesisConditionStatus.PASSED
+      : HypothesisConditionStatus.FAILED;
+  }
+  if (operator === 'ALL_OF') {
+    return codesLower.every((c) => obsLower.includes(c))
+      ? HypothesisConditionStatus.PASSED
+      : HypothesisConditionStatus.FAILED;
+  }
+  if (operator === 'NOT_EXISTS' || operator === 'NOT_IN') {
+    return codesLower.every((c) => !obsLower.includes(c))
+      ? HypothesisConditionStatus.PASSED
+      : HypothesisConditionStatus.FAILED;
+  }
+  return HypothesisConditionStatus.FAILED;
+}
 ```
 
-## Files touched (runtime only)
+## Fix 2 — `layered-rule-evaluator.ts` observation-code first evidence source
 
-- `supabase/functions/ai-agriculture-chat/agents/canonical-state-builder.ts` (Phase 1, 2)
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (Phase 1 override removal, Phase 4 bridge reuse, Phase 5 confirm, Phase 8 invariant)
-- `supabase/functions/ai-agriculture-chat/decision/causal-hypothesis-engine.ts` (Phase 3, 4, 6, 7)
-- `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` (Phase 4 matcher lookup)
-- `supabase/functions/ai-agriculture-chat/decision/concept-bridge.ts` (extend to call `observation_aliases` when supabase is passed; no new hardcoded lists)
-- `supabase/functions/ai-agriculture-chat/agents/llm-response-generator.ts` (Phase 7 language-safe fallback wiring)
+**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+**Lines:** 1419 (ObsFilter source) and 1498–1521 (`input.visual_symptoms` / `input.observations`)
 
-Not touched: DB schema, ontology tables, `decision_rules`, `crop_stage_master`, `observation_master`, `intent_observation_mapping`, `hypothesis_master`, BiologicalState, phenology resolver, translations.
+Currently the ObsFilter reads `state.visual_symptoms` (undefined on `CanonicalState`), and the downstream `input` derives symptoms from a mix of confirmed + synthetic + `state.visual_symptom` legacy enum. Switch the evidence priority to a single ordered union — no observation → symptom conversion, no hardcoded names:
+
+Priority union (identical helper used at both 1419 and 1498–1511):
+
+```ts
+// Ontology-first evidence union. Order = authority.
+// NOTE: no observation-to-symptom mapping; codes are transported verbatim.
+const _obsCodes:   string[] = Array.isArray((state as any).observation_codes)     ? (state as any).observation_codes     : [];
+const _confirmed:  string[] = Array.isArray((state as any).confirmed_observations)? (state as any).confirmed_observations: [];
+const _synthetic:  string[] = Array.isArray((state as any).synthetic_observations)? (state as any).synthetic_observations: [];
+const _legacy:     string[] = (state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN')
+  ? [String(state.visual_symptom)] : [];
+
+const evidenceCodes = [..._obsCodes, ..._confirmed, ..._synthetic, ..._legacy]
+  .filter(Boolean)
+  .map((s: string) => String(s));
+const evidenceCodesUpper = [...new Set(evidenceCodes.map((s) => s.toUpperCase().replace(/[\s-]/g, '_')))];
+```
+
+- Line 1419 `const visualSymptoms = ...` → `const visualSymptoms = evidenceCodesUpper;`
+- Lines 1498–1511 `uniqueVisualSymptoms` derivation → replace with `evidenceCodesUpper` (single source).
+- Lines 1518 & 1521: pass `evidenceCodesUpper` for both `visual_symptoms` and `observations` keys in `input`.
+
+No new agronomy dictionaries. `CATEGORY_PATTERNS` / `PLANT_PART_PATTERNS` block is untouched — its input source is fixed, its content is deprecated (see Fix 4).
+
+## Fix 3 — Stage-family soft bypass (no new STAGE_FAMILIES entries)
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+**Lines:** 1364–1374
+
+Currently: if exact match fails and family lookup misses → hard reject with `return false`. Change to a *soft* bypass so ontology-missing stage relationships never silently kill a rule; log once for future DB migration:
+
+```ts
+const family = STAGE_FAMILIES[currentStage] || null;
+const familyMatch = family
+  ? normalizedApplicableStages.some((s: string) => s === currentStage || family.includes(s))
+  : false;
+const exactMatch = normalizedApplicableStages.includes(currentStage);
+
+if (!exactMatch && !familyMatch) {
+  if (!family) {
+    // Ontology-missing: DO NOT reject. Emit forensic log for DB-backed
+    // stage_relationships migration. Rule proceeds to condition evaluation
+    // where DB-level stage predicates (STAGE conditions) remain authoritative.
+    console.log(
+      `[STAGE_ONTOLOGY_MISSING] rule=${bundled.rule_id} current_stage=${currentStage} ` +
+      `applicable=[${normalizedApplicableStages.join(',')}] action=BYPASS_STAGE_GATE ` +
+      `reason=STAGE_FAMILIES_deprecated_awaiting_db_stage_relationships`,
+    );
+  } else {
+    // Family known and mismatched → keep existing hard gate for high-priority rules
+    if (bundled.priority && bundled.priority > 70) {
+      console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
+    }
+    return false;
+  }
+}
+```
+
+No new entries in `STAGE_FAMILIES`. `TRANSPLANTING` (and any other stage absent from the map) now falls into the bypass branch until DB-backed stage relationships arrive.
+
+## Fix 4 — Mark hardcoded agronomy dictionaries deprecated
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+
+Add block comments (no logic change) above:
+- `STAGE_FAMILIES` (~line 1348)
+- `cropCodeAliases` (~line 1382)
+- `CATEGORY_PATTERNS` and `PLANT_PART_PATTERNS` (~lines 1426, 1444)
+
+Each comment states: `@deprecated — DO NOT ADD NEW AGRONOMY. Replace with DB-backed lookup (crop_stage_master.stage_relationships / crop_synonyms / observation_master.category & plant_part). Tracked for ontology-migration pass.`
+
+## Explicitly NOT changing
+
+- No new stages, crops, observations, pests, diseases, or symptoms added to any TS file.
+- `canonical-state-builder.ts` — untouched (already carries `observation_codes` passthrough from earlier turn).
+- `orchestrator.ts` — untouched.
+- Database, `decision_rules`, `hypothesis_master`, `crop_stage_master`, `observation_master`, `intent_observation_mapping` — untouched.
+
+## Expected outcome
+
+For `भात अजून उगवले नाही` (Rice, DAS=26, transplanting):
+- Bridge already emits `POOR_GERMINATION → obs_rice_no_emergence` into observations.
+- Fix 1 lets `RICE_GERMINATION_FAILURE`'s OBSERVATION array condition PASS.
+- Fix 2 lets the observation code reach the ObsFilter and downstream `input.observations`.
+- Fix 3 stops the transplanting stage from silently killing the germination rule (soft bypass with `[STAGE_ONTOLOGY_MISSING]` log for follow-up).
+- Winner becomes a diagnostic rule; `PROACTIVE_FLOOD_PREPAREDNESS_001` no longer trumps evidence.
