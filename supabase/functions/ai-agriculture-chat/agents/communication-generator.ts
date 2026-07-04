@@ -154,10 +154,16 @@ export class CommunicationGenerator {
       console.log('   ⏭️  Skipped economics section (not required)');
     }
     
-    // Layer 6: Follow-up (CONDITIONAL)
+    // Layer 6: Follow-up (CONDITIONAL) — must NEVER discard the symbolic
+    // decision on a follow-up build error (BUG-1).
     if (requires.follow_up) {
-      sections.follow_up = this.generateFollowUp(decisionOutput, lang);
-      console.log('   ✅ Generated follow_up section');
+      try {
+        sections.follow_up = this.generateFollowUp(decisionOutput, lang);
+        console.log('   ✅ Generated follow_up section');
+      } catch (e) {
+        console.error(`[FOLLOWUP_BUILD_ERROR] generateFollowUp threw: ${(e as Error).message}`);
+        // Leave sections.follow_up undefined; symbolic decision is preserved.
+      }
     } else {
       console.log('   ⏭️  Skipped follow_up section (not required)');
     }
