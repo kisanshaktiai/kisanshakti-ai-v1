@@ -1091,7 +1091,10 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     days_after_sowing: mapDaysToSowingBucket(daysAfterSowing),
     days_after_sowing_exact: daysAfterSowing,
     
-    // Visual Symptoms
+    // Observation codes (FIRST-CLASS ontology passthrough — SSOT for rules)
+    observation_codes: observationCodes,
+
+    // Visual Symptoms (legacy label surface — do NOT branch decisions here)
     visual_symptom: visualSymptom,
     secondary_symptoms: secondarySymptoms,
     symptom_distribution: symptomDist,
