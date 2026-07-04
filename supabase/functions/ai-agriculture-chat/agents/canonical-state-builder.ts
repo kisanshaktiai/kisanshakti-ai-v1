@@ -298,14 +298,19 @@ export enum DiseasePresence {
 
 export interface CanonicalState {
   // Crop Context (MANDATORY)
-  crop_type: CropType;
-  crop_stage: CropStage;
+  // NEURO-SYMBOLIC CONTRACT: crop_type / crop_stage / visual_symptom are PASSTHROUGH
+  // strings sourced from the DB ontology (crop_ontology, crop_stage_master,
+  // observation_master). The enum members remain for legacy compatibility only —
+  // they are NOT the authority. Any canonical UPPER_SNAKE string produced by the
+  // ontology MUST flow through unchanged.
+  crop_type: CropType | string;
+  crop_stage: CropStage | string;
   days_after_sowing: DaysAfterSowingBucket;
   days_after_sowing_exact?: number;
   
   // Visual Symptom State
-  visual_symptom: VisualSymptom;
-  secondary_symptoms: VisualSymptom[];
+  visual_symptom: VisualSymptom | string;
+  secondary_symptoms: (VisualSymptom | string)[];
   symptom_distribution: SymptomDistribution;
   severity: SeverityLevel;
   affected_plant_parts: string[];
