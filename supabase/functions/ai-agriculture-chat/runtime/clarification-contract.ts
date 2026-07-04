@@ -34,6 +34,13 @@ export interface ClarificationCandidateInput {
   das?: number | null;
   language: string;
   max?: number;
+  /**
+   * Observation codes already confirmed for this conversation (from
+   * ConversationState.confirmed). Any candidate whose canonical key matches
+   * one of these is dropped BEFORE label rendering so we never re-ask
+   * something the farmer has already stated.
+   */
+  confirmed?: ReadonlyArray<string>;
 }
 
 // ─── Canonical key helper ──────────────────────────────────────────────────
@@ -82,12 +89,21 @@ export async function loadClarificationCandidates(
   input: ClarificationCandidateInput,
 ): Promise<ClarificationOption[]> {
   const {
-    supabase, intent_code, crop_code, growth_stage, das, language, max = 3,
+    supabase, intent_code, crop_code, growth_stage, das, language, max = 3, confirmed = [],
   } = input;
 
   const intentUpper = String(intent_code || '').trim().toUpperCase();
   const cropLower   = String(crop_code   || '').trim().toLowerCase();
   const langLower   = String(language    || 'en').trim().toLowerCase();
+
+  // Ontology-first dedup set: canonicalize every already-confirmed code so
+  // the farmer never sees a discriminator asking about evidence they've
+  // already given. No agronomy in code — pure key normalisation.
+  const confirmedKeys = new Set<string>(
+    (confirmed || [])
+      .map((c) => canonicalizeObservationKey(String(c || '')))
+      .filter(Boolean),
+  );
 
   if (!intentUpper) {
     console.warn('[CLARIFICATION_CONTRACT] missing intent_code — returning []');
@@ -141,12 +157,37 @@ export async function loadClarificationCandidates(
       return [];
     }
 
-    const candidateKeys = Array.from(candidateRank.keys());
+    // Drop already-confirmed observations BEFORE hitting observation_master —
+    // if evidence is locked, we must not re-ask it as a farmer discriminator.
+    const preConfirmedDrops: string[] = [];
+    const postConfirmDedup = Array.from(candidateRank.keys()).filter((k) => {
+      if (confirmedKeys.has(k)) {
+        preConfirmedDrops.push(k);
+        return false;
+      }
+      return true;
+    });
+    if (postConfirmDedup.length === 0) {
+      console.log(
+        `[CLARIFICATION_CONTRACT] all ${candidateRank.size} IOM candidates already confirmed — nothing to ask ` +
+        `confirmed=[${Array.from(confirmedKeys).join(',')}]`,
+      );
+      return [];
+    }
+    const candidateKeys = postConfirmDedup;
 
     // ── Stage 2: observation_master gate ─────────────────────────────────
+    // Farmer-observable discriminators only. `is_diagnostic=true` rows are
+    // agronomist-facing diagnosis concepts (e.g. RICE_GERMINATION_FAILURE)
+    // and MUST NEVER surface as farmer options. `observation_type` values
+    // outside SYMPTOM/OBSERVATION (e.g. GROUP, DIAGNOSIS, CONDITION) are
+    // also excluded — the allow-list is derived from DB metadata, not
+    // hardcoded observation names.
+    const OBSERVABLE_TYPES = new Set(['SYMPTOM', 'OBSERVATION', 'SIGN', 'FARMER_OBSERVATION']);
+
     const { data: masterRows, error: masterErr } = await supabase
       .from('observation_master')
-      .select('observation_code, is_active, is_farmer_observable')
+      .select('observation_code, is_active, is_farmer_observable, is_diagnostic, observation_type')
       .in('observation_code', candidateKeys);
 
     if (masterErr) {
@@ -155,18 +196,30 @@ export async function loadClarificationCandidates(
     }
 
     const validKeys = new Set<string>();
+    const dropReasons = new Map<string, string>();
     for (const m of masterRows || []) {
       const key = canonicalizeObservationKey(m.observation_code);
       if (!key) continue;
       const active = m.is_active !== false;
       const fo = m.is_farmer_observable !== false; // default-on if null
-      if (active && fo) validKeys.add(key);
+      const notDiagnostic = m.is_diagnostic !== true;
+      const typeUpper = String(m.observation_type || '').trim().toUpperCase();
+      // Empty observation_type is tolerated (legacy rows); non-empty must be
+      // in the observable allow-list.
+      const typeOk = typeUpper === '' || OBSERVABLE_TYPES.has(typeUpper);
+
+      if (!active)       { dropReasons.set(key, 'inactive'); continue; }
+      if (!fo)           { dropReasons.set(key, 'not_farmer_observable'); continue; }
+      if (!notDiagnostic){ dropReasons.set(key, 'is_diagnostic'); continue; }
+      if (!typeOk)       { dropReasons.set(key, `observation_type=${typeUpper}`); continue; }
+      validKeys.add(key);
     }
 
     const gatedKeys = candidateKeys.filter((k) => validKeys.has(k));
     if (gatedKeys.length === 0) {
       console.warn(
-        `[CLARIFICATION_CONTRACT] all ${candidateKeys.length} IOM candidates dropped by observation_master gate`,
+        `[CLARIFICATION_CONTRACT] all ${candidateKeys.length} IOM candidates dropped by observation_master gate ` +
+        `reasons=${JSON.stringify(Object.fromEntries(dropReasons))}`,
       );
       return [];
     }
@@ -208,8 +261,17 @@ export async function loadClarificationCandidates(
 
     console.log(
       `[CLARIFICATION_CONTRACT] intent=${intentUpper} crop=${cropLower} stage=${growth_stage} das=${das} ` +
-      `→ iom=${candidateKeys.length} gated=${gatedKeys.length} returned=${out.length} ` +
+      `→ iom=${candidateRank.size} confirmed_dropped=${preConfirmedDrops.length} ` +
+      `gated=${gatedKeys.length} returned=${out.length} ` +
       `keys=[${out.map((o) => o.observation_key).join(',')}]`,
+    );
+
+    // Forensic trace: exactly which ontology decisions produced the shown UI.
+    console.log(
+      `[CLARIFICATION_SOURCE] intent=${intentUpper} ` +
+      `confirmed_observation=[${Array.from(confirmedKeys).join(',')}] ` +
+      `dropped_already_confirmed=[${preConfirmedDrops.join(',')}] ` +
+      `shown_options=[${out.map((o) => o.observation_key).join(',')}]`,
     );
 
     return out;

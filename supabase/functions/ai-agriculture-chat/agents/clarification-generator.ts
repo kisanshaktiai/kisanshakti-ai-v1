@@ -256,6 +256,9 @@ export async function generateScopedClarification(
           das: canonicalContext.days_since_sowing ?? null,
           language,
           max: 3,
+          // Rule 2: never re-ask evidence the farmer has already confirmed.
+          // ConversationState.confirmed is the SSOT for locked observations.
+          confirmed: conversationState?.confirmed ?? [],
         });
 
         if (candidates.length > 0) {
