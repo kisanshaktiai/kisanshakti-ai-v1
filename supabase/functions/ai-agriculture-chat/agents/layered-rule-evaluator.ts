@@ -1442,7 +1442,27 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // OBSERVATION LAYER FILTER: required_observation_category + required_plant_part
           // Prevents cross-domain rule matching (e.g., nutrient rules for pest symptoms)
           // ═══════════════════════════════════════════════════════════════════════════
-          const visualSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
+          // ─────────────────────────────────────────────────────────────
+          // Ontology-first evidence union. Priority = authority.
+          //   1. observation_codes[]         (canonical DB ontology codes)
+          //   2. confirmed_observations[]    (verified by farmer / vision)
+          //   3. synthetic_observations[]    (inferred by symbolic bridge)
+          //   4. visual_symptom              (legacy singular enum)
+          // NO observation → symptom conversion. Codes flow verbatim.
+          // ─────────────────────────────────────────────────────────────
+          const _obsCodes:  string[] = Array.isArray((state as any).observation_codes)      ? (state as any).observation_codes      : [];
+          const _confirmed: string[] = Array.isArray((state as any).confirmed_observations) ? (state as any).confirmed_observations : [];
+          const _synthetic: string[] = Array.isArray((state as any).synthetic_observations) ? (state as any).synthetic_observations : [];
+          const _secondary: string[] = Array.isArray(state.secondary_symptoms)
+            ? state.secondary_symptoms.map((s: any) => String(s)) : [];
+          const _legacy: string[] = (state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN')
+            ? [String(state.visual_symptom)] : [];
+          const evidenceCodesUpper: string[] = [...new Set(
+            [..._obsCodes, ..._confirmed, ..._synthetic, ..._secondary, ..._legacy]
+              .filter(Boolean)
+              .map((s: string) => String(s).toUpperCase().replace(/[\s-]/g, '_'))
+          )];
+          const visualSymptoms = evidenceCodesUpper;
           
           if (visualSymptoms.length > 0) {
             // Infer observation categories from symptom codes using keyword patterns
