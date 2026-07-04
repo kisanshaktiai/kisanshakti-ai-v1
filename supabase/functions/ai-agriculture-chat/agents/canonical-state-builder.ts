@@ -308,7 +308,18 @@ export interface CanonicalState {
   days_after_sowing: DaysAfterSowingBucket;
   days_after_sowing_exact?: number;
   
-  // Visual Symptom State
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEURO-SYMBOLIC PASSTHROUGH — FIRST-CLASS OBSERVATION CODES
+  // Ontology (observation_master / observation_aliases) is the SSOT. These are
+  // the ORIGINAL canonical codes as produced by language-induction — the rule
+  // engine and hypothesis evaluator MUST read from here, NOT from
+  // visual_symptom. Codes like `poor_germination`, `germination_failure`,
+  // `POOR_GERMINATION`, `DEAD_HEART_SC` are preserved verbatim.
+  // ═══════════════════════════════════════════════════════════════════════════
+  observation_codes: string[];
+
+  // Visual Symptom State — LEGACY COMPATIBILITY LABELS ONLY.
+  // Do NOT branch decisions on `visual_symptom`; use `observation_codes`.
   visual_symptom: VisualSymptom | string;
   secondary_symptoms: (VisualSymptom | string)[];
   symptom_distribution: SymptomDistribution;
@@ -640,6 +651,15 @@ export interface BuildCanonicalStateInput {
     state?: string;
     irrigation_type?: string;
     farming_mode?: string;
+    // PHASE 1 — Immutable BiologicalState (SSOT). When is_locked=true, its
+    // growth_stage / das MUST override GDD and any heuristic writer.
+    biological_state?: {
+      is_locked?: boolean;
+      growth_stage?: string | null;
+      das?: number | null;
+      crop_code?: string | null;
+      source?: string;
+    } | null;
     ndvi?: {
       value?: number;
       mean_ndvi?: number;
@@ -786,36 +806,50 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       : 'none';
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 2. STAGE SOURCE PRIORITY (UPDATED: canonicalContext > GDD > landContext)
+  // 2. STAGE SOURCE PRIORITY — BIOLOGICAL AUTHORITY FIRST
+  //   canonicalContext(locked) > landContext.biological_state(locked) >
+  //   landContext.growth_stage (crop_stage_master) > GDD (evidence, not authority) > flat
+  // GDD is DEMOTED: it may inform transitions/confidence but MUST NOT overwrite
+  // an authoritative stage produced by the phenology SSOT.
   // ═══════════════════════════════════════════════════════════════════════════
+  const bioState = landContext?.biological_state;
+  const bioStageLocked =
+    !!bioState?.is_locked && !!bioState?.growth_stage &&
+    String(bioState.growth_stage).toUpperCase() !== 'UNKNOWN';
+
   const cropStageRaw = 
     (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
-      ? canonicalCtx.growth_stage :        // ✅ HIGHEST: Locked canonical context
-    gddResult?.growth_stage ||             // a) GDD phenology result
-    gddResult?.stage_name ||               // a.1) alternative GDD field
-    landContext?.growth_stage ||           // b) landContext.growth_stage
-    landContext?.stage ||                  // b.1) alternative field name
-    input.cropStage ||                     // c) flat property fallback
+      ? canonicalCtx.growth_stage :
+    bioStageLocked
+      ? String(bioState!.growth_stage) :
+    landContext?.growth_stage ||
+    landContext?.stage ||
+    gddResult?.growth_stage ||               // demoted below SSOT sources
+    gddResult?.stage_name ||
+    input.cropStage ||
     'UNKNOWN';
   
   const stageSource = 
     (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
       ? 'canonicalContext'
-    : gddResult?.growth_stage || gddResult?.stage_name
-      ? 'GDD'
+    : bioStageLocked
+      ? 'biological_state_ssot'
     : landContext?.growth_stage || landContext?.stage
       ? 'landContext'
+    : gddResult?.growth_stage || gddResult?.stage_name
+      ? 'GDD'
     : input.cropStage
       ? 'flat_input'
       : 'none';
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 3. DAYS AFTER SOWING (UPDATED: canonicalContext has priority)
-  // FIX: Default to null instead of 0 to prevent false young-crop protection
+  // 3. DAYS AFTER SOWING (bioState locked > canonicalContext > landContext > flat)
   // ═══════════════════════════════════════════════════════════════════════════
   const daysAfterSowing = 
+    (bioState?.is_locked && bioState.das !== null && bioState.das !== undefined)
+      ? bioState.das :
     (canonicalCtx?.is_locked && canonicalCtx?.days_since_sowing !== null && canonicalCtx.days_since_sowing !== undefined)
-      ? canonicalCtx.days_since_sowing :   // ✅ HIGHEST: Locked canonical context
+      ? canonicalCtx.days_since_sowing :
     landContext?.days_since_sowing ??
     landContext?.days_after_sowing ??
     input.daysAfterSowing ??
@@ -907,15 +941,34 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     }
   }
 
-  // Map observations to symptoms (pure passthrough from ontology layer)
-  const allObservations = [
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OBSERVATION_CODES — FIRST-CLASS ONTOLOGY PASSTHROUGH (SSOT)
+  // Preserve every canonical code exactly as delivered by the language-
+  // induction layer. Rules and hypothesis evaluators MUST read this array.
+  // We keep BOTH the caller's original casing (e.g. `poor_germination`) AND
+  // the UPPER_SNAKE form so downstream comparators of either style match.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const rawObservations = [
     ...(input.farmerObservations || []),
-    ...(input.imageAnalysisSymptoms || [])
-  ];
+    ...(input.imageAnalysisSymptoms || []),
+  ]
+    .map(o => (o == null ? '' : String(o).trim()))
+    .filter(Boolean);
+
+  const observationCodes: string[] = [];
+  const seenObs = new Set<string>();
+  for (const obs of rawObservations) {
+    const upper = obs.toUpperCase().replace(/[\s-]/g, '_');
+    if (!/^[A-Z][A-Z0-9_]*$/.test(upper)) continue;
+    // Preserve original as-provided token (poor_germination stays lowercase)
+    if (!seenObs.has(obs)) { seenObs.add(obs); observationCodes.push(obs); }
+    // Also expose the canonical UPPER form when it differs
+    if (upper !== obs && !seenObs.has(upper)) { seenObs.add(upper); observationCodes.push(upper); }
+  }
+
+  const allObservations = rawObservations;
   const normalizedObservationSet = new Set(
-    allObservations
-      .map(obs => String(obs || '').trim().toUpperCase())
-      .filter(Boolean)
+    allObservations.map(o => o.toUpperCase().replace(/[\s-]/g, '_')).filter(Boolean),
   );
   // BUG-3 FIX: symptom_count MUST count real farmer/sensor evidence only.
   const evidenceClass = classifyEvidence(Array.from(normalizedObservationSet));
@@ -927,9 +980,25 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     `real=[${evidenceClass.real_codes.slice(0, 8).join(',')}] ` +
     `ignored=[${evidenceClass.ignored_codes.slice(0, 8).join(',')}]`
   );
+  console.log(
+    `[OBSERVATION_CODES_PASSTHROUGH] count=${observationCodes.length} ` +
+    `codes=[${observationCodes.slice(0, 8).join(',')}]`
+  );
   // SPRINT 3 FIX: Adaptive denominator (min 4) — see orchestrator coverage-gate notes.
   const symptomDataCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
+
+  // GRAPH_AUTHORITY_VIOLATION — input observation set must survive intact.
+  // If a caller supplied N real ontology codes but we transported 0, we have
+  // silently dropped facts. Fail loudly so the pipeline never proceeds on a
+  // mutated graph (e.g. GERMINATION_FAILURE → UNKNOWN).
+  if (evidenceClass.real_symptom_count > 0 && observationCodes.length === 0) {
+    throw new Error(
+      `GRAPH_AUTHORITY_VIOLATION: real_symptom_count=${evidenceClass.real_symptom_count} ` +
+      `but observation_codes=[] — canonical-state must transport ontology codes, not drop them.`
+    );
+  }
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CANONICAL_MUTATION_CHECK — OBSERVATION
@@ -1022,7 +1091,10 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     days_after_sowing: mapDaysToSowingBucket(daysAfterSowing),
     days_after_sowing_exact: daysAfterSowing,
     
-    // Visual Symptoms
+    // Observation codes (FIRST-CLASS ontology passthrough — SSOT for rules)
+    observation_codes: observationCodes,
+
+    // Visual Symptoms (legacy label surface — do NOT branch decisions here)
     visual_symptom: visualSymptom,
     secondary_symptoms: secondarySymptoms,
     symptom_distribution: symptomDist,
