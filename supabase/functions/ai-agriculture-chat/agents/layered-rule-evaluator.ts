@@ -1399,6 +1399,12 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // CRITICAL FIX: ENFORCE crop_code matching with proper normalization
           // Database uses short codes (SC, CTN) while CanonicalState uses full names (SUGARCANE, COTTON)
           // ═══════════════════════════════════════════════════════════════════════════
+          /**
+           * @deprecated cropCodeAliases — DO NOT ADD NEW AGRONOMY.
+           * Crop code equivalences must originate from the ontology database
+           * (crop_synonyms / crops table). Retained only until DB-backed
+           * resolver is wired in. Tracked for ontology-migration pass.
+           */
           const cropCodeAliases: Record<string, string[]> = {
             'SC': ['SUGARCANE', 'SUGAR_CANE', 'USCANE', 'CANE'],
             'CTN': ['COTTON', 'KAPAS'],
