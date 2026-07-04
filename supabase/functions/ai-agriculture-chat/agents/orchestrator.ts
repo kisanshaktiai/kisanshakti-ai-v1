@@ -10027,9 +10027,14 @@ export class AIAgentOrchestrator {
    * Build NLU output with rule mapping for diagnostic controller
    * CRITICAL GAP 1 FIX: Now properly calls resolveRuleModules() to populate requiredRuleModules
    */
-  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence): any {
+  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence, frozenIntent?: string | null): any {
     // Extract intent for rule resolution
-    const intent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
+    // FORENSIC FIX (2026-07): Prefer the frozen graph intent (set by intent
+    // freeze) over the raw NLU classifier. Without this, downstream logs
+    // "Resolved 6 rule modules for intent: UNKNOWN" even after we've locked
+    // intent=DIAGNOSTIC_INQUIRY.
+    const nluIntent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
+    const intent = (frozenIntent && frozenIntent !== 'UNKNOWN' ? frozenIntent : nluIntent) as NLUIntent;
     
     // Build extracted entities from NLU output + fused intelligence
     // CRITICAL FIX: Prioritize fused intelligence crop code, then NLU, then use as-is
