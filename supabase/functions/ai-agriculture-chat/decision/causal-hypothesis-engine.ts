@@ -518,11 +518,11 @@ function scoreHypothesis(
   // Check contradictions
   const contradictionsFound = checkContradictions(contradictionRows, canonicalState, observations);
 
-  // STRICT FAIL-CLOSED MATCH RULE:
+  // STRICT FAIL-CLOSED MATCH RULE (Phase 6: SKIPPED_NO_DATA no longer eliminates):
   // 1. Zero required entries with FAILED
-  // 2. Zero required entries with SKIPPED_NO_DATA
-  // 3. Zero CONTRADICTED entries
-  // 4. At least one PASSED entry
+  // 2. Zero CONTRADICTED entries
+  // 3. At least one PASSED entry
+  // Missing sensor/weather data is now a CONFIDENCE PENALTY, not elimination.
   const hasRequiredFailed = ledger.some(e => e.required && e.status === HypothesisConditionStatus.FAILED);
   const hasRequiredSkipped = ledger.some(e => e.required && e.status === HypothesisConditionStatus.SKIPPED_NO_DATA);
   const hasContradiction = contradictionsFound.length > 0;
@@ -537,9 +537,6 @@ function scoreHypothesis(
   } else if (hasRequiredFailed) {
     is_eliminated = true;
     elimination_reason = 'FAILED_REQUIRED';
-  } else if (hasRequiredSkipped) {
-    is_eliminated = true;
-    elimination_reason = 'MISSING_DATA';
   } else if (!hasPassed) {
     is_eliminated = true;
     elimination_reason = 'FAILED_REQUIRED';
@@ -548,28 +545,42 @@ function scoreHypothesis(
   // Compute score (even for eliminated, for logging)
   const requiredEntries = ledger.filter(e => e.required);
   const passedRequired = requiredEntries.filter(e => e.status === HypothesisConditionStatus.PASSED);
-  
+
   const totalRequiredWeight = requiredEntries.reduce((sum, e) => sum + e.weight, 0);
   const passedRequiredWeight = passedRequired.reduce((sum, e) => sum + e.weight, 0);
-  
+
   // Include optional passed conditions in score
   const optionalPassed = ledger.filter(e => !e.required && e.status === HypothesisConditionStatus.PASSED);
   const totalWeight = conditions.reduce((sum, c) => sum + c.weight, 0);
-  const passedWeight = passedRequired.reduce((sum, e) => sum + e.weight, 0) + 
+  const passedWeight = passedRequired.reduce((sum, e) => sum + e.weight, 0) +
                        optionalPassed.reduce((sum, e) => sum + e.weight, 0);
 
   const base_score = totalWeight > 0 ? passedWeight / totalWeight : 0;
-  
+
   // Density weight (same formula as layered-rule-evaluator.ts)
   const total_required = requiredEntries.length;
   const density_weight = Math.min(1.0, Math.log(total_required + 1) / Math.log(10));
-  const weighted_score = Math.min(1.0, base_score * (0.5 + 0.5 * density_weight));
+  let weighted_score = Math.min(1.0, base_score * (0.5 + 0.5 * density_weight));
+
+  // Phase 6: bounded confidence penalty for missing evidence (weight-scaled),
+  // capped so a single required SKIPPED cannot exceed 30% of the score.
+  const skippedEntries = ledger.filter(e => e.status === HypothesisConditionStatus.SKIPPED_NO_DATA);
+  if (skippedEntries.length > 0 && totalWeight > 0) {
+    const skippedWeight = skippedEntries.reduce((sum, e) => sum + (e.required ? e.weight : e.weight * 0.5), 0);
+    const penaltyRatio = Math.min(0.5, skippedWeight / totalWeight);
+    const penalty = weighted_score * penaltyRatio;
+    weighted_score = Math.max(0, weighted_score - penalty);
+    if (hasRequiredSkipped) {
+      console.log(`   ⚠️ [HypothesisScore] ${hypothesis.hypothesis_id} required-SKIPPED_NO_DATA: applied confidence penalty=${penalty.toFixed(3)} (score=${weighted_score.toFixed(3)})`);
+    }
+  }
 
   // Apply LOW_SCORE elimination
   if (!is_eliminated && weighted_score < MIN_HYPOTHESIS_CONFIDENCE) {
     is_eliminated = true;
     elimination_reason = 'LOW_SCORE';
   }
+
 
   return {
     hypothesis_id: hypothesis.hypothesis_id,
