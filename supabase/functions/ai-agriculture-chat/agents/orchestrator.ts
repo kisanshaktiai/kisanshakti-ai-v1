@@ -9327,7 +9327,11 @@ export class AIAgentOrchestrator {
     // ═══════════════════════════════════════════════════════════════════════════
     
     const landCurrentCrop = landContext?.current_crop;
-    const landCropStage = landContext?.growth_stage;
+    // FIX 2 (STAGE INVARIANT): BiologicalState is the sole authority for stage.
+    // Never let downstream fallbacks reintroduce a different stage.
+    const bioStageAuthoritative: string | undefined =
+      landContext?.biological_state?.growth_stage || landContext?.growth_stage;
+    const landCropStage = bioStageAuthoritative;
     
     // Validate crop context for training data quality
     const cropValidation = validateCropContext(landCurrentCrop, ids.landId);
