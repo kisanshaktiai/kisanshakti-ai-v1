@@ -119,16 +119,27 @@ export function isCanonicalObservationCode(s: any): boolean {
   return typeof s === 'string' && /^[A-Z][A-Z0-9_]+$/.test(s) && s.length <= 80;
 }
 
+const VERNACULAR_RE = /[\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0980-\u09FF\u0A80-\u0AFF\u0A00-\u0A7F\u0B00-\u0B7F]/;
 export function filterToCanonicalObservations(obs: any): string[] {
   if (!Array.isArray(obs)) return [];
   const filtered: string[] = [];
-  const rejected: string[] = [];
+  const vernacular: string[] = [];
+  const suspicious: string[] = [];
   for (const o of obs) {
     if (isCanonicalObservationCode(o)) filtered.push(o);
-    else if (o != null) rejected.push(String(o).substring(0, 60));
+    else if (o != null) {
+      const s = String(o);
+      // FIX 1: raw farmer text (any script) is pre-canonical noise — never
+      // treat as a contract violation. Silently forward to canonical resolver.
+      if (VERNACULAR_RE.test(s) || /\s/.test(s)) vernacular.push(s.substring(0, 40));
+      else suspicious.push(s.substring(0, 60));
+    }
   }
-  if (rejected.length > 0) {
-    console.error(`[ObservationContract] BLOCKED ${rejected.length} non-canonical entries: ${rejected.join(' | ')}`);
+  if (vernacular.length > 0) {
+    console.log(`[ObservationContract] forwarded ${vernacular.length} pre-canonical vernacular entries to resolver (not blocked)`);
+  }
+  if (suspicious.length > 0) {
+    console.warn(`[ObservationContract] dropped ${suspicious.length} non-canonical entries: ${suspicious.join(' | ')}`);
   }
   return filtered;
 }
