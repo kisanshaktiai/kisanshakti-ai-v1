@@ -34,6 +34,13 @@ export interface ClarificationCandidateInput {
   das?: number | null;
   language: string;
   max?: number;
+  /**
+   * Observation codes already confirmed for this conversation (from
+   * ConversationState.confirmed). Any candidate whose canonical key matches
+   * one of these is dropped BEFORE label rendering so we never re-ask
+   * something the farmer has already stated.
+   */
+  confirmed?: ReadonlyArray<string>;
 }
 
 // ─── Canonical key helper ──────────────────────────────────────────────────
