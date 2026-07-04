@@ -8486,10 +8486,17 @@ export class AIAgentOrchestrator {
       const effectiveCropName = cropSchedule?.crop_name || land.current_crop || null;
       const effectiveCropVariety = cropSchedule?.crop_variety || null;
 
-      // Phenology SSOT overrides client-heuristic growth_stage / DAS when present.
-      const authoritativeStage = phenology?.growth_stage || growthStage;
-      const authoritativeDas   = phenology?.current_das ?? daysSinceSowing;
-      const stageAuthority     = phenology ? 'phenology_ssot' : (cropSchedule ? 'schedule_heuristic' : 'lands_fallback');
+      // BiologicalState (when locked) is the sole authority for stage/DAS.
+      const authoritativeStage = biological_state?.growth_stage ?? phenology?.growth_stage ?? growthStage;
+      const authoritativeDas   = biological_state?.das ?? phenology?.current_das ?? daysSinceSowing;
+      const stageAuthority     = biological_state ? 'biological_state_ssot' : (phenology ? 'phenology_ssot' : (cropSchedule ? 'schedule_heuristic' : 'lands_fallback'));
+      console.log(
+        `🧭 [STAGE_AUTHORITY_TRACE] land=${landId} ` +
+          `biological_state.stage=${biological_state?.growth_stage ?? 'null'} ` +
+          `phenology.stage=${phenology?.growth_stage ?? 'null'} ` +
+          `landContext.stage=${authoritativeStage ?? 'null'} ` +
+          `authority=${stageAuthority}`,
+      );
 
       // ═══════════════════════════════════════════════════════════════════════
       // PHASE C — Morphology reconciliation
