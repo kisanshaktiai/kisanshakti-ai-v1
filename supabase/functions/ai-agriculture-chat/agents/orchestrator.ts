@@ -1283,7 +1283,12 @@ export class AIAgentOrchestrator {
           // Lock the growth stage for the entire turn to ensure consistent clarification
           // ═══════════════════════════════════════════════════════════════════════════
           if (landContext.growth_stage && landContext.current_crop) {
-            const stageSource = landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT';
+            // PHASE-1 SSOT: BiologicalState (when locked) is the sole stage authority.
+            // Only fall back to CROP_SCHEDULE/LAND_CONTEXT when resolver produced no row.
+            const _bioLocked = !!(landContext as any)?.biological_state?.is_locked;
+            const stageSource: 'BIOLOGICAL_STATE' | 'CROP_SCHEDULE' | 'LAND_CONTEXT' =
+              _bioLocked ? 'BIOLOGICAL_STATE'
+                : (landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT');
             lockStageForTurn(
               landContext.current_crop,
               landContext.growth_stage,
@@ -1374,6 +1379,30 @@ export class AIAgentOrchestrator {
             `ontology=${versions.ontology_version} iom=${versions.iom_version} ` +
             `translations=${versions.translation_version} language=${language}`
         );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE-1 STAGE AUTHORITY GUARD (log-only during migration)
+        // The frozen canonical context MUST have source=BIOLOGICAL_STATE when
+        // landContext exists. Any other source means an old authority (crop
+        // schedule heuristic, lands.crop_stage text) beat the SSOT.
+        // ═══════════════════════════════════════════════════════════════════
+        if (canonicalContext && landContext) {
+          const bioLocked = !!(landContext as any)?.biological_state?.is_locked;
+          if (bioLocked && canonicalContext.source !== 'BIOLOGICAL_STATE') {
+            console.warn(
+              `⚠️ [STAGE_AUTHORITY_VIOLATION][${traceId}] canonical.source=${canonicalContext.source} ` +
+                `but biological_state is LOCKED (stage=${(landContext as any).biological_state.growth_stage}). ` +
+                `Expected source=BIOLOGICAL_STATE. Downstream reasoning may use wrong stage.`
+            );
+          } else if (!bioLocked) {
+            console.warn(
+              `⚠️ [STAGE_AUTHORITY_VIOLATION][${traceId}] canonical.source=${canonicalContext.source} ` +
+                `— no BiologicalState lock (resolve_crop_phenology produced no row). ` +
+                `Stage=${canonicalContext.growth_stage} is heuristic, not SSOT.`
+            );
+          }
+        }
+
         graphCp = assertNoGraphDrift(graph, graphCp, 'CANONICAL_FREEZE');
       } catch (e) {
         if (e instanceof GraphStateDriftError || e instanceof SymbolicIdLeakError) {
@@ -4086,35 +4115,68 @@ export class AIAgentOrchestrator {
         // the curated intent×crop×stage×DAS set instead of the raw intent code.
         if (directHardBypass) {
           try {
-            const { loadIOMAllowed } = await import('../decision/iom-gate.ts');
-            const _crop = (
-              (landContext as any)?.current_crop ||
-              (canonicalContext as any)?.crop_code ||
-              (canonicalContext as any)?.crop ||
-              ''
-            ).toString().toLowerCase();
-            const _stage = (
-              (landContext as any)?.growth_stage ||
-              (canonicalContext as any)?.growth_stage ||
-              (canonicalContext as any)?.stage ||
-              null
+            // ═══════════════════════════════════════════════════════════════
+            // PHASE-1 OBSERVATION-BEATS-INTENT GUARD
+            // If the farmer's observation stream carries stress/failure signals
+            // (POOR_GERMINATION, EMERGENCE_FAILURE, PLANT_DEATH, …), block the
+            // "healthy_crop"-style IOM enrichment path. Never allow the graph
+            // to hold POOR_GERMINATION + healthy_crop simultaneously.
+            // ═══════════════════════════════════════════════════════════════
+            const STRESS_MARKERS = [
+              'POOR_GERMINATION', 'GERMINATION_FAILURE', 'NO_EMERGENCE', 'EMERGENCE_FAILURE',
+              'SEEDLING_DIED', 'PLANT_DIED', 'PLANT_DEATH', 'DEAD_SEEDLINGS',
+              'ESTABLISHMENT_FAILURE', 'CROP_FAILURE', 'PATCHY_DAMAGE',
+              'WILTING_SEVERE', 'PLANT_DRYING', 'PLANT_STUNTED',
+            ];
+            const HEALTHY_MARKERS = new Set([
+              'healthy_crop', 'HEALTHY_CROP', 'HEALTHY_PLANT', 'NORMAL_GROWTH',
+              'variety_query', 'stage_general',
+            ]);
+            const stressPresent = [...allObservationsForPreAuth].some(
+              (c: string) => STRESS_MARKERS.includes(String(c).toUpperCase())
             );
-            const _das = (
-              (landContext as any)?.days_after_sowing ??
-              (canonicalContext as any)?.das ??
-              null
-            );
-            const iomSeed = await loadIOMAllowed(this.supabase, intentCode, _crop, _stage, _das);
-            const topAllowed = iomSeed.allowedRanked.slice(0, 5);
-            for (const r of topAllowed) {
-              const code = r.observation_code;
-              if (!allObservationsForPreAuth.has(code)) {
-                allObservationsForPreAuth.add(code);
-                authoredObservations.add(code, ObservationAuthority.INFERRED, 'DIRECT_HARD_IOM_SEED');
+            const bioStage = ((landContext as any)?.biological_state?.growth_stage
+              ?? (canonicalContext as any)?.growth_stage ?? '').toString().toUpperCase();
+            if (stressPresent) {
+              console.warn(
+                `🚨 [BIOLOGICAL_CONTRADICTION] stress observations present ` +
+                  `(${[...allObservationsForPreAuth].filter((c: string) => STRESS_MARKERS.includes(String(c).toUpperCase())).join(', ')}) ` +
+                  `at stage=${bioStage || 'UNKNOWN'} — blocking DIRECT_HARD_IOM_SEED of healthy/general observations.`
+              );
+              agentsUsed.push('BIOLOGICAL_CONTRADICTION_GUARD');
+            } else {
+              const { loadIOMAllowed } = await import('../decision/iom-gate.ts');
+              const _crop = (
+                (landContext as any)?.current_crop ||
+                (canonicalContext as any)?.crop_code ||
+                (canonicalContext as any)?.crop ||
+                ''
+              ).toString().toLowerCase();
+              const _stage = (
+                (landContext as any)?.growth_stage ||
+                (canonicalContext as any)?.growth_stage ||
+                (canonicalContext as any)?.stage ||
+                null
+              );
+              const _das = (
+                (landContext as any)?.days_after_sowing ??
+                (canonicalContext as any)?.das ??
+                null
+              );
+              const iomSeed = await loadIOMAllowed(this.supabase, intentCode, _crop, _stage, _das);
+              const topAllowed = iomSeed.allowedRanked
+                .filter(r => !HEALTHY_MARKERS.has(r.observation_code))
+                .slice(0, 5);
+              for (const r of topAllowed) {
+                const code = r.observation_code;
+                if (!allObservationsForPreAuth.has(code)) {
+                  allObservationsForPreAuth.add(code);
+                  authoredObservations.add(code, ObservationAuthority.INFERRED, 'DIRECT_HARD_IOM_SEED');
+                }
               }
+              agentsUsed.push('DIRECT_HARD_IOM_SEED');
+              console.log(`   🌱 [DIRECT_HARD_IOM_SEED] intent=${intentCode} crop=${_crop} stage=${_stage} das=${_das} → seeded ${topAllowed.length} IOM observations: ${topAllowed.map(r => r.observation_code).join(', ')}`);
             }
-            agentsUsed.push('DIRECT_HARD_IOM_SEED');
-            console.log(`   🌱 [DIRECT_HARD_IOM_SEED] intent=${intentCode} crop=${_crop} stage=${_stage} das=${_das} → seeded ${topAllowed.length} IOM observations: ${topAllowed.map(r => r.observation_code).join(', ')}`);
           } catch (e) {
             console.warn(`   ⚠️ [DIRECT_HARD_IOM_SEED] failed: ${e instanceof Error ? e.message : String(e)}`);
           }
@@ -8543,6 +8605,8 @@ export class AIAgentOrchestrator {
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
+        // PHASE-1 SSOT: propagate canonical stage authority into canonical context
+        source: biological_state ? 'BIOLOGICAL_STATE' : (cropSchedule ? 'CROP_SCHEDULES' : 'LAND_DATA'),
         district: land.district,
         state: land.state,
         village: land.village,
