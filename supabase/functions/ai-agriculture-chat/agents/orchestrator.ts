@@ -1379,6 +1379,30 @@ export class AIAgentOrchestrator {
             `ontology=${versions.ontology_version} iom=${versions.iom_version} ` +
             `translations=${versions.translation_version} language=${language}`
         );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE-1 STAGE AUTHORITY GUARD (log-only during migration)
+        // The frozen canonical context MUST have source=BIOLOGICAL_STATE when
+        // landContext exists. Any other source means an old authority (crop
+        // schedule heuristic, lands.crop_stage text) beat the SSOT.
+        // ═══════════════════════════════════════════════════════════════════
+        if (canonicalContext && landContext) {
+          const bioLocked = !!(landContext as any)?.biological_state?.is_locked;
+          if (bioLocked && canonicalContext.source !== 'BIOLOGICAL_STATE') {
+            console.warn(
+              `⚠️ [STAGE_AUTHORITY_VIOLATION][${traceId}] canonical.source=${canonicalContext.source} ` +
+                `but biological_state is LOCKED (stage=${(landContext as any).biological_state.growth_stage}). ` +
+                `Expected source=BIOLOGICAL_STATE. Downstream reasoning may use wrong stage.`
+            );
+          } else if (!bioLocked) {
+            console.warn(
+              `⚠️ [STAGE_AUTHORITY_VIOLATION][${traceId}] canonical.source=${canonicalContext.source} ` +
+                `— no BiologicalState lock (resolve_crop_phenology produced no row). ` +
+                `Stage=${canonicalContext.growth_stage} is heuristic, not SSOT.`
+            );
+          }
+        }
+
         graphCp = assertNoGraphDrift(graph, graphCp, 'CANONICAL_FREEZE');
       } catch (e) {
         if (e instanceof GraphStateDriftError || e instanceof SymbolicIdLeakError) {
