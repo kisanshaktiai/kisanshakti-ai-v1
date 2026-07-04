@@ -60,6 +60,11 @@ export interface ScientificGateResult {
   approved: CandidateRecommendation[];
   rejected: Array<{ candidate: CandidateRecommendation; reasons: string[] }>;
   scientificConfidence: number;
+  /** Diagnosis is emitted regardless of missing product/baseline. */
+  allow_diagnosis: boolean;
+  /** Treatment requires an approved candidate AND baseline reference. */
+  allow_treatment: boolean;
+  block_reasons: string[];
 }
 
 // Tolerance band — production-grade default; tunable later via system_config.
@@ -208,11 +213,50 @@ export async function evaluateScientificGate(
         : approvedWithBaseline / evaluated);
   chain?.set('scientific', scientificConfidence);
 
+  // ─── GATE SPLIT — diagnosis vs treatment ───────────────────────────────
+  // Diagnosis is ALWAYS allowed when at least one candidate exists — the
+  // scientific gate only guards prescription/quantitative payloads.
+  // Treatment requires a baseline-approved candidate.
+  const allow_diagnosis = candidates.length > 0;
+  const allow_treatment = approvedWithBaseline > 0;
+  const block_reasons: string[] = [];
+  if (!allow_treatment) {
+    if (approvedWithoutBaseline > 0) block_reasons.push('INSUFFICIENT_REFERENCE');
+    if (rejected.length > 0)         block_reasons.push('BASELINE_VIOLATION');
+    if (candidates.length === 0)     block_reasons.push('NO_CANDIDATES');
+  }
+
   console.log(
     `[BRAIN_TRACE][SCIENTIFIC_GATE] approved=${approved.length} ` +
       `(with_baseline=${approvedWithBaseline}, insufficient_reference=${approvedWithoutBaseline}) ` +
-      `rejected=${rejected.length} conf=${scientificConfidence.toFixed(3)}`
+      `rejected=${rejected.length} conf=${scientificConfidence.toFixed(3)} ` +
+      `diagnosis=${allow_diagnosis} treatment=${allow_treatment}`
   );
 
-  return { approved, rejected, scientificConfidence };
+  // GRAPH_NODE_TRACE — SCIENTIFIC_GATE (uniform pipeline line)
+  try {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[GRAPH_NODE_TRACE][scientific-gate] node=SCIENTIFIC_GATE ` +
+        JSON.stringify({
+          allow_diagnosis,
+          allow_treatment,
+          approved: approved.length,
+          rejected: rejected.length,
+          with_baseline: approvedWithBaseline,
+          insufficient_reference: approvedWithoutBaseline,
+          confidence: Number(scientificConfidence.toFixed(3)),
+          block_reasons,
+        }),
+    );
+  } catch {/* trace must not throw */}
+
+  return {
+    approved,
+    rejected,
+    scientificConfidence,
+    allow_diagnosis,
+    allow_treatment,
+    block_reasons,
+  };
 }
