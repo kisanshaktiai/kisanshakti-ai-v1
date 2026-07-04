@@ -1551,20 +1551,9 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // Without this bridge, input.visual_symptoms was ALWAYS empty, causing
           // every observation-based condition to FAIL with SKIPPED_NO_DATA + required:true.
           // ═══════════════════════════════════════════════════════════════════
-          const confirmedObs: string[] = (state as any).confirmed_observations || [];
-          const syntheticObs: string[] = (state as any).synthetic_observations || [];
-          const secondarySyms: string[] = Array.isArray(state.secondary_symptoms) 
-            ? state.secondary_symptoms.map((s: any) => String(s)) : [];
-          const allVisualSymptoms = [
-            ...confirmedObs,
-            ...syntheticObs,
-            ...secondarySyms,
-            // Also include the primary visual_symptom if it's a real value
-            ...(state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN' 
-              ? [String(state.visual_symptom)] : [])
-          ];
-          // Deduplicate
-          const uniqueVisualSymptoms = [...new Set(allVisualSymptoms.filter(Boolean))];
+          // Reuse the ontology-first evidence union computed above so
+          // ObsFilter and the rule-condition evaluator see identical evidence.
+          const uniqueVisualSymptoms = evidenceCodesUpper;
           
           const input = {
             crop_code: state.crop_type?.toLowerCase() || '',
