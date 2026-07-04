@@ -99,6 +99,25 @@ export function buildBiologicalState(
     raw: Object.freeze({ ...phenology }),
   };
 
+  // GRAPH_NODE_TRACE — BIO_STATE (single line at lock time)
+  try {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[GRAPH_NODE_TRACE][bio-lock] node=BIO_STATE ` +
+        JSON.stringify({
+          crop: state.crop_code,
+          variety: state.crop_variety,
+          das: state.das,
+          gdd: state.gdd_accumulated,
+          biological_stage: state.growth_stage,
+          stage_uuid: state.stage_uuid,
+          source: state.source,
+          resolver_version: state.resolver_version,
+          confidence: state.confidence,
+        }),
+    );
+  } catch {/* trace must not throw */}
+
   return Object.freeze(state);
 }
 

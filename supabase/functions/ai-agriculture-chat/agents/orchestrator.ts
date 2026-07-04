@@ -2943,7 +2943,29 @@ export class AIAgentOrchestrator {
       const intentConf = typeof semanticExtraction?.intent_confidence === 'number' 
         ? semanticExtraction.intent_confidence : 0;
       const obsCodesList = expandedObservationCodes || [];
-      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // INTENT SALVAGE — if intent is UNKNOWN but we have crop + real
+      // observations, reclassify to DIAGNOSTIC_INQUIRY so the graph proceeds
+      // instead of collapsing to a generic template.
+      // ═══════════════════════════════════════════════════════════════════════
+      try {
+        const realObsCount = classifyEvidence(obsCodesList).real_symptom_count;
+        const cropPresent = !!(canonicalContext?.crop_code || landContext?.current_crop);
+        const isUnknown = intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION';
+        if (isUnknown && (cropPresent || realObsCount > 0)) {
+          const salvaged = realObsCount > 0 ? 'DIAGNOSTIC_INQUIRY' : 'GENERAL_CROP_INFO';
+          console.log(`[INTENT_SALVAGE][${traceId}] ${intentCode} → ${salvaged} (crop=${cropPresent} real_obs=${realObsCount})`);
+          intentCode = salvaged;
+        }
+        emitNodeTrace(traceId, 'INTENT', {
+          intent: intentCode,
+          confidence: intentConf,
+          crop: canonicalContext?.crop_code ?? landContext?.current_crop ?? null,
+          real_observations: realObsCount,
+        });
+      } catch {/* trace must not throw */}
+
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 4: Intent Confidence Tiering with Hard Override Guard
       // ═══════════════════════════════════════════════════════════════════════════
@@ -2953,6 +2975,19 @@ export class AIAgentOrchestrator {
       console.log(`      Intent: ${intentCode} (${(intentConf * 100).toFixed(0)}% confidence)`);
       console.log(`      Codes: [${obsCodesList.slice(0, 5).join(', ')}${obsCodesList.length > 5 ? '...' : ''}]`);
       console.log(`      Mapping: ${mappedCodes?.mapping_method || 'UNKNOWN'}, Patterns: ${(mappedCodes?.patterns_matched || []).length}`);
+
+      // GRAPH_NODE_TRACE — OBSERVATION (canonicalized set entering symbolic engine)
+      try {
+        const evidenceObs = classifyEvidence(expandedObservationCodes || []);
+        emitNodeTrace(traceId, 'OBSERVATION', {
+          canonical_count: (expandedObservationCodes || []).length,
+          real_symptom_count: evidenceObs.real_symptom_count,
+          ignored_metadata: evidenceObs.ignored_metadata_count,
+          real_codes: evidenceObs.real_codes,
+          mapping_method: mappedCodes?.mapping_method || 'UNKNOWN',
+        });
+      } catch {/* trace must not throw */}
+
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 7: LLM Output Validation Against Database
