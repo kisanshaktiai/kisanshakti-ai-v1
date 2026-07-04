@@ -1346,29 +1346,14 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               // The family map MUST stay symmetric and crop-independent.
               // ───────────────────────────────────────────────────────────
               /**
-               * @deprecated STAGE_FAMILIES — DO NOT ADD NEW AGRONOMY.
-               * Stage relationships must originate from the ontology database
-               * (crop_stage_master.stage_relationships). This in-code map is
-               * retained temporarily; stages missing from it now fall through
-               * a soft bypass (see [STAGE_ONTOLOGY_MISSING] log below) instead
-               * of hard-rejecting rules. Tracked for ontology-migration pass.
+               * STAGE_FAMILIES — REMOVED. Stage relationships originate
+               * exclusively from the DB ontology (`crop_stage_master.
+               * canonical_stage_id`, `crop_stage_graph`). This empty
+               * placeholder is kept so the downstream soft-bypass logic
+               * (`family === null` → `[STAGE_ONTOLOGY_MISSING]`) executes
+               * uniformly. DO NOT repopulate — curate DB rows instead.
                */
-              const STAGE_FAMILIES: Record<string, string[]> = {
-                GERMINATION:   ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
-                EMERGENCE:     ['EMERGENCE', 'GERMINATION', 'SEEDLING', 'NURSERY', 'ESTABLISHMENT'],
-                SEEDLING:      ['SEEDLING', 'NURSERY', 'GERMINATION', 'EMERGENCE', 'ESTABLISHMENT'],
-                NURSERY:       ['NURSERY', 'SEEDLING', 'GERMINATION', 'EMERGENCE'],
-                ESTABLISHMENT: ['ESTABLISHMENT', 'SEEDLING', 'EMERGENCE', 'GERMINATION'],
-                TILLERING:     ['TILLERING', 'VEGETATIVE'],
-                VEGETATIVE:    ['VEGETATIVE', 'TILLERING'],
-                FLOWERING:     ['FLOWERING', 'REPRODUCTIVE', 'PANICLE_INITIATION', 'BOOTING'],
-                REPRODUCTIVE:  ['REPRODUCTIVE', 'FLOWERING', 'BOOTING', 'PANICLE_INITIATION'],
-                BOOTING:       ['BOOTING', 'PANICLE_INITIATION', 'FLOWERING', 'REPRODUCTIVE'],
-                PANICLE_INITIATION: ['PANICLE_INITIATION', 'BOOTING', 'FLOWERING', 'REPRODUCTIVE'],
-                GRAIN_FILLING: ['GRAIN_FILLING', 'MILK', 'DOUGH', 'MATURITY'],
-                MATURITY:      ['MATURITY', 'HARVEST', 'GRAIN_FILLING'],
-                HARVEST:       ['HARVEST', 'MATURITY'],
-              };
+              const STAGE_FAMILIES: Record<string, string[]> = {};
               const family = STAGE_FAMILIES[currentStage] || null;
               const exactMatch = normalizedApplicableStages.includes(currentStage);
               const familyMatch = family
@@ -1400,12 +1385,15 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // Database uses short codes (SC, CTN) while CanonicalState uses full names (SUGARCANE, COTTON)
           // ═══════════════════════════════════════════════════════════════════════════
           /**
-           * @deprecated cropCodeAliases — DO NOT ADD NEW AGRONOMY.
-           * Crop code equivalences must originate from the ontology database
-           * (crop_synonyms / crops table). Retained only until DB-backed
-           * resolver is wired in. Tracked for ontology-migration pass.
+           * cropCodeAliases — REMOVED. Crop-code equivalences (short-code
+           * ↔ canonical name ↔ vernacular alias) MUST come from the DB
+           * (`public.crop_synonyms`). This empty placeholder preserves
+           * the reference below; unresolved mismatches emit a
+           * `[CROP_ALIAS_MISSING]` forensic log and cause a hard drop —
+           * which is the correct symbolic behaviour when the DB does not
+           * yet map the code. DO NOT repopulate.
            */
-          const cropCodeAliases: Record<string, string[]> = {
+          const cropCodeAliases: Record<string, string[]> = {};
             'SC': ['SUGARCANE', 'SUGAR_CANE', 'USCANE', 'CANE'],
             'CTN': ['COTTON', 'KAPAS'],
             'WH': ['WHEAT', 'GEHUN'],
