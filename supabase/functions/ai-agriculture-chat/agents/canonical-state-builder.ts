@@ -1238,17 +1238,23 @@ export interface PrescriptionGateResult {
 }
 
 export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateResult {
-  // FIX 3 (EVIDENCE_COUNT_TRACE): permanently separate farmer-confirmed
-  // observations from candidate/hypothesis/rule counts. PrescriptionGate
-  // MUST ONLY use confirmed_observation_count. Never rules or candidate
-  // hypothesis counts.
-  const confirmedObservationCount = Math.max(
-    Number((state as any).symptom_count ?? 0),
-    [state.visual_symptom, ...(state.secondary_symptoms || [])]
-      .filter((s: any) => s && s !== 'UNKNOWN' && s !== 'NONE').length
-  );
+  // BUG-3 FIX: confirmed_observation_count MUST derive from real farmer/sensor
+  // evidence only (via classifyEvidence). Never trust array.length or a raw
+  // symptom_count that may have been inflated by metadata markers.
+  const gateCodes: string[] = [
+    state.visual_symptom as any,
+    ...((state.secondary_symptoms as any[]) || []),
+    ...(((state as any).confirmed_observations as any[]) || []),
+  ];
+  const gateClass = classifyEvidence(gateCodes);
+  const confirmedObservationCount = gateClass.real_symptom_count;
   const candidateHypothesisCount = Number((state as any).candidate_hypothesis_count ?? 0);
   const matchedRulesCount = Number((state as any).matched_rules_count ?? 0);
+  console.log(
+    `[EVIDENCE_CLASSIFICATION] site=prescription_gate raw_count=${gateClass.raw_count} ` +
+    `real_symptom_count=${gateClass.real_symptom_count} ` +
+    `ignored_metadata_count=${gateClass.ignored_metadata_count}`
+  );
   console.log(
     `[EVIDENCE_COUNT_TRACE] confirmed_observations=${confirmedObservationCount} ` +
     `candidate_hypotheses=${candidateHypothesisCount} matched_rules=${matchedRulesCount}`
