@@ -1492,6 +1492,11 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               'MANAGEMENT': ['WEED', 'SPACING', 'PLANTING', 'HARVEST']
             };
             
+            /**
+             * @deprecated PLANT_PART_PATTERNS — DO NOT ADD NEW AGRONOMY.
+             * Plant-part resolution must come from observation_master.plant_part
+             * (DB ontology). Retained temporarily until DB-backed lookup lands.
+             */
             const PLANT_PART_PATTERNS: Record<string, string[]> = {
               'STEM': ['STEM', 'INTERNODE', 'CANE', 'STALK', 'BORE_HOLE', 'TUNNEL', 'BORED'],
               'LEAF': ['LEAF', 'FOLIAR', 'CHLOROSIS', 'YELLOWING', 'SPOT', 'RUST', 'CURL', 'SCALD'],
