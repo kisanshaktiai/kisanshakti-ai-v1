@@ -89,12 +89,21 @@ export async function loadClarificationCandidates(
   input: ClarificationCandidateInput,
 ): Promise<ClarificationOption[]> {
   const {
-    supabase, intent_code, crop_code, growth_stage, das, language, max = 3,
+    supabase, intent_code, crop_code, growth_stage, das, language, max = 3, confirmed = [],
   } = input;
 
   const intentUpper = String(intent_code || '').trim().toUpperCase();
   const cropLower   = String(crop_code   || '').trim().toLowerCase();
   const langLower   = String(language    || 'en').trim().toLowerCase();
+
+  // Ontology-first dedup set: canonicalize every already-confirmed code so
+  // the farmer never sees a discriminator asking about evidence they've
+  // already given. No agronomy in code — pure key normalisation.
+  const confirmedKeys = new Set<string>(
+    (confirmed || [])
+      .map((c) => canonicalizeObservationKey(String(c || '')))
+      .filter(Boolean),
+  );
 
   if (!intentUpper) {
     console.warn('[CLARIFICATION_CONTRACT] missing intent_code — returning []');
