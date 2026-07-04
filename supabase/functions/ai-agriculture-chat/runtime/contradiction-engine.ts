@@ -19,7 +19,8 @@
 export type ContradictionKind =
   | 'STAGE_MISMATCH'
   | 'CROP_MISMATCH'
-  | 'DAS_OUT_OF_RANGE';
+  | 'DAS_OUT_OF_RANGE'
+  | 'BIOLOGICAL_IMPOSSIBILITY';
 
 export interface Contradiction {
   readonly kind: ContradictionKind;
