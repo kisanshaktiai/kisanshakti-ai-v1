@@ -1,129 +1,172 @@
 
-# Crop‑Stage Brain — Deep Audit (Phases A → G)
+## Root cause (verified against live DB)
 
-Scope: verify that the migrations that shipped for the variety‑aware crop‑stage brain match (a) the actual database schema in this project and (b) the TypeScript code that is supposed to consume them. Read‑only. No fixes applied.
+For land `Shinghan Mal` (`30197c15-…`), the chat turn has:
+- `lands.planting_date = NULL`
+- `lands.last_sowing_date = NULL`
+- `lands.current_crop = 'Rice'`, `crop_stage = 'Germination'`
+- `crop_schedules` (active) has `sowing_date = 2026-06-08` — but **the RPC never reads this table**.
 
-Legend: ✅ live & wired · ⚠️ live but partial/inconsistent · ❌ broken (compiles but will fail at runtime)
-
----
-
-## 1. What actually shipped in the DB
-
-Tables present (verified in `information_schema`):
-- `crop_stage_master` ✅ — has `base_temperature_c`, `gdd_min/max`, `expected_ndvi_min/max`, `expected_height_cm_*`, `expected_leaf_count_*`, `phenology_index`, `phenology_model`, `stage_node_type`, `prev/next_stage_id`, `is_photoperiod_sensitive`.
-- `variety_phenology_profile` ✅ — Phase B override layer. Columns match resolver (`gdd_target`, `phenology_model_override`, `expected_*`, `base_temperature_c_override`, `das_min/max_override`, `variety_id`, `stage_uuid`, `crop_cycle`).
-- `land_gdd_daily` ✅ — Phase D per‑day accumulator.
-- `stage_transition_conditions` ✅ — Phase E rule store (`from_stage_uuid`, `to_stage_uuid`, `trigger_type`, `trigger_config`, `combinator`, `priority`, `confidence`).
-- `stage_transition_log` ✅ — audit table with columns `land_id, from_stage_uuid, to_stage_uuid, rule_id, trigger_type, confidence, evidence, evaluated_at`.
-- `stage_validation_rules` ✅ — Phase G guardrails (`crop_code, stage_code, rule_code, rule_type, rule_config, severity, description, confidence, active`).
-
-Functions present (verified in `pg_proc`):
-- `resolve_crop_phenology(uuid, date)` ✅ — v4, returns Phase‑D shape including `current_gdd`, `phenology_index`, `evidence_sources`, `resolver_version=4`. Phase E migration re‑declared it (v5 logic with transition override) and this v5 is the one that survived — it selects the top matched transition via `evaluate_stage_transitions` and swaps `v_stage` to `to_stage_uuid`.
-- `accumulate_gdd_for_land(uuid, int)` ✅ — single‑triangle GDD, ±3‑day imputation, upserts into `land_gdd_daily`, updates `lands.current_gdd / gdd_anchor_* / gdd_last_computed_at`.
-- `accumulate_gdd_batch(int)` ✅.
-- `evaluate_stage_transitions(uuid, uuid)` ✅ — returns SETOF rows (`rule_id, from_stage_uuid, to_stage_uuid, trigger_type, priority, confidence, matched, evidence`).
-- `stc_eval_single(...)` ✅.
-- `calc_day_length_hours(numeric, date)` ✅.
-- `evaluate_stage_validation(uuid, text)` ⚠️ — see §4.
-- `apply_stage_transitions(uuid)` ❌ — see §4.
-
-Cron:
-- `gdd-accumulator-6h` scheduled `0 */6 * * *`, body `SELECT public.accumulate_gdd_batch(500);` — target function exists ✅.
-
-`lands` new columns present: `current_gdd`, `gdd_anchor_type`, `gdd_anchor_date`, `gdd_last_computed_at`, `stage_uuid`, `stage_source`, `stage_resolved_at`, `transplant_date`, `current_crop_variety_id`, `center_lat`, `crop_stage` (legacy heuristic still there — Phase A did NOT remove it, only overlaid).
-
----
-
-## 2. Data population
-
+`public.resolve_crop_phenology()` line 40 computes:
 ```
-variety_phenology_profile  0 rows
-stage_transition_conditions 0 rows
-stage_validation_rules     0 rows
-stage_transition_log       0 rows
-land_gdd_daily             0 rows
-crop_stage_master with base_temperature_c: 120 rows ✅
-crop_stage_master with gdd_min/max:          0 rows ⚠️
-lands with current_gdd:                     0 rows
-lands with sowing_date:                     2 rows
+v_sow_date := coalesce(v_land.planting_date, v_land.last_sowing_date);
+```
+then short-circuits at line 44 (`IF v_sow_date IS NULL THEN RETURN;`).
+
+Empty rowset returned → `phenology = null` in `orchestrator.ts:8517` → `buildBiologicalState()` returns `null` → `[BIO_STATE_LOCKED]` and `[PHENOLOGY_SSOT]` log lines are never emitted → `context.source` at `orchestrator.ts:8609` falls through to `'CROP_SCHEDULES'` or `'LAND_DATA'` → `GRAPH_FREEZE` captures the wrong authority.
+
+This is a data-plumbing bug, **not** a stage-calculation bug. Every other land with a `crop_schedules` row but no `lands.planting_date` has the same silent failure.
+
+## Scope (surgical, per user constraints)
+
+- Do NOT touch decision rules, observations, IOM, crop_stage_master, or client stage writers.
+- Only fix the one condition that prevents BiologicalState from being created, and make every failure loud + attributable.
+
+## Changes
+
+### 1. Migration — extend `resolve_crop_phenology` sowing-date source chain
+
+Add `crop_schedules.sowing_date` (active row, latest) as a third fallback for `v_sow_date`, and record which source was used in `evidence_sources`. Signature unchanged; body edit only.
+
+```sql
+-- inside resolve_crop_phenology, replace the v_sow_date computation
+SELECT cs.sowing_date
+  INTO v_schedule_sow_date
+  FROM public.crop_schedules cs
+ WHERE cs.land_id = p_land_id
+   AND cs.is_active = true
+ ORDER BY cs.sowing_date DESC
+ LIMIT 1;
+
+v_sow_date := coalesce(
+  v_land.planting_date,
+  v_land.last_sowing_date,
+  v_schedule_sow_date
+);
+
+IF v_sow_date IS NOT NULL THEN
+  v_evidence := v_evidence || ARRAY['sowing_source:' ||
+    CASE
+      WHEN v_land.planting_date     IS NOT NULL THEN 'lands.planting_date'
+      WHEN v_land.last_sowing_date  IS NOT NULL THEN 'lands.last_sowing_date'
+      ELSE 'crop_schedules.sowing_date'
+    END];
+END IF;
+
+IF v_crop_code = '' OR v_sow_date IS NULL THEN RETURN; END IF;
 ```
 
-Consequences:
-- Phase B (variety override) is inert until `variety_phenology_profile` is seeded — the resolver still returns v4/v5 shape but always falls through to the crop_stage_master defaults, `confidence` stays at `0.75`, and `phenology_index` never uses the GDD path (`v_gdd_target` is null everywhere).
-- Phase E (`stage_transition_conditions`) is inert — evaluator always returns 0 matched rules, resolver's transition override never fires.
-- Phase G (`stage_validation_rules`) is inert — `evaluate_stage_validation` returns `blocked=false` for every stage.
-- Phase D cron has run but there are no lands with GDD → likely the batch was scheduled but hasn't fired yet, or `weather_aggregates` has no rows for the two sown lands. Needs one manual `SELECT public.accumulate_gdd_batch(500);` and a check of `system_health_events` for the batch log line.
-- Phase A resolver is being called by the orchestrator (see §3) but with only 2 sown lands and no seeded overrides its practical impact today is: it just re‑derives what `crop_stage_master` already says, ignoring the stale `lands.crop_stage` string — which was the whole point of the fix.
+No new tables, no data mutation, no schema change beyond function body. Table alias `cs` avoids the OUT-parameter collision pattern that bit us before.
 
----
+### 2. `orchestrator.ts` — mandatory traces around BiologicalState build (fetchComprehensiveLandContext, ~lines 8500–8545)
 
-## 3. Code linkage (TS ↔ DB)
+Add three new log lines with the exact prefixes the user asked for. Every branch must emit exactly one `[BIO_STATE_CREATE_RESULT]`.
 
-`supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-- Line 8434 — `supabase.rpc('resolve_crop_phenology', { p_land_id: landId })` ✅. Row is stored on `context.phenology` and used to compute `authoritativeStage`, `authoritativeDas`, `stage_authority = 'phenology_ssot' | 'schedule_heuristic' | 'lands_fallback'`. This is the Phase A wiring and it is live.
-- Line 8471 — `reconcileMorphology(phenology, { ndvi, plant_height_cm:null, leaf_count:null })` ✅. Consumes `expected_ndvi_*` / `expected_height_*` from the resolver and emits `morphology_evidence` with `confidence_delta` and `stage_shift_hint`. The Phase D GDD‑vs‑DAS drift branch inside `morphology-reconciler.ts` reads `phen.current_gdd` / `phen.phenology_index` / `phen.current_das` from the same row — shape matches resolver v4/v5. ✅
-- Lines 5083–5100 — legacy `calculatePhenologicalStage(...)` (from `gdd-phenology-engine.ts`) is still run **in parallel** and its result overwrites `landContext.growth_stage`. ⚠️ **Drift risk**: `context.growth_stage` (built later from `phenology.growth_stage`) and `landContext.growth_stage` (from the TS GDD engine) can disagree. Downstream code reads a mix of both.
-- Lines 5110–5135 — photoperiod block. `checkPhotoperiodTrigger(cropCode, lat, das, currentStage)` receives `landContext.current_stage`. ❌ **`landContext.current_stage` is never assigned anywhere in `orchestrator.ts`** (only `landContext.growth_stage` and `landContext.gdd_phenology.current_stage`). `currentStage` is always `undefined`, so `integratePhotoperiodWithPhenology` immediately returns `photoperiod_suitable:true, warning:undefined`, making the trigger effectively no‑op for onion/rice.
-- Lines 4402, 5331 — `variety_id` is pulled from `landContext.current_crop_variety_id` and passed into the clarification / hypothesis path. ✅ matches the column on `lands`.
-- No call site for `evaluate_stage_transitions`, `apply_stage_transitions`, `evaluate_stage_validation`, or `calc_day_length_hours` exists in TS. Phase E and Phase G are pure DB features today — they only take effect when the resolver invokes `evaluate_stage_transitions` internally, and never when `apply_stage_transitions` is triggered (nothing triggers it).
+```ts
+// BEFORE RPC
+console.log(
+  `🌱 [BIO_STATE_START] land_id=${landId} ` +
+    `crop=${land.current_crop ?? 'null'} ` +
+    `das=${daysSinceSowing ?? 'null'} ` +
+    `sowing_date=${cropSchedule?.sowing_date ?? land.last_sowing_date ?? land.planting_date ?? 'null'}`
+);
 
-`supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
-- `loadVarietyResistance(supabase, variety_id)` at line 163 queries `variety_resistance` ✅ (table has 12 columns per the tables listing). Gated on `input.variety_id`, which is fed from `landContext.current_crop_variety_id`. Phase F wiring is intact.
+// AFTER RPC (both success and error paths)
+if (phenErr) {
+  console.error(
+    `❌ [BIO_STATE_RPC_RESULT] success=false land=${landId} ` +
+      `returned_stage=null error_code=${(phenErr as any).code ?? 'n/a'} ` +
+      `error_msg=${phenErr.message}`
+  );
+} else if (phenology) {
+  console.log(
+    `✅ [BIO_STATE_RPC_RESULT] success=true land=${landId} ` +
+      `returned_stage=${phenology.growth_stage} das=${phenology.current_das} ` +
+      `source=${phenology.source} v${phenology.resolver_version}`
+  );
+} else {
+  console.warn(
+    `⚠️ [BIO_STATE_RPC_RESULT] success=false land=${landId} ` +
+      `returned_stage=null error=NO_ROW_RETURNED ` +
+      `reason=resolver_short_circuited(likely_sowing_or_crop_missing)`
+  );
+}
 
-`supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts`
-- Threads `variety_id` through to the hypothesis input at line 421 ✅.
+// BEFORE returning landContext
+if (biological_state) {
+  console.log(
+    `🧬 [BIO_STATE_CREATE_RESULT] created=true land=${landId} ` +
+      `stage=${biological_state.growth_stage} das=${biological_state.das}`
+  );
+} else {
+  const failureReason =
+    phenErr ? `rpc_error:${(phenErr as any).code ?? phenErr.message}`
+    : !phenology ? 'rpc_returned_no_row'
+    : 'buildBiologicalState_null';
+  console.error(
+    `🧬 [BIO_STATE_CREATE_RESULT] created=false land=${landId} ` +
+      `failure_reason=${failureReason} ` +
+      `sow_present=${!!(cropSchedule?.sowing_date || land.last_sowing_date || land.planting_date)} ` +
+      `crop_present=${!!land.current_crop}`
+  );
+}
+```
 
-`src/lib/cropStage.ts` and `src/components/land/SmartLandConfirmCard.tsx`
-- Still write the crop‑agnostic 7‑bucket English label into `lands.crop_stage` at land creation time (per `CROP_STAGE_CONFLICT_REPORT.md`). ⚠️ **Not addressed by any of Phases A–G.** The resolver overrides it at read time in the AI orchestrator, but every non‑AI reader (community feed, dashboards, `crop_schedules` UI, `layered-rule-evaluator` when it falls back to `landContext.current_crop_stage`) still sees the stale English string.
+`phenErr` must be lifted out of the try-block scope so the trailing log can read it (small refactor of the existing try/catch).
 
----
+### 3. `orchestrator.ts` — remove the silent LAND_DATA fallback in `context.source`
 
-## 4. Concrete bugs found
+Current line 8609:
+```ts
+source: biological_state ? 'BIOLOGICAL_STATE' : (cropSchedule ? 'CROP_SCHEDULES' : 'LAND_DATA'),
+```
 
-**B1 — Phase G `evaluate_stage_validation` references columns that do not exist.** Runtime error on first call.
-- `SELECT ... days_since_sowing FROM public.lands` → `lands.days_since_sowing` **does not exist** (only `last_sowing_date`, `planting_date`, `transplant_date`).
-- `SELECT max(tmax_c), min(tmin_c), avg(soil_moisture_pct) FROM public.land_weather_metrics WHERE obs_date ...` → `land_weather_metrics` has `metric_date`, `temperature_c`, no `tmax_c`/`tmin_c`/`soil_moisture_pct`/`obs_date`. Every temp/moisture rule will throw `column "tmax_c" does not exist`.
-- `observation_present` branch reads `weather_observations.observation_code` and `.obs_date` → real columns are `observation_date` (no observation_code at all on this table). Any `observation_present` rule crashes.
+Change to make failure explicit (no silent demotion). When biological_state is missing, tag the source with the reason so `GRAPH_FREEZE` / `[STAGE_AUTHORITY_VIOLATION]` can attribute it:
 
-**B2 — Phase G `apply_stage_transitions` treats the Phase E `evaluate_stage_transitions` as if it returned jsonb.** It does not; it returns `SETOF (rule_id, from_stage_uuid, to_stage_uuid, trigger_type, priority, confidence, matched, evidence)`. The line `v_eval := public.evaluate_stage_transitions(p_land_id, NULL);` will fail (assigning a set‑returning function into a jsonb variable), and every downstream expression (`v_eval->>'ok'`, `v_eval->'matched'`) is against a shape that never existed.
+```ts
+source: biological_state
+  ? 'BIOLOGICAL_STATE'
+  : 'BIOLOGICAL_STATE_UNAVAILABLE',   // never silently 'LAND_DATA'
+source_fallback_reason: biological_state
+  ? null
+  : (phenErr ? 'rpc_error' : 'no_row'),
+source_fallback_used: biological_state ? null : (cropSchedule ? 'crop_schedules' : 'lands'),
+```
 
-**B3 — Phase G `apply_stage_transitions` writes to `stage_transition_log` with the wrong columns.** It inserts into `(land_id, from_stage, to_stage, matched_rule_id, applied, reason, evidence)`. The table's actual columns are `(land_id, from_stage_uuid, to_stage_uuid, rule_id, trigger_type, confidence, evidence, evaluated_at)`. There is no `applied` / `reason` / `matched_rule_id` / `from_stage`/`to_stage` column. Insert will fail even if B2 were fixed.
+`canonical-context-contract.ts` already accepts `'BIOLOGICAL_STATE'` in the source union; add `'BIOLOGICAL_STATE_UNAVAILABLE'` to the same union so the contract builder preserves the attribution instead of coercing to `'LAND_DATA'`. `[STAGE_AUTHORITY_VIOLATION]` (already present at line ~1391) will then correctly fire whenever the biological SSOT was unavailable, with a machine-readable reason attached.
 
-**B4 — Orchestrator passes `undefined` for `currentStage` into `checkPhotoperiodTrigger`.** `landContext.current_stage` is never set; the correct field is `landContext.growth_stage` (or `landContext.gdd_phenology.current_stage`). Result: photoperiod block silently no‑ops for onion/rice.
+No behavior downstream changes — heuristics still fall back functionally — but the fallback is no longer silent and no longer masquerades as `LAND_DATA`.
 
-**B5 — Dual stage authority in orchestrator.** `landContext.growth_stage` is overwritten by the TS `calculatePhenologicalStage` at line 5098, but the canonical `context.growth_stage` used for the deterministic response (line 8459) is derived from the DB resolver (`phenology.growth_stage ?? growthStage`). Two sources of truth for stage inside one request; downstream consumers that read from `landContext.*` vs `context.*` can disagree.
+### 4. Verification
 
-**B6 — `crop_stage_master.gdd_min/max` are 0 rows populated.** Phase D added the columns but no rows have values. The resolver's GDD path (`v_gdd_target := v_vpp.gdd_target`) also depends on `variety_phenology_profile.gdd_target` which is empty. Net effect: `current_gdd` is exposed and reconciler drift logic reads it, but `phenology_index` is still the static value from `crop_stage_master.phenology_index` — no thermal‑time progression yet.
+After deploy, one land-specific chat turn against `Shinghan Mal` must emit, in order:
+```
+🌱 [BIO_STATE_START] land_id=30197c15… crop=Rice das=null sowing_date=2026-06-08
+✅ [BIO_STATE_RPC_RESULT] success=true returned_stage=<resolved> …
+✅ [PHENOLOGY_SSOT] stage=<resolved> …
+🔒 [BIO_STATE_LOCKED] land_id=30197c15… crop=RICE stage=<resolved> …
+🧬 [BIO_STATE_CREATE_RESULT] created=true …
+[GRAPH_FREEZE] … source=BIOLOGICAL_STATE
+[PIPELINE_RULE_STAGE] … stage=<same>
+Rule Engine Input … stage=<same>
+```
 
-**B7 — `lands.crop_stage` producer path untouched.** The whole reason this refactor started (client‑side 7‑bucket English string persisted into `lands.crop_stage`) is still exactly as documented in `CROP_STAGE_CONFLICT_REPORT.md`. No migration and no code change removes the writer, no trigger normalizes the value, and no writer replaces it with `stage_uuid` / `stage_code`. The read path via `resolve_crop_phenology` masks the conflict inside the AI orchestrator only.
+For any land where both `lands.planting_date`, `lands.last_sowing_date`, AND `crop_schedules.sowing_date` are all null, we must instead see:
+```
+🧬 [BIO_STATE_CREATE_RESULT] created=false failure_reason=rpc_returned_no_row sow_present=false crop_present=true
+⚠️ [STAGE_AUTHORITY_VIOLATION] canonical.source=BIOLOGICAL_STATE_UNAVAILABLE …
+```
+— i.e. the failure is loud and attributable, never silent.
 
----
+## Files touched
 
-## 5. What is missing to close the "variety‑based crop staging brain"
+- `supabase/migrations/<new>.sql` — extend `resolve_crop_phenology` sowing-date source chain (function body only).
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — three new trace lines (BIO_STATE_START / BIO_STATE_RPC_RESULT / BIO_STATE_CREATE_RESULT), lift `phenErr` scope, replace silent `'LAND_DATA'` fallback in `context.source` with explicit `'BIOLOGICAL_STATE_UNAVAILABLE'` + reason fields.
+- `supabase/functions/ai-agriculture-chat/decision/canonical-context-contract.ts` — add `'BIOLOGICAL_STATE_UNAVAILABLE'` to the `source` union type and pass-through in the contract builder.
 
-1. **Seed data**: `variety_phenology_profile` (variety → GDD target + expected bands), `stage_transition_conditions` (per crop from/to stage triggers), `stage_validation_rules` (photoperiod / temp / moisture / event guardrails), and back‑fill `crop_stage_master.gdd_min/max`. Without seeds, Phases B/E/G are structurally live but semantically inert.
-2. **Kill or normalize the client stage writer**: replace `SmartLandConfirmCard.tsx` write of `lands.crop_stage` with either (a) a DB trigger that maps to `stage_uuid` via `crop_stage_master`, or (b) an RPC that calls `resolve_crop_phenology` at write time and stores `stage_uuid` + `stage_source='resolver'`.
-3. **Fix the four DB bugs (B1–B3) + orchestrator wiring (B4, B5)** — none are seed‑dependent; they will fail the first time a caller exercises them.
-4. **Wire `evaluate_stage_transitions` / `apply_stage_transitions` into an actual caller.** Currently no cron and no edge function invokes them, so even after fixes the transitions table is decorative until either the GDD cron also calls `apply_stage_transitions(land_id)` per land or the orchestrator invokes it on read.
-5. **Expose `current_gdd` / `phenology_index` / `stage_authority` on the canonical context** consumed by rule evaluators, so `decision_rules` can predicate on GDD ranges — right now only the reconciler reads them.
-6. **Documentation update**: `.lovable/plan.md` still describes Phase D as the roadmap ("Phase E next"), but Phases E/F/G already shipped. Refresh it so future audits don't repeat this reconciliation.
+## Explicitly out of scope
 
----
-
-## 6. One‑line status per phase
-
-| Phase | DB shipped | Code wired | Data seeded | Working end‑to‑end? |
-|---|---|---|---|---|
-| A — resolver v2/v4 SSOT | ✅ | ✅ orchestrator RPC | n/a (uses `crop_stage_master`) | ✅ read‑side; write‑side untouched (B7) |
-| B — variety overrides | ✅ | ✅ (resolver joins vpp) | ❌ 0 rows | ⚠️ inert |
-| C — morphology reconciler | ✅ (pure TS) | ✅ | n/a | ✅ |
-| D — GDD accumulator + cron | ✅ | ✅ (resolver reads `lands.current_gdd`) | ❌ 0 rows in `land_gdd_daily` | ⚠️ cron scheduled, not yet observed |
-| E — transition conditions | ✅ | ⚠️ resolver internal only, no external caller | ❌ 0 rows | ⚠️ inert |
-| F — variety_resistance in hypotheses | n/a schema pre‑existed | ✅ evaluator + clarification threads variety_id | depends on curated `variety_resistance` | ✅ conditional on curation |
-| G — validation rules + apply_stage_transitions | ✅ tables + `calc_day_length_hours` + `evaluate_stage_validation` | ❌ no TS caller | ❌ 0 rows | ❌ B1–B3 will crash on first call |
-
----
-
-## Deliverable
-
-This is a read‑only audit. No files changed. Recommended next step (with your approval, in a separate turn): a single fixup migration that (a) rewrites `evaluate_stage_validation` to real column names, (b) rewrites `apply_stage_transitions` to consume the SETOF from `evaluate_stage_transitions` and insert into the real `stage_transition_log` schema, and (c) a one‑line orchestrator patch replacing `landContext.current_stage` with `landContext.growth_stage` at the photoperiod call site. Seed data and killing the client writer are separate, larger workstreams.
+- No changes to decision rules, observations, IOM, crop_stage_master, variety_phenology_profile, stage_transition_conditions.
+- No changes to client-side stage writers (`SmartLandConfirmCard`, `src/lib/cropStage.ts`).
+- No changes to GDD engine, morphology reconciler, or rule engine normalisation.
+- No new tables or columns.
