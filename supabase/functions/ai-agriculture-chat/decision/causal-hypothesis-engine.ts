@@ -649,7 +649,10 @@ function buildDiscriminatorQuestion(
         hypothesis_b_id: scoreB.hypothesis_id,
         hypothesis_a_name: scoreA.cause_name_en,
         hypothesis_b_name: scoreB.cause_name_en,
-        question_text_en: `To help identify the exact problem: Have you noticed ${code.toLowerCase().replace(/_/g, ' ')}?`,
+        // Phase 7: no hardcoded English. Carry the canonical observation code;
+        // the language layer / observation_translations produce the farmer text.
+        question_text_en: '',
+        observation_code: code,
         question_text_mr: '', // @deprecated — LLM translates at runtime
         question_text_hi: '', // @deprecated — LLM translates at runtime
         weight: disc.weight
