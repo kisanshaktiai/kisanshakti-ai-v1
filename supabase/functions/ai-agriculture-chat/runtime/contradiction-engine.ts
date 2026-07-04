@@ -88,9 +88,16 @@ export async function detectContradiction(
   if (!intentUpper || !cropLower || !stageLower || !supabase) return null;
 
   try {
+    // intent_assertion_pattern schema (as of 2026-07-04):
+    //   id, intent_code, obs_code_regex, assertion_strength, notes, is_active, ...
+    // Compatibility columns (stage_compatibility, crop_compatibility, das_min/max)
+    // are NOT present on this table — treat them as absent and rely on
+    // assertion_strength + notes for labelling. Selecting only real columns
+    // stops the "column ... does not exist" error that silently disabled the
+    // contradiction engine on every request.
     const { data, error } = await supabase
       .from('intent_assertion_pattern')
-      .select('intent_code, assertion_label, stage_compatibility, crop_compatibility, das_min, das_max')
+      .select('intent_code, assertion_strength, notes, obs_code_regex')
       .eq('is_active', true)
       .eq('intent_code', intentUpper)
       .limit(5);
@@ -100,6 +107,7 @@ export async function detectContradiction(
       return null;
     }
     if (!data || data.length === 0) return null;
+
 
     for (const row of data) {
       // STAGE_MISMATCH
