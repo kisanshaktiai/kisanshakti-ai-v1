@@ -941,15 +941,34 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     }
   }
 
-  // Map observations to symptoms (pure passthrough from ontology layer)
-  const allObservations = [
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OBSERVATION_CODES — FIRST-CLASS ONTOLOGY PASSTHROUGH (SSOT)
+  // Preserve every canonical code exactly as delivered by the language-
+  // induction layer. Rules and hypothesis evaluators MUST read this array.
+  // We keep BOTH the caller's original casing (e.g. `poor_germination`) AND
+  // the UPPER_SNAKE form so downstream comparators of either style match.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const rawObservations = [
     ...(input.farmerObservations || []),
-    ...(input.imageAnalysisSymptoms || [])
-  ];
+    ...(input.imageAnalysisSymptoms || []),
+  ]
+    .map(o => (o == null ? '' : String(o).trim()))
+    .filter(Boolean);
+
+  const observationCodes: string[] = [];
+  const seenObs = new Set<string>();
+  for (const obs of rawObservations) {
+    const upper = obs.toUpperCase().replace(/[\s-]/g, '_');
+    if (!/^[A-Z][A-Z0-9_]*$/.test(upper)) continue;
+    // Preserve original as-provided token (poor_germination stays lowercase)
+    if (!seenObs.has(obs)) { seenObs.add(obs); observationCodes.push(obs); }
+    // Also expose the canonical UPPER form when it differs
+    if (upper !== obs && !seenObs.has(upper)) { seenObs.add(upper); observationCodes.push(upper); }
+  }
+
+  const allObservations = rawObservations;
   const normalizedObservationSet = new Set(
-    allObservations
-      .map(obs => String(obs || '').trim().toUpperCase())
-      .filter(Boolean)
+    allObservations.map(o => o.toUpperCase().replace(/[\s-]/g, '_')).filter(Boolean),
   );
   // BUG-3 FIX: symptom_count MUST count real farmer/sensor evidence only.
   const evidenceClass = classifyEvidence(Array.from(normalizedObservationSet));
@@ -961,9 +980,25 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     `real=[${evidenceClass.real_codes.slice(0, 8).join(',')}] ` +
     `ignored=[${evidenceClass.ignored_codes.slice(0, 8).join(',')}]`
   );
+  console.log(
+    `[OBSERVATION_CODES_PASSTHROUGH] count=${observationCodes.length} ` +
+    `codes=[${observationCodes.slice(0, 8).join(',')}]`
+  );
   // SPRINT 3 FIX: Adaptive denominator (min 4) — see orchestrator coverage-gate notes.
   const symptomDataCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
+
+  // GRAPH_AUTHORITY_VIOLATION — input observation set must survive intact.
+  // If a caller supplied N real ontology codes but we transported 0, we have
+  // silently dropped facts. Fail loudly so the pipeline never proceeds on a
+  // mutated graph (e.g. GERMINATION_FAILURE → UNKNOWN).
+  if (evidenceClass.real_symptom_count > 0 && observationCodes.length === 0) {
+    throw new Error(
+      `GRAPH_AUTHORITY_VIOLATION: real_symptom_count=${evidenceClass.real_symptom_count} ` +
+      `but observation_codes=[] — canonical-state must transport ontology codes, not drop them.`
+    );
+  }
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CANONICAL_MUTATION_CHECK — OBSERVATION
