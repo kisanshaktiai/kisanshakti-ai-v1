@@ -15,6 +15,9 @@ import { buildConversationState, type ConversationState } from '../runtime/conve
 import { computeCoverage, isInformative as isInformativeObs } from '../runtime/evidence-coverage.ts';
 import { emitBrainTrace } from '../runtime/brain-trace.ts';
 import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
+import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
+import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
+import { classifyEvidence } from '../runtime/evidence-classifier.ts';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
@@ -8222,7 +8225,39 @@ export class AIAgentOrchestrator {
       // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
       const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
-      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // GRAPH CONTRACT — FINAL_RESPONSE + invariant assertions
+      // ═══════════════════════════════════════════════════════════════════════
+      try {
+        const evidence = classifyEvidence(obsArrayMain);
+        const snapshot: InvariantSnapshot = {
+          trace_id: traceId,
+          crop: landContext?.current_crop ?? null,
+          bio_state_locked: !!(landContext as any)?.biological_state?.is_locked,
+          real_observation_count: evidence.real_symptom_count,
+          hypotheses_count: (diagnosticState?.hypotheses?.length ?? 0),
+          rules_loaded: (decisionOutput as any)?.rules_evaluated_count ?? (decisionOutput?.rules_applied?.length ?? 0),
+          rules_matched: (decisionOutput?.rules_applied?.length ?? 0),
+          symbolic_decision_available: !!decisionOutput?.primary_decision,
+          diagnosis_available: !!(diagnosticState?.hypotheses?.length),
+          final_source: 'symbolic_decision_graph',
+          fallback_reason: null,
+          system_error: false,
+        };
+        emitFinalResponseContract(snapshot);
+        emitNodeTrace(traceId, 'FINAL_RESPONSE', {
+          source: snapshot.final_source,
+          symbolic_decision: snapshot.symbolic_decision_available,
+          real_obs: snapshot.real_observation_count,
+          hypotheses: snapshot.hypotheses_count,
+          rules_matched: snapshot.rules_matched,
+        });
+        checkGraphInvariants(snapshot);
+      } catch (invErr) {
+        console.warn(`[GRAPH_INVARIANT_ERR][${traceId}] non-fatal: ${invErr instanceof Error ? invErr.message : String(invErr)}`);
+      }
+
       return {
         type: 'DECISION_PROVIDED',
         session_id: sessionId,
@@ -8241,7 +8276,8 @@ export class AIAgentOrchestrator {
           sections_count: farmerCommunication.metadata?.sections_count || 0,
           trace_id: traceId,
           symptomKeys: obsArrayMain,
-          isEmergency: isEmergencyMain
+          isEmergency: isEmergencyMain,
+          final_source: 'symbolic_decision_graph'
         }
       };
       
