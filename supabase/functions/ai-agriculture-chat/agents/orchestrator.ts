@@ -8505,23 +8505,51 @@ export class AIAgentOrchestrator {
       // Overrides any client-heuristic stage stored on lands.crop_stage.
       // ═══════════════════════════════════════════════════════════════════════════
       let phenology: any = null;
+      let phenErr: any = null;
+      let phenThrew: Error | null = null;
+
+      // Mandatory pre-RPC trace (fires unconditionally so silent skips are impossible)
+      console.log(
+        `🌱 [BIO_STATE_START] land_id=${landId} ` +
+          `crop=${land.current_crop ?? 'null'} ` +
+          `das=${daysSinceSowing ?? 'null'} ` +
+          `sowing_date=${cropSchedule?.sowing_date ?? land.last_sowing_date ?? land.planting_date ?? 'null'}`,
+      );
+
       try {
-        const { data: phenRows, error: phenErr } = await this.supabase
-          .rpc('resolve_crop_phenology', { p_land_id: landId });
+        const rpc = await this.supabase.rpc('resolve_crop_phenology', { p_land_id: landId });
+        phenErr = rpc.error;
+        const phenRows = rpc.data;
         if (phenErr) {
           console.error(
-            `❌ [BIO_STATE_RPC_ERROR] land=${landId} code=${(phenErr as any).code ?? 'n/a'} ` +
-              `msg=${phenErr.message} details=${(phenErr as any).details ?? ''} ` +
-              `hint=${(phenErr as any).hint ?? ''}`,
+            `❌ [BIO_STATE_RPC_RESULT] success=false land=${landId} returned_stage=null ` +
+              `error_code=${(phenErr as any).code ?? 'n/a'} error_msg=${phenErr.message} ` +
+              `details=${(phenErr as any).details ?? ''} hint=${(phenErr as any).hint ?? ''}`,
           );
         } else if (Array.isArray(phenRows) && phenRows.length > 0) {
           phenology = phenRows[0];
-          console.log(`✅ [PHENOLOGY_SSOT] stage=${phenology.growth_stage} (${phenology.stage_code}) crop=${phenology.crop_code} das=${phenology.current_das} conf=${phenology.confidence} src=${phenology.source} v${phenology.resolver_version}`);
+          console.log(
+            `✅ [BIO_STATE_RPC_RESULT] success=true land=${landId} ` +
+              `returned_stage=${phenology.growth_stage} das=${phenology.current_das} ` +
+              `source=${phenology.source} v${phenology.resolver_version}`,
+          );
+          console.log(
+            `✅ [PHENOLOGY_SSOT] stage=${phenology.growth_stage} (${phenology.stage_code}) ` +
+              `crop=${phenology.crop_code} das=${phenology.current_das} conf=${phenology.confidence} ` +
+              `src=${phenology.source} v${phenology.resolver_version}`,
+          );
         } else {
-          console.warn(`⚠️ [PHENOLOGY_SSOT] resolver returned no row for land=${landId}`);
+          console.warn(
+            `⚠️ [BIO_STATE_RPC_RESULT] success=false land=${landId} returned_stage=null ` +
+              `error=NO_ROW_RETURNED reason=resolver_short_circuited(likely_sowing_or_crop_missing)`,
+          );
         }
       } catch (e) {
-        console.error(`❌ [BIO_STATE_RPC_ERROR] land=${landId} threw=${(e as Error).message}`);
+        phenThrew = e as Error;
+        console.error(
+          `❌ [BIO_STATE_RPC_RESULT] success=false land=${landId} returned_stage=null ` +
+            `error=THREW msg=${phenThrew.message}`,
+        );
       }
 
       // ═══════════════════════════════════════════════════════════════════════════
@@ -8537,9 +8565,27 @@ export class AIAgentOrchestrator {
             `code=${biological_state.stage_code} das=${biological_state.das} ` +
             `conf=${biological_state.confidence} source=${biological_state.source}`,
         );
+        console.log(
+          `🧬 [BIO_STATE_CREATE_RESULT] created=true land=${landId} ` +
+            `stage=${biological_state.growth_stage} das=${biological_state.das}`,
+        );
       } else {
-        console.warn(`⚠️ [BIO_STATE] no lock — resolver produced no phenology row for land=${landId}`);
+        const failureReason = phenThrew
+          ? `rpc_threw:${phenThrew.message}`
+          : phenErr
+            ? `rpc_error:${(phenErr as any).code ?? phenErr.message}`
+            : !phenology
+              ? 'rpc_returned_no_row'
+              : 'buildBiologicalState_null';
+        console.error(
+          `🧬 [BIO_STATE_CREATE_RESULT] created=false land=${landId} ` +
+            `failure_reason=${failureReason} ` +
+            `sow_present=${!!(cropSchedule?.sowing_date || land.last_sowing_date || land.planting_date)} ` +
+            `crop_present=${!!land.current_crop}`,
+        );
       }
+
+
 
       // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Prioritize crop_schedules, but FALLBACK to lands.current_crop
