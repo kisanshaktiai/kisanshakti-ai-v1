@@ -294,19 +294,34 @@ function evaluateCondition(
 
   switch (condition_type) {
     case 'OBSERVATION': {
-      const code = (value_json as any)?.code;
-      if (!code) return HypothesisConditionStatus.FAILED;
-      
-      if (operator === 'CONTAINS') {
-        const obsLower = observations.map(o => o.toLowerCase());
-        const codeLower = code.toLowerCase();
-        return obsLower.includes(codeLower) 
-          ? HypothesisConditionStatus.PASSED 
+      // Shape-agnostic reader — DB ontology stores value_json as either
+      // ["obs_code", ...] OR {code:"obs_code"} OR {codes:["obs_code", ...]}.
+      // No hardcoded observation names — pure JSON transport.
+      const raw = value_json as any;
+      const codes: string[] = Array.isArray(raw)
+        ? raw.filter((x: any) => typeof x === 'string')
+        : (typeof raw?.code === 'string'
+            ? [raw.code]
+            : (Array.isArray(raw?.codes)
+                ? raw.codes.filter((x: any) => typeof x === 'string')
+                : []));
+      if (codes.length === 0) return HypothesisConditionStatus.FAILED;
+
+      const obsLower = observations.map((o) => String(o).toLowerCase());
+      const codesLower = codes.map((c) => c.toLowerCase());
+
+      if (operator === 'CONTAINS' || operator === 'IN' || operator === 'ANY_OF') {
+        return codesLower.some((c) => obsLower.includes(c))
+          ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
-      if (operator === 'NOT_EXISTS') {
-        const obsLower = observations.map(o => o.toLowerCase());
-        return !obsLower.includes(code.toLowerCase())
+      if (operator === 'ALL_OF') {
+        return codesLower.every((c) => obsLower.includes(c))
+          ? HypothesisConditionStatus.PASSED
+          : HypothesisConditionStatus.FAILED;
+      }
+      if (operator === 'NOT_EXISTS' || operator === 'NOT_IN') {
+        return codesLower.every((c) => !obsLower.includes(c))
           ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
