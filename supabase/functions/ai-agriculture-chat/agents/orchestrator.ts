@@ -4720,6 +4720,45 @@ export class AIAgentOrchestrator {
             console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${real_codes.join(',')} → ${currentObservations.join(',')}`);
           }
 
+          // ═══════════════════════════════════════════════════════════════════
+          // T1/T9 · BUILD IMMUTABLE GRAPH TRUTH + CANONICAL HASH
+          // Runs exactly once per turn, right after evidence lock. Downstream
+          // hypothesis / rule engines read from this node; same agronomic
+          // meaning MUST produce the same hash regardless of query wording.
+          // ═══════════════════════════════════════════════════════════════════
+          try {
+            const bioState: any = (landContext as any)?.biological_state ?? null;
+            const graphTruth = buildGraphTruth({
+              land_id: options.landId ?? landContext?.id ?? null,
+              crop_code: cropCode ?? landContext?.current_crop ?? null,
+              variety_id: (landContext as any)?.crop_variety_id
+                ?? (landContext as any)?.crop_variety
+                ?? null,
+              biological_stage: bioState?.growth_stage
+                ?? canonicalContext?.growth_stage
+                ?? landContext?.growth_stage
+                ?? null,
+              stage_uuid: bioState?.stage_uuid ?? null,
+              DAS: (typeof canonicalContext?.days_since_sowing === 'number'
+                ? canonicalContext.days_since_sowing
+                : (typeof landContext?.days_since_sowing === 'number'
+                    ? landContext.days_since_sowing
+                    : null)),
+              GDD: (typeof bioState?.gdd_accumulated === 'number' ? bioState.gdd_accumulated : null),
+              canonical_observations: canonical_observation_codes,
+              evidence_sources: real_codes.map((c) => ({
+                code: c,
+                authority: 'CONFIRMED' as const,
+                source: 'EXTRACTOR',
+              })),
+            });
+            // Attach to closure state for downstream stages
+            (this as any)._graphTruth = graphTruth;
+          } catch (e) {
+            console.warn(`[GRAPH_TRUTH_BUILD] skipped: ${(e as Error).message}`);
+          }
+
+
 
           // ═══════════════════════════════════════════════════════════════════════════
           // CRITICAL BUG FIX: DAS propagation - use ?? (nullish) not || (falsy)
