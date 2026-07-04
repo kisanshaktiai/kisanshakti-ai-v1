@@ -870,13 +870,14 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     Area: ${areaAcres ?? 'UNKNOWN'} acres
   `);
   
-  // Map crop and stage using the extracted values
+  // Map crop and stage using the extracted values (pure passthrough resolvers)
   const cropType = mapCropNameToEnum(cropNameRaw);
   const cropStage = mapStageToEnum(cropStageRaw);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // STAGE MUTATION INVARIANT — if BiologicalState locked the stage but our
-  // enum resolve dropped/changed it, log and restore the locked identity.
+  // CANONICAL_MUTATION_CHECK — STAGE
+  // If BiologicalState / canonical-context locked a stage, the resolver MUST
+  // pass it through unchanged. Any mutation is an architectural violation.
   // ═══════════════════════════════════════════════════════════════════════════
   const lockedStageRaw =
     (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
@@ -886,11 +887,26 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     const lockedNorm = lockedStageRaw.trim().toUpperCase().replace(/[\s-]/g, '_');
     const resolvedNorm = String(cropStage).toUpperCase();
     if (resolvedNorm !== lockedNorm) {
-      console.error(`[STAGE_MUTATION_BLOCKED] before=${lockedNorm} after=${resolvedNorm} source=canonicalContext_lock → restoring locked stage`);
+      throw new Error(
+        `CANONICAL_AUTHORITY_VIOLATION: stage mutated from "${lockedNorm}" to "${resolvedNorm}" — ` +
+        `crop_stage_master / BiologicalState is the SSOT; code must not reinterpret.`
+      );
+    }
+  }
+  // Also enforce input→output stage identity when no lock is present but a
+  // raw stage was supplied.
+  if (!lockedStageRaw && cropStageRaw && cropStageRaw !== 'UNKNOWN') {
+    const inputNorm = String(cropStageRaw).trim().toUpperCase().replace(/[\s-]/g, '_');
+    const resolvedNorm = String(cropStage).toUpperCase();
+    if (inputNorm && resolvedNorm !== 'UNKNOWN' && resolvedNorm !== inputNorm) {
+      throw new Error(
+        `CANONICAL_AUTHORITY_VIOLATION: stage mutated from "${inputNorm}" to "${resolvedNorm}" — ` +
+        `stage resolver must pass DB ontology strings through unchanged.`
+      );
     }
   }
 
-  // Map observations to symptoms
+  // Map observations to symptoms (pure passthrough from ontology layer)
   const allObservations = [
     ...(input.farmerObservations || []),
     ...(input.imageAnalysisSymptoms || [])
@@ -915,19 +931,22 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CANONICAL MUTATION INVARIANT — if farmer/sensor evidence provided a real
-  // code A and the resolved primary visual_symptom differs from A, log so we
-  // can trace hidden mutation. CanonicalState carries symbols; it does not
-  // invent meaning.
+  // CANONICAL_MUTATION_CHECK — OBSERVATION
+  // Input observation code A must emerge as primary symbol A. Any silent
+  // rewrite (e.g. POOR_GERMINATION → GENERAL_YELLOWING) is a hard violation.
   // ═══════════════════════════════════════════════════════════════════════════
   const firstRealCode = evidenceClass.real_codes[0];
   if (firstRealCode) {
     const beforeNorm = firstRealCode.toUpperCase();
     const afterNorm = String(visualSymptom).toUpperCase();
     if (afterNorm !== 'UNKNOWN' && afterNorm !== beforeNorm) {
-      console.error(`[CANONICAL_MUTATION_BLOCKED] before=${beforeNorm} after=${afterNorm} source=mapObservationsToSymptom`);
+      throw new Error(
+        `CANONICAL_AUTHORITY_VIOLATION: observation mutated from "${beforeNorm}" to "${afterNorm}" — ` +
+        `observation_master / observation_aliases is the SSOT; canonical-state must transport, not translate.`
+      );
     }
   }
+
 
 
   
