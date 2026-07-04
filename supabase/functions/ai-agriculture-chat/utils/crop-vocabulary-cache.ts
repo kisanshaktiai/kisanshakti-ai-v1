@@ -34,9 +34,10 @@ const VOCAB_CACHE_TTL = 300_000; // 5 minutes
  * Returns empty array if no entries found or on error.
  */
 export async function getCropVocabulary(cropCodeRaw: string, supabase: any): Promise<VocabEntry[]> {
-  // Fix 3 (belt-and-suspenders): crop_code rows in DB are UPPER. Normalize the
-  // lookup key so title-case callers (e.g. "Sugarcane") don't silently return 0 rows.
-  const cropCode = (cropCodeRaw || '').toUpperCase();
+  // crop_vocabulary.crop_code is stored LOWERCASE in DB (rice, sugarcane, all, …).
+  // Callers pass 'RICE' / 'ALL' / 'Sugarcane'; normalize to lower to match.
+  const cropCode = (cropCodeRaw || '').toLowerCase();
+
   const now = Date.now();
   const cached = vocabCache.get(cropCode);
   

@@ -88,9 +88,16 @@ export async function detectContradiction(
   if (!intentUpper || !cropLower || !stageLower || !supabase) return null;
 
   try {
+    // intent_assertion_pattern schema (as of 2026-07-04):
+    //   id, intent_code, obs_code_regex, assertion_strength, notes, is_active, ...
+    // Compatibility columns (stage_compatibility, crop_compatibility, das_min/max)
+    // are NOT present on this table — treat them as absent and rely on
+    // assertion_strength + notes for labelling. Selecting only real columns
+    // stops the "column ... does not exist" error that silently disabled the
+    // contradiction engine on every request.
     const { data, error } = await supabase
       .from('intent_assertion_pattern')
-      .select('intent_code, assertion_label, stage_compatibility, crop_compatibility, das_min, das_max')
+      .select('intent_code, assertion_strength, notes, obs_code_regex')
       .eq('is_active', true)
       .eq('intent_code', intentUpper)
       .limit(5);
@@ -101,10 +108,11 @@ export async function detectContradiction(
     }
     if (!data || data.length === 0) return null;
 
+
     for (const row of data) {
       // STAGE_MISMATCH
-      const allowedStages: string[] = Array.isArray(row.stage_compatibility)
-        ? row.stage_compatibility.map(norm).filter(Boolean)
+      const allowedStages: string[] = Array.isArray((row as any).stage_compatibility)
+        ? (row as any).stage_compatibility.map(norm).filter(Boolean)
         : [];
       if (allowedStages.length > 0) {
         const ok = allowedStages.some(s => stagesEquivalent(s, stageLower) || s === 'all');
@@ -112,7 +120,7 @@ export async function detectContradiction(
           const c: Contradiction = Object.freeze({
             kind: 'STAGE_MISMATCH',
             assertion: intentUpper,
-            assertion_label: row.assertion_label || undefined,
+            assertion_label: row.notes || row.assertion_strength || undefined,
             context_field: 'growth_stage',
             context_value: stageLower,
             expected: Object.freeze([...allowedStages]),
@@ -124,8 +132,8 @@ export async function detectContradiction(
       }
 
       // CROP_MISMATCH
-      const allowedCrops: string[] = Array.isArray(row.crop_compatibility)
-        ? row.crop_compatibility.map(norm).filter(Boolean)
+      const allowedCrops: string[] = Array.isArray((row as any).crop_compatibility)
+        ? (row as any).crop_compatibility.map(norm).filter(Boolean)
         : [];
       if (allowedCrops.length > 0) {
         const ok = allowedCrops.some(c => c === cropLower || c === 'all');
@@ -133,7 +141,7 @@ export async function detectContradiction(
           return Object.freeze({
             kind: 'CROP_MISMATCH',
             assertion: intentUpper,
-            assertion_label: row.assertion_label || undefined,
+            assertion_label: row.notes || row.assertion_strength || undefined,
             context_field: 'crop_code',
             context_value: cropLower,
             expected: Object.freeze([...allowedCrops]),
@@ -144,13 +152,13 @@ export async function detectContradiction(
 
       // DAS_OUT_OF_RANGE
       if (typeof das === 'number' && isFinite(das)) {
-        const lo = typeof row.das_min === 'number' ? row.das_min : null;
-        const hi = typeof row.das_max === 'number' ? row.das_max : null;
+        const lo = typeof (row as any).das_min === 'number' ? (row as any).das_min : null;
+        const hi = typeof (row as any).das_max === 'number' ? (row as any).das_max : null;
         if ((lo != null && das < lo) || (hi != null && das > hi)) {
           return Object.freeze({
             kind: 'DAS_OUT_OF_RANGE',
             assertion: intentUpper,
-            assertion_label: row.assertion_label || undefined,
+            assertion_label: row.notes || row.assertion_strength || undefined,
             context_field: 'days_since_sowing',
             context_value: das,
             expected: Object.freeze([lo ?? 0, hi ?? 9999]),
