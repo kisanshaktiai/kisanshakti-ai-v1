@@ -812,8 +812,7 @@ export async function runCausalHypothesisArbitration(
   const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
   const startTime = Date.now();
 
-  // CRITICAL FIX: Normalize crop code to crop_group used in hypothesis_master
-  // DB stores: SUGARCANE, COTTON, RICE, WHEAT. Orchestrator may pass: SC, CTN, etc.
+  // Phase 3: normalize to DB-stored lowercase crop_group (rice, sugarcane, ...)
   const normalizedCropGroup = normalizeCropGroup(crop_group);
 
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
@@ -822,6 +821,34 @@ export async function runCausalHypothesisArbitration(
   // Load hypothesis data
   const data = await loadHypothesesForCrop(normalizedCropGroup, supabase_client);
   const cropHasHypotheses = data.hypotheses.length > 0;
+
+  console.log(`[HYPOTHESIS_LOAD] input_crop=${crop_group} resolved_crop_group=${normalizedCropGroup} hypothesis_count=${data.hypotheses.length}`);
+
+  // Phase 4: bridge extractor codes → crop-canonical IOM codes BEFORE evaluation.
+  // Ontology-driven: concept-bridge maps generic codes (poor_germination) to
+  // crop-specific canonicals (obs_rice_no_emergence). No hardcoded per-condition
+  // dictionaries — the bridge itself is data (small in-code table today,
+  // observation_aliases long-term).
+  let bridgedObservations = observations;
+  try {
+    const { bridgeToCropVocab } = await import('./concept-bridge.ts');
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of observations) {
+      if (!raw) continue;
+      const bridged = bridgeToCropVocab(normalizedCropGroup, raw);
+      const key = String(bridged).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(bridged);
+      if (bridged !== raw) {
+        console.log(`[OBSERVATION_BRIDGE] input=${raw} resolved=${bridged} source=concept_bridge crop=${normalizedCropGroup}`);
+      }
+    }
+    bridgedObservations = out;
+  } catch (e) {
+    console.warn(`[OBSERVATION_BRIDGE] bridge failed, using raw observations: ${(e as Error).message}`);
+  }
 
   if (!cropHasHypotheses) {
     console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
@@ -836,15 +863,15 @@ export async function runCausalHypothesisArbitration(
     };
   }
 
-  // Score all hypotheses
-  const scores: HypothesisScore[] = data.hypotheses.map(h => 
+  // Score all hypotheses using bridged observations
+  const scores: HypothesisScore[] = data.hypotheses.map(h =>
     scoreHypothesis(
       h,
       data.conditions.get(h.hypothesis_id) || [],
       data.contradictions.get(h.hypothesis_id) || [],
       data.ruleMappings.get(h.hypothesis_id) || [],
       canonical_state,
-      observations
+      bridgedObservations
     )
   );
 
