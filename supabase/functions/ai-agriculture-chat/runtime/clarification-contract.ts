@@ -261,8 +261,17 @@ export async function loadClarificationCandidates(
 
     console.log(
       `[CLARIFICATION_CONTRACT] intent=${intentUpper} crop=${cropLower} stage=${growth_stage} das=${das} ` +
-      `→ iom=${candidateKeys.length} gated=${gatedKeys.length} returned=${out.length} ` +
+      `→ iom=${candidateRank.size} confirmed_dropped=${preConfirmedDrops.length} ` +
+      `gated=${gatedKeys.length} returned=${out.length} ` +
       `keys=[${out.map((o) => o.observation_key).join(',')}]`,
+    );
+
+    // Forensic trace: exactly which ontology decisions produced the shown UI.
+    console.log(
+      `[CLARIFICATION_SOURCE] intent=${intentUpper} ` +
+      `confirmed_observation=[${Array.from(confirmedKeys).join(',')}] ` +
+      `dropped_already_confirmed=[${preConfirmedDrops.join(',')}] ` +
+      `shown_options=[${out.map((o) => o.observation_key).join(',')}]`,
     );
 
     return out;
