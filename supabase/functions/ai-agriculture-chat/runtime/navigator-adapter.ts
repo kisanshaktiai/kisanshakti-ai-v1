@@ -197,6 +197,15 @@ export async function runNavigator(input: NavigatorAdapterInput): Promise<Naviga
     // 1. Contradiction check.
     let contradiction = null;
     try {
+      // FIX 1: pass confirmed observations so biological-impossibility check
+      // fires (e.g. NO_GERMINATION asserted while BiologicalState=TILLERING).
+      const confirmedObservations: string[] = [];
+      try {
+        const latest = input.graph.observation_ledger.latestByCode();
+        for (const [code, node] of latest) {
+          if (!node.rejected && node.confirmed) confirmedObservations.push(String(code));
+        }
+      } catch {/* non-fatal */}
       contradiction = await detectContradiction({
         supabase: input.supabase,
         intent_code: input.intent_code,
@@ -204,6 +213,7 @@ export async function runNavigator(input: NavigatorAdapterInput): Promise<Naviga
         growth_stage: ctx.growth_stage || '',
         das: ctx.days_since_sowing ?? null,
         trace_id: input.graph.trace_id,
+        observations: confirmedObservations,
       });
     } catch (e) {
       console.warn(`[NAV_ADAPTER][${input.graph.trace_id}] contradiction_engine failed: ${e instanceof Error ? e.message : String(e)}`);
