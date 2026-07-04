@@ -4667,10 +4667,10 @@ export class AIAgentOrchestrator {
           // No hardcoded agronomy in TS. All mappings come from
           // public.observation_aliases (see decision/concept-bridge.ts).
           // ═══════════════════════════════════════════════════════════════════
-          const { bridgeCodesDb } = await import('../decision/concept-bridge.ts');
+          const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
           const real_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
           const bridged = await bridgeCodesDb(this.supabase, cropCode, real_codes);
-          const canonical_observation_codes: string[] = bridged.map((b) => b.canonical_code);
+          const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
 
           // TURN_EVIDENCE_LOCK — ledger: INFERRED entries for any DB-bridged code
           for (const b of bridged) {
@@ -4682,15 +4682,41 @@ export class AIAgentOrchestrator {
               );
             }
           }
+
+          // ═══════════════════════════════════════════════════════════════════
+          // CROP CANONICAL RESOLVE — intent_observation_mapping LITERAL peers
+          // Expands generic canonical codes (e.g. `poor_germination`) into
+          // their crop-specific LITERAL peers (e.g. `obs_rice_no_emergence`)
+          // whenever the anchor member is confirmed by the farmer. No
+          // hardcoded agronomy — see decision/concept-bridge.ts.
+          // ═══════════════════════════════════════════════════════════════════
+          const resolved = await resolveCropCanonicalObservations(
+            this.supabase,
+            intentCode,
+            cropCode,
+            bridgedCanonical,
+          );
+          const canonical_observation_codes: string[] = resolved.map((r) => r.code);
+          for (const r of resolved) {
+            if (r.source === 'iom_literal_peer') {
+              authoredObservations.add(
+                r.code,
+                ObservationAuthority.INFERRED,
+                'IOM_LITERAL_PEER',
+              );
+            }
+          }
+
           Object.freeze(real_codes);
           Object.freeze(canonical_observation_codes);
-          console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} canonical=${canonical_observation_codes.length}`);
+          console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} canonical=${canonical_observation_codes.length}`);
 
           const currentObservations = canonical_observation_codes;
           if (real_codes.length !== currentObservations.length ||
               real_codes.some((c, i) => c !== currentObservations[i])) {
             console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${real_codes.join(',')} → ${currentObservations.join(',')}`);
           }
+
 
           // ═══════════════════════════════════════════════════════════════════════════
           // CRITICAL BUG FIX: DAS propagation - use ?? (nullish) not || (falsy)
