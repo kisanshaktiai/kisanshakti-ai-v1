@@ -7302,8 +7302,14 @@ export class AIAgentOrchestrator {
       
       let diagnosticState: any;
       
-      if (symbolicAlreadyProduced || isSymptomFreeRoute || bypassClarification) {
-        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic/advisory path active (rules=${totalRulesMatched}, symptom_free=${isSymptomFreeRoute}, bypass=${bypassClarification})`);
+      // FORENSIC FIX (2026-07): isSymptomFreeRoute is computed from the
+      // initial queryRoute label and can be stale once observations are
+      // extracted. If real informative symptoms exist, do NOT skip PHASE 3
+      // as symptom_free — that hands the turn to unrelated advisory rules.
+      const informativeForPhase3 = [...(allObservationsForPreAuth || new Set<string>())].filter((c: string) => isInformativeObs(c));
+      const symptomFreeForPhase3 = isSymptomFreeRoute && informativeForPhase3.length === 0;
+      if (symbolicAlreadyProduced || symptomFreeForPhase3 || bypassClarification) {
+        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic/advisory path active (rules=${totalRulesMatched}, symptom_free=${symptomFreeForPhase3}, bypass=${bypassClarification}, informative=${informativeForPhase3.length})`);
         diagnosticState = {
           mode: 'READY_FOR_DECISION',
           next_question: null,
