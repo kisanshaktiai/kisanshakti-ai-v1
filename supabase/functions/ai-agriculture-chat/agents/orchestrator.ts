@@ -8484,6 +8484,27 @@ export class AIAgentOrchestrator {
           rules_matched: snapshot.rules_matched,
         });
         checkGraphInvariants(snapshot);
+
+        // FIX 5 (surgical) — final graph invariant. If we have real symptoms
+        // AND a crop, the farmer must NEVER receive a generic "provide more
+        // details" response — that's a symbolic-brain failure, not a farmer
+        // problem. Log loudly so it surfaces in every log scan.
+        try {
+          const respText = String(
+            (farmerCommunication as any)?.message ??
+            (farmerCommunication as any)?.text ??
+            (farmerCommunication as any)?.response_text ??
+            ''
+          );
+          const asksForMoreDetails = /provide more details|ask your question again|अधिक माहिती द्या|और जानकारी दें|மேலும் தகவல்|మరింత సమాచారం/i.test(respText);
+          if (snapshot.real_observation_count > 0 && snapshot.crop && asksForMoreDetails) {
+            console.error(
+              `[FINAL_INVARIANT_VIOLATION][${traceId}] observation_count=${snapshot.real_observation_count} ` +
+              `crop=${snapshot.crop} intent_lock=DIAGNOSTIC_INQUIRY but response is generic "ask for more details". ` +
+              `symbolic_brain_returned_no_actionable_advice`,
+            );
+          }
+        } catch { /* invariant must never throw */ }
       } catch (invErr) {
         console.warn(`[GRAPH_INVARIANT_ERR][${traceId}] non-fatal: ${invErr instanceof Error ? invErr.message : String(invErr)}`);
       }
