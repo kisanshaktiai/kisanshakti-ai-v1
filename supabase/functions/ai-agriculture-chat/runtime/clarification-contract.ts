@@ -49,27 +49,17 @@ export function canonicalizeObservationKey(s: string | null | undefined): string
   return String(s).trim().toLowerCase().replace(/[\s-]+/g, '_');
 }
 
-// ─── Stage synonyms (biologically equivalent stages) ──────────────────────
-const STAGE_SYNONYMS: Record<string, string[]> = {
-  seedling:     ['seedling', 'nursery', 'germination', 'emergence'],
-  nursery:      ['nursery', 'seedling', 'germination'],
-  germination:  ['germination', 'nursery', 'seedling', 'emergence'],
-  emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
-  vegetative:   ['vegetative', 'tillering'],
-  tillering:    ['tillering', 'vegetative'],
-  flowering:    ['flowering', 'reproductive', 'grand_growth'],
-  reproductive: ['reproductive', 'flowering', 'grand_growth'],
-  grand_growth: ['grand_growth', 'flowering', 'reproductive'],
-  maturity:     ['maturity', 'ripening', 'maturation'],
-  ripening:     ['ripening', 'maturity', 'maturation'],
-  maturation:   ['maturation', 'maturity', 'ripening'],
-  harvest:      ['harvest', 'harvesting'],
-};
-
+// ─── Stage expansion (DB is authority) ────────────────────────────────────
+// The old hardcoded STAGE_SYNONYMS map (seedling↔nursery↔germination…,
+// tillering↔vegetative, flowering↔reproductive↔grand_growth, …) was
+// agronomy-in-code and has been deleted. Cross-stage equivalence MUST be
+// curated in `intent_observation_mapping.growth_stage` rows: data owners
+// insert one IOM row per biologically-equivalent stage. Runtime only
+// normalises the key and always includes the `all` bucket.
 function expandStageSynonyms(stage?: string | null): string[] {
   if (!stage) return ['all'];
   const key = String(stage).toLowerCase().trim().replace(/[\s-]+/g, '_');
-  return Array.from(new Set([...(STAGE_SYNONYMS[key] || [key]), 'all']));
+  return Array.from(new Set([key, 'all']));
 }
 
 // ─── Main candidate loader ────────────────────────────────────────────────
