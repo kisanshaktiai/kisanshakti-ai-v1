@@ -478,11 +478,12 @@ export function mapRainfallToEnum(mmLast7Days: number | undefined): RainfallRece
   return RainfallRecent.EXCESSIVE;
 }
 
-export function mapTemperatureToStress(tempC: number | undefined, cropType: CropType): TemperatureStress {
+export function mapTemperatureToStress(tempC: number | undefined, cropType: CropType | string): TemperatureStress {
   if (tempC === undefined || tempC === null || isNaN(tempC)) return TemperatureStress.UNKNOWN;
   
   // Crop-specific thresholds (simplified)
-  const isWarmSeasonCrop = [CropType.RICE, CropType.SUGARCANE, CropType.COTTON, CropType.MAIZE].includes(cropType);
+  const warmSeasonCrops: string[] = [CropType.RICE, CropType.SUGARCANE, CropType.COTTON, CropType.MAIZE];
+  const isWarmSeasonCrop = warmSeasonCrops.includes(String(cropType));
   
   if (isWarmSeasonCrop) {
     if (tempC < 10) return TemperatureStress.COLD_STRESS;
