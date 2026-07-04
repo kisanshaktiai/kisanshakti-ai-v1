@@ -1389,7 +1389,20 @@ export function filterRulesByIntent(
   // promoted to a treatment/prescription decision — they must be flagged so
   // the arbiter and prescription gate can route to clarification /
   // information response instead of ever winning a treatment action.
-  if (kept === 0 && demoted > 0) {
+  //
+  // FORENSIC FIX (2026-07): Exempt diagnostic / observation intents from the
+  // leakage guard. In a diagnostic turn the farmer has reported a symptom;
+  // the correct symbolic path is condition-driven matching over the whole
+  // rule set (generic diagnostic rules have rule_intent=null in DB). Flagging
+  // them all _noTreatmentEligible collapses the graph and hands the win to
+  // an unrelated proactive rule (e.g. PROACTIVE_FLOOD_PREPAREDNESS_001).
+  const DIAGNOSTIC_INTENT_KEYS = new Set<string>([
+    'diagnostic_inquiry','diagnosis','report_symptom','pest_observation','disease_observation',
+    'stem_damage','leaf_damage','root_damage','fruit_damage','borer_identification','borer_damage',
+    'dead_heart','insect_damage','fungal_infection','growth_anomaly','wilting_drying','yellowing',
+    'nutrient_deficiency','unknown_observation','emergence_failure','germination_failure',
+  ]);
+  if (kept === 0 && demoted > 0 && !DIAGNOSTIC_INTENT_KEYS.has(intentKey)) {
     for (const r of out) {
       (r as any)._intentGateLeakage = true;
       (r as any)._noTreatmentEligible = true;
@@ -1397,6 +1410,11 @@ export function filterRulesByIntent(
     console.warn(
       `[BRAIN_TRACE][RULE_INTENT_GATE][LEAKAGE_GUARD] intent="${intentKey}" kept=0 demoted=${demoted} ` +
       `→ all remaining rules marked _noTreatmentEligible (route to clarification or info response)`
+    );
+  } else if (kept === 0 && demoted > 0) {
+    console.log(
+      `[BRAIN_TRACE][RULE_INTENT_GATE][DIAGNOSTIC_EXEMPT] intent="${intentKey}" kept=0 demoted=${demoted} ` +
+      `→ leakage guard skipped; diagnostic condition matching may proceed`
     );
   }
   console.log(

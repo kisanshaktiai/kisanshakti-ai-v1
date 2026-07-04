@@ -4324,7 +4324,13 @@ export class AIAgentOrchestrator {
           directModeBypass = false;
           bypassClarification = false;
         } else if (directHardBypass && informativeNow.length > 0) {
-          console.log(`   🔒 [DIRECT_HARD_BYPASS] Intent contract (clarification_mode=DIRECT, max_rounds=0) blocks VETO — staying in advisory route despite ${informativeNow.length} symptom signals.`);
+          // FORENSIC FIX (2026-07): Evidence beats intent contract. A symptom
+          // report must never stay in advisory route just because the intent
+          // metadata declared clarification_mode=DIRECT/max_rounds=0. Content
+          // beats label — VETO applies even for hard bypass.
+          console.log(`   🛑 [DIRECT_HARD_BYPASS_VETO] Symptom signal (${informativeNow.length} informative obs) overrides intent contract for intent=${intentCode}`);
+          directModeBypass = false;
+          bypassClarification = false;
         }
 
         // Fix F: For DIRECT-hard intents (e.g. GENERAL_CROP_INFO), seed the rule
@@ -7275,7 +7281,7 @@ export class AIAgentOrchestrator {
       // ========================================
       
       // Build once so it's available for both diagnostic and rule-engine paths
-      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
+      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence, intentCode as any);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX (Forensic Audit): Wire orchestrator's assembled observations
@@ -7296,8 +7302,14 @@ export class AIAgentOrchestrator {
       
       let diagnosticState: any;
       
-      if (symbolicAlreadyProduced || isSymptomFreeRoute || bypassClarification) {
-        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic/advisory path active (rules=${totalRulesMatched}, symptom_free=${isSymptomFreeRoute}, bypass=${bypassClarification})`);
+      // FORENSIC FIX (2026-07): isSymptomFreeRoute is computed from the
+      // initial queryRoute label and can be stale once observations are
+      // extracted. If real informative symptoms exist, do NOT skip PHASE 3
+      // as symptom_free — that hands the turn to unrelated advisory rules.
+      const informativeForPhase3 = [...(allObservationsForPreAuth || new Set<string>())].filter((c: string) => isInformativeObs(c));
+      const symptomFreeForPhase3 = isSymptomFreeRoute && informativeForPhase3.length === 0;
+      if (symbolicAlreadyProduced || symptomFreeForPhase3 || bypassClarification) {
+        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic/advisory path active (rules=${totalRulesMatched}, symptom_free=${symptomFreeForPhase3}, bypass=${bypassClarification}, informative=${informativeForPhase3.length})`);
         diagnosticState = {
           mode: 'READY_FOR_DECISION',
           next_question: null,
@@ -10027,9 +10039,14 @@ export class AIAgentOrchestrator {
    * Build NLU output with rule mapping for diagnostic controller
    * CRITICAL GAP 1 FIX: Now properly calls resolveRuleModules() to populate requiredRuleModules
    */
-  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence): any {
+  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence, frozenIntent?: string | null): any {
     // Extract intent for rule resolution
-    const intent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
+    // FORENSIC FIX (2026-07): Prefer the frozen graph intent (set by intent
+    // freeze) over the raw NLU classifier. Without this, downstream logs
+    // "Resolved 6 rule modules for intent: UNKNOWN" even after we've locked
+    // intent=DIAGNOSTIC_INQUIRY.
+    const nluIntent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
+    const intent = (frozenIntent && frozenIntent !== 'UNKNOWN' ? frozenIntent : nluIntent) as NLUIntent;
     
     // Build extracted entities from NLU output + fused intelligence
     // CRITICAL FIX: Prioritize fused intelligence crop code, then NLU, then use as-is
