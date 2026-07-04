@@ -1226,6 +1226,22 @@ export interface PrescriptionGateResult {
 }
 
 export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateResult {
+  // FIX 3 (EVIDENCE_COUNT_TRACE): permanently separate farmer-confirmed
+  // observations from candidate/hypothesis/rule counts. PrescriptionGate
+  // MUST ONLY use confirmed_observation_count. Never rules or candidate
+  // hypothesis counts.
+  const confirmedObservationCount = Math.max(
+    Number((state as any).symptom_count ?? 0),
+    [state.visual_symptom, ...(state.secondary_symptoms || [])]
+      .filter((s: any) => s && s !== 'UNKNOWN' && s !== 'NONE').length
+  );
+  const candidateHypothesisCount = Number((state as any).candidate_hypothesis_count ?? 0);
+  const matchedRulesCount = Number((state as any).matched_rules_count ?? 0);
+  console.log(
+    `[EVIDENCE_COUNT_TRACE] confirmed_observations=${confirmedObservationCount} ` +
+    `candidate_hypotheses=${candidateHypothesisCount} matched_rules=${matchedRulesCount}`
+  );
+
   // Gate 1: Data confidence must be at least MEDIUM
   if (state.data_confidence === DataConfidence.VERY_LOW) {
     return {
@@ -1236,28 +1252,24 @@ export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateRe
   }
   
   if (state.data_confidence === DataConfidence.LOW) {
-    // CRITICAL FIX v5.3: Read evidence from canonical metrics + symptom enums fallback
-    const directSymptomCount = Number((state as any).symptom_count ?? 0);
-    const inferredSymptomCount = [state.visual_symptom, ...(state.secondary_symptoms || [])]
-      .filter((s: any) => s && s !== 'UNKNOWN' && s !== 'NONE').length;
-    const symptomCount = Math.max(directSymptomCount, inferredSymptomCount);
-
+    // FIX 3: use confirmedObservationCount ONLY. Do not mix candidates/rules.
+    const symptomCount = confirmedObservationCount;
     const directCompleteness = Number((state as any).data_completeness ?? 0);
     const inferredCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
     const dataCompleteness = Math.max(directCompleteness, inferredCompleteness);
     const hasStrongEvidence = symptomCount >= 5 || dataCompleteness >= 0.7;
     
     if (hasStrongEvidence) {
-      console.log(`   ✅ [PrescriptionGate] LOW confidence OVERRIDDEN — strong symptom evidence (symptoms=${symptomCount}, completeness=${(dataCompleteness * 100).toFixed(0)}%)`);
+      console.log(`   ✅ [PrescriptionGate] LOW confidence OVERRIDDEN — strong CONFIRMED evidence (confirmed_observations=${symptomCount}, completeness=${(dataCompleteness * 100).toFixed(0)}%)`);
       return {
         allowed: true,
-        reason: 'Low data confidence overridden by strong symptom evidence.',
+        reason: 'Low data confidence overridden by strong confirmed observation evidence.',
         requiredData: getRequiredDataForConfidence(state)
       };
     }
     
     // Original block remains for cases with no/weak symptom evidence
-    console.log(`   ⚠️ [PrescriptionGate] BLOCKED — LOW confidence, weak evidence (symptoms=${symptomCount}, completeness=${(dataCompleteness * 100).toFixed(0)}%)`);
+    console.log(`   ⚠️ [PrescriptionGate] BLOCKED — LOW confidence, weak CONFIRMED evidence (confirmed_observations=${symptomCount}, completeness=${(dataCompleteness * 100).toFixed(0)}%)`);
     return {
       allowed: false,
       reason: 'Can diagnose but cannot prescribe treatment with low confidence.',
