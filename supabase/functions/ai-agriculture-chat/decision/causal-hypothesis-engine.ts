@@ -64,6 +64,8 @@ export interface DiscriminatorQuestion {
   question_text_en: string;
   question_text_mr: string;
   question_text_hi: string;
+  /** Canonical observation code to be translated by the language layer / observation_translations */
+  observation_code?: string;
   weight: number;
 }
 
@@ -129,29 +131,31 @@ interface HypothesisRuleMappingRow {
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
-const ENGINE_VERSION = '1.1.0'; // v1.1.0: Fixed subquery bug + crop_group normalization
+const ENGINE_VERSION = '1.2.0'; // v1.2.0: lowercase crop_group, ontology-bridged observations, SKIPPED penalty
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP GROUP NORMALIZER
-// Maps short crop codes to canonical crop_group values used in hypothesis_master
-// DB crop_groups: SUGARCANE, COTTON, RICE, WHEAT
+// DB `hypothesis_master.crop_group` stores lowercase canonical crop names
+// (rice, sugarcane, cotton, wheat, ...). We only normalize case + a tiny
+// alias set for short farmer codes; long-term source of truth is the crops
+// ontology in the DB, NOT this map.
 // ═══════════════════════════════════════════════════════════════════════════
-
-const CROP_CODE_TO_GROUP: Record<string, string> = {
-  'SC': 'SUGARCANE', 'SUGARCANE': 'SUGARCANE', 'sugarcane': 'SUGARCANE',
-  'CTN': 'COTTON', 'COTTON': 'COTTON', 'cotton': 'COTTON',
-  'RICE': 'RICE', 'rice': 'RICE', 'PADDY': 'RICE', 'paddy': 'RICE',
-  'WHEAT': 'WHEAT', 'wheat': 'WHEAT', 'WHT': 'WHEAT',
-  'SOYBEAN': 'SOYBEAN', 'soybean': 'SOYBEAN', 'SOY': 'SOYBEAN',
-  'MAIZE': 'MAIZE', 'maize': 'MAIZE', 'MZ': 'MAIZE',
-  'ONION': 'ONION', 'onion': 'ONION', 'ON': 'ONION',
-  'TOMATO': 'TOMATO', 'tomato': 'TOMATO', 'TM': 'TOMATO',
-  'TUR': 'TUR', 'tur': 'TUR', 'PIGEON_PEA': 'TUR',
+const CROP_CODE_ALIASES: Record<string, string> = {
+  sc: 'sugarcane',
+  ctn: 'cotton',
+  wht: 'wheat',
+  mz: 'maize',
+  soy: 'soybean',
+  paddy: 'rice',
+  pigeon_pea: 'tur',
 };
 
 function normalizeCropGroup(input: string): string {
-  return CROP_CODE_TO_GROUP[input] || CROP_CODE_TO_GROUP[input.toUpperCase()] || input.toUpperCase();
+  const lower = String(input || '').trim().toLowerCase();
+  if (!lower) return lower;
+  return CROP_CODE_ALIASES[lower] || lower;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE
@@ -516,11 +520,11 @@ function scoreHypothesis(
   // Check contradictions
   const contradictionsFound = checkContradictions(contradictionRows, canonicalState, observations);
 
-  // STRICT FAIL-CLOSED MATCH RULE:
+  // STRICT FAIL-CLOSED MATCH RULE (Phase 6: SKIPPED_NO_DATA no longer eliminates):
   // 1. Zero required entries with FAILED
-  // 2. Zero required entries with SKIPPED_NO_DATA
-  // 3. Zero CONTRADICTED entries
-  // 4. At least one PASSED entry
+  // 2. Zero CONTRADICTED entries
+  // 3. At least one PASSED entry
+  // Missing sensor/weather data is now a CONFIDENCE PENALTY, not elimination.
   const hasRequiredFailed = ledger.some(e => e.required && e.status === HypothesisConditionStatus.FAILED);
   const hasRequiredSkipped = ledger.some(e => e.required && e.status === HypothesisConditionStatus.SKIPPED_NO_DATA);
   const hasContradiction = contradictionsFound.length > 0;
@@ -535,9 +539,6 @@ function scoreHypothesis(
   } else if (hasRequiredFailed) {
     is_eliminated = true;
     elimination_reason = 'FAILED_REQUIRED';
-  } else if (hasRequiredSkipped) {
-    is_eliminated = true;
-    elimination_reason = 'MISSING_DATA';
   } else if (!hasPassed) {
     is_eliminated = true;
     elimination_reason = 'FAILED_REQUIRED';
@@ -546,28 +547,42 @@ function scoreHypothesis(
   // Compute score (even for eliminated, for logging)
   const requiredEntries = ledger.filter(e => e.required);
   const passedRequired = requiredEntries.filter(e => e.status === HypothesisConditionStatus.PASSED);
-  
+
   const totalRequiredWeight = requiredEntries.reduce((sum, e) => sum + e.weight, 0);
   const passedRequiredWeight = passedRequired.reduce((sum, e) => sum + e.weight, 0);
-  
+
   // Include optional passed conditions in score
   const optionalPassed = ledger.filter(e => !e.required && e.status === HypothesisConditionStatus.PASSED);
   const totalWeight = conditions.reduce((sum, c) => sum + c.weight, 0);
-  const passedWeight = passedRequired.reduce((sum, e) => sum + e.weight, 0) + 
+  const passedWeight = passedRequired.reduce((sum, e) => sum + e.weight, 0) +
                        optionalPassed.reduce((sum, e) => sum + e.weight, 0);
 
   const base_score = totalWeight > 0 ? passedWeight / totalWeight : 0;
-  
+
   // Density weight (same formula as layered-rule-evaluator.ts)
   const total_required = requiredEntries.length;
   const density_weight = Math.min(1.0, Math.log(total_required + 1) / Math.log(10));
-  const weighted_score = Math.min(1.0, base_score * (0.5 + 0.5 * density_weight));
+  let weighted_score = Math.min(1.0, base_score * (0.5 + 0.5 * density_weight));
+
+  // Phase 6: bounded confidence penalty for missing evidence (weight-scaled),
+  // capped so a single required SKIPPED cannot exceed 30% of the score.
+  const skippedEntries = ledger.filter(e => e.status === HypothesisConditionStatus.SKIPPED_NO_DATA);
+  if (skippedEntries.length > 0 && totalWeight > 0) {
+    const skippedWeight = skippedEntries.reduce((sum, e) => sum + (e.required ? e.weight : e.weight * 0.5), 0);
+    const penaltyRatio = Math.min(0.5, skippedWeight / totalWeight);
+    const penalty = weighted_score * penaltyRatio;
+    weighted_score = Math.max(0, weighted_score - penalty);
+    if (hasRequiredSkipped) {
+      console.log(`   ⚠️ [HypothesisScore] ${hypothesis.hypothesis_id} required-SKIPPED_NO_DATA: applied confidence penalty=${penalty.toFixed(3)} (score=${weighted_score.toFixed(3)})`);
+    }
+  }
 
   // Apply LOW_SCORE elimination
   if (!is_eliminated && weighted_score < MIN_HYPOTHESIS_CONFIDENCE) {
     is_eliminated = true;
     elimination_reason = 'LOW_SCORE';
   }
+
 
   return {
     hypothesis_id: hypothesis.hypothesis_id,
@@ -636,7 +651,10 @@ function buildDiscriminatorQuestion(
         hypothesis_b_id: scoreB.hypothesis_id,
         hypothesis_a_name: scoreA.cause_name_en,
         hypothesis_b_name: scoreB.cause_name_en,
-        question_text_en: `To help identify the exact problem: Have you noticed ${code.toLowerCase().replace(/_/g, ' ')}?`,
+        // Phase 7: no hardcoded English. Carry the canonical observation code;
+        // the language layer / observation_translations produce the farmer text.
+        question_text_en: '',
+        observation_code: code,
         question_text_mr: '', // @deprecated — LLM translates at runtime
         question_text_hi: '', // @deprecated — LLM translates at runtime
         weight: disc.weight
@@ -794,8 +812,7 @@ export async function runCausalHypothesisArbitration(
   const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
   const startTime = Date.now();
 
-  // CRITICAL FIX: Normalize crop code to crop_group used in hypothesis_master
-  // DB stores: SUGARCANE, COTTON, RICE, WHEAT. Orchestrator may pass: SC, CTN, etc.
+  // Phase 3: normalize to DB-stored lowercase crop_group (rice, sugarcane, ...)
   const normalizedCropGroup = normalizeCropGroup(crop_group);
 
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
@@ -804,6 +821,34 @@ export async function runCausalHypothesisArbitration(
   // Load hypothesis data
   const data = await loadHypothesesForCrop(normalizedCropGroup, supabase_client);
   const cropHasHypotheses = data.hypotheses.length > 0;
+
+  console.log(`[HYPOTHESIS_LOAD] input_crop=${crop_group} resolved_crop_group=${normalizedCropGroup} hypothesis_count=${data.hypotheses.length}`);
+
+  // Phase 4: bridge extractor codes → crop-canonical IOM codes BEFORE evaluation.
+  // Ontology-driven: concept-bridge maps generic codes (poor_germination) to
+  // crop-specific canonicals (obs_rice_no_emergence). No hardcoded per-condition
+  // dictionaries — the bridge itself is data (small in-code table today,
+  // observation_aliases long-term).
+  let bridgedObservations = observations;
+  try {
+    const { bridgeToCropVocab } = await import('./concept-bridge.ts');
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of observations) {
+      if (!raw) continue;
+      const bridged = bridgeToCropVocab(normalizedCropGroup, raw);
+      const key = String(bridged).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(bridged);
+      if (bridged !== raw) {
+        console.log(`[OBSERVATION_BRIDGE] input=${raw} resolved=${bridged} source=concept_bridge crop=${normalizedCropGroup}`);
+      }
+    }
+    bridgedObservations = out;
+  } catch (e) {
+    console.warn(`[OBSERVATION_BRIDGE] bridge failed, using raw observations: ${(e as Error).message}`);
+  }
 
   if (!cropHasHypotheses) {
     console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
@@ -818,15 +863,15 @@ export async function runCausalHypothesisArbitration(
     };
   }
 
-  // Score all hypotheses
-  const scores: HypothesisScore[] = data.hypotheses.map(h => 
+  // Score all hypotheses using bridged observations
+  const scores: HypothesisScore[] = data.hypotheses.map(h =>
     scoreHypothesis(
       h,
       data.conditions.get(h.hypothesis_id) || [],
       data.contradictions.get(h.hypothesis_id) || [],
       data.ruleMappings.get(h.hypothesis_id) || [],
       canonical_state,
-      observations
+      bridgedObservations
     )
   );
 

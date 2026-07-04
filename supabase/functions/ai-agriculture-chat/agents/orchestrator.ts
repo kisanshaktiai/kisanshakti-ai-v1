@@ -6125,21 +6125,22 @@ export class AIAgentOrchestrator {
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // CRITICAL FIX: If terminal damage symptoms detected, force PLANT_DEATH/SEEDLING_DEATH
-        // This ensures rule matching works for terminal damage regardless of mapping
+        // NEURO-SYMBOLIC CONTRACT: CanonicalState transports symbols only.
+        // Removed hasTerminalDamage / induction override — the ontology
+        // (observation_master + observation_aliases + concept-bridge) already
+        // resolves farmer language into canonical codes before this point.
+        // If a mutation is observed, canonical-state-builder logs
+        // [CANONICAL_MUTATION_BLOCKED]; if evidence never reached the builder,
+        // the fix belongs upstream in the extractor/bridge, not here.
         // ═══════════════════════════════════════════════════════════════════════════
-        const terminalSymptoms = ['SEEDLING_DIED', 'PLANT_DIED', 'PLANT_DEATH', 'SEEDLING_DEATH'];
-        const hasTerminalDamage = uniqueSymptomCodes.some(s => terminalSymptoms.includes(s.toUpperCase()));
-        
-        if (hasTerminalDamage && (!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN' || canonicalState.visual_symptom === 'NONE')) {
-          console.log(`   🚨 Terminal damage detected - forcing PLANT_DEATH symptom`);
-          canonicalState.visual_symptom = 'PLANT_DEATH' as any;
-          canonicalState.severity = 'CRITICAL' as any;
-        } else if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN') && inductionSymptoms.length > 0) {
-          // ENHANCEMENT: If no visual symptom but induction has symptoms, use first one
-          console.log(`   📝 Enriching canonical state symptom from induction: ${inductionSymptoms[0]}`);
-          canonicalState.visual_symptom = inductionSymptoms[0] as any;
+        if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN' || canonicalState.visual_symptom === 'NONE') && uniqueSymptomCodes.length > 0) {
+          const firstRealCode = uniqueSymptomCodes[0];
+          console.log(`[GRAPH_NODE_TRACE] node=OBSERVATION real_count=${uniqueSymptomCodes.length} first=${firstRealCode} canonical_symptom=${canonicalState.visual_symptom}`);
+          if (canonicalState.visual_symptom !== firstRealCode) {
+            console.error(`[GRAPH_CONSISTENCY_ERROR] original=${firstRealCode} resolved=${canonicalState.visual_symptom} mutation_source=canonical_state_builder (evidence present but symptom UNKNOWN — check observation_aliases/concept-bridge)`);
+          }
         }
+
         
         agentsUsed.push('CANONICAL_STATE_BUILDER');
         

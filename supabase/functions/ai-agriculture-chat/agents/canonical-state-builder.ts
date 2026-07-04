@@ -523,133 +523,56 @@ export function mapCropNameToEnum(cropName: string | undefined): CropType {
   return enumMap[fullName] || CropType.UNKNOWN;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STAGE ENUM RESOLVER — STRICT PASS-THROUGH
+// Authority for crop stage lives in BiologicalState / crop_stage_master.
+// This function ONLY translates an already-canonical stage string into the
+// TypeScript enum. It MUST NOT infer stage from vernacular keywords.
+// ═══════════════════════════════════════════════════════════════════════════
 export function mapStageToEnum(stage: string | undefined): CropStage {
   if (!stage) return CropStage.UNKNOWN;
-  
-  const normalized = stage.toLowerCase().trim();
-  
-  if (normalized.includes('germin') || normalized.includes('उगवण') || normalized.includes('अंकुरण')) return CropStage.GERMINATION;
-  if (normalized.includes('seedling') || normalized.includes('रोप')) return CropStage.SEEDLING;
-  if (normalized.includes('tiller') || normalized.includes('फुटवा') || normalized.includes('कल्ले')) return CropStage.TILLERING;
-  if (normalized.includes('grand') || normalized.includes('वाढ') || normalized.includes('बढ़वार')) return CropStage.GRAND_GROWTH;
-  if (normalized.includes('veget') || normalized.includes('वनस्पतिक')) return CropStage.VEGETATIVE;
-  if (normalized.includes('flower') || normalized.includes('फुलोरा') || normalized.includes('फूल')) return CropStage.FLOWERING;
-  if (normalized.includes('fruit') || normalized.includes('फळ') || normalized.includes('फल')) return CropStage.FRUITING;
-  if (normalized.includes('matur') || normalized.includes('पक्व') || normalized.includes('पकाव')) return CropStage.MATURITY;
-  if (normalized.includes('harvest') || normalized.includes('कापणी') || normalized.includes('कटाई')) return CropStage.HARVEST;
-  
+  const normalized = String(stage).trim().toUpperCase().replace(/[\s-]/g, '_');
+  if (normalized in CropStage) {
+    return CropStage[normalized as keyof typeof CropStage];
+  }
+  // No hardcoded keyword/vernacular inference — ontology is the SSOT.
+  console.warn(`[STAGE_ENUM_UNRESOLVED] raw=${stage} normalized=${normalized} → UNKNOWN (expected canonical stage from BiologicalState/crop_stage_master)`);
   return CropStage.UNKNOWN;
 }
 
-// ==================== VISUAL SYMPTOM MAPPING ====================
-
+// ==================== VISUAL SYMPTOM MAPPING (PASS-THROUGH) ====================
+// The neuro-symbolic contract requires that once the language layer /
+// observation_aliases / observation_master resolve a code, CanonicalState only
+// transports that code. No hidden dictionary from vernacular tokens or generic
+// synonyms to VisualSymptom — that authority belongs to the ontology tables.
 export function mapObservationsToSymptom(observations: string[]): { primary: VisualSymptom; secondary: VisualSymptom[] } {
-  const symptomMap: Record<string, VisualSymptom> = {
-    // Yellowing
-    'yellowing': VisualSymptom.GENERAL_YELLOWING,
-    'पिवळे': VisualSymptom.GENERAL_YELLOWING,
-    'पीला': VisualSymptom.GENERAL_YELLOWING,
-    'पिवळी': VisualSymptom.GENERAL_YELLOWING,
-    'interveinal': VisualSymptom.INTERVEINAL_YELLOWING,
-    'शिरा_मध्ये_पिवळे': VisualSymptom.INTERVEINAL_YELLOWING,
-    
-    // Burn
-    'leaf_edge_burn': VisualSymptom.LEAF_EDGE_BURN,
-    'tip_burn': VisualSymptom.LEAF_TIP_BURN,
-    'पान_किनार_जळणे': VisualSymptom.LEAF_EDGE_BURN,
-    
-    // Curling/Rolling
-    'curling': VisualSymptom.LEAF_CURLING,
-    'rolling': VisualSymptom.LEAF_ROLLING,
-    'पान_गुंडाळणे': VisualSymptom.LEAF_CURLING,
-    'वळलेली': VisualSymptom.LEAF_CURLING,
-    'मुडलेली': VisualSymptom.LEAF_CURLING,
-    
-    // Spots
-    'circular_spots': VisualSymptom.SPOTS_CIRCULAR,
-    'irregular_spots': VisualSymptom.SPOTS_IRREGULAR,
-    'angular_spots': VisualSymptom.SPOTS_ANGULAR,
-    'spots': VisualSymptom.SPOTS_IRREGULAR,
-    'डाग': VisualSymptom.SPOTS_IRREGULAR,
-    'ठिपके': VisualSymptom.SPOTS_IRREGULAR,
-    
-    // Fungal
-    'powdery': VisualSymptom.POWDERY_COATING,
-    'downy': VisualSymptom.DOWNY_GROWTH,
-    'भुरी': VisualSymptom.POWDERY_COATING,
-    
-    // Structural - Wilting/Dying
-    'wilting': VisualSymptom.WILTING,
-    'मुरझाना': VisualSymptom.WILTING,
-    'सुकणे': VisualSymptom.WILTING,
-    'वाळणे': VisualSymptom.WILTING,
-    'वाळले': VisualSymptom.WILTING,
-    'सुकले': VisualSymptom.WILTING,
-    'stunted': VisualSymptom.STUNTED_GROWTH,
-    'lodging': VisualSymptom.PLANT_LODGING,
-    
-    // CRITICAL FIX: Map death terms to PLANT_DEATH, not WILTING
-    // "मेला" (died) is terminal damage, not wilting
-    'मेला': VisualSymptom.PLANT_DEATH,
-    'मेले': VisualSymptom.PLANT_DEATH,
-    'मेली': VisualSymptom.PLANT_DEATH,
-    'मेलेला': VisualSymptom.PLANT_DEATH,
-    'मेलेले': VisualSymptom.PLANT_DEATH,
-    'died': VisualSymptom.PLANT_DEATH,
-    'dead': VisualSymptom.PLANT_DEATH,
-    'death': VisualSymptom.PLANT_DEATH,
-    'plant_death': VisualSymptom.PLANT_DEATH,
-    'मर_गय': VisualSymptom.PLANT_DEATH,
-    'मर_गए': VisualSymptom.PLANT_DEATH,
-    'मर गया': VisualSymptom.PLANT_DEATH,
-    'मर गई': VisualSymptom.PLANT_DEATH,
-    'मर गए': VisualSymptom.PLANT_DEATH,
-    
-    // PHASE-14: Patchy growth / germination gaps
-    'गॅप': VisualSymptom.STUNTED_GROWTH,
-    'gaps': VisualSymptom.STUNTED_GROWTH,
-    'असमान': VisualSymptom.STUNTED_GROWTH,
-    'patchy': VisualSymptom.STUNTED_GROWTH,
-    'uneven': VisualSymptom.STUNTED_GROWTH,
-    'उगवण_कमी': VisualSymptom.STUNTED_GROWTH,
-    'poor_germination': VisualSymptom.STUNTED_GROWTH,
-    
-    // Pest damage
-    'boring': VisualSymptom.STEM_BORING,
-    'dead_heart': VisualSymptom.DEAD_HEART,
-    'सुरळी_वाळली': VisualSymptom.DEAD_HEART,
-    'white_ear': VisualSymptom.WHITE_EAR,
-    'webbing': VisualSymptom.WEBBING,
-    'holes': VisualSymptom.HOLES_IN_LEAVES,
-    'छिद्र': VisualSymptom.HOLES_IN_LEAVES,
-    'भोक': VisualSymptom.HOLES_IN_LEAVES,
-    'defoliation': VisualSymptom.DEFOLIATION,
-    
-    // Root damage
-    'root_rot': VisualSymptom.ROOT_DAMAGE,
-    'कुजलेले': VisualSymptom.ROOT_DAMAGE,
-    'सडलेले': VisualSymptom.ROOT_DAMAGE
-  };
-  
-  const detected: VisualSymptom[] = [];
-  
-  for (const obs of observations) {
-    const normalized = obs.toLowerCase().trim();
-    for (const [key, symptom] of Object.entries(symptomMap)) {
-      if (normalized.includes(key.toLowerCase())) {
-        if (!detected.includes(symptom)) {
-          detected.push(symptom);
-        }
-      }
-    }
+  if (!Array.isArray(observations) || observations.length === 0) {
+    return { primary: VisualSymptom.UNKNOWN, secondary: [] };
   }
-  
+
+  const detected: VisualSymptom[] = [];
+  const seen = new Set<VisualSymptom>();
+
+  for (const obs of observations) {
+    if (obs === null || obs === undefined) continue;
+    const raw = String(obs).trim();
+    if (!raw) continue;
+    // Only accept already-canonical UPPER_SNAKE codes that map to an enum member.
+    const normalized = raw.toUpperCase().replace(/[\s-]/g, '_');
+    if (!/^[A-Z0-9_]+$/.test(normalized)) continue;
+    if (!(normalized in VisualSymptom)) continue;
+    const symptom = VisualSymptom[normalized as keyof typeof VisualSymptom];
+    if (seen.has(symptom)) continue;
+    seen.add(symptom);
+    detected.push(symptom);
+  }
+
   if (detected.length === 0) {
     return { primary: VisualSymptom.UNKNOWN, secondary: [] };
   }
-  
   return { primary: detected[0], secondary: detected.slice(1) };
 }
+
 
 /**
  * PHASE-12: Map a symptom string to VisualSymptom enum
@@ -1024,7 +947,23 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   // Map crop and stage using the extracted values
   const cropType = mapCropNameToEnum(cropNameRaw);
   const cropStage = mapStageToEnum(cropStageRaw);
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE MUTATION INVARIANT — if BiologicalState locked the stage but our
+  // enum resolve dropped/changed it, log and restore the locked identity.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const lockedStageRaw =
+    (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
+      ? String(canonicalCtx.growth_stage)
+      : null;
+  if (lockedStageRaw) {
+    const lockedNorm = lockedStageRaw.trim().toUpperCase().replace(/[\s-]/g, '_');
+    const resolvedNorm = String(cropStage).toUpperCase();
+    if (resolvedNorm !== lockedNorm) {
+      console.error(`[STAGE_MUTATION_BLOCKED] before=${lockedNorm} after=${resolvedNorm} source=canonicalContext_lock → restoring locked stage`);
+    }
+  }
+
   // Map observations to symptoms
   const allObservations = [
     ...(input.farmerObservations || []),
@@ -1036,8 +975,6 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       .filter(Boolean)
   );
   // BUG-3 FIX: symptom_count MUST count real farmer/sensor evidence only.
-  // Metadata markers (*_UNKNOWN, *_NONE, *_NOT_PROVIDED, ACTION_*, CROP_IDENTIFIED,
-  // STAGE_IDENTIFIED, CONTEXT_*, PHOTO_*) are NOT symptoms.
   const evidenceClass = classifyEvidence(Array.from(normalizedObservationSet));
   const symptomCount = evidenceClass.real_symptom_count;
   console.log(
@@ -1050,6 +987,23 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   // SPRINT 3 FIX: Adaptive denominator (min 4) — see orchestrator coverage-gate notes.
   const symptomDataCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CANONICAL MUTATION INVARIANT — if farmer/sensor evidence provided a real
+  // code A and the resolved primary visual_symptom differs from A, log so we
+  // can trace hidden mutation. CanonicalState carries symbols; it does not
+  // invent meaning.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const firstRealCode = evidenceClass.real_codes[0];
+  if (firstRealCode) {
+    const beforeNorm = firstRealCode.toUpperCase();
+    const afterNorm = String(visualSymptom).toUpperCase();
+    if (afterNorm !== 'UNKNOWN' && afterNorm !== beforeNorm) {
+      console.error(`[CANONICAL_MUTATION_BLOCKED] before=${beforeNorm} after=${afterNorm} source=mapObservationsToSymptom`);
+    }
+  }
+
+
   
   // Calculate data ages
   const ndviAgeHours = ndviTimestamp 
