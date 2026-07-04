@@ -195,6 +195,9 @@ import {
   LANGUAGE_INDUCTION_VERSION
 } from './language-induction-layer.ts';
 
+// GraphTruth — immutable per-turn agronomic node (T1 in refactor plan)
+import { buildGraphTruth } from '../runtime/graph-truth.ts';
+
 // CRITICAL FIX: Import normalization functions from type-mappers for consistent code matching
 import { 
   normalizeCropCode as normalizeTypeCropCode, 
