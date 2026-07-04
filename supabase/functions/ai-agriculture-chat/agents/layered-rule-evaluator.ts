@@ -1394,37 +1394,32 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
            * yet map the code. DO NOT repopulate.
            */
           const cropCodeAliases: Record<string, string[]> = {};
-            'SC': ['SUGARCANE', 'SUGAR_CANE', 'USCANE', 'CANE'],
-            'CTN': ['COTTON', 'KAPAS'],
-            'WH': ['WHEAT', 'GEHUN'],
-            'RIC': ['RICE', 'PADDY', 'DHAN'],
-            'SOY': ['SOYBEAN', 'SOYA'],
-            'MAZ': ['MAIZE', 'CORN', 'MAKKA'],
-            'GRN': ['GROUNDNUT', 'PEANUT'],
-            'ON': ['ONION', 'KANDA'],
-            'TOM': ['TOMATO'],
-            'POT': ['POTATO', 'ALOO']
-          };
-          
+
           const ruleCropCode = bundled.crop_code?.toUpperCase() || '';
           const stateCropCode = state.crop_type?.toUpperCase() || '';
-          
+
           if (ruleCropCode && stateCropCode) {
             const isUniversalRule = ruleCropCode === '*' || ruleCropCode === 'ALL' || ruleCropCode === 'UNIVERSAL';
             if (!isUniversalRule) {
               if (ruleCropCode === stateCropCode) {
-                // Direct match - OK
+                // Direct match — OK
               } else if (cropCodeAliases[ruleCropCode]?.includes(stateCropCode)) {
-                // Alias match - OK
-              } else if (Object.entries(cropCodeAliases).some(([code, aliases]) => 
+                // DB-driven alias match (currently disabled — placeholder is empty)
+              } else if (Object.entries(cropCodeAliases).some(([code, aliases]) =>
                 aliases.includes(stateCropCode) && code === ruleCropCode
               )) {
-                // Reverse alias match - OK
+                // Reverse alias match
               } else {
+                console.log(
+                  `[CROP_ALIAS_MISSING] rule=${bundled.rule_id} rule_crop=${ruleCropCode} ` +
+                  `state_crop=${stateCropCode} action=DROP ` +
+                  `reason=cropCodeAliases_deprecated_awaiting_db_crop_synonyms`
+                );
                 return false;
               }
             }
           }
+
           
           // ═══════════════════════════════════════════════════════════════════════════
           // OBSERVATION LAYER FILTER: required_observation_category + required_plant_part
