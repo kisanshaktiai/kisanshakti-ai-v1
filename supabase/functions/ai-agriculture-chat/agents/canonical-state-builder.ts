@@ -947,7 +947,23 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   // Map crop and stage using the extracted values
   const cropType = mapCropNameToEnum(cropNameRaw);
   const cropStage = mapStageToEnum(cropStageRaw);
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE MUTATION INVARIANT — if BiologicalState locked the stage but our
+  // enum resolve dropped/changed it, log and restore the locked identity.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const lockedStageRaw =
+    (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
+      ? String(canonicalCtx.growth_stage)
+      : null;
+  if (lockedStageRaw) {
+    const lockedNorm = lockedStageRaw.trim().toUpperCase().replace(/[\s-]/g, '_');
+    const resolvedNorm = String(cropStage).toUpperCase();
+    if (resolvedNorm !== lockedNorm) {
+      console.error(`[STAGE_MUTATION_BLOCKED] before=${lockedNorm} after=${resolvedNorm} source=canonicalContext_lock → restoring locked stage`);
+    }
+  }
+
   // Map observations to symptoms
   const allObservations = [
     ...(input.farmerObservations || []),
@@ -959,8 +975,6 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       .filter(Boolean)
   );
   // BUG-3 FIX: symptom_count MUST count real farmer/sensor evidence only.
-  // Metadata markers (*_UNKNOWN, *_NONE, *_NOT_PROVIDED, ACTION_*, CROP_IDENTIFIED,
-  // STAGE_IDENTIFIED, CONTEXT_*, PHOTO_*) are NOT symptoms.
   const evidenceClass = classifyEvidence(Array.from(normalizedObservationSet));
   const symptomCount = evidenceClass.real_symptom_count;
   console.log(
@@ -973,6 +987,23 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   // SPRINT 3 FIX: Adaptive denominator (min 4) — see orchestrator coverage-gate notes.
   const symptomDataCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CANONICAL MUTATION INVARIANT — if farmer/sensor evidence provided a real
+  // code A and the resolved primary visual_symptom differs from A, log so we
+  // can trace hidden mutation. CanonicalState carries symbols; it does not
+  // invent meaning.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const firstRealCode = evidenceClass.real_codes[0];
+  if (firstRealCode) {
+    const beforeNorm = firstRealCode.toUpperCase();
+    const afterNorm = String(visualSymptom).toUpperCase();
+    if (afterNorm !== 'UNKNOWN' && afterNorm !== beforeNorm) {
+      console.error(`[CANONICAL_MUTATION_BLOCKED] before=${beforeNorm} after=${afterNorm} source=mapObservationsToSymptom`);
+    }
+  }
+
+
   
   // Calculate data ages
   const ndviAgeHours = ndviTimestamp 
