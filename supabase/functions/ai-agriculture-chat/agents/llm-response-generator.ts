@@ -738,8 +738,8 @@ export function requiresRuleEngine(intent: string, farmerMessage: string): boole
 export async function generateLLMResponse(input: LLMResponseInput): Promise<{ response_text: string; source: string }> {
   console.warn('[DEPRECATED] generateLLMResponse called - should migrate to generateNarratedResponse');
   
-  // Create a minimal symbolic input with generic fallback
-  const fallbackMessage = '🙏 Please ask your question again. I am ready to help you.';
+  // FIX 4: language-aware fallback (was hardcoded English).
+  const fallbackMessage = getSafeAskMoreInfoMessage(input.language || 'en');
   
   const symbolicInput: SymbolicNarrationInput = {
     language: input.language,
