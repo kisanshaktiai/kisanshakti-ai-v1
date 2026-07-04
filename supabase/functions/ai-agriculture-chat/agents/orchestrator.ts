@@ -4008,80 +4008,80 @@ export class AIAgentOrchestrator {
       // 3. We use intent_code (not keywords) to determine if diagnosis is needed
       // 4. No hardcoded regional language patterns required
       // ═══════════════════════════════════════════════════════════════════════════
+      // ═══════════════════════════════════════════════════════════════════════════
+      // T3 · DB-DRIVEN INTENT→OBSERVATION FALLBACK (no hardcoded agronomy)
+      //
+      // If the extractor produced no observations but the LLM identified an
+      // intent, look up LITERAL observation peers for that (intent, crop) in
+      // `intent_observation_mapping`. The DB is the ONLY source of truth for
+      // this mapping — no hardcoded `intentToSymptom` / `advisoryIntents` lists.
+      //
+      // Fallback ordering:
+      //   1) rows scoped to landContext.current_crop with assertion_strength=LITERAL
+      //   2) rows scoped to crop_code='universal' (advisory intents like
+      //      FERTILIZER_SCHEDULE, HARVEST_TIMING) with LITERAL strength
+      //   3) intent_code injected as observation only if it appears in
+      //      observation_master (kept for advisory-direct rule matching)
+      // ═══════════════════════════════════════════════════════════════════════════
       if (allObservationsForPreAuth.size === 0 && landContext && landContext.current_crop) {
-        // Get intent from semantic extraction (LLM-based, language-agnostic)
         const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
-        
-        // Define agricultural problem intents that should trigger diagnosis
-        // ═══════════════════════════════════════════════════════════════════════════
-        // FIX 2: SPLIT SYMPTOM-BASED vs ADVISORY INTENTS
-        // Only symptom-based intents get fake symptom injection for diagnosis.
-        // Advisory intents (DIRECT-mode) skip this entirely and go to rule engine.
-        // ═══════════════════════════════════════════════════════════════════════════
-        const symptomBasedIntents = [
-          'PEST_PRESENCE_VISIBLE',
-          'DISEASE_LIKE_PATTERN', 
-          'WILTING_OR_DROOPING',
-          'COLOR_CHANGE',
-          'LEAF_DAMAGE_VISIBLE',
-          'LEAF_MARKS_OR_SPOTS',
-          'STEM_DAMAGE',
-          'BORER_IDENTIFICATION',
-          'ROOT_OR_BASE_PROBLEM',
-          'GROWTH_ANOMALY',
-          'WATER_STRESS_SIGNAL',
-          'NUTRIENT_STRESS_SIGNAL',
-          'EMERGENCE_FAILURE',
-          'UNEVEN_FIELD_PATTERN',
-          'YIELD_OR_OUTPUT_ISSUE',
-          'WEED_PROBLEM'
-        ];
-        
-        // Advisory intents: these go DIRECTLY to rule engine, no fake symptom injection
-        const advisoryIntents = [
-          'FERTILIZER_SCHEDULE',
-          'IRRIGATION_QUERY',
-          'HARVEST_TIMING',
-          'GENERAL_CROP_INFO',
-          'SOIL_TESTING_QUERY',
-          'SEED_SELECTION'
-        ];
-        
-        if (symptomBasedIntents.includes(intentCode)) {
-          console.log(`\n🔧 [LLM-First Fallback] Intent ${intentCode} indicates agricultural problem (symptom-based)`);
-          console.log(`   Injecting symptom based on LLM-detected intent (language-agnostic)`);
-          
-          // Map intent to appropriate symptom code
-          const intentToSymptom: Record<string, string> = {
-            'PEST_PRESENCE_VISIBLE': 'SMALL_INSECTS_VISIBLE',
-            'DISEASE_LIKE_PATTERN': 'FUNGAL_GROWTH',
-            'WILTING_OR_DROOPING': 'LEAF_WILTING',
-            'COLOR_CHANGE': 'LEAF_YELLOWING',
-            'LEAF_DAMAGE_VISIBLE': 'LEAF_HOLES',
-            'LEAF_MARKS_OR_SPOTS': 'LEAF_SPOTS',
-            'STEM_DAMAGE': 'STEM_BORER_DAMAGE',
-            'BORER_IDENTIFICATION': 'BORER_HOLES',
-            'ROOT_OR_BASE_PROBLEM': 'ROOT_ROT',
-            'GROWTH_ANOMALY': 'STUNTED_GROWTH',
-            'WATER_STRESS_SIGNAL': 'WATER_STRESS',
-            'NUTRIENT_STRESS_SIGNAL': 'NUTRIENT_DEFICIENCY',
-            'EMERGENCE_FAILURE': 'POOR_GERMINATION',
-            'UNEVEN_FIELD_PATTERN': 'PATCHY_DEATH',
-            'YIELD_OR_OUTPUT_ISSUE': 'POOR_YIELD',
-            'WEED_PROBLEM': 'WEED_PRESENT'
-          };
-          
-          const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
-          allObservationsForPreAuth.add(fallbackSymptom);
-          authoredObservations.add(fallbackSymptom, ObservationAuthority.INFERRED, 'LLM_INTENT_FALLBACK');
-          agentsUsed.push('LLM_INTENT_FALLBACK');
-          console.log(`   Injected: ${fallbackSymptom} (from LLM intent: ${intentCode}) [authority: INFERRED]`);
-        } else if (advisoryIntents.includes(intentCode) && directModeBypass) {
-          // FIX 3: For advisory intents with DIRECT mode, inject the INTENT CODE itself
-          console.log(`\n🎯 [ADVISORY DIRECT] Intent ${intentCode} is advisory — injecting intent as observation for rule engine`);
-          allObservationsForPreAuth.add(intentCode);
-          authoredObservations.add(intentCode, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
-          agentsUsed.push('ADVISORY_DIRECT_ROUTE');
+
+        if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
+          try {
+            const cropScopes = Array.from(new Set([
+              String(landContext.current_crop).toLowerCase(),
+              'universal',
+            ]));
+
+            const { data: iomRows, error: iomErr } = await this.supabase
+              .from('intent_observation_mapping')
+              .select('observation_code, crop_code, assertion_strength, is_active')
+              .eq('intent_code', intentCode)
+              .in('crop_code', cropScopes)
+              .eq('assertion_strength', 'LITERAL')
+              .eq('is_active', true);
+
+            if (iomErr) {
+              console.warn(`⚠️ [INTENT_IOM_FALLBACK] db_error intent=${intentCode} error=${iomErr.message}`);
+            } else if (Array.isArray(iomRows) && iomRows.length > 0) {
+              // Prefer crop-scoped rows; fall back to universal
+              const cropCodeLower = String(landContext.current_crop).toLowerCase();
+              const cropScoped = iomRows.filter((r: any) => String(r.crop_code).toLowerCase() === cropCodeLower);
+              const chosen = cropScoped.length > 0 ? cropScoped : iomRows;
+              const injected: string[] = [];
+              for (const r of chosen as any[]) {
+                const obs = String(r.observation_code || '').trim();
+                if (!obs) continue;
+                if (allObservationsForPreAuth.has(obs)) continue;
+                allObservationsForPreAuth.add(obs);
+                authoredObservations.add(obs, ObservationAuthority.INFERRED, 'IOM_INTENT_TO_OBSERVATION');
+                injected.push(obs);
+              }
+              if (injected.length > 0) {
+                agentsUsed.push('IOM_INTENT_TO_OBSERVATION');
+                console.log(
+                  `🔗 [INTENT_IOM_FALLBACK] intent=${intentCode} crop=${cropCodeLower} ` +
+                  `scope=${cropScoped.length > 0 ? 'CROP' : 'UNIVERSAL'} injected=[${injected.join(',')}] ` +
+                  `source=intent_observation_mapping`,
+                );
+              } else {
+                console.log(`ℹ️ [INTENT_IOM_FALLBACK] intent=${intentCode} rows=${iomRows.length} injected=0 (dedup)`);
+              }
+            } else {
+              console.log(`ℹ️ [INTENT_IOM_FALLBACK] intent=${intentCode} crop=${landContext.current_crop} no_literal_peers_in_iom`);
+              // Advisory-direct: if intent itself is a valid observation code (e.g. FERTILIZER_SCHEDULE),
+              // inject it so the rule engine can match. Otherwise leave the observation set empty and
+              // let clarification take over.
+              if (directModeBypass) {
+                allObservationsForPreAuth.add(intentCode);
+                authoredObservations.add(intentCode, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
+                agentsUsed.push('ADVISORY_DIRECT_ROUTE');
+                console.log(`🎯 [ADVISORY_DIRECT] intent=${intentCode} injected as observation (DIRECT bypass)`);
+              }
+            }
+          } catch (e) {
+            console.warn(`⚠️ [INTENT_IOM_FALLBACK] exception intent=${intentCode} error=${(e as Error).message}`);
+          }
         }
       }
       
