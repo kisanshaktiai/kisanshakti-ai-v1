@@ -4324,7 +4324,13 @@ export class AIAgentOrchestrator {
           directModeBypass = false;
           bypassClarification = false;
         } else if (directHardBypass && informativeNow.length > 0) {
-          console.log(`   🔒 [DIRECT_HARD_BYPASS] Intent contract (clarification_mode=DIRECT, max_rounds=0) blocks VETO — staying in advisory route despite ${informativeNow.length} symptom signals.`);
+          // FORENSIC FIX (2026-07): Evidence beats intent contract. A symptom
+          // report must never stay in advisory route just because the intent
+          // metadata declared clarification_mode=DIRECT/max_rounds=0. Content
+          // beats label — VETO applies even for hard bypass.
+          console.log(`   🛑 [DIRECT_HARD_BYPASS_VETO] Symptom signal (${informativeNow.length} informative obs) overrides intent contract for intent=${intentCode}`);
+          directModeBypass = false;
+          bypassClarification = false;
         }
 
         // Fix F: For DIRECT-hard intents (e.g. GENERAL_CROP_INFO), seed the rule
