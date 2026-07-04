@@ -1345,6 +1345,14 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               // rule when the land's current_crop_stage = GERMINATION.
               // The family map MUST stay symmetric and crop-independent.
               // ───────────────────────────────────────────────────────────
+              /**
+               * @deprecated STAGE_FAMILIES — DO NOT ADD NEW AGRONOMY.
+               * Stage relationships must originate from the ontology database
+               * (crop_stage_master.stage_relationships). This in-code map is
+               * retained temporarily; stages missing from it now fall through
+               * a soft bypass (see [STAGE_ONTOLOGY_MISSING] log below) instead
+               * of hard-rejecting rules. Tracked for ontology-migration pass.
+               */
               const STAGE_FAMILIES: Record<string, string[]> = {
                 GERMINATION:   ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
                 EMERGENCE:     ['EMERGENCE', 'GERMINATION', 'SEEDLING', 'NURSERY', 'ESTABLISHMENT'],
@@ -1361,16 +1369,28 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
                 MATURITY:      ['MATURITY', 'HARVEST', 'GRAIN_FILLING'],
                 HARVEST:       ['HARVEST', 'MATURITY'],
               };
-              const family = STAGE_FAMILIES[currentStage] || [currentStage];
-              const stageMatch = normalizedApplicableStages.some((s: string) =>
-                s === currentStage || family.includes(s)
-              );
-              
-              if (!stageMatch) {
-                if (bundled.priority && bundled.priority > 70) {
-                  console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
+              const family = STAGE_FAMILIES[currentStage] || null;
+              const exactMatch = normalizedApplicableStages.includes(currentStage);
+              const familyMatch = family
+                ? normalizedApplicableStages.some((s: string) => s === currentStage || family.includes(s))
+                : false;
+
+              if (!exactMatch && !familyMatch) {
+                if (!family) {
+                  // Ontology-missing: DO NOT reject. Emit forensic log for
+                  // future DB-backed stage_relationships migration. The rule
+                  // still faces DB-level STAGE predicates downstream.
+                  console.log(
+                    `[STAGE_ONTOLOGY_MISSING] rule=${bundled.rule_id} current_stage=${currentStage} ` +
+                    `applicable=[${normalizedApplicableStages.join(',')}] action=BYPASS_STAGE_GATE ` +
+                    `reason=STAGE_FAMILIES_deprecated_awaiting_db_stage_relationships`
+                  );
+                } else {
+                  if (bundled.priority && bundled.priority > 70) {
+                    console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
+                  }
+                  return false; // HARD GATE only when family is known and mismatches
                 }
-                return false; // HARD GATE - Rule cannot fire at this stage
               }
             }
           }
