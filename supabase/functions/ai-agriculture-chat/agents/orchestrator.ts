@@ -4837,7 +4837,52 @@ export class AIAgentOrchestrator {
               `   🧭 [HYP_GRAPH] survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} candidate_rule_ids=${graphHypothesisRuleIds.length} edge_missing=${graphHypothesisEdgeMissing.length}`,
             );
             (this as any)._graphExecuted = true;
+
+            // ═══════════════════════════════════════════════════════════════
+            // PATCH 1 (BUG 1) — Project graph result back onto ConversationState
+            // so downstream readers (BRAIN_TRACE, decision builder, invariants)
+            // see the real hypothesis count instead of the placeholder [] set
+            // at buildConversationState time.
+            // ═══════════════════════════════════════════════════════════════
+            try {
+              const hypIds = graphOut.candidates
+                .map((c: any) => String(c?.hypothesis_id ?? '').trim())
+                .filter(Boolean);
+              const cs: any = (this as any).__conversationState ?? conversationState;
+              if (cs) {
+                cs.hypotheses = Object.freeze(hypIds) as ReadonlyArray<string>;
+              }
+              (this as any)._graphHypothesisIds = hypIds;
+              (this as any)._graphObsToHypEdges = graphOut.candidates.reduce(
+                (n: number, c: any) => n + (Array.isArray(c?.matched_observations)
+                  ? c.matched_observations.length
+                  : (Array.isArray(c?.required_evidence) ? c.required_evidence.length : 0)),
+                0,
+              );
+
+              // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
+              // a single grep on trace= reconstructs the full edge chain.
+              const obsSample = (currentObservations ?? []).slice(0, 12).join(',');
+              const hypSample = hypIds.slice(0, 12).join(',');
+              console.log(
+                `[OBS_TO_HYP] trace=${traceId} obs=[${obsSample}] hyp=[${hypSample}] ` +
+                `survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
+                `edge_missing=${graphHypothesisEdgeMissing.length}`,
+              );
+
+              // PATCH 2 (BUG 2) — Graph handoff invariant. If the graph produced
+              // hypotheses but ConversationState is empty, the handoff is broken.
+              if (graphOut.candidates.length > 0 && cs && cs.hypotheses.length === 0) {
+                throw new Error(
+                  `GRAPH_RESULT_DROPPED: graph=${graphOut.candidates.length} state=0 trace=${traceId}`,
+                );
+              }
+            } catch (projErr) {
+              if ((projErr as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw projErr;
+              console.warn(`[GRAPH_PROJECTION] non-fatal: ${(projErr as Error).message}`);
+            }
           } catch (e) {
+            if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
             // continue when the hypothesis graph did not execute. Fail closed.
