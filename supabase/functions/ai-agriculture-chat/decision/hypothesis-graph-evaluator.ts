@@ -45,6 +45,24 @@ export interface GraphHypothesisInput {
   trace_id?: string | null;
 }
 
+/**
+ * Only these reasons may REMOVE a hypothesis (true agronomic contradiction).
+ * Missing/unknown context is NEVER an elimination reason — it becomes a
+ * ContextGap that adjusts confidence and may trigger clarification.
+ */
+export type HypothesisEliminationReason =
+  | 'CONTRADICTORY_OBSERVATION' // exclusion condition observed
+  | 'IMPOSSIBLE_CROP'           // hypothesis crop_group ≠ known crop_group
+  | 'IMPOSSIBLE_STAGE'          // known stage NOT in DB-allowed set
+  | 'IMPOSSIBLE_DAS'            // known DAS outside DB-allowed range
+  | 'NO_REQUIRED_MATCH';        // required conditions defined, zero observed
+
+export interface ContextGap {
+  missing: 'CROP_UNKNOWN' | 'STAGE_UNKNOWN' | 'DAS_UNKNOWN';
+  confidence_penalty: number;
+  clarification_required: boolean;
+}
+
 export interface GraphHypothesisCandidate {
   hypothesis_id: string;
   cause_en: string | null;
@@ -65,10 +83,13 @@ export interface GraphHypothesisCandidate {
   supporting_score: number;      // weighted 0..1
   confidence: number;            // aggregated 0..1
 
+  context_gaps: ContextGap[];    // unknown/absent context (never blocks)
+  clarification_required: boolean;
+
   candidate_rule_ids: string[];  // ONLY from hypothesis_rule_mapping
   selected_rule_id: null;        // populated later by rule evaluator
   eliminated: boolean;
-  eliminated_reason?: string;
+  eliminated_reason?: HypothesisEliminationReason | string;
 }
 
 export interface GraphHypothesisResult {
