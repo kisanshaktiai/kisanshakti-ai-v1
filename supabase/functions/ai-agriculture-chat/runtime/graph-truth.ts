@@ -114,11 +114,39 @@ export function computeGraphHash(input: {
 }
 
 export function buildGraphTruth(input: BuildGraphTruthInput): GraphTruth {
-  const canonical_observations = Object.freeze(canonSet(input.canonical_observations));
+  // ── Split raw input into real observations vs context metadata ────────
+  // Metadata (CROP_IDENTIFIED, PHOTO_NOT_PROVIDED, ACTION_NONE, *_UNKNOWN,
+  // CONTEXT_*, etc.) MUST NEVER enter canonical_observations. It is
+  // captured separately so the response builder can still see farmer
+  // context without corrupting the reasoning graph.
+  const classified = classifyEvidence(input.canonical_observations ?? []);
+  const stripped = classified.ignored_codes;
+  for (const md of stripped) {
+    console.warn(
+      `[INVALID_GRAPH_OBSERVATION] code=${md} source=graph_truth_input reason=metadata_not_observation`,
+    );
+  }
+
+  const canonical_observations = Object.freeze(canonSet(classified.real_codes));
   const hypothesis_candidates = Object.freeze(canonSet(input.hypothesis_candidates ?? []));
+
+  // Filter evidence_sources ledger to real observations only (defense in depth).
+  const realSet = new Set(canonical_observations.map((c) => c.toLowerCase()));
   const evidence_sources = Object.freeze(
-    (input.evidence_sources ?? []).map((e) => Object.freeze({ ...e })),
+    (input.evidence_sources ?? [])
+      .filter((e) => e?.code && realSet.has(String(e.code).toLowerCase()))
+      .map((e) => Object.freeze({ ...e })),
   );
+
+  const strippedUpper = stripped.map((c) => c.toUpperCase());
+  const context_metadata: GraphContextMetadata = Object.freeze({
+    crop_identified: strippedUpper.includes('CROP_IDENTIFIED'),
+    photo_available: !strippedUpper.includes('PHOTO_NOT_PROVIDED'),
+    affected_part_unknown: strippedUpper.includes('AFFECTED_PART_UNKNOWN'),
+    distribution_unknown: strippedUpper.includes('DISTRIBUTION_UNKNOWN'),
+    action_none: strippedUpper.includes('ACTION_NONE'),
+    raw_metadata_codes: Object.freeze([...stripped]),
+  });
 
   const hash = computeGraphHash({
     crop_code: input.crop_code,
@@ -140,20 +168,25 @@ export function buildGraphTruth(input: BuildGraphTruthInput): GraphTruth {
     canonical_observations,
     hypothesis_candidates,
     evidence_sources,
+    context_metadata,
     locked_at: new Date().toISOString(),
     hash,
   };
 
   try {
     console.log(
+      `[CANONICAL_PROJECTION_ONLY] site=graph_truth_build kept=${canonical_observations.length} stripped=${stripped.length} stripped_codes=[${stripped.join(',')}]`,
+    );
+    console.log(
       `[GRAPH_TRUTH_BUILT] hash=${hash} crop=${truth.crop_code ?? 'null'} ` +
         `stage=${truth.biological_stage ?? 'null'} das=${truth.DAS ?? 'null'} ` +
-        `obs=[${canonical_observations.join(',')}]`,
+        `obs=[${canonical_observations.join(',')}] metadata=${JSON.stringify(context_metadata)}`,
     );
   } catch { /* trace must not throw */ }
 
   return Object.freeze(truth);
 }
+
 
 /**
  * Validate that authoritative fields didn't drift between two snapshots.
