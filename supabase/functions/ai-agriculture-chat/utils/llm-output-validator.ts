@@ -97,13 +97,13 @@ async function loadValidIntentCodes(supabase: any): Promise<Set<string>> {
 
   const loadPromise = (async () => {
     try {
-      const { data, error } = await supabase
+      const data = await paginateAll<any>((offset, limit) => supabase
         .from('observation_intent_master')
         .select('intent_code')
         .eq('is_active', true)
-        .limit(2000);
-      
-      if (error) {
+        .order('intent_code', { ascending: true })
+        .range(offset, offset + limit - 1));
+      const codes = new Set<string>((data || []).map((r: any) => r.intent_code));
         console.error(`[LLM_VALIDATOR] Failed to load intent codes: ${error.message}`);
         return intentCache.entry?.data || new Set<string>();
       }
