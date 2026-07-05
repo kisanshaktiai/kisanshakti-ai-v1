@@ -23,6 +23,13 @@ export interface BrainTracePhases {
   obs_to_hyp_edges?: number;
   hyp_to_rule_edges?: number;
   sequence?: number;
+  /**
+   * OBSERVATION_REQUIRED contract flags — set by the boundary hydrator in
+   * index.ts (ensureObservationSelectorContract). Emitted on the single
+   * [BRAIN_TRACE] line so audits can grep for symptom-picker turns.
+   */
+  observation_required?: boolean;
+  observation_option_count?: number;
 }
 
 export function emitBrainTrace(s: ConversationState, p: BrainTracePhases = {}): void {
