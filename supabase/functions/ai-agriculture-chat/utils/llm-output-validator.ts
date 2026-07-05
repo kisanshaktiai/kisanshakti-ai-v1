@@ -56,12 +56,16 @@ async function paginateAll<T = any>(
  * over this in-code fallback.
  */
 const CANONICAL_OBSERVATION_ALIASES: Record<string, string> = {
-  SEEDLING_DIED: 'POOR_CROP_ESTABLISHMENT',
-  PLANT_DIED: 'POOR_CROP_ESTABLISHMENT',
-  DEAD_SEEDLINGS: 'POOR_CROP_ESTABLISHMENT',
-  STUNTED_PLANTS: 'POOR_GROWTH_VISIBLE',
-  STUNTED_GROWTH: 'POOR_GROWTH_VISIBLE',
-  POOR_TILLERING: 'POOR_GROWTH_VISIBLE',
+  // Emergence-failure family — canonical peer is POOR_GERMINATION, which is
+  // a LITERAL member of intent_observation_mapping for EMERGENCE_FAILURE
+  // across every crop that authors that intent.
+  SEEDLING_DIED: 'POOR_GERMINATION',
+  PLANT_DIED: 'POOR_GERMINATION',
+  DEAD_SEEDLINGS: 'POOR_GERMINATION',
+  // Poor-vigour family — canonical peer is STUNTED_GROWTH, present in
+  // observation_master and mapped by GROWTH_ANOMALY authors.
+  STUNTED_PLANTS: 'STUNTED_GROWTH',
+  POOR_TILLERING: 'STUNTED_GROWTH',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
