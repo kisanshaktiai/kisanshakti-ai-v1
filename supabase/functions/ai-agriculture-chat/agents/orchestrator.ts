@@ -5476,75 +5476,12 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 1A.2: P0 GDD PHENOLOGY CALCULATION (Replaces fixed DAS)
+      // [STEP 7 REMOVED] PHASE 1A.2 GDD Phenology + 1A.3 Photoperiod blocks.
+      // Phenology is now resolved upstream by resolve_crop_phenology + runtime/phenology-reconciler
+      // reading crop_stage_master / variety_phenology_profile / stage_transition_log.
+      // Photoperiod sensitivity moved to crop_stage_master DB flags (Step 8).
       // ========================================
-      console.log('\n🌡️ PHASE 1A.2: P0 GDD Phenology Engine...');
-      
-      let phenologyResult: PhenologyResult | null = null;
-      if (landContext?.current_crop && landContext?.sowing_date) {
-        try {
-          // Fetch weather history for GDD calculation (last 14 days)
-          const weatherHistory = await this.fetchWeatherHistoryForGDD(landContext.center_lat, landContext.center_lon);
-          
-          // CRITICAL FIX: Pass daysSinceSowing as NUMBER (not Date object)
-          // calculatePhenologicalStage expects: (cropCode, daysSinceSowing, weatherHistory, avgRegionalTemp, latitude)
-          const daysAfterSowing = landContext.days_since_sowing || 0;
-          
-          phenologyResult = calculatePhenologicalStage(
-            landContext.current_crop.toUpperCase(),
-            daysAfterSowing,  // NUMBER, not Date
-            weatherHistory,
-            undefined,  // avgRegionalTemp - use undefined to trigger DAS fallback if no weather
-            landContext.center_lat
-          );
-          agentsUsed.push('GDD_PHENOLOGY');
-          
-          console.log(`   ✅ GDD Stage: ${phenologyResult.current_stage} (${phenologyResult.stage_name})`);
-          console.log(`   Accumulated GDD: ${phenologyResult.accumulated_gdd.toFixed(0)} (source: ${phenologyResult.gdd_source})`);
-          console.log(`   Critical irrigation: ${phenologyResult.critical_irrigation_needed}, Critical nutrition: ${phenologyResult.critical_nutrition_needed}`);
-          
-          // Override growth_stage in landContext with GDD-calculated stage
-          // PHASE 1 — but only if the biological SSOT did NOT already lock the stage.
-          if (!blockStageWriteIfLocked(landContext, 'gdd-phenology-engine', phenologyResult.current_stage)) {
-            landContext.growth_stage = phenologyResult.current_stage;
-          }
-          landContext.gdd_phenology = phenologyResult;
-        } catch (gddError) {
-          console.error('   ❌ GDD calculation failed, using DAS fallback:', gddError);
-        }
-      } else {
-        console.log('   ⏭️ Skipping GDD (no crop or sowing date)');
-      }
-      
-      // ========================================
-      // PHASE 1A.3: P0 PHOTOPERIOD CHECK (Onion bulbing, rice flowering)
-      // ========================================
-      if (landContext?.center_lat && ['ONION', 'RICE'].includes(landContext?.current_crop?.toUpperCase() || '')) {
-        console.log('\n☀️ PHASE 1A.3: P0 Photoperiod Sensitivity Check...');
-        try {
-          const dayLengthResult = calculateDayLength(landContext.center_lat, new Date());
-          const photoperiodTrigger = checkPhotoperiodTrigger(
-            landContext.current_crop.toUpperCase(),
-            landContext.center_lat,
-            landContext.days_since_sowing || 0,
-            landContext.current_stage
-          );
-          
-          if (photoperiodTrigger.trigger_active) {
-            console.log(`   ✅ Photoperiod trigger ACTIVE: ${photoperiodTrigger.trigger_type}`);
-            console.log(`   Day length: ${dayLengthResult.day_length_hours.toFixed(1)} hours`);
-            landContext.photoperiod_data = {
-              day_length_hours: dayLengthResult.day_length_hours,
-              trigger_active: photoperiodTrigger.trigger_active,
-              trigger_type: photoperiodTrigger.trigger_type,
-              advice: photoperiodTrigger.advice
-            };
-          }
-          agentsUsed.push('PHOTOPERIOD');
-        } catch (photoError) {
-          console.error('   ❌ Photoperiod calculation failed:', photoError);
-        }
-      }
+      const phenologyResult: any = null;
       
       // ========================================
       // PHASE 1A.4: INTENT LOCK - Enforce symbolic-first routing
