@@ -7092,12 +7092,27 @@ export class AIAgentOrchestrator {
           );
         } catch (_) { /* trace must never throw */ }
 
-        // Supplemental BRAIN_TRACE with REAL post-rule-stage counts.
-        // The primary [BRAIN_TRACE] line is emitted early (pre-rule-stage) and
-        // its candidates/eligible/winner fields are placeholders. This second
-        // line lets audits see the actual rule-stage outcome for the same trace.
+        // PATCH 5 (BUG 1) — Single authoritative [BRAIN_TRACE] emit, AFTER the
+        // hypothesis graph AND the rule stage. Reads real hyp count from the
+        // graph projection (see L~4836), not the empty placeholder built at
+        // buildConversationState time.
         try {
           const _winner = layeredRuleResult?.primary_decision;
+          const _hypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
+          const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
+          const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
+          const _cs = (this as any).__conversationState ?? conversationState;
+          emitBrainTrace(_cs, {
+            rule_candidates:  rulesToEvaluate?.length ?? 0,
+            rule_eligible:    layeredRuleResult?.matched_responses?.length ?? 0,
+            rule_winner:      _winner?.rule_id ?? null,
+            hypotheses_count: _hypIds.length,
+            obs_to_hyp_edges: _obsToHyp,
+            hyp_to_rule_edges: _hypToRule,
+            total_ms:         Date.now() - startTime,
+          });
+          // Retain forensic detail on a separate line — auditors still grep
+          // POST_RULE for winner_score / action_text / prescription flags.
           console.log(
             `[BRAIN_TRACE][POST_RULE] trace=${traceId ?? '?'} ` +
             `candidates=${rulesToEvaluate?.length ?? 0} ` +
@@ -7109,9 +7124,22 @@ export class AIAgentOrchestrator {
             `winner_score=${(_winner?.weighted_confidence ?? _winner?.confidence_score ?? 0).toFixed?.(3) ?? 'n/a'} ` +
             `action_text=${_winner?.action_text ? 'present' : 'EMPTY'} ` +
             `prescription_allowed=${layeredRuleResult?.prescription_allowed ?? '?'} ` +
-            `final_diagnosis=${layeredRuleResult?.final_diagnosis?.cause ?? 'none'}`
+            `final_diagnosis=${layeredRuleResult?.final_diagnosis?.cause ?? 'none'} ` +
+            `hyp=${_hypIds.length} obs_to_hyp=${_obsToHyp} hyp_to_rule=${_hypToRule}`
           );
-        } catch (_) { /* trace must never throw */ }
+
+          // PATCH 2 (BUG 2) — late invariant. Even if the projection at graph
+          // exit passed, catch any late reset that would silently drop the
+          // hypotheses before decision assembly.
+          if (_hypIds.length > 0 && (_cs?.hypotheses?.length ?? 0) === 0) {
+            throw new Error(
+              `GRAPH_RESULT_DROPPED: late reset graph=${_hypIds.length} state=0 trace=${traceId}`,
+            );
+          }
+        } catch (e) {
+          if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
+          /* trace must never throw */
+        }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures
