@@ -4720,11 +4720,68 @@ export class AIAgentOrchestrator {
           Object.freeze(canonical_observation_codes);
           console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} canonical=${canonical_observation_codes.length}`);
 
+          // STEP 8 — EVIDENCE_FREEZE ledger trace (single SSOT for the turn)
+          try {
+            const ledger = canonical_observation_codes.map((c) => ({
+              code: c,
+              source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
+              confidence: real_codes.includes(c) ? 1 : 0.8,
+            }));
+            console.log(
+              `[EVIDENCE_FREEZE] turn=${traceId} locked_observations=[${canonical_observation_codes.slice(0, 12).join(',')}] source=farmer count=${ledger.length}`,
+            );
+          } catch { /* trace-only */ }
+
           const currentObservations = canonical_observation_codes;
           if (real_codes.length !== currentObservations.length ||
               real_codes.some((c, i) => c !== currentObservations[i])) {
             console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${real_codes.join(',')} → ${currentObservations.join(',')}`);
           }
+
+          // ═══════════════════════════════════════════════════════════════════
+          // STEP 8 — HYPOTHESIS GRAPH EVALUATOR (DB graph discovery)
+          // Walks observation_master → hypothesis_conditions → hypothesis_master
+          // → hypothesis_rule_mapping. Emits [OBS_TO_HYP]. Its candidate_rule_ids
+          // are used later as a curated scope for the layered rule evaluator.
+          // The existing evaluateCandidateHypotheses + CausalHypothesisEngine
+          // remain in the chain (arbitration/ranking) as the plan requires.
+          // ═══════════════════════════════════════════════════════════════════
+          let graphHypothesisRuleIds: string[] = [];
+          let graphHypothesisEdgeMissing: string[] = [];
+          try {
+            const { evaluateHypothesisGraph } = await import('../decision/hypothesis-graph-evaluator.ts');
+            const graphInput = {
+              crop_code: cropCode ?? null,
+              crop_group: cropCode ?? null,
+              growth_stage: growthStage ?? null,
+              das: (typeof (canonicalContext as any)?.days_since_sowing === 'number'
+                ? (canonicalContext as any).days_since_sowing
+                : ((typeof (landContext as any)?.days_since_sowing === 'number')
+                  ? (landContext as any).days_since_sowing
+                  : null)),
+              observation_codes: currentObservations,
+              supabase: this.supabase,
+              trace_id: traceId,
+            };
+            const graphOut = await evaluateHypothesisGraph(graphInput);
+            for (const c of graphOut.candidates) {
+              for (const rid of c.candidate_rule_ids) {
+                if (rid) graphHypothesisRuleIds.push(rid);
+              }
+              if (c.candidate_rule_ids.length === 0) graphHypothesisEdgeMissing.push(c.hypothesis_id);
+            }
+            graphHypothesisRuleIds = Array.from(new Set(graphHypothesisRuleIds));
+            (this as any)._graphHypothesisResult = graphOut;
+            (this as any)._graphHypothesisRuleIds = graphHypothesisRuleIds;
+            (this as any)._graphHypothesisEdgeMissing = graphHypothesisEdgeMissing;
+            console.log(
+              `   🧭 [HYP_GRAPH] survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} candidate_rule_ids=${graphHypothesisRuleIds.length} edge_missing=${graphHypothesisEdgeMissing.length}`,
+            );
+          } catch (e) {
+            console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
+          }
+
+
 
           // ═══════════════════════════════════════════════════════════════════
           // T1/T9 · BUILD IMMUTABLE GRAPH TRUTH + CANONICAL HASH
