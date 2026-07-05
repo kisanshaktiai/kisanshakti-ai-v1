@@ -2308,7 +2308,10 @@ export class AIAgentOrchestrator {
               authority_status: authorityDecision.authority_status,
             });
             console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${optionConvState.mode} clarify=${optionConvState.clarification_required}(${optionConvState.clarification_reason}) coverage=${optionConvState.coverage.toFixed(2)} confirmed=${optionConvState.confirmed.length} unknown=${optionConvState.unknown.length} (path=OPTION_SELECTED)`);
-            emitBrainTrace(optionConvState, { total_ms: Date.now() - startTime });
+            console.log(
+              `[OPTION_STATE_TRACE] trace=${traceId} total_ms=${Date.now() - startTime} ` +
+              `hyp=${optionConvState.hypotheses.length} confirmed=${optionConvState.confirmed.length}`,
+            );
           } catch (e) {
             console.warn(`   ⚠️ [CONVERSATION_STATE] OPTION_SELECTED emit failed: ${e instanceof Error ? e.message : e}`);
           }
@@ -4658,21 +4661,14 @@ export class AIAgentOrchestrator {
       // shunted into the LLM narration lane without OBS_TO_HYP / HYP_TO_RULE /
       // RULE_RESULT ever emitting.
       // ═══════════════════════════════════════════════════════════════════════════
-      const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
-        'EMERGENCE_FAILURE',
-        'GERMINATION_FAILURE',
-        'PEST',
-        'PEST_PRESENCE_VISIBLE',
-        'DISEASE',
-        'DISEASE_LIKE_PATTERN',
-        'NUTRIENT_STRESS',
-        'NUTRIENT_DEFICIENCY',
-        'CROP_DAMAGE',
-        'WILTING',
-        'YELLOWING',
-        'REPORT_SYMPTOM',
-      ]);
-      const isDiagnosticIntent = DIAGNOSTIC_INTENTS_AUTHORITY.has(String(intentCode || '').toUpperCase());
+      const isDiagnosticIntent = requiresAgronomicReasoningIntent(intentCode);
+      const mandatoryGraphRealObsCount = Array
+        .from(allObservationsForPreAuth)
+        .filter((c) => isRealObservation(String(c))).length;
+      const mustExecuteDecisionGraph = isDiagnosticIntent ||
+        shouldActivateDiagnosisMode ||
+        cropDamageResult.requires_diagnosis ||
+        mandatoryGraphRealObsCount > 0;
       if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
         console.log(
           `🧭 [INTENT_AUTHORITY] Diagnostic intent=${intentCode} confidence=${(intentConf ?? 0).toFixed(2)} ` +
@@ -4745,7 +4741,14 @@ export class AIAgentOrchestrator {
         // Force bypass clarification
         understandingResult.clarification_required = false;
         bypassClarification = true;
-      } else if (diagnosisWithOptionalClarification && !directHardBypass) {
+      } else if (mustExecuteDecisionGraph) {
+        if (!diagnosisWithOptionalClarification || directHardBypass) {
+          console.log(
+            `🧭 [MANDATORY_GRAPH_GATE] trace=${traceId} intent=${intentCode} ` +
+            `realObs=${mandatoryGraphRealObsCount} diagnosisMode=${shouldActivateDiagnosisMode} ` +
+            `directHardBypass=${directHardBypass} action=executeDecisionGraph`,
+          );
+        }
         console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
@@ -4844,6 +4847,9 @@ export class AIAgentOrchestrator {
               source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
               confidence: real_codes.includes(c) ? 1 : 0.8,
             }));
+            assertDecisionGraphOrder(this as any, traceId, 'POST_EVIDENCE_FREEZE');
+            (this as any)._evidenceFrozen = true;
+            (this as any)._lastIntentCode = intentCode;
             console.log(
               `[EVIDENCE_FREEZE] turn=${traceId} observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
                 `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
@@ -4928,6 +4934,7 @@ export class AIAgentOrchestrator {
                 `survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
                 `edge_missing=${graphHypothesisEdgeMissing.length}`,
               );
+              assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
 
               // PATCH 2 (BUG 2) — Graph handoff invariant. If the graph produced
               // hypotheses but ConversationState is empty, the handoff is broken.
@@ -6904,6 +6911,7 @@ export class AIAgentOrchestrator {
           `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
           `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] reason=${hypToRuleReason}`,
         );
+        assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
 
         // T1 — GraphTruth integrity check before layered rule evaluator
         assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
@@ -6927,6 +6935,8 @@ export class AIAgentOrchestrator {
             ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'RULE_COVERAGE_GAP')
             : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
           console.log(`[RULE_RESULT] trace=${traceId} winner=${winnerId} reason=${reason}`);
+          (this as any)._ruleResultExists = true;
+          assertDecisionGraphOrder(this as any, traceId, 'RULE_RESULT');
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
           (layeredRuleResult as any).edge_missing = graphEdgeMissing;
         } catch { /* trace-only */ }
@@ -7139,7 +7149,7 @@ export class AIAgentOrchestrator {
         try {
           const winner = layeredRuleResult.primary_decision;
           console.log(
-            `[BRAIN_TRACE][PIPELINE_RULE_STAGE] intent=${activeIntentForRules} ` +
+            `[RULE_STAGE_TRACE] intent=${activeIntentForRules} ` +
             `crop=${canonicalState.crop_type ?? '?'} stage=${canonicalState.crop_stage ?? '?'} ` +
             `candidates_in=${rulesToEvaluate.length} after_intent=${rulesAfterIntent.length} ` +
             `evaluated=${layeredRuleResult.rules_evaluated || 0} matched=${layeredRuleResult.rules_matched || 0} ` +
@@ -7158,6 +7168,12 @@ export class AIAgentOrchestrator {
           const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
           const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
           const _cs = (this as any).__conversationState ?? conversationState;
+          assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
+          if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
+            throw new Error(
+              `GRAPH_ORDER_ERROR: trace_id=${traceId} stage=BRAIN_TRACE reason=forbidden_hyp0_after_evidence_freeze`,
+            );
+          }
           emitBrainTrace(_cs, {
             rule_candidates:  rulesToEvaluate?.length ?? 0,
             rule_eligible:    layeredRuleResult?.matched_responses?.length ?? 0,
