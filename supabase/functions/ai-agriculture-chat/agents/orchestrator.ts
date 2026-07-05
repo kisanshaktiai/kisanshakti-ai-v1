@@ -62,7 +62,6 @@ function assertDecisionGraphOrder(owner: any, traceId: string, stage: DecisionGr
     );
   }
   owner.__decisionGraphSequence = actual;
-  console.log(`[${stage}] trace=${traceId} sequence=${actual}`);
 }
 
 // Import all agents
@@ -1189,6 +1188,13 @@ export class AIAgentOrchestrator {
     const startTime = Date.now();
     const agentsUsed: string[] = [];
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    (this as any).__decisionGraphSequence = 0;
+    (this as any)._evidenceFrozen = false;
+    (this as any)._graphExecuted = false;
+    (this as any)._ruleResultExists = false;
+    (this as any)._graphHypothesisIds = [];
+    (this as any)._graphHypothesisRuleIds = [];
+    (this as any)._graphHypothesisEdgeMissing = [];
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
@@ -4841,20 +4847,18 @@ export class AIAgentOrchestrator {
           console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} canonical=${canonical_observation_codes.length}`);
 
           // STEP 8 — EVIDENCE_FREEZE ledger trace (single SSOT for the turn)
-          try {
-            const ledger = canonical_observation_codes.map((c) => ({
-              code: c,
-              source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
-              confidence: real_codes.includes(c) ? 1 : 0.8,
-            }));
-            assertDecisionGraphOrder(this as any, traceId, 'POST_EVIDENCE_FREEZE');
-            (this as any)._evidenceFrozen = true;
-            (this as any)._lastIntentCode = intentCode;
-            console.log(
-              `[EVIDENCE_FREEZE] turn=${traceId} observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
-                `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
-            );
-          } catch { /* trace-only */ }
+          const ledger = canonical_observation_codes.map((c) => ({
+            code: c,
+            source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
+            confidence: real_codes.includes(c) ? 1 : 0.8,
+          }));
+          assertDecisionGraphOrder(this as any, traceId, 'POST_EVIDENCE_FREEZE');
+          (this as any)._evidenceFrozen = true;
+          (this as any)._lastIntentCode = intentCode;
+          console.log(
+            `[EVIDENCE_FREEZE] trace=${traceId} sequence=1 observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
+              `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
+          );
 
           const currentObservations = canonical_observation_codes;
           if (real_codes.length !== currentObservations.length ||
@@ -4931,7 +4935,7 @@ export class AIAgentOrchestrator {
               const hypSample = hypIds.slice(0, 12).join(',');
               console.log(
                 `[OBS_TO_HYP] trace=${traceId} obs=[${obsSample}] hyp=[${hypSample}] ` +
-                `survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
+                `sequence=2 survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
                 `edge_missing=${graphHypothesisEdgeMissing.length}`,
               );
               assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
@@ -6909,7 +6913,7 @@ export class AIAgentOrchestrator {
         console.log(
           `[HYP_TO_RULE] trace=${traceId} hyp=[${graphHypIdsForTrace.slice(0,12).join(',')}] ` +
           `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
-          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] reason=${hypToRuleReason}`,
+          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] sequence=3 reason=${hypToRuleReason}`,
         );
         assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
 
@@ -6934,7 +6938,7 @@ export class AIAgentOrchestrator {
             : coverageGap
             ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'RULE_COVERAGE_GAP')
             : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
-          console.log(`[RULE_RESULT] trace=${traceId} winner=${winnerId} reason=${reason}`);
+          console.log(`[RULE_RESULT] trace=${traceId} sequence=4 winner=${winnerId} reason=${reason}`);
           (this as any)._ruleResultExists = true;
           assertDecisionGraphOrder(this as any, traceId, 'RULE_RESULT');
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
@@ -7181,6 +7185,7 @@ export class AIAgentOrchestrator {
             hypotheses_count: _hypIds.length,
             obs_to_hyp_edges: _obsToHyp,
             hyp_to_rule_edges: _hypToRule,
+            sequence:         5,
             total_ms:         Date.now() - startTime,
           });
           // Retain forensic detail on a separate line — auditors still grep
