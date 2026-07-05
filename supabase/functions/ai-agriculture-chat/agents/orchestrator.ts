@@ -6678,10 +6678,13 @@ export class AIAgentOrchestrator {
           }
         }
         const graphHypIdsForTrace: string[] = (((this as any)._graphHypothesisResult?.candidates) ?? []).map((c: any) => c.hypothesis_id);
+        const hypToRuleReason = graphHypIdsForTrace.length === 0
+          ? 'NO_HYPOTHESIS_EDGE'
+          : (graphRuleIdSet.size === 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'OK');
         console.log(
           `[HYP_TO_RULE] trace=${traceId} hyp=[${graphHypIdsForTrace.slice(0,12).join(',')}] ` +
           `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
-          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}]`,
+          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] reason=${hypToRuleReason}`,
         );
 
         // T1 — GraphTruth integrity check before layered rule evaluator
@@ -6700,8 +6703,10 @@ export class AIAgentOrchestrator {
             ?? (layeredRuleResult?.matched_responses?.[0] as any)?.rule_id
             ?? 'none');
           const coverageGap = ((layeredRuleResult?.rules_matched ?? 0) === 0);
-          const reason = coverageGap
-            ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'edge_missing' : 'coverage_gap')
+          const reason = graphHypIdsForTrace.length === 0
+            ? 'NO_HYPOTHESIS_EDGE'
+            : coverageGap
+            ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'RULE_COVERAGE_GAP')
             : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
           console.log(`[RULE_RESULT] trace=${traceId} winner=${winnerId} reason=${reason}`);
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
