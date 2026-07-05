@@ -324,11 +324,7 @@ import {
   type RuleMatchInfo
 } from '../decision/explanation-chain-builder.ts';
 
-// P0: GDD Phenology Engine - Replaces fixed DAS with thermal unit calculations
-import { 
-  calculatePhenologicalStage, 
-  type PhenologyResult 
-} from './gdd-phenology-engine.ts';
+// [STEP 7 REMOVED] gdd-phenology-engine — superseded by runtime/phenology-reconciler + crop_stage_master
 
 // PHASE C: Morphology reconciler — reconciles observed NDVI / height / leaf
 // count against expected bands from variety_phenology_profile.
@@ -361,18 +357,9 @@ import {
   type NLPValidationResult 
 } from './nlp-agriculture-validator.ts';
 
-// P0: PHI Enforcement Guardian - Pre-Harvest Interval safety blocking
-import { 
-  enforcePHI, 
-  type PHIEnforcementResult 
-} from './phi-enforcement-guardian.ts';
+// [STEP 7 REMOVED] phi-enforcement-guardian — PHI now enforced by SafetyGuardian (Gate 3: FoodSafetyCheck)
 
-// P0: Pollinator Protection Rules - Flowering stage safety enforcement
-import { 
-  enforcePollinatorProtection, 
-  isFloweringStage,
-  type PollinatorEnforcementResult 
-} from './pollinator-protection-rules.ts';
+// [STEP 7 REMOVED] pollinator-protection-rules — pollinator safety now enforced by SafetyGuardian (Gate 4: EnvironmentalCheck POLLINATOR_RISK)
 
 // PHASE-14: Crop Stage Advisor for stage-aware fallback responses
 import {
@@ -380,12 +367,7 @@ import {
   type StageAdvice
 } from './crop-stage-advisor.ts';
 
-// P0: Photoperiod Calculator - Day length for bulbing/flowering crops
-import { 
-  calculateDayLength, 
-  checkPhotoperiodTrigger,
-  type PhotoperiodResult 
-} from './photoperiod-calculator.ts';
+// [STEP 7 REMOVED] photoperiod-calculator — photoperiod sensitivity moved to crop_stage_master DB flags
 
 // PHASE 1 — Immutable Biological State (single writer = resolve_crop_phenology)
 import {
@@ -5494,75 +5476,12 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 1A.2: P0 GDD PHENOLOGY CALCULATION (Replaces fixed DAS)
+      // [STEP 7 REMOVED] PHASE 1A.2 GDD Phenology + 1A.3 Photoperiod blocks.
+      // Phenology is now resolved upstream by resolve_crop_phenology + runtime/phenology-reconciler
+      // reading crop_stage_master / variety_phenology_profile / stage_transition_log.
+      // Photoperiod sensitivity moved to crop_stage_master DB flags (Step 8).
       // ========================================
-      console.log('\n🌡️ PHASE 1A.2: P0 GDD Phenology Engine...');
-      
-      let phenologyResult: PhenologyResult | null = null;
-      if (landContext?.current_crop && landContext?.sowing_date) {
-        try {
-          // Fetch weather history for GDD calculation (last 14 days)
-          const weatherHistory = await this.fetchWeatherHistoryForGDD(landContext.center_lat, landContext.center_lon);
-          
-          // CRITICAL FIX: Pass daysSinceSowing as NUMBER (not Date object)
-          // calculatePhenologicalStage expects: (cropCode, daysSinceSowing, weatherHistory, avgRegionalTemp, latitude)
-          const daysAfterSowing = landContext.days_since_sowing || 0;
-          
-          phenologyResult = calculatePhenologicalStage(
-            landContext.current_crop.toUpperCase(),
-            daysAfterSowing,  // NUMBER, not Date
-            weatherHistory,
-            undefined,  // avgRegionalTemp - use undefined to trigger DAS fallback if no weather
-            landContext.center_lat
-          );
-          agentsUsed.push('GDD_PHENOLOGY');
-          
-          console.log(`   ✅ GDD Stage: ${phenologyResult.current_stage} (${phenologyResult.stage_name})`);
-          console.log(`   Accumulated GDD: ${phenologyResult.accumulated_gdd.toFixed(0)} (source: ${phenologyResult.gdd_source})`);
-          console.log(`   Critical irrigation: ${phenologyResult.critical_irrigation_needed}, Critical nutrition: ${phenologyResult.critical_nutrition_needed}`);
-          
-          // Override growth_stage in landContext with GDD-calculated stage
-          // PHASE 1 — but only if the biological SSOT did NOT already lock the stage.
-          if (!blockStageWriteIfLocked(landContext, 'gdd-phenology-engine', phenologyResult.current_stage)) {
-            landContext.growth_stage = phenologyResult.current_stage;
-          }
-          landContext.gdd_phenology = phenologyResult;
-        } catch (gddError) {
-          console.error('   ❌ GDD calculation failed, using DAS fallback:', gddError);
-        }
-      } else {
-        console.log('   ⏭️ Skipping GDD (no crop or sowing date)');
-      }
-      
-      // ========================================
-      // PHASE 1A.3: P0 PHOTOPERIOD CHECK (Onion bulbing, rice flowering)
-      // ========================================
-      if (landContext?.center_lat && ['ONION', 'RICE'].includes(landContext?.current_crop?.toUpperCase() || '')) {
-        console.log('\n☀️ PHASE 1A.3: P0 Photoperiod Sensitivity Check...');
-        try {
-          const dayLengthResult = calculateDayLength(landContext.center_lat, new Date());
-          const photoperiodTrigger = checkPhotoperiodTrigger(
-            landContext.current_crop.toUpperCase(),
-            landContext.center_lat,
-            landContext.days_since_sowing || 0,
-            landContext.current_stage
-          );
-          
-          if (photoperiodTrigger.trigger_active) {
-            console.log(`   ✅ Photoperiod trigger ACTIVE: ${photoperiodTrigger.trigger_type}`);
-            console.log(`   Day length: ${dayLengthResult.day_length_hours.toFixed(1)} hours`);
-            landContext.photoperiod_data = {
-              day_length_hours: dayLengthResult.day_length_hours,
-              trigger_active: photoperiodTrigger.trigger_active,
-              trigger_type: photoperiodTrigger.trigger_type,
-              advice: photoperiodTrigger.advice
-            };
-          }
-          agentsUsed.push('PHOTOPERIOD');
-        } catch (photoError) {
-          console.error('   ❌ Photoperiod calculation failed:', photoError);
-        }
-      }
+      const phenologyResult: any = null;
       
       // ========================================
       // PHASE 1A.4: INTENT LOCK - Enforce symbolic-first routing
@@ -7867,57 +7786,13 @@ export class AIAgentOrchestrator {
         }
         
         // ═══════════════════════════════════════════════════════════════════
-        // P0 SAFETY FIX: Run PHI + Pollinator + SafetyGuardian checks
-        // BEFORE returning — prevents unsafe chemicals from reaching farmer
+        // [STEP 7 REMOVED] Local PHI + Pollinator enforcement.
+        // Both are now handled inside SafetyGuardian.verifySafety() below
+        // (Gate 3: FoodSafetyCheck / PHI, Gate 4: EnvironmentalCheck / POLLINATOR_RISK).
         // ═══════════════════════════════════════════════════════════════════
         let immediateSafetyStatus = 'APPROVED';
-        
-        // PHI Enforcement
         const immediateChemicals = this.extractChemicalRecommendations(decisionOutput);
-        if (immediateChemicals.length > 0 && landContext?.expected_harvest_date) {
-          try {
-            const daysToHarvest = this.calculateDaysToHarvest(landContext.expected_harvest_date);
-            const phiResult = enforcePHI(
-              immediateChemicals,
-              daysToHarvest,
-              landContext.current_crop?.toUpperCase(),
-              'DOMESTIC',
-              false
-            );
-            if (phiResult.blocked_chemicals.length > 0) {
-              console.warn(`   ⚠️ [INVARIANT] PHI VIOLATION: ${phiResult.blocked_chemicals.map(c => c.chemical_name).join(', ')}`);
-              decisionOutput = this.applyPHIBlocking(decisionOutput, phiResult);
-              immediateSafetyStatus = 'PHI_MODIFIED';
-              agentsUsed.push('PHI_GUARDIAN');
-            }
-          } catch (phiErr) {
-            console.error('   ❌ [INVARIANT] PHI check failed (non-blocking):', phiErr);
-          }
-        }
-        
-        // Pollinator Protection
-        const immediateCurrentHour = new Date().getHours();
-        const immediateIsFlowering = landContext?.current_crop && landContext?.days_since_sowing
-          ? isFloweringStage(landContext.current_crop.toUpperCase(), landContext.days_since_sowing)
-          : false;
-        if (immediateChemicals.length > 0 && immediateIsFlowering) {
-          try {
-            const pollinatorResult = enforcePollinatorProtection(
-              immediateChemicals,
-              landContext.current_crop.toUpperCase(),
-              landContext.days_since_sowing,
-              immediateCurrentHour
-            );
-            if (pollinatorResult.blocked_chemicals.length > 0) {
-              console.warn(`   ⚠️ [INVARIANT] POLLINATOR SAFETY: ${pollinatorResult.blocked_chemicals.map(c => c.chemical_name).join(', ')} BLOCKED`);
-              decisionOutput = this.applyPollinatorBlocking(decisionOutput, pollinatorResult);
-              immediateSafetyStatus = 'POLLINATOR_MODIFIED';
-              agentsUsed.push('POLLINATOR_PROTECTION');
-            }
-          } catch (pollinatorErr) {
-            console.error('   ❌ [INVARIANT] Pollinator check failed (non-blocking):', pollinatorErr);
-          }
-        }
+
         
         // SafetyGuardian verification
         try {
@@ -8314,77 +8189,13 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 5: SAFETY VERIFICATION (With P0 PHI & Pollinator Enforcement)
+      // PHASE 5: SAFETY VERIFICATION
+      // [STEP 7 REMOVED] PHASE 5.1 (PHI) and PHASE 5.2 (Pollinator) local pre-checks —
+      // SafetyGuardian.verifySafety() below owns both gates end-to-end.
       // ========================================
-      console.log('\n🛡️ PHASE 5: Safety Verification with P0 Critical Modules...');
-      
-      // ═══════════════════════════════════════════════════════════════════════════
-      // P0: PHI ENFORCEMENT - Block chemicals if days to harvest < PHI
-      // ═══════════════════════════════════════════════════════════════════════════
-      let phiEnforcement: PHIEnforcementResult | null = null;
+      console.log('\n🛡️ PHASE 5: Safety Verification (SafetyGuardian single-gate)...');
       const chemicalRecommendations = this.extractChemicalRecommendations(decisionOutput);
-      
-      if (chemicalRecommendations.length > 0 && landContext?.expected_harvest_date) {
-        console.log('\n🧪 PHASE 5.1: P0 PHI Enforcement Check...');
-        try {
-          const daysToHarvest = this.calculateDaysToHarvest(landContext.expected_harvest_date);
-          
-          phiEnforcement = enforcePHI(
-            chemicalRecommendations,
-            daysToHarvest,
-            landContext.current_crop?.toUpperCase(),
-            'DOMESTIC',  // TODO: Get from farmer profile for export-oriented farms
-            false        // TODO: Get organic status from farmer profile
-          );
-          agentsUsed.push('PHI_GUARDIAN');
-          
-          console.log(`   Days to harvest: ${daysToHarvest}`);
-          console.log(`   Blocked chemicals: ${phiEnforcement.blocked_chemicals.length}`);
-          console.log(`   Allowed chemicals: ${phiEnforcement.allowed_chemicals.length}`);
-          
-          // CRITICAL: If any chemicals blocked, modify decision output
-          if (phiEnforcement.blocked_chemicals.length > 0) {
-            console.warn(`   ⚠️ PHI VIOLATION: ${phiEnforcement.blocked_chemicals.map(c => c.chemical_name).join(', ')}`);
-            decisionOutput = this.applyPHIBlocking(decisionOutput, phiEnforcement);
-          }
-        } catch (phiError) {
-          console.error('   ❌ PHI Enforcement failed (non-blocking):', phiError);
-        }
-      }
-      
-      // ═══════════════════════════════════════════════════════════════════════════
-      // P0: POLLINATOR PROTECTION - Block bee-toxic chemicals during flowering
-      // ═══════════════════════════════════════════════════════════════════════════
-      let pollinatorEnforcement: PollinatorEnforcementResult | null = null;
-      const currentHour = new Date().getHours();
-      const isFlowering = landContext?.current_crop && landContext?.days_since_sowing
-        ? isFloweringStage(landContext.current_crop.toUpperCase(), landContext.days_since_sowing)
-        : false;
-      
-      if (chemicalRecommendations.length > 0 && isFlowering) {
-        console.log('\n🐝 PHASE 5.2: P0 Pollinator Protection Enforcement...');
-        try {
-          pollinatorEnforcement = enforcePollinatorProtection(
-            chemicalRecommendations,
-            landContext.current_crop.toUpperCase(),
-            landContext.days_since_sowing,
-            currentHour
-          );
-          agentsUsed.push('POLLINATOR_PROTECTION');
-          
-          console.log(`   Crop in flowering: YES (DAS: ${landContext.days_since_sowing})`);
-          console.log(`   Blocked chemicals: ${pollinatorEnforcement.blocked_chemicals.length}`);
-          console.log(`   Time-restricted: ${pollinatorEnforcement.time_restricted_chemicals.length}`);
-          
-          // CRITICAL: If any chemicals blocked for pollinators, modify decision output
-          if (pollinatorEnforcement.blocked_chemicals.length > 0) {
-            console.warn(`   ⚠️ POLLINATOR SAFETY: ${pollinatorEnforcement.blocked_chemicals.map(c => c.chemical_name).join(', ')} BLOCKED`);
-            decisionOutput = this.applyPollinatorBlocking(decisionOutput, pollinatorEnforcement);
-          }
-        } catch (pollinatorError) {
-          console.error('   ❌ Pollinator Protection failed (non-blocking):', pollinatorError);
-        }
-      }
+
       
       // Continue with standard Safety Guardian verification
       const safetyVerification = await this.safetyGuardian.verifySafety(
@@ -10804,71 +10615,9 @@ export class AIAgentOrchestrator {
     return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }
   
-  /**
-   * Apply PHI blocking to decision output - replace blocked chemicals with safe alternatives
-   */
-  private applyPHIBlocking(decisionOutput: DecisionOutput, phiEnforcement: PHIEnforcementResult): DecisionOutput {
-    const blockedChemicalNames = new Set(phiEnforcement.blocked_chemicals.map(c => c.chemical_name.toLowerCase()));
-    
-    // If primary decision product is blocked, replace with alternative or block
-    if (decisionOutput.primary_decision?.product_details?.product_name) {
-      const productName = decisionOutput.primary_decision.product_details.product_name.toLowerCase();
-      if (blockedChemicalNames.has(productName)) {
-        // Replace with safe alternative
-        if (phiEnforcement.safe_alternatives.length > 0) {
-          decisionOutput.primary_decision.product_details.product_name = phiEnforcement.safe_alternatives[0];
-          decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} ⚠️ PHI उल्लंघन: मूळ शिफारस बदलली. ${phiEnforcement.general_advice_mr}`;
-        } else {
-          // Add to blocked actions
-          decisionOutput.blocked_actions = decisionOutput.blocked_actions || [];
-          decisionOutput.blocked_actions.push({
-            action: `${decisionOutput.primary_decision.product_details.product_name} spray`,
-            reason: phiEnforcement.blocked_chemicals.find(c => c.chemical_name.toLowerCase() === productName)?.block_reason_mr || 'PHI उल्लंघन',
-            alternative_suggested: 'नैसर्गिक पर्याय वापरा किंवा कापणीनंतर फवारणी करा'
-          });
-        }
-      }
-    }
-    
-    return decisionOutput;
-  }
-  
-  /**
-   * Apply Pollinator blocking to decision output - enforce bee safety
-   */
-  private applyPollinatorBlocking(decisionOutput: DecisionOutput, pollinatorEnforcement: PollinatorEnforcementResult): DecisionOutput {
-    const blockedChemicalNames = new Set(pollinatorEnforcement.blocked_chemicals.map(c => c.chemical_name.toLowerCase()));
-    
-    // If primary decision product is blocked for pollinators
-    if (decisionOutput.primary_decision?.product_details?.product_name) {
-      const productName = decisionOutput.primary_decision.product_details.product_name.toLowerCase();
-      if (blockedChemicalNames.has(productName)) {
-        // Replace with bee-safe alternative
-        if (pollinatorEnforcement.safe_alternatives.length > 0) {
-          decisionOutput.primary_decision.product_details.product_name = pollinatorEnforcement.safe_alternatives[0];
-          decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} 🐝 परागीकरण संरक्षण: फुलोऱ्यात मधमाशी-सुरक्षित पर्याय. ${pollinatorEnforcement.general_advice_mr}`;
-        } else {
-          // Add blocking warning
-          decisionOutput.blocked_actions = decisionOutput.blocked_actions || [];
-          decisionOutput.blocked_actions.push({
-            action: `${decisionOutput.primary_decision.product_details.product_name} फुलोऱ्यात`,
-            reason: pollinatorEnforcement.blocked_chemicals.find(c => c.chemical_name.toLowerCase() === productName)?.block_reason_mr || 'मधमाशी विषारी',
-            alternative_suggested: 'संध्याकाळी ७ नंतर किंवा मधमाशी-सुरक्षित पर्याय वापरा'
-          });
-        }
-      }
-    }
-    
-    // Handle time-restricted chemicals
-    for (const restricted of pollinatorEnforcement.time_restricted_chemicals) {
-      if (!decisionOutput.primary_decision?.notes?.includes('संध्याकाळी')) {
-        decisionOutput.primary_decision = decisionOutput.primary_decision || { action_type: 'SPRAY' };
-        decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} ⏰ फक्त संध्याकाळी ७ नंतर फवारणी करा (मधमाशी संरक्षण)`;
-      }
-    }
-    
-    return decisionOutput;
-  }
+  // [STEP 7 REMOVED] applyPHIBlocking / applyPollinatorBlocking — SafetyGuardian
+  // owns product substitution and blocked_actions population end-to-end.
+
   
   // ═══════════════════════════════════════════════════════════════════════════
   // P1-A: CROP HEALTH RESPONSE GENERATOR - REFACTORED TO SYMBOLIC OUTPUT
