@@ -5370,6 +5370,8 @@ export class AIAgentOrchestrator {
       // and the current Marathi EMERGENCE_FAILURE regression trace.
       // ═══════════════════════════════════════════════════════════════════════
       const _graphHasRun = (this as any)._graphExecuted === true;
+      const _evidenceHasFrozen = (this as any)._evidenceFrozen === true;
+      const _ruleHasRun = (this as any)._ruleResultExists === true;
       const _convStateOk = (this as any).__conversationState
         && (this as any).__conversationState.clarification_required === false;
       if (understandingResult.clarification_required && isDiagnosticIntent && !_graphHasRun) {
@@ -5377,6 +5379,13 @@ export class AIAgentOrchestrator {
           `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker asked for clarification ` +
           `BEFORE hypothesis graph ran — demoting to advisory (intent=${intentCode} crop=${cropCode}). ` +
           `[CLARIFY_AUTHORITY] source=DEMOTED_CHECKER required=false reason=graph_before_clarification`,
+        );
+        understandingResult.clarification_required = false;
+      } else if (understandingResult.clarification_required && _evidenceHasFrozen && !_ruleHasRun) {
+        console.warn(
+          `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker attempted pre-rule clarification ` +
+          `after evidence freeze — demoting until RULE_RESULT (intent=${intentCode} crop=${cropCode}). ` +
+          `[CLARIFY_AUTHORITY] source=GRAPH_RUNTIME required=false reason=rule_result_required`,
         );
         understandingResult.clarification_required = false;
       } else if (understandingResult.clarification_required && _convStateOk) {
