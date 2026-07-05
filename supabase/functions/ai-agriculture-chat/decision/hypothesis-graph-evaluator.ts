@@ -308,8 +308,8 @@ export async function evaluateHypothesisGraph(
     input,
     observed.observations,
     matchedHypothesisIds,
-    eliminated.filter((c) => (c.eliminated_reason ?? '').startsWith('CONTRADICTORY') || (c.eliminated_reason ?? '').startsWith('IMPOSSIBLE_CROP') || c.eliminated_reason === 'NO_REQUIRED_MATCH').map((c) => c.hypothesis_id),
-    eliminated.filter((c) => (c.eliminated_reason ?? '').startsWith('IMPOSSIBLE_STAGE') || (c.eliminated_reason ?? '').startsWith('IMPOSSIBLE_DAS')).map((c) => c.hypothesis_id),
+    eliminated.map((c) => c.hypothesis_id),
+    [], // stage/das mismatch no longer blocks
   );
 
   // ── HYP_VALIDATION trace — full decision visibility, no silent pruning ─
@@ -317,14 +317,15 @@ export async function evaluateHypothesisGraph(
     `[HYP_VALIDATION] trace=${trace} ` +
       `survived=[${cap(candidates.map((c) => c.hypothesis_id)).join(',')}] ` +
       `blocked=${JSON.stringify(eliminated.map((c) => ({ h: c.hypothesis_id, r: c.eliminated_reason })))} ` +
+      `warnings=${JSON.stringify(candidates.map((c) => ({ h: c.hypothesis_id, w: c.warnings })).filter((x) => x.w.length > 0))} ` +
       `context_gaps=${JSON.stringify(candidates.map((c) => ({ h: c.hypothesis_id, g: c.context_gaps.map((x) => x.missing) })).filter((x) => x.g.length > 0))}`,
   );
 
   // ── GRAPH DEATH INVARIANT ─────────────────────────────────────────────
   // If OBS_TO_HYP matched hypotheses but zero survive AND every elimination
   // reason is non-agronomic → over-filtering bug. Fail loud.
-  const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION']);
-  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP', 'IMPOSSIBLE_STAGE', 'IMPOSSIBLE_DAS'];
+  const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION', 'NO_REQUIRED_MATCH']);
+  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP'];
   const isAgronomicContradiction = (r?: string) =>
     !!r && (CONTRADICTION_REASONS.has(r) || CONTRADICTION_PREFIXES.some((p) => r.startsWith(p)));
   if (
@@ -333,9 +334,10 @@ export async function evaluateHypothesisGraph(
     eliminated.every((e) => !isAgronomicContradiction(e.eliminated_reason))
   ) {
     const detail = eliminated.map((e) => `${e.hypothesis_id}:${e.eliminated_reason ?? '?'}`).join('|');
-    console.error(`[GRAPH_OVER_FILTERING_ERROR] trace=${trace} matched=${matchedHypothesisIds.length} survived=0 non_contradiction_reasons=[${detail}]`);
-    throw new Error(`GRAPH_OVER_FILTERING_ERROR: hypotheses removed without agronomic contradiction — ${detail}`);
+    console.error(`[STAGE_FILTER_KILLED_VALID_DIAGNOSIS] trace=${trace} matched=${matchedHypothesisIds.length} survived=0 non_contradiction_reasons=[${detail}]`);
+    throw new Error(`STAGE_FILTER_KILLED_VALID_DIAGNOSIS: hypotheses removed without agronomic contradiction — ${detail}`);
   }
+
 
   if (candidates.length === 0) {
     emitEmptyHypToRule(trace, anchorHypIds.length > 0 ? 'NO_SURVIVING_HYPOTHESIS' : 'NO_HYPOTHESIS_EDGE');
