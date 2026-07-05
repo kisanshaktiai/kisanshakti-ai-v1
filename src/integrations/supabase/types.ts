@@ -3817,6 +3817,45 @@ export type Database = {
         }
         Relationships: []
       }
+      clarification_fallback_questions: {
+        Row: {
+          created_at: string
+          id: string
+          intent_family: string
+          is_active: boolean
+          label_en: string | null
+          label_hi: string | null
+          label_mr: string | null
+          priority: number
+          question_code: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intent_family: string
+          is_active?: boolean
+          label_en?: string | null
+          label_hi?: string | null
+          label_mr?: string | null
+          priority?: number
+          question_code: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intent_family?: string
+          is_active?: boolean
+          label_en?: string | null
+          label_hi?: string | null
+          label_mr?: string | null
+          priority?: number
+          question_code?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       collaborative_notes: {
         Row: {
           assigned_to: string | null
@@ -17175,6 +17214,7 @@ export type Database = {
           affected_plant_part: string | null
           applicable_crop_groups: string[] | null
           applies_to_stages: string[]
+          can_generate_question: boolean
           canonical_group: string
           clarity_score: number | null
           created_at: string | null
@@ -17201,6 +17241,7 @@ export type Database = {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
           applies_to_stages?: string[]
+          can_generate_question?: boolean
           canonical_group: string
           clarity_score?: number | null
           created_at?: string | null
@@ -17227,6 +17268,7 @@ export type Database = {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
           applies_to_stages?: string[]
+          can_generate_question?: boolean
           canonical_group?: string
           clarity_score?: number | null
           created_at?: string | null
