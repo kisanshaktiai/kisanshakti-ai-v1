@@ -144,6 +144,10 @@ export async function loadClarificationCandidates(
       console.log(
         `[CLARIFICATION_CONTRACT] no IOM candidates for intent=${intentUpper} crop=${cropLower} stage=${growth_stage} das=${das}`,
       );
+      console.log(
+        `[CLARIFY_EXIT] site=CONTRACT_NO_CANDIDATES intent=${intentUpper} crop=${cropLower} ` +
+        `stage=${growth_stage ?? 'n/a'} das=${das ?? 'n/a'} reason=no_iom_rows`,
+      );
       return [];
     }
 
