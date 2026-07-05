@@ -4499,6 +4499,12 @@ export class AIAgentOrchestrator {
       }
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
+      // Expose real observation count for [ORCHESTRATOR_EXIT] boundary audit
+      try {
+        (this as any)._lastRealObservations = Array
+          .from(allObservationsForPreAuth)
+          .filter((c) => isRealObservation(String(c)));
+      } catch { /* audit-only, never throw */ }
       const cropDamageResult = detectCropDamageWithAuthority(
         authoredObservations,
         crossCropSymptomsList
