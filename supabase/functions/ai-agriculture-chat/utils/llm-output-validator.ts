@@ -141,27 +141,26 @@ async function loadValidObservationCodes(supabase: any): Promise<Set<string>> {
 
   const loadPromise = (async () => {
     try {
-      const { data, error } = await supabase
+      const data = await paginateAll<any>((offset, limit) => supabase
         .from('observation_master')
         .select('observation_code')
         .eq('is_active', true)
-        .limit(2000);
-      
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load observation codes: ${error.message}`);
-        return observationCache.entry?.data || new Set<string>();
-      }
-      
-      // CANONICAL-CONTEXT FIX: observation_master.observation_code is stored
-      // lowercase in the DB but runtime canonical case is UPPERCASE. Normalize
-      // on load so the validity check stops false-rejecting every observation.
-      const codes = new Set<string>((data || []).map((r: any) => String(r.observation_code || '').toUpperCase()).filter(Boolean));
-      console.log(`[LLM_VALIDATOR][CANONICAL_CONTEXT_TRACE] Loaded ${codes.size} valid observation codes (normalized to UPPERCASE)`);
+        .order('observation_code', { ascending: true })
+        .range(offset, offset + limit - 1));
+
+      // CANONICAL-CONTEXT: observation_master.observation_code is stored
+      // lowercase in the DB but runtime canonical case is UPPERCASE.
+      const codes = new Set<string>(
+        (data || [])
+          .map((r: any) => String(r.observation_code || '').toUpperCase())
+          .filter(Boolean)
+      );
+      console.log(`[LLM_VALIDATOR][CANONICAL_CONTEXT_TRACE] Loaded ${codes.size} valid observation codes (paginated, normalized to UPPERCASE)`);
 
       observationCache.entry = { data: codes, loadedAt: Date.now() };
       return codes;
     } catch (e) {
-      console.error(`[LLM_VALIDATOR] Observation cache load error: ${e}`);
+      console.error(`[LLM_VALIDATOR] Observation cache load error: ${(e as Error)?.message || e}`);
       return observationCache.entry?.data || new Set<string>();
     }
   })();
