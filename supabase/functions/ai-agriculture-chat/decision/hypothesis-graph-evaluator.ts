@@ -53,9 +53,12 @@ export interface GraphHypothesisInput {
 export type HypothesisEliminationReason =
   | 'CONTRADICTORY_OBSERVATION' // exclusion condition observed
   | 'IMPOSSIBLE_CROP'           // hypothesis crop_group ≠ known crop_group
-  | 'IMPOSSIBLE_STAGE'          // known stage NOT in DB-allowed set
-  | 'IMPOSSIBLE_DAS'            // known DAS outside DB-allowed range
   | 'NO_REQUIRED_MATCH';        // required conditions defined, zero observed
+// NOTE: Stage/DAS mismatch is NEVER an elimination reason. Farmer-visible
+// symptoms (LEVEL 1 evidence) outrank derived crop calendar (LEVEL 4).
+// Stage/DAS conflicts become STAGE_CONTEXT_CONFLICT / DAS_CONTEXT_CONFLICT
+// warnings that reduce confidence and request clarification, but never
+// block a database-supported diagnosis.
 
 export interface ContextGap {
   missing: 'CROP_UNKNOWN' | 'STAGE_UNKNOWN' | 'DAS_UNKNOWN';
@@ -84,6 +87,7 @@ export interface GraphHypothesisCandidate {
   confidence: number;            // aggregated 0..1
 
   context_gaps: ContextGap[];    // unknown/absent context (never blocks)
+  warnings: string[];            // soft conflicts (e.g. STAGE_CONTEXT_CONFLICT)
   clarification_required: boolean;
 
   candidate_rule_ids: string[];  // ONLY from hypothesis_rule_mapping
@@ -195,6 +199,9 @@ export async function evaluateHypothesisGraph(
 
     // ── Context gap detection (unknown ≠ contradiction) ──────────────────
     const context_gaps: ContextGap[] = [];
+    const warnings: string[] = [];
+    let softPenalty = 0;
+
     if (!cropKnown) {
       context_gaps.push({ missing: 'CROP_UNKNOWN', confidence_penalty: 0.10, clarification_required: true });
     }
@@ -204,15 +211,25 @@ export async function evaluateHypothesisGraph(
     if (dasPass.pass && dasPass.reason === 'DAS_UNKNOWN' && hasDasCondition(conds)) {
       context_gaps.push({ missing: 'DAS_UNKNOWN', confidence_penalty: 0.05, clarification_required: false });
     }
+    // Stage/DAS MISMATCH ≠ biological impossibility. Farmer-visible symptoms
+    // outrank derived crop calendar. Convert to soft conflict + clarification.
+    if (!stagePass.pass) {
+      warnings.push(`STAGE_CONTEXT_CONFLICT(${stagePass.reason})`);
+      softPenalty += 0.15;
+    }
+    if (!dasPass.pass) {
+      warnings.push(`DAS_CONTEXT_CONFLICT(${dasPass.reason})`);
+      softPenalty += 0.10;
+    }
     const contextPenalty = context_gaps.reduce((s, g) => s + g.confidence_penalty, 0);
 
     // Aggregated confidence — required 60 %, supporting 30 %, negative penalty 10 %,
-    // minus context-gap penalty (unknown context reduces confidence, never blocks).
+    // minus context-gap + soft-conflict penalties (never block).
     const negativePenalty = Math.min(
       1,
       (buckets.negative_matches.length + buckets.blocking_conditions.length * 0.5) / 4,
     );
-    let confidence = 0.6 * requiredPct + 0.3 * supportingScore - 0.1 * negativePenalty - contextPenalty;
+    let confidence = 0.6 * requiredPct + 0.3 * supportingScore - 0.1 * negativePenalty - contextPenalty - softPenalty;
     confidence = Math.max(0, Math.min(1, confidence));
 
     const candidate: GraphHypothesisCandidate = {
@@ -236,7 +253,9 @@ export async function evaluateHypothesisGraph(
       confidence,
 
       context_gaps,
-      clarification_required: context_gaps.some((g) => g.clarification_required),
+      warnings,
+      clarification_required:
+        context_gaps.some((g) => g.clarification_required) || warnings.length > 0,
 
       candidate_rule_ids: rules,
       selected_rule_id: null,
@@ -244,7 +263,8 @@ export async function evaluateHypothesisGraph(
     };
 
     // ── ELIMINATION: only true agronomic contradictions may remove ────────
-    // Missing context is NOT contradiction — it stays a context_gap above.
+    // Allowed reasons: CONTRADICTORY_OBSERVATION, IMPOSSIBLE_CROP,
+    // NO_REQUIRED_MATCH. Stage/DAS mismatch is NEVER an elimination reason.
     const hypCropGroup = normalizeCropGroup(m.crop_group);
     const cropContradiction =
       cropKnown &&
@@ -258,13 +278,6 @@ export async function evaluateHypothesisGraph(
     } else if (cropContradiction) {
       candidate.eliminated = true;
       candidate.eliminated_reason = `IMPOSSIBLE_CROP(hyp=${hypCropGroup} ctx=${knownCropGroup})`;
-    } else if (!stagePass.pass) {
-      // pass=false only when stage is KNOWN and NOT in allowed set → contradiction
-      candidate.eliminated = true;
-      candidate.eliminated_reason = `IMPOSSIBLE_STAGE(${stagePass.reason})`;
-    } else if (!dasPass.pass) {
-      candidate.eliminated = true;
-      candidate.eliminated_reason = `IMPOSSIBLE_DAS(${dasPass.reason})`;
     } else if (requiredTotal > 0 && requiredMatched === 0) {
       candidate.eliminated = true;
       candidate.eliminated_reason = 'NO_REQUIRED_MATCH';
@@ -273,6 +286,7 @@ export async function evaluateHypothesisGraph(
     if (candidate.eliminated) eliminated.push(candidate);
     else candidates.push(candidate);
   }
+
 
   // Rank surviving candidates
   candidates.sort((a, b) => {
@@ -294,8 +308,8 @@ export async function evaluateHypothesisGraph(
     input,
     observed.observations,
     matchedHypothesisIds,
-    eliminated.filter((c) => (c.eliminated_reason ?? '').startsWith('CONTRADICTORY') || (c.eliminated_reason ?? '').startsWith('IMPOSSIBLE_CROP') || c.eliminated_reason === 'NO_REQUIRED_MATCH').map((c) => c.hypothesis_id),
-    eliminated.filter((c) => (c.eliminated_reason ?? '').startsWith('IMPOSSIBLE_STAGE') || (c.eliminated_reason ?? '').startsWith('IMPOSSIBLE_DAS')).map((c) => c.hypothesis_id),
+    eliminated.map((c) => c.hypothesis_id),
+    [], // stage/das mismatch no longer blocks
   );
 
   // ── HYP_VALIDATION trace — full decision visibility, no silent pruning ─
@@ -303,14 +317,15 @@ export async function evaluateHypothesisGraph(
     `[HYP_VALIDATION] trace=${trace} ` +
       `survived=[${cap(candidates.map((c) => c.hypothesis_id)).join(',')}] ` +
       `blocked=${JSON.stringify(eliminated.map((c) => ({ h: c.hypothesis_id, r: c.eliminated_reason })))} ` +
+      `warnings=${JSON.stringify(candidates.map((c) => ({ h: c.hypothesis_id, w: c.warnings })).filter((x) => x.w.length > 0))} ` +
       `context_gaps=${JSON.stringify(candidates.map((c) => ({ h: c.hypothesis_id, g: c.context_gaps.map((x) => x.missing) })).filter((x) => x.g.length > 0))}`,
   );
 
   // ── GRAPH DEATH INVARIANT ─────────────────────────────────────────────
   // If OBS_TO_HYP matched hypotheses but zero survive AND every elimination
   // reason is non-agronomic → over-filtering bug. Fail loud.
-  const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION']);
-  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP', 'IMPOSSIBLE_STAGE', 'IMPOSSIBLE_DAS'];
+  const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION', 'NO_REQUIRED_MATCH']);
+  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP'];
   const isAgronomicContradiction = (r?: string) =>
     !!r && (CONTRADICTION_REASONS.has(r) || CONTRADICTION_PREFIXES.some((p) => r.startsWith(p)));
   if (
@@ -319,9 +334,10 @@ export async function evaluateHypothesisGraph(
     eliminated.every((e) => !isAgronomicContradiction(e.eliminated_reason))
   ) {
     const detail = eliminated.map((e) => `${e.hypothesis_id}:${e.eliminated_reason ?? '?'}`).join('|');
-    console.error(`[GRAPH_OVER_FILTERING_ERROR] trace=${trace} matched=${matchedHypothesisIds.length} survived=0 non_contradiction_reasons=[${detail}]`);
-    throw new Error(`GRAPH_OVER_FILTERING_ERROR: hypotheses removed without agronomic contradiction — ${detail}`);
+    console.error(`[STAGE_FILTER_KILLED_VALID_DIAGNOSIS] trace=${trace} matched=${matchedHypothesisIds.length} survived=0 non_contradiction_reasons=[${detail}]`);
+    throw new Error(`STAGE_FILTER_KILLED_VALID_DIAGNOSIS: hypotheses removed without agronomic contradiction — ${detail}`);
   }
+
 
   if (candidates.length === 0) {
     emitEmptyHypToRule(trace, anchorHypIds.length > 0 ? 'NO_SURVIVING_HYPOTHESIS' : 'NO_HYPOTHESIS_EDGE');
