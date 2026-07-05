@@ -4588,6 +4588,50 @@ export class AIAgentOrchestrator {
       
       // v4.0: For DIAGNOSIS_WITH_CLARIFICATION, allow optional confirmation but still run rules
       let diagnosisWithOptionalClarification = cropDamageResult.diagnosis_mode === 'DIAGNOSIS_WITH_CLARIFICATION';
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // TASK 2 — INTENT AUTHORITY OVERRIDE (Step 8 route-authority fix)
+      // Any intent that inherently requires agronomic reasoning MUST route through
+      // the symbolic diagnosis graph. The general query router cannot downgrade a
+      // symbolic intent to GENERAL_INFO / advisory-only. This is what unblocks
+      // EMERGENCE_FAILURE, PEST, DISEASE, NUTRIENT_STRESS, WILTING, YELLOWING,
+      // CROP_DAMAGE, GERMINATION_FAILURE, REPORT_SYMPTOM from being silently
+      // shunted into the LLM narration lane without OBS_TO_HYP / HYP_TO_RULE /
+      // RULE_RESULT ever emitting.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const DIAGNOSTIC_INTENTS = new Set<string>([
+        'EMERGENCE_FAILURE',
+        'GERMINATION_FAILURE',
+        'PEST',
+        'PEST_PRESENCE_VISIBLE',
+        'DISEASE',
+        'DISEASE_LIKE_PATTERN',
+        'NUTRIENT_STRESS',
+        'NUTRIENT_DEFICIENCY',
+        'CROP_DAMAGE',
+        'WILTING',
+        'YELLOWING',
+        'REPORT_SYMPTOM',
+      ]);
+      const isDiagnosticIntent = DIAGNOSTIC_INTENTS.has(String(intentCode || '').toUpperCase());
+      if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
+        console.log(
+          `🧭 [INTENT_AUTHORITY] Diagnostic intent=${intentCode} confidence=${(intentConf ?? 0).toFixed(2)} ` +
+          `route=${queryRoute.route} → forcing SYMBOLIC_DIAGNOSIS graph pipeline`,
+        );
+        diagnosisWithOptionalClarification = true;
+        // Route authority: router cannot pin diagnostic intents to GENERAL_INFO.
+        if (queryRoute.route === 'GENERAL_INFO') {
+          (queryRoute as any).route = 'PEST_DISEASE_TREATMENT';
+          queryRoute.confidence = Math.max(queryRoute.confidence, 0.9);
+          console.log(`🧭 [ROUTE_AUTHORITY] Overrode GENERAL_INFO → PEST_DISEASE_TREATMENT (intent=${intentCode})`);
+        }
+        agentsUsed.push('INTENT_AUTHORITY_OVERRIDE');
+      }
+      // Hard invariant — never allow a diagnostic intent to run without the graph branch.
+      if (isDiagnosticIntent && queryRoute.route === 'GENERAL_INFO' && !diagnosisWithOptionalClarification && !diagnosisOnlyModeActive) {
+        throw new Error(`ROUTE_AUTHORITY_VIOLATION: diagnostic intent=${intentCode} but route=GENERAL_INFO`);
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX v4.1: Override DIAGNOSIS_ONLY → DIAGNOSIS_WITH_CLARIFICATION
@@ -4792,8 +4836,20 @@ export class AIAgentOrchestrator {
             console.log(
               `   🧭 [HYP_GRAPH] survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} candidate_rule_ids=${graphHypothesisRuleIds.length} edge_missing=${graphHypothesisEdgeMissing.length}`,
             );
+            (this as any)._graphExecuted = true;
           } catch (e) {
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
+            // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
+            // continue when the hypothesis graph did not execute. Fail closed.
+            if (isDiagnosticIntent) {
+              throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but hypothesis graph evaluator threw: ${(e as Error).message}`);
+            }
+          }
+          // Hard graph invariant — even if the try above resolved without an
+          // exception, if it never actually ran (e.g., early return refactor),
+          // fail closed for diagnostic intents.
+          if (isDiagnosticIntent && !(this as any)._graphExecuted) {
+            throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but [OBS_TO_HYP] was never emitted`);
           }
 
 
