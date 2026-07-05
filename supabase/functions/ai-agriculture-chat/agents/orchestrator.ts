@@ -7217,7 +7217,7 @@ export class AIAgentOrchestrator {
             hypotheses_count: _hypIds.length,
             obs_to_hyp_edges: _obsToHyp,
             hyp_to_rule_edges: _hypToRule,
-            sequence:         5,
+            sequence:         (this as any)._evidenceFrozen ? 5 : undefined,
             total_ms:         Date.now() - startTime,
           });
           // Retain forensic detail on a separate line — auditors still grep
