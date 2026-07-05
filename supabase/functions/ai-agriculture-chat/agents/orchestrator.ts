@@ -6645,15 +6645,55 @@ export class AIAgentOrchestrator {
           { input: rulesToEvaluate.length, kept: rulesAfterIntent.length });
         console.log(`   🎯 [INTENT_FILTER] intent=${activeIntentForRules} ${rulesToEvaluate.length} → ${rulesAfterIntent.length}`);
 
+        // STEP 8 — narrow the intent-filtered set to hypothesis_rule_mapping edges.
+        // Union NOT intersection: if the graph edge set is available and non-empty,
+        // it is treated as the authoritative candidate scope. Fallback path (no edges)
+        // keeps the existing intent-filtered set so unrelated flows are unaffected.
+        const graphRuleIdSet = new Set<string>(((this as any)._graphHypothesisRuleIds ?? []) as string[]);
+        const graphEdgeMissing: string[] = ((this as any)._graphHypothesisEdgeMissing ?? []) as string[];
+        let rulesForEvaluator = rulesAfterIntent;
+        if (graphRuleIdSet.size > 0) {
+          const scoped = rulesAfterIntent.filter((r: any) =>
+            graphRuleIdSet.has(String(r?.rule_id ?? r?.id ?? '')));
+          if (scoped.length > 0) {
+            rulesForEvaluator = scoped;
+            console.log(`   🧭 [HYP_GRAPH_SCOPE] ${rulesAfterIntent.length} → ${scoped.length} (edges=${graphRuleIdSet.size})`);
+          } else {
+            console.warn(`   ⚠️ [HYP_GRAPH_SCOPE] graph edges present but none in intent-filtered set (${graphRuleIdSet.size} edges); using intent set`);
+          }
+        }
+        const graphHypIdsForTrace: string[] = (((this as any)._graphHypothesisResult?.candidates) ?? []).map((c: any) => c.hypothesis_id);
+        console.log(
+          `[HYP_TO_RULE] trace=${traceId} hyp=[${graphHypIdsForTrace.slice(0,12).join(',')}] ` +
+          `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
+          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}]`,
+        );
+
         // T1 — GraphTruth integrity check before layered rule evaluator
         assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
 
-        layeredRuleResult = evaluateRulesLayered(rulesAfterIntent as any, canonicalStateWithQuery as any, {
+        layeredRuleResult = evaluateRulesLayered(rulesForEvaluator as any, canonicalStateWithQuery as any, {
 
           prescriptionGateOverride: isPrescriptionGateOverride,
           traceId: traceId
         });
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
+
+        // STEP 8 — [RULE_RESULT] trace + coverage-gap / edge-missing surfacing
+        try {
+          const winnerId = (layeredRuleResult?.primary_decision?.rule_id
+            ?? (layeredRuleResult?.matched_responses?.[0] as any)?.rule_id
+            ?? 'none');
+          const coverageGap = ((layeredRuleResult?.rules_matched ?? 0) === 0);
+          const reason = coverageGap
+            ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'edge_missing' : 'coverage_gap')
+            : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
+          console.log(`[RULE_RESULT] trace=${traceId} winner=${winnerId} reason=${reason}`);
+          (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
+          (layeredRuleResult as any).edge_missing = graphEdgeMissing;
+        } catch { /* trace-only */ }
+
+
 
         // ═══════════════════════════════════════════════════════════════════
         // Phase I-4 — Seed the per-request hypothesis_graph with
