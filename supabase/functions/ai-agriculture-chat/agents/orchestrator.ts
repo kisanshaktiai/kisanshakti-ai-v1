@@ -4671,10 +4671,24 @@ export class AIAgentOrchestrator {
       const mandatoryGraphRealObsCount = Array
         .from(allObservationsForPreAuth)
         .filter((c) => isRealObservation(String(c))).length;
+      // PATCH 1 (Mandatory Graph Gate — broadened):
+      // Any signal that could produce agronomic reasoning MUST enter the graph:
+      //   • diagnostic intent (EMERGENCE_FAILURE, PEST, DISEASE, …)
+      //   • diagnosis mode / crop-damage activation
+      //   • ANY real observation in the pre-auth set
+      //   • ANY confirmed/inferred symbolic observation
+      //   • Land context with a live crop (advisory-style diagnostic queries
+      //     like "भात अजून उगवले नाही" where NLU may not extract observations
+      //     but the graph still owns the answer)
+      const _confirmedObsSignal = (confirmedObsCodes?.length ?? 0) > 0 ||
+        (syntheticObsCodes?.length ?? 0) > 0;
+      const _landCropSignal = !!(landContext && (landContext as any).current_crop);
       const mustExecuteDecisionGraph = isDiagnosticIntent ||
         shouldActivateDiagnosisMode ||
         cropDamageResult.requires_diagnosis ||
-        mandatoryGraphRealObsCount > 0;
+        mandatoryGraphRealObsCount > 0 ||
+        _confirmedObsSignal ||
+        (_landCropSignal && !__advisoryIntentForState);
       if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
         console.log(
           `🧭 [INTENT_AUTHORITY] Diagnostic intent=${intentCode} confidence=${(intentConf ?? 0).toFixed(2)} ` +
