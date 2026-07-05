@@ -3085,7 +3085,12 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
-      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage);
+      // T4 — pass land-context authority so DB crop wins over hardcoded CROP_MAP
+      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(
+        processedFarmerMessage,
+        { current_crop: (landContext as any)?.current_crop ?? null },
+      );
+
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
       
       console.log(`      ${getInductionSummary(inductionResult)}`);
@@ -4777,22 +4782,42 @@ export class AIAgentOrchestrator {
           // T1 — GraphTruth integrity check before hypothesis engine
           assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
 
+          // T3 — Hypothesis engine reads GraphTruth authority directly.
+          // GraphTruth.canonical_observations is the frozen ontology-resolved set
+          // (observation_master codes via observation_aliases + IOM peers). Any
+          // divergence between currentObservations and this set means an upstream
+          // mutator ran after the evidence lock — trace it, then trust GraphTruth.
+          const _gtForHyp = (this as any)._graphTruth as import('../runtime/graph-truth.ts').GraphTruth | null;
+          const hypObservations: string[] = _gtForHyp
+            ? [..._gtForHyp.canonical_observations]
+            : currentObservations;
+          if (_gtForHyp) {
+            const a = [...currentObservations].sort().join(',');
+            const b = [..._gtForHyp.canonical_observations].sort().join(',');
+            if (a !== b) {
+              console.warn(`[GRAPH_OBS_DRIFT] site=PRE_HYPOTHESIS pipe=[${a}] graph=[${b}] — using GraphTruth`);
+            }
+          }
+
           const hypothesisResult = await evaluateCandidateHypotheses({
 
-            crop_code: cropCode,
-            growth_stage: growthStage,
-            days_since_sowing: resolvedDAS,
+            crop_code: (_gtForHyp?.crop_code ?? cropCode) as any,
+            growth_stage: (_gtForHyp?.biological_stage ?? growthStage) as any,
+            days_since_sowing: (_gtForHyp?.DAS ?? resolvedDAS) as any,
             ndvi_level: landContext?.ndvi?.level,
             ndvi_trend: landContext?.ndvi?.trend,
-            known_observations: currentObservations,
+            known_observations: hypObservations,
             user_query: farmerMessage,
             supabaseClient: this.supabase,
             trace_id: traceId,
             // Phase F — variety-aware resistance modulation
-            variety_id: (landContext as any)?.current_crop_variety_id
+            variety_id: (_gtForHyp?.variety_id
+              ?? (landContext as any)?.current_crop_variety_id
               ?? (landContext as any)?.variety_id
-              ?? null,
+              ?? null),
           });
+
+
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
           

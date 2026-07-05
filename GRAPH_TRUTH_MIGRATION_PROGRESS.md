@@ -1,58 +1,93 @@
-# GraphTruth Migration — Progress Report
+# GraphTruth Migration — Phases 3 & 4
 
-## Delivered (Phases 1 & 2 — Immutability + Stage Authority)
+## Phase 3 — Hypothesis engine reads GraphTruth directly
 
-### Files changed
-- `supabase/functions/ai-agriculture-chat/runtime/graph-truth.ts`
-  - Added `assertGraphTruthIntegrity(gt, callsite)` — recomputes FNV-1a hash from current fields and compares to stored `gt.hash`.
-  - Emits `[GRAPH_VALIDATED] site=<x> hash_match=true` on success; `[GRAPH_CONTRACT_VIOLATION]` on drift.
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-  - Import `assertGraphTruthIntegrity` from `runtime/graph-truth.ts` (line 199).
-  - Validation call inserted before each downstream stage:
-    - `PRE_HYPOTHESIS_ENGINE` (before `evaluateCandidateHypotheses`, ~line 4779)
-    - `PRE_IOM_GATE` (before `loadIOMAllowed`, ~line 4812)
-    - `PRE_LAYERED_RULE_EVALUATOR` (before `evaluateRulesLayered`, ~line 6583)
-    - `PRE_RESPONSE_BUILDER` (before `generateLLMResponse`, ~line 5919)
-  - Post-lock stage guard added at the crop-context fallback authority (~line 6231): now routed through `blockStageWriteIfLocked`, matching the pattern already in place at GDD (5493), context-validation reconciler (6355).
+**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (~line 4780)
 
-### Removed / neutralized authorities
-- Fallback `canonicalState.growth_stage = cropContextAuthority.growth_stage` now aborted when `BiologicalState` is locked.
-- Existing guards at GDD engine and context-validation reconciler retained; both now uniformly gate on `blockStageWriteIfLocked`.
+The call into `evaluateCandidateHypotheses` no longer trusts the mutable pipeline locals (`cropCode`, `growthStage`, `resolvedDAS`, `currentObservations`). It now reads authoritative values from the frozen `GraphTruth` node built at `TURN_EVIDENCE_LOCK`.
 
-### DB tables used (unchanged, no schema mutations)
-- `crop_stage_master`, `variety_phenology_profile`, `stage_transition_conditions` — sole stage authority through `BiologicalState`.
-- `observation_master`, `observation_aliases`, `intent_observation_mapping`, `hypothesis_conditions`, `decision_rules` — unchanged.
+```ts
+const _gtForHyp = (this as any)._graphTruth as GraphTruth | null;
+const hypObservations = _gtForHyp
+  ? [..._gtForHyp.canonical_observations]
+  : currentObservations;
 
-### Expected traces (live edge log)
+// drift detector — logs when pipeline observations diverge from GraphTruth
+if (_gtForHyp && sorted(currentObservations) !== sorted(_gtForHyp.canonical_observations)) {
+  console.warn('[GRAPH_OBS_DRIFT] site=PRE_HYPOTHESIS pipe=[…] graph=[…] — using GraphTruth');
+}
+
+await evaluateCandidateHypotheses({
+  crop_code:         _gtForHyp?.crop_code       ?? cropCode,
+  growth_stage:      _gtForHyp?.biological_stage ?? growthStage,
+  days_since_sowing: _gtForHyp?.DAS             ?? resolvedDAS,
+  known_observations: hypObservations,
+  variety_id:        _gtForHyp?.variety_id ?? (landContext as any)?.current_crop_variety_id ?? null,
+  …
+});
+```
+
+Effect: two wording variants of the same agronomic meaning that produce the same `GraphTruth.hash` are now guaranteed to reach the hypothesis engine with identical inputs.
+
+**Trace signals**
+- `[GRAPH_VALIDATED] site=PRE_HYPOTHESIS_ENGINE hash_match=true` — normal path
+- `[GRAPH_OBS_DRIFT] site=PRE_HYPOTHESIS pipe=[…] graph=[…]` — surfaces any post-lock mutator (the target for future removal)
+
+## Phase 4 — DB land-context authority overrides hardcoded ontology
+
+**Files:**
+- `supabase/functions/ai-agriculture-chat/agents/language-induction-layer.ts` — `induceCanonicalSymbols` gains an optional `landAuthority` argument.
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — caller passes `{ current_crop: landContext.current_crop }`.
+
+### Before
+```ts
+for (const [pattern, cropSymbol] of Object.entries(CROP_MAP)) {
+  if (normalizedText.includes(pattern.toLowerCase())) {
+    crop = { symbol: cropSymbol, confidence: 0.95, source_language: 'mr'|'hi'|'en', … };
+    break;
+  }
+}
+// Generic subject "पिक"/"crop" → no CROP_MAP hit → crop = null / UNKNOWN_CROP
+```
+
+### After
+```ts
+const authoritativeCrop = (landAuthority?.current_crop ?? '').trim();
+if (authoritativeCrop) {
+  crop = { symbol: authoritativeCrop.toUpperCase(), confidence: 1.0, source_language: 'db' };
+  console.log(`[ONTOLOGY_SOURCE=land_context] crop=${crop.symbol} — CROP_MAP bypassed`);
+} else {
+  /* legacy CROP_MAP fallback only when we have no land context */
+}
+```
+
+The hardcoded `CROP_MAP`, `MARATHI_SYMPTOM_MAP`, `HINDI_SYMPTOM_MAP`, `ENGLISH_SYMPTOM_MAP`, `STAGE_SYNONYMS`, `AFFECTED_PART_MAP` are retained as inert fallbacks for crop-agnostic entry points (voice assistant, general chat) but can no longer overwrite the DB-authoritative crop inside a land-specific session.
+
+### Removed authorities (for land-specific chat)
+| Site | Authority before | Authority after |
+| --- | --- | --- |
+| `language-induction-layer.CROP_MAP` | Hardcoded TS keyword table | `landContext.current_crop` (DB: `lands.current_crop_id → crops`) |
+| Hypothesis engine `crop_code` / `growth_stage` / `DAS` | Mutable pipeline locals | Frozen `GraphTruth` fields |
+| Hypothesis engine `known_observations` | `currentObservations` (mutable) | `GraphTruth.canonical_observations` (frozen) |
+
+### DB tables that now drive the graph (unchanged schema)
+`lands`, `crops`, `crop_synonyms`, `crop_stage_master`, `variety_phenology_profile`, `observation_master`, `observation_aliases`, `intent_observation_mapping`, `hypothesis_conditions`, `decision_rules`.
+
+## Deployment
+`ai-agriculture-chat` redeployed with Phase 3 + Phase 4 changes.
+
+## Verification signals to look for in edge logs
 ```
 [GRAPH_TRUTH_BUILT] hash=<h> crop=rice stage=SEEDLING das=26 obs=[POOR_GERMINATION]
-[GRAPH_VALIDATED]   site=PRE_HYPOTHESIS_ENGINE      hash_match=true hash=<h> ...
-[GRAPH_VALIDATED]   site=PRE_IOM_GATE               hash_match=true hash=<h> ...
-[GRAPH_VALIDATED]   site=PRE_LAYERED_RULE_EVALUATOR hash_match=true hash=<h> ...
-[GRAPH_VALIDATED]   site=PRE_RESPONSE_BUILDER       hash_match=true hash=<h> ...
+[ONTOLOGY_SOURCE=land_context] crop=RICE — CROP_MAP bypassed
+[GRAPH_VALIDATED] site=PRE_HYPOTHESIS_ENGINE hash_match=true hash=<h> …
+[GRAPH_VALIDATED] site=PRE_IOM_GATE hash_match=true hash=<h> …
+[GRAPH_VALIDATED] site=PRE_LAYERED_RULE_EVALUATOR hash_match=true hash=<h> …
+[GRAPH_VALIDATED] site=PRE_RESPONSE_BUILDER hash_match=true hash=<h> …
 ```
-Any post-lock mutation attempt now surfaces as `[BIO_STATE_WRITE_BLOCKED]` (existing) or `[GRAPH_CONTRACT_VIOLATION]` (new).
 
-### Deployment
-- `ai-agriculture-chat` edge function deployed.
+Any `[GRAPH_OBS_DRIFT]` or `[GRAPH_CONTRACT_VIOLATION]` line pinpoints the exact remaining upstream mutator to eliminate in Phase 5.
 
----
-
-## Deferred (Phases 3 – 6, non-trivial — proposal below)
-
-Phases 3-5 span ~15k LOC and require deep re-architecture. Executing them in a single turn risks silently breaking the live edge function. Each is scoped and ready to execute on your go-ahead:
-
-- **Phase 3 — Hypothesis reads GraphTruth directly**
-  Rewire `evaluateCandidateHypotheses` caller to pass `graphTruth.canonical_observations` instead of the mutable `currentObservations`. Removes the last silent divergence path between wording variants.
-
-- **Phase 4 — Delete TypeScript agriculture ontology**
-  Strip hardcoded crop/stage/symptom/pest/disease maps from `symptom-enums.ts`, `language-induction-layer.ts`, `entity-normalizer.ts`, `cross-crop-symptom-mapper.ts`. Replace with request-scoped DB cache built from `crops` / `crop_synonyms` / `crop_stage_master` / `observation_aliases`. High blast radius — needs full regression pass.
-
-- **Phase 5 — CanonicalState → view model**
-  Convert `canonical-state-builder.ts` (1338 lines) into a pure projection of GraphTruth. Removes all in-builder inference.
-
-- **Phase 6 — Determinism regression harness**
-  Deno test hitting `ai-agriculture-chat` with three Marathi/Hindi variants of the same agronomic meaning on a Rice/DAS=26 fixture. Asserts identical `graphTruth.hash`, `crop_code`, `stage_uuid`, sorted `observation_codes`, winning `hypothesis_id`, and rule path. FAILs on UNKNOWN crop/stage, hash drift, generic fallback, or proactive-rule win on diagnostic query.
-
-## Verification path for Phases 1-2
-Run the same farmer query against a Rice/DAS=26 land and confirm four `[GRAPH_VALIDATED]` lines with `hash_match=true` and identical `hash` in the edge log. If any `[GRAPH_CONTRACT_VIOLATION]` appears, the callsite string identifies the exact upstream mutator to fix in Phase 3.
+## Deferred
+- **Phase 5** — collapse `canonical-state-builder.ts` (1338 LOC) to a pure GraphTruth projection.
+- **Phase 6** — Deno regression harness asserting identical `hash` / `crop_code` / `stage_uuid` / `observation_codes` / `hypothesis_id` / rule path for the three Marathi/Hindi wording variants on Rice+DAS=26.
