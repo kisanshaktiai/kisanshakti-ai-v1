@@ -197,19 +197,15 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       const cropUpper = (cropCode || '').toUpperCase();
       const cropVariants = Array.from(new Set([cropLower, cropUpper].filter(Boolean)));
 
-      console.log(`[LLM_VALIDATOR][SQL] decision_rules WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true LIMIT 2000`);
+      console.log(`[LLM_VALIDATOR][SQL] decision_rules WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true (paginated, no arbitrary limit)`);
 
-      const { data, error } = await supabase
+      const data = await paginateAll<any>((offset, limit) => supabase
         .from('decision_rules')
         .select('observable_characteristics')
         .in('crop_code', cropVariants)
         .eq('is_active', true)
-        .limit(2000);
-
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load crop-applicable observations for ${cropCode}: ${error.message}`);
-        return cached?.data || new Set<string>();
-      }
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1));
 
       console.log(`[LLM_VALIDATOR][SQL_RESULT] decision_rules rows=${(data || []).length}`);
 
@@ -230,12 +226,14 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       }
       console.log(`[LLM_VALIDATOR][NORMALIZE] after decision_rules → ${applicableCodes.size} uppercase codes`);
 
-      console.log(`[LLM_VALIDATOR][SQL] intent_observation_mapping WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true`);
-      const { data: mappingData } = await supabase
+      console.log(`[LLM_VALIDATOR][SQL] intent_observation_mapping WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true (paginated)`);
+      const mappingData = await paginateAll<any>((offset, limit) => supabase
         .from('intent_observation_mapping')
         .select('observation_code')
         .in('crop_code', cropVariants)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .order('observation_code', { ascending: true })
+        .range(offset, offset + limit - 1));
 
       console.log(`[LLM_VALIDATOR][SQL_RESULT] intent_observation_mapping rows=${(mappingData || []).length}`);
 
