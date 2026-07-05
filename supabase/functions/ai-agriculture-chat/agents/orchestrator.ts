@@ -4802,6 +4802,10 @@ export class AIAgentOrchestrator {
           }
 
           const hypothesisResult = await evaluateCandidateHypotheses({
+            // Step 3 — GraphTruth is the sole authority. The evaluator will
+            // project (crop_code, growth_stage, DAS, known_observations,
+            // variety_id) from this frozen node and log any pipeline drift.
+            graph_truth: _gtForHyp,
 
             crop_code: (_gtForHyp?.crop_code ?? cropCode) as any,
             growth_stage: (_gtForHyp?.biological_stage ?? growthStage) as any,
@@ -4818,6 +4822,7 @@ export class AIAgentOrchestrator {
               ?? (landContext as any)?.variety_id
               ?? null),
           });
+
 
 
           
