@@ -28,28 +28,16 @@ import {
 } from './decision-graph-navigator.ts';
 import { resolveNavigatorFlag, type NavigatorFlagState } from './navigator-flag.ts';
 import { canonicalizeObservationKey } from './clarification-contract.ts';
-
-const STAGE_FAMILIES: Record<string, string[]> = {
-  seedling:     ['seedling', 'nursery', 'germination', 'emergence', 'establishment'],
-  nursery:      ['nursery', 'seedling', 'germination'],
-  germination:  ['germination', 'nursery', 'seedling', 'emergence'],
-  emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
-  establishment:['establishment', 'seedling', 'germination'],
-  vegetative:   ['vegetative', 'tillering'],
-  tillering:    ['tillering', 'vegetative'],
-  flowering:    ['flowering', 'reproductive', 'grand_growth'],
-  reproductive: ['reproductive', 'flowering', 'grand_growth'],
-  grand_growth: ['grand_growth', 'flowering', 'reproductive'],
-  maturity:     ['maturity', 'ripening', 'maturation'],
-  ripening:     ['ripening', 'maturity', 'maturation'],
-  maturation:   ['maturation', 'maturity', 'ripening'],
-  harvest:      ['harvest', 'harvesting'],
-};
+// [GRAPH_TRUTH_PENDING] Step 6 — single-source stage family map.
+// Was previously duplicated verbatim inside this file AND
+// contradiction-engine.ts. Both now defer to stage-family-shim.ts, which
+// is itself a placeholder until crop_stage_graph is wired in.
+import { STAGE_FAMILIES } from './stage-family-shim.ts';
 
 function stageVariants(stage?: string | null): string[] {
   if (!stage) return ['all'];
   const k = String(stage).toLowerCase().trim().replace(/[\s-]+/g, '_');
-  return Array.from(new Set([...(STAGE_FAMILIES[k] || [k]), 'all']));
+  return Array.from(new Set([...((STAGE_FAMILIES[k] as string[] | undefined) || [k]), 'all']));
 }
 
 // ─── Load farmer-observable allowlist for the turn ───────────────────────
