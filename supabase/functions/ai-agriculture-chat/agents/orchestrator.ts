@@ -7283,7 +7283,8 @@ export class AIAgentOrchestrator {
           }
         } catch (e) {
           if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
-              (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
+              (e as Error).message?.startsWith('GRAPH_ORDER_ERROR') ||
+              (e as Error).message?.startsWith('GRAPH_PIPELINE_BYPASSED')) throw e;
           /* trace must never throw */
         }
         
