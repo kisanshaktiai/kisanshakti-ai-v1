@@ -2679,6 +2679,7 @@ export class AIAgentOrchestrator {
           
           // PHASE-9.1-FIX: HARD RETURN - Return clarification reminder and STOP
           // This is the CRITICAL gate that prevents NLU from running
+          console.log(`[CLARIFY_EXIT] site=EXIT_01_OPTION_SELECTED trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
           return {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
@@ -2886,6 +2887,7 @@ export class AIAgentOrchestrator {
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
+        console.log(`[CLARIFY_EXIT] site=EXIT_02_PENDING_OPTIONS trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
         return {
           type: 'CLARIFICATION_QUESTION' as OrchestratorResponseType,
           session_id: sessionId,
@@ -3362,6 +3364,7 @@ export class AIAgentOrchestrator {
           const lang = options.language || 'en';
           const stageQuestion = 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
           
+          console.log(`[CLARIFY_EXIT] site=EXIT_03_INDUCTION_LOWCOV trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
           return {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
@@ -5132,6 +5135,7 @@ export class AIAgentOrchestrator {
             }
 
             
+            console.log(`[CLARIFY_EXIT] site=EXIT_04_DIAGNOSTIC_CONFIRM trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
@@ -5448,6 +5452,7 @@ export class AIAgentOrchestrator {
           ? clarificationResponse.options.filter(opt => opt != null)
           : [];
         
+        console.log(`[CLARIFY_EXIT] site=EXIT_05_NLU_CLARIFY trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
         return {
           type: 'CLARIFICATION_QUESTION',
           session_id: sessionId,
@@ -6427,6 +6432,7 @@ export class AIAgentOrchestrator {
           const clarificationPrompt = contextValidation.clarification_prompt || 
             'Which crop are you asking about?';
           
+          console.log(`[CLARIFY_EXIT] site=EXIT_06_HYPOTHESIS_GAP trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
           return {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
@@ -7404,6 +7410,7 @@ export class AIAgentOrchestrator {
                     });
                     
                     // Return clarification response BEFORE proceeding to treatment
+                    console.log(`[CLARIFY_EXIT] site=EXIT_07_MULTI_MATCH trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
                     return {
                       type: 'CLARIFICATION_QUESTION',
                       session_id: sessionId,
@@ -7498,6 +7505,7 @@ export class AIAgentOrchestrator {
         console.log(`   📋 Returning clarification with ${safeOptionsForLog.length} options`);
         agentsUsed.push('CLARIFICATION_GENERATOR');
         
+        console.log(`[CLARIFY_EXIT] site=EXIT_08_DEFERRED_CLARIFICATION trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
         return {
           type: 'CLARIFICATION_QUESTION',
           session_id: sessionId,
@@ -7608,6 +7616,7 @@ export class AIAgentOrchestrator {
         
         // Check if we need more information
         if (diagnosticState.mode === 'GATHERING_INFO' && diagnosticState.next_question) {
+          console.log(`[CLARIFY_EXIT] site=EXIT_09_POST_SYMBOLIC trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
           return {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
@@ -8238,6 +8247,7 @@ export class AIAgentOrchestrator {
         
         agentsUsed.push('MANDATORY_FALLBACK');
         
+        console.log(`[CLARIFY_EXIT] site=EXIT_10_INTENT_LOCK_EMPTY trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
         return {
           type: 'CLARIFICATION_QUESTION',
           session_id: sessionId,
@@ -8351,6 +8361,7 @@ export class AIAgentOrchestrator {
             landContext?.current_crop
           );
           
+          console.log(`[CLARIFY_EXIT] site=EXIT_11_ALL_ACTIONS_FILTERED trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
           return {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
