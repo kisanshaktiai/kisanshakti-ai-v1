@@ -5916,7 +5916,9 @@ export class AIAgentOrchestrator {
           } : undefined
         };
         
+        assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_RESPONSE_BUILDER');
         const llmResponse = await generateLLMResponse(llmInput);
+
         
         // Build data audit for LLM-direct path too
         const weatherData = await this.fetchWeatherData(sessionId, options.landId);
