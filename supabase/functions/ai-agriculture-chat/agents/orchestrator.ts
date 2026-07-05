@@ -10615,71 +10615,9 @@ export class AIAgentOrchestrator {
     return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }
   
-  /**
-   * Apply PHI blocking to decision output - replace blocked chemicals with safe alternatives
-   */
-  private applyPHIBlocking(decisionOutput: DecisionOutput, phiEnforcement: PHIEnforcementResult): DecisionOutput {
-    const blockedChemicalNames = new Set(phiEnforcement.blocked_chemicals.map(c => c.chemical_name.toLowerCase()));
-    
-    // If primary decision product is blocked, replace with alternative or block
-    if (decisionOutput.primary_decision?.product_details?.product_name) {
-      const productName = decisionOutput.primary_decision.product_details.product_name.toLowerCase();
-      if (blockedChemicalNames.has(productName)) {
-        // Replace with safe alternative
-        if (phiEnforcement.safe_alternatives.length > 0) {
-          decisionOutput.primary_decision.product_details.product_name = phiEnforcement.safe_alternatives[0];
-          decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} ⚠️ PHI उल्लंघन: मूळ शिफारस बदलली. ${phiEnforcement.general_advice_mr}`;
-        } else {
-          // Add to blocked actions
-          decisionOutput.blocked_actions = decisionOutput.blocked_actions || [];
-          decisionOutput.blocked_actions.push({
-            action: `${decisionOutput.primary_decision.product_details.product_name} spray`,
-            reason: phiEnforcement.blocked_chemicals.find(c => c.chemical_name.toLowerCase() === productName)?.block_reason_mr || 'PHI उल्लंघन',
-            alternative_suggested: 'नैसर्गिक पर्याय वापरा किंवा कापणीनंतर फवारणी करा'
-          });
-        }
-      }
-    }
-    
-    return decisionOutput;
-  }
-  
-  /**
-   * Apply Pollinator blocking to decision output - enforce bee safety
-   */
-  private applyPollinatorBlocking(decisionOutput: DecisionOutput, pollinatorEnforcement: PollinatorEnforcementResult): DecisionOutput {
-    const blockedChemicalNames = new Set(pollinatorEnforcement.blocked_chemicals.map(c => c.chemical_name.toLowerCase()));
-    
-    // If primary decision product is blocked for pollinators
-    if (decisionOutput.primary_decision?.product_details?.product_name) {
-      const productName = decisionOutput.primary_decision.product_details.product_name.toLowerCase();
-      if (blockedChemicalNames.has(productName)) {
-        // Replace with bee-safe alternative
-        if (pollinatorEnforcement.safe_alternatives.length > 0) {
-          decisionOutput.primary_decision.product_details.product_name = pollinatorEnforcement.safe_alternatives[0];
-          decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} 🐝 परागीकरण संरक्षण: फुलोऱ्यात मधमाशी-सुरक्षित पर्याय. ${pollinatorEnforcement.general_advice_mr}`;
-        } else {
-          // Add blocking warning
-          decisionOutput.blocked_actions = decisionOutput.blocked_actions || [];
-          decisionOutput.blocked_actions.push({
-            action: `${decisionOutput.primary_decision.product_details.product_name} फुलोऱ्यात`,
-            reason: pollinatorEnforcement.blocked_chemicals.find(c => c.chemical_name.toLowerCase() === productName)?.block_reason_mr || 'मधमाशी विषारी',
-            alternative_suggested: 'संध्याकाळी ७ नंतर किंवा मधमाशी-सुरक्षित पर्याय वापरा'
-          });
-        }
-      }
-    }
-    
-    // Handle time-restricted chemicals
-    for (const restricted of pollinatorEnforcement.time_restricted_chemicals) {
-      if (!decisionOutput.primary_decision?.notes?.includes('संध्याकाळी')) {
-        decisionOutput.primary_decision = decisionOutput.primary_decision || { action_type: 'SPRAY' };
-        decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} ⏰ फक्त संध्याकाळी ७ नंतर फवारणी करा (मधमाशी संरक्षण)`;
-      }
-    }
-    
-    return decisionOutput;
-  }
+  // [STEP 7 REMOVED] applyPHIBlocking / applyPollinatorBlocking — SafetyGuardian
+  // owns product substitution and blocked_actions population end-to-end.
+
   
   // ═══════════════════════════════════════════════════════════════════════════
   // P1-A: CROP HEALTH RESPONSE GENERATOR - REFACTORED TO SYMBOLIC OUTPUT
