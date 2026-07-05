@@ -440,21 +440,17 @@ interface MasterRow {
   is_active: boolean;
 }
 
-async function queryMaster(supabase: any, hypIds: string[], cropGroup: string | null): Promise<Map<string, MasterRow>> {
+async function queryMaster(supabase: any, hypIds: string[]): Promise<Map<string, MasterRow>> {
   const out = new Map<string, MasterRow>();
   if (hypIds.length === 0) return out;
   try {
-    let q = supabase
+    // NO crop filter here — crop mismatch is evaluated per-candidate as
+    // IMPOSSIBLE_CROP so the decision is visible in the trace instead of
+    // silently pruning anchored hypotheses.
+    const { data, error } = await supabase
       .from('hypothesis_master')
       .select('hypothesis_id, crop_group, canonical_group, cause_name_en, cause_name_hi, cause_name_mr, severity_model, is_active')
-      .in('hypothesis_id', hypIds)
-      .eq('is_active', true);
-    // Filter to crop_group (+universal) if we have one — the DB stores it lowercase
-    if (cropGroup) {
-      const g = String(cropGroup).toLowerCase();
-      q = q.in('crop_group', [g, 'universal']);
-    }
-    const { data, error } = await q;
+      .in('hypothesis_id', hypIds);
     if (error) {
       console.warn(`[HYP_GRAPH_MASTER_ERR] ${error.message}`);
       return out;
