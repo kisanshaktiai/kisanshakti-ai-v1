@@ -2944,6 +2944,8 @@ export class AIAgentOrchestrator {
       
       // CRASH-PROOF LOGGING: Use safe accessors for all fields (v5.1.0 SemanticExtraction)
       let intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
+      // Expose for [ORCHESTRATOR_EXIT] boundary audit in index.ts
+      (this as any)._lastIntentCode = intentCode;
       const intentConf = typeof semanticExtraction?.intent_confidence === 'number' 
         ? semanticExtraction.intent_confidence : 0;
       const obsCodesList = expandedObservationCodes || [];
