@@ -4747,7 +4747,9 @@ export class AIAgentOrchestrator {
         // Force bypass clarification
         understandingResult.clarification_required = false;
         bypassClarification = true;
-      } else if (mustExecuteDecisionGraph) {
+      }
+
+      if (mustExecuteDecisionGraph) {
         if (!diagnosisWithOptionalClarification || directHardBypass) {
           console.log(
             `🧭 [MANDATORY_GRAPH_GATE] trace=${traceId} intent=${intentCode} ` +
@@ -5270,6 +5272,12 @@ export class AIAgentOrchestrator {
             }
 
             
+            if ((this as any)._evidenceFrozen && !(this as any)._ruleResultExists) {
+              throw new Error(
+                `GRAPH_ORDER_ERROR: trace_id=${traceId} expected=4 actual=${(this as any).__decisionGraphSequence ?? 0} ` +
+                `stage=RULE_RESULT reason=diagnosis_first_return_before_rule_result`,
+              );
+            }
             console.log(`[CLARIFY_EXIT] site=EXIT_04_DIAGNOSTIC_CONFIRM trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
             return {
               type: 'CLARIFICATION_QUESTION',
