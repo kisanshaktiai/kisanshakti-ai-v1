@@ -17,7 +17,7 @@ import { emitBrainTrace } from '../runtime/brain-trace.ts';
 import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
 import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
-import { classifyEvidence } from '../runtime/evidence-classifier.ts';
+import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
@@ -4678,14 +4678,14 @@ export class AIAgentOrchestrator {
           // ═══════════════════════════════════════════════════════════════════
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
           const raw_evidence_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
-          const preFreezeEvidence = classifyEvidence(raw_evidence_codes);
+          const real_codes: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+          const ignoredRawCodes: string[] = raw_evidence_codes.filter((code) => !isRealObservation(code));
           const evidenceContext = {
-            action_taken: !preFreezeEvidence.ignored_codes.includes('ACTION_NONE'),
-            photo: !preFreezeEvidence.ignored_codes.includes('PHOTO_NOT_PROVIDED'),
-            crop_identified: preFreezeEvidence.ignored_codes.includes('CROP_IDENTIFIED'),
-            metadata: preFreezeEvidence.ignored_codes,
+            action_taken: !ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'ACTION_NONE'),
+            photo: !ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'PHOTO_NOT_PROVIDED'),
+            crop_identified: ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'CROP_IDENTIFIED'),
+            metadata: ignoredRawCodes,
           };
-          const real_codes: string[] = preFreezeEvidence.real_codes;
           const bridged = await bridgeCodesDb(this.supabase, cropCode, real_codes);
           const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
 
@@ -4714,11 +4714,11 @@ export class AIAgentOrchestrator {
             bridgedCanonical,
           );
           const resolvedCanonicalCodes: string[] = resolved.map((r) => r.code);
-          const canonicalEvidence = classifyEvidence(resolvedCanonicalCodes);
-          const canonical_observation_codes: string[] = canonicalEvidence.real_codes;
+          const canonical_observation_codes: string[] = resolvedCanonicalCodes.filter((code) => isRealObservation(code));
+          const ignoredCanonicalCodes: string[] = resolvedCanonicalCodes.filter((code) => !isRealObservation(code));
           const frozenContext = {
             ...evidenceContext,
-            metadata: Array.from(new Set([...evidenceContext.metadata, ...canonicalEvidence.ignored_codes])),
+            metadata: Array.from(new Set([...evidenceContext.metadata, ...ignoredCanonicalCodes])),
           };
           for (const r of resolved) {
             if (r.source === 'iom_literal_peer') {
