@@ -1135,10 +1135,12 @@ serve(async (req) => {
             ? (orchestratorResponse as any).metadata.real_observations.length
             : 0);
       const _path = String(orchestratorResponse.type ?? 'UNKNOWN');
+      const _seq: number = Number(_orchAny?.__decisionGraphSequence ?? 0);
       console.log(
         `[ORCHESTRATOR_EXIT] trace=${traceId} path=${_path} intent=${_intentUpper || 'n/a'} ` +
         `graphExecuted=${_graphExecuted} hypotheses=${_hypCount} rules=${_ruleCount} ` +
-        `ruleResult=${_ruleResultExists} evidenceFrozen=${_evidenceFrozen} realObs=${_realObsCount}`,
+        `ruleResult=${_ruleResultExists} evidenceFrozen=${_evidenceFrozen} realObs=${_realObsCount} ` +
+        `graphSequence=${_seq}/5`,
       );
       if (_isDiagnosticIntent && _evidenceFrozen && !_graphExecuted) {
         throw new Error(
@@ -1150,6 +1152,16 @@ serve(async (req) => {
         throw new Error(
           `GRAPH_PIPELINE_BYPASSED: exit_path=${_path} intent=${_intentUpper} ` +
           `realObs=${_realObsCount} evidenceFrozen=true graphExecuted=true ruleResult=false trace_id=${traceId}`,
+        );
+      }
+      // Sequence-incomplete guard: if a diagnostic turn with real observations
+      // reached exit before RULE_RESULT (sequence < 4), the graph pipeline
+      // was truncated mid-flight. Fail closed so silent partial-run exits
+      // cannot ship a `hyp=0` response.
+      if (_isDiagnosticIntent && _evidenceFrozen && _realObsCount > 0 && _seq < 4) {
+        throw new Error(
+          `GRAPH_PIPELINE_BYPASSED: sequence_incomplete stage=${_seq}/5 ` +
+          `exit_path=${_path} intent=${_intentUpper} realObs=${_realObsCount} trace_id=${traceId}`,
         );
       }
     } catch (auditErr) {
