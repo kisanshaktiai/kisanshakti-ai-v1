@@ -276,6 +276,14 @@ export interface LLMValidationResult {
   rejected_intents: string[];
   rejected_observations: string[];
   crop_applicable_rejections: string[];
+  /**
+   * ONTOLOGY ALIASING: generic codes that were not applicable/known for the
+   * crop but were successfully re-mapped to a canonical peer via the alias
+   * table. Callers MUST substitute { [original]: canonical } in the working
+   * observation list instead of dropping the original — this preserves
+   * neuro-symbolic evidence rather than silently deleting it.
+   */
+  aliased_observations: Record<string, string>;
   reason: string;
 }
 
@@ -290,10 +298,11 @@ export async function validateLLMOutputAgainstDB(params: {
   supabase: any;
 }): Promise<LLMValidationResult> {
   const { intent_code, observation_codes, canonical_crop, supabase } = params;
-  
+
   const rejected_intents: string[] = [];
   const rejected_observations: string[] = [];
   const crop_applicable_rejections: string[] = [];
+  const aliased_observations: Record<string, string> = {};
   const reasons: string[] = [];
 
   // Load caches in parallel
@@ -301,50 +310,71 @@ export async function validateLLMOutputAgainstDB(params: {
     loadValidIntentCodes(supabase),
     loadValidObservationCodes(supabase)
   ]);
-  
+
   // 1. Validate intent code
   if (intent_code && !validIntents.has(intent_code)) {
     rejected_intents.push(intent_code);
     reasons.push(`Intent '${intent_code}' not found in observation_intent_master`);
   }
-  
-  // 2. Validate observation codes exist
+
+  const applicableObs = (canonical_crop && canonical_crop !== 'UNKNOWN')
+    ? await loadCropApplicableObservations(supabase, canonical_crop)
+    : new Set<string>();
+
+  const tryAlias = (code: string): string | null => {
+    const upper = String(code || '').toUpperCase();
+    const alias = CANONICAL_OBSERVATION_ALIASES[upper];
+    if (!alias) return null;
+    // Alias must be a real observation AND (if we have a crop-applicability
+    // set) applicable for the crop. Otherwise it's not evidence, it's noise.
+    if (!validObservations.has(alias)) return null;
+    if (applicableObs.size > 0 && !applicableObs.has(alias)) return null;
+    return alias;
+  };
+
+  // 2. Validate observation codes exist in observation_master (with alias fallback)
   for (const code of observation_codes) {
-    if (!validObservations.has(code)) {
-      rejected_observations.push(code);
-      reasons.push(`Observation '${code}' not found in observation_master`);
+    if (validObservations.has(code)) continue;
+    const alias = tryAlias(code);
+    if (alias) {
+      aliased_observations[code] = alias;
+      reasons.push(`Observation '${code}' aliased → '${alias}' (canonical peer)`);
+      continue;
     }
+    rejected_observations.push(code);
+    reasons.push(`Observation '${code}' not found in observation_master`);
   }
-  
-  // 3. Crop-applicability check (only if we have a canonical crop)
-  if (canonical_crop && canonical_crop !== 'UNKNOWN') {
-    const applicableObs = await loadCropApplicableObservations(supabase, canonical_crop);
-    
-    // Only reject if we have a populated applicability set (otherwise skip check gracefully)
-    if (applicableObs.size > 0) {
-      for (const code of observation_codes) {
-        // Skip codes already rejected as non-existent
-        if (rejected_observations.includes(code)) continue;
-        
-        if (!applicableObs.has(code)) {
-          crop_applicable_rejections.push(code);
-          reasons.push(`'${code}' not applicable to crop ${canonical_crop}`);
-        }
+
+  // 3. Crop-applicability check (with alias fallback so evidence isn't lost)
+  if (applicableObs.size > 0) {
+    for (const code of observation_codes) {
+      if (rejected_observations.includes(code)) continue;
+      if (aliased_observations[code]) continue; // already resolved via alias above
+      if (applicableObs.has(code)) continue;
+      const alias = tryAlias(code);
+      if (alias) {
+        aliased_observations[code] = alias;
+        reasons.push(`Observation '${code}' not applicable to ${canonical_crop}; aliased → '${alias}'`);
+        continue;
       }
+      crop_applicable_rejections.push(code);
+      reasons.push(`'${code}' not applicable to crop ${canonical_crop}`);
     }
   }
-  
+
   const allRejected = [...rejected_intents, ...rejected_observations, ...crop_applicable_rejections];
-  
-  if (allRejected.length > 0) {
-    console.log(`[LLM_VALIDATOR] Rejected ${allRejected.length} codes: ${reasons.join('; ')}`);
+  const aliasedCount = Object.keys(aliased_observations).length;
+
+  if (allRejected.length > 0 || aliasedCount > 0) {
+    console.log(`[LLM_VALIDATOR] rejected=${allRejected.length} aliased=${aliasedCount} :: ${reasons.join('; ')}`);
   }
-  
+
   return {
     valid: allRejected.length === 0,
     rejected_intents,
     rejected_observations,
     crop_applicable_rejections,
+    aliased_observations,
     reason: reasons.join('; ') || 'All codes valid'
   };
 }
