@@ -3050,14 +3050,29 @@ export class AIAgentOrchestrator {
           canonical_crop: canonicalContext?.crop_code,
           supabase: this.supabase
         });
-        
+
+        // ONTOLOGY ALIAS SUBSTITUTION — preserve evidence instead of deleting it.
+        // Codes like SEEDLING_DIED / STUNTED_PLANTS that are not per-crop rows
+        // in intent_observation_mapping are re-mapped to canonical peers
+        // (POOR_CROP_ESTABLISHMENT, POOR_GROWTH_VISIBLE) so hypothesis
+        // conditions authored against the canonical vocabulary still fire.
+        const aliasedMap = llmValidation.aliased_observations || {};
+        const aliasedCount = Object.keys(aliasedMap).length;
+        if (aliasedCount > 0) {
+          expandedObservationCodes = expandedObservationCodes.map(c => aliasedMap[c] || c);
+          // Deduplicate after aliasing
+          expandedObservationCodes = Array.from(new Set(expandedObservationCodes));
+          console.log(`      🔗 [LLM_VALIDATION] Aliased ${aliasedCount} generic codes → canonical peers: ${JSON.stringify(aliasedMap)}`);
+          agentsUsed.push('OBSERVATION_ALIAS_RESOLVER');
+        }
+
         if (!llmValidation.valid) {
           console.warn(`      ⚠️ [LLM_VALIDATION] Rejected: ${llmValidation.reason}`);
-          // Remove rejected observation codes
+          // Remove observation codes that could NOT be aliased.
           if (llmValidation.rejected_observations.length > 0 || llmValidation.crop_applicable_rejections.length > 0) {
             const allRejectedObs = new Set([...llmValidation.rejected_observations, ...llmValidation.crop_applicable_rejections]);
             expandedObservationCodes = expandedObservationCodes.filter(c => !allRejectedObs.has(c));
-            console.log(`      ⚠️ [LLM_VALIDATION] Filtered to ${expandedObservationCodes.length} valid observation codes`);
+            console.log(`      ⚠️ [LLM_VALIDATION] Filtered to ${expandedObservationCodes.length} valid observation codes (after alias resolution)`);
           }
           agentsUsed.push('LLM_OUTPUT_VALIDATOR');
         }

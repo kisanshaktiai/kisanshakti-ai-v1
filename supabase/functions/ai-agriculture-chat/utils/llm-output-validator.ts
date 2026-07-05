@@ -18,7 +18,55 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const LLM_OUTPUT_VALIDATOR_VERSION = '1.0.0';
+export const LLM_OUTPUT_VALIDATOR_VERSION = '1.1.0';
+
+/**
+ * ONTOLOGY-INVARIANT PAGINATED LOADER
+ * PostgREST caps rows at 1000 by default and any explicit `.limit(N)` also
+ * silently truncates the neuro-symbolic vocabulary. Both are catastrophic for
+ * this validator: a missing observation row = evidence deletion downstream.
+ * We enumerate the full result set with an ordered keyset scan.
+ */
+async function paginateAll<T = any>(
+  buildQuery: (offset: number, limit: number) => any,
+  pageSize = 1000
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await buildQuery(offset, pageSize);
+    if (error) throw new Error(error.message || String(error));
+    const batch = (data || []) as T[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+    if (offset > 200_000) break; // hard sanity ceiling
+  }
+  return rows;
+}
+
+/**
+ * ONTOLOGY ALIAS TABLE
+ * Farmer-observable generic codes that historically flowed from the
+ * observation mapper but are not per-crop rows in
+ * intent_observation_mapping. Aliasing preserves evidence instead of
+ * silently deleting it downstream — the aliased canonical code is what
+ * hypothesis conditions and decision rules are authored against.
+ * DB-driven aliases from `observation_aliases` (when present) always win
+ * over this in-code fallback.
+ */
+const CANONICAL_OBSERVATION_ALIASES: Record<string, string> = {
+  // Emergence-failure family — canonical peer is POOR_GERMINATION, which is
+  // a LITERAL member of intent_observation_mapping for EMERGENCE_FAILURE
+  // across every crop that authors that intent.
+  SEEDLING_DIED: 'POOR_GERMINATION',
+  PLANT_DIED: 'POOR_GERMINATION',
+  DEAD_SEEDLINGS: 'POOR_GERMINATION',
+  // Poor-vigour family — canonical peer is STUNTED_GROWTH, present in
+  // observation_master and mapped by GROWTH_ANOMALY authors.
+  STUNTED_PLANTS: 'STUNTED_GROWTH',
+  POOR_TILLERING: 'STUNTED_GROWTH',
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE INFRASTRUCTURE
@@ -53,17 +101,12 @@ async function loadValidIntentCodes(supabase: any): Promise<Set<string>> {
 
   const loadPromise = (async () => {
     try {
-      const { data, error } = await supabase
+      const data = await paginateAll<any>((offset, limit) => supabase
         .from('observation_intent_master')
         .select('intent_code')
         .eq('is_active', true)
-        .limit(2000);
-      
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load intent codes: ${error.message}`);
-        return intentCache.entry?.data || new Set<string>();
-      }
-      
+        .order('intent_code', { ascending: true })
+        .range(offset, offset + limit - 1));
       const codes = new Set<string>((data || []).map((r: any) => r.intent_code));
       // Always allow fallback intents
       codes.add('UNKNOWN');
@@ -102,27 +145,26 @@ async function loadValidObservationCodes(supabase: any): Promise<Set<string>> {
 
   const loadPromise = (async () => {
     try {
-      const { data, error } = await supabase
+      const data = await paginateAll<any>((offset, limit) => supabase
         .from('observation_master')
         .select('observation_code')
         .eq('is_active', true)
-        .limit(2000);
-      
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load observation codes: ${error.message}`);
-        return observationCache.entry?.data || new Set<string>();
-      }
-      
-      // CANONICAL-CONTEXT FIX: observation_master.observation_code is stored
-      // lowercase in the DB but runtime canonical case is UPPERCASE. Normalize
-      // on load so the validity check stops false-rejecting every observation.
-      const codes = new Set<string>((data || []).map((r: any) => String(r.observation_code || '').toUpperCase()).filter(Boolean));
-      console.log(`[LLM_VALIDATOR][CANONICAL_CONTEXT_TRACE] Loaded ${codes.size} valid observation codes (normalized to UPPERCASE)`);
+        .order('observation_code', { ascending: true })
+        .range(offset, offset + limit - 1));
+
+      // CANONICAL-CONTEXT: observation_master.observation_code is stored
+      // lowercase in the DB but runtime canonical case is UPPERCASE.
+      const codes = new Set<string>(
+        (data || [])
+          .map((r: any) => String(r.observation_code || '').toUpperCase())
+          .filter(Boolean)
+      );
+      console.log(`[LLM_VALIDATOR][CANONICAL_CONTEXT_TRACE] Loaded ${codes.size} valid observation codes (paginated, normalized to UPPERCASE)`);
 
       observationCache.entry = { data: codes, loadedAt: Date.now() };
       return codes;
     } catch (e) {
-      console.error(`[LLM_VALIDATOR] Observation cache load error: ${e}`);
+      console.error(`[LLM_VALIDATOR] Observation cache load error: ${(e as Error)?.message || e}`);
       return observationCache.entry?.data || new Set<string>();
     }
   })();
@@ -159,19 +201,15 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       const cropUpper = (cropCode || '').toUpperCase();
       const cropVariants = Array.from(new Set([cropLower, cropUpper].filter(Boolean)));
 
-      console.log(`[LLM_VALIDATOR][SQL] decision_rules WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true LIMIT 2000`);
+      console.log(`[LLM_VALIDATOR][SQL] decision_rules WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true (paginated, no arbitrary limit)`);
 
-      const { data, error } = await supabase
+      const data = await paginateAll<any>((offset, limit) => supabase
         .from('decision_rules')
         .select('observable_characteristics')
         .in('crop_code', cropVariants)
         .eq('is_active', true)
-        .limit(2000);
-
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load crop-applicable observations for ${cropCode}: ${error.message}`);
-        return cached?.data || new Set<string>();
-      }
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1));
 
       console.log(`[LLM_VALIDATOR][SQL_RESULT] decision_rules rows=${(data || []).length}`);
 
@@ -192,12 +230,14 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       }
       console.log(`[LLM_VALIDATOR][NORMALIZE] after decision_rules → ${applicableCodes.size} uppercase codes`);
 
-      console.log(`[LLM_VALIDATOR][SQL] intent_observation_mapping WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true`);
-      const { data: mappingData } = await supabase
+      console.log(`[LLM_VALIDATOR][SQL] intent_observation_mapping WHERE crop_code IN (${JSON.stringify(cropVariants)}) AND is_active=true (paginated)`);
+      const mappingData = await paginateAll<any>((offset, limit) => supabase
         .from('intent_observation_mapping')
         .select('observation_code')
         .in('crop_code', cropVariants)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .order('observation_code', { ascending: true })
+        .range(offset, offset + limit - 1));
 
       console.log(`[LLM_VALIDATOR][SQL_RESULT] intent_observation_mapping rows=${(mappingData || []).length}`);
 
@@ -240,6 +280,14 @@ export interface LLMValidationResult {
   rejected_intents: string[];
   rejected_observations: string[];
   crop_applicable_rejections: string[];
+  /**
+   * ONTOLOGY ALIASING: generic codes that were not applicable/known for the
+   * crop but were successfully re-mapped to a canonical peer via the alias
+   * table. Callers MUST substitute { [original]: canonical } in the working
+   * observation list instead of dropping the original — this preserves
+   * neuro-symbolic evidence rather than silently deleting it.
+   */
+  aliased_observations: Record<string, string>;
   reason: string;
 }
 
@@ -254,10 +302,11 @@ export async function validateLLMOutputAgainstDB(params: {
   supabase: any;
 }): Promise<LLMValidationResult> {
   const { intent_code, observation_codes, canonical_crop, supabase } = params;
-  
+
   const rejected_intents: string[] = [];
   const rejected_observations: string[] = [];
   const crop_applicable_rejections: string[] = [];
+  const aliased_observations: Record<string, string> = {};
   const reasons: string[] = [];
 
   // Load caches in parallel
@@ -265,50 +314,71 @@ export async function validateLLMOutputAgainstDB(params: {
     loadValidIntentCodes(supabase),
     loadValidObservationCodes(supabase)
   ]);
-  
+
   // 1. Validate intent code
   if (intent_code && !validIntents.has(intent_code)) {
     rejected_intents.push(intent_code);
     reasons.push(`Intent '${intent_code}' not found in observation_intent_master`);
   }
-  
-  // 2. Validate observation codes exist
+
+  const applicableObs = (canonical_crop && canonical_crop !== 'UNKNOWN')
+    ? await loadCropApplicableObservations(supabase, canonical_crop)
+    : new Set<string>();
+
+  const tryAlias = (code: string): string | null => {
+    const upper = String(code || '').toUpperCase();
+    const alias = CANONICAL_OBSERVATION_ALIASES[upper];
+    if (!alias) return null;
+    // Alias must be a real observation AND (if we have a crop-applicability
+    // set) applicable for the crop. Otherwise it's not evidence, it's noise.
+    if (!validObservations.has(alias)) return null;
+    if (applicableObs.size > 0 && !applicableObs.has(alias)) return null;
+    return alias;
+  };
+
+  // 2. Validate observation codes exist in observation_master (with alias fallback)
   for (const code of observation_codes) {
-    if (!validObservations.has(code)) {
-      rejected_observations.push(code);
-      reasons.push(`Observation '${code}' not found in observation_master`);
+    if (validObservations.has(code)) continue;
+    const alias = tryAlias(code);
+    if (alias) {
+      aliased_observations[code] = alias;
+      reasons.push(`Observation '${code}' aliased → '${alias}' (canonical peer)`);
+      continue;
     }
+    rejected_observations.push(code);
+    reasons.push(`Observation '${code}' not found in observation_master`);
   }
-  
-  // 3. Crop-applicability check (only if we have a canonical crop)
-  if (canonical_crop && canonical_crop !== 'UNKNOWN') {
-    const applicableObs = await loadCropApplicableObservations(supabase, canonical_crop);
-    
-    // Only reject if we have a populated applicability set (otherwise skip check gracefully)
-    if (applicableObs.size > 0) {
-      for (const code of observation_codes) {
-        // Skip codes already rejected as non-existent
-        if (rejected_observations.includes(code)) continue;
-        
-        if (!applicableObs.has(code)) {
-          crop_applicable_rejections.push(code);
-          reasons.push(`'${code}' not applicable to crop ${canonical_crop}`);
-        }
+
+  // 3. Crop-applicability check (with alias fallback so evidence isn't lost)
+  if (applicableObs.size > 0) {
+    for (const code of observation_codes) {
+      if (rejected_observations.includes(code)) continue;
+      if (aliased_observations[code]) continue; // already resolved via alias above
+      if (applicableObs.has(code)) continue;
+      const alias = tryAlias(code);
+      if (alias) {
+        aliased_observations[code] = alias;
+        reasons.push(`Observation '${code}' not applicable to ${canonical_crop}; aliased → '${alias}'`);
+        continue;
       }
+      crop_applicable_rejections.push(code);
+      reasons.push(`'${code}' not applicable to crop ${canonical_crop}`);
     }
   }
-  
+
   const allRejected = [...rejected_intents, ...rejected_observations, ...crop_applicable_rejections];
-  
-  if (allRejected.length > 0) {
-    console.log(`[LLM_VALIDATOR] Rejected ${allRejected.length} codes: ${reasons.join('; ')}`);
+  const aliasedCount = Object.keys(aliased_observations).length;
+
+  if (allRejected.length > 0 || aliasedCount > 0) {
+    console.log(`[LLM_VALIDATOR] rejected=${allRejected.length} aliased=${aliasedCount} :: ${reasons.join('; ')}`);
   }
-  
+
   return {
     valid: allRejected.length === 0,
     rejected_intents,
     rejected_observations,
     crop_applicable_rejections,
+    aliased_observations,
     reason: reasons.join('; ') || 'All codes valid'
   };
 }
