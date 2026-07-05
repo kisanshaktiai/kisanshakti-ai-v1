@@ -79,7 +79,7 @@ export interface GraphHypothesisResult {
   timings_ms: number;
 }
 
-interface NormalizedObservationCode {
+export interface NormalizedObservationCode {
   canonicalCode: string;
   matchKey: string;
 }
@@ -573,7 +573,8 @@ function extractObservationCodesFromValueJson(value: any): string[] {
   const walk = (v: any, keyHint?: string) => {
     if (v == null || typeof v === 'boolean' || typeof v === 'number') return;
     if (typeof v === 'string') {
-      if (keyHint && isObservationValueKey(keyHint)) push(v);
+      const s = v.trim().toLowerCase();
+      if ((keyHint && isObservationValueKey(keyHint)) || (s !== 'true' && s !== 'false')) push(v);
       return;
     }
     if (Array.isArray(v)) {
