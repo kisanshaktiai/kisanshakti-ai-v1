@@ -17,7 +17,7 @@ import { emitBrainTrace } from '../runtime/brain-trace.ts';
 import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
 import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
-import { classifyEvidence } from '../runtime/evidence-classifier.ts';
+import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
@@ -4677,7 +4677,15 @@ export class AIAgentOrchestrator {
           // public.observation_aliases (see decision/concept-bridge.ts).
           // ═══════════════════════════════════════════════════════════════════
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
-          const real_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
+          const raw_evidence_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
+          const real_codes: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+          const ignoredRawCodes: string[] = raw_evidence_codes.filter((code) => !isRealObservation(code));
+          const evidenceContext = {
+            action_taken: !ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'ACTION_NONE'),
+            photo: !ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'PHOTO_NOT_PROVIDED'),
+            crop_identified: ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'CROP_IDENTIFIED'),
+            metadata: ignoredRawCodes,
+          };
           const bridged = await bridgeCodesDb(this.supabase, cropCode, real_codes);
           const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
 
@@ -4705,7 +4713,13 @@ export class AIAgentOrchestrator {
             cropCode,
             bridgedCanonical,
           );
-          const canonical_observation_codes: string[] = resolved.map((r) => r.code);
+          const resolvedCanonicalCodes: string[] = resolved.map((r) => r.code);
+          const canonical_observation_codes: string[] = resolvedCanonicalCodes.filter((code) => isRealObservation(code));
+          const ignoredCanonicalCodes: string[] = resolvedCanonicalCodes.filter((code) => !isRealObservation(code));
+          const frozenContext = {
+            ...evidenceContext,
+            metadata: Array.from(new Set([...evidenceContext.metadata, ...ignoredCanonicalCodes])),
+          };
           for (const r of resolved) {
             if (r.source === 'iom_literal_peer') {
               authoredObservations.add(
@@ -4728,7 +4742,8 @@ export class AIAgentOrchestrator {
               confidence: real_codes.includes(c) ? 1 : 0.8,
             }));
             console.log(
-              `[EVIDENCE_FREEZE] turn=${traceId} locked_observations=[${canonical_observation_codes.slice(0, 12).join(',')}] source=farmer count=${ledger.length}`,
+              `[EVIDENCE_FREEZE] turn=${traceId} observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
+                `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
             );
           } catch { /* trace-only */ }
 
@@ -6663,10 +6678,13 @@ export class AIAgentOrchestrator {
           }
         }
         const graphHypIdsForTrace: string[] = (((this as any)._graphHypothesisResult?.candidates) ?? []).map((c: any) => c.hypothesis_id);
+        const hypToRuleReason = graphHypIdsForTrace.length === 0
+          ? 'NO_HYPOTHESIS_EDGE'
+          : (graphRuleIdSet.size === 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'OK');
         console.log(
           `[HYP_TO_RULE] trace=${traceId} hyp=[${graphHypIdsForTrace.slice(0,12).join(',')}] ` +
           `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
-          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}]`,
+          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] reason=${hypToRuleReason}`,
         );
 
         // T1 — GraphTruth integrity check before layered rule evaluator
@@ -6685,8 +6703,10 @@ export class AIAgentOrchestrator {
             ?? (layeredRuleResult?.matched_responses?.[0] as any)?.rule_id
             ?? 'none');
           const coverageGap = ((layeredRuleResult?.rules_matched ?? 0) === 0);
-          const reason = coverageGap
-            ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'edge_missing' : 'coverage_gap')
+          const reason = graphHypIdsForTrace.length === 0
+            ? 'NO_HYPOTHESIS_EDGE'
+            : coverageGap
+            ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'RULE_COVERAGE_GAP')
             : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
           console.log(`[RULE_RESULT] trace=${traceId} winner=${winnerId} reason=${reason}`);
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;

@@ -17,9 +17,11 @@
  *
  * SCHEMA REALITY (public.hypothesis_conditions):
  *   condition_type  ∈ {WEATHER, OBSERVATION, SOIL, DAS_RANGE, BOOLEAN_GATE, STAGE}
- *   condition_key   = observation_code (when condition_type='OBSERVATION')
+ *   condition_key   = observation_code OR semantic slot (reported_codes, symptom, etc.)
  *   value_json      = true  → positive expectation (evidence should be present)
  *                     false → negative expectation (evidence should be absent)
+ *                     {code|observation_code|observations|observation_codes|...}
+ *                     or string[] → canonical observation identities
  *   is_required     = true  → mandatory
  *                     false → supporting/nice-to-have
  *   weight          = numeric [0..1]
@@ -77,6 +79,17 @@ export interface GraphHypothesisResult {
   timings_ms: number;
 }
 
+export interface NormalizedObservationCode {
+  canonicalCode: string;
+  matchKey: string;
+}
+
+interface ObservationSet {
+  observations: string[];
+  keys: Set<string>;
+  canonicalByKey: Map<string, string>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,8 +101,9 @@ export async function evaluateHypothesisGraph(
   const trace = String(input.trace_id ?? `hg_${started}`);
   const observed = normalizeObservationSet(input.observation_codes);
 
-  if (observed.size === 0) {
+  if (observed.keys.size === 0) {
     emitObsToHyp(trace, input, [], [], [], []);
+    emitEmptyHypToRule(trace, 'NO_OBSERVATION_EVIDENCE');
     return {
       candidates: [],
       eliminated: [],
@@ -100,13 +114,15 @@ export async function evaluateHypothesisGraph(
   }
 
   // Step 1 — anchor hypotheses that mention ANY observed code
-  const anchorHypIds = await queryAnchorHypotheses(input.supabase, [...observed]);
+  const anchorHypIds = await queryAnchorHypotheses(input.supabase, observed, trace);
   if (anchorHypIds.length === 0) {
-    emitObsToHyp(trace, input, [...observed], [], [], []);
+    emitObsToHyp(trace, input, observed.observations, [], [], []);
+    emitGraphDataGap(trace, observed.observations, 'NO_OBSERVATION_CONDITION_MATCH');
+    emitEmptyHypToRule(trace, 'NO_HYPOTHESIS_EDGE');
     return {
       candidates: [],
       eliminated: [],
-      input_observations: [...observed],
+      input_observations: observed.observations,
       trace_id: trace,
       timings_ms: Date.now() - started,
     };
@@ -139,7 +155,7 @@ export async function evaluateHypothesisGraph(
 
     const requiredTotal = buckets.requiredCodes.size;
     const requiredMatched = buckets.positive_matches.filter((c) =>
-      buckets.requiredCodes.has(c),
+      buckets.requiredCodes.has(normalizeObservationCode(c)?.matchKey ?? ''),
     ).length;
     const requiredPct = requiredTotal === 0 ? 1 : requiredMatched / requiredTotal;
 
@@ -185,7 +201,7 @@ export async function evaluateHypothesisGraph(
     //  2. STAGE condition present but current stage not in allowed set → eliminate
     //  3. DAS condition present but current DAS out of range → eliminate
     //  4. required conditions defined but zero required observed → eliminate
-    if (buckets.negative_matches.some((c) => buckets.exclusionCodes.has(c))) {
+    if (buckets.negative_matches.some((c) => buckets.exclusionCodes.has(normalizeObservationCode(c)?.matchKey ?? ''))) {
       candidate.eliminated = true;
       candidate.eliminated_reason = 'EXCLUSION_HIT';
     } else if (!stagePass.pass) {
@@ -210,19 +226,28 @@ export async function evaluateHypothesisGraph(
     return b.positive_matches.length - a.positive_matches.length;
   });
 
+  const matchedHypothesisIds = [...candidates, ...eliminated].map((c) => c.hypothesis_id);
+  if (matchedHypothesisIds.length === 0) {
+    emitGraphDataGap(trace, observed.observations, 'ANCHOR_MATCHED_BUT_NO_ACTIVE_CROP_HYPOTHESIS');
+  }
+
   emitObsToHyp(
     trace,
     input,
-    [...observed],
-    candidates.map((c) => c.hypothesis_id),
+    observed.observations,
+    matchedHypothesisIds,
     eliminated.filter((c) => c.eliminated_reason?.startsWith('EXCLUSION') || c.eliminated_reason === 'NO_REQUIRED_MATCH').map((c) => c.hypothesis_id),
     eliminated.filter((c) => c.eliminated_reason?.startsWith('STAGE') || c.eliminated_reason?.startsWith('DAS')).map((c) => c.hypothesis_id),
   );
 
+  if (candidates.length === 0) {
+    emitEmptyHypToRule(trace, anchorHypIds.length > 0 ? 'NO_SURVIVING_HYPOTHESIS' : 'NO_HYPOTHESIS_EDGE');
+  }
+
   return {
     candidates,
     eliminated,
-    input_observations: [...observed],
+    input_observations: observed.observations,
     trace_id: trace,
     timings_ms: Date.now() - started,
   };
@@ -232,20 +257,40 @@ export async function evaluateHypothesisGraph(
 // DB QUERIES
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function queryAnchorHypotheses(supabase: any, obs: string[]): Promise<string[]> {
+async function queryAnchorHypotheses(supabase: any, observed: ObservationSet, trace: string): Promise<string[]> {
   try {
-    const { data, error } = await supabase
-      .from('hypothesis_conditions')
-      .select('hypothesis_id')
-      .eq('condition_type', 'OBSERVATION')
-      .eq('is_quarantined', false)
-      .in('condition_key', obs);
-    if (error) {
-      console.warn(`[HYP_GRAPH_ANCHOR_ERR] ${error.message}`);
-      return [];
+    const rows: ConditionRow[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('hypothesis_conditions')
+        .select('hypothesis_id, condition_type, condition_key, operator, value_json, is_required, weight')
+        .eq('condition_type', 'OBSERVATION')
+        .eq('is_quarantined', false)
+        .range(from, from + pageSize - 1);
+      if (error) {
+        console.warn(`[HYP_GRAPH_ANCHOR_ERR] ${error.message}`);
+        return [];
+      }
+      const batch = (data ?? []) as ConditionRow[];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
     }
+
     const set = new Set<string>();
-    for (const r of (data ?? []) as any[]) if (r?.hypothesis_id) set.add(String(r.hypothesis_id));
+    const matchedRows: Array<{ hypothesis_id: string; matched: string[]; via: string }> = [];
+    for (const r of rows) {
+      const m = ObservationConditionMatcher(r, observed);
+      if (m.matched && r?.hypothesis_id) {
+        const hid = String(r.hypothesis_id);
+        set.add(hid);
+        matchedRows.push({ hypothesis_id: hid, matched: m.matched_observations, via: m.source });
+      }
+    }
+    console.log(
+      `[OBS_CONDITION_MATCHER] trace=${trace} scanned=${rows.length} matched_rows=${matchedRows.length} ` +
+        `hyp=[${cap(matchedRows.map((m) => m.hypothesis_id)).join(',')}]`,
+    );
     return [...set];
   } catch (e) {
     console.warn(`[HYP_GRAPH_ANCHOR_EX] ${(e as Error).message}`);
@@ -368,7 +413,7 @@ interface Buckets {
   positive_weight_matched: number;
 }
 
-function bucketizeConditions(conds: ConditionRow[], observed: Set<string>): Buckets {
+function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): Buckets {
   const b: Buckets = {
     requiredCodes: new Set(),
     supportingCodes: new Set(),
@@ -384,27 +429,34 @@ function bucketizeConditions(conds: ConditionRow[], observed: Set<string>): Buck
 
   for (const c of conds) {
     if (c.condition_type !== 'OBSERVATION') continue;
-    const key = String(c.condition_key ?? '').toLowerCase();
-    if (!key) continue;
+    const conditionCodes = resolveConditionObservationCodes(c);
+    if (conditionCodes.length === 0) continue;
     const expectPresent = isValueTruthy(c.value_json);
     const w = Number(c.weight ?? 0) || (c.is_required ? 1 : 0.5);
 
-    if (expectPresent) {
-      if (c.is_required) b.requiredCodes.add(key);
-      else b.supportingCodes.add(key);
-      b.positive_weight_total += w;
-      if (observed.has(key)) {
-        b.positive_matches.push(key);
-        b.positive_weight_matched += w;
-      } else if (c.is_required) {
-        b.missing_required.push(key);
-      }
-    } else {
-      if (c.is_required) b.exclusionCodes.add(key);
-      else b.blockingCodes.add(key);
-      if (observed.has(key)) {
-        b.negative_matches.push(key);
-        if (!c.is_required) b.blocking_conditions.push(key);
+    for (const conditionCode of conditionCodes) {
+      const norm = normalizeObservationCode(conditionCode);
+      if (!norm) continue;
+      const key = norm.matchKey;
+      const displayCode = observed.canonicalByKey.get(key) ?? norm.canonicalCode;
+
+      if (expectPresent) {
+        if (c.is_required) b.requiredCodes.add(key);
+        else b.supportingCodes.add(key);
+        b.positive_weight_total += w;
+        if (observed.keys.has(key)) {
+          if (!b.positive_matches.includes(displayCode)) b.positive_matches.push(displayCode);
+          b.positive_weight_matched += w;
+        } else if (c.is_required) {
+          if (!b.missing_required.includes(norm.canonicalCode)) b.missing_required.push(norm.canonicalCode);
+        }
+      } else {
+        if (c.is_required) b.exclusionCodes.add(key);
+        else b.blockingCodes.add(key);
+        if (observed.keys.has(key)) {
+          if (!b.negative_matches.includes(displayCode)) b.negative_matches.push(displayCode);
+          if (!c.is_required && !b.blocking_conditions.includes(displayCode)) b.blocking_conditions.push(displayCode);
+        }
       }
     }
   }
@@ -460,14 +512,124 @@ function isValueTruthy(v: any): boolean {
   return true; // for structured values (WEATHER/SOIL) treat as positive
 }
 
-function normalizeObservationSet(codes: string[]): Set<string> {
-  const out = new Set<string>();
+export function normalizeObservationCode(code: unknown): NormalizedObservationCode | null {
+  if (code == null) return null;
+  const canonicalCode = String(code).trim();
+  if (!canonicalCode) return null;
+  return {
+    canonicalCode,
+    matchKey: canonicalCode.toLowerCase(),
+  };
+}
+
+function normalizeObservationSet(codes: string[]): ObservationSet {
+  const observations: string[] = [];
+  const keys = new Set<string>();
+  const canonicalByKey = new Map<string, string>();
   for (const c of codes ?? []) {
-    if (!c) continue;
-    const k = String(c).trim().toLowerCase();
-    if (k) out.add(k);
+    const norm = normalizeObservationCode(c);
+    if (!norm || keys.has(norm.matchKey)) continue;
+    keys.add(norm.matchKey);
+    canonicalByKey.set(norm.matchKey, norm.canonicalCode);
+    observations.push(norm.canonicalCode);
   }
-  return out;
+  return { observations, keys, canonicalByKey };
+}
+
+interface ObservationConditionMatch {
+  matched: boolean;
+  matched_observations: string[];
+  source: 'condition_key' | 'value_json' | 'condition_key_and_value_json';
+}
+
+function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet): ObservationConditionMatch {
+  const keyCodes = normalizeObservationCode(row.condition_key) ? [String(row.condition_key)] : [];
+  const valueCodes = extractObservationCodesFromValueJson(row.value_json);
+  const keyMatches = keyCodes
+    .map(normalizeObservationCode)
+    .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
+    .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
+  const valueMatches = valueCodes
+    .map(normalizeObservationCode)
+    .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
+    .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
+  const matched_observations = Array.from(new Set([...keyMatches, ...valueMatches]));
+  const source = keyMatches.length > 0 && valueMatches.length > 0
+    ? 'condition_key_and_value_json'
+    : valueMatches.length > 0
+      ? 'value_json'
+      : 'condition_key';
+  return { matched: matched_observations.length > 0, matched_observations, source };
+}
+
+function resolveConditionObservationCodes(row: ConditionRow): string[] {
+  const valueCodes = extractObservationCodesFromValueJson(row.value_json);
+  if (valueCodes.length > 0) return Array.from(new Set(valueCodes.map((x) => String(x).trim()).filter(Boolean)));
+  const key = normalizeObservationCode(row.condition_key);
+  return key ? [key.canonicalCode] : [];
+}
+
+function extractObservationCodesFromValueJson(value: any): string[] {
+  const out: string[] = [];
+  const push = (v: any) => {
+    const norm = normalizeObservationCode(v);
+    if (norm) out.push(norm.canonicalCode);
+  };
+  const walk = (v: any, keyHint?: string) => {
+    if (v == null || typeof v === 'boolean' || typeof v === 'number') return;
+    if (typeof v === 'string') {
+      const s = v.trim().toLowerCase();
+      if ((keyHint && isObservationValueKey(keyHint)) || (s !== 'true' && s !== 'false')) push(v);
+      return;
+    }
+    if (Array.isArray(v)) {
+      if (keyHint && isObservationValueKey(keyHint)) {
+        for (const item of v) push(item);
+      } else {
+        for (const item of v) {
+          if (typeof item === 'string') push(item);
+          else walk(item, keyHint);
+        }
+      }
+      return;
+    }
+    if (typeof v === 'object') {
+      for (const [k, child] of Object.entries(v)) {
+        walk(child, isObservationValueKey(k) ? k : undefined);
+      }
+    }
+  };
+  walk(value);
+  return Array.from(new Set(out));
+}
+
+function isObservationValueKey(key: string): boolean {
+  const k = key.trim().toLowerCase();
+  return k === 'code'
+    || k === 'codes'
+    || k === 'observation'
+    || k === 'observations'
+    || k === 'observation_code'
+    || k === 'observation_codes'
+    || k === 'reported_code'
+    || k === 'reported_codes'
+    || k === 'symptom'
+    || k === 'symptoms';
+}
+
+function emitGraphDataGap(trace: string, observations: string[], reason: string): void {
+  console.warn(
+    `[GRAPH_DATA_GAP] trace=${trace} reason=${reason} missing_observation_to_hypothesis_edge=[${cap(observations).join(',')}]`,
+  );
+}
+
+function emitEmptyHypToRule(trace: string, reason: string): void {
+  console.log(`[HYP_TO_RULE] trace=${trace} hyp=[] candidate_rules=[] missing_edges=[] reason=${reason}`);
+  console.log(`[RULE_RESULT] trace=${trace} winner=none reason=${reason}`);
+}
+
+function cap(arr: string[]): string[] {
+  return arr.length <= 12 ? arr : [...arr.slice(0, 12), `+${arr.length - 12}`];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -482,7 +644,6 @@ function emitObsToHyp(
   excluded: string[],
   blocked: string[],
 ): void {
-  const cap = (arr: string[]) => (arr.length <= 12 ? arr : [...arr.slice(0, 12), `+${arr.length - 12}`]);
   console.log(
     `[OBS_TO_HYP] trace=${trace} crop=${input.crop_code ?? '?'} stage=${input.growth_stage ?? '?'} das=${input.das ?? '?'} ` +
       `obs=[${cap(observations).join(',')}] matched=[${cap(matched).join(',')}] blocked=[${cap(blocked).join(',')}] excluded=[${cap(excluded).join(',')}]`,
