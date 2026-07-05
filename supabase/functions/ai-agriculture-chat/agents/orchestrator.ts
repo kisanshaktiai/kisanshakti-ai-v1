@@ -276,8 +276,10 @@ import {
   DataConfidence,
   mapCropNameToEnum,
   mapVisualSymptomToEnum,
-  mapStageToEnum
+  mapStageToEnum,
+  projectCanonicalStateFromGraphTruth
 } from './canonical-state-builder.ts';
+
 
 import {
   evaluateRulesLayered,
