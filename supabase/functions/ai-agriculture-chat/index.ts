@@ -1100,6 +1100,55 @@ serve(async (req) => {
 
     console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
 
+    // ═══════════════════════════════════════════════════════════════════
+    // [ORCHESTRATOR_EXIT] audit + GRAPH_PIPELINE_BYPASSED invariant.
+    // Fires on EVERY response return path (early clarifications included).
+    // Guarantees that a diagnostic intent with real observations can never
+    // silently exit without the hypothesis graph having run.
+    // ═══════════════════════════════════════════════════════════════════
+    try {
+      const _orchAny: any = orch as any;
+      const _graphExecuted: boolean = _orchAny?._graphExecuted === true;
+      const _hypCount: number = Array.isArray(_orchAny?._graphHypothesisIds)
+        ? _orchAny._graphHypothesisIds.length
+        : 0;
+      const _ruleCount: number = Array.isArray(_orchAny?._graphHypothesisRuleIds)
+        ? _orchAny._graphHypothesisRuleIds.length
+        : 0;
+      const _intentUpper = String(
+        (orchestratorResponse as any)?.metadata?.intent_code
+          ?? (orchestratorResponse as any)?.intent
+          ?? _orchAny?._lastIntentCode
+          ?? '',
+      ).toUpperCase();
+      const _diagnosticIntents = new Set<string>([
+        'EMERGENCE_FAILURE','GERMINATION_FAILURE','PEST','PEST_PRESENCE_VISIBLE',
+        'DISEASE','DISEASE_LIKE_PATTERN','NUTRIENT_STRESS','NUTRIENT_DEFICIENCY',
+        'CROP_DAMAGE','WILTING','YELLOWING','REPORT_SYMPTOM',
+      ]);
+      const _isDiagnosticIntent = _diagnosticIntents.has(_intentUpper);
+      const _realObsCount: number = Array.isArray(_orchAny?._lastRealObservations)
+        ? _orchAny._lastRealObservations.length
+        : (Array.isArray((orchestratorResponse as any)?.metadata?.real_observations)
+            ? (orchestratorResponse as any).metadata.real_observations.length
+            : 0);
+      const _path = String(orchestratorResponse.type ?? 'UNKNOWN');
+      console.log(
+        `[ORCHESTRATOR_EXIT] trace=${traceId} path=${_path} intent=${_intentUpper || 'n/a'} ` +
+        `graphExecuted=${_graphExecuted} hypotheses=${_hypCount} rules=${_ruleCount} ` +
+        `realObs=${_realObsCount}`,
+      );
+      if (_isDiagnosticIntent && _realObsCount > 0 && !_graphExecuted) {
+        throw new Error(
+          `GRAPH_PIPELINE_BYPASSED: exit_path=${_path} intent=${_intentUpper} ` +
+          `realObs=${_realObsCount} graphExecuted=false trace=${traceId}`,
+        );
+      }
+    } catch (auditErr) {
+      if ((auditErr as Error).message?.startsWith('GRAPH_PIPELINE_BYPASSED')) throw auditErr;
+      console.warn(`[ORCHESTRATOR_EXIT] audit non-fatal: ${(auditErr as Error).message}`);
+    }
+
     // ───────────────────────────────────────────────────────────────────
     // PHASE Y SAFETY NET: ensure a RuntimeTrace row lands in ai_decision_log
     // even on early-return paths (OPTION_SELECTED, sanitize-blocked, etc.)
