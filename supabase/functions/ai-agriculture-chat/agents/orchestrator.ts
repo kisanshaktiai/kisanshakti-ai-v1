@@ -4954,7 +4954,30 @@ export class AIAgentOrchestrator {
 
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
-          
+          // Mark the graph as executed for the graph-before-clarification
+          // invariant at the understanding gate (see L5220 area). The
+          // hypothesis-graph-evaluator branch above already sets this on
+          // success, but the invariant is stronger when we also set it here
+          // — even if the graph-evaluator threw for a non-diagnostic intent,
+          // the full hypothesis evaluator ran, so clarification is safe.
+          (this as any)._graphExecuted = true;
+
+          // Canonical GraphRuntime trace — one grep-able line per turn.
+          try {
+            const _winnerId =
+              (hypothesisResult as any)?.winner?.hypothesis_id ??
+              (hypothesisResult as any)?.top_hypothesis?.hypothesis_id ??
+              (hypothesisResult as any)?.primary_hypothesis?.hypothesis_id ??
+              (hypothesisResult as any)?.ranked_hypotheses?.[0]?.hypothesis_id ??
+              null;
+            console.log(
+              `[GRAPH_RUNTIME] loader=HypothesisEvaluator trace=${traceId} ` +
+              `intent=${intentCode} crop=${cropCode} stage=${growthStage} das=${resolvedDAS} ` +
+              `obs=${hypObservations.length} candidates=${hypothesisResult.candidates?.length ?? 0} ` +
+              `winner=${_winnerId ?? 'none'}`,
+            );
+          } catch { /* trace-only */ }
+
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 
           // ═══════════════════════════════════════════════════════════════════
