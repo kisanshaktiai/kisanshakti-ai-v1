@@ -6,8 +6,13 @@
 
 // BUILD_TAG bumps force the edge runtime to pick up dependent module changes
 // (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
-const BUILD_TAG = 'ai-agri-chat::classifier-v4-canonical::2026-05-31T16:45Z';
+const BUILD_TAG = 'ai-agri-chat::mandatory-graph-gate::2026-07-05T18:45Z';
 console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
+// [GRAPH_GATE_BUILD] — grep marker so an uploaded log can prove whether the
+// deployed bundle contains the mandatory-graph-gate patch (POST_EVIDENCE_FREEZE
+// → OBS_TO_HYP → HYP_TO_RULE → RULE_RESULT → BRAIN_TRACE sequence enforcement).
+// Absence of this line in a cold-start log = the fix never shipped.
+console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=true hasSequenceGuard=true hasOrchestratorExit=true');
 
 
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
