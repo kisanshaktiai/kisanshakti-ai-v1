@@ -6228,8 +6228,14 @@ export class AIAgentOrchestrator {
           console.log(`   🌾 [v7.7] Enriching canonical state crop from cropContextAuthority: ${cropContextAuthority.crop_name}`);
           canonicalState.crop_type = cropContextAuthority.crop_name as any;
           if (!canonicalState.growth_stage || canonicalState.growth_stage === 'UNKNOWN') {
-            canonicalState.growth_stage = cropContextAuthority.growth_stage as any;
+            // Phase 2 — BiologicalState is the sole stage authority. If it is
+            // locked, do not let a fallback authority (context reconciler,
+            // cropContextAuthority) overwrite stage post-lock.
+            if (!blockStageWriteIfLocked(landContext, 'canonical-state.crop-authority-fallback', cropContextAuthority.growth_stage)) {
+              canonicalState.growth_stage = cropContextAuthority.growth_stage as any;
+            }
           }
+
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
