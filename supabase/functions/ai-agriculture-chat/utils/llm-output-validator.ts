@@ -18,7 +18,51 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const LLM_OUTPUT_VALIDATOR_VERSION = '1.0.0';
+export const LLM_OUTPUT_VALIDATOR_VERSION = '1.1.0';
+
+/**
+ * ONTOLOGY-INVARIANT PAGINATED LOADER
+ * PostgREST caps rows at 1000 by default and any explicit `.limit(N)` also
+ * silently truncates the neuro-symbolic vocabulary. Both are catastrophic for
+ * this validator: a missing observation row = evidence deletion downstream.
+ * We enumerate the full result set with an ordered keyset scan.
+ */
+async function paginateAll<T = any>(
+  buildQuery: (offset: number, limit: number) => any,
+  pageSize = 1000
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await buildQuery(offset, pageSize);
+    if (error) throw new Error(error.message || String(error));
+    const batch = (data || []) as T[];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+    if (offset > 200_000) break; // hard sanity ceiling
+  }
+  return rows;
+}
+
+/**
+ * ONTOLOGY ALIAS TABLE
+ * Farmer-observable generic codes that historically flowed from the
+ * observation mapper but are not per-crop rows in
+ * intent_observation_mapping. Aliasing preserves evidence instead of
+ * silently deleting it downstream — the aliased canonical code is what
+ * hypothesis conditions and decision rules are authored against.
+ * DB-driven aliases from `observation_aliases` (when present) always win
+ * over this in-code fallback.
+ */
+const CANONICAL_OBSERVATION_ALIASES: Record<string, string> = {
+  SEEDLING_DIED: 'POOR_CROP_ESTABLISHMENT',
+  PLANT_DIED: 'POOR_CROP_ESTABLISHMENT',
+  DEAD_SEEDLINGS: 'POOR_CROP_ESTABLISHMENT',
+  STUNTED_PLANTS: 'POOR_GROWTH_VISIBLE',
+  STUNTED_GROWTH: 'POOR_GROWTH_VISIBLE',
+  POOR_TILLERING: 'POOR_GROWTH_VISIBLE',
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE INFRASTRUCTURE
