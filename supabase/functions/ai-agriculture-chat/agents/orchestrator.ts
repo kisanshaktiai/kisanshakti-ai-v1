@@ -4677,7 +4677,15 @@ export class AIAgentOrchestrator {
           // public.observation_aliases (see decision/concept-bridge.ts).
           // ═══════════════════════════════════════════════════════════════════
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
-          const real_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
+          const raw_evidence_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
+          const preFreezeEvidence = classifyEvidence(raw_evidence_codes);
+          const evidenceContext = {
+            action_taken: !preFreezeEvidence.ignored_codes.includes('ACTION_NONE'),
+            photo: !preFreezeEvidence.ignored_codes.includes('PHOTO_NOT_PROVIDED'),
+            crop_identified: preFreezeEvidence.ignored_codes.includes('CROP_IDENTIFIED'),
+            metadata: preFreezeEvidence.ignored_codes,
+          };
+          const real_codes: string[] = preFreezeEvidence.real_codes;
           const bridged = await bridgeCodesDb(this.supabase, cropCode, real_codes);
           const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
 
@@ -4705,7 +4713,13 @@ export class AIAgentOrchestrator {
             cropCode,
             bridgedCanonical,
           );
-          const canonical_observation_codes: string[] = resolved.map((r) => r.code);
+          const resolvedCanonicalCodes: string[] = resolved.map((r) => r.code);
+          const canonicalEvidence = classifyEvidence(resolvedCanonicalCodes);
+          const canonical_observation_codes: string[] = canonicalEvidence.real_codes;
+          const frozenContext = {
+            ...evidenceContext,
+            metadata: Array.from(new Set([...evidenceContext.metadata, ...canonicalEvidence.ignored_codes])),
+          };
           for (const r of resolved) {
             if (r.source === 'iom_literal_peer') {
               authoredObservations.add(
@@ -4728,7 +4742,8 @@ export class AIAgentOrchestrator {
               confidence: real_codes.includes(c) ? 1 : 0.8,
             }));
             console.log(
-              `[EVIDENCE_FREEZE] turn=${traceId} locked_observations=[${canonical_observation_codes.slice(0, 12).join(',')}] source=farmer count=${ledger.length}`,
+              `[EVIDENCE_FREEZE] turn=${traceId} observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
+                `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
             );
           } catch { /* trace-only */ }
 
