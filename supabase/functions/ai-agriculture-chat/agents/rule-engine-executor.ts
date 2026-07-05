@@ -211,10 +211,14 @@ export class RuleEngineExecutor {
       const totalRulesMatched = Object.values(decisions).reduce((sum, arr) => sum + arr.length, 0);
       console.log(`  Total matched: ${totalRulesMatched}`);
       
-      // Generate default if no matches
+      // GraphTruth contract: no rules matched → emit NEEDS_MORE_EVIDENCE sentinel.
+      // We DO NOT fabricate a MONITOR_ONLY primary_decision here — that was a
+      // symbolic bypass masquerading as agronomic advice. Downstream farmer
+      // response layer must render a differential question from
+      // observation_differential_questions instead.
       if (totalRulesMatched === 0 && bridgeResults.length === 0) {
-        console.log(`  No rules matched - generating default`);
-        return this.generateDefaultDecision(input, startTime);
+        console.log(`[GRAPH_ZERO_RULE_MATCH] no rule/bridge matches — emitting NEEDS_MORE_EVIDENCE (no fabricated MONITOR advisory)`);
+        return this.generateNeedsMoreEvidenceDecision(input, startTime, 'NO_RULE_MATCH');
       }
       
       // Check blocks
@@ -256,7 +260,10 @@ export class RuleEngineExecutor {
       
     } catch (error) {
       console.error('[RuleEngine] Error:', error);
-      return this.generateFallbackDecision(input, error as Error, startTime);
+      // GraphTruth contract: on engine failure we do NOT invent a fake MONITOR
+      // recommendation. Emit NEEDS_MORE_EVIDENCE sentinel with the error captured
+      // in the audit trail so downstream layers surface a safe clarification.
+      return this.generateNeedsMoreEvidenceDecision(input, startTime, `ENGINE_ERROR:${(error as Error).message}`);
     }
   }
   
