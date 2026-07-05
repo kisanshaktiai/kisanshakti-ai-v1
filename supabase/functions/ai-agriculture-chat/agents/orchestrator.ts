@@ -4858,7 +4858,7 @@ export class AIAgentOrchestrator {
           (this as any)._evidenceFrozen = true;
           (this as any)._lastIntentCode = intentCode;
           console.log(
-            `[EVIDENCE_FREEZE] trace=${traceId} sequence=1 observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
+            `[POST_EVIDENCE_FREEZE] trace=${traceId} sequence=1 observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
               `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
           );
 
