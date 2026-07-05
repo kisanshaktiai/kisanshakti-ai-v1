@@ -5214,7 +5214,39 @@ export class AIAgentOrchestrator {
         console.log(`   ✅ [ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE] route=${queryRoute.route} intent=${intentCode} — skipping symptom clarification (understanding=${understandingResult.understanding_confidence})`);
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // NEURO-SYMBOLIC INVARIANT: clarification cannot fire before the
+      // hypothesis graph has executed. For diagnostic intents, if the
+      // graph has NOT run yet (`_graphExecuted` set by the [OBS_TO_HYP]
+      // stage above), UnderstandingChecker is downgraded to advisory —
+      // ConversationState + graph evidence-gaps decide, not the checker.
+      // Reference: mem://architecture/deterministic-response-return-invariant
+      // and the current Marathi EMERGENCE_FAILURE regression trace.
+      // ═══════════════════════════════════════════════════════════════════════
+      const _graphHasRun = (this as any)._graphExecuted === true;
+      const _convStateOk = (this as any).__conversationState
+        && (this as any).__conversationState.clarification_required === false;
+      if (understandingResult.clarification_required && isDiagnosticIntent && !_graphHasRun) {
+        console.warn(
+          `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker asked for clarification ` +
+          `BEFORE hypothesis graph ran — demoting to advisory (intent=${intentCode} crop=${cropCode}). ` +
+          `[CLARIFY_AUTHORITY] source=DEMOTED_CHECKER required=false reason=graph_before_clarification`,
+        );
+        understandingResult.clarification_required = false;
+      } else if (understandingResult.clarification_required && _convStateOk) {
+        console.log(
+          `[CLARIFY_AUTHORITY] source=CONVERSATION_STATE required=false reason=conv_state_sufficient ` +
+          `intent=${intentCode} crop=${cropCode}`,
+        );
+        understandingResult.clarification_required = false;
+      }
+
       if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage && !isAdvisoryRouteForGate) {
+        console.log(
+          `[CLARIFY_EXIT] site=UNDERSTANDING_GATE trace=${traceId} intent=${intentCode} ` +
+          `crop=${cropCode} stage=${growthStage} confidence=${understandingResult.understanding_confidence} ` +
+          `missing=[${understandingResult.unknown_critical_fields?.join(',') ?? ''}] graph_ran=${_graphHasRun}`,
+        );
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
         // ═══════════════════════════════════════════════════════════════════════════
