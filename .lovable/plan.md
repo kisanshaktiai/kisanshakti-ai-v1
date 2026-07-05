@@ -1,158 +1,62 @@
+# Neuro-Symbolic Decision Brain — Graph Result Loss Fix
 
-# 100% Accurate Fix Plan — Neuro-Symbolic Brain: Rice EMERGENCE_FAILURE regression
+## Verified root cause (from code + log, not assumption)
 
-Ordered by architectural gravity, not by log-visibility. The user's cross-audit is correct: **the previous plan optimized clarification cosmetics before fixing the OBSERVATION → HYPOTHESIS authority collapse**. This plan reverses that order and removes every hardcoded agronomy leak the previous plan re-introduced.
+`orchestrator.ts` builds `ConversationState` at **L4469** with `hypotheses: []`, then calls `emitBrainTrace(conversationState, …)` at **L4486**. This runs **BEFORE** the hypothesis graph executes at **L4811**. That is why the log shows `hyp=0 candidate=0 winner=none` even though `[HYP_GRAPH] survived=4` fires later.
 
-Target invariant, non-negotiable:
+Additional confirmed defects:
+- Graph output stored on `this._graphHypothesisResult` at L4833 but never re-projected back into `ConversationState.hypotheses`, so any consumer reading state sees `[]`.
+- No invariant asserts `graph.candidates > 0 ⇒ conversationState.hypotheses > 0`, so silent drops are unobservable.
+- `[OBS_TO_HYP]` is only emitted inside `hypothesis-graph-evaluator.ts` (per rg); orchestrator emits `[HYP_TO_RULE]` (L6798) and `[RULE_RESULT]` (L6825) but never re-emits `[OBS_TO_HYP]` at the orchestrator boundary, so lineage grep breaks between files.
+- `runtime/clarification-contract.ts` `assertClarificationContract` at L307 still enforces a **TypeScript-side allowlist** (`key not in allowlist dropped`). This is the exact log line the user sees — the DB-brain path from the prior fix is not the one gating final serialization.
+- `orchestrator.ts` L4105/L4122 still runs `[CrossCropFix] Blocked N terminal codes` using in-file logic instead of DB authority.
 
+## Fix (5 patches, all in existing files — no new files, no LLM/prompt/schema changes)
+
+### Patch 1 — Project graph result into ConversationState (BUG 1)
+In `agents/orchestrator.ts`, immediately after the L4811-L4853 hypothesis graph block:
+- Mutate `(this as any).__conversationState.hypotheses` and `conversationState.hypotheses` to the array of `graphOut.candidates.map(c => ({ hypothesis_id: c.hypothesis_id, canonical_group: c.canonical_group, score: c.raw_score }))`.
+- Also update `conversationState.coverage` from graph coverage if provided.
+- **Move `emitBrainTrace(...)` from L4486 to a new site AFTER the graph block** (and pass rule-stage phase counts once rules run — the POST_RULE trace at L7047 already carries eligible/winner, so the primary emit moves to right after L4853 so `hyp` is real).
+
+### Patch 2 — Graph handoff invariant (BUG 2)
+In `agents/orchestrator.ts`, immediately after Patch 1's projection:
 ```
-DB  = Agriculture Brain
-TS  = Graph Runtime  (routing + guards only, zero enums, zero crop/pest/stage/symptom literals)
-LLM = Farmer Language Narrator
+if (graphOut.candidates.length > 0 && conversationState.hypotheses.length === 0) {
+  throw new Error(`GRAPH_RESULT_DROPPED: graph=${graphOut.candidates.length} state=0 trace=${traceId}`);
+}
 ```
+Same invariant is repeated once more right before the primary decision object is built (search for `layeredRuleResult = evaluateRulesLayered` at L6807) to catch any late reset.
 
----
-
-## Priority 1 — Make `HypothesisGraphLoader` the SSOT for hypothesis retrieval
-
-**Files:** `agents/orchestrator.ts` (L522, L4808–L4934), `decision/hypothesis-evaluator.ts`, `decision/hypothesis-graph-evaluator.ts` (ghost dynamic import at L4814), `graph/HypothesisGraphLoader.ts`, new `graph/GraphRuntime.ts`.
-
-Today's runtime has three parallel hypothesis code paths (`evaluateCandidateHypotheses`, dynamically-imported `evaluateHypothesisGraph`, and the inert `HypothesisGraphLoader`). Any patch that targets only one of them will keep bleeding.
-
-Steps:
-1. Introduce `graph/GraphRuntime.ts` — a thin facade that owns `createGraphLoaders(supabase)` and exposes `run({ intent, crop, stage, das, observations, variety_id, session_state })` returning `{ candidates, winner, evidence_gaps, trace }`.
-2. Migrate the retrieval body of `hypothesis-evaluator.ts` into `HypothesisGraphLoader.getCandidates(...)` — no scoring rewrite, no algorithm change; move the SQL only. Every other module continues calling `evaluateCandidateHypotheses`, which now delegates to `GraphRuntime`.
-3. Delete `decision/hypothesis-graph-evaluator.ts` and its dynamic-import branch at `orchestrator.ts:4814`.
-4. Emit `[GRAPH_RUNTIME] loader=HypothesisGraphLoader candidates=<n> ms=<n>` per call so the next audit sees one number, not two.
-
-Result: one path, one authority, one trace line.
-
----
-
-## Priority 2 — Structural invariant: **clarification cannot fire before the hypothesis graph has executed**
-
-**Files:** `agents/orchestrator.ts` (L5216–L5220, L4488–L4493), `runtime/clarification-authority.ts`.
-
-The previous plan's condition `informative_count >= 1` is fragile (the user is right — one vague symptom is not sufficient evidence). Replace the ad-hoc merge with a hard runtime invariant:
-
+### Patch 3 — Emit full graph lineage at orchestrator boundary (BUG 3)
+Add a single orchestrator-side `[OBS_TO_HYP]` line right after L4837:
 ```
-If  intent ∈ {DIAGNOSIS, MIXED}  AND  evidence_frozen == true  AND  graph_executed == false
-Then  clarification is FORBIDDEN this turn.
-       run GraphRuntime.
-       clarification, if any, is decided from GraphRuntime.evidence_gaps only.
+[OBS_TO_HYP] trace=<id> obs=[...12] hyp=[...12] survived=N eliminated=M edge_missing=K
 ```
+`[HYP_TO_RULE]` (already at L6798) and `[RULE_RESULT]` (L6825) stay. Add matching `[OBS_TO_HYP]` counters to `[BRAIN_TRACE]` so a single grep on `trace=` reconstructs the full edge chain.
 
-Implementation:
-1. Add a per-request boolean `graphExecuted` on the orchestrator's request context, set to `true` only after `GraphRuntime.run(...)` returns.
-2. In `decideClarification(state, ctx)` refuse `required=true` whenever `mode !== 'ADVISORY' && !ctx.graphExecuted` — throw a structured `SYMBOLIC_CONTRACT_VIOLATION` (logged, then downgrade to "run graph now" instead of returning to the farmer). This kills every shadow-authority path (UnderstandingChecker, Stage 4, direct-return branches).
-3. `UnderstandingChecker` becomes purely advisory: it can annotate the response for the narrator but MUST NOT set `clarification_required`. Its call sites that mutate the flag are removed.
-4. Trace `[CLARIFY_AUTHORITY] source=CONVERSATION_STATE|GRAPH_GAPS required=<bool> reason=<r>` at the single decision point.
+### Patch 4 — Remove residual TS agriculture gates (BUG 4)
+- `agents/orchestrator.ts` L4105-L4130 (`CrossCropFix` block): replace the in-file "terminal codes" filter with a passthrough that trusts `observation_master.can_generate_question` + `is_farmer_observable` from the DB (migration already added in prior turn). Keep the log tag but only log DB-driven decisions.
+- `runtime/clarification-contract.ts` `assertClarificationContract` (L292-L314): change the `allowedKeys` source. Instead of the caller-supplied Set, resolve at runtime from `intent_observation_mapping` + `clarification_fallback_questions` (the DB tables the prior migration created). Callers keep the same signature; the function itself does the DB lookup once per call and caches it on the request. Concretely: if `allowedKeys.size === 0`, fall back to the DB-derived set for the ctx (intent, crop, stage); never drop silently.
 
-This is the correction to the previous Patch A and closes every "shadow gate" at once, without special-casing UnderstandingChecker.
+### Patch 5 — BRAIN_TRACE reads live rule counts (BUG 1 finishing touch)
+`runtime/brain-trace.ts` already accepts `BrainTracePhases`. After Patch 1's move, wire the single canonical emit at the end of the rule stage (right after the `[BRAIN_TRACE][POST_RULE]` block at L7047), replacing the two current lines with **one** authoritative line that carries `hyp`, `candidates`, `eligible`, `winner`. Delete the placeholder emit at old L4486 site.
 
----
+## Files touched
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (Patches 1, 2, 3, 4, 5)
+- `supabase/functions/ai-agriculture-chat/runtime/clarification-contract.ts` (Patch 4)
+- `supabase/functions/ai-agriculture-chat/runtime/brain-trace.ts` (Patch 5 — accept `hypotheses_count` override so the emitter doesn't rely on stale state)
 
-## Priority 3 — Remove all TypeScript enums from clarification eligibility; move the decision into the DB
+**Not touched:** LLM prompts, observation extraction, DB tables/agriculture data, `hypothesis-graph-evaluator.ts`, `HypothesisGraphLoader.ts`, `GraphRuntime.ts`.
 
-**Files:** `runtime/clarification-contract.ts` (Stage 2 hardcoded `OBSERVABLE_TYPES`, fallback allow-list ~L297), new migration on `observation_master`, new table `clarification_fallback_questions`.
-
-The current allow-list `{SYMPTOM, OBSERVATION, SIGN, FARMER_OBSERVATION}` has zero overlap with the curator vocabulary (`GENERIC, PRIMARY, SECONDARY`). Even the previous plan's replacement (`is_diagnostic` toggled by IOM `assertion_strength`) is still business logic in TS.
-
-Migration (schema-only, additive, `service_role` grant included):
-
-```sql
-ALTER TABLE public.observation_master
-  ADD COLUMN IF NOT EXISTS can_generate_question boolean NOT NULL DEFAULT false;
-COMMENT ON COLUMN public.observation_master.can_generate_question IS
-  'When true, this observation is eligible as a farmer-facing clarification option.';
-
-CREATE TABLE IF NOT EXISTS public.clarification_fallback_questions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  question_code text UNIQUE NOT NULL,
-  intent_family text NOT NULL,
-  priority int NOT NULL DEFAULT 100,
-  is_active boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-GRANT SELECT ON public.clarification_fallback_questions TO anon, authenticated;
-GRANT ALL    ON public.clarification_fallback_questions TO service_role;
-ALTER TABLE public.clarification_fallback_questions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "read fallback questions" ON public.clarification_fallback_questions FOR SELECT USING (true);
+## Success signals in the next log for `भात अजून उगवले नाही`
 ```
-
-Runtime change in `clarification-contract.ts`:
-1. Delete `OBSERVABLE_TYPES`. Stage 2 becomes: `active=true AND is_farmer_observable=true AND can_generate_question=true`.
-2. Delete the hardcoded fallback allow-list. When IOM returns zero candidates, load rows from `clarification_fallback_questions` filtered by the current intent family, order by priority. This directly closes the user's rejection of the previous Patch C.
-3. Trace `[CONTRACT_GATE_V3] kept=<n> dropped_inactive=<n> dropped_not_farmer=<n> dropped_not_askable=<n>` and `[CONTRACT_FALLBACK_DB] intent_family=<f> loaded=<n>`.
-
-Data backfill (separate insert step, not this migration): set `can_generate_question=true` for every row where `is_farmer_observable=true AND is_diagnostic=false`, and for IOM `LITERAL` members where `is_diagnostic=true`. Curator can then tune. Seed the four generic fallbacks (`photo_upload`, `water_stress_check`, `pest_check`, `nutrient_check`) into `clarification_fallback_questions`, one per intent family.
-
----
-
-## Priority 4 — DB-driven canonical observation expansion; delete the terminal guard
-
-**Files:** `agents/orchestrator.ts` (L4114 TERMINAL GUARD, L4125 CrossCropFix, and the site around L4670 named in `OBSERVATION_GRAPH_AUDIT.md §5`), new `graph/ObservationAuthorityService.ts`.
-
-The current `TERMINAL GUARD` and `CrossCropFix` are hardcoded lists dressed up as guards. They are the exact anti-pattern the target architecture forbids.
-
-Steps:
-1. Implement `ObservationAuthorityService.expand({ intent, crop, confirmed_codes })`:
-   - Query `intent_observation_mapping WHERE intent_code=$intent AND crop_code IN ($crop,'universal') AND assertion_strength='LITERAL' AND is_active=true`.
-   - If any input code is a LITERAL peer, union the entire LITERAL peer set into the evidence set as `INFERRED / source=IOM_LITERAL_PEER`.
-   - Return `{ evidence, peers, blocked: [] }` — the service never blocks based on hardcoded lists; blocking, if needed, is derived from `intent_observation_mapping.is_active=false` rows only.
-2. Delete both branches at `orchestrator.ts:4114` (`TERMINAL GUARD Blocked cross-crop terminal code`) and `L4125` (`CrossCropFix BLOCKED`). Any code the DB says is a LITERAL peer for `(intent, crop)` is admissible; nothing else needs to be block-listed at runtime.
-3. Trace `[OBSERVATION_CANONICAL_RESOLVE] crop=<c> intent=<i> literal_peers=[…] source=intent_observation_mapping`.
-4. Feed the expanded set into `GraphRuntime.run(...)` (Priority 1) so `hypothesis_conditions` for `RICE_GERMINATION_FAILURE` can finally match. This is the missing edge that the last two audits both pointed at.
-
----
-
-## Priority 5 — Real exit-site instrumentation
-
-**Files:** `agents/orchestrator.ts`, `agents/clarification-generator.ts`, `runtime/clarification-contract.ts`.
-
-The 11 previously-tagged sites never fire because the actual clarification is emitted from `understandingResult.clarification_required` (~L5220), from `clarification-generator.ts` entry points, and from the two `no-IOM-candidates` branches in `clarification-contract.ts`.
-
-Steps:
-1. `grep -n "response_type\s*[:=]\s*['\"]CLARIFICATION_QUESTION['\"]"` and tag every write with `[CLARIFY_EXIT] site=<EXIT_NN_NAME> trace=<t> intent=<i> crop=<c> stage=<s>` immediately before the return.
-2. Add `[CLARIFY_EXIT] site=CONTRACT_EMPTY_IOM reason=all_dropped drop_reasons=<json>` and `[CLARIFY_EXIT] site=CONTRACT_NO_CANDIDATES` inside `clarification-contract.ts`.
-3. Do the same in `clarification-generator.ts` for the two builder branches.
-
-Pure logging; zero behavior change.
-
----
-
-## Cross-audit corrections applied
-
-- **Rejected previous Patch A trigger `informative_count>=1`** — replaced with the structural invariant "graph before clarification" (Priority 2).
-- **Rejected previous Patch B `is_diagnostic ↔ LITERAL` toggle in TS** — replaced with `observation_master.can_generate_question` DB flag (Priority 3).
-- **Rejected previous Patch C hardcoded fallback allow-list** — replaced with `clarification_fallback_questions` table (Priority 3).
-- **Rejected previous Patch D "scope the guard"** — the guard itself is the anti-pattern; deleted entirely and replaced with `ObservationAuthorityService` (Priority 4).
-- **Kept previous Patch E** at the lowest priority — good hygiene, not a brain fix.
-
-## Explicit non-goals
-
-- No LLM prompt changes.
-- No hardcoded crop/pest/stage/symptom/nutrient string anywhere in TS.
-- No UI change on `/app/chat`.
-- No new hypothesis rows seeded until Priority 1–4 land and the next failing-query log confirms whether `hyp>0` is still zero (matches Lovable's earlier deferral, but now measurable).
-
-## Verification signals in the next `भात अजून उगवले नाही` log
-
+[OBS_TO_HYP] trace=… survived=4 eliminated=… edge_missing=…
+[HYP_TO_RULE] trace=… candidate_rules=[…]
+[RULE_RESULT] trace=… winner=<rule_id or none> reason=match|RULE_COVERAGE_GAP
+[BRAIN_TRACE] … hyp=4 candidates=>0 eligible=>0 winner=<id>|coverage_gap
 ```
-[GRAPH_RUNTIME] loader=HypothesisGraphLoader candidates=>0 ms=<n>
-[CLARIFY_AUTHORITY] source=GRAPH_GAPS required=false reason=sufficient_from_graph
-[OBSERVATION_CANONICAL_RESOLVE] crop=rice intent=EMERGENCE_FAILURE literal_peers=[poor_germination, germination_failure, obs_rice_no_emergence, obs_rice_patchy_emergence, seed_not_germinated, germination_concern, delayed_germination]
-[CONTRACT_GATE_V3] kept=>0 …
-[BRAIN_TRACE][POST_RULE] trace=… candidates=>0 eligible=>0 winner=<rule_id>
-```
-
-Any `SYMBOLIC_CONTRACT_VIOLATION` line pinpoints the exact remaining shadow authority in one grep.
-
-## Build-mode execution order
-
-1. Priority 1 (Graph SSOT) — code only, no migration.
-2. Priority 2 (Clarification invariant) — code only.
-3. Priority 3 — migration first (`can_generate_question` + `clarification_fallback_questions`), backfill inserts second, contract rewrite third.
-4. Priority 4 — code + delete guard.
-5. Priority 5 — instrumentation.
-6. Fire the failing Marathi query, attach fresh log, verify all five verification signals.
+Forbidden combinations that would fail the invariant and throw `GRAPH_RESULT_DROPPED`:
+- `[HYP_GRAPH] survived=4` **and** `[BRAIN_TRACE] hyp=0`
+- `[CONTRACT_VIOLATION] key not in allowlist` for keys that exist in `intent_observation_mapping` or `clarification_fallback_questions`
+- `[CrossCropFix] Blocked … terminal codes` without a DB-authority reason attached
