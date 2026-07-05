@@ -7786,57 +7786,13 @@ export class AIAgentOrchestrator {
         }
         
         // ═══════════════════════════════════════════════════════════════════
-        // P0 SAFETY FIX: Run PHI + Pollinator + SafetyGuardian checks
-        // BEFORE returning — prevents unsafe chemicals from reaching farmer
+        // [STEP 7 REMOVED] Local PHI + Pollinator enforcement.
+        // Both are now handled inside SafetyGuardian.verifySafety() below
+        // (Gate 3: FoodSafetyCheck / PHI, Gate 4: EnvironmentalCheck / POLLINATOR_RISK).
         // ═══════════════════════════════════════════════════════════════════
         let immediateSafetyStatus = 'APPROVED';
-        
-        // PHI Enforcement
         const immediateChemicals = this.extractChemicalRecommendations(decisionOutput);
-        if (immediateChemicals.length > 0 && landContext?.expected_harvest_date) {
-          try {
-            const daysToHarvest = this.calculateDaysToHarvest(landContext.expected_harvest_date);
-            const phiResult = enforcePHI(
-              immediateChemicals,
-              daysToHarvest,
-              landContext.current_crop?.toUpperCase(),
-              'DOMESTIC',
-              false
-            );
-            if (phiResult.blocked_chemicals.length > 0) {
-              console.warn(`   ⚠️ [INVARIANT] PHI VIOLATION: ${phiResult.blocked_chemicals.map(c => c.chemical_name).join(', ')}`);
-              decisionOutput = this.applyPHIBlocking(decisionOutput, phiResult);
-              immediateSafetyStatus = 'PHI_MODIFIED';
-              agentsUsed.push('PHI_GUARDIAN');
-            }
-          } catch (phiErr) {
-            console.error('   ❌ [INVARIANT] PHI check failed (non-blocking):', phiErr);
-          }
-        }
-        
-        // Pollinator Protection
-        const immediateCurrentHour = new Date().getHours();
-        const immediateIsFlowering = landContext?.current_crop && landContext?.days_since_sowing
-          ? isFloweringStage(landContext.current_crop.toUpperCase(), landContext.days_since_sowing)
-          : false;
-        if (immediateChemicals.length > 0 && immediateIsFlowering) {
-          try {
-            const pollinatorResult = enforcePollinatorProtection(
-              immediateChemicals,
-              landContext.current_crop.toUpperCase(),
-              landContext.days_since_sowing,
-              immediateCurrentHour
-            );
-            if (pollinatorResult.blocked_chemicals.length > 0) {
-              console.warn(`   ⚠️ [INVARIANT] POLLINATOR SAFETY: ${pollinatorResult.blocked_chemicals.map(c => c.chemical_name).join(', ')} BLOCKED`);
-              decisionOutput = this.applyPollinatorBlocking(decisionOutput, pollinatorResult);
-              immediateSafetyStatus = 'POLLINATOR_MODIFIED';
-              agentsUsed.push('POLLINATOR_PROTECTION');
-            }
-          } catch (pollinatorErr) {
-            console.error('   ❌ [INVARIANT] Pollinator check failed (non-blocking):', pollinatorErr);
-          }
-        }
+
         
         // SafetyGuardian verification
         try {
