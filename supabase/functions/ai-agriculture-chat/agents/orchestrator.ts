@@ -286,7 +286,9 @@ import {
   CORE_RULES,
   ALL_RULES,
   getAllRulesWithBundled, // PHASE-13: Use this to include all 2000+ bundled rules
-  evaluateBundledKeywordRules, // PHASE-13: Keyword fallback for infinity loop prevention
+  // Step 4 — evaluateBundledKeywordRules removed (parallel NLU brain);
+  // Step 4 — hasStrongAgriObservations was only used inside that fallback.
+
   RuleEvaluationResult
 } from './layered-rule-evaluator.ts';
 
