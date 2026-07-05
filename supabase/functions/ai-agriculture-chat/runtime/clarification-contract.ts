@@ -166,18 +166,16 @@ export async function loadClarificationCandidates(
     }
     const candidateKeys = postConfirmDedup;
 
-    // ── Stage 2: observation_master gate ─────────────────────────────────
-    // Farmer-observable discriminators only. `is_diagnostic=true` rows are
-    // agronomist-facing diagnosis concepts (e.g. RICE_GERMINATION_FAILURE)
-    // and MUST NEVER surface as farmer options. `observation_type` values
-    // outside SYMPTOM/OBSERVATION (e.g. GROUP, DIAGNOSIS, CONDITION) are
-    // also excluded — the allow-list is derived from DB metadata, not
-    // hardcoded observation names.
-    const OBSERVABLE_TYPES = new Set(['SYMPTOM', 'OBSERVATION', 'SIGN', 'FARMER_OBSERVATION']);
-
+    // ── Stage 2: observation_master gate (DB-driven, no TS enums) ────────
+    // The DB is the brain. Eligibility is a single flag on `observation_master`:
+    //   `can_generate_question=true` — curator has declared the row askable.
+    // We no longer maintain a TypeScript allow-list of `observation_type`
+    // values; that was an enum drift trap (curator uses GENERIC/PRIMARY/…,
+    // TS hardcoded SYMPTOM/OBSERVATION/… → 100% of rows dropped). See
+    // migration `observation_master.can_generate_question` for the flag.
     const { data: masterRows, error: masterErr } = await supabase
       .from('observation_master')
-      .select('observation_code, is_active, is_farmer_observable, is_diagnostic, observation_type')
+      .select('observation_code, is_active, is_farmer_observable, can_generate_question')
       .in('observation_code', candidateKeys);
 
     if (masterErr) {
@@ -187,29 +185,38 @@ export async function loadClarificationCandidates(
 
     const validKeys = new Set<string>();
     const dropReasons = new Map<string, string>();
+    let droppedInactive = 0, droppedNotFarmer = 0, droppedNotAskable = 0;
     for (const m of masterRows || []) {
       const key = canonicalizeObservationKey(m.observation_code);
       if (!key) continue;
       const active = m.is_active !== false;
       const fo = m.is_farmer_observable !== false; // default-on if null
-      const notDiagnostic = m.is_diagnostic !== true;
-      const typeUpper = String(m.observation_type || '').trim().toUpperCase();
-      // Empty observation_type is tolerated (legacy rows); non-empty must be
-      // in the observable allow-list.
-      const typeOk = typeUpper === '' || OBSERVABLE_TYPES.has(typeUpper);
+      // can_generate_question defaults to false in the DB, but existing rows
+      // are backfilled at migration time. Treat missing/null as false: the
+      // DB owns the decision, not us.
+      const askable = m.can_generate_question === true;
 
-      if (!active)       { dropReasons.set(key, 'inactive'); continue; }
-      if (!fo)           { dropReasons.set(key, 'not_farmer_observable'); continue; }
-      if (!notDiagnostic){ dropReasons.set(key, 'is_diagnostic'); continue; }
-      if (!typeOk)       { dropReasons.set(key, `observation_type=${typeUpper}`); continue; }
+      if (!active)   { dropReasons.set(key, 'inactive');              droppedInactive++;   continue; }
+      if (!fo)       { dropReasons.set(key, 'not_farmer_observable'); droppedNotFarmer++;  continue; }
+      if (!askable)  { dropReasons.set(key, 'not_askable');           droppedNotAskable++; continue; }
       validKeys.add(key);
     }
 
     const gatedKeys = candidateKeys.filter((k) => validKeys.has(k));
+    console.log(
+      `[CONTRACT_GATE_V3] intent=${intentUpper} kept=${gatedKeys.length} ` +
+      `dropped_inactive=${droppedInactive} dropped_not_farmer=${droppedNotFarmer} ` +
+      `dropped_not_askable=${droppedNotAskable} of=${candidateKeys.length}`,
+    );
     if (gatedKeys.length === 0) {
       console.warn(
         `[CLARIFICATION_CONTRACT] all ${candidateKeys.length} IOM candidates dropped by observation_master gate ` +
         `reasons=${JSON.stringify(Object.fromEntries(dropReasons))}`,
+      );
+      console.log(
+        `[CLARIFY_EXIT] site=CONTRACT_EMPTY_IOM intent=${intentUpper} crop=${cropLower} ` +
+        `stage=${growth_stage ?? 'n/a'} das=${das ?? 'n/a'} reason=all_dropped ` +
+        `drop_reasons=${JSON.stringify(Object.fromEntries(dropReasons))}`,
       );
       return [];
     }
