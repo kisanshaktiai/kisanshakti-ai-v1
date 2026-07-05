@@ -4599,7 +4599,7 @@ export class AIAgentOrchestrator {
       // shunted into the LLM narration lane without OBS_TO_HYP / HYP_TO_RULE /
       // RULE_RESULT ever emitting.
       // ═══════════════════════════════════════════════════════════════════════════
-      const DIAGNOSTIC_INTENTS = new Set<string>([
+      const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
         'EMERGENCE_FAILURE',
         'GERMINATION_FAILURE',
         'PEST',
@@ -4613,7 +4613,7 @@ export class AIAgentOrchestrator {
         'YELLOWING',
         'REPORT_SYMPTOM',
       ]);
-      const isDiagnosticIntent = DIAGNOSTIC_INTENTS.has(String(intentCode || '').toUpperCase());
+      const isDiagnosticIntent = DIAGNOSTIC_INTENTS_AUTHORITY.has(String(intentCode || '').toUpperCase());
       if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
         console.log(
           `🧭 [INTENT_AUTHORITY] Diagnostic intent=${intentCode} confidence=${(intentConf ?? 0).toFixed(2)} ` +
