@@ -161,17 +161,15 @@ export class AuthoredObservationSet {
 }
 
 /**
- * Terminal-level codes that must NEVER be injected via cross-crop or synthetic sources.
- * These require explicit farmer confirmation to trigger the Terminal Damage Gate.
+ * PATCH 4 (BUG 4) — Static terminal-code allowlist REMOVED.
+ *
+ * Injection admissibility is now decided by the DB:
+ *   - `intent_observation_mapping.is_active`
+ *   - `observation_master.can_generate_question`
+ *   - `observation_master.is_farmer_observable`
+ *
+ * The previous hardcoded Set silently blocked legitimate cross-crop LITERAL
+ * peers such as GERMINATION_FAILURE for RICE_EMERGENCE_FAILURE. Keeping a
+ * runtime agriculture gate here violated the DB-is-brain contract.
  */
-export const TERMINAL_CODES_BLOCKED_FROM_INJECTION = new Set([
-  'PLANT_DEATH',
-  'SEEDLING_DEATH',
-  'GERMINATION_FAILURE',
-  'CROP_FAILURE',
-  'ESTABLISHMENT_FAILURE',
-  'PLANT_DIED',
-  'SEEDLING_DIED',
-  'DEAD_SEEDLINGS',
-  'COMPLETE_DRYING'
-]);
+export const TERMINAL_CODES_BLOCKED_FROM_INJECTION: ReadonlySet<string> = new Set<string>();
