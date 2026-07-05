@@ -19,7 +19,7 @@ import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/l
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 
 // Import orchestrator
-import { AIAgentOrchestrator } from './agents/orchestrator.ts';
+import { AIAgentOrchestrator, requiresAgronomicReasoningIntent } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 import { blockStageWriteIfLocked, isBiologicalStateLocked } from './agents/biological-state.ts';
 import { getRuntimeTraceCollector, resetRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
@@ -1115,18 +1115,15 @@ serve(async (req) => {
       const _ruleCount: number = Array.isArray(_orchAny?._graphHypothesisRuleIds)
         ? _orchAny._graphHypothesisRuleIds.length
         : 0;
+      const _evidenceFrozen: boolean = _orchAny?._evidenceFrozen === true;
+      const _ruleResultExists: boolean = _orchAny?._ruleResultExists === true;
       const _intentUpper = String(
         (orchestratorResponse as any)?.metadata?.intent_code
           ?? (orchestratorResponse as any)?.intent
           ?? _orchAny?._lastIntentCode
           ?? '',
       ).toUpperCase();
-      const _diagnosticIntents = new Set<string>([
-        'EMERGENCE_FAILURE','GERMINATION_FAILURE','PEST','PEST_PRESENCE_VISIBLE',
-        'DISEASE','DISEASE_LIKE_PATTERN','NUTRIENT_STRESS','NUTRIENT_DEFICIENCY',
-        'CROP_DAMAGE','WILTING','YELLOWING','REPORT_SYMPTOM',
-      ]);
-      const _isDiagnosticIntent = _diagnosticIntents.has(_intentUpper);
+      const _isDiagnosticIntent = requiresAgronomicReasoningIntent(_intentUpper);
       const _realObsCount: number = Array.isArray(_orchAny?._lastRealObservations)
         ? _orchAny._lastRealObservations.length
         : (Array.isArray((orchestratorResponse as any)?.metadata?.real_observations)
@@ -1136,12 +1133,18 @@ serve(async (req) => {
       console.log(
         `[ORCHESTRATOR_EXIT] trace=${traceId} path=${_path} intent=${_intentUpper || 'n/a'} ` +
         `graphExecuted=${_graphExecuted} hypotheses=${_hypCount} rules=${_ruleCount} ` +
-        `realObs=${_realObsCount}`,
+        `ruleResult=${_ruleResultExists} evidenceFrozen=${_evidenceFrozen} realObs=${_realObsCount}`,
       );
-      if (_isDiagnosticIntent && _realObsCount > 0 && !_graphExecuted) {
+      if (_isDiagnosticIntent && _evidenceFrozen && !_graphExecuted) {
         throw new Error(
           `GRAPH_PIPELINE_BYPASSED: exit_path=${_path} intent=${_intentUpper} ` +
-          `realObs=${_realObsCount} graphExecuted=false trace=${traceId}`,
+          `realObs=${_realObsCount} evidenceFrozen=true graphExecuted=false trace_id=${traceId}`,
+        );
+      }
+      if (_isDiagnosticIntent && _evidenceFrozen && _graphExecuted && !_ruleResultExists) {
+        throw new Error(
+          `GRAPH_PIPELINE_BYPASSED: exit_path=${_path} intent=${_intentUpper} ` +
+          `realObs=${_realObsCount} evidenceFrozen=true graphExecuted=true ruleResult=false trace_id=${traceId}`,
         );
       }
     } catch (auditErr) {

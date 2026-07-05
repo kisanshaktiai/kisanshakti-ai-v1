@@ -19,6 +19,51 @@ import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
 import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
 
+type DecisionGraphStage =
+  | 'POST_EVIDENCE_FREEZE'
+  | 'OBS_TO_HYP'
+  | 'HYP_TO_RULE'
+  | 'RULE_RESULT'
+  | 'BRAIN_TRACE';
+
+const DECISION_GRAPH_STAGE_SEQUENCE: Record<DecisionGraphStage, number> = {
+  POST_EVIDENCE_FREEZE: 1,
+  OBS_TO_HYP: 2,
+  HYP_TO_RULE: 3,
+  RULE_RESULT: 4,
+  BRAIN_TRACE: 5,
+};
+
+const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
+  'EMERGENCE_FAILURE',
+  'GERMINATION_FAILURE',
+  'PEST',
+  'PEST_PRESENCE_VISIBLE',
+  'DISEASE',
+  'DISEASE_LIKE_PATTERN',
+  'NUTRIENT_STRESS',
+  'NUTRIENT_DEFICIENCY',
+  'CROP_DAMAGE',
+  'WILTING',
+  'YELLOWING',
+  'REPORT_SYMPTOM',
+]);
+
+export function requiresAgronomicReasoningIntent(intent: unknown): boolean {
+  return DIAGNOSTIC_INTENTS_AUTHORITY.has(String(intent || '').trim().toUpperCase());
+}
+
+function assertDecisionGraphOrder(owner: any, traceId: string, stage: DecisionGraphStage): void {
+  const expected = Number(owner.__decisionGraphSequence ?? 0) + 1;
+  const actual = DECISION_GRAPH_STAGE_SEQUENCE[stage];
+  if (actual !== expected) {
+    throw new Error(
+      `GRAPH_ORDER_ERROR: trace_id=${traceId} expected=${expected} actual=${actual} stage=${stage}`,
+    );
+  }
+  owner.__decisionGraphSequence = actual;
+}
+
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
 import { processVisualAgent } from './visual-agent.ts';
@@ -1143,6 +1188,13 @@ export class AIAgentOrchestrator {
     const startTime = Date.now();
     const agentsUsed: string[] = [];
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    (this as any).__decisionGraphSequence = 0;
+    (this as any)._evidenceFrozen = false;
+    (this as any)._graphExecuted = false;
+    (this as any)._ruleResultExists = false;
+    (this as any)._graphHypothesisIds = [];
+    (this as any)._graphHypothesisRuleIds = [];
+    (this as any)._graphHypothesisEdgeMissing = [];
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
@@ -2262,7 +2314,10 @@ export class AIAgentOrchestrator {
               authority_status: authorityDecision.authority_status,
             });
             console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${optionConvState.mode} clarify=${optionConvState.clarification_required}(${optionConvState.clarification_reason}) coverage=${optionConvState.coverage.toFixed(2)} confirmed=${optionConvState.confirmed.length} unknown=${optionConvState.unknown.length} (path=OPTION_SELECTED)`);
-            emitBrainTrace(optionConvState, { total_ms: Date.now() - startTime });
+            console.log(
+              `[OPTION_STATE_TRACE] trace=${traceId} total_ms=${Date.now() - startTime} ` +
+              `hyp=${optionConvState.hypotheses.length} confirmed=${optionConvState.confirmed.length}`,
+            );
           } catch (e) {
             console.warn(`   ⚠️ [CONVERSATION_STATE] OPTION_SELECTED emit failed: ${e instanceof Error ? e.message : e}`);
           }
@@ -4214,7 +4269,7 @@ export class AIAgentOrchestrator {
           // Publish frozen intent so downstream traces reflect the lock.
           try {
             emitNodeTrace(traceId, 'INTENT', {
-              stage: 'POST_EVIDENCE_FREEZE',
+              stage: 'INTENT_AFTER_EVIDENCE_LOCK',
               intent: intentCode,
               confidence: intentConf,
               real_observations: postRecoveryEvidence.real_symptom_count,
@@ -4612,21 +4667,14 @@ export class AIAgentOrchestrator {
       // shunted into the LLM narration lane without OBS_TO_HYP / HYP_TO_RULE /
       // RULE_RESULT ever emitting.
       // ═══════════════════════════════════════════════════════════════════════════
-      const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
-        'EMERGENCE_FAILURE',
-        'GERMINATION_FAILURE',
-        'PEST',
-        'PEST_PRESENCE_VISIBLE',
-        'DISEASE',
-        'DISEASE_LIKE_PATTERN',
-        'NUTRIENT_STRESS',
-        'NUTRIENT_DEFICIENCY',
-        'CROP_DAMAGE',
-        'WILTING',
-        'YELLOWING',
-        'REPORT_SYMPTOM',
-      ]);
-      const isDiagnosticIntent = DIAGNOSTIC_INTENTS_AUTHORITY.has(String(intentCode || '').toUpperCase());
+      const isDiagnosticIntent = requiresAgronomicReasoningIntent(intentCode);
+      const mandatoryGraphRealObsCount = Array
+        .from(allObservationsForPreAuth)
+        .filter((c) => isRealObservation(String(c))).length;
+      const mustExecuteDecisionGraph = isDiagnosticIntent ||
+        shouldActivateDiagnosisMode ||
+        cropDamageResult.requires_diagnosis ||
+        mandatoryGraphRealObsCount > 0;
       if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
         console.log(
           `🧭 [INTENT_AUTHORITY] Diagnostic intent=${intentCode} confidence=${(intentConf ?? 0).toFixed(2)} ` +
@@ -4699,7 +4747,16 @@ export class AIAgentOrchestrator {
         // Force bypass clarification
         understandingResult.clarification_required = false;
         bypassClarification = true;
-      } else if (diagnosisWithOptionalClarification && !directHardBypass) {
+      }
+
+      if (mustExecuteDecisionGraph) {
+        if (!diagnosisWithOptionalClarification || directHardBypass) {
+          console.log(
+            `🧭 [MANDATORY_GRAPH_GATE] trace=${traceId} intent=${intentCode} ` +
+            `realObs=${mandatoryGraphRealObsCount} diagnosisMode=${shouldActivateDiagnosisMode} ` +
+            `directHardBypass=${directHardBypass} action=executeDecisionGraph`,
+          );
+        }
         console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
@@ -4792,17 +4849,18 @@ export class AIAgentOrchestrator {
           console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} canonical=${canonical_observation_codes.length}`);
 
           // STEP 8 — EVIDENCE_FREEZE ledger trace (single SSOT for the turn)
-          try {
-            const ledger = canonical_observation_codes.map((c) => ({
-              code: c,
-              source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
-              confidence: real_codes.includes(c) ? 1 : 0.8,
-            }));
-            console.log(
-              `[EVIDENCE_FREEZE] turn=${traceId} observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
-                `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
-            );
-          } catch { /* trace-only */ }
+          const ledger = canonical_observation_codes.map((c) => ({
+            code: c,
+            source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
+            confidence: real_codes.includes(c) ? 1 : 0.8,
+          }));
+          assertDecisionGraphOrder(this as any, traceId, 'POST_EVIDENCE_FREEZE');
+          (this as any)._evidenceFrozen = true;
+          (this as any)._lastIntentCode = intentCode;
+          console.log(
+            `[POST_EVIDENCE_FREEZE] trace=${traceId} sequence=1 observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
+              `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
+          );
 
           const currentObservations = canonical_observation_codes;
           if (real_codes.length !== currentObservations.length ||
@@ -4877,9 +4935,10 @@ export class AIAgentOrchestrator {
               // a single grep on trace= reconstructs the full edge chain.
               const obsSample = (currentObservations ?? []).slice(0, 12).join(',');
               const hypSample = hypIds.slice(0, 12).join(',');
+              assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
               console.log(
                 `[OBS_TO_HYP] trace=${traceId} obs=[${obsSample}] hyp=[${hypSample}] ` +
-                `survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
+                `sequence=2 survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
                 `edge_missing=${graphHypothesisEdgeMissing.length}`,
               );
 
@@ -4891,11 +4950,13 @@ export class AIAgentOrchestrator {
                 );
               }
             } catch (projErr) {
-              if ((projErr as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw projErr;
+              if ((projErr as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
+                  (projErr as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw projErr;
               console.warn(`[GRAPH_PROJECTION] non-fatal: ${(projErr as Error).message}`);
             }
           } catch (e) {
-            if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
+            if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
+                (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
             // continue when the hypothesis graph did not execute. Fail closed.
@@ -5104,7 +5165,7 @@ export class AIAgentOrchestrator {
             );
           }
           
-          if (diagnosisFirstOutput) {
+          if (diagnosisFirstOutput && !(this as any)._evidenceFrozen) {
             agentsUsed.push('DIAGNOSIS_FIRST_GENERATOR');
             
             // Convert to clarification UI format and return immediately
@@ -5213,6 +5274,12 @@ export class AIAgentOrchestrator {
             }
 
             
+            if ((this as any)._evidenceFrozen && !(this as any)._ruleResultExists) {
+              throw new Error(
+                `GRAPH_ORDER_ERROR: trace_id=${traceId} expected=4 actual=${(this as any).__decisionGraphSequence ?? 0} ` +
+                `stage=RULE_RESULT reason=diagnosis_first_return_before_rule_result`,
+              );
+            }
             console.log(`[CLARIFY_EXIT] site=EXIT_04_DIAGNOSTIC_CONFIRM trace=${(typeof traceId!=='undefined'?traceId:'?')} intent=${(typeof intentCode!=='undefined'?intentCode:'?')} crop=${(landContext?.current_crop) ?? '?'} stage=${(canonicalContext?.growth_stage) ?? '?'}`);
             return {
               type: 'CLARIFICATION_QUESTION',
@@ -5273,6 +5340,10 @@ export class AIAgentOrchestrator {
             };
           }
         } catch (diagnosisFirstError) {
+          if ((diagnosisFirstError as Error).message?.startsWith('GRAPH_ORDER_ERROR') ||
+              (diagnosisFirstError as Error).message?.startsWith('GRAPH_PIPELINE_BYPASSED')) {
+            throw diagnosisFirstError;
+          }
           console.error(`   ❌ Diagnosis-first generation failed:`, diagnosisFirstError);
           // Fall through to standard clarification flow
         }
@@ -5305,6 +5376,8 @@ export class AIAgentOrchestrator {
       // and the current Marathi EMERGENCE_FAILURE regression trace.
       // ═══════════════════════════════════════════════════════════════════════
       const _graphHasRun = (this as any)._graphExecuted === true;
+      const _evidenceHasFrozen = (this as any)._evidenceFrozen === true;
+      const _ruleHasRun = (this as any)._ruleResultExists === true;
       const _convStateOk = (this as any).__conversationState
         && (this as any).__conversationState.clarification_required === false;
       if (understandingResult.clarification_required && isDiagnosticIntent && !_graphHasRun) {
@@ -5312,6 +5385,13 @@ export class AIAgentOrchestrator {
           `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker asked for clarification ` +
           `BEFORE hypothesis graph ran — demoting to advisory (intent=${intentCode} crop=${cropCode}). ` +
           `[CLARIFY_AUTHORITY] source=DEMOTED_CHECKER required=false reason=graph_before_clarification`,
+        );
+        understandingResult.clarification_required = false;
+      } else if (understandingResult.clarification_required && _evidenceHasFrozen && !_ruleHasRun) {
+        console.warn(
+          `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker attempted pre-rule clarification ` +
+          `after evidence freeze — demoting until RULE_RESULT (intent=${intentCode} crop=${cropCode}). ` +
+          `[CLARIFY_AUTHORITY] source=GRAPH_RUNTIME required=false reason=rule_result_required`,
         );
         understandingResult.clarification_required = false;
       } else if (understandingResult.clarification_required && _convStateOk) {
@@ -6853,10 +6933,13 @@ export class AIAgentOrchestrator {
         const hypToRuleReason = graphHypIdsForTrace.length === 0
           ? 'NO_HYPOTHESIS_EDGE'
           : (graphRuleIdSet.size === 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'OK');
+        if ((this as any)._evidenceFrozen) {
+          assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
+        }
         console.log(
           `[HYP_TO_RULE] trace=${traceId} hyp=[${graphHypIdsForTrace.slice(0,12).join(',')}] ` +
           `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
-          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] reason=${hypToRuleReason}`,
+          `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] sequence=3 reason=${hypToRuleReason}`,
         );
 
         // T1 — GraphTruth integrity check before layered rule evaluator
@@ -6880,10 +6963,17 @@ export class AIAgentOrchestrator {
             : coverageGap
             ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'RULE_COVERAGE_GAP')
             : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
-          console.log(`[RULE_RESULT] trace=${traceId} winner=${winnerId} reason=${reason}`);
+          (this as any)._ruleResultExists = true;
+          if ((this as any)._evidenceFrozen) {
+            assertDecisionGraphOrder(this as any, traceId, 'RULE_RESULT');
+          }
+          console.log(`[RULE_RESULT] trace=${traceId} sequence=4 winner=${winnerId} reason=${reason}`);
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
           (layeredRuleResult as any).edge_missing = graphEdgeMissing;
-        } catch { /* trace-only */ }
+        } catch (ruleTraceErr) {
+          if ((ruleTraceErr as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw ruleTraceErr;
+          /* trace-only */
+        }
 
 
 
@@ -7093,7 +7183,7 @@ export class AIAgentOrchestrator {
         try {
           const winner = layeredRuleResult.primary_decision;
           console.log(
-            `[BRAIN_TRACE][PIPELINE_RULE_STAGE] intent=${activeIntentForRules} ` +
+            `[RULE_STAGE_TRACE] intent=${activeIntentForRules} ` +
             `crop=${canonicalState.crop_type ?? '?'} stage=${canonicalState.crop_stage ?? '?'} ` +
             `candidates_in=${rulesToEvaluate.length} after_intent=${rulesAfterIntent.length} ` +
             `evaluated=${layeredRuleResult.rules_evaluated || 0} matched=${layeredRuleResult.rules_matched || 0} ` +
@@ -7112,6 +7202,14 @@ export class AIAgentOrchestrator {
           const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
           const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
           const _cs = (this as any).__conversationState ?? conversationState;
+          if ((this as any)._evidenceFrozen) {
+            assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
+          }
+          if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
+            throw new Error(
+              `GRAPH_ORDER_ERROR: trace_id=${traceId} stage=BRAIN_TRACE reason=forbidden_hyp0_after_evidence_freeze`,
+            );
+          }
           emitBrainTrace(_cs, {
             rule_candidates:  rulesToEvaluate?.length ?? 0,
             rule_eligible:    layeredRuleResult?.matched_responses?.length ?? 0,
@@ -7119,12 +7217,13 @@ export class AIAgentOrchestrator {
             hypotheses_count: _hypIds.length,
             obs_to_hyp_edges: _obsToHyp,
             hyp_to_rule_edges: _hypToRule,
+            sequence:         (this as any)._evidenceFrozen ? 5 : undefined,
             total_ms:         Date.now() - startTime,
           });
           // Retain forensic detail on a separate line — auditors still grep
           // POST_RULE for winner_score / action_text / prescription flags.
           console.log(
-            `[BRAIN_TRACE][POST_RULE] trace=${traceId ?? '?'} ` +
+            `[POST_RULE_TRACE] trace=${traceId ?? '?'} ` +
             `candidates=${rulesToEvaluate?.length ?? 0} ` +
             `after_intent=${rulesAfterIntent?.length ?? 0} ` +
             `evaluated=${layeredRuleResult?.rules_evaluated ?? 0} ` +
@@ -7147,7 +7246,8 @@ export class AIAgentOrchestrator {
             );
           }
         } catch (e) {
-          if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
+          if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
+              (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
           /* trace must never throw */
         }
         
