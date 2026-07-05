@@ -5163,7 +5163,7 @@ export class AIAgentOrchestrator {
             );
           }
           
-          if (diagnosisFirstOutput) {
+          if (diagnosisFirstOutput && !(this as any)._evidenceFrozen) {
             agentsUsed.push('DIAGNOSIS_FIRST_GENERATOR');
             
             // Convert to clarification UI format and return immediately
