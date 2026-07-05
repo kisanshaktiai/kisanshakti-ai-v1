@@ -3489,19 +3489,21 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
   const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
   
-  // Build context-aware message — English-only, forceTranslateResponse() handles localization
+  // NOTE: Reaching this fallback means the OBSERVATION_REQUIRED contract
+  // enforcer (ensureObservationSelectorContract) did NOT promote the response
+  // — either because it already had content or the loader returned no options.
+  // We intentionally do NOT emit an English "I need more information" prompt
+  // here because that would be shipped as DECISION_PROVIDED text and the
+  // frontend would render it without the symptom selector. Instead, emit a
+  // short neutral acknowledgement; the contract violation (if any) is already
+  // logged upstream as OBSERVATION_CONTRACT_VIOLATION.
   if (detectedPest || detectedDisease) {
     const target = detectedPest || detectedDisease;
-    parts.push(`I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`);
+    parts.push(`Noted: ${target}. Please share what you currently observe in the field so I can advise precisely.`);
   } else {
-    parts.push('To properly answer your question, I need some more information:');
+    parts.push('Please share what you currently observe in the field so I can advise precisely.');
   }
-  
-  // Numbered list of required information — English-only
-  parts.push('\n1. What is the crop name?\n2. What is the current growth stage?\n3. What symptoms are you seeing?\n4. If possible, send a photo of the affected leaves/plants');
-  
-  // Encouragement
-  parts.push('\nOnce I have this information, I can give you the right recommendation! 🙏');
+
   
   return parts.join('\n\n');
 }
