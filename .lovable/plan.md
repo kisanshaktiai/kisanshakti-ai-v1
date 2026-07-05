@@ -1,89 +1,119 @@
-# Complete GraphTruth Migration
+# Database-First Forensic Audit — Update Refactor Plan
 
-Scope spans ~15k LOC across orchestrator + canonical-state + ontology modules. Executing in one shot risks breaking the live edge function. Splitting into 6 verifiable phases, each independently deployable and traceable.
+**Goal:** Prove every hardcoded agronomy constant has an existing DB owner *before* writing a single migration. No new tables until Phase 0–2 finish. No code changes this cycle. Deliverable = 4 markdown reports + a gap-only SQL patch list.
 
-## Phase 1 — Immutability Enforcement (Task 1)
+## Guardrails
 
-**Goal:** After `[GRAPH_TRUTH_BUILT]`, no code path may write `crop_code`, `stage`, `DAS`, or `observation_codes`.
+- No `CREATE TABLE` until audit proves no existing owner + adding column breaks normalisation + a relationship graph is required.
+- No `_v2` tables. Extend `crop_stage_master`, `observation_master`, `hypothesis_master`, `decision_rules`, `crop_baseline_guidelines_v2`, `master_products`, `chemical_regulatory_status`, `etl_standards`.
+- One agricultural fact → one DB owner. Kill duplicates in DB, not code.
+- All read-only during this cycle (`supabase--read_query`, `supabase--linter`, `supabase--slow_queries`, file reads).
 
-- `runtime/graph-truth.ts`: add `validateGraphTruth(gt, callsite)` — recomputes hash from current fields, compares to `gt.hash`, throws on mismatch. Add `assertGraphTruthLocked(ctx, site)` helper.
-- `agents/orchestrator.ts`: audit every mutation of `landContext.current_crop`, `landContext.growth_stage`, `landContext.days_since_sowing`, `allObservations`, `canonicalObservations` after the `TURN_EVIDENCE_LOCK`. Wrap with `blockStageWriteIfLocked`-style guards; emit `[GRAPH_MUTATION_BLOCKED]` and skip write.
-- Insert `validateGraphTruth(graphTruth, '<site>')` calls immediately before:
-  - hypothesis engine invocation
-  - IOM gate
-  - layered rule evaluator
-  - deterministic/LLM response builder
-- Emit `[GRAPH_VALIDATED] site=<x> hash_match=true` on success.
+## Phase 0 — Full DB Inventory → `DATABASE_ONTOLOGY_AUDIT.md`
 
-## Phase 2 — Single Stage Authority (Task 2)
+Enumerate every `public` table (~400 present per schema list). For each, record:
 
-**Goal:** `BiologicalState` (from `crop_stage_master` / `variety_phenology_profile` / `stage_transition_conditions`) is the only writer of `growth_stage`.
+- Purpose / primary entity
+- Column list (types + nullability)
+- FK graph (in + out)
+- Row count (`SELECT count(*)`)
+- Coverage sample (distinct crops, distinct stages, non-null critical columns)
+- "Should not duplicate with" (cross-links to TS constants)
 
-- `agents/canonical-state-builder.ts`: remove any assignment that overwrites `growth_stage` when `isBiologicalStateLocked(landContext)` is true. Downgrade to read.
-- `decision/context-authority.ts`: `resolveFinalRenderContext` must not promote `landContext.growth_stage` above `BiologicalState`. If BS is locked, always use BS stage.
-- `agents/gdd-phenology-engine.ts`: any `landContext.growth_stage = …` after BS lock → replace with `blockStageWriteIfLocked` + log `[GDD_STAGE_WRITE_BLOCKED]`. GDD may still write `gdd_accumulated` (evidence), never stage.
-- Add `[BIO_STATE_LOCKED]` trace at lock; add `[STAGE_WRITE_BLOCKED site=…]` at every blocked site.
+Group tables into ontology domains:
 
-## Phase 3 — Hypothesis reads GraphTruth (Task 3)
+1. Crop identity: `crops`, `crop_groups`, `crop_synonyms`, `crop_vocabulary`, `crop_templates`
+2. Stage ontology: `crop_stage_master`, `crop_stage_graph`, `crop_stage_aliases`, `crop_stage_knowledge`, `stage_transition_conditions`, `stage_validation_rules`, `stage_transition_log`, `variety_phenology_profile`, `farming_stages`
+3. Observation graph: `observation_master`, `observation_aliases`, `observation_translations`, `observation_intent_master`, `observation_differential_questions`, `observation_versions`, `observation_vocabulary_gaps`, `intent_observation_mapping`, `intent_assertion_pattern`, `intent_semantic_class_allowlist`, `intent_translations`, `emergency_observation_codes`
+4. Hypothesis graph: `hypothesis_master`, `hypothesis_conditions`, `hypothesis_contradictions`, `hypothesis_rule_mapping`, `hypothesis_versions`, `hypothesis_metrics`, `hypothesis_integrity_alerts`
+5. Decision + safety: `decision_rules`, `decision_rules_history`, `rule_versions`, `rule_conflict_matrix`, `rule_explainability`, `rule_performance`, `rule_product_mapping`, `etl_standards`, `chemical_regulatory_status`, `cultural_strategies`, `safety_verifications`, `advisory_audit_log`
+6. Product + agronomy reference: `master_products`, `master_product_categories`, `master_product_variety_crops`, `products`, `crop_baseline_guidelines_v2` (32 cols), `crop_baseline_guidelines`, `irrigation_types`, `soil_types`, `water_sources`, `variety_resistance`, `variety_phenology_profile`, `disease_risk_model`
+7. Environment: `weather_current/forecasts/aggregates/historical/observations/alerts`, `land_weather_metrics`, `agro_climatic_zones`, `land_gdd_daily`, `ndvi_data`, `ndvi_micro_tiles`
+8. Land + tenant scope: `lands`, `land_crops`, `land_activities`, `farmers`, `tenants`
 
-- Change hypothesis engine entrypoint in orchestrator: pass `graphTruth.canonical_observations` (frozen array) instead of the mutable `canonicalObservations`/`allObservations` list.
-- Delete symptom→observation conversion inside hypothesis path; conditions query already keys on `observation_code` in `hypothesis_conditions`.
-- No changes to `hypothesis_conditions` schema or SQL. Only the caller wiring.
+## Phase 1 — TS Constant → DB Owner Map → `HARDCODE_TO_DB_MAPPING.md`
 
-## Phase 4 — Remove TypeScript agriculture ontology (Task 4)
+Take the 27 P1 hardcoded constants from the prior audit and, for each, run targeted `read_query` to prove/disprove ownership:
 
-Move every hardcoded crop/stage/symptom/pest/disease/synonym constant to the DB loader path (already have `crop_synonyms`, `crop_stage_master`, `observation_master`, `observation_aliases`).
+| TS Constant (file) | Hypothesised existing owner | Verification query |
+|---|---|---|
+| `CROP_GDD_CONFIG`, `WHEAT/RICE/COTTON/SUGARCANE_PHENOLOGY` | `crop_stage_master.gdd_min/max` + `variety_phenology_profile` | count crops with non-null gdd; missing crops list |
+| `STAGE_FAMILIES`, `STAGE_SYNONYMS` | `crop_stage_master` (canonical/parent/prev/next) + `crop_stage_aliases` + `crop_stage_graph` | coverage per crop; missing stage-alias rows |
+| `CROP_PHOTOPERIOD_PROFILES` + DAS windows | `crop_stage_master` (needs `photoperiod_sensitive` bool) | column present? |
+| `POLLINATOR_DEPENDENT_CROPS` flowering DAS | `crop_stage_master` where growth_stage='FLOWERING' | rows exist for all crops? |
+| `YOUNG_CROP_MAX_DAYS` (×2 files) | `crop_stage_master` (needs `chemical_safe_from_das`) | column present? |
+| `CROP_IRRIGATION_PROFILES` + efficiency | `crop_baseline_guidelines_v2` (32 cols) + `irrigation_types` | coverage; irrigation columns audit |
+| `NITROGEN/PHOSPHORUS/POTASSIUM_REQUIREMENTS_BY_STAGE`, `NDVI_THRESHOLDS_BY_CROP` | `crop_baseline_guidelines_v2` | which of 32 cols already hold these? |
+| `PHI_DATABASE`, `NEAR_HARVEST_ALTERNATIVES`, `MAX_SAFE_DOSES`, `WHO_TOXICITY_CLASSES`, `BANNED_CHEMICALS`, `BANNED_SUBSTANCES_INDIA` | `chemical_regulatory_status` (8 cols) + `master_products` (134 cols) + `decision_rules` | which fields already exist? |
+| `POLLINATOR_TOXICITY_DB`, neonic/aquatic lists, buffer distances | `chemical_regulatory_status` + `master_products` | coverage of pollinator flags |
+| `SPRAY_LIMITS`, `SPRAY_THRESHOLDS`, disease-risk scoring | `etl_standards` (16 cols) + `disease_risk_model` (30 cols) | do these hold weather thresholds? |
+| `EMERGENCY_OBS_CODES` | `emergency_observation_codes` + `observation_master.is_emergency` | table already exists — verify coverage |
+| `IPM_LABELS`, `IPM_URGENCY_LABELS` | `decision_rules.ipm_level` + `intent_translations` / i18n | pure label lookup |
+| `INTENT_SCOPE_MAP` | `observation_intent_master` + `intent_assertion_pattern` | already-present coverage |
+| `DEFAULT_CONFIDENCE_RULES` (Bayesian weights) | none; runtime config, not agronomy | candidate for `system_config` row (existing table) |
+| `CAUSE_NAMES`, `EXPLANATIONS`, `CATEGORY_PATTERNS`, `PLANT_PART_PATTERNS` | `hypothesis_master` + `observation_master.observation_category / affected_plant_part` | coverage query |
+| Cost defaults in `economic-calculator.ts` | `crop_baseline_guidelines_v2.input_costs` | present? |
+| `TREATMENT_ACTIONS`, `VAGUE_SYMPTOM_PATTERNS` | `decision_rules.action_type` enum + `observation_master.is_diagnostic` | derive at runtime |
 
-- `agents/symptom-enums.ts`: delete enum bodies; keep string-type aliases (`type CanonicalSymptomSymbol = string`) for TS shape only. All consumers already tolerate strings.
-- `agents/language-induction-layer.ts`: remove `CROP_KEYWORDS`, `STAGE_SYNONYMS`, `STAGE_FAMILIES`, `CATEGORY_PATTERNS`, `PLANT_PART_PATTERNS`, symptom regex maps. Replace with lookups into an in-memory cache built from `crops`, `crop_synonyms`, `crop_stage_master`, `observation_aliases` at boot.
-- `agents/entity-normalizer.ts`: remove pest/disease alias tables. Replace with `observation_aliases` lookup (`raw_token → observation_code`).
-- `agents/cross-crop-symptom-mapper.ts`: delete cross-crop hardcoded symptom map; route through `observation_aliases` + `intent_observation_mapping`.
-- If `agents/observation-ontology.ts` exists in imports, move to DB loader.
-- Provide `agents/db-ontology-cache.ts` (new, ~120 lines) — request-scoped cache loaded lazily via existing `supabase` client. No agriculture values in code.
+For each row emit verdict: **REUSE (existing column)** / **EXTEND (add column to existing table)** / **NEW TABLE (requires justification)**.
 
-## Phase 5 — CanonicalState becomes view model (Task 5)
+## Phase 2 — Missing Capability Report → `MISSING_DB_CAPABILITY_REPORT.md`
 
-- `agents/canonical-state-builder.ts`: strip all inference. Inputs = `GraphTruth`. Output = flat, read-only projection for legacy consumers (`canonicalState.crop`, `.stage`, `.observations`) — sourced verbatim from `graphTruth`.
-- Remove any calculation of crop/stage/symptom inside builder. Add JSDoc header: `VIEW MODEL ONLY — derives nothing`.
+Only concepts that fail all three "new table allowed" checks appear here. Expected candidates after Phase 1 (subject to disproof):
 
-## Phase 6 — Regression harness (Task 6)
+- Columns to add to `observation_master`: `is_emergency`, `observation_category` if not present (schema says 24 cols — verify).
+- Columns to add to `crop_stage_master` (30 cols today): `is_critical_stage`, `chemical_safe_from_das`, `photoperiod_sensitive`, `photoperiod_critical_day_length_hours` — verify what's already there.
+- Columns to add to `chemical_regulatory_status` (8 cols): `phi_days_domestic`, `phi_days_export_eu`, `phi_days_export_us`, `mrl_fssai_ppm`, `mrl_eu_ppm`, `who_toxicity_class`, `max_dose_g_per_ha`, `pollinator_bee_ld50_contact_ug`, `pollinator_bee_ld50_oral_ug`, `pollinator_residual_toxicity_days`, `pollinator_flowering_banned`, `buffer_distance_aquatic_m`, `buffer_distance_pollinator_m` — verify overlap with `master_products` before deciding location.
+- Rows to seed `etl_standards` with per-product-type spray weather thresholds (wind/rain/temp/humidity/dry-hours).
+- Rows to seed `system_config` with hypothesis-engine Bayesian weights (no new table).
+- Genuinely new: `intent_scope_config` **only if** `observation_intent_master`+`intent_assertion_pattern` cannot express scope.
+- Genuinely new: `cost_benchmarks` **only if** `crop_baseline_guidelines_v2` cannot hold per-stage cost.
 
-Add `supabase/functions/ai-agriculture-chat/scripts/graph-determinism.test.ts` (Deno test):
+Every "genuinely new" line requires a written justification block (why extension breaks normalisation, which entities need the graph).
 
-- Fixture: Rice land, DAS=26.
-- Queries:
-  1. `भात अजून उगवले नाही`
-  2. `या शेतातील पिक अजून उगवले नाही`
-  3. `खराब उगवण`
-- Assert equal: `graphTruth.hash`, `crop_code`, `stage_uuid`, sorted `observation_codes`, winning `hypothesis_id`, rule execution path.
-- Fail if any query yields UNKNOWN crop/stage, generic fallback, or a proactive rule for a diagnostic query.
-- Use `supabase--test_edge_functions` to run after each phase.
+## Phase 3 — DB Cleanup Report → `DATABASE_CLEANUP_REPORT.md`
 
-## Deployment order
+Classify every table found in Phase 0 as KEEP / MERGE / DEPRECATE / REMOVE. Priority targets from schema scan:
 
-Phase 1 → deploy → verify `[GRAPH_VALIDATED]` in logs.
-Phase 2 → deploy → verify `[BIO_STATE_LOCKED]` followed by zero `[STAGE_WRITE_BLOCKED]` in happy path (blocks appear only when legacy sites attempt writes).
-Phase 3 → deploy → verify hypothesis winner unchanged for baseline query.
-Phase 4 → deploy → verify DB ontology cache hits (`[ONTOLOGY_SOURCE=db]`).
-Phase 5 → deploy → verify CanonicalState hash equals GraphTruth hash.
-Phase 6 → run regression → three identical hashes.
+- `crop_baseline_guidelines` vs `crop_baseline_guidelines_v2` → likely MERGE/REMOVE.
+- `decision_rules_rule_id_mapping_*` (×4 tables) + `canonical_group_fix_mapping_safe` + `cause_fix_mapping` + `crop_code_fix_mapping` + `rule_id_fix_mapping_safe` → migration scratch tables, candidates for REMOVE.
+- `staging_mgrs_tiles*` (×3) → post-import staging, REMOVE.
+- `scientific_names_enhancement_mapping`, `district_zone_mapping`, `canonical_group_parse_audit`, `canonical_hint_mapping`, `canonical_group_mapping` → verify usage vs. remove.
+- `variety_review_queue`, `rule_quality_metrics`, `rule_product_mapping`, `ingest_runs`, `scraper_*` → verify edge-function references.
+- `_audit_manual_review`, `dropped_tables_archive`, `archived_data`, `decision_rules_translations_archive` → archive; DEPRECATE with retention rule.
+- Cross-check every "KEEP" table for at least one edge-function reference (`rg` across `supabase/functions/`).
 
-## Non-goals / strict rules honored
+## Phase 4 — Updated Refactor Plan → `UPDATED_REFACTOR_PLAN.md`
 
-- No hardcoded crop, stage, symptom, pest, disease, synonym additions.
-- No `if crop === 'rice'` branches, no rice-only patches.
-- No changes to `decision_rules`, `crop_stage_master`, `observation_master`, `hypothesis_conditions` schemas or rows.
-- No new enums; existing enums downgraded to string-shape only.
-- No schema migrations.
+Rewrite prior Phase 4 (DB migration phase) using Phase 1 verdicts. Old plan proposed 9 new tables + 5 new columns. New plan will read (expected shape, pending audit):
 
-## Deliverables per phase
+- 0 new tables where reuse is possible; new tables listed individually with justification.
+- N `ALTER TABLE ... ADD COLUMN` statements against existing ontology.
+- Seed inserts into `etl_standards`, `chemical_regulatory_status`, `crop_baseline_guidelines_v2`, `system_config`, `emergency_observation_codes`.
+- Backward compatibility: additive only; no column renames; no PK changes; no FK removals.
+- Deprecation queue: TS constants scheduled for deletion, gated on DB coverage tests (Phase 7 regression).
 
-1. Files changed list
-2. Authorities removed (line references)
-3. Before/after `[GRAPH_NODE_TRACE]` snippet from live edge log
-4. `[GRAPH_VALIDATED]` / `[STAGE_WRITE_BLOCKED]` counts
-5. Phase 6: three regression traces with identical hashes
+Then rewrite Phases 5–7 unchanged (kill keyword pipelines, wire audit trail, regression tests), but tie every TS deletion to a specific DB row-count assertion.
 
-## Request
+## Phase 5 — Graph-Flow Verification
 
-Approve the phased plan, or tell me to collapse phases (higher risk, single deploy) or reorder. On approval I start with Phase 1 immediately.
+Trace Land → Crop → Variety → Phenology → Observation → Hypothesis → Decision Rule → Product/Safety → Response through the audited schema. Note any node without a canonical table. Append to `UPDATED_REFACTOR_PLAN.md` as an ASCII diagram with table names on each edge.
+
+## Phase 6 — SQL Migration Draft (gaps only, not executed)
+
+Emit a single SQL block per proven gap, grouped by table, all additive, ready for the future build turn. This cycle only *proposes* the SQL inside `UPDATED_REFACTOR_PLAN.md`; no `supabase--migration` call.
+
+## Deliverables at end of this cycle
+
+1. `DATABASE_ONTOLOGY_AUDIT.md`
+2. `HARDCODE_TO_DB_MAPPING.md`
+3. `MISSING_DB_CAPABILITY_REPORT.md`
+4. `DATABASE_CLEANUP_REPORT.md`
+5. `UPDATED_REFACTOR_PLAN.md` (supersedes prior Phase 4; carries Phases 5–7 forward with DB-anchored acceptance tests)
+6. Draft SQL blocks for gaps only, embedded in doc #5 — not executed.
+
+## Open confirmations before writing docs
+
+- OK to inspect all ~400 public tables via `supabase--read_query` (SELECTs + `information_schema` reads only)?
+- OK to write the 5 markdown reports at repo root alongside existing audit docs (`OBSERVATION_GRAPH_AUDIT.md`, `CROP_STAGE_SSOT_PHASE_AUDIT_2026-07-04.md`, etc.)?
+- Any tables off-limits from cleanup classification (e.g. billing/subscription/admin — will KEEP by default unless told otherwise)?
