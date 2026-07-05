@@ -584,7 +584,9 @@ import {
 import {
   AuthoredObservationSet,
   ObservationAuthority,
-  TERMINAL_CODES_BLOCKED_FROM_INJECTION
+  // PATCH 4 (BUG 4): TERMINAL_CODES_BLOCKED_FROM_INJECTION removed.
+  // The DB (intent_observation_mapping.is_active + observation_master.can_generate_question)
+  // is the sole authority for whether a code may enter the graph.
 } from '../utils/observation-authority.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
