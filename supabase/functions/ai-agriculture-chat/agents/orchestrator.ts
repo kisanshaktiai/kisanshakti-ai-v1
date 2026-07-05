@@ -4101,28 +4101,25 @@ export class AIAgentOrchestrator {
       const crossCropSymptomsList = crossCropSymptoms ? [...crossCropSymptoms] : [];
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // v5.0: Cross-crop symptoms injection with TERMINAL CODE GUARD
-      // Cross-crop symptoms are tagged SYNTHETIC and terminal codes are BLOCKED
-      // from injection to prevent false terminal gate triggers.
+      // v6.0: Cross-crop symptoms injection — DB is authority, no hardcoded block-list.
+      // The previous `TERMINAL_CODES_BLOCKED_FROM_INJECTION` hardcoded set was
+      // agronomy-in-code that actively prevented `GERMINATION_FAILURE` from ever
+      // reaching `hypothesis_conditions` for RICE_GERMINATION_FAILURE — the exact
+      // regression tracked in the Marathi `भात अजून उगवले नाही` audit. Any code
+      // the DB curator marked as a LITERAL peer for the active (intent, crop)
+      // via `intent_observation_mapping` MUST be admissible; blocking is a
+      // curator decision expressed via `intent_observation_mapping.is_active`,
+      // never a static TS set. Kept the trace line for observability.
       // ═══════════════════════════════════════════════════════════════════════════
       if (crossCropSymptomsList.length > 0) {
         const injected: string[] = [];
-        const blocked: string[] = [];
         crossCropSymptomsList.forEach(sym => {
-          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(sym)) {
-            blocked.push(sym);
-            console.log(`   🛡️ [TERMINAL GUARD] Blocked cross-crop terminal code: ${sym}`);
-          } else {
-            allObservationsForPreAuth.add(sym);
-            authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
-            injected.push(sym);
-          }
+          allObservationsForPreAuth.add(sym);
+          authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
+          injected.push(sym);
         });
         if (injected.length > 0) {
           console.log(`   🔗 [CrossCropFix] Injected ${injected.length} cross-crop symptoms (SYNTHETIC): ${injected.join(', ')}`);
-        }
-        if (blocked.length > 0) {
-          console.log(`   🛡️ [CrossCropFix] BLOCKED ${blocked.length} terminal codes from injection: ${blocked.join(', ')}`);
         }
       }
       
