@@ -6512,12 +6512,16 @@ export class AIAgentOrchestrator {
           
           // Static import used (moved to top of file for edge function compatibility)
           hypothesisResult = await runCausalHypothesisArbitration({
+            // Step 3 — GraphTruth is the sole authority; engine will override
+            // crop_group and observations from the frozen node and log drift.
+            graph_truth: (this as any)._graphTruth ?? null,
             crop_group: hypothesisCrop,
             canonical_state: canonicalState,
             observations: [...(allObservationsForPreAuth || [])],
             supabase_client: this.supabase,
             trace_id: traceId
           });
+
 
           if (hypothesisResult.needs_clarification && hypothesisResult.decision_path === 'CLARIFICATION_REQUIRED') {
             console.log(`   🔄 Hypothesis arbitration needs clarification: ${hypothesisResult.clarification_reason}`);
