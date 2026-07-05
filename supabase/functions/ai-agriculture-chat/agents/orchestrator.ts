@@ -8189,77 +8189,13 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 5: SAFETY VERIFICATION (With P0 PHI & Pollinator Enforcement)
+      // PHASE 5: SAFETY VERIFICATION
+      // [STEP 7 REMOVED] PHASE 5.1 (PHI) and PHASE 5.2 (Pollinator) local pre-checks —
+      // SafetyGuardian.verifySafety() below owns both gates end-to-end.
       // ========================================
-      console.log('\n🛡️ PHASE 5: Safety Verification with P0 Critical Modules...');
-      
-      // ═══════════════════════════════════════════════════════════════════════════
-      // P0: PHI ENFORCEMENT - Block chemicals if days to harvest < PHI
-      // ═══════════════════════════════════════════════════════════════════════════
-      let phiEnforcement: PHIEnforcementResult | null = null;
+      console.log('\n🛡️ PHASE 5: Safety Verification (SafetyGuardian single-gate)...');
       const chemicalRecommendations = this.extractChemicalRecommendations(decisionOutput);
-      
-      if (chemicalRecommendations.length > 0 && landContext?.expected_harvest_date) {
-        console.log('\n🧪 PHASE 5.1: P0 PHI Enforcement Check...');
-        try {
-          const daysToHarvest = this.calculateDaysToHarvest(landContext.expected_harvest_date);
-          
-          phiEnforcement = enforcePHI(
-            chemicalRecommendations,
-            daysToHarvest,
-            landContext.current_crop?.toUpperCase(),
-            'DOMESTIC',  // TODO: Get from farmer profile for export-oriented farms
-            false        // TODO: Get organic status from farmer profile
-          );
-          agentsUsed.push('PHI_GUARDIAN');
-          
-          console.log(`   Days to harvest: ${daysToHarvest}`);
-          console.log(`   Blocked chemicals: ${phiEnforcement.blocked_chemicals.length}`);
-          console.log(`   Allowed chemicals: ${phiEnforcement.allowed_chemicals.length}`);
-          
-          // CRITICAL: If any chemicals blocked, modify decision output
-          if (phiEnforcement.blocked_chemicals.length > 0) {
-            console.warn(`   ⚠️ PHI VIOLATION: ${phiEnforcement.blocked_chemicals.map(c => c.chemical_name).join(', ')}`);
-            decisionOutput = this.applyPHIBlocking(decisionOutput, phiEnforcement);
-          }
-        } catch (phiError) {
-          console.error('   ❌ PHI Enforcement failed (non-blocking):', phiError);
-        }
-      }
-      
-      // ═══════════════════════════════════════════════════════════════════════════
-      // P0: POLLINATOR PROTECTION - Block bee-toxic chemicals during flowering
-      // ═══════════════════════════════════════════════════════════════════════════
-      let pollinatorEnforcement: PollinatorEnforcementResult | null = null;
-      const currentHour = new Date().getHours();
-      const isFlowering = landContext?.current_crop && landContext?.days_since_sowing
-        ? isFloweringStage(landContext.current_crop.toUpperCase(), landContext.days_since_sowing)
-        : false;
-      
-      if (chemicalRecommendations.length > 0 && isFlowering) {
-        console.log('\n🐝 PHASE 5.2: P0 Pollinator Protection Enforcement...');
-        try {
-          pollinatorEnforcement = enforcePollinatorProtection(
-            chemicalRecommendations,
-            landContext.current_crop.toUpperCase(),
-            landContext.days_since_sowing,
-            currentHour
-          );
-          agentsUsed.push('POLLINATOR_PROTECTION');
-          
-          console.log(`   Crop in flowering: YES (DAS: ${landContext.days_since_sowing})`);
-          console.log(`   Blocked chemicals: ${pollinatorEnforcement.blocked_chemicals.length}`);
-          console.log(`   Time-restricted: ${pollinatorEnforcement.time_restricted_chemicals.length}`);
-          
-          // CRITICAL: If any chemicals blocked for pollinators, modify decision output
-          if (pollinatorEnforcement.blocked_chemicals.length > 0) {
-            console.warn(`   ⚠️ POLLINATOR SAFETY: ${pollinatorEnforcement.blocked_chemicals.map(c => c.chemical_name).join(', ')} BLOCKED`);
-            decisionOutput = this.applyPollinatorBlocking(decisionOutput, pollinatorEnforcement);
-          }
-        } catch (pollinatorError) {
-          console.error('   ❌ Pollinator Protection failed (non-blocking):', pollinatorError);
-        }
-      }
+
       
       // Continue with standard Safety Guardian verification
       const safetyVerification = await this.safetyGuardian.verifySafety(
