@@ -324,11 +324,7 @@ import {
   type RuleMatchInfo
 } from '../decision/explanation-chain-builder.ts';
 
-// P0: GDD Phenology Engine - Replaces fixed DAS with thermal unit calculations
-import { 
-  calculatePhenologicalStage, 
-  type PhenologyResult 
-} from './gdd-phenology-engine.ts';
+// [STEP 7 REMOVED] gdd-phenology-engine — superseded by runtime/phenology-reconciler + crop_stage_master
 
 // PHASE C: Morphology reconciler — reconciles observed NDVI / height / leaf
 // count against expected bands from variety_phenology_profile.
@@ -361,18 +357,9 @@ import {
   type NLPValidationResult 
 } from './nlp-agriculture-validator.ts';
 
-// P0: PHI Enforcement Guardian - Pre-Harvest Interval safety blocking
-import { 
-  enforcePHI, 
-  type PHIEnforcementResult 
-} from './phi-enforcement-guardian.ts';
+// [STEP 7 REMOVED] phi-enforcement-guardian — PHI now enforced by SafetyGuardian (Gate 3: FoodSafetyCheck)
 
-// P0: Pollinator Protection Rules - Flowering stage safety enforcement
-import { 
-  enforcePollinatorProtection, 
-  isFloweringStage,
-  type PollinatorEnforcementResult 
-} from './pollinator-protection-rules.ts';
+// [STEP 7 REMOVED] pollinator-protection-rules — pollinator safety now enforced by SafetyGuardian (Gate 4: EnvironmentalCheck POLLINATOR_RISK)
 
 // PHASE-14: Crop Stage Advisor for stage-aware fallback responses
 import {
@@ -380,12 +367,7 @@ import {
   type StageAdvice
 } from './crop-stage-advisor.ts';
 
-// P0: Photoperiod Calculator - Day length for bulbing/flowering crops
-import { 
-  calculateDayLength, 
-  checkPhotoperiodTrigger,
-  type PhotoperiodResult 
-} from './photoperiod-calculator.ts';
+// [STEP 7 REMOVED] photoperiod-calculator — photoperiod sensitivity moved to crop_stage_master DB flags
 
 // PHASE 1 — Immutable Biological State (single writer = resolve_crop_phenology)
 import {
