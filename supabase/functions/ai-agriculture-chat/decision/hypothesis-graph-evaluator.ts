@@ -199,7 +199,7 @@ export async function evaluateHypothesisGraph(
     //  2. STAGE condition present but current stage not in allowed set → eliminate
     //  3. DAS condition present but current DAS out of range → eliminate
     //  4. required conditions defined but zero required observed → eliminate
-    if (buckets.negative_matches.some((c) => buckets.exclusionCodes.has(c))) {
+    if (buckets.negative_matches.some((c) => buckets.exclusionCodes.has(normalizeObservationCode(c)?.matchKey ?? ''))) {
       candidate.eliminated = true;
       candidate.eliminated_reason = 'EXCLUSION_HIT';
     } else if (!stagePass.pass) {
@@ -402,7 +402,7 @@ interface Buckets {
   positive_weight_matched: number;
 }
 
-function bucketizeConditions(conds: ConditionRow[], observed: Set<string>): Buckets {
+function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): Buckets {
   const b: Buckets = {
     requiredCodes: new Set(),
     supportingCodes: new Set(),
@@ -418,27 +418,34 @@ function bucketizeConditions(conds: ConditionRow[], observed: Set<string>): Buck
 
   for (const c of conds) {
     if (c.condition_type !== 'OBSERVATION') continue;
-    const key = String(c.condition_key ?? '').toLowerCase();
-    if (!key) continue;
+    const conditionCodes = resolveConditionObservationCodes(c);
+    if (conditionCodes.length === 0) continue;
     const expectPresent = isValueTruthy(c.value_json);
     const w = Number(c.weight ?? 0) || (c.is_required ? 1 : 0.5);
 
-    if (expectPresent) {
-      if (c.is_required) b.requiredCodes.add(key);
-      else b.supportingCodes.add(key);
-      b.positive_weight_total += w;
-      if (observed.has(key)) {
-        b.positive_matches.push(key);
-        b.positive_weight_matched += w;
-      } else if (c.is_required) {
-        b.missing_required.push(key);
-      }
-    } else {
-      if (c.is_required) b.exclusionCodes.add(key);
-      else b.blockingCodes.add(key);
-      if (observed.has(key)) {
-        b.negative_matches.push(key);
-        if (!c.is_required) b.blocking_conditions.push(key);
+    for (const conditionCode of conditionCodes) {
+      const norm = normalizeObservationCode(conditionCode);
+      if (!norm) continue;
+      const key = norm.matchKey;
+      const displayCode = observed.canonicalByKey.get(key) ?? norm.canonicalCode;
+
+      if (expectPresent) {
+        if (c.is_required) b.requiredCodes.add(key);
+        else b.supportingCodes.add(key);
+        b.positive_weight_total += w;
+        if (observed.keys.has(key)) {
+          if (!b.positive_matches.includes(displayCode)) b.positive_matches.push(displayCode);
+          b.positive_weight_matched += w;
+        } else if (c.is_required) {
+          if (!b.missing_required.includes(norm.canonicalCode)) b.missing_required.push(norm.canonicalCode);
+        }
+      } else {
+        if (c.is_required) b.exclusionCodes.add(key);
+        else b.blockingCodes.add(key);
+        if (observed.keys.has(key)) {
+          if (!b.negative_matches.includes(displayCode)) b.negative_matches.push(displayCode);
+          if (!c.is_required && !b.blocking_conditions.includes(displayCode)) b.blocking_conditions.push(displayCode);
+        }
       }
     }
   }
@@ -494,14 +501,118 @@ function isValueTruthy(v: any): boolean {
   return true; // for structured values (WEATHER/SOIL) treat as positive
 }
 
-function normalizeObservationSet(codes: string[]): Set<string> {
-  const out = new Set<string>();
+export function normalizeObservationCode(code: unknown): NormalizedObservationCode | null {
+  if (code == null) return null;
+  const canonicalCode = String(code).trim();
+  if (!canonicalCode) return null;
+  return {
+    canonicalCode,
+    matchKey: canonicalCode.toLowerCase(),
+  };
+}
+
+function normalizeObservationSet(codes: string[]): ObservationSet {
+  const observations: string[] = [];
+  const keys = new Set<string>();
+  const canonicalByKey = new Map<string, string>();
   for (const c of codes ?? []) {
-    if (!c) continue;
-    const k = String(c).trim().toLowerCase();
-    if (k) out.add(k);
+    const norm = normalizeObservationCode(c);
+    if (!norm || keys.has(norm.matchKey)) continue;
+    keys.add(norm.matchKey);
+    canonicalByKey.set(norm.matchKey, norm.canonicalCode);
+    observations.push(norm.canonicalCode);
   }
-  return out;
+  return { observations, keys, canonicalByKey };
+}
+
+interface ObservationConditionMatch {
+  matched: boolean;
+  matched_observations: string[];
+  source: 'condition_key' | 'value_json' | 'condition_key_and_value_json';
+}
+
+function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet): ObservationConditionMatch {
+  const keyCodes = normalizeObservationCode(row.condition_key) ? [String(row.condition_key)] : [];
+  const valueCodes = extractObservationCodesFromValueJson(row.value_json);
+  const keyMatches = keyCodes
+    .map(normalizeObservationCode)
+    .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
+    .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
+  const valueMatches = valueCodes
+    .map(normalizeObservationCode)
+    .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
+    .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
+  const matched_observations = Array.from(new Set([...keyMatches, ...valueMatches]));
+  const source = keyMatches.length > 0 && valueMatches.length > 0
+    ? 'condition_key_and_value_json'
+    : valueMatches.length > 0
+      ? 'value_json'
+      : 'condition_key';
+  return { matched: matched_observations.length > 0, matched_observations, source };
+}
+
+function resolveConditionObservationCodes(row: ConditionRow): string[] {
+  const valueCodes = extractObservationCodesFromValueJson(row.value_json);
+  if (valueCodes.length > 0) return Array.from(new Set(valueCodes.map((x) => String(x).trim()).filter(Boolean)));
+  const key = normalizeObservationCode(row.condition_key);
+  return key ? [key.canonicalCode] : [];
+}
+
+function extractObservationCodesFromValueJson(value: any): string[] {
+  const out: string[] = [];
+  const push = (v: any) => {
+    const norm = normalizeObservationCode(v);
+    if (norm) out.push(norm.canonicalCode);
+  };
+  const walk = (v: any, keyHint?: string) => {
+    if (v == null || typeof v === 'boolean' || typeof v === 'number') return;
+    if (typeof v === 'string') {
+      if (keyHint && isObservationValueKey(keyHint)) push(v);
+      return;
+    }
+    if (Array.isArray(v)) {
+      if (keyHint && isObservationValueKey(keyHint)) {
+        for (const item of v) push(item);
+      } else {
+        for (const item of v) {
+          if (typeof item === 'string') push(item);
+          else walk(item, keyHint);
+        }
+      }
+      return;
+    }
+    if (typeof v === 'object') {
+      for (const [k, child] of Object.entries(v)) {
+        if (isObservationValueKey(k)) walk(child, k);
+      }
+    }
+  };
+  walk(value);
+  return Array.from(new Set(out));
+}
+
+function isObservationValueKey(key: string): boolean {
+  const k = key.trim().toLowerCase();
+  return k === 'code'
+    || k === 'codes'
+    || k === 'observation'
+    || k === 'observations'
+    || k === 'observation_code'
+    || k === 'observation_codes'
+    || k === 'reported_code'
+    || k === 'reported_codes'
+    || k === 'symptom'
+    || k === 'symptoms';
+}
+
+function emitGraphDataGap(trace: string, observations: string[], reason: string): void {
+  console.warn(
+    `[GRAPH_DATA_GAP] trace=${trace} reason=${reason} missing_observation_to_hypothesis_edge=[${cap(observations).join(',')}]`,
+  );
+}
+
+function cap(arr: string[]): string[] {
+  return arr.length <= 12 ? arr : [...arr.slice(0, 12), `+${arr.length - 12}`];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -516,7 +627,6 @@ function emitObsToHyp(
   excluded: string[],
   blocked: string[],
 ): void {
-  const cap = (arr: string[]) => (arr.length <= 12 ? arr : [...arr.slice(0, 12), `+${arr.length - 12}`]);
   console.log(
     `[OBS_TO_HYP] trace=${trace} crop=${input.crop_code ?? '?'} stage=${input.growth_stage ?? '?'} das=${input.das ?? '?'} ` +
       `obs=[${cap(observations).join(',')}] matched=[${cap(matched).join(',')}] blocked=[${cap(blocked).join(',')}] excluded=[${cap(excluded).join(',')}]`,
