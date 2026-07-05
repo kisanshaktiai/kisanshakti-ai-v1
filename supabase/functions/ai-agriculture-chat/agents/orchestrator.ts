@@ -19,6 +19,52 @@ import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
 import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
 
+type DecisionGraphStage =
+  | 'POST_EVIDENCE_FREEZE'
+  | 'OBS_TO_HYP'
+  | 'HYP_TO_RULE'
+  | 'RULE_RESULT'
+  | 'BRAIN_TRACE';
+
+const DECISION_GRAPH_STAGE_SEQUENCE: Record<DecisionGraphStage, number> = {
+  POST_EVIDENCE_FREEZE: 1,
+  OBS_TO_HYP: 2,
+  HYP_TO_RULE: 3,
+  RULE_RESULT: 4,
+  BRAIN_TRACE: 5,
+};
+
+const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
+  'EMERGENCE_FAILURE',
+  'GERMINATION_FAILURE',
+  'PEST',
+  'PEST_PRESENCE_VISIBLE',
+  'DISEASE',
+  'DISEASE_LIKE_PATTERN',
+  'NUTRIENT_STRESS',
+  'NUTRIENT_DEFICIENCY',
+  'CROP_DAMAGE',
+  'WILTING',
+  'YELLOWING',
+  'REPORT_SYMPTOM',
+]);
+
+export function requiresAgronomicReasoningIntent(intent: unknown): boolean {
+  return DIAGNOSTIC_INTENTS_AUTHORITY.has(String(intent || '').trim().toUpperCase());
+}
+
+function assertDecisionGraphOrder(owner: any, traceId: string, stage: DecisionGraphStage): void {
+  const expected = Number(owner.__decisionGraphSequence ?? 0) + 1;
+  const actual = DECISION_GRAPH_STAGE_SEQUENCE[stage];
+  if (actual !== expected) {
+    throw new Error(
+      `GRAPH_ORDER_ERROR: trace_id=${traceId} expected=${expected} actual=${actual} stage=${stage}`,
+    );
+  }
+  owner.__decisionGraphSequence = actual;
+  console.log(`[${stage}] trace=${traceId} sequence=${actual}`);
+}
+
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
 import { processVisualAgent } from './visual-agent.ts';
