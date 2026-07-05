@@ -17,9 +17,11 @@
  *
  * SCHEMA REALITY (public.hypothesis_conditions):
  *   condition_type  ∈ {WEATHER, OBSERVATION, SOIL, DAS_RANGE, BOOLEAN_GATE, STAGE}
- *   condition_key   = observation_code (when condition_type='OBSERVATION')
+ *   condition_key   = observation_code OR semantic slot (reported_codes, symptom, etc.)
  *   value_json      = true  → positive expectation (evidence should be present)
  *                     false → negative expectation (evidence should be absent)
+ *                     {code|observation_code|observations|observation_codes|...}
+ *                     or string[] → canonical observation identities
  *   is_required     = true  → mandatory
  *                     false → supporting/nice-to-have
  *   weight          = numeric [0..1]
@@ -77,6 +79,17 @@ export interface GraphHypothesisResult {
   timings_ms: number;
 }
 
+interface NormalizedObservationCode {
+  canonicalCode: string;
+  matchKey: string;
+}
+
+interface ObservationSet {
+  observations: string[];
+  keys: Set<string>;
+  canonicalByKey: Map<string, string>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +101,7 @@ export async function evaluateHypothesisGraph(
   const trace = String(input.trace_id ?? `hg_${started}`);
   const observed = normalizeObservationSet(input.observation_codes);
 
-  if (observed.size === 0) {
+  if (observed.keys.size === 0) {
     emitObsToHyp(trace, input, [], [], [], []);
     return {
       candidates: [],
@@ -100,13 +113,14 @@ export async function evaluateHypothesisGraph(
   }
 
   // Step 1 — anchor hypotheses that mention ANY observed code
-  const anchorHypIds = await queryAnchorHypotheses(input.supabase, [...observed]);
+  const anchorHypIds = await queryAnchorHypotheses(input.supabase, observed, trace);
   if (anchorHypIds.length === 0) {
-    emitObsToHyp(trace, input, [...observed], [], [], []);
+    emitObsToHyp(trace, input, observed.observations, [], [], []);
+    emitGraphDataGap(trace, observed.observations, 'NO_OBSERVATION_CONDITION_MATCH');
     return {
       candidates: [],
       eliminated: [],
-      input_observations: [...observed],
+      input_observations: observed.observations,
       trace_id: trace,
       timings_ms: Date.now() - started,
     };
@@ -139,7 +153,7 @@ export async function evaluateHypothesisGraph(
 
     const requiredTotal = buckets.requiredCodes.size;
     const requiredMatched = buckets.positive_matches.filter((c) =>
-      buckets.requiredCodes.has(c),
+      buckets.requiredCodes.has(normalizeObservationCode(c)?.matchKey ?? ''),
     ).length;
     const requiredPct = requiredTotal === 0 ? 1 : requiredMatched / requiredTotal;
 
@@ -213,7 +227,7 @@ export async function evaluateHypothesisGraph(
   emitObsToHyp(
     trace,
     input,
-    [...observed],
+    observed.observations,
     candidates.map((c) => c.hypothesis_id),
     eliminated.filter((c) => c.eliminated_reason?.startsWith('EXCLUSION') || c.eliminated_reason === 'NO_REQUIRED_MATCH').map((c) => c.hypothesis_id),
     eliminated.filter((c) => c.eliminated_reason?.startsWith('STAGE') || c.eliminated_reason?.startsWith('DAS')).map((c) => c.hypothesis_id),
@@ -222,7 +236,7 @@ export async function evaluateHypothesisGraph(
   return {
     candidates,
     eliminated,
-    input_observations: [...observed],
+    input_observations: observed.observations,
     trace_id: trace,
     timings_ms: Date.now() - started,
   };
@@ -232,20 +246,40 @@ export async function evaluateHypothesisGraph(
 // DB QUERIES
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function queryAnchorHypotheses(supabase: any, obs: string[]): Promise<string[]> {
+async function queryAnchorHypotheses(supabase: any, observed: ObservationSet, trace: string): Promise<string[]> {
   try {
-    const { data, error } = await supabase
-      .from('hypothesis_conditions')
-      .select('hypothesis_id')
-      .eq('condition_type', 'OBSERVATION')
-      .eq('is_quarantined', false)
-      .in('condition_key', obs);
-    if (error) {
-      console.warn(`[HYP_GRAPH_ANCHOR_ERR] ${error.message}`);
-      return [];
+    const rows: ConditionRow[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('hypothesis_conditions')
+        .select('hypothesis_id, condition_type, condition_key, operator, value_json, is_required, weight')
+        .eq('condition_type', 'OBSERVATION')
+        .eq('is_quarantined', false)
+        .range(from, from + pageSize - 1);
+      if (error) {
+        console.warn(`[HYP_GRAPH_ANCHOR_ERR] ${error.message}`);
+        return [];
+      }
+      const batch = (data ?? []) as ConditionRow[];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
     }
+
     const set = new Set<string>();
-    for (const r of (data ?? []) as any[]) if (r?.hypothesis_id) set.add(String(r.hypothesis_id));
+    const matchedRows: Array<{ hypothesis_id: string; matched: string[]; via: string }> = [];
+    for (const r of rows) {
+      const m = ObservationConditionMatcher(r, observed);
+      if (m.matched && r?.hypothesis_id) {
+        const hid = String(r.hypothesis_id);
+        set.add(hid);
+        matchedRows.push({ hypothesis_id: hid, matched: m.matched_observations, via: m.source });
+      }
+    }
+    console.log(
+      `[OBS_CONDITION_MATCHER] trace=${trace} scanned=${rows.length} matched_rows=${matchedRows.length} ` +
+        `hyp=[${cap(matchedRows.map((m) => m.hypothesis_id)).join(',')}]`,
+    );
     return [...set];
   } catch (e) {
     console.warn(`[HYP_GRAPH_ANCHOR_EX] ${(e as Error).message}`);
