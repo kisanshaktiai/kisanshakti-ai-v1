@@ -6219,6 +6219,16 @@ export class AIAgentOrchestrator {
         console.log(`      Induction symptoms: ${inductionSymptoms.join(', ') || 'none'}`);
         console.log(`      Combined unique: ${uniqueSymptomCodes.join(', ') || 'none'}`);
         
+        // Phase 5 — integrity check before projection.
+        assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_CANONICAL_STATE');
+
+        // Strip metadata (CROP_IDENTIFIED, *_UNKNOWN, PHOTO_NOT_PROVIDED, ACTION_*, CONTEXT_*)
+        // so downstream rule/hypothesis engines never see it as evidence.
+        const _rawObsForBuild = allObservationsForPreAuth && allObservationsForPreAuth.size > 0
+          ? Array.from(allObservationsForPreAuth)
+          : (uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms);
+        const _realObsForBuild = classifyEvidence(_rawObsForBuild).real_codes;
+
         canonicalState = buildCanonicalState({
           landContext,
           soilData: landContext?.soil_health,
@@ -6228,15 +6238,16 @@ export class AIAgentOrchestrator {
             captured_at: landContext.ndvi.captured_at
           } : undefined,
           weatherData: fusedIntelligence.weather_data,
-          // PHASE 2.5 FIX: Pass GDD result for authoritative stage
           gddResult: gddResultForCanonical,
-          // BUG-A FIX: Pass FULL observation set (20+ codes) to canonical state builder
-          // so PrescriptionGate sees symptom_count >= 5 and overrides LOW confidence block
-          farmerObservations: allObservationsForPreAuth && allObservationsForPreAuth.size > 0
-            ? Array.from(allObservationsForPreAuth) 
-            : (uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms),
+          farmerObservations: _realObsForBuild,
           nluOutput: nluOutput
         });
+
+        // Phase 5 — GraphTruth is the sole authority for crop / stage / observations.
+        // Overwrite those three fields with the frozen node so no upstream
+        // inference (induction, NLU, GDD, cropContextAuthority) can leak.
+        projectCanonicalStateFromGraphTruth(canonicalState, (this as any)._graphTruth);
+
         
         // STABILIZATION v4.0 ISSUE 2: Seal Crop Lock Leak via Induction Layer
         // v7.7 FIX: Also use cropContextAuthority (from message inference) as fallback
