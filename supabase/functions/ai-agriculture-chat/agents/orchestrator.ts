@@ -4935,12 +4935,12 @@ export class AIAgentOrchestrator {
               // a single grep on trace= reconstructs the full edge chain.
               const obsSample = (currentObservations ?? []).slice(0, 12).join(',');
               const hypSample = hypIds.slice(0, 12).join(',');
+              assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
               console.log(
                 `[OBS_TO_HYP] trace=${traceId} obs=[${obsSample}] hyp=[${hypSample}] ` +
                 `sequence=2 survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
                 `edge_missing=${graphHypothesisEdgeMissing.length}`,
               );
-              assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
 
               // PATCH 2 (BUG 2) — Graph handoff invariant. If the graph produced
               // hypotheses but ConversationState is empty, the handoff is broken.
@@ -4950,11 +4950,13 @@ export class AIAgentOrchestrator {
                 );
               }
             } catch (projErr) {
-              if ((projErr as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw projErr;
+              if ((projErr as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
+                  (projErr as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw projErr;
               console.warn(`[GRAPH_PROJECTION] non-fatal: ${(projErr as Error).message}`);
             }
           } catch (e) {
-            if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
+            if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
+                (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
             // continue when the hypothesis graph did not execute. Fail closed.
@@ -5338,6 +5340,10 @@ export class AIAgentOrchestrator {
             };
           }
         } catch (diagnosisFirstError) {
+          if ((diagnosisFirstError as Error).message?.startsWith('GRAPH_ORDER_ERROR') ||
+              (diagnosisFirstError as Error).message?.startsWith('GRAPH_PIPELINE_BYPASSED')) {
+            throw diagnosisFirstError;
+          }
           console.error(`   ❌ Diagnosis-first generation failed:`, diagnosisFirstError);
           // Fall through to standard clarification flow
         }
@@ -6927,14 +6933,14 @@ export class AIAgentOrchestrator {
         const hypToRuleReason = graphHypIdsForTrace.length === 0
           ? 'NO_HYPOTHESIS_EDGE'
           : (graphRuleIdSet.size === 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'OK');
+        if ((this as any)._evidenceFrozen) {
+          assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
+        }
         console.log(
           `[HYP_TO_RULE] trace=${traceId} hyp=[${graphHypIdsForTrace.slice(0,12).join(',')}] ` +
           `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
           `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] sequence=3 reason=${hypToRuleReason}`,
         );
-        if ((this as any)._evidenceFrozen) {
-          assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
-        }
 
         // T1 — GraphTruth integrity check before layered rule evaluator
         assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
@@ -6957,11 +6963,11 @@ export class AIAgentOrchestrator {
             : coverageGap
             ? (graphRuleIdSet.size === 0 && graphEdgeMissing.length > 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'RULE_COVERAGE_GAP')
             : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
-          console.log(`[RULE_RESULT] trace=${traceId} sequence=4 winner=${winnerId} reason=${reason}`);
           (this as any)._ruleResultExists = true;
           if ((this as any)._evidenceFrozen) {
             assertDecisionGraphOrder(this as any, traceId, 'RULE_RESULT');
           }
+          console.log(`[RULE_RESULT] trace=${traceId} sequence=4 winner=${winnerId} reason=${reason}`);
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
           (layeredRuleResult as any).edge_missing = graphEdgeMissing;
         } catch (ruleTraceErr) {
