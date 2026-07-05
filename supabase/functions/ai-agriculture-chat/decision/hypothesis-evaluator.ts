@@ -44,7 +44,24 @@ import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Step 3 — Hypothesis contract tightening.
+// The evaluator now recognises GraphTruth as the ONLY authoritative source of
+// (crop_code, growth_stage, DAS, canonical_observations, variety_id). Legacy
+// primitive fields remain on the interface to keep callers compiling but are
+// treated as inputs of last resort; when `graph_truth` is provided the
+// evaluator asserts its integrity and overwrites the mutable primitives.
+import type { GraphTruth } from '../runtime/graph-truth.ts';
+import { assertGraphTruthIntegrity } from '../runtime/graph-truth.ts';
+
 export interface HypothesisEvaluationInput {
+  /**
+   * Frozen GraphTruth for the turn. When present it OVERRIDES every mutable
+   * primitive below. Callers on the primary orchestrator path MUST pass this;
+   * the legacy path (clarification-strategy pre-Step-6) may still omit it and
+   * will emit `[HYPOTHESIS_CONTRACT] legacy_path` in logs.
+   */
+  graph_truth?: GraphTruth | null;
+
   crop_code: string;
   growth_stage: string;
   days_since_sowing: number | null;
@@ -63,6 +80,7 @@ export interface HypothesisEvaluationInput {
   // candidate scores get a bounded resistance multiplier from `variety_resistance`.
   variety_id?: string | null;
 }
+
 
 export type VarietyResistanceLevel = 'HR' | 'R' | 'MR' | 'MS' | 'S';
 
