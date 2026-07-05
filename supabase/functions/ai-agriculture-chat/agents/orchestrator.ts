@@ -4773,8 +4773,12 @@ export class AIAgentOrchestrator {
           console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
           console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
-          
+
+          // T1 — GraphTruth integrity check before hypothesis engine
+          assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
+
           const hypothesisResult = await evaluateCandidateHypotheses({
+
             crop_code: cropCode,
             growth_stage: growthStage,
             days_since_sowing: resolvedDAS,
