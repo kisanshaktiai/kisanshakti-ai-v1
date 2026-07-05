@@ -103,6 +103,7 @@ export async function evaluateHypothesisGraph(
 
   if (observed.keys.size === 0) {
     emitObsToHyp(trace, input, [], [], [], []);
+    emitEmptyHypToRule(trace, 'NO_OBSERVATION_EVIDENCE');
     return {
       candidates: [],
       eliminated: [],
@@ -117,6 +118,7 @@ export async function evaluateHypothesisGraph(
   if (anchorHypIds.length === 0) {
     emitObsToHyp(trace, input, observed.observations, [], [], []);
     emitGraphDataGap(trace, observed.observations, 'NO_OBSERVATION_CONDITION_MATCH');
+    emitEmptyHypToRule(trace, 'NO_HYPOTHESIS_EDGE');
     return {
       candidates: [],
       eliminated: [],
@@ -228,10 +230,14 @@ export async function evaluateHypothesisGraph(
     trace,
     input,
     observed.observations,
-    candidates.map((c) => c.hypothesis_id),
+    [...candidates, ...eliminated].map((c) => c.hypothesis_id),
     eliminated.filter((c) => c.eliminated_reason?.startsWith('EXCLUSION') || c.eliminated_reason === 'NO_REQUIRED_MATCH').map((c) => c.hypothesis_id),
     eliminated.filter((c) => c.eliminated_reason?.startsWith('STAGE') || c.eliminated_reason?.startsWith('DAS')).map((c) => c.hypothesis_id),
   );
+
+  if (candidates.length === 0) {
+    emitEmptyHypToRule(trace, anchorHypIds.length > 0 ? 'NO_SURVIVING_HYPOTHESIS' : 'NO_HYPOTHESIS_EDGE');
+  }
 
   return {
     candidates,
@@ -609,6 +615,11 @@ function emitGraphDataGap(trace: string, observations: string[], reason: string)
   console.warn(
     `[GRAPH_DATA_GAP] trace=${trace} reason=${reason} missing_observation_to_hypothesis_edge=[${cap(observations).join(',')}]`,
   );
+}
+
+function emitEmptyHypToRule(trace: string, reason: string): void {
+  console.log(`[HYP_TO_RULE] trace=${trace} hyp=[] candidate_rules=[] missing_edges=[] reason=${reason}`);
+  console.log(`[RULE_RESULT] trace=${trace} winner=none reason=${reason}`);
 }
 
 function cap(arr: string[]): string[] {
