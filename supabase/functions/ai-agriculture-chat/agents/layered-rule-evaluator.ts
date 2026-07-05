@@ -1914,9 +1914,9 @@ export async function evaluateRulesForHypotheses(
   const candidateRuleIds = new Set<string>();
 
   if (hypCodes.length === 0) {
-    console.log(`[HYP_TO_RULE] trace=${trace} hyp=[] candidate_rules=[] missing_edges=[]`);
+    console.log(`[HYP_TO_RULE] trace=${trace} hyp=[] candidate_rules=[] missing_edges=[] reason=NO_HYPOTHESIS_EDGE`);
     const empty = buildEmptyResult();
-    console.log(`[RULE_RESULT] trace=${trace} winner=none reason=no_hypothesis`);
+    console.log(`[RULE_RESULT] trace=${trace} winner=none reason=NO_HYPOTHESIS_EDGE`);
     return { ...empty, coverage_gap: null, edge_missing: [], candidate_rule_ids: [], mapping: [] };
   }
 
