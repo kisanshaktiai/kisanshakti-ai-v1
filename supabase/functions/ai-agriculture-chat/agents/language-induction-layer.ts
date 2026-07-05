@@ -389,26 +389,43 @@ function detectLanguage(text: string): string {
 // CORE INDUCTION FUNCTION
 // ============================================================================
 
-export function induceCanonicalSymbols(farmerInput: string): LanguageInductionResult {
+/**
+ * Induce canonical symbols from raw farmer text.
+ *
+ * Phase 4 · Land-Context Authority Override
+ * ─────────────────────────────────────────
+ * When `landAuthority.current_crop` is provided (i.e. we are inside a
+ * land-specific chat), the DB-authoritative crop wins. The hardcoded
+ * CROP_MAP is downgraded to a contradiction-check aid only — it can no
+ * longer inject UNKNOWN_CROP or a wording-derived crop that overrides
+ * the land's actual crop.
+ *
+ * Emits `[ONTOLOGY_SOURCE=land_context]` when the override fires so the
+ * canonical-state hash stays identical across wording variants
+ * ("भात … नाही", "पिक … नाही", "खराब उगवण").
+ */
+export function induceCanonicalSymbols(
+  farmerInput: string,
+  landAuthority?: { current_crop?: string | null } | null,
+): LanguageInductionResult {
   const startTime = Date.now();
   const normalizedText = farmerInput.toLowerCase().trim();
   const detectedLanguage = detectLanguage(normalizedText);
-  
+
   const symptoms: InducedSymbol[] = [];
   const affectedParts: InducedSymbol[] = [];
   let crop: InducedSymbol | null = null;
   let severity: InducedSymbol | null = null;
   let distribution: InducedSymbol | null = null;
   const mappedPatterns: Set<string> = new Set();
-  
+
   // Select appropriate symptom map based on language
   const symptomMaps = [MARATHI_SYMPTOM_MAP, HINDI_SYMPTOM_MAP, ENGLISH_SYMPTOM_MAP];
-  
+
   // Extract symptoms from all language maps (handles code-switching)
   for (const symptomMap of symptomMaps) {
     for (const [pattern, mapping] of Object.entries(symptomMap)) {
       if (normalizedText.includes(pattern.toLowerCase())) {
-        // Avoid duplicate symbols
         if (!symptoms.some(s => s.symbol === mapping.symbol)) {
           symptoms.push({
             symbol: mapping.symbol,
@@ -422,21 +439,38 @@ export function induceCanonicalSymbols(farmerInput: string): LanguageInductionRe
       }
     }
   }
-  
-  // Extract crop
-  for (const [pattern, cropSymbol] of Object.entries(CROP_MAP)) {
-    if (normalizedText.includes(pattern.toLowerCase())) {
-      crop = {
-        symbol: cropSymbol,
-        category: 'CROP',
-        confidence: 0.95,
-        source_text: pattern,
-        source_language: detectLanguage(pattern),
-      };
-      mappedPatterns.add(pattern.toLowerCase());
-      break;
+
+  // Extract crop — DB land-context authority wins over hardcoded CROP_MAP
+  const authoritativeCrop = (landAuthority?.current_crop ?? '').trim();
+  if (authoritativeCrop) {
+    crop = {
+      symbol: authoritativeCrop.toUpperCase(),
+      category: 'CROP',
+      confidence: 1.0,
+      source_text: authoritativeCrop,
+      source_language: 'db',
+    };
+    console.log(`[ONTOLOGY_SOURCE=land_context] crop=${crop.symbol} — CROP_MAP bypassed`);
+  } else {
+    // Fallback ONLY when there is no land-specific context (crop-agnostic
+    // entry point). CROP_MAP is retained here for backward compatibility
+    // and MUST NOT override an authoritative land crop.
+    for (const [pattern, cropSymbol] of Object.entries(CROP_MAP)) {
+      if (normalizedText.includes(pattern.toLowerCase())) {
+        crop = {
+          symbol: cropSymbol,
+          category: 'CROP',
+          confidence: 0.95,
+          source_text: pattern,
+          source_language: detectLanguage(pattern),
+        };
+        mappedPatterns.add(pattern.toLowerCase());
+        break;
+      }
     }
   }
+
+
   
   // Extract affected parts
   for (const [pattern, partSymbol] of Object.entries(AFFECTED_PART_MAP)) {
