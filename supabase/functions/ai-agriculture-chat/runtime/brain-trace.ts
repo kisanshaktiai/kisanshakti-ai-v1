@@ -52,6 +52,7 @@ export function emitBrainTrace(s: ConversationState, p: BrainTracePhases = {}): 
     `candidates=${p.rule_candidates ?? 0} eligible=${p.rule_eligible ?? 0} ` +
     `winner=${p.rule_winner ?? 'none'} sci=${p.scientific_ok ?? 'n/a'} ` +
     `builder=${p.builder ?? 'n/a'} translation=${p.translation ?? 'n/a'} ` +
+    `observation_required=${p.observation_required ?? false} observation_option_count=${p.observation_option_count ?? 0} ` +
     `total_ms=${p.total_ms ?? 0}`;
   console.log(line);
 }
