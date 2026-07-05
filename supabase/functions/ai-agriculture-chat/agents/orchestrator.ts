@@ -4269,7 +4269,7 @@ export class AIAgentOrchestrator {
           // Publish frozen intent so downstream traces reflect the lock.
           try {
             emitNodeTrace(traceId, 'INTENT', {
-              stage: 'POST_EVIDENCE_FREEZE',
+              stage: 'INTENT_AFTER_EVIDENCE_LOCK',
               intent: intentCode,
               confidence: intentConf,
               real_observations: postRecoveryEvidence.real_symptom_count,
