@@ -6579,7 +6579,11 @@ export class AIAgentOrchestrator {
           { input: rulesToEvaluate.length, kept: rulesAfterIntent.length });
         console.log(`   🎯 [INTENT_FILTER] intent=${activeIntentForRules} ${rulesToEvaluate.length} → ${rulesAfterIntent.length}`);
 
+        // T1 — GraphTruth integrity check before layered rule evaluator
+        assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
+
         layeredRuleResult = evaluateRulesLayered(rulesAfterIntent as any, canonicalStateWithQuery as any, {
+
           prescriptionGateOverride: isPrescriptionGateOverride,
           traceId: traceId
         });
