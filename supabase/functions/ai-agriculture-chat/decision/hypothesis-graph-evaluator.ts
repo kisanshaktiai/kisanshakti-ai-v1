@@ -53,9 +53,12 @@ export interface GraphHypothesisInput {
 export type HypothesisEliminationReason =
   | 'CONTRADICTORY_OBSERVATION' // exclusion condition observed
   | 'IMPOSSIBLE_CROP'           // hypothesis crop_group ≠ known crop_group
-  | 'IMPOSSIBLE_STAGE'          // known stage NOT in DB-allowed set
-  | 'IMPOSSIBLE_DAS'            // known DAS outside DB-allowed range
   | 'NO_REQUIRED_MATCH';        // required conditions defined, zero observed
+// NOTE: Stage/DAS mismatch is NEVER an elimination reason. Farmer-visible
+// symptoms (LEVEL 1 evidence) outrank derived crop calendar (LEVEL 4).
+// Stage/DAS conflicts become STAGE_CONTEXT_CONFLICT / DAS_CONTEXT_CONFLICT
+// warnings that reduce confidence and request clarification, but never
+// block a database-supported diagnosis.
 
 export interface ContextGap {
   missing: 'CROP_UNKNOWN' | 'STAGE_UNKNOWN' | 'DAS_UNKNOWN';
