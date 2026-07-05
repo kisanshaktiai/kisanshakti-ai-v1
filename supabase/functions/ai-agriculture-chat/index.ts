@@ -28,6 +28,7 @@ import { AIAgentOrchestrator, requiresAgronomicReasoningIntent } from './agents/
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 import { blockStageWriteIfLocked, isBiologicalStateLocked } from './agents/biological-state.ts';
 import { getRuntimeTraceCollector, resetRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
+import { ensureObservationSelectorContract } from './runtime/observation-selector-contract.ts';
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
