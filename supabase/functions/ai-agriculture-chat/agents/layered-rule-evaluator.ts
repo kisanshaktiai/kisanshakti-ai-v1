@@ -1875,10 +1875,179 @@ export function getTotalRuleCount(): { core: number; bundled: number; total: num
 
 function validateWheatBiocontrol(_bioagent: string): boolean { return true; }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 8 — HYPOTHESIS-SCOPED RULE EVALUATION (graph-first entry point)
+// ═══════════════════════════════════════════════════════════════════════════
+// The ONLY graph edge from hypothesis → rule is `public.hypothesis_rule_mapping`.
+// There is NO fallback to `decision_rules.hypothesis_code` — that column is a
+// competing SSOT and would silently mask curation gaps. When a hypothesis has
+// no rule_id in the mapping we surface HYPOTHESIS_RULE_EDGE_MISSING so the
+// narrator can tell the farmer "insufficient knowledge" and the log can flag
+// the curation task. When zero mapped rules match the canonical state we
+// surface RULE_COVERAGE_GAP. Advice is never invented.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface EvaluateRulesForHypothesesInput {
+  hypothesis_codes: string[];
+  canonical_state: CanonicalState;
+  supabase: any;
+  trace_id?: string;
+  daysSinceSowing?: number;
+  prescriptionGateOverride?: boolean;
+}
+
+export interface HypothesisScopedRuleResult extends LayeredRuleResult {
+  coverage_gap: null | 'RULE_COVERAGE_GAP';
+  edge_missing: string[];                 // hypothesis_ids with no rule mapping
+  candidate_rule_ids: string[];           // union across mapped hypotheses
+  mapping: Array<{ hypothesis_id: string; rule_ids: string[] }>;
+}
+
+export async function evaluateRulesForHypotheses(
+  input: EvaluateRulesForHypothesesInput,
+): Promise<HypothesisScopedRuleResult> {
+  const trace = input.trace_id ?? `hrs_${Date.now()}`;
+  const hypCodes = Array.from(new Set((input.hypothesis_codes ?? []).filter(Boolean)));
+
+  const mapping: Array<{ hypothesis_id: string; rule_ids: string[] }> = [];
+  const edgeMissing: string[] = [];
+  const candidateRuleIds = new Set<string>();
+
+  if (hypCodes.length === 0) {
+    console.log(`[HYP_TO_RULE] trace=${trace} hyp=[] candidate_rules=[] missing_edges=[]`);
+    const empty = buildEmptyResult();
+    console.log(`[RULE_RESULT] trace=${trace} winner=none reason=no_hypothesis`);
+    return { ...empty, coverage_gap: null, edge_missing: [], candidate_rule_ids: [], mapping: [] };
+  }
+
+  // Step 1 — hypothesis_rule_mapping is the ONLY hypothesis→rule edge
+  try {
+    const { data, error } = await input.supabase
+      .from('hypothesis_rule_mapping')
+      .select('hypothesis_id, rule_id, priority')
+      .in('hypothesis_id', hypCodes)
+      .order('priority', { ascending: false });
+    if (error) {
+      console.warn(`[HYP_TO_RULE_ERR] ${error.message}`);
+    }
+    const perHyp = new Map<string, string[]>();
+    for (const r of (data ?? []) as any[]) {
+      const hid = String(r.hypothesis_id);
+      const rid = r.rule_id ? String(r.rule_id) : null;
+      if (!rid) continue;
+      const arr = perHyp.get(hid) ?? [];
+      arr.push(rid);
+      perHyp.set(hid, arr);
+    }
+    for (const hid of hypCodes) {
+      const rids = perHyp.get(hid) ?? [];
+      mapping.push({ hypothesis_id: hid, rule_ids: rids });
+      if (rids.length === 0) edgeMissing.push(hid);
+      for (const r of rids) candidateRuleIds.add(r);
+    }
+  } catch (e) {
+    console.warn(`[HYP_TO_RULE_EX] ${(e as Error).message}`);
+  }
+
+  console.log(
+    `[HYP_TO_RULE] trace=${trace} hyp=[${cap12(hypCodes).join(',')}] ` +
+      `candidate_rules=[${cap12([...candidateRuleIds]).join(',')}] ` +
+      `missing_edges=[${cap12(edgeMissing).join(',')}]`,
+  );
+
+  // Step 2 — no candidate rules at all → EDGE_MISSING (not COVERAGE_GAP)
+  if (candidateRuleIds.size === 0) {
+    const empty = buildEmptyResult();
+    console.log(`[RULE_RESULT] trace=${trace} winner=none reason=edge_missing`);
+    return {
+      ...empty,
+      coverage_gap: null,
+      edge_missing: edgeMissing,
+      candidate_rule_ids: [],
+      mapping,
+    };
+  }
+
+  // Step 3 — scope the loaded rule set to the candidate ids
+  const cropCode = String((input.canonical_state as any)?.crop_type ?? (input.canonical_state as any)?.crop_code ?? '').toLowerCase();
+  const universe = cropCode ? loadRulesForCrop(cropCode) : (await loadAllRules());
+  const scoped = universe.filter((r: any) => candidateRuleIds.has(String(r.rule_id ?? r.id)));
+
+  if (scoped.length === 0) {
+    const empty = buildEmptyResult();
+    console.log(`[RULE_RESULT] trace=${trace} winner=none reason=coverage_gap`);
+    return {
+      ...empty,
+      coverage_gap: 'RULE_COVERAGE_GAP',
+      edge_missing: edgeMissing,
+      candidate_rule_ids: [...candidateRuleIds],
+      mapping,
+    };
+  }
+
+  // Step 4 — reuse the existing gated evaluator (crop/stage/DAS/weather/soil/NDVI/safety)
+  const layered = evaluateRulesLayered(scoped as any, input.canonical_state, {
+    daysSinceSowing: input.daysSinceSowing,
+    prescriptionGateOverride: input.prescriptionGateOverride,
+    traceId: trace,
+  });
+
+  // Step 5 — surface coverage gap (never invent a winner)
+  const coverage_gap: null | 'RULE_COVERAGE_GAP' =
+    (layered.rules_matched ?? 0) === 0 ? 'RULE_COVERAGE_GAP' : null;
+
+  const winner = layered.primary_decision?.rule_id
+    ?? layered.matched_responses?.[0]?.rule_id
+    ?? 'none';
+  const reason = coverage_gap
+    ? 'coverage_gap'
+    : layered.primary_decision
+      ? 'match'
+      : layered.safety_blocks?.length
+        ? 'safety_block'
+        : 'match';
+  console.log(`[RULE_RESULT] trace=${trace} winner=${winner} reason=${reason}`);
+
+  return {
+    ...layered,
+    coverage_gap,
+    edge_missing: edgeMissing,
+    candidate_rule_ids: [...candidateRuleIds],
+    mapping,
+  };
+}
+
+function cap12(arr: string[]): string[] {
+  return arr.length <= 12 ? arr : [...arr.slice(0, 12), `+${arr.length - 12}`];
+}
+
+function buildEmptyResult(): LayeredRuleResult {
+  return {
+    rules_evaluated: 0,
+    rules_matched: 0,
+    rules_applied: [],
+    rules_blocked_by_graph: [],
+    rules_blocked_by_etl: [],
+    observations: [],
+    diagnoses: [],
+    final_diagnosis: null,
+    exclusions: [],
+    prescription_allowed: true,
+    safety_blocks: [],
+    prescriptions: [],
+    warnings: [],
+    safety_warnings: [],
+    confidence_in_result: 0,
+    matched_responses: [],
+    primary_decision: null,
+  };
+}
+
 // ==================== EXPORTS ====================
 
 export const LayeredRuleEvaluator = {
   evaluate: evaluateRulesLayered,
+  evaluateForHypotheses: evaluateRulesForHypotheses,
   matchesConditions,
   CORE_RULES,
   ALL_RULES,
@@ -1890,3 +2059,4 @@ export const LayeredRuleEvaluator = {
 };
 
 console.log('📦 [LayeredRuleEvaluator] Using stub - rules loaded from database at runtime');
+
