@@ -87,6 +87,7 @@ export interface GraphHypothesisCandidate {
   confidence: number;            // aggregated 0..1
 
   context_gaps: ContextGap[];    // unknown/absent context (never blocks)
+  warnings: string[];            // soft conflicts (e.g. STAGE_CONTEXT_CONFLICT)
   clarification_required: boolean;
 
   candidate_rule_ids: string[];  // ONLY from hypothesis_rule_mapping
