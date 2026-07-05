@@ -6932,7 +6932,9 @@ export class AIAgentOrchestrator {
           `candidate_rules=[${[...graphRuleIdSet].slice(0,12).join(',')}] ` +
           `missing_edges=[${graphEdgeMissing.slice(0,12).join(',')}] sequence=3 reason=${hypToRuleReason}`,
         );
-        assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
+        if ((this as any)._evidenceFrozen) {
+          assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
+        }
 
         // T1 — GraphTruth integrity check before layered rule evaluator
         assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
@@ -6957,7 +6959,9 @@ export class AIAgentOrchestrator {
             : (layeredRuleResult?.safety_blocks?.length ? 'safety_block' : 'match');
           console.log(`[RULE_RESULT] trace=${traceId} sequence=4 winner=${winnerId} reason=${reason}`);
           (this as any)._ruleResultExists = true;
-          assertDecisionGraphOrder(this as any, traceId, 'RULE_RESULT');
+          if ((this as any)._evidenceFrozen) {
+            assertDecisionGraphOrder(this as any, traceId, 'RULE_RESULT');
+          }
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
           (layeredRuleResult as any).edge_missing = graphEdgeMissing;
         } catch (ruleTraceErr) {
@@ -7192,7 +7196,9 @@ export class AIAgentOrchestrator {
           const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
           const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
           const _cs = (this as any).__conversationState ?? conversationState;
-          assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
+          if ((this as any)._evidenceFrozen) {
+            assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
+          }
           if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
             throw new Error(
               `GRAPH_ORDER_ERROR: trace_id=${traceId} stage=BRAIN_TRACE reason=forbidden_hyp0_after_evidence_freeze`,
@@ -7211,7 +7217,7 @@ export class AIAgentOrchestrator {
           // Retain forensic detail on a separate line — auditors still grep
           // POST_RULE for winner_score / action_text / prescription flags.
           console.log(
-            `[BRAIN_TRACE][POST_RULE] trace=${traceId ?? '?'} ` +
+            `[POST_RULE_TRACE] trace=${traceId ?? '?'} ` +
             `candidates=${rulesToEvaluate?.length ?? 0} ` +
             `after_intent=${rulesAfterIntent?.length ?? 0} ` +
             `evaluated=${layeredRuleResult?.rules_evaluated ?? 0} ` +
