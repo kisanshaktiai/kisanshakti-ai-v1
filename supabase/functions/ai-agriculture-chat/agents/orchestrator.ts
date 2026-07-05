@@ -196,7 +196,7 @@ import {
 } from './language-induction-layer.ts';
 
 // GraphTruth — immutable per-turn agronomic node (T1 in refactor plan)
-import { buildGraphTruth } from '../runtime/graph-truth.ts';
+import { buildGraphTruth, assertGraphTruthIntegrity } from '../runtime/graph-truth.ts';
 
 // CRITICAL FIX: Import normalization functions from type-mappers for consistent code matching
 import { 
@@ -4773,8 +4773,12 @@ export class AIAgentOrchestrator {
           console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
           console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
-          
+
+          // T1 — GraphTruth integrity check before hypothesis engine
+          assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
+
           const hypothesisResult = await evaluateCandidateHypotheses({
+
             crop_code: cropCode,
             growth_stage: growthStage,
             days_since_sowing: resolvedDAS,
@@ -4804,7 +4808,10 @@ export class AIAgentOrchestrator {
           // is what physically removes "Tungro on an ungerminated crop".
           // ═══════════════════════════════════════════════════════════════════
           try {
+            // T1 — GraphTruth integrity check before IOM gate
+            assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_IOM_GATE');
             const { loadIOMAllowed, filterHypothesesByIOM } = await import('../decision/iom-gate.ts');
+
             const iomIntent = intentCode || (intentMetaFromDB as any)?.intent_code || 'GENERAL_CROP_INFO';
             const iom = await loadIOMAllowed(this.supabase, iomIntent, cropCode, growthStage, resolvedDAS);
             const { kept, dropped } = filterHypothesesByIOM(hypothesisResult.candidates as any[], iom.allowedSet, iom.traceMeta);
@@ -5909,7 +5916,9 @@ export class AIAgentOrchestrator {
           } : undefined
         };
         
+        assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_RESPONSE_BUILDER');
         const llmResponse = await generateLLMResponse(llmInput);
+
         
         // Build data audit for LLM-direct path too
         const weatherData = await this.fetchWeatherData(sessionId, options.landId);
@@ -6219,8 +6228,14 @@ export class AIAgentOrchestrator {
           console.log(`   🌾 [v7.7] Enriching canonical state crop from cropContextAuthority: ${cropContextAuthority.crop_name}`);
           canonicalState.crop_type = cropContextAuthority.crop_name as any;
           if (!canonicalState.growth_stage || canonicalState.growth_stage === 'UNKNOWN') {
-            canonicalState.growth_stage = cropContextAuthority.growth_stage as any;
+            // Phase 2 — BiologicalState is the sole stage authority. If it is
+            // locked, do not let a fallback authority (context reconciler,
+            // cropContextAuthority) overwrite stage post-lock.
+            if (!blockStageWriteIfLocked(landContext, 'canonical-state.crop-authority-fallback', cropContextAuthority.growth_stage)) {
+              canonicalState.growth_stage = cropContextAuthority.growth_stage as any;
+            }
           }
+
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -6572,7 +6587,11 @@ export class AIAgentOrchestrator {
           { input: rulesToEvaluate.length, kept: rulesAfterIntent.length });
         console.log(`   🎯 [INTENT_FILTER] intent=${activeIntentForRules} ${rulesToEvaluate.length} → ${rulesAfterIntent.length}`);
 
+        // T1 — GraphTruth integrity check before layered rule evaluator
+        assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
+
         layeredRuleResult = evaluateRulesLayered(rulesAfterIntent as any, canonicalStateWithQuery as any, {
+
           prescriptionGateOverride: isPrescriptionGateOverride,
           traceId: traceId
         });

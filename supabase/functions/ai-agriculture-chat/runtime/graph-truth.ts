@@ -170,3 +170,47 @@ export function validateGraphTruth(
   check('hash', before.hash, after.hash);
   return violations;
 }
+
+/**
+ * Integrity check for a single GraphTruth instance.
+ * Recomputes hash from current fields and compares to the stored `.hash`.
+ * Called before every downstream stage (hypothesis, IOM gate, rule engine,
+ * response builder) to prove no upstream code mutated an authoritative
+ * field after lock.
+ *
+ * Emits [GRAPH_VALIDATED] on success, [GRAPH_CONTRACT_VIOLATION] on drift.
+ * Never throws — the caller decides how to react.
+ */
+export function assertGraphTruthIntegrity(
+  gt: GraphTruth | null | undefined,
+  callsite: string,
+): boolean {
+  if (!gt) {
+    console.warn(`[GRAPH_VALIDATED] site=${callsite} hash_match=skip reason=no_graph_truth`);
+    return false;
+  }
+  const recomputed = computeGraphHash({
+    crop_code: gt.crop_code,
+    stage_uuid: gt.stage_uuid,
+    biological_stage: gt.biological_stage,
+    DAS: gt.DAS,
+    canonical_observations: gt.canonical_observations,
+  });
+  const ok = recomputed === gt.hash;
+  if (ok) {
+    console.log(
+      `[GRAPH_VALIDATED] site=${callsite} hash_match=true hash=${gt.hash} ` +
+        `crop=${gt.crop_code ?? 'null'} stage=${gt.biological_stage ?? 'null'} ` +
+        `das=${gt.DAS ?? 'null'} obs=${gt.canonical_observations.length}`,
+    );
+  } else {
+    console.warn(
+      `[GRAPH_CONTRACT_VIOLATION] site=${callsite} hash_match=false ` +
+        `stored=${gt.hash} recomputed=${recomputed} ` +
+        `crop=${gt.crop_code} stage=${gt.biological_stage} das=${gt.DAS} ` +
+        `obs=[${gt.canonical_observations.join(',')}]`,
+    );
+  }
+  return ok;
+}
+
