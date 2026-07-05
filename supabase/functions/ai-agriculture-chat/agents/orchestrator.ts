@@ -4671,10 +4671,24 @@ export class AIAgentOrchestrator {
       const mandatoryGraphRealObsCount = Array
         .from(allObservationsForPreAuth)
         .filter((c) => isRealObservation(String(c))).length;
+      // PATCH 1 (Mandatory Graph Gate — broadened):
+      // Any signal that could produce agronomic reasoning MUST enter the graph:
+      //   • diagnostic intent (EMERGENCE_FAILURE, PEST, DISEASE, …)
+      //   • diagnosis mode / crop-damage activation
+      //   • ANY real observation in the pre-auth set
+      //   • ANY confirmed/inferred symbolic observation
+      //   • Land context with a live crop (advisory-style diagnostic queries
+      //     like "भात अजून उगवले नाही" where NLU may not extract observations
+      //     but the graph still owns the answer)
+      const _confirmedObsSignal = (confirmedObsCodes?.length ?? 0) > 0 ||
+        (syntheticObsCodes?.length ?? 0) > 0;
+      const _landCropSignal = !!(landContext && (landContext as any).current_crop);
       const mustExecuteDecisionGraph = isDiagnosticIntent ||
         shouldActivateDiagnosisMode ||
         cropDamageResult.requires_diagnosis ||
-        mandatoryGraphRealObsCount > 0;
+        mandatoryGraphRealObsCount > 0 ||
+        _confirmedObsSignal ||
+        (_landCropSignal && !__advisoryIntentForState);
       if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
         console.log(
           `🧭 [INTENT_AUTHORITY] Diagnostic intent=${intentCode} confidence=${(intentConf ?? 0).toFixed(2)} ` +
@@ -7202,6 +7216,28 @@ export class AIAgentOrchestrator {
           const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
           const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
           const _cs = (this as any).__conversationState ?? conversationState;
+          const _graphRan = (this as any)._graphExecuted === true;
+          const _realObsCount = Array.isArray((this as any)._lastRealObservations)
+            ? (this as any)._lastRealObservations.length : 0;
+          const _agronomicSignal =
+            requiresAgronomicReasoningIntent(intentCode) ||
+            _realObsCount > 0 ||
+            (_cs?.confirmed?.length ?? 0) > 0 ||
+            (_cs?.inferred?.length ?? 0) > 0;
+
+          // PATCH 3 — Global fail-closed graph gate. If the turn carries any
+          // agronomic signal (diagnostic intent, real observations, confirmed
+          // or inferred symbols) and the hypothesis graph did NOT execute,
+          // the pipeline was bypassed. Fail loud so the leak surfaces in
+          // logs instead of masking as `[BRAIN_TRACE] hyp=0`.
+          if (!_graphRan && _agronomicSignal) {
+            throw new Error(
+              `GRAPH_PIPELINE_BYPASSED: trace_id=${traceId} intent=${intentCode} ` +
+              `real_obs=${_realObsCount} confirmed=${_cs?.confirmed?.length ?? 0} ` +
+              `inferred=${_cs?.inferred?.length ?? 0} reason=graph_not_executed_before_brain_trace`,
+            );
+          }
+
           if ((this as any)._evidenceFrozen) {
             assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
           }
@@ -7247,7 +7283,8 @@ export class AIAgentOrchestrator {
           }
         } catch (e) {
           if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
-              (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
+              (e as Error).message?.startsWith('GRAPH_ORDER_ERROR') ||
+              (e as Error).message?.startsWith('GRAPH_PIPELINE_BYPASSED')) throw e;
           /* trace must never throw */
         }
         
