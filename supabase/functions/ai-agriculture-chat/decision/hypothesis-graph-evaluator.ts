@@ -589,7 +589,7 @@ function extractObservationCodesFromValueJson(value: any): string[] {
     }
     if (typeof v === 'object') {
       for (const [k, child] of Object.entries(v)) {
-        if (isObservationValueKey(k)) walk(child, k);
+        walk(child, isObservationValueKey(k) ? k : undefined);
       }
     }
   };
