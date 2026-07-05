@@ -6897,62 +6897,35 @@ export class AIAgentOrchestrator {
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // PHASE-14: IMPROVED KEYWORD FALLBACK - Runs when no enum rules match
-        // FIX: Also runs when visual_symptom is NONE but query has strong agri keywords
-        // This prevents infinite clarification loops for germination/stand failure queries
+        // Step 4 — KEYWORD FALLBACK REMOVED (was PHASE-14, lines 6899-6955).
+        //
+        // Prior behaviour (deleted):
+        //   - When `layeredRuleResult.rules_matched === 0`, ran
+        //     `evaluateBundledKeywordRules(farmerMessage, canonicalState)`, a
+        //     regex-over-raw-user-text parallel NLU brain.
+        //   - On any match, OVERWROTE `layeredRuleResult.rules_matched`,
+        //     `.rules_applied`, `.diagnoses`, and `.final_diagnosis` with
+        //     keyword-derived hits — bypassing GraphTruth, the observation
+        //     ontology, IOM, hypothesis arbitration, and safety gates.
+        //
+        // This violated: (a) GraphTruth as sole authority, (b) DB-driven
+        // ontology (evaluator reads `observation_master` / `decision_rules`),
+        // (c) neuro-symbolic contract (LLM is narrator only). Zero matches is
+        // a legitimate graph signal: the correct downstream response is
+        // GRAPH_NEEDS_MORE_EVIDENCE (Step 1 sentinel), not a keyword guess.
         // ═══════════════════════════════════════════════════════════════════════════
-        const { hasStrongAgriObservations } = await import('./layered-rule-evaluator.ts');
-        // LANGUAGE-AGNOSTIC: Check canonical observations, NOT raw user text
-        const extractedObservations = canonicalState.visual_symptoms || [];
-        const shouldTryKeywordFallback = layeredRuleResult.rules_matched === 0 && 
-          (canonicalState.visual_symptom !== 'NONE' || hasStrongAgriObservations(extractedObservations));
-        
-        if (shouldTryKeywordFallback) {
-          console.log('   🔄 No enum rules matched, trying keyword-based bundled rules...');
-          console.log(`      (visual_symptom=${canonicalState.visual_symptom}, has_strong_observations=${hasStrongAgriObservations(extractedObservations)})`);
-          
-          const keywordMatches = await evaluateBundledKeywordRules(farmerMessage, canonicalState);
-          
-          if (keywordMatches.length > 0) {
-            console.log(`   ✅ Keyword fallback found ${keywordMatches.length} matches:`);
-            keywordMatches.forEach(m => console.log(`      - ${m.ruleId}: ${m.cause} (${(m.confidence * 100).toFixed(0)}%)`));
-            
-            // Inject keyword matches into rule result
-            layeredRuleResult.rules_matched = keywordMatches.length;
-            layeredRuleResult.rules_applied = keywordMatches.map(m => m.ruleId);
-            layeredRuleResult.diagnoses = keywordMatches.map(m => ({
-              id: m.ruleId,
-              category: 3 as any, // DiagnosisCategory.PEST/DISEASE
-              cause: m.cause,
-              confidence: m.confidence,
-              evidence: [],
-              rule_ids: [m.ruleId],
-              severity: canonicalState.severity,
-              requires_immediate_action: false
-            }));
-            layeredRuleResult.final_diagnosis = layeredRuleResult.diagnoses[0] || null;
-            
-            // Store bundled responses for LLM formatter
-            (layeredRuleResult as any).bundled_responses = keywordMatches.map(m => m.response);
-            
-            agentsUsed.push('KEYWORD_FALLBACK_EVALUATOR');
-          } else {
-            console.warn(`
-⚠️ ════════════════════════════════════════════════════════════════════════════
-   [PHASE-14] ZERO RULE MATCH - KEYWORD FALLBACK ALSO FAILED
-   ════════════════════════════════════════════════════════════════════════════
-   Trace ID: ${traceId}
-   Crop: ${canonicalState.crop_type}
-   Stage: ${canonicalState.crop_stage}
-   Symptom: ${canonicalState.visual_symptom}
-   User Query: "${safePreviewText(safeFarmerMessage, 100)}"
-   
-   🚨 ISSUE: Neither enum nor keyword rules matched.
-   ACTION: Add rules for this combination or escalate to diagnostic.
-   ════════════════════════════════════════════════════════════════════════════
-            `);
-          }
+        if (layeredRuleResult.rules_matched === 0) {
+          console.warn(
+            `[GRAPH_ZERO_RULE_MATCH] trace=${traceId} ` +
+              `crop=${canonicalState.crop_type} stage=${canonicalState.crop_stage} ` +
+              `symptom=${canonicalState.visual_symptom} ` +
+              `obs=[${(canonicalState.visual_symptoms || []).join(',')}] ` +
+              `— refusing keyword fallback. Downstream must emit ` +
+              `GRAPH_NEEDS_MORE_EVIDENCE with pending observation codes.`,
+          );
         }
+
+
         
         // ═══════════════════════════════════════════════════════════════════════════
         // PHASE-16: SYMBOLIC REASONER INTEGRATION (Enhanced JSON Condition Evaluation)
