@@ -4836,8 +4836,20 @@ export class AIAgentOrchestrator {
             console.log(
               `   🧭 [HYP_GRAPH] survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} candidate_rule_ids=${graphHypothesisRuleIds.length} edge_missing=${graphHypothesisEdgeMissing.length}`,
             );
+            (this as any)._graphExecuted = true;
           } catch (e) {
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
+            // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
+            // continue when the hypothesis graph did not execute. Fail closed.
+            if (isDiagnosticIntent) {
+              throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but hypothesis graph evaluator threw: ${(e as Error).message}`);
+            }
+          }
+          // Hard graph invariant — even if the try above resolved without an
+          // exception, if it never actually ran (e.g., early return refactor),
+          // fail closed for diagnostic intents.
+          if (isDiagnosticIntent && !(this as any)._graphExecuted) {
+            throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but [OBS_TO_HYP] was never emitted`);
           }
 
 
