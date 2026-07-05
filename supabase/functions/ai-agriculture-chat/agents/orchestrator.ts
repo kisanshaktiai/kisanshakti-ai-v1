@@ -6943,7 +6943,10 @@ export class AIAgentOrchestrator {
           assertDecisionGraphOrder(this as any, traceId, 'RULE_RESULT');
           (layeredRuleResult as any).coverage_gap = coverageGap ? 'RULE_COVERAGE_GAP' : null;
           (layeredRuleResult as any).edge_missing = graphEdgeMissing;
-        } catch { /* trace-only */ }
+        } catch (ruleTraceErr) {
+          if ((ruleTraceErr as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw ruleTraceErr;
+          /* trace-only */
+        }
 
 
 
@@ -7214,7 +7217,8 @@ export class AIAgentOrchestrator {
             );
           }
         } catch (e) {
-          if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
+          if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
+              (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
           /* trace must never throw */
         }
         
