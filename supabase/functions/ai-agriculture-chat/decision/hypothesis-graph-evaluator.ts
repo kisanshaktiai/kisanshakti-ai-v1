@@ -226,11 +226,16 @@ export async function evaluateHypothesisGraph(
     return b.positive_matches.length - a.positive_matches.length;
   });
 
+  const matchedHypothesisIds = [...candidates, ...eliminated].map((c) => c.hypothesis_id);
+  if (matchedHypothesisIds.length === 0) {
+    emitGraphDataGap(trace, observed.observations, 'ANCHOR_MATCHED_BUT_NO_ACTIVE_CROP_HYPOTHESIS');
+  }
+
   emitObsToHyp(
     trace,
     input,
     observed.observations,
-    [...candidates, ...eliminated].map((c) => c.hypothesis_id),
+    matchedHypothesisIds,
     eliminated.filter((c) => c.eliminated_reason?.startsWith('EXCLUSION') || c.eliminated_reason === 'NO_REQUIRED_MATCH').map((c) => c.hypothesis_id),
     eliminated.filter((c) => c.eliminated_reason?.startsWith('STAGE') || c.eliminated_reason?.startsWith('DAS')).map((c) => c.hypothesis_id),
   );
