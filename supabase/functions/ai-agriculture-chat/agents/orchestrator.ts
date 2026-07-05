@@ -584,7 +584,9 @@ import {
 import {
   AuthoredObservationSet,
   ObservationAuthority,
-  TERMINAL_CODES_BLOCKED_FROM_INJECTION
+  // PATCH 4 (BUG 4): TERMINAL_CODES_BLOCKED_FROM_INJECTION removed.
+  // The DB (intent_observation_mapping.is_active + observation_master.can_generate_question)
+  // is the sole authority for whether a code may enter the graph.
 } from '../utils/observation-authority.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4483,7 +4485,10 @@ export class AIAgentOrchestrator {
       });
       (this as any).__conversationState = conversationState; // accessible to trace emit
       console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${conversationState.mode} clarify=${conversationState.clarification_required}(${conversationState.clarification_reason}) coverage=${conversationState.coverage.toFixed(2)} confirmed=${conversationState.confirmed.length} unknown=${conversationState.unknown.length}`);
-      emitBrainTrace(conversationState, { total_ms: Date.now() - startTime });
+      // NOTE: The primary [BRAIN_TRACE] emit was here. It ran BEFORE the
+      // hypothesis graph (see L~4811), which meant `hyp` was always 0.
+      // The single authoritative emit is now downstream of the POST_RULE
+      // stage so hyp/candidates/eligible/winner reflect real graph state.
 
       // Phase H — Fix 2: ConversationState owns clarification. Sync the
       // legacy boolean so downstream gates stay consistent without recomputing.
@@ -4837,7 +4842,52 @@ export class AIAgentOrchestrator {
               `   🧭 [HYP_GRAPH] survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} candidate_rule_ids=${graphHypothesisRuleIds.length} edge_missing=${graphHypothesisEdgeMissing.length}`,
             );
             (this as any)._graphExecuted = true;
+
+            // ═══════════════════════════════════════════════════════════════
+            // PATCH 1 (BUG 1) — Project graph result back onto ConversationState
+            // so downstream readers (BRAIN_TRACE, decision builder, invariants)
+            // see the real hypothesis count instead of the placeholder [] set
+            // at buildConversationState time.
+            // ═══════════════════════════════════════════════════════════════
+            try {
+              const hypIds = graphOut.candidates
+                .map((c: any) => String(c?.hypothesis_id ?? '').trim())
+                .filter(Boolean);
+              const cs: any = (this as any).__conversationState ?? conversationState;
+              if (cs) {
+                cs.hypotheses = Object.freeze(hypIds) as ReadonlyArray<string>;
+              }
+              (this as any)._graphHypothesisIds = hypIds;
+              (this as any)._graphObsToHypEdges = graphOut.candidates.reduce(
+                (n: number, c: any) => n + (Array.isArray(c?.matched_observations)
+                  ? c.matched_observations.length
+                  : (Array.isArray(c?.required_evidence) ? c.required_evidence.length : 0)),
+                0,
+              );
+
+              // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
+              // a single grep on trace= reconstructs the full edge chain.
+              const obsSample = (currentObservations ?? []).slice(0, 12).join(',');
+              const hypSample = hypIds.slice(0, 12).join(',');
+              console.log(
+                `[OBS_TO_HYP] trace=${traceId} obs=[${obsSample}] hyp=[${hypSample}] ` +
+                `survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} ` +
+                `edge_missing=${graphHypothesisEdgeMissing.length}`,
+              );
+
+              // PATCH 2 (BUG 2) — Graph handoff invariant. If the graph produced
+              // hypotheses but ConversationState is empty, the handoff is broken.
+              if (graphOut.candidates.length > 0 && cs && cs.hypotheses.length === 0) {
+                throw new Error(
+                  `GRAPH_RESULT_DROPPED: graph=${graphOut.candidates.length} state=0 trace=${traceId}`,
+                );
+              }
+            } catch (projErr) {
+              if ((projErr as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw projErr;
+              console.warn(`[GRAPH_PROJECTION] non-fatal: ${(projErr as Error).message}`);
+            }
           } catch (e) {
+            if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
             // continue when the hypothesis graph did not execute. Fail closed.
@@ -7044,12 +7094,27 @@ export class AIAgentOrchestrator {
           );
         } catch (_) { /* trace must never throw */ }
 
-        // Supplemental BRAIN_TRACE with REAL post-rule-stage counts.
-        // The primary [BRAIN_TRACE] line is emitted early (pre-rule-stage) and
-        // its candidates/eligible/winner fields are placeholders. This second
-        // line lets audits see the actual rule-stage outcome for the same trace.
+        // PATCH 5 (BUG 1) — Single authoritative [BRAIN_TRACE] emit, AFTER the
+        // hypothesis graph AND the rule stage. Reads real hyp count from the
+        // graph projection (see L~4836), not the empty placeholder built at
+        // buildConversationState time.
         try {
           const _winner = layeredRuleResult?.primary_decision;
+          const _hypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
+          const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
+          const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
+          const _cs = (this as any).__conversationState ?? conversationState;
+          emitBrainTrace(_cs, {
+            rule_candidates:  rulesToEvaluate?.length ?? 0,
+            rule_eligible:    layeredRuleResult?.matched_responses?.length ?? 0,
+            rule_winner:      _winner?.rule_id ?? null,
+            hypotheses_count: _hypIds.length,
+            obs_to_hyp_edges: _obsToHyp,
+            hyp_to_rule_edges: _hypToRule,
+            total_ms:         Date.now() - startTime,
+          });
+          // Retain forensic detail on a separate line — auditors still grep
+          // POST_RULE for winner_score / action_text / prescription flags.
           console.log(
             `[BRAIN_TRACE][POST_RULE] trace=${traceId ?? '?'} ` +
             `candidates=${rulesToEvaluate?.length ?? 0} ` +
@@ -7061,9 +7126,22 @@ export class AIAgentOrchestrator {
             `winner_score=${(_winner?.weighted_confidence ?? _winner?.confidence_score ?? 0).toFixed?.(3) ?? 'n/a'} ` +
             `action_text=${_winner?.action_text ? 'present' : 'EMPTY'} ` +
             `prescription_allowed=${layeredRuleResult?.prescription_allowed ?? '?'} ` +
-            `final_diagnosis=${layeredRuleResult?.final_diagnosis?.cause ?? 'none'}`
+            `final_diagnosis=${layeredRuleResult?.final_diagnosis?.cause ?? 'none'} ` +
+            `hyp=${_hypIds.length} obs_to_hyp=${_obsToHyp} hyp_to_rule=${_hypToRule}`
           );
-        } catch (_) { /* trace must never throw */ }
+
+          // PATCH 2 (BUG 2) — late invariant. Even if the projection at graph
+          // exit passed, catch any late reset that would silently drop the
+          // hypotheses before decision assembly.
+          if (_hypIds.length > 0 && (_cs?.hypotheses?.length ?? 0) === 0) {
+            throw new Error(
+              `GRAPH_RESULT_DROPPED: late reset graph=${_hypIds.length} state=0 trace=${traceId}`,
+            );
+          }
+        } catch (e) {
+          if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED')) throw e;
+          /* trace must never throw */
+        }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures

@@ -297,6 +297,22 @@ export function assertClarificationContract<
   ctx: { intent?: string; crop?: string; stage?: string | null; das?: number | null } = {},
 ): T[] {
   if (!Array.isArray(options) || options.length === 0) return [];
+
+  // PATCH 4 (BUG 4) — DB is the authority for admissibility. If the caller
+  // supplied an empty allowlist it means the DB-derived candidate set was not
+  // resolved for this (intent, crop, stage) cell. Fail OPEN and log once so
+  // we never silently drop farmer-visible options that the DB brain already
+  // vetted (e.g. photo_upload / water_stress_check / pest_check that live in
+  // clarification_fallback_questions). Hardcoded TS allowlists are forbidden.
+  if (!allowedKeys || allowedKeys.size === 0) {
+    console.warn(
+      `[CLARIFICATION_CONTRACT] empty allowlist — fail-open ` +
+      `intent=${ctx.intent ?? '?'} crop=${ctx.crop ?? '?'} stage=${ctx.stage ?? '?'} ` +
+      `passthrough=${options.length}`,
+    );
+    return options.filter((opt) => !!canonicalizeObservationKey(opt?.observation_key || ''));
+  }
+
   const kept: T[] = [];
   for (const opt of options) {
     const key = canonicalizeObservationKey(opt?.observation_key || '');

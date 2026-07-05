@@ -61,7 +61,6 @@ import {
 import {
   AuthoredObservationSet,
   ObservationAuthority,
-  TERMINAL_CODES_BLOCKED_FROM_INJECTION
 } from '../utils/observation-authority.ts';
 
 export const DIAGNOSIS_ONLY_MODE_VERSION = '4.0.0'; // v4: Crop damage triggers diagnosis mode
