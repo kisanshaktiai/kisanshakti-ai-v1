@@ -6,8 +6,13 @@
 
 // BUILD_TAG bumps force the edge runtime to pick up dependent module changes
 // (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
-const BUILD_TAG = 'ai-agri-chat::classifier-v4-canonical::2026-05-31T16:45Z';
+const BUILD_TAG = 'ai-agri-chat::mandatory-graph-gate::2026-07-05T18:45Z';
 console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
+// [GRAPH_GATE_BUILD] — grep marker so an uploaded log can prove whether the
+// deployed bundle contains the mandatory-graph-gate patch (POST_EVIDENCE_FREEZE
+// → OBS_TO_HYP → HYP_TO_RULE → RULE_RESULT → BRAIN_TRACE sequence enforcement).
+// Absence of this line in a cold-start log = the fix never shipped.
+console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=true hasSequenceGuard=true hasOrchestratorExit=true');
 
 
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
@@ -1130,10 +1135,12 @@ serve(async (req) => {
             ? (orchestratorResponse as any).metadata.real_observations.length
             : 0);
       const _path = String(orchestratorResponse.type ?? 'UNKNOWN');
+      const _seq: number = Number(_orchAny?.__decisionGraphSequence ?? 0);
       console.log(
         `[ORCHESTRATOR_EXIT] trace=${traceId} path=${_path} intent=${_intentUpper || 'n/a'} ` +
         `graphExecuted=${_graphExecuted} hypotheses=${_hypCount} rules=${_ruleCount} ` +
-        `ruleResult=${_ruleResultExists} evidenceFrozen=${_evidenceFrozen} realObs=${_realObsCount}`,
+        `ruleResult=${_ruleResultExists} evidenceFrozen=${_evidenceFrozen} realObs=${_realObsCount} ` +
+        `graphSequence=${_seq}/5`,
       );
       if (_isDiagnosticIntent && _evidenceFrozen && !_graphExecuted) {
         throw new Error(
@@ -1145,6 +1152,16 @@ serve(async (req) => {
         throw new Error(
           `GRAPH_PIPELINE_BYPASSED: exit_path=${_path} intent=${_intentUpper} ` +
           `realObs=${_realObsCount} evidenceFrozen=true graphExecuted=true ruleResult=false trace_id=${traceId}`,
+        );
+      }
+      // Sequence-incomplete guard: if a diagnostic turn with real observations
+      // reached exit before RULE_RESULT (sequence < 4), the graph pipeline
+      // was truncated mid-flight. Fail closed so silent partial-run exits
+      // cannot ship a `hyp=0` response.
+      if (_isDiagnosticIntent && _evidenceFrozen && _realObsCount > 0 && _seq < 4) {
+        throw new Error(
+          `GRAPH_PIPELINE_BYPASSED: sequence_incomplete stage=${_seq}/5 ` +
+          `exit_path=${_path} intent=${_intentUpper} realObs=${_realObsCount} trace_id=${traceId}`,
         );
       }
     } catch (auditErr) {
