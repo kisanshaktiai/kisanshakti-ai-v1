@@ -144,6 +144,10 @@ export async function loadClarificationCandidates(
       console.log(
         `[CLARIFICATION_CONTRACT] no IOM candidates for intent=${intentUpper} crop=${cropLower} stage=${growth_stage} das=${das}`,
       );
+      console.log(
+        `[CLARIFY_EXIT] site=CONTRACT_NO_CANDIDATES intent=${intentUpper} crop=${cropLower} ` +
+        `stage=${growth_stage ?? 'n/a'} das=${das ?? 'n/a'} reason=no_iom_rows`,
+      );
       return [];
     }
 
@@ -166,18 +170,16 @@ export async function loadClarificationCandidates(
     }
     const candidateKeys = postConfirmDedup;
 
-    // ── Stage 2: observation_master gate ─────────────────────────────────
-    // Farmer-observable discriminators only. `is_diagnostic=true` rows are
-    // agronomist-facing diagnosis concepts (e.g. RICE_GERMINATION_FAILURE)
-    // and MUST NEVER surface as farmer options. `observation_type` values
-    // outside SYMPTOM/OBSERVATION (e.g. GROUP, DIAGNOSIS, CONDITION) are
-    // also excluded — the allow-list is derived from DB metadata, not
-    // hardcoded observation names.
-    const OBSERVABLE_TYPES = new Set(['SYMPTOM', 'OBSERVATION', 'SIGN', 'FARMER_OBSERVATION']);
-
+    // ── Stage 2: observation_master gate (DB-driven, no TS enums) ────────
+    // The DB is the brain. Eligibility is a single flag on `observation_master`:
+    //   `can_generate_question=true` — curator has declared the row askable.
+    // We no longer maintain a TypeScript allow-list of `observation_type`
+    // values; that was an enum drift trap (curator uses GENERIC/PRIMARY/…,
+    // TS hardcoded SYMPTOM/OBSERVATION/… → 100% of rows dropped). See
+    // migration `observation_master.can_generate_question` for the flag.
     const { data: masterRows, error: masterErr } = await supabase
       .from('observation_master')
-      .select('observation_code, is_active, is_farmer_observable, is_diagnostic, observation_type')
+      .select('observation_code, is_active, is_farmer_observable, can_generate_question')
       .in('observation_code', candidateKeys);
 
     if (masterErr) {
@@ -187,29 +189,38 @@ export async function loadClarificationCandidates(
 
     const validKeys = new Set<string>();
     const dropReasons = new Map<string, string>();
+    let droppedInactive = 0, droppedNotFarmer = 0, droppedNotAskable = 0;
     for (const m of masterRows || []) {
       const key = canonicalizeObservationKey(m.observation_code);
       if (!key) continue;
       const active = m.is_active !== false;
       const fo = m.is_farmer_observable !== false; // default-on if null
-      const notDiagnostic = m.is_diagnostic !== true;
-      const typeUpper = String(m.observation_type || '').trim().toUpperCase();
-      // Empty observation_type is tolerated (legacy rows); non-empty must be
-      // in the observable allow-list.
-      const typeOk = typeUpper === '' || OBSERVABLE_TYPES.has(typeUpper);
+      // can_generate_question defaults to false in the DB, but existing rows
+      // are backfilled at migration time. Treat missing/null as false: the
+      // DB owns the decision, not us.
+      const askable = m.can_generate_question === true;
 
-      if (!active)       { dropReasons.set(key, 'inactive'); continue; }
-      if (!fo)           { dropReasons.set(key, 'not_farmer_observable'); continue; }
-      if (!notDiagnostic){ dropReasons.set(key, 'is_diagnostic'); continue; }
-      if (!typeOk)       { dropReasons.set(key, `observation_type=${typeUpper}`); continue; }
+      if (!active)   { dropReasons.set(key, 'inactive');              droppedInactive++;   continue; }
+      if (!fo)       { dropReasons.set(key, 'not_farmer_observable'); droppedNotFarmer++;  continue; }
+      if (!askable)  { dropReasons.set(key, 'not_askable');           droppedNotAskable++; continue; }
       validKeys.add(key);
     }
 
     const gatedKeys = candidateKeys.filter((k) => validKeys.has(k));
+    console.log(
+      `[CONTRACT_GATE_V3] intent=${intentUpper} kept=${gatedKeys.length} ` +
+      `dropped_inactive=${droppedInactive} dropped_not_farmer=${droppedNotFarmer} ` +
+      `dropped_not_askable=${droppedNotAskable} of=${candidateKeys.length}`,
+    );
     if (gatedKeys.length === 0) {
       console.warn(
         `[CLARIFICATION_CONTRACT] all ${candidateKeys.length} IOM candidates dropped by observation_master gate ` +
         `reasons=${JSON.stringify(Object.fromEntries(dropReasons))}`,
+      );
+      console.log(
+        `[CLARIFY_EXIT] site=CONTRACT_EMPTY_IOM intent=${intentUpper} crop=${cropLower} ` +
+        `stage=${growth_stage ?? 'n/a'} das=${das ?? 'n/a'} reason=all_dropped ` +
+        `drop_reasons=${JSON.stringify(Object.fromEntries(dropReasons))}`,
       );
       return [];
     }
@@ -383,4 +394,88 @@ export async function buildOptions(
     return [];
   }
 }
+
+// ─── DB-driven fallback prompts ──────────────────────────────────────────
+/**
+ * Load the four generic clarification prompts (photo upload, water-stress,
+ * pest, nutrient) — but the four codes AND their labels now live in the DB
+ * (`clarification_fallback_questions`), NOT in this file. This kills the
+ * previous hardcoded-agronomy leak where the same TS module both filtered
+ * curated IOM options AND minted safety-net options from a bare string list.
+ *
+ * Contract:
+ *   - Rows are keyed by `(question_code, intent_family)`.
+ *   - `intent_family` should be the diagnostic family (e.g. EMERGENCE_FAILURE)
+ *     — if no rows match, we widen to `DIAGNOSIS_GENERIC`.
+ *   - Language labels: `label_<lang>` if present, else `label_en`, else the
+ *     `question_code` itself (last-resort so we never render an empty stub).
+ */
+export interface FallbackQuestionsInput {
+  supabase: any;
+  intent_family: string;
+  language: string;
+  max?: number;
+}
+
+export async function loadFallbackQuestions(
+  input: FallbackQuestionsInput,
+): Promise<ClarificationOption[]> {
+  const { supabase, intent_family, language, max = 4 } = input;
+  if (!supabase) return [];
+  const langLower = String(language || 'en').trim().toLowerCase();
+  const family = String(intent_family || '').trim().toUpperCase() || 'DIAGNOSIS_GENERIC';
+
+  try {
+    let { data: rows, error } = await supabase
+      .from('clarification_fallback_questions')
+      .select('question_code, priority, label_en, label_hi, label_mr, intent_family')
+      .eq('is_active', true)
+      .eq('intent_family', family)
+      .order('priority', { ascending: true })
+      .limit(max);
+
+    if (error) {
+      console.error(`[CONTRACT_FALLBACK_DB] error: ${error.message}`);
+      return [];
+    }
+
+    // Family widen — if the specific family has no rows, fall back to
+    // DIAGNOSIS_GENERIC so we always have safety-net options.
+    if ((!rows || rows.length === 0) && family !== 'DIAGNOSIS_GENERIC') {
+      const res = await supabase
+        .from('clarification_fallback_questions')
+        .select('question_code, priority, label_en, label_hi, label_mr, intent_family')
+        .eq('is_active', true)
+        .eq('intent_family', 'DIAGNOSIS_GENERIC')
+        .order('priority', { ascending: true })
+        .limit(max);
+      rows = res.data;
+    }
+
+    const out: ClarificationOption[] = [];
+    for (const r of rows || []) {
+      const key = String(r.question_code || '').trim();
+      if (!key) continue;
+      const label =
+        (langLower === 'hi' && r.label_hi) ||
+        (langLower === 'mr' && r.label_mr) ||
+        r.label_en ||
+        key;
+      out.push({
+        observation_key: key,
+        label: String(label),
+        confidence_rank: typeof r.priority === 'number' ? r.priority : 999,
+      });
+    }
+    console.log(
+      `[CONTRACT_FALLBACK_DB] intent_family=${family} loaded=${out.length} ` +
+      `keys=[${out.map((o) => o.observation_key).join(',')}]`,
+    );
+    return out;
+  } catch (e) {
+    console.error('[CONTRACT_FALLBACK_DB] exception:', e);
+    return [];
+  }
+}
+
 

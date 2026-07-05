@@ -4101,28 +4101,25 @@ export class AIAgentOrchestrator {
       const crossCropSymptomsList = crossCropSymptoms ? [...crossCropSymptoms] : [];
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // v5.0: Cross-crop symptoms injection with TERMINAL CODE GUARD
-      // Cross-crop symptoms are tagged SYNTHETIC and terminal codes are BLOCKED
-      // from injection to prevent false terminal gate triggers.
+      // v6.0: Cross-crop symptoms injection — DB is authority, no hardcoded block-list.
+      // The previous `TERMINAL_CODES_BLOCKED_FROM_INJECTION` hardcoded set was
+      // agronomy-in-code that actively prevented `GERMINATION_FAILURE` from ever
+      // reaching `hypothesis_conditions` for RICE_GERMINATION_FAILURE — the exact
+      // regression tracked in the Marathi `भात अजून उगवले नाही` audit. Any code
+      // the DB curator marked as a LITERAL peer for the active (intent, crop)
+      // via `intent_observation_mapping` MUST be admissible; blocking is a
+      // curator decision expressed via `intent_observation_mapping.is_active`,
+      // never a static TS set. Kept the trace line for observability.
       // ═══════════════════════════════════════════════════════════════════════════
       if (crossCropSymptomsList.length > 0) {
         const injected: string[] = [];
-        const blocked: string[] = [];
         crossCropSymptomsList.forEach(sym => {
-          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(sym)) {
-            blocked.push(sym);
-            console.log(`   🛡️ [TERMINAL GUARD] Blocked cross-crop terminal code: ${sym}`);
-          } else {
-            allObservationsForPreAuth.add(sym);
-            authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
-            injected.push(sym);
-          }
+          allObservationsForPreAuth.add(sym);
+          authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
+          injected.push(sym);
         });
         if (injected.length > 0) {
           console.log(`   🔗 [CrossCropFix] Injected ${injected.length} cross-crop symptoms (SYNTHETIC): ${injected.join(', ')}`);
-        }
-        if (blocked.length > 0) {
-          console.log(`   🛡️ [CrossCropFix] BLOCKED ${blocked.length} terminal codes from injection: ${blocked.join(', ')}`);
         }
       }
       
@@ -4957,7 +4954,30 @@ export class AIAgentOrchestrator {
 
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
-          
+          // Mark the graph as executed for the graph-before-clarification
+          // invariant at the understanding gate (see L5220 area). The
+          // hypothesis-graph-evaluator branch above already sets this on
+          // success, but the invariant is stronger when we also set it here
+          // — even if the graph-evaluator threw for a non-diagnostic intent,
+          // the full hypothesis evaluator ran, so clarification is safe.
+          (this as any)._graphExecuted = true;
+
+          // Canonical GraphRuntime trace — one grep-able line per turn.
+          try {
+            const _winnerId =
+              (hypothesisResult as any)?.winner?.hypothesis_id ??
+              (hypothesisResult as any)?.top_hypothesis?.hypothesis_id ??
+              (hypothesisResult as any)?.primary_hypothesis?.hypothesis_id ??
+              (hypothesisResult as any)?.ranked_hypotheses?.[0]?.hypothesis_id ??
+              null;
+            console.log(
+              `[GRAPH_RUNTIME] loader=HypothesisEvaluator trace=${traceId} ` +
+              `intent=${intentCode} crop=${cropCode} stage=${growthStage} das=${resolvedDAS} ` +
+              `obs=${hypObservations.length} candidates=${hypothesisResult.candidates?.length ?? 0} ` +
+              `winner=${_winnerId ?? 'none'}`,
+            );
+          } catch { /* trace-only */ }
+
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 
           // ═══════════════════════════════════════════════════════════════════
@@ -5217,7 +5237,39 @@ export class AIAgentOrchestrator {
         console.log(`   ✅ [ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE] route=${queryRoute.route} intent=${intentCode} — skipping symptom clarification (understanding=${understandingResult.understanding_confidence})`);
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // NEURO-SYMBOLIC INVARIANT: clarification cannot fire before the
+      // hypothesis graph has executed. For diagnostic intents, if the
+      // graph has NOT run yet (`_graphExecuted` set by the [OBS_TO_HYP]
+      // stage above), UnderstandingChecker is downgraded to advisory —
+      // ConversationState + graph evidence-gaps decide, not the checker.
+      // Reference: mem://architecture/deterministic-response-return-invariant
+      // and the current Marathi EMERGENCE_FAILURE regression trace.
+      // ═══════════════════════════════════════════════════════════════════════
+      const _graphHasRun = (this as any)._graphExecuted === true;
+      const _convStateOk = (this as any).__conversationState
+        && (this as any).__conversationState.clarification_required === false;
+      if (understandingResult.clarification_required && isDiagnosticIntent && !_graphHasRun) {
+        console.warn(
+          `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker asked for clarification ` +
+          `BEFORE hypothesis graph ran — demoting to advisory (intent=${intentCode} crop=${cropCode}). ` +
+          `[CLARIFY_AUTHORITY] source=DEMOTED_CHECKER required=false reason=graph_before_clarification`,
+        );
+        understandingResult.clarification_required = false;
+      } else if (understandingResult.clarification_required && _convStateOk) {
+        console.log(
+          `[CLARIFY_AUTHORITY] source=CONVERSATION_STATE required=false reason=conv_state_sufficient ` +
+          `intent=${intentCode} crop=${cropCode}`,
+        );
+        understandingResult.clarification_required = false;
+      }
+
       if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage && !isAdvisoryRouteForGate) {
+        console.log(
+          `[CLARIFY_EXIT] site=UNDERSTANDING_GATE trace=${traceId} intent=${intentCode} ` +
+          `crop=${cropCode} stage=${growthStage} confidence=${understandingResult.understanding_confidence} ` +
+          `missing=[${understandingResult.unknown_critical_fields?.join(',') ?? ''}] graph_ran=${_graphHasRun}`,
+        );
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
         // ═══════════════════════════════════════════════════════════════════════════
