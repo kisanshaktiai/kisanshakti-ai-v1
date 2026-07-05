@@ -3085,7 +3085,12 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
-      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage);
+      // T4 — pass land-context authority so DB crop wins over hardcoded CROP_MAP
+      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(
+        processedFarmerMessage,
+        { current_crop: (landContext as any)?.current_crop ?? null },
+      );
+
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
       
       console.log(`      ${getInductionSummary(inductionResult)}`);
