@@ -1336,3 +1336,72 @@ export const CanonicalStateBuilder = {
   mapHumidity: mapHumidityToEnum,
   mapObservations: mapObservationsToSymptom
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 5 — CANONICAL PROJECTION FROM GRAPH TRUTH
+// The CanonicalState for crop / stage / observations MUST be a projection of
+// the frozen GraphTruth node — never a re-inference. This helper overwrites
+// those three authoritative fields on an already-built CanonicalState with
+// the values from GraphTruth, and separates real observations from context
+// metadata so downstream engines only ever see real symptoms.
+//
+// Metadata codes (CROP_IDENTIFIED, PHOTO_NOT_PROVIDED, *_UNKNOWN, ACTION_*,
+// CONTEXT_*) are stripped from `observation_codes` via classifyEvidence and
+// attached to a non-authoritative `context_metadata` bag on the state for
+// UI/telemetry use only.
+// ═══════════════════════════════════════════════════════════════════════════
+export interface CanonicalContextMetadata {
+  crop_identified: boolean;
+  photo: boolean;
+  timing: string | null;
+  ignored_codes: string[];
+}
+
+export function projectCanonicalStateFromGraphTruth(
+  state: CanonicalState,
+  graphTruth: {
+    crop_code: string | null;
+    biological_stage: string | null;
+    canonical_observations: readonly string[];
+    hash: string;
+  } | null | undefined,
+): CanonicalState {
+  if (!graphTruth) {
+    console.warn('[CANONICAL_PROJECTION_ONLY] skipped=no_graph_truth');
+    return state;
+  }
+
+  const classified = classifyEvidence([...graphTruth.canonical_observations]);
+  const ignoredUpper = classified.ignored_codes.map(c => c.toUpperCase());
+  const metadata: CanonicalContextMetadata = {
+    crop_identified: ignoredUpper.includes('CROP_IDENTIFIED'),
+    photo: !ignoredUpper.includes('PHOTO_NOT_PROVIDED'),
+    timing: ignoredUpper.includes('TIMING_UNKNOWN') ? null : null,
+    ignored_codes: classified.ignored_codes,
+  };
+
+  const before = {
+    crop: state.crop_type,
+    stage: state.crop_stage,
+    obs_len: state.observation_codes?.length ?? 0,
+  };
+
+  // Authoritative overwrite — GraphTruth wins.
+  if (graphTruth.crop_code) state.crop_type = graphTruth.crop_code as any;
+  if (graphTruth.biological_stage) state.crop_stage = graphTruth.biological_stage as any;
+  state.observation_codes = [...classified.real_codes];
+  (state as any).context_metadata = metadata;
+  state.symptom_count = classified.real_symptom_count;
+
+  console.log(
+    `[CANONICAL_PROJECTION_ONLY] hash=${graphTruth.hash} ` +
+      `crop:${before.crop}->${state.crop_type} ` +
+      `stage:${before.stage}->${state.crop_stage} ` +
+      `obs:${before.obs_len}->${state.observation_codes.length} ` +
+      `real=[${state.observation_codes.join(',')}] ` +
+      `ignored=[${classified.ignored_codes.join(',')}]`,
+  );
+
+  return state;
+}
+
