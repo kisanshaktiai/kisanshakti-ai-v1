@@ -22,6 +22,7 @@ export interface BrainTracePhases {
   hypotheses_count?: number;
   obs_to_hyp_edges?: number;
   hyp_to_rule_edges?: number;
+  sequence?: number;
 }
 
 export function emitBrainTrace(s: ConversationState, p: BrainTracePhases = {}): void {
@@ -30,6 +31,7 @@ export function emitBrainTrace(s: ConversationState, p: BrainTracePhases = {}): 
     : s.hypotheses.length;
   const line =
     `[BRAIN_TRACE] trace=${s.trace_id} ` +
+    `sequence=${p.sequence ?? 'n/a'} ` +
     `intent=${s.intent}(${s.intent_confidence.toFixed(2)}) ` +
     `mode=${s.mode} direct=${s.direct_mode} ` +
     `crop=${s.crop ?? '?'} stage=${s.stage ?? '?'}(${s.stage_source}) das=${s.das ?? '?'} ` +
