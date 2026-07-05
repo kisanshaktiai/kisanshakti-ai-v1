@@ -76,37 +76,14 @@ const OBSERVATION_STAGE_INCOMPATIBILITIES: readonly StageIncompat[] = Object.fre
   },
 ]);
 
-// Stage families — biologically equivalent stages, mirrors clarification-contract.
-const STAGE_FAMILIES: Record<string, string[]> = {
-  seedling:     ['seedling', 'nursery', 'germination', 'emergence', 'establishment'],
-  nursery:      ['nursery', 'seedling', 'germination'],
-  germination:  ['germination', 'nursery', 'seedling', 'emergence'],
-  emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
-  establishment:['establishment', 'seedling', 'germination'],
-  vegetative:   ['vegetative', 'tillering'],
-  tillering:    ['tillering', 'vegetative'],
-  flowering:    ['flowering', 'reproductive', 'grand_growth'],
-  reproductive: ['reproductive', 'flowering', 'grand_growth'],
-  grand_growth: ['grand_growth', 'flowering', 'reproductive'],
-  maturity:     ['maturity', 'ripening', 'maturation'],
-  ripening:     ['ripening', 'maturity', 'maturation'],
-  maturation:   ['maturation', 'maturity', 'ripening'],
-  harvest:      ['harvest', 'harvesting'],
-};
+// [GRAPH_TRUTH_PENDING] Step 6 — stage equivalence collapsed to a single
+// source (stage-family-shim.ts). Previously this file carried its own copy
+// of STAGE_FAMILIES that had drifted from navigator-adapter.ts. The shim
+// itself is a placeholder awaiting the crop_stage_graph reader.
+import { stagesEquivalent } from './stage-family-shim.ts';
 
 const norm = (s: unknown): string =>
   String(s || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-
-function stagesEquivalent(a: string, b: string): boolean {
-  const x = norm(a), y = norm(b);
-  if (!x || !y) return true; // unknown → cannot contradict
-  if (x === y) return true;
-  const fam = STAGE_FAMILIES[x];
-  if (fam && fam.includes(y)) return true;
-  const fam2 = STAGE_FAMILIES[y];
-  if (fam2 && fam2.includes(x)) return true;
-  return false;
-}
 
 /**
  * Returns the first contradiction found, or null if context and utterance
