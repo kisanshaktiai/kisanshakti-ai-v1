@@ -257,7 +257,12 @@ export type DecisionStatus =
   | 'WEATHER_DELAYED'
   | 'NOT_VIABLE'
   | 'ESCALATED'
-  | 'FALLBACK_MODE';
+  | 'FALLBACK_MODE'
+  // Step 1 — GraphTruth-compliant sentinel: the symbolic brain reached the
+  // node, but the observation graph does not carry enough distinguishing
+  // evidence to select a rule. Callers MUST render a differential question
+  // from `observation_differential_questions`, not a fake MONITOR advisory.
+  | 'NEEDS_MORE_EVIDENCE';
 
 export interface PrimaryDecision {
   action_type: ActionType;
