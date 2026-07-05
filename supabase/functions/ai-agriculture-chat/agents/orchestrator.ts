@@ -4802,6 +4802,10 @@ export class AIAgentOrchestrator {
           }
 
           const hypothesisResult = await evaluateCandidateHypotheses({
+            // Step 3 — GraphTruth is the sole authority. The evaluator will
+            // project (crop_code, growth_stage, DAS, known_observations,
+            // variety_id) from this frozen node and log any pipeline drift.
+            graph_truth: _gtForHyp,
 
             crop_code: (_gtForHyp?.crop_code ?? cropCode) as any,
             growth_stage: (_gtForHyp?.biological_stage ?? growthStage) as any,
@@ -4818,6 +4822,7 @@ export class AIAgentOrchestrator {
               ?? (landContext as any)?.variety_id
               ?? null),
           });
+
 
 
           
@@ -6507,12 +6512,16 @@ export class AIAgentOrchestrator {
           
           // Static import used (moved to top of file for edge function compatibility)
           hypothesisResult = await runCausalHypothesisArbitration({
+            // Step 3 — GraphTruth is the sole authority; engine will override
+            // crop_group and observations from the frozen node and log drift.
+            graph_truth: (this as any)._graphTruth ?? null,
             crop_group: hypothesisCrop,
             canonical_state: canonicalState,
             observations: [...(allObservationsForPreAuth || [])],
             supabase_client: this.supabase,
             trace_id: traceId
           });
+
 
           if (hypothesisResult.needs_clarification && hypothesisResult.decision_path === 'CLARIFICATION_REQUIRED') {
             console.log(`   🔄 Hypothesis arbitration needs clarification: ${hypothesisResult.clarification_reason}`);

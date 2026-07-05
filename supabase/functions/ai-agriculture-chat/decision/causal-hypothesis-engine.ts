@@ -819,19 +819,53 @@ export interface CausalHypothesisInput {
   observations: string[];
   supabase_client: any;
   trace_id?: string;
+  /**
+   * Step 3 — Frozen GraphTruth for the turn. When supplied it OVERRIDES the
+   * mutable `crop_group` and `observations` fields; drift is logged.
+   * Callers on the primary orchestrator path MUST supply this.
+   */
+  graph_truth?: import('../runtime/graph-truth.ts').GraphTruth | null;
 }
 
 export async function runCausalHypothesisArbitration(
   input: CausalHypothesisInput
 ): Promise<ArbitrationResult> {
-  const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
+  const { canonical_state, supabase_client, trace_id } = input;
+  let { crop_group, observations } = input;
   const startTime = Date.now();
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Step 3 — HYPOTHESIS CONTRACT: GraphTruth is the sole authority.
+  // ═════════════════════════════════════════════════════════════════════════
+  const gt = input.graph_truth ?? null;
+  if (gt) {
+    const { assertGraphTruthIntegrity } = await import('../runtime/graph-truth.ts');
+    assertGraphTruthIntegrity(gt, 'RUN_CAUSAL_HYPOTHESIS_ARBITRATION');
+
+    const drift: string[] = [];
+    if (gt.crop_code && crop_group && gt.crop_code.toLowerCase() !== crop_group.toLowerCase()) {
+      drift.push(`crop(pipe=${crop_group} graph=${gt.crop_code})`);
+    }
+    const pipeObs = [...(observations || [])].sort().join(',');
+    const graphObs = [...gt.canonical_observations].sort().join(',');
+    if (pipeObs !== graphObs) drift.push(`obs(pipe=[${pipeObs}] graph=[${graphObs}])`);
+    if (drift.length) {
+      console.warn(`[HYPOTHESIS_CONTRACT] site=CAUSAL_ARBITRATION trace=${trace_id ?? 'none'} drift=${drift.join(' ')} — using GraphTruth`);
+    }
+
+    crop_group = (gt.crop_code ?? crop_group) as string;
+    observations = [...gt.canonical_observations];
+  } else {
+    console.warn(`[HYPOTHESIS_CONTRACT] site=CAUSAL_ARBITRATION trace=${trace_id ?? 'none'} legacy_path — no graph_truth supplied by caller`);
+  }
 
   // Phase 3: normalize to DB-stored lowercase crop_group (rice, sugarcane, ...)
   const normalizedCropGroup = normalizeCropGroup(crop_group);
 
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
   console.log(`   crop_group=${normalizedCropGroup} (raw=${crop_group}), observations=${observations.length}, trace=${trace_id || 'none'}`);
+  console.log(`   Authority: ${gt ? `GRAPH_TRUTH(hash=${gt.hash})` : 'LEGACY_PIPE'}`);
+
 
   // Load hypothesis data
   const data = await loadHypothesesForCrop(normalizedCropGroup, supabase_client);
