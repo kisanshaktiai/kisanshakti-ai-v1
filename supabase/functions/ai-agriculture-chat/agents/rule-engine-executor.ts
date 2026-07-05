@@ -211,10 +211,14 @@ export class RuleEngineExecutor {
       const totalRulesMatched = Object.values(decisions).reduce((sum, arr) => sum + arr.length, 0);
       console.log(`  Total matched: ${totalRulesMatched}`);
       
-      // Generate default if no matches
+      // GraphTruth contract: no rules matched → emit NEEDS_MORE_EVIDENCE sentinel.
+      // We DO NOT fabricate a MONITOR_ONLY primary_decision here — that was a
+      // symbolic bypass masquerading as agronomic advice. Downstream farmer
+      // response layer must render a differential question from
+      // observation_differential_questions instead.
       if (totalRulesMatched === 0 && bridgeResults.length === 0) {
-        console.log(`  No rules matched - generating default`);
-        return this.generateDefaultDecision(input, startTime);
+        console.log(`[GRAPH_ZERO_RULE_MATCH] no rule/bridge matches — emitting NEEDS_MORE_EVIDENCE (no fabricated MONITOR advisory)`);
+        return this.generateNeedsMoreEvidenceDecision(input, startTime, 'NO_RULE_MATCH');
       }
       
       // Check blocks
@@ -256,7 +260,10 @@ export class RuleEngineExecutor {
       
     } catch (error) {
       console.error('[RuleEngine] Error:', error);
-      return this.generateFallbackDecision(input, error as Error, startTime);
+      // GraphTruth contract: on engine failure we do NOT invent a fake MONITOR
+      // recommendation. Emit NEEDS_MORE_EVIDENCE sentinel with the error captured
+      // in the audit trail so downstream layers surface a safe clarification.
+      return this.generateNeedsMoreEvidenceDecision(input, startTime, `ENGINE_ERROR:${(error as Error).message}`);
     }
   }
   
@@ -466,18 +473,39 @@ export class RuleEngineExecutor {
   // OUTPUT FORMATTING - Structured, no language text
   // ═══════════════════════════════════════════════════════════════════════════
   
-  private generateDefaultDecision(input: RuleExecutionInput, startTime: number): DecisionOutput {
+  /**
+   * GraphTruth-compliant sentinel emitter.
+   *
+   * Replaces the legacy `generateDefaultDecision` and `generateFallbackDecision`
+   * fabricators, which invented `MONITOR_ONLY` / `FOLIAR_SPRAY` primary decisions
+   * whenever no rule matched or the engine threw. Those were symbolic bypasses:
+   * they produced agronomic-sounding output that had never been sourced from
+   * `decision_rules` / GraphTruth.
+   *
+   * This emitter returns a `NEEDS_MORE_EVIDENCE` status with an intentionally
+   * empty primary_decision skeleton (no product, no dosage, no method) so the
+   * downstream farmer response layer routes into the differential-question
+   * pathway (`observation_differential_questions`) instead of rendering
+   * fake advice.
+   */
+  private generateNeedsMoreEvidenceDecision(
+    input: RuleExecutionInput,
+    startTime: number,
+    reasonCode: string
+  ): DecisionOutput {
     const now = new Date().toISOString();
 
     return {
-      decision_id: `default_${Date.now().toString(36)}`,
+      decision_id: `needs_evidence_${Date.now().toString(36)}`,
       timestamp: now,
       session_id: input.session_id,
-      status: 'FALLBACK_MODE',
+      status: 'NEEDS_MORE_EVIDENCE',
 
       primary_decision: {
-        action_type: 'MONITOR_ONLY',
-        specific_action: 'Monitor field and reassess with clearer symptoms/photos',
+        // ESCALATE_TO_EXPERT is the only ActionType that carries no fabricated
+        // agronomic promise; downstream must NOT render this as advice.
+        action_type: 'ESCALATE_TO_EXPERT',
+        specific_action: '',
         target: {
           pest_code: input.pest_disease_state.pest_code,
           disease_code: input.pest_disease_state.disease_code
@@ -487,7 +515,7 @@ export class RuleEngineExecutor {
           recommended_start: now,
           recommended_end: now,
           weather_dependency: false,
-          reason: 'No eligible rules matched; monitoring is safest.'
+          reason: `GRAPH_NEEDS_MORE_EVIDENCE:${reasonCode}`
         },
         application_details: {
           product_name: '',
@@ -504,80 +532,7 @@ export class RuleEngineExecutor {
           time_to_visible_effect_days: 'N/A',
           success_indicators: []
         },
-        ipm_level: 1
-      },
-
-      secondary_actions: [],
-      blocked_actions: [],
-      economic_assessment: this.createDefaultEconomicAssessment(input),
-      scientific_justification: [],
-      rules_applied: [],
-      contingency_planning: this.generateContingencyPlan(input),
-      follow_up_schedule: this.generateFollowUpSchedule(input),
-      audit_trail: this.generateAuditTrail({
-        P0_emergency: [],
-        P1_regulatory: [],
-        P2_weather_safety: [],
-        P3_crop_stage: [],
-        P4_economic: [],
-        P5_ipm: [],
-        P6_optimization: []
-      }, input, startTime),
-      confidence_metrics: {
-        rule_execution_confidence: 0.5,
-        input_data_quality: this.assessInputQuality(input),
-        weather_forecast_confidence: 0.8,
-        hypothesis_confidence: 0.5,
-        overall_decision_confidence: 0.5
-      },
-
-      // Backward-compatible fields
-      confidence: 0.5,
-      alternative_decisions: []
-    };
-  }
-
-  private generateFallbackDecision(input: RuleExecutionInput, error: Error, startTime: number): DecisionOutput {
-    console.error('[RuleEngine] Fallback:', error.message);
-
-    const now = new Date().toISOString();
-
-    return {
-      decision_id: `fallback_${Date.now().toString(36)}`,
-      timestamp: now,
-      session_id: input.session_id,
-      status: 'FALLBACK_MODE',
-
-      primary_decision: {
-        action_type: 'MONITOR_ONLY',
-        specific_action: 'Temporary fallback: monitor and retry',
-        target: {
-          pest_code: input.pest_disease_state.pest_code,
-          disease_code: input.pest_disease_state.disease_code
-        },
-        urgency: 'NON_URGENT',
-        timing: {
-          recommended_start: now,
-          recommended_end: now,
-          weather_dependency: false,
-          reason: `Rule engine fallback: ${error.message}`
-        },
-        application_details: {
-          product_name: '',
-          product_type: 'ORGANIC',
-          concentration: '',
-          quantity_per_acre: '',
-          total_quantity: '',
-          water_requirement: '',
-          application_method: 'FOLIAR_SPRAY',
-          coverage_instructions: ''
-        },
-        expected_outcomes: {
-          efficacy_percent: 0,
-          time_to_visible_effect_days: 'N/A',
-          success_indicators: []
-        },
-        ipm_level: 1
+        ipm_level: 0
       },
 
       secondary_actions: [],
@@ -594,22 +549,25 @@ export class RuleEngineExecutor {
         rules_matched: 0,
         rules_version: this.rulesVersion,
         execution_time_ms: Date.now() - startTime,
-        determinism_verified: false,
+        determinism_verified: true,
         explainability_score: 0,
         engine_version: RULE_ENGINE_VERSION,
-        error_message: error.message
+        error_message: `NEEDS_MORE_EVIDENCE:${reasonCode}`
       },
       confidence_metrics: {
-        rule_execution_confidence: 0.3,
-        input_data_quality: 0.3,
-        weather_forecast_confidence: 0.5,
-        hypothesis_confidence: 0.3,
-        overall_decision_confidence: 0.3
+        rule_execution_confidence: 0,
+        input_data_quality: this.assessInputQuality(input),
+        weather_forecast_confidence: 0,
+        hypothesis_confidence: 0,
+        overall_decision_confidence: 0
       },
 
-      confidence: 0.3
+      confidence: 0,
+      alternative_decisions: []
     };
   }
+
+
 
   private formatBlockedDecision(
     blockingRule: RuleResult,
