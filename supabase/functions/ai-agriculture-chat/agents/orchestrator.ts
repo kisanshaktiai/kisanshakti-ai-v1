@@ -6248,33 +6248,51 @@ export class AIAgentOrchestrator {
         // inference (induction, NLU, GDD, cropContextAuthority) can leak.
         projectCanonicalStateFromGraphTruth(canonicalState, (this as any)._graphTruth);
 
-        
-        // STABILIZATION v4.0 ISSUE 2: Seal Crop Lock Leak via Induction Layer
-        // v7.7 FIX: Also use cropContextAuthority (from message inference) as fallback
-        if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && inductionCrop !== 'UNKNOWN_CROP') {
-          if (canonicalContext && canonicalContext.is_locked) {
-            console.log(`   🔒 Crop locked from canonical context (${canonicalContext.crop_code}) -- ignoring induction crop: ${inductionCrop}`);
-            canonicalState.crop_type = canonicalContext.crop_code as any;
-          } else {
-            console.log(`   📝 Enriching canonical state crop from induction: ${inductionCrop}`);
-            canonicalState.crop_type = inductionCrop as any;
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Step 2 — POST-PROJECTION MUTATION BLOCK COLLAPSED (was lines 6252-6277).
+        //
+        // Prior behaviour (removed):
+        //   1. Re-wrote `canonicalState.crop_type` from `inductionCrop` (hardcoded
+        //      keyword map in language-induction-layer.ts) when GraphTruth had
+        //      already projected the DB-authoritative crop.
+        //   2. Re-wrote `canonicalState.crop_type` / `.growth_stage` from
+        //      `cropContextAuthority` (message-inference fallback) with the same
+        //      leak semantics.
+        //
+        // These branches only fired when GraphTruth returned UNKNOWN/null — a
+        // structural signal that the land has no bound crop or the DB has no
+        // matching row. In that case the correct action is to raise
+        // GRAPH_NEEDS_MORE_EVIDENCE downstream (Step 1 sentinel), NOT to graft
+        // a parallel NLU brain's guess onto the frozen node.
+        //
+        // GraphTruth is now the ONLY writer to canonicalState.crop_type /
+        // .growth_stage after line 6249. Any drift is logged for observability
+        // but never repaired here.
+        // ═══════════════════════════════════════════════════════════════════════════
+        {
+          const _gtForAudit = (this as any)._graphTruth as
+            | import('../runtime/graph-truth.ts').GraphTruth
+            | null;
+          const projectedCrop = canonicalState.crop_type as unknown as string | null;
+          const projectedStage = canonicalState.growth_stage as unknown as string | null;
+          if (!projectedCrop || projectedCrop === 'UNKNOWN') {
+            console.warn(
+              `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION crop is UNKNOWN after GraphTruth projection ` +
+                `— refusing to overwrite from induction (${inductionCrop}) or cropContextAuthority ` +
+                `(${cropContextAuthority?.crop_name ?? 'null'}). graph_hash=${_gtForAudit?.hash ?? 'null'} ` +
+                `— downstream must emit GRAPH_NEEDS_MORE_EVIDENCE.`,
+            );
+          }
+          if (!projectedStage || projectedStage === 'UNKNOWN') {
+            console.warn(
+              `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION stage is UNKNOWN after GraphTruth projection ` +
+                `— refusing to overwrite from cropContextAuthority ` +
+                `(${cropContextAuthority?.growth_stage ?? 'null'}). graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
+            );
           }
         }
-        
-        // v7.7 FIX: If crop is STILL UNKNOWN, use cropContextAuthority from message inference
-        if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && cropContextAuthority?.crop_name) {
-          console.log(`   🌾 [v7.7] Enriching canonical state crop from cropContextAuthority: ${cropContextAuthority.crop_name}`);
-          canonicalState.crop_type = cropContextAuthority.crop_name as any;
-          if (!canonicalState.growth_stage || canonicalState.growth_stage === 'UNKNOWN') {
-            // Phase 2 — BiologicalState is the sole stage authority. If it is
-            // locked, do not let a fallback authority (context reconciler,
-            // cropContextAuthority) overwrite stage post-lock.
-            if (!blockStageWriteIfLocked(landContext, 'canonical-state.crop-authority-fallback', cropContextAuthority.growth_stage)) {
-              canonicalState.growth_stage = cropContextAuthority.growth_stage as any;
-            }
-          }
 
-        }
+
         
         // ═══════════════════════════════════════════════════════════════════════════
         // NEURO-SYMBOLIC CONTRACT: CanonicalState transports symbols only.
