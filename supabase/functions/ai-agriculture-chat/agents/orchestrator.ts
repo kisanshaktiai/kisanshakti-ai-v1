@@ -4808,7 +4808,10 @@ export class AIAgentOrchestrator {
           // is what physically removes "Tungro on an ungerminated crop".
           // ═══════════════════════════════════════════════════════════════════
           try {
+            // T1 — GraphTruth integrity check before IOM gate
+            assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_IOM_GATE');
             const { loadIOMAllowed, filterHypothesesByIOM } = await import('../decision/iom-gate.ts');
+
             const iomIntent = intentCode || (intentMetaFromDB as any)?.intent_code || 'GENERAL_CROP_INFO';
             const iom = await loadIOMAllowed(this.supabase, iomIntent, cropCode, growthStage, resolvedDAS);
             const { kept, dropped } = filterHypothesesByIOM(hypothesisResult.candidates as any[], iom.allowedSet, iom.traceMeta);
