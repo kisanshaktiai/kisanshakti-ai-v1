@@ -6991,6 +6991,27 @@ export class AIAgentOrchestrator {
             `winner_action_text=${winner?.action_text ? 'present' : 'EMPTY'}`
           );
         } catch (_) { /* trace must never throw */ }
+
+        // Supplemental BRAIN_TRACE with REAL post-rule-stage counts.
+        // The primary [BRAIN_TRACE] line is emitted early (pre-rule-stage) and
+        // its candidates/eligible/winner fields are placeholders. This second
+        // line lets audits see the actual rule-stage outcome for the same trace.
+        try {
+          const _winner = layeredRuleResult?.primary_decision;
+          console.log(
+            `[BRAIN_TRACE][POST_RULE] trace=${traceId ?? '?'} ` +
+            `candidates=${rulesToEvaluate?.length ?? 0} ` +
+            `after_intent=${rulesAfterIntent?.length ?? 0} ` +
+            `evaluated=${layeredRuleResult?.rules_evaluated ?? 0} ` +
+            `matched=${layeredRuleResult?.rules_matched ?? 0} ` +
+            `eligible=${layeredRuleResult?.matched_responses?.length ?? 0} ` +
+            `winner=${_winner?.rule_id ?? 'none'} ` +
+            `winner_score=${(_winner?.weighted_confidence ?? _winner?.confidence_score ?? 0).toFixed?.(3) ?? 'n/a'} ` +
+            `action_text=${_winner?.action_text ? 'present' : 'EMPTY'} ` +
+            `prescription_allowed=${layeredRuleResult?.prescription_allowed ?? '?'} ` +
+            `final_diagnosis=${layeredRuleResult?.final_diagnosis?.cause ?? 'none'}`
+          );
+        } catch (_) { /* trace must never throw */ }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures
