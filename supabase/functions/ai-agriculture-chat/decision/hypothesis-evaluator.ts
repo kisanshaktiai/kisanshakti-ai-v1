@@ -668,12 +668,59 @@ export async function evaluateCandidateHypotheses(
   input: HypothesisEvaluationInput
 ): Promise<HypothesisEvaluationOutput> {
   const traceId = input.trace_id || `hyp_${Date.now()}`;
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Step 3 — HYPOTHESIS CONTRACT: GraphTruth is the sole authority.
+  // If a frozen GraphTruth is supplied, project its fields onto the mutable
+  // primitives BEFORE any downstream reasoning runs, and log every drift so
+  // upstream leaks stay visible in traces.
+  // ═════════════════════════════════════════════════════════════════════════
+  const gt = input.graph_truth ?? null;
+  if (gt) {
+    assertGraphTruthIntegrity(gt, 'EVALUATE_CANDIDATE_HYPOTHESES');
+
+    const drift: string[] = [];
+    if (gt.crop_code && input.crop_code && gt.crop_code.toLowerCase() !== input.crop_code.toLowerCase()) {
+      drift.push(`crop_code(pipe=${input.crop_code} graph=${gt.crop_code})`);
+    }
+    if (gt.biological_stage && input.growth_stage && gt.biological_stage.toLowerCase() !== input.growth_stage.toLowerCase()) {
+      drift.push(`stage(pipe=${input.growth_stage} graph=${gt.biological_stage})`);
+    }
+    if (gt.DAS != null && input.days_since_sowing != null && gt.DAS !== input.days_since_sowing) {
+      drift.push(`das(pipe=${input.days_since_sowing} graph=${gt.DAS})`);
+    }
+    const pipeObs = [...(input.known_observations || [])].sort().join(',');
+    const graphObs = [...gt.canonical_observations].sort().join(',');
+    if (pipeObs !== graphObs) drift.push(`obs(pipe=[${pipeObs}] graph=[${graphObs}])`);
+    if (gt.variety_id && input.variety_id && gt.variety_id !== input.variety_id) {
+      drift.push(`variety(pipe=${input.variety_id} graph=${gt.variety_id})`);
+    }
+    if (drift.length) {
+      console.warn(`[HYPOTHESIS_CONTRACT] site=EVALUATE trace=${traceId} drift=${drift.join(' ')} — using GraphTruth`);
+    }
+
+    // OVERRIDE — GraphTruth wins for the five authoritative fields.
+    input = {
+      ...input,
+      crop_code:        (gt.crop_code ?? input.crop_code) as string,
+      growth_stage:     (gt.biological_stage ?? input.growth_stage) as string,
+      days_since_sowing: (gt.DAS ?? input.days_since_sowing) as number | null,
+      known_observations: [...gt.canonical_observations],
+      variety_id:       (gt.variety_id ?? input.variety_id ?? null),
+    };
+  } else {
+    console.warn(`[HYPOTHESIS_CONTRACT] site=EVALUATE trace=${traceId} legacy_path — no graph_truth supplied by caller`);
+  }
+
   const { crop_code, growth_stage, supabaseClient } = input;
-  
+
   console.log(`🎯 [HypothesisEval v1.3] Pre-evaluating rules for ${crop_code}/${growth_stage}`);
   console.log(`   Known observations: ${input.known_observations.join(', ') || 'none'}`);
   console.log(`   NDVI: ${input.ndvi_level || 'unknown'} (${input.ndvi_trend || 'unknown'})`);
   console.log(`   DAS: ${input.days_since_sowing ?? 'unknown'}`);
+  console.log(`   Authority: ${gt ? `GRAPH_TRUTH(hash=${gt.hash})` : 'LEGACY_PIPE'}`);
+
+
   
   try {
     // ═══════════════════════════════════════════════════════════════════════
