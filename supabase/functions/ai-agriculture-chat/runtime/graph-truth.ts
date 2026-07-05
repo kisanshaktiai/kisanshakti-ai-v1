@@ -19,11 +19,22 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import { classifyEvidence } from './evidence-classifier.ts';
+
 export type EvidenceSource = {
   readonly code: string;
   readonly authority: 'CONFIRMED' | 'INFERRED';
   readonly source: string;
 };
+
+export interface GraphContextMetadata {
+  readonly crop_identified: boolean;
+  readonly photo_available: boolean;
+  readonly affected_part_unknown: boolean;
+  readonly distribution_unknown: boolean;
+  readonly action_none: boolean;
+  readonly raw_metadata_codes: readonly string[];
+}
 
 export interface GraphTruth {
   readonly version: 'v1';
@@ -39,6 +50,7 @@ export interface GraphTruth {
   readonly canonical_observations: readonly string[];
   readonly hypothesis_candidates: readonly string[];
   readonly evidence_sources: readonly EvidenceSource[];
+  readonly context_metadata: GraphContextMetadata;
 
   readonly locked_at: string;
   readonly hash: string;
