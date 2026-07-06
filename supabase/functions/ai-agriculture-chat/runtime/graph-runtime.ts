@@ -1,35 +1,38 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * GraphRuntime — thin facade over the neuro-symbolic hypothesis evaluator.
+ * GraphRuntime — SINGLE mandatory entrypoint to the hypothesis graph.
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * Architecture invariant:
- *   DB  = Agriculture Brain
- *   TS  = Graph Runtime          (this file — routing + trace + invariants)
- *   LLM = Farmer Language Narrator
+ * Architecture invariant (PR-2, 2026-07-06):
+ *   DB  = Agriculture Brain (SSOT)
+ *   TS  = Deterministic Graph Runtime            ← this file
+ *   LLM = Farmer Language Narrator (never reasons)
  *
- * Responsibilities:
- *   1. Route every hypothesis retrieval through a SINGLE entry point so the
- *      orchestrator, proactive workers, and future agents cannot each grow
- *      their own SQL. Downstream callers stay untouched — they still call
- *      `evaluateCandidateHypotheses` — but every call is fronted here.
- *   2. Emit ONE canonical trace line per request: `[GRAPH_RUNTIME] …`.
- *      Auditors grep for this and it uniquely locates the site.
- *   3. Set the per-request `graphExecuted` boolean so the clarification
- *      authority (see agents/orchestrator.ts around L5220) can enforce
- *      "clarification cannot fire before the hypothesis graph has run".
+ * CONTRACT
+ *   • `evaluateCandidateHypotheses` is called from EXACTLY ONE place in the
+ *     entire codebase: `runGraphRuntime` below. Any other direct import of
+ *     `evaluateCandidateHypotheses` is a P0 violation of the graph pipeline
+ *     and must be rewritten to call `runGraphRuntime`.
  *
- * Explicit non-goals for this facade:
- *   - No scoring changes.
- *   - No new SQL. The heavy retrieval remains in `hypothesis-evaluator.ts`
- *     and `hypothesis-graph-evaluator.ts` until they are fully collapsed
- *     into the loader-based SSOT (tracked separately).
+ *   • Every successful run flips `graphExecuted = true` via the optional
+ *     `markExecuted` hook the caller supplies. This is what the downstream
+ *     clarification-authority uses to enforce "clarification cannot fire
+ *     before the hypothesis graph has run".
+ *
+ *   • Emits ONE canonical trace line per invocation:
+ *         [GRAPH_RUNTIME] loader=HypothesisEvaluator trace=… winner=… ms=…
+ *     Auditors grep this to reconstruct any turn.
+ *
+ * NON-GOALS
+ *   • No scoring, no SQL, no agronomy. Heavy retrieval stays in
+ *     `../decision/hypothesis-evaluator.ts` until the loader-based SSOT
+ *     collapse lands (tracked separately).
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import {
   evaluateCandidateHypotheses,
-  type HypothesisEvaluationResult,
+  type HypothesisEvaluationOutput,
 } from '../decision/hypothesis-evaluator.ts';
 
 export interface GraphRuntimeInput {
@@ -43,28 +46,27 @@ export interface GraphRuntimeInput {
   graph_truth?: any;
   ndvi_level?: any;
   ndvi_trend?: any;
+  weather?: any;
   trace_id?: string;
   intent_code?: string;
-  /**
-   * Any additional pass-through options the caller wants forwarded verbatim
-   * to `evaluateCandidateHypotheses`. Kept untyped on purpose to avoid a
-   * churn of type imports while the loader consolidation is in flight.
-   */
+  /** Verbatim pass-through to the evaluator for fields not modelled above. */
   passthrough?: Record<string, unknown>;
+  /**
+   * Caller-supplied hook flipped to true on successful graph execution.
+   * Provided as a callback (not a shared object) so this module stays
+   * dependency-free and reusable across orchestrator, clarification, and
+   * future proactive workers.
+   */
+  markExecuted?: () => void;
 }
 
 export interface GraphRuntimeResult {
-  result: HypothesisEvaluationResult;
+  result: HypothesisEvaluationOutput;
   candidates: number;
   winner: string | null;
   ms: number;
 }
 
-/**
- * Run the hypothesis graph and emit the canonical `[GRAPH_RUNTIME]` trace.
- * Callers should treat the returned `graphExecuted` semantics as authoritative:
- * if this function resolves without throwing, the graph has run.
- */
 export async function runGraphRuntime(
   input: GraphRuntimeInput,
 ): Promise<GraphRuntimeResult> {
@@ -78,6 +80,7 @@ export async function runGraphRuntime(
     days_since_sowing: input.days_since_sowing as any,
     ndvi_level: input.ndvi_level,
     ndvi_trend: input.ndvi_trend,
+    weather: input.weather,
     known_observations: input.known_observations,
     user_query: input.user_query,
     supabaseClient: input.supabase,
@@ -85,6 +88,11 @@ export async function runGraphRuntime(
     variety_id: input.variety_id ?? null,
     ...passthrough,
   } as any);
+
+  // Contract flip — MUST happen only after the evaluator resolves without
+  // throwing. If the evaluator throws, `graphExecuted` stays false and the
+  // MANDATORY_GRAPH_GATE downstream will raise GRAPH_PIPELINE_BYPASSED.
+  try { input.markExecuted?.(); } catch { /* caller-side, non-fatal */ }
 
   const ms = Date.now() - t0;
   const candidates = Array.isArray((result as any)?.candidates)
@@ -96,6 +104,7 @@ export async function runGraphRuntime(
     (result as any)?.winner?.hypothesis_id ??
     (result as any)?.top_hypothesis?.hypothesis_id ??
     (result as any)?.primary_hypothesis?.hypothesis_id ??
+    (result as any)?.ranked_hypotheses?.[0]?.hypothesis_id ??
     null;
 
   console.log(

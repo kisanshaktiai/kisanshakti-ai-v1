@@ -50,13 +50,15 @@ import {
   ClarificationDomain
 } from '../decision/failure-class-detector.ts';
 import {
-  evaluateCandidateHypotheses,
   CandidateHypothesis,
   HypothesisEvaluationOutput,
   calculateDifferentiationPower,
   isObservationNDVIConsistent,
   getVisualObservabilityScore
 } from '../decision/hypothesis-evaluator.ts';
+// PR-2: use the single graph entrypoint. Do NOT reintroduce a direct
+// `evaluateCandidateHypotheses` import — see runtime/graph-runtime.ts.
+import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
 export const CLARIFICATION_STRATEGY_VERSION = '4.0.0';
@@ -407,7 +409,8 @@ export async function fetchRuleDrivenClarificationOptions(
   // This MUST happen BEFORE scope selection to ensure rule-awareness
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const hypothesisResult = await evaluateCandidateHypotheses({
+  const _graphRun = await runGraphRuntime({
+    supabase: supabaseClient,
     crop_code,
     growth_stage: stage,
     days_since_sowing: input.days_since_sowing ?? null,
@@ -416,10 +419,11 @@ export async function fetchRuleDrivenClarificationOptions(
     weather: input.weather,
     known_observations: current_symptoms,
     user_query: input.user_query || '',
-    supabaseClient,
     trace_id: traceId,
+    intent_code: input.detected_intent,
     variety_id: input.variety_id ?? null,
   });
+  const hypothesisResult = _graphRun.result;
   
   const candidates = hypothesisResult.candidates;
   console.log(`   🎯 [HypothesisFirst] Found ${candidates.length} candidate hypotheses`);

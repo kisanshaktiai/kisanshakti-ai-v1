@@ -564,10 +564,13 @@ import {
 // Pre-evaluate rules to build candidate hypothesis set BEFORE clarification
 // ═══════════════════════════════════════════════════════════════════════════
 import {
-  evaluateCandidateHypotheses,
   type CandidateHypothesis,
   type HypothesisEvaluationOutput
 } from '../decision/hypothesis-evaluator.ts';
+// PR-2: hypothesis graph MUST be reached through the single runtime facade.
+// Do NOT reintroduce a direct `evaluateCandidateHypotheses` import here —
+// that bypasses `graphExecuted` bookkeeping and the [GRAPH_RUNTIME] trace.
+import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 
 export const ORCHESTRATOR_VERSION = '4.1.0'; // Phase-22.5: Diagnosis-First mode with hypothesis-driven options
 
@@ -5061,12 +5064,12 @@ export class AIAgentOrchestrator {
             }
           }
 
-          const hypothesisResult = await evaluateCandidateHypotheses({
-            // Step 3 — GraphTruth is the sole authority. The evaluator will
-            // project (crop_code, growth_stage, DAS, known_observations,
-            // variety_id) from this frozen node and log any pipeline drift.
+          // PR-2: single graph entrypoint. `runGraphRuntime` owns the
+          // [GRAPH_RUNTIME] trace emission AND flips `_graphExecuted` on
+          // success via the markExecuted hook — no duplicate bookkeeping here.
+          const _graphRun = await runGraphRuntime({
+            supabase: this.supabase,
             graph_truth: _gtForHyp,
-
             crop_code: (_gtForHyp?.crop_code ?? cropCode) as any,
             growth_stage: (_gtForHyp?.biological_stage ?? growthStage) as any,
             days_since_sowing: (_gtForHyp?.DAS ?? resolvedDAS) as any,
@@ -5074,42 +5077,18 @@ export class AIAgentOrchestrator {
             ndvi_trend: landContext?.ndvi?.trend,
             known_observations: hypObservations,
             user_query: farmerMessage,
-            supabaseClient: this.supabase,
             trace_id: traceId,
+            intent_code: intentCode,
             // Phase F — variety-aware resistance modulation
             variety_id: (_gtForHyp?.variety_id
               ?? (landContext as any)?.current_crop_variety_id
               ?? (landContext as any)?.variety_id
               ?? null),
+            markExecuted: () => { (this as any)._graphExecuted = true; },
           });
+          const hypothesisResult = _graphRun.result;
 
-
-
-          
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
-          // Mark the graph as executed for the graph-before-clarification
-          // invariant at the understanding gate (see L5220 area). The
-          // hypothesis-graph-evaluator branch above already sets this on
-          // success, but the invariant is stronger when we also set it here
-          // — even if the graph-evaluator threw for a non-diagnostic intent,
-          // the full hypothesis evaluator ran, so clarification is safe.
-          (this as any)._graphExecuted = true;
-
-          // Canonical GraphRuntime trace — one grep-able line per turn.
-          try {
-            const _winnerId =
-              (hypothesisResult as any)?.winner?.hypothesis_id ??
-              (hypothesisResult as any)?.top_hypothesis?.hypothesis_id ??
-              (hypothesisResult as any)?.primary_hypothesis?.hypothesis_id ??
-              (hypothesisResult as any)?.ranked_hypotheses?.[0]?.hypothesis_id ??
-              null;
-            console.log(
-              `[GRAPH_RUNTIME] loader=HypothesisEvaluator trace=${traceId} ` +
-              `intent=${intentCode} crop=${cropCode} stage=${growthStage} das=${resolvedDAS} ` +
-              `obs=${hypObservations.length} candidates=${hypothesisResult.candidates?.length ?? 0} ` +
-              `winner=${_winnerId ?? 'none'}`,
-            );
-          } catch { /* trace-only */ }
 
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 

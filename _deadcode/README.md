@@ -1,38 +1,37 @@
 # _deadcode/
 
-Quarantine for PR-1 (KisanShakti Symbolic Decision Brain audit, 2026-07-06).
+Quarantine for KisanShakti Symbolic Decision Brain audit.
 
-Every file below has **zero external importers** verified via ripgrep at
-move time. Path structure mirrors the original project layout so restoration
-is a straight `mv` back.
+Each file below has **zero live references** (static AND dynamic imports).
+Path structure mirrors the original layout so restoration is a `mv` back.
 
-## Moved files (20)
+## Status log
 
-### `supabase/functions/ai-agriculture-chat/decision/` (10)
+### PR-1 (2026-07-06)
+Quarantined 20 files. Immediately hot-fixed: `iom-gate.ts`,
+`concept-bridge.ts`, and `hypothesis-graph-evaluator.ts` were restored to
+`decision/` when a follow-up audit found they are loaded via `await import(...)`
+(dynamic import), which the initial static scan missed.
+
+### PR-2 (2026-07-06)
+`graph/GraphRuntime.ts` was promoted to `runtime/graph-runtime.ts` as the
+single mandatory hypothesis-graph entrypoint. The remaining 7 dead loader
+files in the `graph/` subfolder were deleted outright (they were never
+wired in and are superseded by the loader-based SSOT plan).
+
+## Currently quarantined (10)
+
+### `supabase/functions/ai-agriculture-chat/decision/` (8)
 - canonical-state-invariants.ts
-- concept-bridge.ts
 - confidence-thresholds.ts
 - db-observation-validator.ts
-- decision-readiness-gate.ts
+- decision-readiness-gate.ts   ← only referenced in comments
 - diagnostic-signal-detector.ts
-- hypothesis-graph-evaluator.ts   ← superseded by `hypothesis-evaluator.ts`
 - induction-to-observation-mapper.ts
-- intent-resolver.ts
-- iom-gate.ts
-
-### `supabase/functions/ai-agriculture-chat/graph/` (8, whole directory)
-Dead facade. Loaders + GraphRuntime never wired into orchestrator.
-- ClarificationGraphLoader.ts
-- GraphRuntime.ts
-- HypothesisGraphLoader.ts
-- ObservationOntologyLoader.ts
-- RuleGraphLoader.ts
-- index.ts
-- loader-cache.ts
-- loader-types.ts
+- intent-resolver.ts           ← only referenced in comments
 
 ### `supabase/functions/ai-agriculture-chat/runtime/` (2)
-- clarification-authority.ts     ← marked stale; single-decision-point never adopted
+- clarification-authority.ts
 - graph-evidence-sentinel.ts
 
 ## Restore
@@ -40,12 +39,21 @@ Dead facade. Loaders + GraphRuntime never wired into orchestrator.
 ```sh
 mv _deadcode/supabase/functions/ai-agriculture-chat/decision/*  supabase/functions/ai-agriculture-chat/decision/
 mv _deadcode/supabase/functions/ai-agriculture-chat/runtime/*   supabase/functions/ai-agriculture-chat/runtime/
-mkdir -p supabase/functions/ai-agriculture-chat/graph
-mv _deadcode/supabase/functions/ai-agriculture-chat/graph/*     supabase/functions/ai-agriculture-chat/graph/
 ```
 
 ## Excluded from build
 
-`_deadcode/` sits outside `supabase/functions/` and outside `src/`, so
-Deno edge-function bundling and Vite compilation ignore it. Do not import
-from here.
+`_deadcode/` sits outside `supabase/functions/` and `src/`, so Deno edge
+bundling and Vite compilation ignore it. Do not import from here.
+
+## Invariants added
+
+- **PR-2:** `evaluateCandidateHypotheses` may be called from EXACTLY ONE
+  file: `supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts`.
+  Any reintroduction of a direct import elsewhere is a P0 violation.
+
+  Guard grep (must return exactly two lines — the definition and the single
+  facade call):
+  ```
+  rg "evaluateCandidateHypotheses\s*\(" supabase/functions/ai-agriculture-chat
+  ```
