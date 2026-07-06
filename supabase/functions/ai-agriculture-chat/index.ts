@@ -1,7 +1,15 @@
 /**
- * AI Agriculture Chat - Orchestrator-Based Entry Point
- * Full migration to 9-agent orchestrator system
- * v7.0.1 - Romanized language detection + app language enforcement
+ * ═══════════════════════════════════════════════════════════════════════════
+ * FILE:      supabase/functions/ai-agriculture-chat/index.ts
+ * ROLE:      HTTP entrypoint — routes every farmer chat request into the
+ *            9-agent orchestrator.
+ * AUTHORITY: ENTRYPOINT (single edge-function surface for ai-agriculture-chat)
+ * STATUS:    ACTIVE
+ * VERSION:   v7.0.1
+ * LAST_PR:   PR-6 (header stamping, 2026-07-06)
+ * STAMPED:   2026-07-06
+ * NOTES:     Romanized language detection + app language enforcement.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 // BUILD_TAG bumps force the edge runtime to pick up dependent module changes
