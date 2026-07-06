@@ -1,6 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * GraphRuntime — SINGLE mandatory entrypoint to the hypothesis graph.
+ * FILE:      supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts
+ * ROLE:      SINGLE mandatory entrypoint to the hypothesis graph.
+ * AUTHORITY: RUNTIME SSOT — only `runGraphRuntime` may call
+ *            `evaluateCandidateHypotheses`. Any other direct import is a P0.
+ * STATUS:    ACTIVE
+ * VERSION:   v1.0 (introduced by PR-2)
+ * LAST_PR:   PR-6 (header stamping, 2026-07-06)
+ * STAMPED:   2026-07-06
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * Architecture invariant (PR-2, 2026-07-06):
