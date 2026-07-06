@@ -13,7 +13,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
- * 
+/**
  * ARCHITECTURAL ROLE:
  * - Executes symbolic rules in priority order
  * - Outputs ONLY structured decision objects
