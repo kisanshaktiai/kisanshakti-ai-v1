@@ -1,6 +1,18 @@
-// ============= LAYERED RULE EVALUATION PIPELINE - v3.0 with Graph Control & ETL =============
-// PHASE-17: Enhanced with graph control, temporal constraints, and ETL validation
-// Rules loaded from database at runtime to prevent bundle timeout
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * FILE:      supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts
+ * ROLE:      Layered rule evaluation pipeline — graph control, temporal
+ *            constraints, ETL validation.
+ * AUTHORITY: LEGACY-SHIM over bundled-rules/loader.ts (SSOT). Scheduled to
+ *            collapse in PR-3 Full.
+ * STATUS:    ACTIVE (wrapper) — emits [RULE_ENGINE_LEGACY_WRAPPER] on invoke.
+ * VERSION:   v3.0 (PHASE-17)
+ * LAST_PR:   PR-6 (header stamping, 2026-07-06)
+ * STAMPED:   2026-07-06
+ * NOTES:     Rules loaded from DB at runtime to prevent bundle timeout.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
 
 import { 
   CanonicalState, 
