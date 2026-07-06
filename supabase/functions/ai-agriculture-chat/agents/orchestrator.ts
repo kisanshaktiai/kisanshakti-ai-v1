@@ -1,10 +1,17 @@
 /**
- * Master AI Agent Orchestrator
- * Coordinates all 9 specialized agents for comprehensive agricultural advisory
- * 
- * v2.0 UPDATE: LLM-First Response System
- * - Simple questions answered directly via LLM without rule engine
- * - Rule engine only for pest/disease/treatment decisions
+ * ═══════════════════════════════════════════════════════════════════════════
+ * FILE:      supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
+ * ROLE:      Master orchestrator — coordinates 9 specialized agents for
+ *            end-to-end agronomic advisory (intent → rules → narration).
+ * AUTHORITY: RUNTIME (single orchestrator; only caller allowed to invoke
+ *            runGraphRuntime, rule-engine-executor, layered-rule-evaluator).
+ * STATUS:    ACTIVE
+ * VERSION:   v2.0 (LLM-First Response System)
+ * LAST_PR:   PR-6 (header stamping, 2026-07-06)
+ * STAMPED:   2026-07-06
+ * NOTES:     Simple Qs answered directly via LLM; rule engine only fires for
+ *            pest / disease / treatment decisions.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";

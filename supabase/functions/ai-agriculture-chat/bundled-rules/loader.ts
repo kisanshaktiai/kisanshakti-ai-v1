@@ -1,10 +1,17 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * SECURE RULE LOADER - Database-First Strategy (v1.0.0-stub)
+ * FILE:      supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts
+ * ROLE:      Database-first rule loader + evaluator (in-memory cache).
+ * AUTHORITY: SSOT for rule loading / evaluation. The 3 remaining wrappers
+ *            (agents/rule-engine-executor.ts, agents/layered-rule-evaluator.ts,
+ *            agents/decision-graph-bridge.ts) are legacy shims scheduled to
+ *            collapse into this file — see PR-3 Full plan.
+ * STATUS:    ACTIVE
+ * VERSION:   v1.0.0 (database-first strategy)
+ * LAST_PR:   PR-6 (header stamping, 2026-07-06)
+ * STAMPED:   2026-07-06
+ * NOTES:     Loads rules from DB at runtime to prevent bundle timeout.
  * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Loads rules from database at runtime to prevent bundle timeout.
- * Uses in-memory caching for performance.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';

@@ -1,11 +1,19 @@
-// ✅ FORENSIC REFACTOR COMPLETE
-// Authority: Pure rule execution engine - evaluates rules, outputs structured results, NO language text
-
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * RULE ENGINE EXECUTOR v4.0 - SSOT COMPLIANT
+ * FILE:      supabase/functions/ai-agriculture-chat/agents/rule-engine-executor.ts
+ * ROLE:      Pure rule execution engine — evaluates rules and outputs
+ *            structured decisions. NO language text (mr/hi/en).
+ * AUTHORITY: LEGACY-SHIM over bundled-rules/loader.ts (SSOT). Scheduled to
+ *            collapse in PR-3 Full.
+ * STATUS:    ACTIVE (wrapper) — emits [RULE_ENGINE_LEGACY_WRAPPER] on invoke.
+ * VERSION:   v4.0
+ * LAST_PR:   PR-6 (header stamping, 2026-07-06)
+ * STAMPED:   2026-07-06
+ * NOTES:     Farmer-facing text handled downstream via i18n_keys + narrator.
  * ═══════════════════════════════════════════════════════════════════════════
- * 
+ */
+
+/**
  * ARCHITECTURAL ROLE:
  * - Executes symbolic rules in priority order
  * - Outputs ONLY structured decision objects
