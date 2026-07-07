@@ -3612,23 +3612,31 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       const hasSymptoms = inductionResult.symptoms.length > 0;
       
-      // Routes that can run symbolic brain WITHOUT symptoms (they use crop/stage/NDVI rules)
-      const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'WEATHER_SPRAY_TIMING', 'GENERAL_INFO', 'GREETING', 'FERTILIZER_NUTRITION'];
+      // PR-7 F2: `GENERAL_INFO` REMOVED from this allowlist. It was a
+      // heuristic query-router bucket (50%-conf) that quietly bypassed the
+      // zero-symptom invariant gate when the semantic classifier had already
+      // locked a specific diagnostic intent — the "two classifiers, use
+      // whichever is convenient" failure mode from trace_mr9ixe63_gvykf4.
+      // Routes that legitimately do not need farmer-confirmed symptoms:
+      const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'WEATHER_SPRAY_TIMING', 'GREETING', 'FERTILIZER_NUTRITION'];
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
       // FIX 4: LLM failsafe NO LONGER allows symbolic brain — clarification only
       let shouldRunSymbolicBrain = isSymptomFreeRoute || ((inductionCoverageSufficient || inductionConfidenceSufficient) && hasSymptoms);
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // FIX 7: HARD INVARIANT — Block rule firing when zero observations + UNKNOWN intent
+      // FIX 7 (PR-7 F2 rewrite): HARD INVARIANT — Block rule firing whenever there
+      // are zero symptoms and the route is not on the symptom-free allowlist.
+      // The previous formulation `shouldRunSymbolicBrain && !hasSymptoms && !isSymptomFreeRoute`
+      // was self-defeating: whenever `isSymptomFreeRoute` was true the gate
+      // could not fire at all, which is exactly how GENERAL_INFO leaked
+      // through with 0 observations.
       // ═══════════════════════════════════════════════════════════════════════════
-      if (shouldRunSymbolicBrain && !hasSymptoms && !isSymptomFreeRoute) {
+      if (!hasSymptoms && !isSymptomFreeRoute) {
         const gateIntentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN';
-        if (gateIntentCode === 'UNKNOWN_OBSERVATION' || gateIntentCode === 'UNKNOWN') {
-          console.log(`\n🚫 [INVARIANT_GATE] Blocking symbolic brain: zero observations + intent=${gateIntentCode}`);
-          shouldRunSymbolicBrain = false;
-          agentsUsed.push('INVARIANT_GATE_BLOCKED');
-        }
+        console.log(`\n🚫 [INVARIANT_GATE] Blocking symbolic brain: zero observations + route=${queryRoute.route} intent=${gateIntentCode}`);
+        shouldRunSymbolicBrain = false;
+        agentsUsed.push('INVARIANT_GATE_BLOCKED');
       }
       
       if (!hasSymptoms && !isSymptomFreeRoute && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
@@ -4107,6 +4115,28 @@ export class AIAgentOrchestrator {
       if (allObservationsForPreAuth.size === 0 && landContext && landContext.current_crop) {
         const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
 
+        // ═══════════════════════════════════════════════════════════════════════
+        // PR-7 F3: IOM-fallback preconditions.
+        // Without these guards a low-confidence, wrong-crop, or clarification-
+        // bound intent silently manufactured INFERRED evidence (see incident
+        // trace_mr9ixe63_gvykf4 where COTTON_SQUARE_BOLL_DROP_QUERY injected
+        // SEVERITY_MEDIUM + INSECT_DENSITY_MANY onto a Rice weed query).
+        //   (a) require intent-lock confidence ≥ 0.75
+        //   (b) reject when intent's crop prefix disagrees with land crop
+        //   (c) never synthesise evidence when we are already heading to a
+        //       clarification turn (route === DIAGNOSTIC and hasSymptoms === false)
+        // ═══════════════════════════════════════════════════════════════════════
+        const iomLockConfidence = Number((this as any)._intentLock?.confidence ?? intentConfidence ?? 0);
+        const iomCropRejected = Boolean((this as any)._intentLock?.crop_scope_rejected);
+        const iomIsDiagnosticNoSymptoms =
+          (queryRoute?.route === 'DIAGNOSTIC') && (hasSymptoms === false);
+        if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION' && iomLockConfidence < 0.75) {
+          console.log(`⛔ [INTENT_IOM_FALLBACK] skipped intent=${intentCode} reason=low_confidence(${iomLockConfidence.toFixed(2)}<0.75)`);
+        } else if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION' && iomCropRejected) {
+          console.log(`⛔ [INTENT_IOM_FALLBACK] skipped intent=${intentCode} reason=crop_scope_rejected`);
+        } else if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION' && iomIsDiagnosticNoSymptoms) {
+          console.log(`⛔ [INTENT_IOM_FALLBACK] skipped intent=${intentCode} reason=diagnostic_zero_symptoms_owes_clarification`);
+        } else
         if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
           try {
             const cropScopes = Array.from(new Set([
@@ -5838,12 +5868,27 @@ export class AIAgentOrchestrator {
       console.log(`   🔗 [IntentPropagation] semantic=${semanticExtraction?.intent_code}, nlu=${nluOutput?.intent_classification?.primary_intent}, final=${detectedIntent} (${(intentConfidence * 100).toFixed(0)}%)`);
       
       // Lock the intent for this turn
-      const intentLock = lockIntent(detectedIntent, intentConfidence);
+      // PR-7 F2 (log) + F6 (crop scope): pass land crop into lockIntent so the
+      // crop-prefix compatibility check inside intent-lock.ts can flag mismatches.
+      // Also surface router↔semantic disagreements — the pattern that let the
+      // pipeline pick "GENERAL_INFO" to bypass gates but "COTTON_*" to filter rules.
+      const routerIntentForLog = (queryRoute as any)?.route || 'UNKNOWN';
+      const semanticIntentForLog = semanticExtraction?.intent_code || 'UNKNOWN';
+      if (routerIntentForLog !== 'UNKNOWN' && semanticIntentForLog !== 'UNKNOWN' && routerIntentForLog !== semanticIntentForLog) {
+        console.warn(
+          `⚠️ [INTENT_ROUTER_DISAGREEMENT] router=${routerIntentForLog} semantic=${semanticIntentForLog} ` +
+          `final=${detectedIntent} land_crop=${landContext?.current_crop || 'UNKNOWN'}`,
+        );
+      }
+      const intentLock = lockIntent(detectedIntent, intentConfidence, {
+        crop: landContext?.current_crop || landContext?.crop_code || null,
+      });
+      (this as any)._intentLock = intentLock;
       agentsUsed.push('INTENT_LOCK');
       // PHASE Y — record intent on collector
       try {
         const rt = getRuntimeTraceCollector();
-        if (rt) { rt.context = { ...(rt.context || {}), intent: { code: detectedIntent, confidence: intentConfidence } }; }
+        if (rt) { rt.context = { ...(rt.context || {}), intent: { code: detectedIntent, confidence: intentConfidence, crop_scope_rejected: !!intentLock.crop_scope_rejected } }; }
       } catch {}
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -6944,6 +6989,23 @@ export class AIAgentOrchestrator {
 
         // T1 — GraphTruth integrity check before layered rule evaluator
         assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
+
+        // PR-7 F4: forensic snapshot of what actually reaches the layered
+        // evaluator. Resolves the addendum §4 open item: log the exact rule
+        // ids + intents + proactive count so a wrongly-included rule like
+        // PROACTIVE_FLOOD_PREPAREDNESS_001 is attributable to a concrete
+        // upstream stage (intent filter vs graph-scope vs pre-filter).
+        try {
+          const _rfe: any[] = rulesForEvaluator as any[];
+          const _ids = _rfe.map(r => String(r?.rule_id ?? r?.id ?? '?')).slice(0, 20);
+          const _intents = Array.from(new Set(_rfe.map(r => String(r?.rule_intent ?? 'null')))).slice(0, 10);
+          const _proactive = _rfe.filter(r => String(r?.category ?? '').toLowerCase().startsWith('proactive_')).length;
+          console.log(
+            `[RULE_EVALUATOR_INPUT] trace=${traceId} count=${_rfe.length} ` +
+            `proactive_count=${_proactive} intents=[${_intents.join(',')}] ` +
+            `ids=[${_ids.join(',')}${_rfe.length > 20 ? ',…' : ''}]`,
+          );
+        } catch { /* diagnostic-only */ }
 
         layeredRuleResult = evaluateRulesLayered(rulesForEvaluator as any, canonicalStateWithQuery as any, {
 

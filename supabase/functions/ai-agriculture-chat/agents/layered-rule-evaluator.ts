@@ -13,6 +13,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+// PR-7 F5: DB-derived stage-equivalence (shared with contradiction-engine
+// and navigator-adapter). Replaces the empty local STAGE_FAMILIES stub so
+// the stage gate stops soft-bypassing every rule.
+import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
+
 
 import { 
   CanonicalState, 
@@ -1125,6 +1130,11 @@ export function evaluateRulesLayered(
       const weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
       
       result.primary_decision = {
+        // PR-7 F1: expose the winning ExecutableRule so downstream gates
+        // (prescription-gate-enforcer Gate 0a) can read the leakage /
+        // no-treatment flags that bundled-rules/loader.ts stamped on it.
+        // Without this line Gate 0a is dead code.
+        _sourceRule: best,
         rule_id: best.rule_id,
         action_type: best.action_type,
         priority: best.priority ?? 50,
@@ -1357,36 +1367,32 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               // rule when the land's current_crop_stage = GERMINATION.
               // The family map MUST stay symmetric and crop-independent.
               // ───────────────────────────────────────────────────────────
-              /**
-               * STAGE_FAMILIES — REMOVED. Stage relationships originate
-               * exclusively from the DB ontology (`crop_stage_master.
-               * canonical_stage_id`, `crop_stage_graph`). This empty
-               * placeholder is kept so the downstream soft-bypass logic
-               * (`family === null` → `[STAGE_ONTOLOGY_MISSING]`) executes
-               * uniformly. DO NOT repopulate — curate DB rows instead.
-               */
-              const STAGE_FAMILIES: Record<string, string[]> = {};
-              const family = STAGE_FAMILIES[currentStage] || null;
+              // PR-7 F5: use the shared stage-family shim (backed by
+              // crop_stage_graph rows curated in the DB). This replaces the
+              // previous empty local STAGE_FAMILIES stub, which caused every
+              // rule to fall into the [STAGE_ONTOLOGY_MISSING] soft-bypass
+              // and turned the stage gate into a no-op.
+              const family = stageFamily(currentStage);
+              const familyKnown = family.length > 1; // singleton = unknown stage
               const exactMatch = normalizedApplicableStages.includes(currentStage);
-              const familyMatch = family
-                ? normalizedApplicableStages.some((s: string) => s === currentStage || family.includes(s))
-                : false;
+              const familyMatch = normalizedApplicableStages.some((s: string) =>
+                stagesEquivalent(currentStage, s)
+              );
 
               if (!exactMatch && !familyMatch) {
-                if (!family) {
-                  // Ontology-missing: DO NOT reject. Emit forensic log for
-                  // future DB-backed stage_relationships migration. The rule
-                  // still faces DB-level STAGE predicates downstream.
+                if (!familyKnown) {
+                  // Truly unknown stage — keep the forensic bypass log so
+                  // curators can spot missing crop_stage_graph rows.
                   console.log(
                     `[STAGE_ONTOLOGY_MISSING] rule=${bundled.rule_id} current_stage=${currentStage} ` +
                     `applicable=[${normalizedApplicableStages.join(',')}] action=BYPASS_STAGE_GATE ` +
-                    `reason=STAGE_FAMILIES_deprecated_awaiting_db_stage_relationships`
+                    `reason=stage_not_in_stage_family_shim`
                   );
                 } else {
                   if (bundled.priority && bundled.priority > 70) {
                     console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage} (family=[${family.join(',')}])`);
                   }
-                  return false; // HARD GATE only when family is known and mismatches
+                  return false; // HARD GATE when family is known and mismatches
                 }
               }
             }
@@ -1783,6 +1789,11 @@ function mapBundledCategory(category: string): RuleCategory {
     'proactive_disease':     RuleCategory.WARNING,
     'proactive_weed':        RuleCategory.WARNING,
     'proactive_weather':     RuleCategory.WARNING,
+
+    // PR-7 F7: NDVI authority gate rules are SAFETY-class (they gate other
+    // rules based on satellite reliability), not diagnostic. Previously fell
+    // through to the safe-default OBSERVATION with a per-request warning.
+    'ndvi_authority_gate':   RuleCategory.SAFETY,
   };
 
   const norm = category?.toLowerCase()?.trim();

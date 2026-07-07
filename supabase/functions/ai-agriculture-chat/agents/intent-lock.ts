@@ -22,6 +22,12 @@ export interface IntentLock {
   allowed_action_types: string[];
   forbidden_action_types: string[];
   confidence: number;
+  // PR-7 F6: signal that the intent's crop prefix does not match the
+  // authoritative land crop. Callers (orchestrator) should treat this as a
+  // hint to fall back to observation discovery / clarification instead of
+  // letting the mismatched intent drive rule filtering + IOM fallback.
+  crop_scope_rejected?: boolean;
+  crop_scope_reason?: string;
 }
 
 export interface IntentLockValidation {
@@ -220,7 +226,8 @@ const DEFAULT_SCOPE = {
  */
 export function lockIntent(
   intent_label: string,
-  confidence: number = 1.0
+  confidence: number = 1.0,
+  opts?: { crop?: string | null }
 ): IntentLock {
   const turn_id = `turn_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   
@@ -230,6 +237,31 @@ export function lockIntent(
   // Get scope configuration
   const scopeConfig = INTENT_SCOPE_MAP[normalizedIntent] || DEFAULT_SCOPE;
   
+  // ═══════════════════════════════════════════════════════════════════════
+  // PR-7 F6: crop-scope compatibility check
+  // Intent codes carrying a crop prefix (e.g. COTTON_SQUARE_BOLL_DROP_QUERY,
+  // RICE_TUNGRO_QUERY, SUGARCANE_*) MUST match the authoritative land crop.
+  // A COTTON_* intent locking onto a Rice field is a structural contract
+  // violation — flag it so the orchestrator can drop back to observation
+  // discovery instead of feeding the wrong intent into the IOM fallback.
+  // Rule is intentionally prefix-based (no per-intent table needed): the DB
+  // already encodes the mapping via decision_rules.crop_code / rule_intent.
+  // ═══════════════════════════════════════════════════════════════════════
+  const CROP_PREFIXES = ['COTTON', 'RICE', 'WHEAT', 'SUGARCANE', 'MAIZE', 'SOYBEAN', 'ONION', 'TOMATO', 'POTATO', 'GROUNDNUT', 'CHICKPEA', 'MUSTARD'];
+  const landCropUpper = (opts?.crop || '').trim().toUpperCase();
+  const intentCropPrefix = CROP_PREFIXES.find(p => normalizedIntent.startsWith(p + '_'));
+  let cropScopeRejected = false;
+  let cropScopeReason: string | undefined;
+  if (intentCropPrefix && landCropUpper && intentCropPrefix !== landCropUpper) {
+    cropScopeRejected = true;
+    cropScopeReason = `intent_prefix=${intentCropPrefix} land_crop=${landCropUpper}`;
+    console.warn(
+      `🚫 [INTENT_REJECT_CROP_SCOPE] intent=${normalizedIntent} ` +
+      `intent_crop=${intentCropPrefix} land_crop=${landCropUpper} ` +
+      `action=FLAG_FOR_ORCHESTRATOR_FALLBACK`
+    );
+  }
+
   const lock: IntentLock = {
     turn_id,
     locked_intent: normalizedIntent,
@@ -237,10 +269,11 @@ export function lockIntent(
     allowed_rule_scopes: scopeConfig.allowed_scopes,
     allowed_action_types: scopeConfig.allowed_actions,
     forbidden_action_types: scopeConfig.forbidden_actions,
-    confidence
+    confidence,
+    ...(cropScopeRejected ? { crop_scope_rejected: true, crop_scope_reason: cropScopeReason } : {}),
   };
   
-  console.log(`🔒 [IntentLock] LOCKED intent: ${normalizedIntent}`);
+  console.log(`🔒 [IntentLock] LOCKED intent: ${normalizedIntent}${cropScopeRejected ? ' (⚠️ crop_scope_rejected)' : ''}`);
   console.log(`   Allowed scopes: ${scopeConfig.allowed_scopes.join(', ')}`);
   console.log(`   Allowed actions: ${scopeConfig.allowed_actions.join(', ')}`);
   console.log(`   Forbidden actions: ${scopeConfig.forbidden_actions.join(', ')}`);
