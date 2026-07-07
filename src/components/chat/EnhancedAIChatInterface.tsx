@@ -2353,7 +2353,7 @@ export function EnhancedAIChatInterface() {
                   <motion.button
                     key={land.id}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setActiveTab(land.id)}
+                    onClick={() => selectLandTab(land.id)}
                     className={cn(
                       "flex-shrink-0 snap-start flex flex-col items-center justify-center",
                       "min-w-[64px] h-[48px] rounded-xl border transition-all px-2",
