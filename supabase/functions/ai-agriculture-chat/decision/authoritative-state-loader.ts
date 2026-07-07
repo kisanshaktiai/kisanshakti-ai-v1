@@ -621,9 +621,21 @@ export async function loadAuthoritativeLandState(
     // ═══════════════════════════════════════════════════════════════════════════
     // BUILD AUTHORITATIVE STATE OBJECT
     // ═══════════════════════════════════════════════════════════════════════════
-    // FIXED: Compute growth_stage from sowing_date since current_stage column doesn't exist
-    let computedGrowthStage: string | null = null;
-    if (daysSinceSowing !== null) {
+    // PR-1 · Growth stage comes from resolve_crop_phenology (SSOT), NOT a
+    // crop-agnostic DAS ladder. The ladder below is retained ONLY as a
+    // last-resort fallback when the RPC returns no row (e.g. crop lacks a
+    // phenology profile). Any non-null RPC row wins.
+    const phenologyRow: any = Array.isArray(phenologyResult?.data)
+      ? (phenologyResult.data[0] ?? null)
+      : (phenologyResult?.data ?? null);
+    if (phenologyResult?.error) {
+      console.warn('⚠️ [AuthoritativeStateLoader] resolve_crop_phenology RPC failed:', phenologyResult.error?.message);
+    }
+
+    let computedGrowthStage: string | null = phenologyRow?.growth_stage ?? phenologyRow?.stage_code ?? null;
+    const stageSource: 'phenology_rpc' | 'das_fallback' | 'none' =
+      computedGrowthStage ? 'phenology_rpc' : (daysSinceSowing !== null ? 'das_fallback' : 'none');
+    if (!computedGrowthStage && daysSinceSowing !== null) {
       if (daysSinceSowing <= 15) computedGrowthStage = 'GERMINATION';
       else if (daysSinceSowing <= 35) computedGrowthStage = 'EARLY_VEGETATIVE';
       else if (daysSinceSowing <= 60) computedGrowthStage = 'VEGETATIVE';
@@ -631,6 +643,7 @@ export async function loadAuthoritativeLandState(
       else if (daysSinceSowing <= 150) computedGrowthStage = 'MATURITY';
       else computedGrowthStage = 'HARVEST';
     }
+    console.log(`🌱 [AuthoritativeStateLoader] growth_stage=${computedGrowthStage ?? 'null'} source=${stageSource} das=${daysSinceSowing ?? 'n/a'}`);
 
     const authoritativeState: AuthoritativeLandState = {
       land_id: land.id,
