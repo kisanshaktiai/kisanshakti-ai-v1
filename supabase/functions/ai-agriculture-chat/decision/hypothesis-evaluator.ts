@@ -751,28 +751,43 @@ export async function evaluateCandidateHypotheses(
     // 184 rules (37.7%) were being excluded including nutrition, irrigation, pest rules
     // These rules have matching data in conditions_json instead
     // ═══════════════════════════════════════════════════════════════════════
-    const { data: rulesRaw, error } = await supabaseClient
-      .from('decision_rules')
-      .select(`
-        rule_id,
-        cause,
-        canonical_group,
-        category,
-        action_type,
-        priority,
-        stage_applicable,
-        conditions_json,
-        observable_characteristics,
-        differentiating_questions,
-        action_text,
-        crop_age_days_min,
-        crop_age_days_max,
-        required_observation_category,
-        required_plant_part
-      `)
-      .eq('is_active', true)
-      .or(cropFilter)
-      .limit(800); // Safety headroom: 514+ SUGARCANE rules + multi-crop variants
+    // PR-8 · Paginate decision_rules so we never silently drop rules past the
+    // PostgREST 1000-row cap. Loop with .range() and stop on the first
+    // incomplete page.
+    const PAGE_SIZE = 1000;
+    const rulesRaw: any[] = [];
+    let error: any = null;
+    for (let page = 0; page < 20; page++) {
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, error: pageError } = await supabaseClient
+        .from('decision_rules')
+        .select(`
+          rule_id,
+          cause,
+          canonical_group,
+          category,
+          action_type,
+          priority,
+          stage_applicable,
+          conditions_json,
+          observable_characteristics,
+          differentiating_questions,
+          action_text,
+          crop_age_days_min,
+          crop_age_days_max,
+          required_observation_category,
+          required_plant_part
+        `)
+        .eq('is_active', true)
+        .or(cropFilter)
+        .range(from, to);
+      if (pageError) { error = pageError; break; }
+      const batch = Array.isArray(data) ? data : [];
+      rulesRaw.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+    }
+
     
     if (error) {
       console.error(`   ❌ [HypothesisEval] Database error:`, error);
