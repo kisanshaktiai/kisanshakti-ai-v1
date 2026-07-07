@@ -68,7 +68,8 @@ export function LandContextCard({ land, onQuickAction }: LandContextCardProps) {
   // Prefer freshly-loaded row; fall back to the summary row from the tab strip
   // so we still render something meaningful on the very first paint.
   const l = context.land ?? land;
-  const crop = context.activeCrop;
+  const schedule = context.activeCrop;           // crop_schedules SSOT
+  const phen = context.phenology;                // resolve_crop_phenology SSOT
   const soil = context.soil;
   const ndvi = context.ndvi;
   const wx = context.weather;
@@ -76,10 +77,16 @@ export function LandContextCard({ land, onQuickAction }: LandContextCardProps) {
   const ndviScore = ndvi?.ndvi_value ?? ndvi?.mean_ndvi ?? l?.last_ndvi_value ?? null;
   const ndvi_ = ndviStatus(ndviScore, t as any);
 
-  const cropName = crop?.crop_name ?? l?.current_crop ?? null;
-  const variety = crop?.crop_variety ?? null;
-  const sowingDate = crop?.sowing_date ?? l?.last_sowing_date ?? l?.planting_date ?? null;
-  const das = daysBetween(sowingDate);
+  // Crop identity + variety come from crop_schedules (authoritative).
+  const cropName = schedule?.crop_name ?? l?.current_crop ?? null;
+  const variety = schedule?.crop_variety ?? null;
+  const sowingDate = schedule?.sowing_date ?? l?.last_sowing_date ?? l?.planting_date ?? null;
+  const expectedHarvest = schedule?.expected_harvest_date ?? l?.expected_harvest_date ?? null;
+
+  // Growth stage + DAS come ONLY from resolve_crop_phenology (variety-aware SSOT).
+  // Never derive stage on the client.
+  const growthStage = phen?.growth_stage ?? null;
+  const das = phen?.current_das ?? daysBetween(sowingDate);
 
   const temperature = wx?.temperature_celsius;
   const humidity = wx?.humidity_percent;
