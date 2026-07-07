@@ -288,7 +288,12 @@ export async function classifyFarmerIntent(
 // ═══════════════════════════════════════════════════════════════════════════
 
 function emit(code: string, conf: number, validCodes: Set<string>): IntentClassification {
-  if (validCodes.size === 0 || validCodes.has(code)) return { intent_code: code, confidence: conf };
+  // PR-10 · Empty-registry safety: when the DB-driven registry is empty
+  // (cold-start race, network blip, or truly missing data), refuse to emit
+  // any hardcoded intent code. Downgrade to a low-confidence GENERAL_CROP_INFO
+  // so the orchestrator can trigger a safe clarification path.
+  if (validCodes.size === 0) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.1 };
+  if (validCodes.has(code)) return { intent_code: code, confidence: conf };
   if (validCodes.has('GENERAL_CROP_INFO')) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3 };
   return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.15 };
 }
