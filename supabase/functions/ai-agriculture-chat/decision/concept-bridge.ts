@@ -5,9 +5,9 @@
  *
  * v3.0 — 2026-07-04 (DB-wired)
  *
- * Runtime bridge from raw extractor labels (e.g. POOR_GERMINATION) into
- * canonical observation codes (e.g. obs_rice_no_emergence) using the
- * `public.observation_aliases` table as the ONLY source of truth.
+ * Runtime bridge from raw extractor labels into canonical observation
+ * codes using the `public.observation_aliases` table as the ONLY source
+ * of truth.
  *
  * NO hardcoded crop/stage/symptom/pest/disease mappings live here. Adding a
  * new bridge = inserting a row in `observation_aliases`, not editing code.
