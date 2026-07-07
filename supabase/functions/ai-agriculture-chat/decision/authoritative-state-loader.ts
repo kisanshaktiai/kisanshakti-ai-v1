@@ -361,7 +361,8 @@ export async function loadAuthoritativeLandState(
       cropScheduleResult,
       soilHealthResult,
       ndviResult,
-      weatherResult
+      weatherResult,
+      phenologyResult
     ] = await Promise.all([
       // 1. Land base data — FIXED: use actual DB columns (area_acres, center_lat, center_lon)
       supabase
@@ -406,7 +407,15 @@ export async function loadAuthoritativeLandState(
         .eq('land_id', landId)
         .order('observation_date', { ascending: false })
         .limit(1)
-        .maybeSingle()
+        .maybeSingle(),
+
+      // 6. PR-1 · Crop-stage SSOT — variety-aware phenology resolver.
+      // resolve_crop_phenology(land_id) is the DB-side SSOT joining
+      // crop_schedules + crop_stage_master + variety_phenology_profile.
+      // Frontend already uses it (see useLandChatContext); backend MUST
+      // consume the same row so LLM narration and rule scoping see the
+      // exact same growth_stage the farmer sees on their land card.
+      supabase.rpc('resolve_crop_phenology', { p_land_id: landId })
     ]);
     
     // ═══════════════════════════════════════════════════════════════════════════
