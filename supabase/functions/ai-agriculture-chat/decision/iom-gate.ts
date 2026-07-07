@@ -104,18 +104,30 @@ export async function loadIOMAllowed(
   }
 
   try {
-    const { data, error } = await supabase
-      .from('intent_observation_mapping')
-      .select('observation_code, confidence_rank, assertion_strength, das_min, das_max')
-      .eq('is_active', true)
-      .eq('intent_code', intentUpper)
-      .in('crop_code', cropVariants)
-      .in('growth_stage', stageVariants)
-      .order('confidence_rank', { ascending: true });
+    // PR-8 · Paginate the intent_observation_mapping query. PostgREST caps a
+    // single .select() at 1000 rows; a truncated allowlist silently drops
+    // valid observation codes and biases the decision graph. Loop with
+    // .range() until an incomplete page arrives.
+    const PAGE_SIZE = 1000;
+    const rows: any[] = [];
+    for (let page = 0; page < 20; page++) {
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from('intent_observation_mapping')
+        .select('observation_code, confidence_rank, assertion_strength, das_min, das_max')
+        .eq('is_active', true)
+        .eq('intent_code', intentUpper)
+        .in('crop_code', cropVariants)
+        .in('growth_stage', stageVariants)
+        .order('confidence_rank', { ascending: true })
+        .range(from, to);
+      if (error) throw error;
+      const batch = Array.isArray(data) ? data : [];
+      rows.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+    }
 
-    if (error) throw error;
-
-    const rows = Array.isArray(data) ? data : [];
 
     // DAS gate (in-memory; PostgREST doesn't accept null-aware lte/gte cleanly)
     const dasFiltered = rows.filter((r: any) => {
