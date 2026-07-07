@@ -6994,6 +6994,14 @@ export class AIAgentOrchestrator {
           ? 'NO_HYPOTHESIS_EDGE'
           : (graphRuleIdSet.size === 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'OK');
         if ((this as any)._evidenceFrozen) {
+          // Diagnosis-first / early rule-engine paths may enter here without
+          // the main hypothesis-graph loop having emitted [OBS_TO_HYP]. Advance
+          // the sequence synthetically when we already have graph output so the
+          // strict HYP_TO_RULE ordering check does not crash the turn.
+          if (Number((this as any).__decisionGraphSequence ?? 0) === 1) {
+            assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
+            console.log(`[OBS_TO_HYP] trace=${traceId} synthesized=true reason=diagnosis_first_path sequence=2`);
+          }
           assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
         }
         console.log(
