@@ -661,8 +661,8 @@ export async function loadAuthoritativeLandState(
       
       crop: {
         current_crop: cropSchedule?.crop_name || null,
-        crop_code: null, // FIXED: crop_code column doesn't exist in crop_schedules
-        growth_stage: computedGrowthStage, // FIXED: computed from sowing_date
+        crop_code: phenologyRow?.crop_code ?? null, // PR-1: from resolve_crop_phenology when available
+        growth_stage: computedGrowthStage, // PR-1: from resolve_crop_phenology (SSOT), DAS ladder is fallback only
         days_since_sowing: daysSinceSowing,
         sowing_date: cropSchedule?.sowing_date || null,
         expected_harvest_date: cropSchedule?.expected_harvest_date || null,
