@@ -32,12 +32,46 @@ import { useAuthStore } from '@/stores/authStore';
 
 export interface LandChatContext {
   land: any | null;
+  /**
+   * Active crop schedule row from `public.crop_schedules` — the SSOT for
+   * "what is planted right now" (crop_name, crop_variety, variety_id,
+   * sowing_date, expected_harvest_date, status/lifecycle).
+   */
   activeCrop: {
     crop_name: string | null;
     crop_variety: string | null;
+    variety_id: string | null;
     sowing_date: string | null;
     expected_harvest_date: string | null;
+    actual_harvest_date: string | null;
     status: string | null;
+    lifecycle_status: string | null;
+    harvest_status: string | null;
+    stages_covered: any | null;
+  } | null;
+  /**
+   * Stage SSOT: `public.resolve_crop_phenology(land_id, today)` — derives the
+   * current growth stage from crop_stage_master + variety_phenology_profile
+   * (variety-aware), using the schedule's sowing_date and any GDD data.
+   * NEVER derive stage on the client — always trust this resolver.
+   */
+  phenology: {
+    stage_uuid: string | null;
+    stage_code: string | null;
+    growth_stage: string | null;
+    crop_code: string | null;
+    crop_cycle: string | null;
+    current_das: number | null;
+    current_gdd: number | null;
+    expected_ndvi_min: number | null;
+    expected_ndvi_max: number | null;
+    expected_height_cm_min: number | null;
+    expected_height_cm_max: number | null;
+    phenology_index: number | null;
+    confidence: number | null;
+    reference_system: string | null;
+    source: string | null;
+    resolver_version: number | null;
   } | null;
   soil: {
     ph_level: number | null;
@@ -83,6 +117,7 @@ export interface LandChatContext {
 const EMPTY_CTX: LandChatContext = {
   land: null,
   activeCrop: null,
+  phenology: null,
   soil: null,
   ndvi: null,
   weather: null,
