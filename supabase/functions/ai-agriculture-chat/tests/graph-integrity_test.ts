@@ -114,3 +114,70 @@ Deno.test('PR-7 F2 · GENERAL_INFO is removed from symptomFreeRoutes', async () 
     'GENERAL_INFO must not appear on the symptomFreeRoutes allowlist',
   );
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR-1 · authoritative-state-loader MUST consume resolve_crop_phenology
+// (variety-aware SSOT) instead of the crop-agnostic DAS ladder.
+// ───────────────────────────────────────────────────────────────────────────
+Deno.test('PR-1 · authoritative-state-loader calls resolve_crop_phenology RPC', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../decision/authoritative-state-loader.ts', import.meta.url),
+  );
+  assert(
+    /supabase\.rpc\(\s*['"]resolve_crop_phenology['"]/.test(src),
+    'authoritative-state-loader must call supabase.rpc("resolve_crop_phenology", ...)',
+  );
+});
+
+Deno.test('PR-1 · growth_stage prefers phenology RPC over DAS ladder', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../decision/authoritative-state-loader.ts', import.meta.url),
+  );
+  assert(
+    /phenologyRow\?\.growth_stage/.test(src),
+    'growth_stage assignment must read phenologyRow.growth_stage first',
+  );
+  assert(
+    /stageSource\s*[:=]\s*['"]phenology_rpc['"]/.test(src) ||
+      /['"]phenology_rpc['"]/.test(src),
+    'stage source must be tagged as phenology_rpc when RPC returns a row',
+  );
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR-2 · Orchestrator must honor intentLock.crop_scope_rejected — the flag
+// must gate the IOM fallback path so a mis-scoped intent cannot fan out
+// observations from the wrong crop taxonomy.
+// ───────────────────────────────────────────────────────────────────────────
+Deno.test('PR-2 · orchestrator gates IOM fallback on crop_scope_rejected', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../agents/orchestrator.ts', import.meta.url),
+  );
+  assert(
+    /_intentLock\?\.crop_scope_rejected/.test(src),
+    'orchestrator must read intentLock.crop_scope_rejected before IOM fallback',
+  );
+  assert(
+    /INTENT_IOM_FALLBACK.*crop_scope_rejected/.test(src),
+    'orchestrator must log/skip IOM fallback when crop_scope_rejected is true',
+  );
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR-5 · The deprecated generateLLMResponse wrapper must delegate to the
+// safe symbolic narrator (generateNarratedResponse). Any regression that
+// re-routes it to a raw LLM call would let hallucinated agronomy through.
+// ───────────────────────────────────────────────────────────────────────────
+Deno.test('PR-5 · generateLLMResponse delegates to generateNarratedResponse', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../agents/llm-response-generator.ts', import.meta.url),
+  );
+  const wrapperIdx = src.indexOf('export async function generateLLMResponse');
+  assert(wrapperIdx > 0, 'generateLLMResponse wrapper must still exist');
+  const tail = src.slice(wrapperIdx);
+  assert(
+    /generateNarratedResponse\s*\(/.test(tail),
+    'generateLLMResponse body must call generateNarratedResponse (no raw LLM fallback)',
+  );
+});
+
