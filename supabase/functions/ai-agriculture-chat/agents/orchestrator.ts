@@ -5410,6 +5410,20 @@ export class AIAgentOrchestrator {
       const _ruleHasRun = (this as any)._ruleResultExists === true;
       const _convStateOk = (this as any).__conversationState
         && (this as any).__conversationState.clarification_required === false;
+      // Scope-safe crop/stage locals for the log lines below. The `cropCode`
+      // const declared inside the diagnosis-first try-block (line ~4828) is
+      // OUT OF SCOPE here — referencing it caused
+      // "ReferenceError: cropCode is not defined" in the UNDERSTANDING_GATE.
+      const _logCropCode =
+        (canonicalContext as any)?.crop_code ||
+        (landContext as any)?.current_crop?.toUpperCase?.() ||
+        (landContext as any)?.current_crop ||
+        'UNKNOWN';
+      const _logGrowthStage =
+        (canonicalContext as any)?.growth_stage ||
+        (landContext as any)?.growth_stage ||
+        'UNKNOWN';
+
       if (understandingResult.clarification_required && isDiagnosticIntent && !_graphHasRun) {
         console.warn(
           `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker asked for clarification ` +
