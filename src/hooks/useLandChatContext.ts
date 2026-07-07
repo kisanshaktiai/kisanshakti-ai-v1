@@ -152,12 +152,12 @@ async function fetchLandChatContext(
   ]);
 
   return {
-    land: landRes.data ?? null,
-    activeCrop: cropRes.data ?? null,
-    soil: soilRes.data ?? null,
-    ndvi: ndviRes.data ?? null,
-    weather: wxRes.data ?? null,
-    weatherMetrics: wxMetricRes.data ?? null,
+    land: (landRes.data as any) ?? null,
+    activeCrop: (cropRes.data as any) ?? null,
+    soil: (soilRes.data as any) ?? null,
+    ndvi: (ndviRes.data as any) ?? null,
+    weather: (wxRes.data as any) ?? null,
+    weatherMetrics: (wxMetricRes.data as any) ?? null,
   };
 }
 
