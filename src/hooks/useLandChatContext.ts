@@ -32,12 +32,46 @@ import { useAuthStore } from '@/stores/authStore';
 
 export interface LandChatContext {
   land: any | null;
+  /**
+   * Active crop schedule row from `public.crop_schedules` — the SSOT for
+   * "what is planted right now" (crop_name, crop_variety, variety_id,
+   * sowing_date, expected_harvest_date, status/lifecycle).
+   */
   activeCrop: {
     crop_name: string | null;
     crop_variety: string | null;
+    variety_id: string | null;
     sowing_date: string | null;
     expected_harvest_date: string | null;
+    actual_harvest_date: string | null;
     status: string | null;
+    lifecycle_status: string | null;
+    harvest_status: string | null;
+    stages_covered: any | null;
+  } | null;
+  /**
+   * Stage SSOT: `public.resolve_crop_phenology(land_id, today)` — derives the
+   * current growth stage from crop_stage_master + variety_phenology_profile
+   * (variety-aware), using the schedule's sowing_date and any GDD data.
+   * NEVER derive stage on the client — always trust this resolver.
+   */
+  phenology: {
+    stage_uuid: string | null;
+    stage_code: string | null;
+    growth_stage: string | null;
+    crop_code: string | null;
+    crop_cycle: string | null;
+    current_das: number | null;
+    current_gdd: number | null;
+    expected_ndvi_min: number | null;
+    expected_ndvi_max: number | null;
+    expected_height_cm_min: number | null;
+    expected_height_cm_max: number | null;
+    phenology_index: number | null;
+    confidence: number | null;
+    reference_system: string | null;
+    source: string | null;
+    resolver_version: number | null;
   } | null;
   soil: {
     ph_level: number | null;
@@ -83,6 +117,7 @@ export interface LandChatContext {
 const EMPTY_CTX: LandChatContext = {
   land: null,
   activeCrop: null,
+  phenology: null,
   soil: null,
   ndvi: null,
   weather: null,
@@ -101,22 +136,25 @@ async function fetchLandChatContext(
 ): Promise<LandChatContext> {
   const client = supabaseWithAuth(farmerId, tenantId);
 
-  const [landRes, cropRes, soilRes, ndviRes, wxRes, wxMetricRes] = await Promise.all([
+  const [landRes, cropRes, phenRes, soilRes, ndviRes, wxRes, wxMetricRes] = await Promise.all([
     client
       .from('lands')
       .select('id, name, area_acres, soil_type, current_crop, current_crop_id, crop_stage, planting_date, last_sowing_date, expected_harvest_date, water_source, irrigation_type, irrigation_source, district, state, village, center_lat, center_lon, last_ndvi_value, last_ndvi_calculation, ndvi_status')
       .eq('id', landId)
       .eq('tenant_id', tenantId)
       .maybeSingle(),
+    // Active crop schedule = SSOT for what is planted now (crop + variety + sowing).
     client
-      .from('land_crops')
-      .select('crop_name, crop_variety, sowing_date, expected_harvest_date, status, is_active')
+      .from('crop_schedules')
+      .select('crop_name, crop_variety, variety_id, sowing_date, expected_harvest_date, actual_harvest_date, status, lifecycle_status, harvest_status, stages_covered')
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .order('sowing_date', { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle(),
+    // Phenology SSOT: variety-aware growth-stage resolver (DB function).
+    client.rpc('resolve_crop_phenology', { p_land_id: landId }),
     client
       .from('soil_health')
       .select('ph_level, soil_type, texture, nitrogen_level, phosphorus_level, potassium_level, organic_carbon, soil_moisture_surface_percent, agro_climatic_zone, test_date, source')
@@ -151,9 +189,13 @@ async function fetchLandChatContext(
       .maybeSingle(),
   ]);
 
+  // resolve_crop_phenology returns TABLE(...) → array; take first row (or null).
+  const phenRow = Array.isArray(phenRes?.data) ? (phenRes.data[0] ?? null) : null;
+
   return {
     land: (landRes.data as any) ?? null,
     activeCrop: (cropRes.data as any) ?? null,
+    phenology: (phenRow as any) ?? null,
     soil: (soilRes.data as any) ?? null,
     ndvi: (ndviRes.data as any) ?? null,
     weather: (wxRes.data as any) ?? null,
