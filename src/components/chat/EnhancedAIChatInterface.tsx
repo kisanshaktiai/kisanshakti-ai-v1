@@ -42,6 +42,8 @@ import { useEntitlements } from '@/hooks/useEntitlements';
 import { ChatQuotaHeader } from '@/components/subscription/ChatQuotaHeader';
 import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
 import GeneralChatLandPicker from './GeneralChatLandPicker';
+import { useQueryClient } from '@tanstack/react-query';
+import { prefetchLandChatContext } from '@/hooks/useLandChatContext';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
