@@ -143,9 +143,7 @@ async function fetchLandChatContext(
       .maybeSingle(),
     client
       .from('land_weather_metrics')
-      .select(
-        'metric_date, gdd_accumulated, et0_mm, total_rainfall_mm, irrigation_urgency, disease_risk_level',
-      )
+      .select('metric_date, gdd_accumulated, et0_mm, total_rainfall_mm, irrigation_urgency, disease_risk_level')
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
       .order('metric_date', { ascending: false })
