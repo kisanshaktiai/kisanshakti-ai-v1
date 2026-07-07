@@ -124,10 +124,7 @@ async function fetchLandChatContext(
       .maybeSingle(),
     client
       .from('soil_health')
-      .select(
-        'ph_level, soil_type, texture, nitrogen_level, phosphorus_level, potassium_level, ' +
-          'organic_carbon, soil_moisture_surface_percent, agro_climatic_zone, test_date, source',
-      )
+      .select('ph_level, soil_type, texture, nitrogen_level, phosphorus_level, potassium_level, organic_carbon, soil_moisture_surface_percent, agro_climatic_zone, test_date, source')
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
       .order('test_date', { ascending: false, nullsFirst: false })
@@ -135,9 +132,7 @@ async function fetchLandChatContext(
       .maybeSingle(),
     client
       .from('ndvi_data')
-      .select(
-        'date, ndvi_value, mean_ndvi, coverage_percentage, cloud_coverage, quality_score, image_url',
-      )
+      .select('date, ndvi_value, mean_ndvi, coverage_percentage, cloud_coverage, quality_score, image_url')
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
       .order('date', { ascending: false })
@@ -145,10 +140,7 @@ async function fetchLandChatContext(
       .maybeSingle(),
     client
       .from('weather_current')
-      .select(
-        'temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, ' +
-          'weather_description, observation_time',
-      )
+      .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_description, observation_time')
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
       .order('observation_time', { ascending: false })
