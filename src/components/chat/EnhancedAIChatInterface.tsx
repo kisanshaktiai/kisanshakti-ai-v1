@@ -42,6 +42,8 @@ import { useEntitlements } from '@/hooks/useEntitlements';
 import { ChatQuotaHeader } from '@/components/subscription/ChatQuotaHeader';
 import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
 import GeneralChatLandPicker from './GeneralChatLandPicker';
+import { useQueryClient } from '@tanstack/react-query';
+import { prefetchLandChatContext } from '@/hooks/useLandChatContext';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
@@ -183,6 +185,24 @@ export function EnhancedAIChatInterface() {
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
+  const queryClient = useQueryClient();
+
+  /**
+   * Prefetch the full land-scoped chat context (land row, active crop +
+   * variety + sowing date, latest soil, latest NDVI, live weather + daily
+   * metrics) the moment the farmer taps a land tab, so the welcome card
+   * and downstream orchestrator request paint with real data on first
+   * frame. See `useLandChatContext` for the exact columns and tables.
+   */
+  const selectLandTab = React.useCallback(
+    (landId: string) => {
+      setActiveTab(landId);
+      if (tenant?.id && user?.id) {
+        prefetchLandChatContext(queryClient, landId, tenant.id, user.id);
+      }
+    },
+    [queryClient, tenant?.id, user?.id],
+  );
 
   // GENERAL-CHAT land context picker:
   //   undefined => not yet chosen for this session (open picker before sending)
@@ -286,7 +306,7 @@ export function EnhancedAIChatInterface() {
     if (landIdParam) {
       const landExists = lands.some(l => l.id === landIdParam);
       if (landExists) {
-        setActiveTab(landIdParam);
+        selectLandTab(landIdParam);
       } else {
         toast({
           title: t('chat.landNotFound', 'Land not found'),
@@ -2333,7 +2353,7 @@ export function EnhancedAIChatInterface() {
                   <motion.button
                     key={land.id}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setActiveTab(land.id)}
+                    onClick={() => selectLandTab(land.id)}
                     className={cn(
                       "flex-shrink-0 snap-start flex flex-col items-center justify-center",
                       "min-w-[64px] h-[48px] rounded-xl border transition-all px-2",
