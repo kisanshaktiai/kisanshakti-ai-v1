@@ -142,10 +142,22 @@ export function LandContextCard({ land, onQuickAction }: LandContextCardProps) {
                   {das != null && ` · ${das} ${t('common.daysShort', 'd')}`}
                 </span>
               )}
-              {l?.crop_stage && (
+              {growthStage && (
                 <span className="inline-flex items-center gap-1">
                   <Sprout className="w-3 h-3" />
-                  {l.crop_stage}
+                  {growthStage}
+                  {phen?.phenology_index != null && (
+                    <span className="text-muted-foreground/70">
+                      {' '}
+                      · {Math.round(phen.phenology_index * 100)}%
+                    </span>
+                  )}
+                </span>
+              )}
+              {expectedHarvest && (
+                <span className="inline-flex items-center gap-1">
+                  <CalendarDays className="w-3 h-3" />
+                  {t('chat.harvest', 'Harvest')}: {fmtDate(expectedHarvest)}
                 </span>
               )}
             </div>
