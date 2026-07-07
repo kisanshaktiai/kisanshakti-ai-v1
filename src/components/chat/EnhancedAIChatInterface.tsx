@@ -306,7 +306,7 @@ export function EnhancedAIChatInterface() {
     if (landIdParam) {
       const landExists = lands.some(l => l.id === landIdParam);
       if (landExists) {
-        setActiveTab(landIdParam);
+        selectLandTab(landIdParam);
       } else {
         toast({
           title: t('chat.landNotFound', 'Land not found'),
