@@ -5410,24 +5410,38 @@ export class AIAgentOrchestrator {
       const _ruleHasRun = (this as any)._ruleResultExists === true;
       const _convStateOk = (this as any).__conversationState
         && (this as any).__conversationState.clarification_required === false;
+      // Scope-safe crop/stage locals for the log lines below. The `cropCode`
+      // const declared inside the diagnosis-first try-block (line ~4828) is
+      // OUT OF SCOPE here — referencing it caused
+      // "ReferenceError: cropCode is not defined" in the UNDERSTANDING_GATE.
+      const _logCropCode =
+        (canonicalContext as any)?.crop_code ||
+        (landContext as any)?.current_crop?.toUpperCase?.() ||
+        (landContext as any)?.current_crop ||
+        'UNKNOWN';
+      const _logGrowthStage =
+        (canonicalContext as any)?.growth_stage ||
+        (landContext as any)?.growth_stage ||
+        'UNKNOWN';
+
       if (understandingResult.clarification_required && isDiagnosticIntent && !_graphHasRun) {
         console.warn(
           `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker asked for clarification ` +
-          `BEFORE hypothesis graph ran — demoting to advisory (intent=${intentCode} crop=${cropCode}). ` +
+          `BEFORE hypothesis graph ran — demoting to advisory (intent=${intentCode} crop=${_logCropCode}). ` +
           `[CLARIFY_AUTHORITY] source=DEMOTED_CHECKER required=false reason=graph_before_clarification`,
         );
         understandingResult.clarification_required = false;
       } else if (understandingResult.clarification_required && _evidenceHasFrozen && !_ruleHasRun) {
         console.warn(
           `[SYMBOLIC_CONTRACT_VIOLATION] understanding_checker attempted pre-rule clarification ` +
-          `after evidence freeze — demoting until RULE_RESULT (intent=${intentCode} crop=${cropCode}). ` +
+          `after evidence freeze — demoting until RULE_RESULT (intent=${intentCode} crop=${_logCropCode}). ` +
           `[CLARIFY_AUTHORITY] source=GRAPH_RUNTIME required=false reason=rule_result_required`,
         );
         understandingResult.clarification_required = false;
       } else if (understandingResult.clarification_required && _convStateOk) {
         console.log(
           `[CLARIFY_AUTHORITY] source=CONVERSATION_STATE required=false reason=conv_state_sufficient ` +
-          `intent=${intentCode} crop=${cropCode}`,
+          `intent=${intentCode} crop=${_logCropCode}`,
         );
         understandingResult.clarification_required = false;
       }
@@ -5435,9 +5449,10 @@ export class AIAgentOrchestrator {
       if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage && !isAdvisoryRouteForGate) {
         console.log(
           `[CLARIFY_EXIT] site=UNDERSTANDING_GATE trace=${traceId} intent=${intentCode} ` +
-          `crop=${cropCode} stage=${growthStage} confidence=${understandingResult.understanding_confidence} ` +
+          `crop=${_logCropCode} stage=${_logGrowthStage} confidence=${understandingResult.understanding_confidence} ` +
           `missing=[${understandingResult.unknown_critical_fields?.join(',') ?? ''}] graph_ran=${_graphHasRun}`,
         );
+
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
         // ═══════════════════════════════════════════════════════════════════════════
