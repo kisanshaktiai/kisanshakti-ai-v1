@@ -361,7 +361,8 @@ export async function loadAuthoritativeLandState(
       cropScheduleResult,
       soilHealthResult,
       ndviResult,
-      weatherResult
+      weatherResult,
+      phenologyResult
     ] = await Promise.all([
       // 1. Land base data — FIXED: use actual DB columns (area_acres, center_lat, center_lon)
       supabase
@@ -406,7 +407,15 @@ export async function loadAuthoritativeLandState(
         .eq('land_id', landId)
         .order('observation_date', { ascending: false })
         .limit(1)
-        .maybeSingle()
+        .maybeSingle(),
+
+      // 6. PR-1 · Crop-stage SSOT — variety-aware phenology resolver.
+      // resolve_crop_phenology(land_id) is the DB-side SSOT joining
+      // crop_schedules + crop_stage_master + variety_phenology_profile.
+      // Frontend already uses it (see useLandChatContext); backend MUST
+      // consume the same row so LLM narration and rule scoping see the
+      // exact same growth_stage the farmer sees on their land card.
+      supabase.rpc('resolve_crop_phenology', { p_land_id: landId })
     ]);
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -612,9 +621,21 @@ export async function loadAuthoritativeLandState(
     // ═══════════════════════════════════════════════════════════════════════════
     // BUILD AUTHORITATIVE STATE OBJECT
     // ═══════════════════════════════════════════════════════════════════════════
-    // FIXED: Compute growth_stage from sowing_date since current_stage column doesn't exist
-    let computedGrowthStage: string | null = null;
-    if (daysSinceSowing !== null) {
+    // PR-1 · Growth stage comes from resolve_crop_phenology (SSOT), NOT a
+    // crop-agnostic DAS ladder. The ladder below is retained ONLY as a
+    // last-resort fallback when the RPC returns no row (e.g. crop lacks a
+    // phenology profile). Any non-null RPC row wins.
+    const phenologyRow: any = Array.isArray(phenologyResult?.data)
+      ? (phenologyResult.data[0] ?? null)
+      : (phenologyResult?.data ?? null);
+    if (phenologyResult?.error) {
+      console.warn('⚠️ [AuthoritativeStateLoader] resolve_crop_phenology RPC failed:', phenologyResult.error?.message);
+    }
+
+    let computedGrowthStage: string | null = phenologyRow?.growth_stage ?? phenologyRow?.stage_code ?? null;
+    const stageSource: 'phenology_rpc' | 'das_fallback' | 'none' =
+      computedGrowthStage ? 'phenology_rpc' : (daysSinceSowing !== null ? 'das_fallback' : 'none');
+    if (!computedGrowthStage && daysSinceSowing !== null) {
       if (daysSinceSowing <= 15) computedGrowthStage = 'GERMINATION';
       else if (daysSinceSowing <= 35) computedGrowthStage = 'EARLY_VEGETATIVE';
       else if (daysSinceSowing <= 60) computedGrowthStage = 'VEGETATIVE';
@@ -622,6 +643,7 @@ export async function loadAuthoritativeLandState(
       else if (daysSinceSowing <= 150) computedGrowthStage = 'MATURITY';
       else computedGrowthStage = 'HARVEST';
     }
+    console.log(`🌱 [AuthoritativeStateLoader] growth_stage=${computedGrowthStage ?? 'null'} source=${stageSource} das=${daysSinceSowing ?? 'n/a'}`);
 
     const authoritativeState: AuthoritativeLandState = {
       land_id: land.id,
@@ -639,8 +661,8 @@ export async function loadAuthoritativeLandState(
       
       crop: {
         current_crop: cropSchedule?.crop_name || null,
-        crop_code: null, // FIXED: crop_code column doesn't exist in crop_schedules
-        growth_stage: computedGrowthStage, // FIXED: computed from sowing_date
+        crop_code: phenologyRow?.crop_code ?? null, // PR-1: from resolve_crop_phenology when available
+        growth_stage: computedGrowthStage, // PR-1: from resolve_crop_phenology (SSOT), DAS ladder is fallback only
         days_since_sowing: daysSinceSowing,
         sowing_date: cropSchedule?.sowing_date || null,
         expected_harvest_date: cropSchedule?.expected_harvest_date || null,
