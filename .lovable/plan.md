@@ -1,131 +1,100 @@
 
-# PR-7 — Decision Brain Graph Repair (code + live-DB verified)
+# Neuro-Symbolic Decision Brain — Forensic Audit & Repair Plan
 
-Supersedes the "response-contract only" plan currently in `.lovable/plan.md`. That plan patched the UI symptom (empty options). The forensic addendum shows the pipeline breaks upstream, in the graph itself, and the UI-only patch would still ship a Cotton intent + phantom pest evidence on a Rice/weed query. This plan fixes the graph. No new files, no new tables, no LLM agronomy, no schema changes.
+## Scope
 
-Trace under repair: `trace_mr9ixe63_gvykf4` — Marathi "या शेतात खूप तन आले आहे" on Rice/DAS=28 → wrongly locked `COTTON_SQUARE_BOLL_DROP_QUERY`, injected `SEVERITY_MEDIUM`+`INSECT_DENSITY_MANY`, winner `PROACTIVE_FLOOD_PREPAREDNESS_001`.
-
-Every file:line below was re-verified against the live source in this repo.
-
----
-
-## Root-cause chain (code-verified)
+Audit the live `supabase/functions/ai-agriculture-chat/` pipeline against the required graph:
 
 ```text
-Farmer weeds query (Rice, DAS 28)
-   ▼
-[F1] intent-lock.ts:221  lockIntent(label, conf) — no crop param
-   ▼    → COTTON_* locks onto Rice, structurally uncatchable
-[F2] orchestrator.ts:3616  symptomFreeRoutes includes GENERAL_INFO
-   ▼    → Fix-7 zero-symptom gate at 3625 is skipped, clarification bypassed
-[F3] orchestrator.ts:4035  INTENT_IOM_FALLBACK on wrong locked intent
-   ▼    → injects SEVERITY_MEDIUM + INSECT_DENSITY_MANY as INFERRED evidence
-[F5] layered-rule-evaluator.ts:1368  local `const STAGE_FAMILIES = {}`
-   ▼    → stage gate is a no-op; 87× STAGE_ONTOLOGY_MISSING bypass
-[F4] bundled-rules/loader.ts:1405  leakage guard sets _noTreatmentEligible
-   ▼    → but layered-rule-evaluator.ts:1115 builds primary_decision without
-        _sourceRule, so prescription-gate-enforcer.ts:213 Gate 0a is dead code
-Winner: PROACTIVE_FLOOD_PREPAREDNESS_001 → URGENT_ACTION 73.9%
+Farmer → Intent → LandContextLock → Observation → Hypothesis → Confidence → DecisionRule → LLM Narrator
 ```
 
----
+No new files, no new tables, no new architecture. Only reconnect, delete dead paths, fix wiring.
 
-## Fix list (7 patches, ordered by safety)
+## Phase 1 — Read-only Forensic Trace (no edits)
 
-### F1 — Wire the winning ExecutableRule onto `primary_decision`
-- File: `agents/layered-rule-evaluator.ts` (around L1115 where `primary_decision` literal is built)
-- Change (1 line, additive): `_sourceRule: best,` on the object literal.
-- Effect: `prescription-gate-enforcer.ts:213` Gate 0a can now read `_noTreatmentEligible` / `_intentGateLeakage` — the guard stops being dead code.
-- Risk: none (additive property, no consumers today).
+For each node I will produce a `File / Function / Line / Issue / Fix` block. Investigation targets:
 
-### F7 — Register `ndvi_authority_gate` in `mapBundledCategory`
-- File: `agents/layered-rule-evaluator.ts:1692` (the `map` object inside `mapBundledCategory`)
-- Add one entry (same pattern as existing `weed_management` / `physiology`).
-- Silences the safe-default warning surfacing on every NDVI-gated rule.
+1. **Entry & Orchestrator**
+   - `index.ts`, `agents/orchestrator.ts`, `agents/intent-router.ts`, `agents/query-router.ts`
+   - Verify: single entry, no LLM diagnosis, `symptomFreeRoutes` gate holds, no `GENERAL_INFO` override of `DIAGNOSTIC`.
 
-### F5 — Wire the existing stage-family shim into the rule evaluator
-- File: `agents/layered-rule-evaluator.ts:1361–1385`
-- Delete the local empty `const STAGE_FAMILIES = {}` stub, `import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';` (already used by `contradiction-engine.ts` and `navigator-adapter.ts`) and replace the family lookup with `stagesEquivalent(currentStage, applicable)`.
-- Data path: `crop_stage_graph` has 146 live rows already; the shim covers the rice `transplanting↔tillering` edge this incident needed. No DB migration.
-- Effect: `STAGE_ONTOLOGY_MISSING … BYPASS_STAGE_GATE` collapses to real gate decisions.
+2. **Language / Intent (Node 1 + 3)**
+   - `llm-understanding-layer.ts`, `agents/nlu-agent.ts`, `agents/intent-classifier.ts`, `agents/semantic-extractor.ts`, `agents/intent-lock.ts`
+   - Verify `intent_master` + `intent_observation_mapping` reads; confirm LLM only extracts, never diagnoses; confirm crop-prefix lock (PR-7 F6) is invoked on every turn.
 
-### F4 — Diagnostic instrumentation before rule evaluator (addendum §4 open item)
-- File: `agents/orchestrator.ts:~6749` (call site of `evaluateRulesLayered`)
-- Add ONE trace line: `[RULE_EVALUATOR_INPUT] trace=… count=N ids=[…] intents=[…] proactive_count=…`.
-- Purpose: resolve the `PROACTIVE_FLOOD_PREPAREDNESS_001 rule_intent='recommendation'` vs `kept=0 demoted=202 dropped=0` contradiction noted in addendum §4. Read-only, no behaviour change. Ships with F1/F5.
+3. **Land Context Lock (Node 2)**
+   - `decision/authoritative-state-loader.ts`, `decision/canonical-context-contract.ts`, `decision/context-authority.ts`, `decision/context-validator.ts`, `runtime/conversation-state.ts`, `src/hooks/useLandChatContext.ts`
+   - Verify context is frozen once per turn (`assertCanonicalContextLocked`), no rebuild downstream, no cross-land leakage in `context-manager.ts`.
 
-### F2 — Remove `GENERAL_INFO` from `symptomFreeRoutes` and unconditionalise the zero-symptom invariant
-- File: `agents/orchestrator.ts:3616` and the gate at `3625` (Fix-7 invariant).
-- Change 1: drop `'GENERAL_INFO'` from `symptomFreeRoutes` (keep `IRRIGATION_SCHEDULING`, `CROP_HEALTH`, `WEATHER_SPRAY*`, `GREETING`, `FERTILIZER_NUTRITION`).
-- Change 2: rewrite the gate to `if (!hasSymptoms && !isSymptomFreeRoute && !diagnosticIntent) { … }` — the previous `shouldRunSymbolicBrain && !hasSymptoms && !isSymptomFreeRoute` skipped itself whenever the route allowlist matched.
-- Effect: Marathi weed query with 0 symptoms takes the observation-selection path instead of the symbolic brain.
-- Also add: at `agents/orchestrator.ts:5841` (call site of `lockIntent`) log `[INTENT_ROUTER_DISAGREEMENT] route=… semantic=… → …` when `queryRoute.route` and `detectedIntent` disagree, so we can see the "two classifiers, use whichever is convenient" pattern in future traces.
+4. **Observation (Node 4)**
+   - `agents/canonical-observation-loader.ts`, `agents/observation-extractor.ts`, `agents/observation-key-mapper.ts`, `decision/observation-ontology.ts`, `decision/iom-gate.ts`, `runtime/farmer-observable-gate.ts`, `runtime/evidence-classifier.ts`
+   - Verify observations come only from `observation_master` via `intent_observation_mapping`; LLM-invented symptoms are rejected; pagination is honoured (memory rule).
 
-### F3 — Gate the IOM fallback on intent-lock confidence + crop compatibility
-- File: `agents/orchestrator.ts:4035–4090` (the `INTENT_IOM_FALLBACK` block).
-- Add pre-conditions before the `.from('intent_observation_mapping')` fetch:
-  1. `intentLock.confidence >= 0.75` (below this, we do not manufacture INFERRED evidence)
-  2. `intentLock.crop_scope` intersects `landContext.current_crop` OR is `['*']`
-  3. Skip entirely when `queryRoute.route === 'DIAGNOSTIC'` and `hasSymptoms === false` — that turn belongs to clarification, not fallback synthesis
-- Keep the existing `INFERRED` authority tag and `[INTENT_IOM_FALLBACK]` trace. No new tables.
+5. **Hypothesis (Node 5)**
+   - `decision/causal-hypothesis-engine.ts`, `decision/hypothesis-evaluator.ts`, `decision/hypothesis-graph-evaluator.ts`, `runtime/graph-runtime.ts`, `runtime/decision-graph-navigator.ts`, `runtime/graph-truth.ts`
+   - Verify `OBS_TO_HYP` always runs when observations exist; `HYP_TO_RULE` never runs with `hyp=[]`; canonical_group + stage-family invariants hold.
 
-### F6 — Crop-scope check before intent lock commits
-- Files: `agents/intent-lock.ts:221` (extend signature to `lockIntent(intent_label, confidence, opts?: { crop?: string | null })`) and the single call site `agents/orchestrator.ts:5841`.
-- Before building the lock: if `scopeConfig.crop_scope` is defined, not `['*']`, and `opts.crop` is set, and there is no intersection → return `{ locked: null, reason: 'CROP_SCOPE_MISMATCH', … }` and let the orchestrator drop to observation discovery.
-- Log: `[INTENT_REJECT_CROP_SCOPE] intent=… scope=… land_crop=…`.
-- Uses existing `INTENT_SCOPE_MAP`; no new data.
+6. **Confidence (Node 6)**
+   - `decision/confidence-calculator.ts`, `decision/confidence-chain.ts`, `runtime/contradiction-engine.ts`, `src/decision-graph/confidence-engine.ts`
+   - Verify confidence source = symbolic evidence, not LLM; low-confidence path routes to `clarification-generator`, never straight to rules.
 
-### F6b — Delete the duplicate `ICAR_CROP_CALENDARS` stage table
-- File: `decision/context-validator.ts:83–103` and the single reader at `:310`.
-- Replace with a query against `crop_stage_master` (`crop_code, stage_code, das_min, das_max`) — already the SSOT used everywhere else. In-file cache by `crop_code` for the request lifetime.
-- Removes the third competing stage authority that produced the misleading "TILLERING (28 DAS, ICAR confirmed)" line. `crop_stage_master` says RICE_TRANSPLANTING = DAS 25–35, RICE_TILLERING = DAS 35–60, so at DAS 28 the correct answer is TRANSPLANTING — matching the immutability lock that (correctly) blocked the override.
+7. **Decision Rule (Node 7)**
+   - `agents/layered-rule-evaluator.ts`, `agents/rule-engine-executor.ts`, `agents/rule-module-resolver.ts`, `layers/rule-evaluation-layer.ts`, `decision/prescription-gate-enforcer.ts`, `decision/unified-decision-gate.ts`
+   - Verify hypothesis→rule mapping via `hypothesis_rule_mapping`; no `ORPHAN_RULE_SELECTION`; category registry complete (memory rule).
 
----
+8. **Narration (Node 8)**
+   - `agents/llm-response-generator.ts`, `agents/llm-response-formatter.ts`, `agents/deterministic-response-builder.ts`, `agents/communication-generator.ts`
+   - Verify LLM receives only approved decision payload; no dose/chemical mutation; canonical-language SSOT enforced.
 
-## What is NOT changed
+9. **DB wiring**
+   - For each of `intent_master`, `intent_observation_mapping`, `observation_master`, `hypothesis_conditions`, `hypothesis_master`, `hypothesis_rule_mapping`, `decision_rules`: check reader function, column names via `information_schema`, row counts, and runtime usage sites. Fill the `TABLE / Expected / Actual / Connected / Broken / Fix` grid.
 
-- No new files. No new tables. No RLS changes (the 24-table advisory is called out for the user's team to triage separately per the addendum).
-- No LLM prompt edits, no agronomy in TypeScript, no changes to `decision_rules`, `intent_observation_mapping`, `hypothesis_master`, `hypothesis_rule_mapping`, `observation_master`.
-- `runtime/graph-truth.ts`, `runtime/graph-runtime.ts`, `runtime/stage-family-shim.ts` are read-only reuse — no edits.
-- The response-contract UI plan currently in `.lovable/plan.md` is superseded: with F2+F3+F6 fixed, `orchestrator_type='CLARIFICATION_QUESTION'` and non-empty `options` fall out of the correct pipeline instead of being force-stamped by a fallback.
+10. **Dead code / duplicates**
+    - Compare `_deadcode/` against live counterparts.
+    - Grep for unreferenced exports in `agents/`, `decision/`, `runtime/`.
+    - Flag duplicated graph runners (`graph-runtime.ts` vs `decision-graph-navigator.ts` vs `hypothesis-graph-evaluator.ts`) and pick the one wired to the orchestrator.
 
----
+11. **Graph integrity traces**
+    - Mental-trace two queries end-to-end and record real vs expected node transitions:
+      - "My sugarcane leaves are yellow"
+      - "भात अजून उगवले नाही"
 
-## Verification (once implemented)
+## Phase 2 — Deliverable (produced at end of Phase 1)
 
-Query: `या शेतात खूप तन आले आहे` (Rice land, DAS 28).
+A single forensic report with:
+- Executive summary (Graph Working: Y/P/N, Production Ready: Y/N)
+- Actual pipeline diagram derived from code
+- Expected-vs-Actual table per node
+- P0/P1/P2 bug list with File / Function / Line / Root cause / Fix / Risk
+- Dead code report
+- Missing-wire report
+- Minimal ordered PR plan (see Phase 3)
 
-Required logs, in order:
+## Phase 3 — Minimal Repair PRs (build mode, after report approval)
+
+Placeholder order — actual PRs are only defined after Phase 1 findings. Each PR must:
+- touch existing files only
+- add no tables
+- add no new agents/runners
+- carry a targeted regression test in `supabase/functions/ai-agriculture-chat/tests/`
+
+```text
+PR-A  Reconnect broken graph edge exposed by trace #1
+PR-B  Delete/quarantine duplicate graph runner not wired to orchestrator
+PR-C  Restore DB reader for the table found disconnected in Phase 1
+PR-D  Kill any LLM diagnostic fallback path discovered
+PR-E  Regression tests pinning each repaired edge
 ```
-[INTENT_ROUTER_DISAGREEMENT] route=GENERAL_INFO semantic=COTTON_SQUARE_BOLL_DROP_QUERY → reconciled=WEED_*
-[INTENT_REJECT_CROP_SCOPE] intent=COTTON_SQUARE_BOLL_DROP_QUERY scope=[cotton] land_crop=rice   (if the reconciler still emits it)
-[RULE_EVALUATOR_INPUT] trace=… count=N ids=[…] proactive_count=0
-# NO occurrence of:
-#   [STAGE_ONTOLOGY_MISSING] … BYPASS_STAGE_GATE
-#   [INTENT_IOM_FALLBACK] intent=COTTON_* injected=N
-#   winner_rule=PROACTIVE_FLOOD_PREPAREDNESS_001
-```
 
-Response payload MUST have `metadata.orchestrator_type === 'CLARIFICATION_QUESTION'` and `metadata.options.length >= 3` sourced from `intent_observation_mapping` / `observation_master` for a weed intent — not from `generateNoRecommendationsFallback` (already dead after F2/F3).
+## Guardrails
 
-Deno test: `supabase/functions/ai-agriculture-chat/tests/graph-integrity.test.ts` (single new test file, allowed).
-1. Rice weed query never locks a `COTTON_*` intent.
-2. Zero confirmed observations + diagnostic intent → response type = CLARIFICATION_QUESTION, options ≥ 3.
-3. IOM fallback rejected when `intentLock.confidence < 0.75` OR `crop_scope` mismatch.
-4. Gate 0a blocks a rule carrying `_noTreatmentEligible=true` via `_sourceRule`.
-5. Stage gate returns `applicable=true` for `transplanting` when rule declares `tillering` (uses shim + `crop_stage_graph`).
+- No new files, no new tables, no schema changes.
+- No parallel pipeline; repair the existing brain.
+- Every finding must cite `file:line`; no assumptions.
+- LLM stays a narrator; any code found generating agronomy is removed, not rewritten.
 
----
+## What I need from you before I start
 
-## Files touched (7 code files + 1 test)
-
-1. `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` — F1 (`_sourceRule: best`), F5 (import shim, delete empty local `STAGE_FAMILIES`), F7 (`ndvi_authority_gate` mapping)
-2. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — F2 (remove `GENERAL_INFO`, rewrite zero-symptom gate, disagreement log), F3 (IOM-fallback preconditions), F6 (pass `crop` into `lockIntent`), F4 (`[RULE_EVALUATOR_INPUT]` trace)
-3. `supabase/functions/ai-agriculture-chat/agents/intent-lock.ts` — F6 signature extension + crop-scope reject
-4. `supabase/functions/ai-agriculture-chat/decision/context-validator.ts` — F6b (delete `ICAR_CROP_CALENDARS`, read `crop_stage_master`)
-5. `supabase/functions/ai-agriculture-chat/decision/prescription-gate-enforcer.ts` — no code change; will start firing once F1 lands (documented only)
-6. `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` — no code change; the leakage-guard flag it already sets becomes reachable via F1 (documented only)
-7. `supabase/functions/ai-agriculture-chat/runtime/stage-family-shim.ts` — no code change; consumed by F5 (documented only)
-8. NEW test: `supabase/functions/ai-agriculture-chat/tests/graph-integrity.test.ts` (the only new file)
-
-Reply `proceed PR-7` to implement.
+1. Approve running Phase 1 as a read-only forensic sweep now (I will return the full report, then wait for approval before any edits).
+2. Confirm the two trace queries above, or give me a specific failing farmer message + `land_id` from a recent session so the trace uses real data instead of synthetic input.
