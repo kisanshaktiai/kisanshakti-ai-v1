@@ -104,12 +104,7 @@ async function fetchLandChatContext(
   const [landRes, cropRes, soilRes, ndviRes, wxRes, wxMetricRes] = await Promise.all([
     client
       .from('lands')
-      .select(
-        'id, name, area_acres, soil_type, current_crop, current_crop_id, crop_stage, ' +
-          'planting_date, last_sowing_date, expected_harvest_date, water_source, irrigation_type, ' +
-          'irrigation_source, district, state, village, center_lat, center_lon, ' +
-          'last_ndvi_value, last_ndvi_calculation, ndvi_status',
-      )
+      .select('id, name, area_acres, soil_type, current_crop, current_crop_id, crop_stage, planting_date, last_sowing_date, expected_harvest_date, water_source, irrigation_type, irrigation_source, district, state, village, center_lat, center_lon, last_ndvi_value, last_ndvi_calculation, ndvi_status')
       .eq('id', landId)
       .eq('tenant_id', tenantId)
       .maybeSingle(),
