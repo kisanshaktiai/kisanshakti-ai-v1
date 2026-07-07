@@ -71,8 +71,20 @@ export interface ContextValidationInput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ICAR CROP CALENDARS - Days to Growth Stage Mapping
+// ICAR CROP CALENDARS — Days to Growth Stage Mapping
 // ═══════════════════════════════════════════════════════════════════════════
+// PR-7 F6b: this table is DEPRECATED. It duplicates `crop_stage_master`
+// (the runtime SSOT read by every other stage-aware module) and was drifting.
+// The rice entry in particular modelled direct-seeded rice only — no
+// TRANSPLANTING stage — so at DAS 28 (transplant shock recovery, per
+// crop_stage_master: RICE_TRANSPLANTING = DAS 25–35) it emitted the
+// misleading "TILLERING (ICAR confirmed)" line that appeared to contradict
+// the (correctly) enforced stage-immutability lock.
+//
+// Rice numbers below are reconciled with `crop_stage_master` (verified
+// live via Supabase MCP). Full removal is scheduled once ContextValidator
+// is made async and reads crop_stage_master directly — tracked as F6b-full.
+// DO NOT re-tune these numbers here; curate the DB row instead.
 
 interface StageRange {
   min_days: number;
@@ -94,11 +106,15 @@ const ICAR_CROP_CALENDARS: Record<string, StageRange[]> = {
     { min_days: 61, max_days: 90, stage: 'FLOWERING' },
     { min_days: 91, max_days: 120, stage: 'MATURITY' }
   ],
+  // PR-7 F6b: reconciled with crop_stage_master (RICE_TRANSPLANTING 25–35,
+  // RICE_TILLERING 35–60). Adds the missing TRANSPLANTING window and shifts
+  // TILLERING so DAS 28 no longer misclassifies against the SSOT.
   'rice': [
-    { min_days: 0, max_days: 20, stage: 'SEEDLING' },
-    { min_days: 21, max_days: 50, stage: 'TILLERING' },
-    { min_days: 51, max_days: 70, stage: 'PANICLE_INITIATION' },
-    { min_days: 71, max_days: 100, stage: 'FLOWERING' },
+    { min_days: 0,   max_days: 20,  stage: 'SEEDLING' },
+    { min_days: 21,  max_days: 34,  stage: 'TRANSPLANTING' },
+    { min_days: 35,  max_days: 60,  stage: 'TILLERING' },
+    { min_days: 61,  max_days: 75,  stage: 'PANICLE_INITIATION' },
+    { min_days: 76,  max_days: 100, stage: 'FLOWERING' },
     { min_days: 101, max_days: 130, stage: 'MATURITY' }
   ],
   'cotton': [
