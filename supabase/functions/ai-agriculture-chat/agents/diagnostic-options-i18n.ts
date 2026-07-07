@@ -16,10 +16,10 @@
  * Already-confirmed observations are filtered out so we never re-ask what
  * the farmer has already stated.
  *
- * This file used to carry SUGARCANE_SEEDLING_DIAGNOSTIC_OPTIONS and
- * GENERIC_TERMINAL_DAMAGE_OPTIONS. Both were symbolic-brain violations
- * (agronomy in code) and are deleted. The exported names below are the
- * runtime API only; there is no static option registry.
+ * This file previously carried hardcoded per-crop/per-stage option sets.
+ * Those were symbolic-brain violations (agronomy in code) and have been
+ * deleted. The exported names below are the runtime API only; there is
+ * no static option registry.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
