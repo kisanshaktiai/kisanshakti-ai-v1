@@ -170,17 +170,17 @@ export function bridgeCodes(_cropCode: string | null | undefined, codes: string[
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP-CANONICAL RESOLVER — intent_observation_mapping as ontology bridge
 // ═══════════════════════════════════════════════════════════════════════════
-// Extractor + observation_aliases yield generic observation codes (e.g.
-// `poor_germination`). Hypothesis conditions are authored against crop-
-// specific canonical codes (e.g. `obs_rice_no_emergence`). The equivalence
-// class between the two is curated in `intent_observation_mapping`: every
-// LITERAL row for a given (intent_code, crop_code) is a semantically
-// equivalent piece of evidence for that intent.
+// Extractor + observation_aliases yield generic observation codes.
+// Hypothesis conditions are authored against crop-specific canonical
+// codes. The equivalence class between the two is curated in
+// `intent_observation_mapping`: every LITERAL row for a given
+// (intent_code, crop_code) is a semantically equivalent piece of
+// evidence for that intent.
 //
-// This resolver takes the current canonical evidence set and — if any member
-// belongs to the LITERAL class for (intent, crop) — unions the whole LITERAL
-// class as INFERRED evidence, so hypothesis conditions written against any
-// LITERAL peer can match.
+// This resolver takes the current canonical evidence set and — if any
+// member belongs to the LITERAL class for (intent, crop) — unions the
+// whole LITERAL class as INFERRED evidence, so hypothesis conditions
+// written against any LITERAL peer can match.
 //
 // NO hardcoded crop / stage / symptom / pest / disease is added here. The
 // ontology stays in the database.
