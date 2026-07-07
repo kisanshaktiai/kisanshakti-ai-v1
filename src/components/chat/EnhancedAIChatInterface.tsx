@@ -185,6 +185,24 @@ export function EnhancedAIChatInterface() {
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
+  const queryClient = useQueryClient();
+
+  /**
+   * Prefetch the full land-scoped chat context (land row, active crop +
+   * variety + sowing date, latest soil, latest NDVI, live weather + daily
+   * metrics) the moment the farmer taps a land tab, so the welcome card
+   * and downstream orchestrator request paint with real data on first
+   * frame. See `useLandChatContext` for the exact columns and tables.
+   */
+  const selectLandTab = React.useCallback(
+    (landId: string) => {
+      setActiveTab(landId);
+      if (tenant?.id && user?.id) {
+        prefetchLandChatContext(queryClient, landId, tenant.id, user.id);
+      }
+    },
+    [queryClient, tenant?.id, user?.id],
+  );
 
   // GENERAL-CHAT land context picker:
   //   undefined => not yet chosen for this session (open picker before sending)
