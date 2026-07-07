@@ -181,3 +181,57 @@ Deno.test('PR-5 · generateLLMResponse delegates to generateNarratedResponse', a
   );
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-8 · Pagination guard. iom-gate and hypothesis-evaluator must page past
+// the PostgREST 1000-row cap. A single .limit() call is a regression.
+// ═══════════════════════════════════════════════════════════════════════════
+Deno.test('PR-8 · iom-gate paginates intent_observation_mapping via .range()', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../decision/iom-gate.ts', import.meta.url),
+  );
+  assert(/\.range\(\s*from\s*,\s*to\s*\)/.test(src), 'iom-gate must use .range() pagination');
+  assert(!/\.limit\(\s*\d+\s*\)/.test(src), 'iom-gate must not use raw .limit() (silently truncates)');
+});
+
+Deno.test('PR-8 · hypothesis-evaluator paginates decision_rules via .range()', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../decision/hypothesis-evaluator.ts', import.meta.url),
+  );
+  assert(/\.range\(\s*from\s*,\s*to\s*\)/.test(src), 'hypothesis-evaluator must paginate decision_rules');
+  assert(
+    !/\.limit\(\s*800\s*\)/.test(src),
+    'the fixed .limit(800) truncation must be gone',
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-9 · Dead code sweep. intent-router.ts is not wired into the orchestrator
+// or any live path; it must live under _deadcode/, never under agents/.
+// ═══════════════════════════════════════════════════════════════════════════
+Deno.test('PR-9 · agents/intent-router.ts is quarantined (not in live agents/)', async () => {
+  let liveExists = true;
+  try {
+    await Deno.stat(new URL('../agents/intent-router.ts', import.meta.url));
+  } catch {
+    liveExists = false;
+  }
+  assertEquals(liveExists, false, 'intent-router.ts must be moved out of agents/ (quarantined)');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PR-10 · Intent classifier empty-registry safety. When the DB-driven
+// registry has not loaded, we must NOT emit hardcoded intent codes.
+// ═══════════════════════════════════════════════════════════════════════════
+Deno.test('PR-10 · intent-classifier emit() refuses to leak hardcoded codes on empty registry', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../agents/intent-classifier.ts', import.meta.url),
+  );
+  const emitIdx = src.indexOf('function emit(');
+  assert(emitIdx > 0, 'emit() must still exist');
+  const body = src.slice(emitIdx, emitIdx + 800);
+  assert(
+    /validCodes\.size\s*===\s*0/.test(body) && /GENERAL_CROP_INFO/.test(body) && /0\.1/.test(body),
+    'emit() must return GENERAL_CROP_INFO@0.1 when validCodes is empty',
+  );
+});
