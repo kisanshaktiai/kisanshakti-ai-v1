@@ -108,7 +108,7 @@ export async function detectContradiction(
     for (const rule of OBSERVATION_STAGE_INCOMPATIBILITIES) {
       const hitObs = obsUpper.find(o => rule.obs_pattern.test(o));
       if (!hitObs) continue;
-      const incompat = rule.incompat_stages.some(s => stagesEquivalent(s, stageLower));
+      const incompat = rule.incompat_stages.some(s => stagesEquivalent(s, stageLower, cropLower));
       if (!incompat) continue;
       const c: Contradiction = Object.freeze({
         kind: 'BIOLOGICAL_IMPOSSIBILITY',
@@ -157,7 +157,7 @@ export async function detectContradiction(
         ? (row as any).stage_compatibility.map(norm).filter(Boolean)
         : [];
       if (allowedStages.length > 0) {
-        const ok = allowedStages.some(s => stagesEquivalent(s, stageLower) || s === 'all');
+        const ok = allowedStages.some(s => stagesEquivalent(s, stageLower, cropLower) || s === 'all');
         if (!ok) {
           const c: Contradiction = Object.freeze({
             kind: 'STAGE_MISMATCH',

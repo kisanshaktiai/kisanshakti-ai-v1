@@ -31,19 +31,22 @@ Deno.test('PR-7 F6 · intents without a crop prefix pass regardless of land crop
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// Test 2 (F5) — Stage-family shim resolves rice transplanting↔tillering.
-// This is the DB edge the layered evaluator needs so the stage gate stops
-// soft-bypassing every rule.
+// Test 2 (F5) — Stage-family shim MUST come from `public.crop_stage_graph`
+// via stage-knowledge-cache. The old hardcoded STAGE_FAMILIES map has been
+// removed; without a crop argument the shim MUST fall back to strict
+// equality (no TS-side family bridging). With a crop, resolution depends on
+// the DB cache being loaded, which is a runtime concern outside this unit
+// test — asserted at the integration layer instead.
 // ───────────────────────────────────────────────────────────────────────────
-Deno.test('PR-7 F5 · tillering and vegetative are equivalent via shared shim', () => {
-  assert(stagesEquivalent('tillering', 'vegetative'));
-  assert(stagesEquivalent('vegetative', 'tillering'));
+Deno.test('PR-7 F5 · without crop, only identity is equivalent (no hardcoded bridge)', () => {
+  assertEquals(stagesEquivalent('tillering', 'vegetative'), false, 'no crop → strict equality only');
+  assertEquals(stagesEquivalent('tillering', 'tillering'), true);
 });
 
-Deno.test('PR-7 F5 · tillering family contains itself and vegetative', () => {
+Deno.test('PR-7 F5 · stageFamily without crop returns singleton', () => {
   const fam = stageFamily('tillering');
+  assertEquals(fam.length, 1);
   assert(fam.includes('tillering'));
-  assert(fam.includes('vegetative'));
 });
 
 Deno.test('PR-7 F5 · maturity and tillering are NOT equivalent (guard against over-broad match)', () => {

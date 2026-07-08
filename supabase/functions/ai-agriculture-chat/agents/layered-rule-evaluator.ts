@@ -1372,11 +1372,18 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               // previous empty local STAGE_FAMILIES stub, which caused every
               // rule to fall into the [STAGE_ONTOLOGY_MISSING] soft-bypass
               // and turned the stage gate into a no-op.
-              const family = stageFamily(currentStage);
+              // Crop context for DB-backed stage-family lookup. Prefer the
+              // rule's declared crop; fall back to the canonical land state.
+              // Without a crop we skip the family bridge entirely — see
+              // stage-family-shim.ts.
+              const stageCropCtx = String(
+                (bundled as any).crop_code || (state as any).crop_type || ''
+              ).toLowerCase();
+              const family = stageFamily(currentStage, stageCropCtx) as string[];
               const familyKnown = family.length > 1; // singleton = unknown stage
               const exactMatch = normalizedApplicableStages.includes(currentStage);
               const familyMatch = normalizedApplicableStages.some((s: string) =>
-                stagesEquivalent(currentStage, s)
+                stagesEquivalent(currentStage, s, stageCropCtx)
               );
 
               if (!exactMatch && !familyMatch) {

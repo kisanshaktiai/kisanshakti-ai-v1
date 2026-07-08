@@ -29,12 +29,26 @@ export interface StageKnowledgeRow {
   [k: string]: unknown;
 }
 
+interface StageGraphEdge {
+  crop_code: string;
+  from_stage: string;
+  to_stage: string;
+  edge_type: string;
+}
+
 interface Cache {
   loadedAt: number;
   master: StageMasterRow[];
   knowledge: StageKnowledgeRow[];
   byCropStage: Map<string, StageMasterRow>; // `${crop}|${stage}` → row
   knowledgeByCropStage: Map<string, StageKnowledgeRow>;
+  // Adjacency list built from public.crop_stage_graph — SSOT for stage
+  // equivalence/adjacency. Key = `${crop}|${stage}`, value = set of adjacent
+  // stage codes (lowercased). Built from ALL edge types symmetrically since
+  // any edge type (STAGE_PRECEDES / ENABLES / CONCURRENT_WITH / TRIGGERS)
+  // marks the two stages as belonging to the same crop's phenological family
+  // for the purpose of rule stage-gating.
+  stageAdjacency: Map<string, Set<string>>;
 }
 
 let cache: Cache | null = null;
@@ -79,15 +93,66 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_knowledge load failed', e);
   }
 
+  // ── crop_stage_graph → adjacency (SSOT for stage families) ───────────
+  // Joined against crop_stage_master to resolve UUIDs → growth_stage names.
+  const stageAdjacency = new Map<string, Set<string>>();
+  try {
+    // Build a UUID→stage_name map first from the master rows we already have.
+    const idToStage = new Map<string, { crop: string; stage: string }>();
+    const { data: masterFull, error: masterErr } = await supabase
+      .from('crop_stage_master')
+      .select('id, crop_code, growth_stage')
+      .limit(10000);
+    if (masterErr) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_master id-map error:', masterErr.message);
+    } else if (Array.isArray(masterFull)) {
+      for (const r of masterFull) {
+        if (r?.id) idToStage.set(String(r.id), {
+          crop: String(r.crop_code || '').toLowerCase(),
+          stage: String(r.growth_stage || '').toLowerCase(),
+        });
+      }
+    }
+
+    const { data: edges, error: edgeErr } = await supabase
+      .from('crop_stage_graph')
+      .select('crop_code, from_stage_id, to_stage_id, edge_type')
+      .limit(5000);
+    if (edgeErr) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_graph select error:', edgeErr.message);
+    } else if (Array.isArray(edges)) {
+      let edgeCount = 0;
+      for (const e of edges) {
+        const crop = String(e.crop_code || '').toLowerCase();
+        const from = idToStage.get(String(e.from_stage_id))?.stage;
+        const to   = idToStage.get(String(e.to_stage_id))?.stage;
+        if (!crop || !from || !to) continue;
+        // Symmetric adjacency — all curated edge types (STAGE_PRECEDES,
+        // ENABLES, CONCURRENT_WITH, TRIGGERS) mark the two stages as
+        // neighbours in the same crop's phenological graph.
+        const keyF = `${crop}|${from}`;
+        const keyT = `${crop}|${to}`;
+        if (!stageAdjacency.has(keyF)) stageAdjacency.set(keyF, new Set([from]));
+        if (!stageAdjacency.has(keyT)) stageAdjacency.set(keyT, new Set([to]));
+        stageAdjacency.get(keyF)!.add(to);
+        stageAdjacency.get(keyT)!.add(from);
+        edgeCount++;
+      }
+      console.log(`[STAGE_KNOWLEDGE] crop_stage_graph edges=${edgeCount} adjacency_keys=${stageAdjacency.size}`);
+    }
+  } catch (e) {
+    console.warn('[STAGE_KNOWLEDGE] crop_stage_graph load failed', e);
+  }
+
   const byCropStage = new Map<string, StageMasterRow>();
   for (const r of master) byCropStage.set(k(r.crop_code, r.growth_stage), r);
 
   const knowledgeByCropStage = new Map<string, StageKnowledgeRow>();
   for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.growth_stage), r);
 
-  cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage };
+  cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage, stageAdjacency };
   console.log(
-    `[STAGE_KNOWLEDGE] loaded master=${master.length} knowledge=${knowledge.length}`
+    `[STAGE_KNOWLEDGE] loaded master=${master.length} knowledge=${knowledge.length} adjacency=${stageAdjacency.size}`
   );
 }
 
@@ -129,4 +194,45 @@ export function getStageByDAS(crop: string, das: number): StageMasterRow | null 
 
 export function isStageKnowledgeLoaded(): boolean {
   return !!cache && cache.master.length > 0;
+}
+
+/**
+ * DB-first stage family lookup — SSOT is `public.crop_stage_graph`.
+ * Returns adjacent stages (including the query stage itself) for a given
+ * (crop, stage). Returns `null` when the cache is unloaded OR when the DB
+ * has no entry for that (crop, stage) — callers MUST treat null as
+ * "unknown, singleton fallback" and NEVER substitute a hardcoded family.
+ */
+export function getStageFamilyFromDB(
+  crop: string,
+  stage: string,
+): string[] | null {
+  if (!cache) return null;
+  const key = k(crop, stage);
+  const set = cache.stageAdjacency.get(key);
+  if (!set || set.size === 0) return null;
+  return Array.from(set);
+}
+
+/**
+ * DB-first symmetric equivalence — true iff `b` is in the DB-curated stage
+ * family of `(crop, a)` OR vice versa. Returns `null` when the DB has no
+ * data for either side; callers decide the fallback semantics.
+ */
+export function stagesEquivalentFromDB(
+  crop: string,
+  a: string,
+  b: string,
+): boolean | null {
+  if (!cache) return null;
+  const aNorm = String(a || '').toLowerCase();
+  const bNorm = String(b || '').toLowerCase();
+  if (!aNorm || !bNorm) return null;
+  if (aNorm === bNorm) return true;
+  const famA = cache.stageAdjacency.get(k(crop, aNorm));
+  if (famA && famA.has(bNorm)) return true;
+  const famB = cache.stageAdjacency.get(k(crop, bNorm));
+  if (famB && famB.has(aNorm)) return true;
+  if (!famA && !famB) return null; // no DB data — signal unknown
+  return false;
 }
