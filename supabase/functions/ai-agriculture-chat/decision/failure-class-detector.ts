@@ -79,145 +79,76 @@ export interface FailureClassAuditLog {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CANONICAL OBSERVATION SETS FOR FAILURE CLASS DETECTION
-// These are language-agnostic observation codes from observation_master
+// PR-2 REFACTOR — All hardcoded ObservationKey Sets DELETED.
+// Classification now flows through DB SSOT via observation-classification-cache
+// (backed by public.observation_master + public.observation_aliases).
+// Early / vegetative stage detection now flows through StageKnowledgeCache
+// (backed by public.crop_stage_master DAS windows).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ESTABLISHMENT_OBSERVATIONS = new Set([
-  'PLANT_DEATH',
-  'SEEDLING_DEATH',
-  'GERMINATION_FAILURE',
-  'GAPS_IN_FIELD',
-  'SETT_ROT',
-  'SEED_ROT',
-  'BUD_NOT_SPROUTING',
-  'POOR_EMERGENCE',
-  'EMPTY_SPOTS',
-  'MISSING_PLANTS',
-  'ROOT_ROT',
-  'DAMPING_OFF',
-  'WILT_TERMINAL'
-]);
+import {
+  classifyFailureClass,
+  classifyObservation,
+  observationAppliesToStage,
+  type FailureClassEnum,
+} from '../utils/observation-classification-cache.ts';
+import { getStageByDAS, getStageRow } from '../utils/stage-knowledge-cache.ts';
 
-const PEST_OBSERVATIONS = new Set([
-  'INSECT_PRESENT',
-  'INSECT_VISIBLE',
-  'PEST_DAMAGE',
-  'CATERPILLAR_VISIBLE',
-  'LARVAE_VISIBLE',
-  'BORER_SUSPECTED',
-  'APHIDS_PRESENT',
-  'WHITEFLY_PRESENT',
-  'MEALYBUG_PRESENT',
-  'JASSID_PRESENT',
-  'THRIPS_PRESENT',
-  'MITE_PRESENT',
-  'TERMITE_SUSPECTED',
-  'GRUB_PRESENT',
-  'HOLES_VISIBLE',
-  'CHEWING_DAMAGE',
-  'DEAD_HEART',
-  'DEAD_HEART_PRESENT',
-  'STEM_BORING_MARKS',
-  'FRASS_VISIBLE'
-]);
+/**
+ * DB-driven "early stage" check. A stage is early iff the DB row has
+ * das_max <= EARLY_STAGE_DAS_CEILING (configurable). Falls back to false when
+ * the DB has no coverage — callers must not synthesize an early-stage
+ * classification from stage-name heuristics.
+ */
+const EARLY_STAGE_DAS_CEILING = 30;
+const VEGETATIVE_STAGE_DAS_CEILING = 90;
 
-const DISEASE_OBSERVATIONS = new Set([
-  'LEAF_SPOTS',
-  'LEAF_BLIGHT',
-  'STEM_ROT',
-  'FUNGAL_GROWTH',
-  'POWDERY_MILDEW',
-  'DOWNY_MILDEW',
-  'RUST_PRESENT',
-  'SMUT_PRESENT',
-  'WILT_DISEASE',
-  'BACTERIAL_OOZE',
-  'LESIONS_VISIBLE',
-  'NECROSIS_VISIBLE',
-  'CANKER_PRESENT',
-  'SCAB_PRESENT',
-  'MOSAIC_PATTERN',
-  'VIRAL_SYMPTOMS',
-  'BLACK_SPOTS',
-  'RED_SPOTS',
-  'WHITE_POWDERY_GROWTH'
-]);
+function isEarlyStageFromDB(crop: string, stage: string, das: number | null): boolean {
+  if (das !== null && das !== undefined) return das <= EARLY_STAGE_DAS_CEILING;
+  if (!crop || !stage) return false;
+  const row = getStageRow(crop, stage);
+  if (!row) return false;
+  const dasMax = typeof row.das_max === 'number' ? row.das_max : null;
+  return dasMax !== null && dasMax <= EARLY_STAGE_DAS_CEILING;
+}
 
-const NUTRIENT_OBSERVATIONS = new Set([
-  'LEAF_YELLOWING',
-  'CHLOROSIS',
-  'INTERVEINAL_YELLOWING',
-  'PURPLE_LEAVES',
-  'RED_LEAVES',
-  'PALE_GREEN',
-  'TIP_BURN',
-  'MARGINAL_BURN',
-  'STUNTED_GROWTH',
-  'STUNTED_PLANTS',
-  'POOR_TILLERING',
-  'NUTRIENT_DEFICIENCY'
-]);
-
-const WEED_OBSERVATIONS = new Set([
-  'WEED_PRESENT',
-  'WEED_HEAVY',
-  'WEED_ABOVE_CROP',
-  'WEED_IN_ROWS',
-  'WEED_INFESTATION',
-  'GRASS_WEEDS',
-  'BROADLEAF_WEEDS'
-]);
-
-const VEGETATIVE_STRESS_OBSERVATIONS = new Set([
-  'WILTING',
-  'DROOPING',
-  'SLOW_GROWTH',
-  'WEAK_STEMS',
-  'SMALL_LEAVES',
-  'THIN_STEMS',
-  'WATER_STRESS',
-  'HEAT_STRESS',
-  'WATERLOGGING',
-  'DRYING',
-  'LEAF_DRYING',
-  'LEAF_CURLING'
-]);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STAGE-BASED FAILURE CLASS MAPPING
-// Early stages → ESTABLISHMENT_FAILURE priority
-// ═══════════════════════════════════════════════════════════════════════════
-
-const EARLY_STAGES = new Set([
-  'GERMINATION', 'ESTABLISHMENT', 'SEEDLING', 'TRANSPLANTING',
-  'EMERGENCE', 'BUD_SPROUTING', 'PLANTING', 'SPROUTING',
-  'germination', 'establishment', 'seedling', 'transplanting',
-  'emergence', 'bud_sprouting', 'planting', 'sprouting'
-]);
-
-const VEGETATIVE_STAGES = new Set([
-  'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH', 'EARLY_VEGETATIVE',
-  'ACTIVE_VEGETATIVE', 'ROSETTE', 'LEAF_DEVELOPMENT',
-  'vegetative', 'tillering', 'grand_growth', 'early_vegetative',
-  'active_vegetative', 'rosette', 'leaf_development'
-]);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER FUNCTION: Match observations against a canonical set
-// ═══════════════════════════════════════════════════════════════════════════
-
-function countMatches(observations: string[], targetSet: Set<string>): string[] {
-  const matched: string[] = [];
-  
-  for (const obs of observations) {
-    const upperObs = obs.toUpperCase().replace(/-/g, '_');
-    if (targetSet.has(upperObs) || targetSet.has(obs)) {
-      matched.push(upperObs);
-    }
+function isVegetativeStageFromDB(crop: string, stage: string, das: number | null): boolean {
+  if (das !== null && das !== undefined) {
+    return das > EARLY_STAGE_DAS_CEILING && das <= VEGETATIVE_STAGE_DAS_CEILING;
   }
-  
-  return matched;
+  if (!crop || !stage) return false;
+  const row = getStageRow(crop, stage);
+  if (!row) return false;
+  const dasMin = typeof row.das_min === 'number' ? row.das_min : null;
+  const dasMax = typeof row.das_max === 'number' ? row.das_max : null;
+  return (
+    dasMin !== null &&
+    dasMax !== null &&
+    dasMin > EARLY_STAGE_DAS_CEILING &&
+    dasMax <= VEGETATIVE_STAGE_DAS_CEILING
+  );
+}
+
+/** Bucket observations by DB-derived failure class. */
+function bucketObservationsByClass(observations: string[]): Map<FailureClassEnum, string[]> {
+  const buckets = new Map<FailureClassEnum, string[]>();
+  let miss = 0;
+  for (const raw of observations) {
+    if (!raw) continue;
+    const fc = classifyFailureClass(raw);
+    if (fc === 'UNKNOWN' && !classifyObservation(raw)) {
+      miss++;
+      continue;
+    }
+    const arr = buckets.get(fc) ?? [];
+    arr.push(raw.toUpperCase());
+    buckets.set(fc, arr);
+  }
+  if (miss > 0) {
+    console.warn(`[OBS_CLASSIFICATION_MISS] failure-class-detector unresolved_tokens=${miss}`);
+  }
+  return buckets;
+}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
