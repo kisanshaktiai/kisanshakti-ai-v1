@@ -15,6 +15,41 @@
  * All biological logic comes from database tables. Zero hardcoded rules.
  */
 
+import { SymbolContract } from '../runtime/symbol-contract.ts';
+
+/**
+ * Runtime-safe symbol coercion.
+ * Accepts either a plain string OR a graph-symbol object
+ *   { raw_symbol, graph_symbol, source } | { symbol } | { code } | { observation_code }
+ * and returns a normalized identifier via SymbolContract, or null.
+ * NEVER throws — the caller may pass mixed shapes from upstream extractors.
+ */
+function coerceSymbol(x: unknown): string | null {
+  if (x == null) return null;
+  if (typeof x === 'string' || typeof x === 'number') return SymbolContract.normalize(String(x));
+  if (typeof x === 'object') {
+    const o = x as Record<string, unknown>;
+    const cand = (o.graph_symbol ?? o.raw_symbol ?? o.symbol ?? o.code ?? o.observation_code ?? o.value ?? o.id) as unknown;
+    if (cand == null) return null;
+    return SymbolContract.normalize(String(cand));
+  }
+  return null;
+}
+
+/** Coerce a mixed array of strings/objects to a deduped normalized string[]. */
+function coerceSymbolList(xs: unknown): string[] {
+  if (!Array.isArray(xs)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs) {
+    const n = coerceSymbol(x);
+    if (n && !seen.has(n)) { seen.add(n); out.push(n); }
+  }
+  return out;
+}
+
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -307,26 +342,28 @@ function evaluateCondition(
                 : []));
       if (codes.length === 0) return HypothesisConditionStatus.FAILED;
 
-      const obsLower = observations.map((o) => String(o).toLowerCase());
-      const codesLower = codes.map((c) => c.toLowerCase());
+      // SymbolContract equality — case/separator-insensitive graph identity.
+      const obsSet = SymbolContract.toNormalizedSet(observations);
+      const normCodes = codes.map((c) => SymbolContract.normalize(c)).filter((c): c is string => !!c);
 
       if (operator === 'CONTAINS' || operator === 'IN' || operator === 'ANY_OF') {
-        return codesLower.some((c) => obsLower.includes(c))
+        return normCodes.some((c) => obsSet.has(c))
           ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
       if (operator === 'ALL_OF') {
-        return codesLower.every((c) => obsLower.includes(c))
+        return normCodes.every((c) => obsSet.has(c))
           ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
       if (operator === 'NOT_EXISTS' || operator === 'NOT_IN') {
-        return codesLower.every((c) => !obsLower.includes(c))
+        return normCodes.every((c) => !obsSet.has(c))
           ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
       return HypothesisConditionStatus.FAILED;
     }
+
 
     case 'DAS_RANGE': {
       const das = canonicalState.days_since_sowing;
@@ -455,14 +492,16 @@ function checkContradictions(
   observations: string[]
 ): string[] {
   const found: string[] = [];
-  const obsLower = observations.map(o => o.toLowerCase());
+  const obsSet = SymbolContract.toNormalizedSet(observations);
 
   for (const c of contradictions) {
     const { contradiction_type, contradiction_key, contradiction_value } = c;
 
     switch (contradiction_type) {
       case 'OBSERVATION': {
-        if (obsLower.includes(contradiction_value.toLowerCase())) {
+        const cvNorm = SymbolContract.normalize(contradiction_value);
+        if (cvNorm && obsSet.has(cvNorm)) {
+
           found.push(`${contradiction_key}=${contradiction_value}: ${c.explanation || 'contradiction detected'}`);
         }
         break;
@@ -831,8 +870,12 @@ export async function runCausalHypothesisArbitration(
   input: CausalHypothesisInput
 ): Promise<ArbitrationResult> {
   const { canonical_state, supabase_client, trace_id } = input;
-  let { crop_group, observations } = input;
+  let { crop_group } = input;
+  // SymbolContract-coerced observation list — accepts mixed shapes
+  // (strings, graph-symbol objects, IOM rows) and normalizes to graph IDs.
+  let observations: string[] = coerceSymbolList(input.observations);
   const startTime = Date.now();
+
 
   // ═════════════════════════════════════════════════════════════════════════
   // Step 3 — HYPOTHESIS CONTRACT: GraphTruth is the sole authority.
@@ -854,7 +897,8 @@ export async function runCausalHypothesisArbitration(
     }
 
     crop_group = (gt.crop_code ?? crop_group) as string;
-    observations = [...gt.canonical_observations];
+    observations = coerceSymbolList([...gt.canonical_observations]);
+
   } else {
     console.warn(`[HYPOTHESIS_CONTRACT] site=CAUSAL_ARBITRATION trace=${trace_id ?? 'none'} legacy_path — no graph_truth supplied by caller`);
   }
@@ -878,26 +922,30 @@ export async function runCausalHypothesisArbitration(
   // crop-specific canonicals (obs_rice_no_emergence). No hardcoded per-condition
   // dictionaries — the bridge itself is data (small in-code table today,
   // observation_aliases long-term).
-  let bridgedObservations = observations;
+  let bridgedObservations: string[] = observations;
   try {
     const { bridgeToCropVocab } = await import('./concept-bridge.ts');
     const seen = new Set<string>();
     const out: string[] = [];
     for (const raw of observations) {
       if (!raw) continue;
-      const bridged = bridgeToCropVocab(normalizedCropGroup, raw);
-      const key = String(bridged).toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(bridged);
-      if (bridged !== raw) {
-        console.log(`[OBSERVATION_BRIDGE] input=${raw} resolved=${bridged} source=concept_bridge crop=${normalizedCropGroup}`);
+      // Async DB-backed bridge (observation_aliases). Must be awaited or
+      // Promise objects leak into downstream string ops (`.toLowerCase` crash).
+      const bridged = await bridgeToCropVocab(supabase_client, normalizedCropGroup, raw);
+      const canonical = coerceSymbol(bridged?.canonical_code) ?? coerceSymbol(raw);
+      if (!canonical) continue;
+      if (seen.has(canonical)) continue;
+      seen.add(canonical);
+      out.push(canonical);
+      if (bridged?.canonical_code && bridged.canonical_code !== bridged.raw_code) {
+        console.log(`[OBSERVATION_BRIDGE] input=${raw} resolved=${bridged.canonical_code} source=${bridged.source} crop=${normalizedCropGroup}`);
       }
     }
     bridgedObservations = out;
   } catch (e) {
     console.warn(`[OBSERVATION_BRIDGE] bridge failed, using raw observations: ${(e as Error).message}`);
   }
+
 
   if (!cropHasHypotheses) {
     console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
@@ -924,8 +972,37 @@ export async function runCausalHypothesisArbitration(
     )
   );
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // OBS_TO_HYP_TRACE — deterministic forensic trace of the observation→hypothesis
+  // edge resolution. Always emitted so zero-hypothesis outcomes are debuggable
+  // without changing runtime behavior. Purely observational.
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    let searched_conditions = 0;
+    let matched_conditions = 0;
+    for (const conds of data.conditions.values()) {
+      for (const c of conds) {
+        if (c.condition_type !== 'OBSERVATION') continue;
+        searched_conditions++;
+        const status = evaluateCondition(c, canonical_state, bridgedObservations);
+        if (status === HypothesisConditionStatus.PASSED) matched_conditions++;
+      }
+    }
+    const rejected_reason: string[] = [];
+    if (bridgedObservations.length === 0) rejected_reason.push('NO_OBSERVATIONS');
+    if (searched_conditions === 0) rejected_reason.push('NO_OBSERVATION_CONDITIONS_FOR_CROP');
+    if (matched_conditions === 0 && searched_conditions > 0) rejected_reason.push('NO_OBS_TO_HYP_EDGE');
+    console.log(
+      `[OBS_TO_HYP_TRACE] trace=${trace_id ?? 'none'} crop=${normalizedCropGroup} ` +
+      `normalized_observations=[${bridgedObservations.join(',')}] ` +
+      `searched_conditions=${searched_conditions} matched_conditions=${matched_conditions} ` +
+      `rejected_reason=[${rejected_reason.join(',')}]`
+    );
+  } catch (_e) { /* trace never throws */ }
+
   // Arbitrate
   const result = arbitrateHypotheses(scores, data.conditions, cropHasHypotheses);
+
 
   // P1-1: Guard against orphan hypotheses (survived arbitration but have no rule mappings)
   if (result.best_hypothesis && result.best_hypothesis.mapped_rule_ids.length === 0) {
