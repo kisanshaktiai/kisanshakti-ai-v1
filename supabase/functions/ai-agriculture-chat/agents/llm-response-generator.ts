@@ -403,23 +403,10 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   
   if (land_context?.current_crop) {
     const cropCode = land_context.current_crop.toLowerCase();
-    const langKey = getCropNameKey(language);
-    
-    // Resolve local name from ICAR_CALENDARS
-    let cropLocalName = land_context.current_crop; // fallback to raw name
-    let cropCanonical = land_context.current_crop;
-    
-    // Search ICAR_CALENDARS for matching crop
-    for (const [code, calendar] of Object.entries(ICAR_CALENDARS)) {
-      if (code === cropCode || 
-          calendar.crop_name_en.toLowerCase() === cropCode ||
-          calendar.crop_name_mr.toLowerCase() === cropCode ||
-          calendar.crop_name_hi.toLowerCase() === cropCode) {
-        cropLocalName = calendar[langKey];
-        cropCanonical = calendar.crop_name_en;
-        break;
-      }
-    }
+
+    // DB SSOT: crop_names_cache (public.crops). Falls back to raw name on miss.
+    const cropLocalName = getCropDisplayName(cropCode, language) || land_context.current_crop;
+    const cropCanonical = getCropCanonical(cropCode) || land_context.current_crop;
     
     const authContext = {
       crop_canonical: cropCanonical,
