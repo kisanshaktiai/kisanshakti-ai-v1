@@ -9694,95 +9694,17 @@ export class AIAgentOrchestrator {
     return { direction, slope: -slope, description };  // Negate slope for intuitive interpretation
   }
   
-  /**
-   * Calculate growth stage based on days since sowing
-   * CRITICAL FIX: Uses ICAR-standard stage definitions
-   */
-  private calculateGrowthStage(daysSinceSowing: number, cropName?: string): string {
-    // ICAR-standard crop-specific stage definitions
-    const CROP_STAGES: Record<string, { maxDays: number; stage: string }[]> = {
-      'WHEAT': [
-        { maxDays: 7, stage: 'GERMINATION' },
-        { maxDays: 21, stage: 'SEEDLING' },
-        { maxDays: 45, stage: 'TILLERING' },
-        { maxDays: 75, stage: 'STEM_ELONGATION' },
-        { maxDays: 100, stage: 'FLOWERING' },
-        { maxDays: 120, stage: 'GRAIN_FILLING' },
-        { maxDays: 140, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'RICE': [
-        { maxDays: 10, stage: 'GERMINATION' },
-        { maxDays: 25, stage: 'SEEDLING' },
-        { maxDays: 45, stage: 'TILLERING' },
-        { maxDays: 65, stage: 'PANICLE_INITIATION' },
-        { maxDays: 85, stage: 'FLOWERING' },
-        { maxDays: 110, stage: 'GRAIN_FILLING' },
-        { maxDays: 130, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'SUGARCANE': [
-        { maxDays: 30, stage: 'GERMINATION' },
-        { maxDays: 60, stage: 'SEEDLING' },
-        { maxDays: 90, stage: 'TILLERING' },
-        { maxDays: 180, stage: 'GRAND_GROWTH' },
-        { maxDays: 270, stage: 'MATURITY' },
-        { maxDays: 330, stage: 'RIPENING' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'COTTON': [
-        { maxDays: 10, stage: 'GERMINATION' },
-        { maxDays: 25, stage: 'SEEDLING' },
-        { maxDays: 50, stage: 'VEGETATIVE' },
-        { maxDays: 70, stage: 'SQUARING' },
-        { maxDays: 95, stage: 'FLOWERING' },
-        { maxDays: 130, stage: 'BOLL_FORMATION' },
-        { maxDays: 160, stage: 'BOLL_OPENING' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'SOYBEAN': [
-        { maxDays: 7, stage: 'GERMINATION' },
-        { maxDays: 20, stage: 'SEEDLING' },
-        { maxDays: 40, stage: 'VEGETATIVE' },
-        { maxDays: 60, stage: 'FLOWERING' },
-        { maxDays: 80, stage: 'POD_FORMATION' },
-        { maxDays: 100, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'MAIZE': [
-        { maxDays: 7, stage: 'GERMINATION' },
-        { maxDays: 20, stage: 'SEEDLING' },
-        { maxDays: 45, stage: 'VEGETATIVE' },
-        { maxDays: 60, stage: 'TASSELING' },
-        { maxDays: 75, stage: 'SILKING' },
-        { maxDays: 100, stage: 'GRAIN_FILLING' },
-        { maxDays: 120, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ]
-    };
-    
-    // Default stages for unknown crops
-    const DEFAULT_STAGES = [
-      { maxDays: 10, stage: 'GERMINATION' },
-      { maxDays: 25, stage: 'SEEDLING' },
-      { maxDays: 50, stage: 'VEGETATIVE' },
-      { maxDays: 75, stage: 'FLOWERING' },
-      { maxDays: 100, stage: 'FRUITING' },
-      { maxDays: 130, stage: 'MATURITY' },
-      { maxDays: 999, stage: 'HARVEST' }
-    ];
-    
-    const cropUpper = (cropName || '').toUpperCase();
-    const stages = CROP_STAGES[cropUpper] || DEFAULT_STAGES;
-    
-    for (const stageDef of stages) {
-      if (daysSinceSowing <= stageDef.maxDays) {
-        return stageDef.stage;
-      }
-    }
-    
-    return 'MATURITY';
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PR-4a · REMOVED: private calculateGrowthStage(daysSinceSowing, cropName)
+  // Rationale: this 85-line ICAR ladder was a second brain competing with the
+  // authoritative SSOT `public.resolve_crop_phenology(land_id)` (which joins
+  // crop_stage_master + variety_phenology_profile + evaluate_stage_transitions
+  // and coalesces lands.planting_date > lands.last_sowing_date >
+  // crop_schedules.sowing_date). Any code path that needs a stage MUST read
+  // `biological_state.growth_stage` or the phenology RPC row. No local
+  // recomputation is permitted. See mem://architecture/single-brain-stage-ssot.
+  // ═══════════════════════════════════════════════════════════════════════════
+
   
   /**
    * Get NDVI health status
