@@ -157,7 +157,7 @@ export async function detectContradiction(
         ? (row as any).stage_compatibility.map(norm).filter(Boolean)
         : [];
       if (allowedStages.length > 0) {
-        const ok = allowedStages.some(s => stagesEquivalent(s, stageLower) || s === 'all');
+        const ok = allowedStages.some(s => stagesEquivalent(s, stageLower, cropLower) || s === 'all');
         if (!ok) {
           const c: Contradiction = Object.freeze({
             kind: 'STAGE_MISMATCH',
