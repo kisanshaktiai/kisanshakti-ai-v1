@@ -364,19 +364,31 @@ export async function loadAuthoritativeLandState(
       weatherResult,
       phenologyResult
     ] = await Promise.all([
-      // 1. Land base data — FIXED: use actual DB columns (area_acres, center_lat, center_lon)
+      // 1. Land base data — PR-4d: pull the authoritative SSOT columns
+      // (das, stage_uuid, crop_stage, stage_source, current_crop_id,
+      // current_crop_variety_id, planting_date, last_sowing_date,
+      // transplant_date, crop_cycle, current_gdd) so downstream consumers
+      // NEVER need to recompute them.
       supabase
         .from('lands')
-        .select('id, name, area_acres, center_lat, center_lon, farmer_id, tenant_id, district_id, state_id, soil_type, irrigation_type, water_source, cultivation_date')
+        .select(
+          'id, name, area_acres, center_lat, center_lon, farmer_id, tenant_id, ' +
+          'district_id, state_id, soil_type, irrigation_type, water_source, cultivation_date, ' +
+          'das, stage_uuid, crop_stage, stage_source, stage_resolved_at, ' +
+          'current_crop, current_crop_id, current_crop_variety_id, ' +
+          'planting_date, last_sowing_date, transplant_date, crop_cycle, current_gdd'
+        )
         .eq('id', landId)
         .eq('farmer_id', farmerId)
         .eq('tenant_id', tenantId)
         .single(),
-      
-      // 2. Crop schedule (active season) — FIXED: removed non-existent crop_code, current_stage
+
+      // 2. Crop schedule (active season) — PR-4d: include variety_id,
+      // transplant_date and stages_covered so downstream rule scoping has
+      // full schedule authority without a second round-trip.
       supabase
         .from('crop_schedules')
-        .select('crop_name, crop_variety, sowing_date, expected_harvest_date, status, is_active')
+        .select('crop_name, crop_variety, variety_id, sowing_date, transplant_date, stages_covered, expected_harvest_date, status, is_active')
         .eq('land_id', landId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
