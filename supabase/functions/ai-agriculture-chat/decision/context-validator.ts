@@ -14,6 +14,7 @@
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
+import { getStageByDAS, isStageKnowledgeLoaded } from '../utils/stage-knowledge-cache.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
