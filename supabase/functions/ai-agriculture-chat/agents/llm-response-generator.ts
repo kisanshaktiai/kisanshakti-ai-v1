@@ -24,8 +24,8 @@
  */
 
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
-import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
-import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
+import { getAllCropNames, getCropDisplayName, getCropCanonical } from '../utils/crop-names-cache.ts';
+import { getLanguageName } from '../utils/language-utils.ts';
 import { getSafeAskMoreInfoMessage } from './language-quality-validator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
