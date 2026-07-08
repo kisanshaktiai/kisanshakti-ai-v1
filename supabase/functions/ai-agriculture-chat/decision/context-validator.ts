@@ -36,7 +36,7 @@ export interface ContextValidationResult {
   // Reconciled context
   reconciled_crop: string | null;
   reconciled_stage: string | null;
-  stage_source: 'CONFIRMED' | 'CALCULATED' | 'DEFAULT' | 'UNKNOWN';
+  stage_source: 'LOCKED' | 'CONFIRMED' | 'CALCULATED' | 'DEFAULT' | 'UNKNOWN';
   
   // Contradiction details
   contradictions: {
