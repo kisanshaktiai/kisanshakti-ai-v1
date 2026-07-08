@@ -125,6 +125,72 @@ export function isWellFormedSymbol(input: Symbolic): boolean {
   return normalize(input) !== null;
 }
 
+/**
+ * Structured symbol extraction. Accepts any of:
+ *   - string / number
+ *   - { graph_symbol } / { raw_symbol } / { canonical_code }
+ *   - { observation_code } / { code } / { symbol } / { value } / { id }
+ *
+ * DOES NOT throw. If the input is a Promise, an unknown object shape, or
+ * otherwise cannot be identified, the returned `symbol` is `null` and
+ * `violation` describes why. GraphRuntime — not SymbolContract — decides
+ * whether to fail-closed, trace, or route to clarification.
+ *
+ * Pure identity layer: no crop / stage / intent / observation knowledge.
+ */
+export type SymbolViolation = 'PROMISE_LEAK' | 'UNKNOWN_SHAPE' | 'EMPTY';
+
+export interface SymbolExtraction {
+  symbol: string | null;
+  violation?: SymbolViolation;
+  source_shape?: 'string' | 'number' | 'object' | 'promise' | 'nullish' | 'other';
+}
+
+const SYMBOL_KEYS = [
+  'graph_symbol',
+  'raw_symbol',
+  'canonical_code',
+  'observation_code',
+  'code',
+  'symbol',
+  'value',
+  'id',
+] as const;
+
+function isThenable(x: unknown): x is Promise<unknown> {
+  return !!x && (typeof x === 'object' || typeof x === 'function') &&
+    typeof (x as { then?: unknown }).then === 'function';
+}
+
+export function extract(input: unknown): SymbolExtraction {
+  if (input == null) return { symbol: null, violation: 'EMPTY', source_shape: 'nullish' };
+  if (isThenable(input)) {
+    return { symbol: null, violation: 'PROMISE_LEAK', source_shape: 'promise' };
+  }
+  if (typeof input === 'string') {
+    const n = normalize(input);
+    return n ? { symbol: n, source_shape: 'string' } : { symbol: null, violation: 'EMPTY', source_shape: 'string' };
+  }
+  if (typeof input === 'number') {
+    const n = normalize(String(input));
+    return n ? { symbol: n, source_shape: 'number' } : { symbol: null, violation: 'EMPTY', source_shape: 'number' };
+  }
+  if (typeof input === 'object') {
+    const o = input as Record<string, unknown>;
+    for (const k of SYMBOL_KEYS) {
+      const v = o[k];
+      if (v == null) continue;
+      if (isThenable(v)) return { symbol: null, violation: 'PROMISE_LEAK', source_shape: 'promise' };
+      if (typeof v === 'string' || typeof v === 'number') {
+        const n = normalize(String(v));
+        if (n) return { symbol: n, source_shape: 'object' };
+      }
+    }
+    return { symbol: null, violation: 'UNKNOWN_SHAPE', source_shape: 'object' };
+  }
+  return { symbol: null, violation: 'UNKNOWN_SHAPE', source_shape: 'other' };
+}
+
 export const SymbolContract = {
   normalize,
   normalizeOrEmpty,
@@ -134,6 +200,7 @@ export const SymbolContract = {
   toNormalizedSet,
   normalizeWithAudit,
   isWellFormedSymbol,
+  extract,
 };
 
 export default SymbolContract;

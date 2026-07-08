@@ -18,31 +18,30 @@
 import { SymbolContract } from '../runtime/symbol-contract.ts';
 
 /**
- * Runtime-safe symbol coercion.
- * Accepts either a plain string OR a graph-symbol object
- *   { raw_symbol, graph_symbol, source } | { symbol } | { code } | { observation_code }
- * and returns a normalized identifier via SymbolContract, or null.
- * NEVER throws — the caller may pass mixed shapes from upstream extractors.
+ * Graph-boundary symbol coercion — delegates identity to SymbolContract.
+ * SymbolContract stays a pure identity layer (never throws, never decides
+ * request failure). Here we log any [SYMBOL_CONTRACT_VIOLATION] (Promise
+ * leak, unknown shape) so the leak surfaces in logs and route decisions
+ * can be made upstream, then drop the offending element so raw string ops
+ * on Promise / object values can never crash the graph runtime.
  */
-function coerceSymbol(x: unknown): string | null {
-  if (x == null) return null;
-  if (typeof x === 'string' || typeof x === 'number') return SymbolContract.normalize(String(x));
-  if (typeof x === 'object') {
-    const o = x as Record<string, unknown>;
-    const cand = (o.graph_symbol ?? o.raw_symbol ?? o.symbol ?? o.code ?? o.observation_code ?? o.value ?? o.id) as unknown;
-    if (cand == null) return null;
-    return SymbolContract.normalize(String(cand));
+function coerceSymbolViaContract(x: unknown, site: string): string | null {
+  const res = SymbolContract.extract(x);
+  if (!res.symbol && res.violation && res.violation !== 'EMPTY') {
+    console.warn(
+      `[SYMBOL_CONTRACT_VIOLATION] site=${site} violation=${res.violation} ` +
+      `shape=${res.source_shape ?? 'unknown'}`,
+    );
   }
-  return null;
+  return res.symbol;
 }
 
-/** Coerce a mixed array of strings/objects to a deduped normalized string[]. */
-function coerceSymbolList(xs: unknown): string[] {
+function coerceSymbolList(xs: unknown, site = 'causal-hypothesis-engine'): string[] {
   if (!Array.isArray(xs)) return [];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const x of xs) {
-    const n = coerceSymbol(x);
+    const n = coerceSymbolViaContract(x, site);
     if (n && !seen.has(n)) { seen.add(n); out.push(n); }
   }
   return out;
@@ -400,12 +399,13 @@ function evaluateCondition(
     case 'STAGE': {
       const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
       if (!currentStage) return HypothesisConditionStatus.SKIPPED_NO_DATA;
-      
+
       const stages = (value_json as any)?.stages;
       if (!Array.isArray(stages)) return HypothesisConditionStatus.FAILED;
-      
-      const stageLower = currentStage.toLowerCase();
-      return stages.some((s: string) => s.toLowerCase() === stageLower)
+
+      const stageSet = SymbolContract.toNormalizedSet(stages);
+      const norm = SymbolContract.normalize(currentStage);
+      return norm && stageSet.has(norm)
         ? HypothesisConditionStatus.PASSED
         : HypothesisConditionStatus.FAILED;
     }
@@ -508,7 +508,7 @@ function checkContradictions(
       }
       case 'STAGE': {
         const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
-        if (currentStage && currentStage.toLowerCase() === contradiction_value.toLowerCase()) {
+        if (currentStage && SymbolContract.equals(currentStage, contradiction_value)) {
           found.push(`stage=${contradiction_value}: ${c.explanation || 'stage contradiction'}`);
         }
         break;
@@ -522,7 +522,7 @@ function checkContradictions(
       }
       case 'PATTERN': {
         const actual = canonicalState[contradiction_key];
-        if (actual && String(actual).toLowerCase() === contradiction_value.toLowerCase()) {
+        if (actual && SymbolContract.equals(String(actual), contradiction_value)) {
           found.push(`${contradiction_key}=${contradiction_value}: ${c.explanation || 'pattern contradiction'}`);
         }
         break;
