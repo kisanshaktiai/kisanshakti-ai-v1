@@ -312,6 +312,7 @@ export interface AuthoritativeLandState {
     data_timestamp: string | null;
     data_age_hours: number | null;
     data_fresh: boolean;
+    data_source?: string | null;
   };
   
   // Derived Metrics - SSOT INTERPRETATIONS
@@ -458,7 +459,10 @@ export async function loadAuthoritativeLandState(
       };
     }
     
-    const land = landResult.data;
+    // Supabase generated types may lag newly-added lands SSOT columns and
+    // otherwise infer GenericStringError for the expanded select. Runtime shape
+    // is validated above by landResult.data; keep this loader structurally typed.
+    const land: any = landResult.data as any;
     const now = new Date();
     
     // ═══════════════════════════════════════════════════════════════════════════

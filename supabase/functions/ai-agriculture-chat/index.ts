@@ -387,6 +387,7 @@ serve(async (req) => {
   const startTime = Date.now();
   const traceId = generateTraceId();
   let dedupeKey: string | null = null;
+  let currentSessionIdForError: string | null = null;
   
   console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
   console.log(`🔍 [${traceId}] REQUEST START`);
@@ -1076,6 +1077,7 @@ serve(async (req) => {
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
     // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();
+    currentSessionIdForError = currentSessionId;
     
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
@@ -2497,12 +2499,36 @@ serve(async (req) => {
 
   } catch (error) {
     console.error(`❌ [${traceId}] ai-agriculture-chat Error:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // GRAPH_PIPELINE_BYPASSED is an internal audit/safety invariant, not a
+    // client transport failure. Returning 500 makes Supabase JS throw and the
+    // chat screen goes blank before the safe fallback can render. Keep the
+    // anomaly greppable in logs, but return a structured 200 response.
+    if (errorMessage.startsWith('GRAPH_PIPELINE_BYPASSED')) {
+      console.error(`[GRAPH_PIPELINE_BYPASSED_RECOVERED] trace_id=${traceId} ${errorMessage}`);
+      return new Response(
+        JSON.stringify({
+          response: '🙏 I understood the crop problem, but the diagnosis engine needs one more clear observation before giving treatment advice. Please describe what you see in the field or send a crop photo.',
+          sessionId: currentSessionIdForError,
+          responseTime: Date.now() - startTime,
+          metadata: {
+            type: 'SYSTEM_ERROR',
+            orchestrator_type: 'SYSTEM_ERROR_RECOVERED',
+            trace_id: traceId,
+            recovered: true,
+            fallback_reason: 'GRAPH_PIPELINE_BYPASSED',
+          },
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
     
     // PHASE A: Include trace_id in error response for debugging
     return new Response(
       JSON.stringify({
         error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        details: errorMessage,
         timestamp: new Date().toISOString(),
         trace_id: traceId,
         fallback_advice: 'Please try again or contact an agricultural expert.'
