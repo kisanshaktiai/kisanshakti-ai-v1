@@ -389,14 +389,8 @@ export class ContextValidator {
   private normalizeCrop(crop: string): string {
     const raw = (crop || '').toLowerCase().trim();
     if (!raw) return raw;
-    try {
-      // Sync accessor — safe when orchestrator has preloaded synonyms.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { getCachedSynonymMap } = require('../utils/crop-synonyms-cache.ts');
-      const canonical = getCachedSynonymMap().get(raw);
-      if (canonical) return String(canonical).toLowerCase();
-    } catch { /* non-fatal — fall through */ }
-    return raw;
+    const canonical = getCachedSynonymMap().get(raw);
+    return canonical ? String(canonical).toLowerCase() : raw;
   }
   
   /**
