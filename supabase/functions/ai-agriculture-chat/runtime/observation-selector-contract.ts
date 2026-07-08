@@ -26,6 +26,8 @@
  */
 
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
+import { loadIOMAllowed } from '../decision/iom-gate.ts';
+import { SymbolContract } from './symbol-contract.ts';
 
 export interface ObservationOption {
   value: string;
@@ -40,11 +42,23 @@ export interface ObservationContractContext {
   growthStage: string | null;
   language: string;
   traceId?: string;
+  /** Intent code used to load IOM-scoped observation options (SSOT). */
+  intentCode?: string | null;
+  /** Days since sowing — narrows the IOM cell. */
+  daysSinceSowing?: number | null;
+  /**
+   * Reason surfaced with the clarification so operators can debug graph
+   * exhaustion vs empty-decision promotion vs plain hydration.
+   */
+  graphReason?: string | null;
 }
 
 /**
- * SSOT loader — top observable_characteristics for the crop, hydrated with
- * translated labels. Adds PHOTO_REQUEST as the final option.
+ * SSOT loader — prefer `intent_observation_mapping` (DB observation discovery
+ * layer) when an intent is known; fall back to `decision_rules`
+ * observable_characteristics only when no intent is available. Adds
+ * PHOTO_REQUEST as the final option. All symbols pass through SymbolContract
+ * so lowercase / snake_case DB codes are treated as first-class graph nodes.
  */
 export async function loadObservationSelectorOptions(
   ctx: ObservationContractContext,
@@ -53,25 +67,48 @@ export async function loadObservationSelectorOptions(
   const lang = ctx.language || 'mr';
 
   try {
-    const { data: topRules } = await ctx.supabase
-      .from('decision_rules')
-      .select('observable_characteristics')
-      .eq('is_active', true)
-      .or(`crop_code.eq.${cropUpper},crop_code.eq.all,crop_code.eq.ALL`)
-      .not('observable_characteristics', 'is', null)
-      .limit(20);
+    let obsCodes: string[] = [];
 
-    const obsCodesSet = new Set<string>();
-    for (const rule of topRules || []) {
-      const chars = rule.observable_characteristics;
-      if (Array.isArray(chars)) {
-        chars.slice(0, 3).forEach((c: string) => {
-          if (typeof c === 'string' && c.trim()) obsCodesSet.add(c.toUpperCase().trim());
-        });
+    // Preferred SSOT: intent_observation_mapping — same source the graph uses
+    // to decide which observations to collect for this intent/crop/stage/DAS.
+    if (ctx.intentCode) {
+      try {
+        const iom = await loadIOMAllowed(
+          ctx.supabase,
+          ctx.intentCode,
+          ctx.cropCode || 'all',
+          ctx.growthStage,
+          ctx.daysSinceSowing ?? null,
+        );
+        obsCodes = iom.allowedRanked.slice(0, 6).map((r) => SymbolContract.normalizeOrEmpty(r.observation_code)).filter(Boolean);
+      } catch (iomErr) {
+        console.warn(`[OBS_SELECTOR_LOADER] IOM load failed, will try decision_rules: ${(iomErr as Error).message}`);
       }
     }
 
-    const obsCodes = Array.from(obsCodesSet).slice(0, 4);
+    // Fallback: decision_rules observable_characteristics (legacy path).
+    if (obsCodes.length === 0) {
+      const { data: topRules } = await ctx.supabase
+        .from('decision_rules')
+        .select('observable_characteristics')
+        .eq('is_active', true)
+        .or(`crop_code.eq.${cropUpper},crop_code.eq.all,crop_code.eq.ALL`)
+        .not('observable_characteristics', 'is', null)
+        .limit(20);
+
+      const obsCodesSet = new Set<string>();
+      for (const rule of topRules || []) {
+        const chars = rule.observable_characteristics;
+        if (Array.isArray(chars)) {
+          chars.slice(0, 3).forEach((c: string) => {
+            const n = SymbolContract.normalize(c);
+            if (n) obsCodesSet.add(n);
+          });
+        }
+      }
+      obsCodes = Array.from(obsCodesSet).slice(0, 4);
+    }
+
     if (obsCodes.length === 0) return [];
 
     obsCodes.push('PHOTO_REQUEST');
@@ -94,6 +131,7 @@ export async function loadObservationSelectorOptions(
     return [];
   }
 }
+
 
 /**
  * Single enforcement point invoked immediately after the orchestrator returns.
