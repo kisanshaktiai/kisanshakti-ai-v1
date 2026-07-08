@@ -253,13 +253,28 @@ export interface AuthoritativeLandState {
   district: string | null;
   state: string | null;
   
-  // Crop Schedule (AUTHORITATIVE)
+  // Crop Schedule (AUTHORITATIVE) — PR-4d: extended with canonical identity
+  // (crop_id, variety_id), variety-aware phenology anchor (stage_uuid),
+  // and every SSOT date/counter on `public.lands`. Downstream MUST prefer
+  // these over any recomputation.
   crop: {
     current_crop: string | null;
     crop_code: string | null;
+    crop_id: string | null;               // lands.current_crop_id (uuid, canonical)
+    variety_id: string | null;            // lands.current_crop_variety_id or crop_schedules.variety_id
+    variety_name: string | null;          // crop_schedules.crop_variety
     growth_stage: string | null;
-    days_since_sowing: number | null;
+    stage_uuid: string | null;            // lands.stage_uuid
+    stage_source_authoritative: string | null; // lands.stage_source ('phenology_ssot' | 'planting_date' | ...)
+    stage_resolved_at: string | null;     // lands.stage_resolved_at
+    days_since_sowing: number | null;     // precomputed lands.das when present, else computed
+    precomputed_das: number | null;       // raw lands.das (null when not persisted)
     sowing_date: string | null;
+    planting_date: string | null;         // lands.planting_date
+    last_sowing_date: string | null;      // lands.last_sowing_date
+    transplant_date: string | null;       // lands.transplant_date ?? crop_schedules.transplant_date
+    crop_cycle: string | null;            // lands.crop_cycle
+    current_gdd: number | null;           // lands.current_gdd
     expected_harvest_date: string | null;
     schedule_status: string | null;
   };
@@ -364,19 +379,31 @@ export async function loadAuthoritativeLandState(
       weatherResult,
       phenologyResult
     ] = await Promise.all([
-      // 1. Land base data — FIXED: use actual DB columns (area_acres, center_lat, center_lon)
+      // 1. Land base data — PR-4d: pull the authoritative SSOT columns
+      // (das, stage_uuid, crop_stage, stage_source, current_crop_id,
+      // current_crop_variety_id, planting_date, last_sowing_date,
+      // transplant_date, crop_cycle, current_gdd) so downstream consumers
+      // NEVER need to recompute them.
       supabase
         .from('lands')
-        .select('id, name, area_acres, center_lat, center_lon, farmer_id, tenant_id, district_id, state_id, soil_type, irrigation_type, water_source, cultivation_date')
+        .select(
+          'id, name, area_acres, center_lat, center_lon, farmer_id, tenant_id, ' +
+          'district_id, state_id, soil_type, irrigation_type, water_source, cultivation_date, ' +
+          'das, stage_uuid, crop_stage, stage_source, stage_resolved_at, ' +
+          'current_crop, current_crop_id, current_crop_variety_id, ' +
+          'planting_date, last_sowing_date, transplant_date, crop_cycle, current_gdd'
+        )
         .eq('id', landId)
         .eq('farmer_id', farmerId)
         .eq('tenant_id', tenantId)
         .single(),
-      
-      // 2. Crop schedule (active season) — FIXED: removed non-existent crop_code, current_stage
+
+      // 2. Crop schedule (active season) — PR-4d: include variety_id,
+      // transplant_date and stages_covered so downstream rule scoping has
+      // full schedule authority without a second round-trip.
       supabase
         .from('crop_schedules')
-        .select('crop_name, crop_variety, sowing_date, expected_harvest_date, status, is_active')
+        .select('crop_name, crop_variety, variety_id, sowing_date, transplant_date, stages_covered, expected_harvest_date, status, is_active')
         .eq('land_id', landId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -436,12 +463,27 @@ export async function loadAuthoritativeLandState(
     
     // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS CROP SCHEDULE
+    // PR-4d: DAS SSOT precedence — lands.das (precomputed by RPC/cron) wins
+    // over any locally-computed value. Only compute from sowing_date when
+    // lands.das is null AND we have a schedule date to anchor from. The
+    // anchor date itself now coalesces lands.planting_date >
+    // lands.last_sowing_date > crop_schedules.transplant_date >
+    // crop_schedules.sowing_date to match resolve_crop_phenology().
     // ═══════════════════════════════════════════════════════════════════════════
     const cropSchedule = cropScheduleResult.data;
-    let daysSinceSowing: number | null = null;
-    
-    if (cropSchedule?.sowing_date) {
-      const sowingDate = new Date(cropSchedule.sowing_date);
+    const precomputedDas: number | null =
+      typeof (land as any)?.das === 'number' ? (land as any).das : null;
+    const anchorSowingDate: string | null =
+      (land as any)?.planting_date ??
+      (land as any)?.last_sowing_date ??
+      cropSchedule?.transplant_date ??
+      (land as any)?.transplant_date ??
+      cropSchedule?.sowing_date ??
+      null;
+
+    let daysSinceSowing: number | null = precomputedDas;
+    if (daysSinceSowing === null && anchorSowingDate) {
+      const sowingDate = new Date(anchorSowingDate);
       daysSinceSowing = Math.floor((now.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
     }
     
@@ -634,15 +676,26 @@ export async function loadAuthoritativeLandState(
       console.warn('⚠️ [AuthoritativeStateLoader] resolve_crop_phenology RPC failed:', phenologyResult.error?.message);
     }
 
+    // PR-4d: stage precedence — RPC row > persisted lands.crop_stage.
+    // Neither path invents a value; both are authored by resolve_crop_phenology
+    // (RPC on request; cron for lands.crop_stage). Falls through to null.
     const computedGrowthStage: string | null =
-      phenologyRow?.growth_stage ?? phenologyRow?.stage_code ?? null;
-    const stageSource: 'phenology_rpc' | 'UNKNOWN' =
-      computedGrowthStage ? 'phenology_rpc' : 'UNKNOWN';
+      phenologyRow?.growth_stage
+        ?? phenologyRow?.stage_code
+        ?? (land as any)?.crop_stage
+        ?? null;
+    const stageSource: 'phenology_rpc' | 'lands_persisted' | 'UNKNOWN' =
+      (phenologyRow?.growth_stage || phenologyRow?.stage_code)
+        ? 'phenology_rpc'
+        : ((land as any)?.crop_stage ? 'lands_persisted' : 'UNKNOWN');
     console.log(
       `🌱 [AuthoritativeStateLoader] growth_stage=${computedGrowthStage ?? 'null'} ` +
       `source=${stageSource} das=${daysSinceSowing ?? 'n/a'} ` +
-      `(PR-4b: no DAS ladder; null when RPC has no row)`
+      `precomputed_das=${precomputedDas ?? 'n/a'} ` +
+      `stage_uuid=${(land as any)?.stage_uuid ?? 'n/a'} ` +
+      `(PR-4d: SSOT-only; lands.das/stage_uuid preferred)`
     );
+
 
     const authoritativeState: AuthoritativeLandState = {
       land_id: land.id,
@@ -659,11 +712,25 @@ export async function loadAuthoritativeLandState(
       state: null,
       
       crop: {
-        current_crop: cropSchedule?.crop_name || null,
-        crop_code: phenologyRow?.crop_code ?? null, // PR-1: from resolve_crop_phenology when available
-        growth_stage: computedGrowthStage, // PR-1: from resolve_crop_phenology (SSOT), DAS ladder is fallback only
+        // PR-4d: prefer canonical text label from phenology RPC / lands, fall back
+        // to schedule mirror only when the FK-driven sources are absent.
+        current_crop: phenologyRow?.crop_code ?? (land as any)?.current_crop ?? cropSchedule?.crop_name ?? null,
+        crop_code: phenologyRow?.crop_code ?? null,
+        crop_id: (land as any)?.current_crop_id ?? null,
+        variety_id: (land as any)?.current_crop_variety_id ?? cropSchedule?.variety_id ?? null,
+        variety_name: cropSchedule?.crop_variety ?? null,
+        growth_stage: computedGrowthStage,
+        stage_uuid: (land as any)?.stage_uuid ?? phenologyRow?.stage_uuid ?? null,
+        stage_source_authoritative: (land as any)?.stage_source ?? stageSource,
+        stage_resolved_at: (land as any)?.stage_resolved_at ?? null,
         days_since_sowing: daysSinceSowing,
-        sowing_date: cropSchedule?.sowing_date || null,
+        precomputed_das: precomputedDas,
+        sowing_date: anchorSowingDate ?? cropSchedule?.sowing_date ?? null,
+        planting_date: (land as any)?.planting_date ?? null,
+        last_sowing_date: (land as any)?.last_sowing_date ?? null,
+        transplant_date: (land as any)?.transplant_date ?? cropSchedule?.transplant_date ?? null,
+        crop_cycle: (land as any)?.crop_cycle ?? null,
+        current_gdd: typeof (land as any)?.current_gdd === 'number' ? (land as any).current_gdd : null,
         expected_harvest_date: cropSchedule?.expected_harvest_date || null,
         schedule_status: cropSchedule?.status || null
       },
