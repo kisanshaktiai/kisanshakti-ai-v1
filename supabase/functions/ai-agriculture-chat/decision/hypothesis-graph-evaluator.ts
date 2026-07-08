@@ -185,6 +185,58 @@ export async function evaluateHypothesisGraph(
     const stagePass = checkStageCondition(conds, input.growth_stage);
     const dasPass = checkDasCondition(conds, input.das);
 
+    // ── HARD REQUIRED-CONDITION GATE (fix 2026-07-08) ────────────────────
+    // hypothesis_conditions.is_required=true is a DB-level HARD contract.
+    // If STAGE or DAS_RANGE with is_required=true fails, the hypothesis is
+    // eliminated — no soft penalty, no clarification fallback. This is what
+    // the DB SSOT already declares; the runtime must respect it.
+    if (stagePass.required_fail) {
+      console.log(`[HYP_ELIMINATED] trace=${trace} hypothesis_id=${hid} reason=REQUIRED_STAGE_FAILED ${stagePass.reason}`);
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: [], negative_matches: [], missing_required: [],
+        blocking_conditions: [], required_total: 0, required_matched: 0,
+        required_match_pct: 0, supporting_score: 0, confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:REQUIRED_STAGE_FAILED(${stagePass.reason})`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: `REQUIRED_STAGE_FAILED(${stagePass.reason})`,
+      } as GraphHypothesisCandidate);
+      continue;
+    }
+    if (dasPass.required_fail) {
+      console.log(`[HYP_ELIMINATED] trace=${trace} hypothesis_id=${hid} reason=REQUIRED_DAS_FAILED ${dasPass.reason}`);
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: [], negative_matches: [], missing_required: [],
+        blocking_conditions: [], required_total: 0, required_matched: 0,
+        required_match_pct: 0, supporting_score: 0, confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:REQUIRED_DAS_FAILED(${dasPass.reason})`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: `REQUIRED_DAS_FAILED(${dasPass.reason})`,
+      } as GraphHypothesisCandidate);
+      continue;
+    }
+
     const rules = ruleEdges.get(hid) ?? [];
 
     const requiredTotal = buckets.requiredCodes.size;
@@ -211,13 +263,13 @@ export async function evaluateHypothesisGraph(
     if (dasPass.pass && dasPass.reason === 'DAS_UNKNOWN' && hasDasCondition(conds)) {
       context_gaps.push({ missing: 'DAS_UNKNOWN', confidence_penalty: 0.05, clarification_required: false });
     }
-    // Stage/DAS MISMATCH ≠ biological impossibility. Farmer-visible symptoms
-    // outrank derived crop calendar. Convert to soft conflict + clarification.
-    if (!stagePass.pass) {
+    // Soft (is_required=false) stage/DAS mismatch remains a soft penalty
+    // so farmer-visible symptoms can still outrank a soft calendar signal.
+    if (!stagePass.pass && !stagePass.required_fail) {
       warnings.push(`STAGE_CONTEXT_CONFLICT(${stagePass.reason})`);
       softPenalty += 0.15;
     }
-    if (!dasPass.pass) {
+    if (!dasPass.pass && !dasPass.required_fail) {
       warnings.push(`DAS_CONTEXT_CONFLICT(${dasPass.reason})`);
       softPenalty += 0.10;
     }
@@ -572,39 +624,61 @@ function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): B
   return b;
 }
 
-function checkStageCondition(conds: ConditionRow[], stage: string | null): { pass: boolean; reason: string } {
+function checkStageCondition(
+  conds: ConditionRow[],
+  stage: string | null,
+): { pass: boolean; reason: string; required_fail: boolean } {
   const rows = conds.filter((c) => c.condition_type === 'STAGE');
-  if (rows.length === 0) return { pass: true, reason: 'NO_STAGE_COND' };
-  if (!stage) return { pass: true, reason: 'STAGE_UNKNOWN' }; // don't eliminate without ground truth
+  if (rows.length === 0) return { pass: true, reason: 'NO_STAGE_COND', required_fail: false };
+  if (!stage) return { pass: true, reason: 'STAGE_UNKNOWN', required_fail: false }; // don't eliminate without ground truth
   const s = String(stage).toLowerCase();
+  let requiredFail = false;
+  let failReason = '';
   for (const r of rows) {
     const allowed = extractStages(r.value_json);
     if (allowed.length === 0) continue;
     const ok = allowed.some((x) => x === s || s.includes(x) || x.includes(s));
-    if (!ok) return { pass: false, reason: `expected=[${allowed.join('|')}] got=${s}` };
+    if (!ok) {
+      failReason = `expected=[${allowed.join('|')}] got=${s}`;
+      // FIX (2026-07-08): Honor DB SSOT — is_required=true STAGE mismatch
+      // is a HARD elimination, not a soft penalty. See hypothesis_conditions.
+      if (r.is_required === true) {
+        return { pass: false, reason: failReason, required_fail: true };
+      }
+      // soft fail (is_required=false) — keep prior behavior (penalty later)
+      return { pass: false, reason: failReason, required_fail: false };
+    }
   }
-  return { pass: true, reason: 'STAGE_OK' };
+  return { pass: true, reason: 'STAGE_OK', required_fail: false };
 }
 
-function checkDasCondition(conds: ConditionRow[], das: number | null): { pass: boolean; reason: string } {
+function checkDasCondition(
+  conds: ConditionRow[],
+  das: number | null,
+): { pass: boolean; reason: string; required_fail: boolean } {
   const rows = conds.filter((c) => c.condition_type === 'DAS_RANGE');
-  if (rows.length === 0) return { pass: true, reason: 'NO_DAS_COND' };
-  if (das == null || !Number.isFinite(das)) return { pass: true, reason: 'DAS_UNKNOWN' };
+  if (rows.length === 0) return { pass: true, reason: 'NO_DAS_COND', required_fail: false };
+  if (das == null || !Number.isFinite(das)) return { pass: true, reason: 'DAS_UNKNOWN', required_fail: false };
   for (const r of rows) {
     const v = r.value_json ?? {};
     const min = typeof v.min === 'number' ? v.min : null;
     const max = typeof v.max === 'number' ? v.max : null;
     const op = String(r.operator ?? 'BETWEEN').toUpperCase();
+    let failReason: string | null = null;
     if (op === 'BETWEEN') {
-      if (min != null && das < min) return { pass: false, reason: `das=${das}<min=${min}` };
-      if (max != null && das > max) return { pass: false, reason: `das=${das}>max=${max}` };
+      if (min != null && das < min) failReason = `das=${das}<min=${min}`;
+      else if (max != null && das > max) failReason = `das=${das}>max=${max}`;
     } else if (op === 'GT') {
-      if (min != null && das < min) return { pass: false, reason: `das=${das}<gt_min=${min}` };
+      if (min != null && das < min) failReason = `das=${das}<gt_min=${min}`;
     } else if (op === 'LT') {
-      if (max != null && das > max) return { pass: false, reason: `das=${das}>lt_max=${max}` };
+      if (max != null && das > max) failReason = `das=${das}>lt_max=${max}`;
+    }
+    if (failReason) {
+      // FIX (2026-07-08): Hard-eliminate on is_required=true DAS_RANGE fail.
+      return { pass: false, reason: failReason, required_fail: r.is_required === true };
     }
   }
-  return { pass: true, reason: 'DAS_OK' };
+  return { pass: true, reason: 'DAS_OK', required_fail: false };
 }
 
 function extractStages(v: any): string[] {

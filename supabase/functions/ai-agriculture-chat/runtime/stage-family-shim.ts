@@ -34,8 +34,13 @@ export const STAGE_FAMILIES: Readonly<Record<string, readonly string[]>> = Objec
   germination:  ['germination', 'nursery', 'seedling', 'emergence'],
   emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
   establishment:['establishment', 'seedling', 'germination'],
-  vegetative:   ['vegetative', 'tillering'],
-  tillering:    ['tillering', 'vegetative'],
+  // FIX (2026-07-08): transplanting was missing entirely — caused
+  // [STAGE_ONTOLOGY_MISSING] warnings and prevented adjacency lookups for
+  // rice at DAS ~29. Per crop_stage_graph TRANSPLANTING→TILLERING it is
+  // biologically adjacent to vegetative/tillering, NOT to germination.
+  transplanting:['transplanting', 'tillering', 'vegetative'],
+  vegetative:   ['vegetative', 'transplanting', 'tillering'],
+  tillering:    ['tillering', 'vegetative', 'transplanting'],
   flowering:    ['flowering', 'reproductive', 'grand_growth'],
   reproductive: ['reproductive', 'flowering', 'grand_growth'],
   grand_growth: ['grand_growth', 'flowering', 'reproductive'],

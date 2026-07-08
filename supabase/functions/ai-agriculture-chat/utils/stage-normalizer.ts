@@ -25,15 +25,23 @@ export const STAGE_NORMALIZER_VERSION = '1.0.0';
 
 export type StageCategory = 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURITY' | 'UNKNOWN';
 
+// FIX (2026-07-08): Removed agronomically wrong lumping of transplanting/
+// planting/sowing/post_planting/pre_sowing into SEEDLING_STAGES. Transplanting
+// means seedlings ALREADY germinated and were moved to field — biologically
+// post-germination, adjacent to VEGETATIVE. Previous mapping caused
+// RICE_GERMINATION_FAILURE to score stage_relevance=0.7 at stage=transplanting
+// DAS=29 and win as INVARIANT_FALLBACK with "monitor only" advice.
 const SEEDLING_STAGES = [
   'germination', 'seedling', 'establishment', 'sprouting', 'emergence',
-  'planting', 'sowing', 'transplanting', 'post_planting', 'pre_sowing',
   'early_growth', 'd0_7', 'd8_15', 'd16_30'
 ];
 
+// Pre-establishment stages — NEITHER germination NOR vegetative.
+const PRE_SOWING_STAGES = ['pre_sowing', 'sowing', 'planting', 'post_planting'];
+
 const VEGETATIVE_STAGES = [
-  'vegetative', 'tillering', 'early_tillering', 'grand_growth', 'cane_formation',
-  'rosette', 'leaf_development', 'stem_elongation', 'canopy', 
+  'vegetative', 'transplanting', 'tillering', 'early_tillering', 'grand_growth',
+  'cane_formation', 'rosette', 'leaf_development', 'stem_elongation', 'canopy',
   'post_irrigation', 'd31_60', 'd61_90'
 ];
 
@@ -55,31 +63,38 @@ const MATURITY_STAGES = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 const STAGE_DB_MAP: Record<string, string> = {
-  // Seedling variants
+  // Seedling / germination variants (true germination window only)
   'seedling': 'germination',
   'sprouting': 'germination',
   'emergence': 'germination',
-  'planting': 'planting',
-  'sowing': 'germination',
-  'transplanting': 'germination',
-  'post_planting': 'planting',
+  'germination': 'germination',
+  'establishment': 'germination',
+  'early_growth': 'germination',
+
+  // Pre-establishment (self-mapping — do NOT collapse into germination)
   'pre_sowing': 'pre_sowing',
-  
-  // Vegetative variants  
+  'sowing': 'sowing',
+  'planting': 'planting',
+  'post_planting': 'post_planting',
+
+  // Transplanting (rice/tobacco/tomato) — post-germination, self-mapping.
+  // Belongs to VEGETATIVE category per crop_stage_graph TRANSPLANTING→TILLERING.
+  'transplanting': 'transplanting',
+
+  // Vegetative variants
   'vegetative': 'tillering',
   'tillering': 'tillering',
   'early_tillering': 'tillering',
   'leaf_development': 'tillering',
   'stem_elongation': 'tillering',
-  'early_growth': 'germination',
-  
+
   // Grand growth (sugarcane specific)
   'grand_growth': 'grand_growth',
   'grandgrowth': 'grand_growth',
   'grand-growth': 'grand_growth',
   'canopy': 'grand_growth',
   'cane_formation': 'grand_growth',
-  
+
   // Reproductive variants
   'flowering': 'flowering',
   'reproductive': 'flowering',
@@ -92,7 +107,7 @@ const STAGE_DB_MAP: Record<string, string> = {
   'heading': 'heading',
   'booting': 'booting',
   'squaring': 'squaring',
-  
+
   // Maturity variants
   'maturation': 'maturity',
   'maturity': 'maturity',
@@ -102,16 +117,12 @@ const STAGE_DB_MAP: Record<string, string> = {
   'harvest': 'harvest',
   'drying': 'harvest',
   'post_harvest': 'post_harvest',
-  
-  // Ratoon (sugarcane specific - NOT post_harvest!)
+
+  // Ratoon (sugarcane specific)
   'ratoon': 'ratoon',
   'ratoon_init': 'ratoon',
   'early_ratoon': 'ratoon',
   'post_irrigation': 'tillering',
-  
-  // Pass-through (already in correct format)
-  'germination': 'germination',
-  'establishment': 'germination',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
