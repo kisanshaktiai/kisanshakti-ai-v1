@@ -621,10 +621,12 @@ export async function loadAuthoritativeLandState(
     // ═══════════════════════════════════════════════════════════════════════════
     // BUILD AUTHORITATIVE STATE OBJECT
     // ═══════════════════════════════════════════════════════════════════════════
-    // PR-1 · Growth stage comes from resolve_crop_phenology (SSOT), NOT a
-    // crop-agnostic DAS ladder. The ladder below is retained ONLY as a
-    // last-resort fallback when the RPC returns no row (e.g. crop lacks a
-    // phenology profile). Any non-null RPC row wins.
+    // PR-4b · Growth stage comes EXCLUSIVELY from resolve_crop_phenology (SSOT).
+    // The previous 7-line DAS→stage ladder fallback (GERMINATION/EARLY_VEGETATIVE/
+    // VEGETATIVE/GRAND_GROWTH/MATURITY/HARVEST based on hardcoded day thresholds)
+    // has been DELETED. When the RPC returns no row, we emit null +
+    // stage_source='UNKNOWN' so downstream consumers must resolve stage via
+    // biological_state / explicit clarification — never a crop-agnostic ladder.
     const phenologyRow: any = Array.isArray(phenologyResult?.data)
       ? (phenologyResult.data[0] ?? null)
       : (phenologyResult?.data ?? null);
@@ -632,18 +634,15 @@ export async function loadAuthoritativeLandState(
       console.warn('⚠️ [AuthoritativeStateLoader] resolve_crop_phenology RPC failed:', phenologyResult.error?.message);
     }
 
-    let computedGrowthStage: string | null = phenologyRow?.growth_stage ?? phenologyRow?.stage_code ?? null;
-    const stageSource: 'phenology_rpc' | 'das_fallback' | 'none' =
-      computedGrowthStage ? 'phenology_rpc' : (daysSinceSowing !== null ? 'das_fallback' : 'none');
-    if (!computedGrowthStage && daysSinceSowing !== null) {
-      if (daysSinceSowing <= 15) computedGrowthStage = 'GERMINATION';
-      else if (daysSinceSowing <= 35) computedGrowthStage = 'EARLY_VEGETATIVE';
-      else if (daysSinceSowing <= 60) computedGrowthStage = 'VEGETATIVE';
-      else if (daysSinceSowing <= 90) computedGrowthStage = 'GRAND_GROWTH';
-      else if (daysSinceSowing <= 150) computedGrowthStage = 'MATURITY';
-      else computedGrowthStage = 'HARVEST';
-    }
-    console.log(`🌱 [AuthoritativeStateLoader] growth_stage=${computedGrowthStage ?? 'null'} source=${stageSource} das=${daysSinceSowing ?? 'n/a'}`);
+    const computedGrowthStage: string | null =
+      phenologyRow?.growth_stage ?? phenologyRow?.stage_code ?? null;
+    const stageSource: 'phenology_rpc' | 'UNKNOWN' =
+      computedGrowthStage ? 'phenology_rpc' : 'UNKNOWN';
+    console.log(
+      `🌱 [AuthoritativeStateLoader] growth_stage=${computedGrowthStage ?? 'null'} ` +
+      `source=${stageSource} das=${daysSinceSowing ?? 'n/a'} ` +
+      `(PR-4b: no DAS ladder; null when RPC has no row)`
+    );
 
     const authoritativeState: AuthoritativeLandState = {
       land_id: land.id,
