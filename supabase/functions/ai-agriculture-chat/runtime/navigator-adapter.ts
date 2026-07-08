@@ -53,7 +53,7 @@ async function loadAllowedEvidenceKeys(
     const intentUpper = String(args.intent_code).trim().toUpperCase();
     const cropLower   = String(args.crop_code).trim().toLowerCase();
     const cropVariants  = Array.from(new Set([cropLower, 'all', 'universal'].filter(Boolean)));
-    const stages = stageVariants(args.growth_stage);
+    const stages = stageVariants(args.growth_stage, cropLower);
 
     const { data: iomRows, error: iomErr } = await supabase
       .from('intent_observation_mapping')
