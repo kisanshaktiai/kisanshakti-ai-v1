@@ -9312,38 +9312,32 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL: Calculate days since sowing ONLY from crop_schedules.sowing_date
-      // NEVER fall back to lands.cultivation_date - it may contain old/stale data
+      // PR-4a · SINGLE-BRAIN STAGE SSOT
+      // Stage is produced EXCLUSIVELY by resolve_crop_phenology() (RPC below).
+      // Any hardcoded DAS → stage ladder here would be a competing brain and
+      // is explicitly forbidden by the neuro-symbolic contract.
+      // We only compute DAS locally as a diagnostic fallback for logging and
+      // for the `authoritativeDas` chain when the RPC returns no row; the RPC
+      // itself coalesces lands.planting_date > lands.last_sowing_date >
+      // crop_schedules.sowing_date and remains the authoritative producer.
       // ═══════════════════════════════════════════════════════════════════════════
       let daysSinceSowing: number | null = null;
-      let growthStage: string | null = null;
-      
+      const growthStage: string | null = null; // never set locally — SSOT only
+
       if (cropSchedule?.sowing_date) {
         const sowingDate = new Date(cropSchedule.sowing_date);
         const today = new Date();
         daysSinceSowing = Math.floor((today.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
-        growthStage = this.calculateGrowthStage(daysSinceSowing, cropSchedule.crop_name);
-        
-        console.log(`✅ [SOWING_DATE_SOURCE] crop_schedules table (SINGLE SOURCE OF TRUTH)`);
+
+        console.log(`✅ [SOWING_DATE_SOURCE] crop_schedules.sowing_date (fallback DAS only)`);
         console.log(`   Crop: ${cropSchedule.crop_name}`);
         console.log(`   Sowing Date: ${cropSchedule.sowing_date}`);
-        console.log(`   Days Since Sowing: ${daysSinceSowing}`);
-        console.log(`   Growth Stage: ${growthStage}`);
-        console.log(`   ⚠️ NEVER using lands.cultivation_date (could be old season)`);
+        console.log(`   Days Since Sowing (local diag): ${daysSinceSowing}`);
+        console.log(`   ⏭️  Stage will be resolved by resolve_crop_phenology() (SSOT)`);
       } else if (land.current_crop) {
-        // ═══════════════════════════════════════════════════════════════════════════
-        // CRITICAL FIX: Fallback to lands.current_crop when no crop_schedule exists
-        // This prevents "No land current crop" warnings and enables crop-specific advice
-        // ═══════════════════════════════════════════════════════════════════════════
         console.warn(`⚠️ [SOWING_DATE_MISSING] No active crop_schedule for land ${landId}`);
-        console.warn(`   → FALLBACK: Using lands.current_crop = "${land.current_crop}"`);
-        console.warn('   → days_since_sowing and growth_stage will use DEFAULTS');
-        console.warn('   → Recommend user creates crop_schedule for accurate stage tracking');
-        
-        // Use default growth stage based on typical assumptions
-        // Without sowing_date, we assume mid-vegetative stage as safe default
-        growthStage = 'VEGETATIVE';
-        daysSinceSowing = null; // Unknown without sowing_date
+        console.warn(`   → lands.current_crop = "${land.current_crop}"`);
+        console.warn('   → days_since_sowing unknown; stage still resolved by phenology SSOT if lands.planting_date/last_sowing_date exists');
       } else {
         console.warn(`⚠️ [NO_CROP_DATA] No crop_schedule AND no lands.current_crop for ${landId}`);
         console.warn('   → Cannot provide crop-specific advice');
@@ -9700,95 +9694,17 @@ export class AIAgentOrchestrator {
     return { direction, slope: -slope, description };  // Negate slope for intuitive interpretation
   }
   
-  /**
-   * Calculate growth stage based on days since sowing
-   * CRITICAL FIX: Uses ICAR-standard stage definitions
-   */
-  private calculateGrowthStage(daysSinceSowing: number, cropName?: string): string {
-    // ICAR-standard crop-specific stage definitions
-    const CROP_STAGES: Record<string, { maxDays: number; stage: string }[]> = {
-      'WHEAT': [
-        { maxDays: 7, stage: 'GERMINATION' },
-        { maxDays: 21, stage: 'SEEDLING' },
-        { maxDays: 45, stage: 'TILLERING' },
-        { maxDays: 75, stage: 'STEM_ELONGATION' },
-        { maxDays: 100, stage: 'FLOWERING' },
-        { maxDays: 120, stage: 'GRAIN_FILLING' },
-        { maxDays: 140, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'RICE': [
-        { maxDays: 10, stage: 'GERMINATION' },
-        { maxDays: 25, stage: 'SEEDLING' },
-        { maxDays: 45, stage: 'TILLERING' },
-        { maxDays: 65, stage: 'PANICLE_INITIATION' },
-        { maxDays: 85, stage: 'FLOWERING' },
-        { maxDays: 110, stage: 'GRAIN_FILLING' },
-        { maxDays: 130, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'SUGARCANE': [
-        { maxDays: 30, stage: 'GERMINATION' },
-        { maxDays: 60, stage: 'SEEDLING' },
-        { maxDays: 90, stage: 'TILLERING' },
-        { maxDays: 180, stage: 'GRAND_GROWTH' },
-        { maxDays: 270, stage: 'MATURITY' },
-        { maxDays: 330, stage: 'RIPENING' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'COTTON': [
-        { maxDays: 10, stage: 'GERMINATION' },
-        { maxDays: 25, stage: 'SEEDLING' },
-        { maxDays: 50, stage: 'VEGETATIVE' },
-        { maxDays: 70, stage: 'SQUARING' },
-        { maxDays: 95, stage: 'FLOWERING' },
-        { maxDays: 130, stage: 'BOLL_FORMATION' },
-        { maxDays: 160, stage: 'BOLL_OPENING' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'SOYBEAN': [
-        { maxDays: 7, stage: 'GERMINATION' },
-        { maxDays: 20, stage: 'SEEDLING' },
-        { maxDays: 40, stage: 'VEGETATIVE' },
-        { maxDays: 60, stage: 'FLOWERING' },
-        { maxDays: 80, stage: 'POD_FORMATION' },
-        { maxDays: 100, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ],
-      'MAIZE': [
-        { maxDays: 7, stage: 'GERMINATION' },
-        { maxDays: 20, stage: 'SEEDLING' },
-        { maxDays: 45, stage: 'VEGETATIVE' },
-        { maxDays: 60, stage: 'TASSELING' },
-        { maxDays: 75, stage: 'SILKING' },
-        { maxDays: 100, stage: 'GRAIN_FILLING' },
-        { maxDays: 120, stage: 'MATURITY' },
-        { maxDays: 999, stage: 'HARVEST' }
-      ]
-    };
-    
-    // Default stages for unknown crops
-    const DEFAULT_STAGES = [
-      { maxDays: 10, stage: 'GERMINATION' },
-      { maxDays: 25, stage: 'SEEDLING' },
-      { maxDays: 50, stage: 'VEGETATIVE' },
-      { maxDays: 75, stage: 'FLOWERING' },
-      { maxDays: 100, stage: 'FRUITING' },
-      { maxDays: 130, stage: 'MATURITY' },
-      { maxDays: 999, stage: 'HARVEST' }
-    ];
-    
-    const cropUpper = (cropName || '').toUpperCase();
-    const stages = CROP_STAGES[cropUpper] || DEFAULT_STAGES;
-    
-    for (const stageDef of stages) {
-      if (daysSinceSowing <= stageDef.maxDays) {
-        return stageDef.stage;
-      }
-    }
-    
-    return 'MATURITY';
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PR-4a · REMOVED: private calculateGrowthStage(daysSinceSowing, cropName)
+  // Rationale: this 85-line ICAR ladder was a second brain competing with the
+  // authoritative SSOT `public.resolve_crop_phenology(land_id)` (which joins
+  // crop_stage_master + variety_phenology_profile + evaluate_stage_transitions
+  // and coalesces lands.planting_date > lands.last_sowing_date >
+  // crop_schedules.sowing_date). Any code path that needs a stage MUST read
+  // `biological_state.growth_stage` or the phenology RPC row. No local
+  // recomputation is permitted. See mem://architecture/single-brain-stage-ssot.
+  // ═══════════════════════════════════════════════════════════════════════════
+
   
   /**
    * Get NDVI health status
