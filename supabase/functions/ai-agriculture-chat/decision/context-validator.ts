@@ -14,7 +14,10 @@
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
-import { getStageByDAS, isStageKnowledgeLoaded } from '../utils/stage-knowledge-cache.ts';
+// PR-4c: getStageByDAS import DELETED. Stage is consumed from
+// biological_state / land_state.crop.growth_stage (SSOT). This validator
+// MUST NOT recompute stage from DAS — a single writer (resolve_crop_phenology)
+// owns growth_stage.
 import { getCachedSynonymMap } from '../utils/crop-synonyms-cache.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
