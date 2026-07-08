@@ -870,8 +870,12 @@ export async function runCausalHypothesisArbitration(
   input: CausalHypothesisInput
 ): Promise<ArbitrationResult> {
   const { canonical_state, supabase_client, trace_id } = input;
-  let { crop_group, observations } = input;
+  let { crop_group } = input;
+  // SymbolContract-coerced observation list — accepts mixed shapes
+  // (strings, graph-symbol objects, IOM rows) and normalizes to graph IDs.
+  let observations: string[] = coerceSymbolList(input.observations);
   const startTime = Date.now();
+
 
   // ═════════════════════════════════════════════════════════════════════════
   // Step 3 — HYPOTHESIS CONTRACT: GraphTruth is the sole authority.
