@@ -156,26 +156,19 @@ const SYSTEM_CAUSES = new Set([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SYMPTOM-BASED TRIGGERS (For cases where cause mapping hasn't run yet)
+// SYMPTOM → AUTHORITY DOMAIN — PR-2: DB-DRIVEN
+// LAND_SYMPTOMS / CLIMATE_SYMPTOMS Sets deleted. Domain now derives from
+// `observation_master.semantic_class` + `canonical_group` via the
+// observation-classification-cache.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const LAND_SYMPTOMS = new Set([
-  'SALT_CRUST_VISIBLE',
-  'WHITE_DEPOSIT_SOIL',
-  'STANDING_WATER',
-  'WATERLOGGED_SOIL',
-  'CRACKED_SOIL',
-  'HARDPAN_VISIBLE',
-  'SOIL_CRUST'
-]);
+import {
+  classifyAuthorityDomain,
+  classifyFailureClass as classifyFailureClassSafe,
+  getHypothesisType,
+} from '../utils/observation-classification-cache.ts';
 
-const CLIMATE_SYMPTOMS = new Set([
-  'FROST_BURN',
-  'LEAF_SCORCH_HEAT',
-  'WILTING_WIDESPREAD',
-  'FLOOD_SUBMERSION',
-  'HAIL_MARKS'
-]);
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN RESOLVER FUNCTION (v2.0 - WITH TERMINAL DAMAGE PRE-CHECK)
@@ -286,12 +279,16 @@ export function resolveDecisionAuthority(
   
   // ═══════════════════════════════════════════════════════════════════════
   // RULE 2: LAND (Overrides CROP, CLIMATE, SYSTEM)
+  // PR-2: symptom trigger now derives from observation_master via
+  // classifyAuthorityDomain(). Governance cause tokens (SALINITY, WATERLOGGING,
+  // etc.) remain in LAND_CAUSES — those are authority governance tokens, not
+  // agronomic observations.
   // ═══════════════════════════════════════════════════════════════════════
-  
+
   const landCauseDetected = [...causes].some(c => LAND_CAUSES.has(c));
-  const landSymptomDetected = [...symptoms].some(s => LAND_SYMPTOMS.has(s));
+  const landSymptomDetected = [...symptoms].some(s => classifyAuthorityDomain(s) === 'LAND');
   const landContextTrigger = detectLandContextTrigger(input.land_context);
-  
+
   if (landCauseDetected || landSymptomDetected || landContextTrigger) {
     return {
       authority: DecisionAuthority.LAND,
@@ -303,20 +300,20 @@ export function resolveDecisionAuthority(
       ],
       allowed_domains: [DecisionAuthority.LAND, DecisionAuthority.SAFETY],
       reason: 'Land/soil stress detected - pest, disease, and spray logic blocked',
-      treatments_allowed: false, // Land issues don't get spray treatments
+      treatments_allowed: false,
       response_mode: ResponseMode.INFORMATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════
-  // RULE 3: CLIMATE (Overrides CROP only)
+  // RULE 3: CLIMATE (Overrides CROP only) — DB-driven symptom trigger
   // ═══════════════════════════════════════════════════════════════════════
-  
+
   const climateCauseDetected = [...causes].some(c => CLIMATE_CAUSES.has(c));
-  const climateSymptomDetected = [...symptoms].some(s => CLIMATE_SYMPTOMS.has(s));
-  
+  const climateSymptomDetected = [...symptoms].some(s => classifyAuthorityDomain(s) === 'CLIMATE');
+
   if (climateCauseDetected || climateSymptomDetected) {
     return {
       authority: DecisionAuthority.CLIMATE,
@@ -328,19 +325,19 @@ export function resolveDecisionAuthority(
         DecisionAuthority.SAFETY
       ],
       reason: 'Climate stress detected - pest and disease logic blocked',
-      treatments_allowed: false, // Climate issues don't get spray treatments
+      treatments_allowed: false,
       response_mode: ResponseMode.INFORMATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════
   // RULE 4: SYSTEM (Overrides CROP only)
   // ═══════════════════════════════════════════════════════════════════════
-  
+
   const systemCauseDetected = [...causes].some(c => SYSTEM_CAUSES.has(c));
-  
+
   if (systemCauseDetected) {
     return {
       authority: DecisionAuthority.SYSTEM,
@@ -352,45 +349,55 @@ export function resolveDecisionAuthority(
         DecisionAuthority.SAFETY
       ],
       reason: 'System/infrastructure failure detected - pest and disease logic blocked',
-      treatments_allowed: false, // System issues don't get spray treatments
+      treatments_allowed: false,
       response_mode: ResponseMode.INFORMATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════
-  // RULE 5: CROP (Pests, diseases, nutrient stress)
-  // Check if confirmed or just potential
-  // FIX: Also check cross_crop_symptoms for insect/pest indicators
+  // RULE 5: CROP (Pests, diseases, nutrient stress) — DB-DRIVEN
+  //
+  // PR-2: substring cause matching (`c.includes('PEST')`) is DELETED. We now
+  // classify causes by:
+  //   1. `hypothesis_master.hypothesis_type` (PEST/DISEASE/DEFICIENCY/STRESS)
+  //   2. observation_master classifier for cause tokens that are also codes
+  //
+  // Symptom classification flows through observation_master as well — no more
+  // substring heuristics like `s.includes('YELLOWING')`.
   // ═══════════════════════════════════════════════════════════════════════
-  
-  const hasPestCause = [...causes].some(c => c.includes('PEST') || c.includes('BORER') || c.includes('APHID') || c.includes('WHITEFLY'));
-  const hasDiseaseCause = [...causes].some(c => c.includes('DISEASE') || c.includes('RUST') || c.includes('BLIGHT') || c.includes('WILT'));
-  const hasNutrientCause = [...causes].some(c => c.includes('NUTRIENT') || c.includes('DEFICIENCY') || c.includes('NITROGEN') || c.includes('PHOSPHORUS'));
-  
-  // FIX: Check symptoms for pest/disease indicators (from clarification answers)
-  const hasPestSymptom = [...symptoms].some(s => 
-    s.includes('INSECT') || s.includes('FLYING') || s.includes('CRAWLING') || 
-    s.includes('JUMPING') || s.includes('APHID') || s.includes('THRIPS') ||
-    s.includes('MITE') || s.includes('LARVAE') || s.includes('WEBBING') ||
-    s.includes('HONEYDEW') || s.includes('CURLED_LEAVES')
-  );
-  const hasDiseaseSymptom = [...symptoms].some(s => 
-    s.includes('SPOTS') || s.includes('POWDERY') || s.includes('RUST') || 
-    s.includes('BLIGHT') || s.includes('WILT') || s.includes('LESION')
-  );
-  const hasNutrientSymptom = [...symptoms].some(s => 
-    s.includes('YELLOWING') || s.includes('CHLOROSIS') || s.includes('BURN') ||
-    s.includes('STUNTED')
-  );
-  
-  // Confirmed if we have cause OR diagnostic symptom
-  const isConfirmed = hasPestCause || hasDiseaseCause || hasNutrientCause || 
+
+  const causeIsHypoType = (target: string) =>
+    [...causes].some(c => getHypothesisType(c) === target);
+
+  // Fallback: some cause tokens are also observation codes (e.g. after
+  // symptom→cause promotion). Consult observation_master's failure_class.
+  const causeMatchesFC = (target: 'PEST_DAMAGE' | 'DISEASE_SYMPTOM' | 'NUTRIENT_DEFICIENCY') =>
+    [...causes].some(c => classifyFailureClassSafe(c) === target);
+
+  const hasPestCause = causeIsHypoType('PEST') || causeMatchesFC('PEST_DAMAGE');
+  const hasDiseaseCause = causeIsHypoType('DISEASE') || causeMatchesFC('DISEASE_SYMPTOM');
+  const hasNutrientCause = causeIsHypoType('DEFICIENCY') || causeMatchesFC('NUTRIENT_DEFICIENCY');
+
+  // Symptom-side DB classification
+  const domainCounts = { pest: 0, disease: 0, nutrient: 0 };
+  for (const s of symptoms) {
+    const cls = classifyAuthorityDomain(s);
+    if (cls !== 'CROP') continue;
+    const obs = classifyFailureClassSafe(s);
+    if (obs === 'PEST_DAMAGE') domainCounts.pest++;
+    else if (obs === 'DISEASE_SYMPTOM') domainCounts.disease++;
+    else if (obs === 'NUTRIENT_DEFICIENCY') domainCounts.nutrient++;
+  }
+  const hasPestSymptom = domainCounts.pest > 0;
+  const hasDiseaseSymptom = domainCounts.disease > 0;
+  const hasNutrientSymptom = domainCounts.nutrient > 0;
+
+  const isConfirmed = hasPestCause || hasDiseaseCause || hasNutrientCause ||
                       hasPestSymptom || hasDiseaseSymptom;
-  
-  // Potential if we have any symptoms at all
   const hasPotential = symptoms.size > 0 || hasNutrientSymptom;
+
   
   const result: AuthorityDecision = {
     authority: DecisionAuthority.CROP,

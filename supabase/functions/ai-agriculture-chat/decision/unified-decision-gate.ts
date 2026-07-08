@@ -288,17 +288,19 @@ const OBSERVATION_ACTIONS = new Set([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// YOUNG CROP DEFINITIONS
+// YOUNG CROP DEFINITIONS — PR-2: DB-DRIVEN
+// ───────────────────────────────────────────────────────────────────────────
+// YOUNG_CROP_STAGES Set DELETED. Stage-based youngness now derives from
+// `crop_stage_master.das_max` via StageKnowledgeCache (SSOT).
+// VAGUE_SYMPTOM_PATTERNS Set DELETED. Vagueness now derives from
+// `observation_master.is_diagnostic` + `clarity_score` via
+// `isVagueObservation()` on the observation-classification-cache.
+// YOUNG_CROP_MAX_DAYS remains until `crop_baseline_guidelines_v2` gets a
+// `young_crop_max_das` column (see HARDCODE_TO_DB_MAPPING #19 / MISSING report).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const YOUNG_CROP_STAGES = new Set([
-  'GERMINATION',
-  'SEEDLING',
-  'EMERGENCE',
-  'VEGETATIVE_EARLY',
-  'VEGETATIVE',
-  'TILLERING'
-]);
+import { getStageRow as getStageRowFromCache } from '../utils/stage-knowledge-cache.ts';
+import { isVagueObservation } from '../utils/observation-classification-cache.ts';
 
 const YOUNG_CROP_MAX_DAYS: Record<string, number> = {
   'SUGARCANE': 45,
@@ -312,23 +314,9 @@ const YOUNG_CROP_MAX_DAYS: Record<string, number> = {
   'GRAM': 25,
   'ONION': 40,
   'TOMATO': 25,
-  'CHILLI': 30
+  'CHILLI': 30,
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// VAGUE SYMPTOM DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
-
-const VAGUE_SYMPTOM_PATTERNS = new Set([
-  'UNKNOWN',
-  'GENERAL',
-  'SOMETHING_WRONG',
-  'PROBLEM',
-  'ISSUE',
-  'HELP',
-  'NOT_GOOD',
-  'BAD_CONDITION'
-]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN UNIFIED GATE FUNCTION
@@ -594,8 +582,8 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   // If young crop without confirmed diagnosis → check for DIAGNOSTIC_ESCALATION
   if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators) {
     // Check if we have symptoms that warrant diagnostic escalation (not just observation)
-    const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 && 
-      !input.symptom_keys.every(s => VAGUE_SYMPTOM_PATTERNS.has(s.toUpperCase()));
+    const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 &&
+      !input.symptom_keys.every(s => isVagueObservation(s));
     
     if (hasSpecificSymptoms && input.crop_name && input.growth_stage) {
       console.log(`   🔬 DIAGNOSTIC ESCALATION - Expert-level response with hypotheses`);
@@ -816,12 +804,18 @@ function checkIfYoungCrop(
     return true;
   }
   
-  // PRIORITY 2: Fallback to stage-based check only when DAS is unknown
-  if (cropStage) {
-    const normalizedStage = cropStage.toUpperCase().replace(/[_\s-]+/g, '_');
-    if (YOUNG_CROP_STAGES.has(normalizedStage)) {
-      console.log(`   📊 [YoungCrop] Stage=${normalizedStage} (DAS unknown) → IS young by stage`);
+  // PRIORITY 2: DB-driven stage-based fallback when DAS is unknown.
+  // A stage counts as "young" iff the DB row's das_max is within the crop's
+  // young-crop threshold (defaults to 30 days).
+  if (cropStage && cropName) {
+    const row = getStageRowFromCache(cropName, cropStage);
+    const threshold = YOUNG_CROP_MAX_DAYS[cropName.toUpperCase()] ?? 30;
+    if (row && typeof row.das_max === 'number' && row.das_max <= threshold) {
+      console.log(`   📊 [YoungCrop] DB stage=${cropStage} das_max=${row.das_max} <= ${threshold} → IS young`);
       return true;
+    }
+    if (!row) {
+      console.log(`   📊 [YoungCrop] DB miss for ${cropName}/${cropStage} — not classifiable as young`);
     }
   }
   

@@ -79,303 +79,195 @@ export interface FailureClassAuditLog {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CANONICAL OBSERVATION SETS FOR FAILURE CLASS DETECTION
-// These are language-agnostic observation codes from observation_master
+// PR-2 REFACTOR — All hardcoded ObservationKey Sets DELETED.
+// Classification now flows through DB SSOT via observation-classification-cache
+// (backed by public.observation_master + public.observation_aliases).
+// Early / vegetative stage detection now flows through StageKnowledgeCache
+// (backed by public.crop_stage_master DAS windows).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ESTABLISHMENT_OBSERVATIONS = new Set([
-  'PLANT_DEATH',
-  'SEEDLING_DEATH',
-  'GERMINATION_FAILURE',
-  'GAPS_IN_FIELD',
-  'SETT_ROT',
-  'SEED_ROT',
-  'BUD_NOT_SPROUTING',
-  'POOR_EMERGENCE',
-  'EMPTY_SPOTS',
-  'MISSING_PLANTS',
-  'ROOT_ROT',
-  'DAMPING_OFF',
-  'WILT_TERMINAL'
-]);
+import {
+  classifyFailureClass,
+  classifyObservation,
+  observationAppliesToStage,
+  type FailureClassEnum,
+} from '../utils/observation-classification-cache.ts';
+import { getStageByDAS, getStageRow } from '../utils/stage-knowledge-cache.ts';
 
-const PEST_OBSERVATIONS = new Set([
-  'INSECT_PRESENT',
-  'INSECT_VISIBLE',
-  'PEST_DAMAGE',
-  'CATERPILLAR_VISIBLE',
-  'LARVAE_VISIBLE',
-  'BORER_SUSPECTED',
-  'APHIDS_PRESENT',
-  'WHITEFLY_PRESENT',
-  'MEALYBUG_PRESENT',
-  'JASSID_PRESENT',
-  'THRIPS_PRESENT',
-  'MITE_PRESENT',
-  'TERMITE_SUSPECTED',
-  'GRUB_PRESENT',
-  'HOLES_VISIBLE',
-  'CHEWING_DAMAGE',
-  'DEAD_HEART',
-  'DEAD_HEART_PRESENT',
-  'STEM_BORING_MARKS',
-  'FRASS_VISIBLE'
-]);
+/**
+ * DB-driven "early stage" check. A stage is early iff the DB row has
+ * das_max <= EARLY_STAGE_DAS_CEILING (configurable). Falls back to false when
+ * the DB has no coverage — callers must not synthesize an early-stage
+ * classification from stage-name heuristics.
+ */
+const EARLY_STAGE_DAS_CEILING = 30;
+const VEGETATIVE_STAGE_DAS_CEILING = 90;
 
-const DISEASE_OBSERVATIONS = new Set([
-  'LEAF_SPOTS',
-  'LEAF_BLIGHT',
-  'STEM_ROT',
-  'FUNGAL_GROWTH',
-  'POWDERY_MILDEW',
-  'DOWNY_MILDEW',
-  'RUST_PRESENT',
-  'SMUT_PRESENT',
-  'WILT_DISEASE',
-  'BACTERIAL_OOZE',
-  'LESIONS_VISIBLE',
-  'NECROSIS_VISIBLE',
-  'CANKER_PRESENT',
-  'SCAB_PRESENT',
-  'MOSAIC_PATTERN',
-  'VIRAL_SYMPTOMS',
-  'BLACK_SPOTS',
-  'RED_SPOTS',
-  'WHITE_POWDERY_GROWTH'
-]);
+function isEarlyStageFromDB(crop: string, stage: string, das: number | null): boolean {
+  if (das !== null && das !== undefined) return das <= EARLY_STAGE_DAS_CEILING;
+  if (!crop || !stage) return false;
+  const row = getStageRow(crop, stage);
+  if (!row) return false;
+  const dasMax = typeof row.das_max === 'number' ? row.das_max : null;
+  return dasMax !== null && dasMax <= EARLY_STAGE_DAS_CEILING;
+}
 
-const NUTRIENT_OBSERVATIONS = new Set([
-  'LEAF_YELLOWING',
-  'CHLOROSIS',
-  'INTERVEINAL_YELLOWING',
-  'PURPLE_LEAVES',
-  'RED_LEAVES',
-  'PALE_GREEN',
-  'TIP_BURN',
-  'MARGINAL_BURN',
-  'STUNTED_GROWTH',
-  'STUNTED_PLANTS',
-  'POOR_TILLERING',
-  'NUTRIENT_DEFICIENCY'
-]);
-
-const WEED_OBSERVATIONS = new Set([
-  'WEED_PRESENT',
-  'WEED_HEAVY',
-  'WEED_ABOVE_CROP',
-  'WEED_IN_ROWS',
-  'WEED_INFESTATION',
-  'GRASS_WEEDS',
-  'BROADLEAF_WEEDS'
-]);
-
-const VEGETATIVE_STRESS_OBSERVATIONS = new Set([
-  'WILTING',
-  'DROOPING',
-  'SLOW_GROWTH',
-  'WEAK_STEMS',
-  'SMALL_LEAVES',
-  'THIN_STEMS',
-  'WATER_STRESS',
-  'HEAT_STRESS',
-  'WATERLOGGING',
-  'DRYING',
-  'LEAF_DRYING',
-  'LEAF_CURLING'
-]);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STAGE-BASED FAILURE CLASS MAPPING
-// Early stages → ESTABLISHMENT_FAILURE priority
-// ═══════════════════════════════════════════════════════════════════════════
-
-const EARLY_STAGES = new Set([
-  'GERMINATION', 'ESTABLISHMENT', 'SEEDLING', 'TRANSPLANTING',
-  'EMERGENCE', 'BUD_SPROUTING', 'PLANTING', 'SPROUTING',
-  'germination', 'establishment', 'seedling', 'transplanting',
-  'emergence', 'bud_sprouting', 'planting', 'sprouting'
-]);
-
-const VEGETATIVE_STAGES = new Set([
-  'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH', 'EARLY_VEGETATIVE',
-  'ACTIVE_VEGETATIVE', 'ROSETTE', 'LEAF_DEVELOPMENT',
-  'vegetative', 'tillering', 'grand_growth', 'early_vegetative',
-  'active_vegetative', 'rosette', 'leaf_development'
-]);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER FUNCTION: Match observations against a canonical set
-// ═══════════════════════════════════════════════════════════════════════════
-
-function countMatches(observations: string[], targetSet: Set<string>): string[] {
-  const matched: string[] = [];
-  
-  for (const obs of observations) {
-    const upperObs = obs.toUpperCase().replace(/-/g, '_');
-    if (targetSet.has(upperObs) || targetSet.has(obs)) {
-      matched.push(upperObs);
-    }
+function isVegetativeStageFromDB(crop: string, stage: string, das: number | null): boolean {
+  if (das !== null && das !== undefined) {
+    return das > EARLY_STAGE_DAS_CEILING && das <= VEGETATIVE_STAGE_DAS_CEILING;
   }
-  
-  return matched;
+  if (!crop || !stage) return false;
+  const row = getStageRow(crop, stage);
+  if (!row) return false;
+  const dasMin = typeof row.das_min === 'number' ? row.das_min : null;
+  const dasMax = typeof row.das_max === 'number' ? row.das_max : null;
+  return (
+    dasMin !== null &&
+    dasMax !== null &&
+    dasMin > EARLY_STAGE_DAS_CEILING &&
+    dasMax <= VEGETATIVE_STAGE_DAS_CEILING
+  );
+}
+
+/** Bucket observations by DB-derived failure class. */
+function bucketObservationsByClass(observations: string[]): Map<FailureClassEnum, string[]> {
+  const buckets = new Map<FailureClassEnum, string[]>();
+  let miss = 0;
+  for (const raw of observations) {
+    if (!raw) continue;
+    const fc = classifyFailureClass(raw);
+    if (fc === 'UNKNOWN' && !classifyObservation(raw)) {
+      miss++;
+      continue;
+    }
+    const arr = buckets.get(fc) ?? [];
+    arr.push(raw.toUpperCase());
+    buckets.set(fc, arr);
+  }
+  if (miss > 0) {
+    console.warn(`[OBS_CLASSIFICATION_MISS] failure-class-detector unresolved_tokens=${miss}`);
+  }
+  return buckets;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CORE DETECTION FUNCTION - SSOT COMPLIANT
+// CORE DETECTION FUNCTION — PR-2 DB-DRIVEN
 // ═══════════════════════════════════════════════════════════════════════════
 
+const CLASS_CONFIDENCE_BASE: Record<FailureClass, number> = {
+  ESTABLISHMENT_FAILURE: 0.85,
+  WEED_COMPETITION: 0.82,
+  PEST_DAMAGE: 0.80,
+  DISEASE_SYMPTOM: 0.78,
+  NUTRIENT_DEFICIENCY: 0.75,
+  VEGETATIVE_STRESS: 0.70,
+  UNKNOWN: 0.40,
+};
+
+const CLASS_CONFIDENCE_STEP: Record<FailureClass, number> = {
+  ESTABLISHMENT_FAILURE: 0.05,
+  WEED_COMPETITION: 0.04,
+  PEST_DAMAGE: 0.04,
+  DISEASE_SYMPTOM: 0.04,
+  NUTRIENT_DEFICIENCY: 0.04,
+  VEGETATIVE_STRESS: 0.05,
+  UNKNOWN: 0.0,
+};
+
+// Priority when multiple classes match — mirrors the legacy STEP ordering
+// (Establishment > Weed > Pest > Disease > Nutrient > Stress).
+const CLASS_PRIORITY: FailureClass[] = [
+  'ESTABLISHMENT_FAILURE',
+  'WEED_COMPETITION',
+  'PEST_DAMAGE',
+  'DISEASE_SYMPTOM',
+  'NUTRIENT_DEFICIENCY',
+  'VEGETATIVE_STRESS',
+];
+
 /**
- * Detect primary failure class from canonical observations.
- * NO language-dependent logic - pure canonical symbol matching.
+ * Detect primary failure class from canonical observations — DB-driven.
+ * All classification derives from `observation_master.semantic_class` +
+ * `canonical_group` via `classifyFailureClass()`. Stage windows come from
+ * `crop_stage_master` via StageKnowledgeCache. No hardcoded observation
+ * inventories.
  */
 export function detectPrimaryFailureClass(input: FailureClassInput): FailureClassResult {
   const { crop_code, growth_stage, days_since_sowing, observations, symptoms, symptom_scope } = input;
 
-  // Defensive normalization (prevents response-generation failures if upstream omits fields)
   const safeObservations = Array.isArray(observations) ? observations : [];
   const safeSymptoms = Array.isArray(symptoms) ? symptoms : [];
   const safeScope: FailureClassInput['symptom_scope'] = symptom_scope || 'UNKNOWN';
-
   const normalizedStage = (growth_stage || 'UNKNOWN').toUpperCase();
 
-  // Combine observations and symptoms for matching
   const allObservations = [...safeObservations, ...safeSymptoms];
 
   console.log(`🔍 [FailureClass v${FAILURE_CLASS_VERSION}] Detecting for ${crop_code}/${normalizedStage}, DAS: ${days_since_sowing}`);
   console.log(`   Observations: [${allObservations.slice(0, 5).join(', ')}${allObservations.length > 5 ? '...' : ''}]`);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1: Check for ESTABLISHMENT_FAILURE signals
-  // Priority if: early stage + whole plant symptoms + death/gap observations
-  // ═══════════════════════════════════════════════════════════════════════════
+  const buckets = bucketObservationsByClass(allObservations);
 
-  const isEarlyStage = EARLY_STAGES.has(normalizedStage) || EARLY_STAGES.has(growth_stage);
-  const isVeryEarlyDAS = days_since_sowing !== null && days_since_sowing <= 30;
+  const isEarlyStage = isEarlyStageFromDB(crop_code, growth_stage, days_since_sowing);
+  const isVegetativeStage = isVegetativeStageFromDB(crop_code, growth_stage, days_since_sowing);
   const isWholePlant = safeScope === 'WHOLE_PLANT';
 
-  const establishmentMatches = countMatches(allObservations, ESTABLISHMENT_OBSERVATIONS);
-  
-  // ESTABLISHMENT_FAILURE priority conditions
-  if ((isEarlyStage || isVeryEarlyDAS) && 
-      (establishmentMatches.length > 0 || isWholePlant)) {
-    console.log(`   ✅ ESTABLISHMENT_FAILURE detected (early stage + ${establishmentMatches.length} observations)`);
+  // STEP 1 — ESTABLISHMENT priority when early + (matches OR whole-plant)
+  const establishmentMatches = buckets.get('ESTABLISHMENT_FAILURE') ?? [];
+  if (isEarlyStage && (establishmentMatches.length > 0 || isWholePlant)) {
+    const conf = CLASS_CONFIDENCE_BASE.ESTABLISHMENT_FAILURE +
+      establishmentMatches.length * CLASS_CONFIDENCE_STEP.ESTABLISHMENT_FAILURE;
+    console.log(`   ✅ ESTABLISHMENT_FAILURE (early stage + ${establishmentMatches.length} obs)`);
     return {
       primary_class: 'ESTABLISHMENT_FAILURE',
-      confidence: 0.85 + (establishmentMatches.length * 0.05),
+      confidence: Math.min(conf, 0.98),
       matched_observations: establishmentMatches,
-      reasoning: `Early stage (${normalizedStage}, DAS: ${days_since_sowing}) with establishment failure observations`,
+      reasoning: `Early stage (${normalizedStage}, DAS: ${days_since_sowing}) with establishment observations`,
       stage_compatible: true,
-      derived_from: establishmentMatches.length > 0 ? 'OBSERVATIONS' : 'STAGE'
+      derived_from: establishmentMatches.length > 0 ? 'OBSERVATIONS' : 'STAGE',
     };
   }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2a: Check WEED_COMPETITION signals (before pest to prevent misrouting)
-  // ═══════════════════════════════════════════════════════════════════════════
-  
-  const weedMatches = countMatches(allObservations, WEED_OBSERVATIONS);
-  
-  if (weedMatches.length > 0) {
-    console.log(`   ✅ WEED_COMPETITION detected (${weedMatches.length} observations)`);
+
+  // STEP 2..5 — walk the DB-driven buckets by priority
+  for (const fc of CLASS_PRIORITY) {
+    if (fc === 'ESTABLISHMENT_FAILURE') continue; // handled above
+    const matches = buckets.get(fc) ?? [];
+    if (matches.length === 0) continue;
+    const conf = CLASS_CONFIDENCE_BASE[fc] + matches.length * CLASS_CONFIDENCE_STEP[fc];
+    console.log(`   ✅ ${fc} (${matches.length} obs)`);
     return {
-      primary_class: 'WEED_COMPETITION',
-      confidence: 0.82 + (weedMatches.length * 0.04),
-      matched_observations: weedMatches,
-      reasoning: `Weed competition observations detected: ${weedMatches.slice(0, 3).join(', ')}`,
+      primary_class: fc,
+      confidence: Math.min(conf, 0.98),
+      matched_observations: matches,
+      reasoning: `${fc} observations detected: ${matches.slice(0, 3).join(', ')}`,
       stage_compatible: true,
-      derived_from: 'OBSERVATIONS'
+      derived_from: 'OBSERVATIONS',
     };
   }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2b: Check PEST_DAMAGE signals
-  // ═══════════════════════════════════════════════════════════════════════════
-  
-  const pestMatches = countMatches(allObservations, PEST_OBSERVATIONS);
-  
-  if (pestMatches.length > 0) {
-    console.log(`   ✅ PEST_DAMAGE detected (${pestMatches.length} observations)`);
-    return {
-      primary_class: 'PEST_DAMAGE',
-      confidence: 0.80 + (pestMatches.length * 0.04),
-      matched_observations: pestMatches,
-      reasoning: `Pest/insect observations detected: ${pestMatches.slice(0, 3).join(', ')}`,
-      stage_compatible: true,
-      derived_from: 'OBSERVATIONS'
-    };
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 3: Check DISEASE_SYMPTOM signals
-  // ═══════════════════════════════════════════════════════════════════════════
-  
-  const diseaseMatches = countMatches(allObservations, DISEASE_OBSERVATIONS);
-  
-  if (diseaseMatches.length > 0) {
-    console.log(`   ✅ DISEASE_SYMPTOM detected (${diseaseMatches.length} observations)`);
-    return {
-      primary_class: 'DISEASE_SYMPTOM',
-      confidence: 0.78 + (diseaseMatches.length * 0.04),
-      matched_observations: diseaseMatches,
-      reasoning: `Disease observations detected: ${diseaseMatches.slice(0, 3).join(', ')}`,
-      stage_compatible: true,
-      derived_from: 'OBSERVATIONS'
-    };
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 4: Check NUTRIENT_DEFICIENCY signals
-  // ═══════════════════════════════════════════════════════════════════════════
-  
-  const nutrientMatches = countMatches(allObservations, NUTRIENT_OBSERVATIONS);
-  
-  if (nutrientMatches.length > 0) {
-    console.log(`   ✅ NUTRIENT_DEFICIENCY detected (${nutrientMatches.length} observations)`);
-    return {
-      primary_class: 'NUTRIENT_DEFICIENCY',
-      confidence: 0.75 + (nutrientMatches.length * 0.04),
-      matched_observations: nutrientMatches,
-      reasoning: `Nutrient deficiency observations detected: ${nutrientMatches.slice(0, 3).join(', ')}`,
-      stage_compatible: true,
-      derived_from: 'OBSERVATIONS'
-    };
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 5: Check VEGETATIVE_STRESS signals
-  // ═══════════════════════════════════════════════════════════════════════════
-  
-  const stressMatches = countMatches(allObservations, VEGETATIVE_STRESS_OBSERVATIONS);
-  const isVegetativeStage = VEGETATIVE_STAGES.has(normalizedStage) || VEGETATIVE_STAGES.has(growth_stage);
-  
-  if (stressMatches.length > 0 || isVegetativeStage) {
-    console.log(`   ✅ VEGETATIVE_STRESS detected (${stressMatches.length} observations, vegetative: ${isVegetativeStage})`);
+
+  // STEP 6 — Vegetative stage fallback (no observation matches)
+  if (isVegetativeStage) {
+    console.log(`   ✅ VEGETATIVE_STRESS (DB-derived vegetative stage, no obs match)`);
     return {
       primary_class: 'VEGETATIVE_STRESS',
-      confidence: 0.70 + (stressMatches.length * 0.05),
-      matched_observations: stressMatches,
-      reasoning: isVegetativeStage 
-        ? `Vegetative stage (${normalizedStage}) with stress observations`
-        : `Stress observations detected: ${stressMatches.slice(0, 3).join(', ')}`,
+      confidence: CLASS_CONFIDENCE_BASE.VEGETATIVE_STRESS,
+      matched_observations: [],
+      reasoning: `Vegetative stage (${normalizedStage}) with no specific observations`,
       stage_compatible: true,
-      derived_from: stressMatches.length > 0 ? 'OBSERVATIONS' : 'STAGE'
+      derived_from: 'STAGE',
     };
   }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DEFAULT: Cannot determine specific class
-  // ═══════════════════════════════════════════════════════════════════════════
-  
+
   console.log(`   ⚠️ Could not determine specific failure class - using UNKNOWN`);
   return {
     primary_class: 'UNKNOWN',
-    confidence: 0.40,
+    confidence: CLASS_CONFIDENCE_BASE.UNKNOWN,
     matched_observations: [],
-    reasoning: 'No specific failure class indicators found in canonical observations',
+    reasoning: 'No DB-classified failure indicators found',
     stage_compatible: true,
-    derived_from: 'DEFAULT'
+    derived_from: 'DEFAULT',
   };
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION DOMAIN MAPPING
@@ -461,35 +353,37 @@ export function getFailureClassThresholds(): Record<FailureClass, number> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Check if an observation is stage-compatible.
- * Uses canonical stage names - no language dependency.
+ * Check if an observation is stage-compatible — DB-driven.
+ *
+ * Rules:
+ *   1. If `observation_master.applies_to_stages` restricts the code to a
+ *      specific list, the query stage must appear in that list.
+ *   2. ESTABLISHMENT-class observations only apply in early DAS windows
+ *      (derived from `crop_stage_master.das_max` via StageKnowledgeCache).
+ *
+ * Backward-compatible: unknown tokens / unknown stages return true.
  */
 export function isObservationStageCompatible(
   observationKey: string,
-  stage: string
+  stage: string,
+  crop?: string
 ): boolean {
-  if (!observationKey || !stage) return true; // Allow if no stage/obs specified
-  
-  const upperStage = stage.toUpperCase();
-  const upperObs = observationKey.toUpperCase();
-  
-  // Establishment observations only valid in early stages
-  const isEarlyStage = EARLY_STAGES.has(stage) || EARLY_STAGES.has(upperStage);
-  const isEstablishmentObs = ESTABLISHMENT_OBSERVATIONS.has(upperObs);
-  
-  if (isEstablishmentObs && !isEarlyStage) {
-    // Establishment observations not valid in late stages
-    return false;
+  if (!observationKey || !stage) return true;
+
+  // (1) DB-declared applies_to_stages
+  if (!observationAppliesToStage(observationKey, stage)) return false;
+
+  // (2) Establishment-class ↔ early stage window
+  const classification = classifyObservation(observationKey);
+  if (!classification) return true; // unknown → don't block
+
+  if (classification.failure_class === 'ESTABLISHMENT_FAILURE') {
+    const early = isEarlyStageFromDB(crop ?? '', stage, null);
+    if (!early) return false;
   }
-  
-  // Flowering/fruiting observations not valid in very early stages
-  const floweringObs = new Set(['FLOWER_DROP', 'FRUIT_ROT', 'FRUIT_DROP', 'POD_BORER']);
-  if (floweringObs.has(upperObs) && isEarlyStage) {
-    return false;
-  }
-  
   return true;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FALLBACK OPTIONS FOR CLARIFICATION - CANONICAL VERSION

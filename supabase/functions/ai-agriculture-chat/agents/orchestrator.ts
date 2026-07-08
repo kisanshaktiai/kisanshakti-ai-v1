@@ -1237,6 +1237,18 @@ export class AIAgentOrchestrator {
       const { loadObservationMapping } = await import('../utils/observation-mapping-cache.ts');
       await loadObservationMapping(this.supabase);
     } catch (_e) { /* non-fatal — mapper will log [OBS_MAPPING_CACHE_MISS] */ }
+    // PR-2: Pre-load DB-backed observation & hypothesis classification caches
+    // (replaces hardcoded failure-class and authority-domain Sets in
+    // failure-class-detector, authority-resolver, and unified-decision-gate).
+    // SSOT: observation_master + observation_aliases + hypothesis_master.
+    try {
+      const { loadObservationClassification, loadHypothesisTypes } =
+        await import('../utils/observation-classification-cache.ts');
+      await Promise.all([
+        loadObservationClassification(this.supabase),
+        loadHypothesisTypes(this.supabase),
+      ]);
+    } catch (_e) { /* non-fatal — classifiers log [OBS_CLASSIFICATION_MISS] on lookup */ }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Phase H — Fix 7 (Knowledge Initialization)
