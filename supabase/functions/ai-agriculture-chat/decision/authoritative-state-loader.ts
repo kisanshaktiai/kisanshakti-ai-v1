@@ -253,13 +253,28 @@ export interface AuthoritativeLandState {
   district: string | null;
   state: string | null;
   
-  // Crop Schedule (AUTHORITATIVE)
+  // Crop Schedule (AUTHORITATIVE) — PR-4d: extended with canonical identity
+  // (crop_id, variety_id), variety-aware phenology anchor (stage_uuid),
+  // and every SSOT date/counter on `public.lands`. Downstream MUST prefer
+  // these over any recomputation.
   crop: {
     current_crop: string | null;
     crop_code: string | null;
+    crop_id: string | null;               // lands.current_crop_id (uuid, canonical)
+    variety_id: string | null;            // lands.current_crop_variety_id or crop_schedules.variety_id
+    variety_name: string | null;          // crop_schedules.crop_variety
     growth_stage: string | null;
-    days_since_sowing: number | null;
+    stage_uuid: string | null;            // lands.stage_uuid
+    stage_source_authoritative: string | null; // lands.stage_source ('phenology_ssot' | 'planting_date' | ...)
+    stage_resolved_at: string | null;     // lands.stage_resolved_at
+    days_since_sowing: number | null;     // precomputed lands.das when present, else computed
+    precomputed_das: number | null;       // raw lands.das (null when not persisted)
     sowing_date: string | null;
+    planting_date: string | null;         // lands.planting_date
+    last_sowing_date: string | null;      // lands.last_sowing_date
+    transplant_date: string | null;       // lands.transplant_date ?? crop_schedules.transplant_date
+    crop_cycle: string | null;            // lands.crop_cycle
+    current_gdd: number | null;           // lands.current_gdd
     expected_harvest_date: string | null;
     schedule_status: string | null;
   };
