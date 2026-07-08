@@ -1837,13 +1837,21 @@ serve(async (req) => {
               escalationInput
             );
             
-            // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend
-            orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
-            orchestratorResponse.metadata = {
-              ...orchestratorResponse.metadata,
-              diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
-              orchestrator_type: 'DIAGNOSTIC_ESCALATION'
-            };
+            // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend,
+            // UNLESS the observation-selector contract already promoted this
+            // turn into a CLARIFICATION_QUESTION with DB-sourced options.
+            // Overwriting that would drop the farmer's symptom picker and
+            // re-introduce the empty-escalation regression.
+            if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+              orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
+              orchestratorResponse.metadata = {
+                ...orchestratorResponse.metadata,
+                diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
+                orchestrator_type: 'DIAGNOSTIC_ESCALATION'
+              };
+            } else {
+              console.log('   ⏭️ Skipping DIAGNOSTIC_ESCALATION mark — observation-contract already promoted CLARIFICATION_QUESTION');
+            }
           } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // Young crop - use monitoring response with authority-reconciled values
             responseContent = generateYoungCropMonitoringResponse(
