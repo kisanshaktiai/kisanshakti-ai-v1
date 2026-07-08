@@ -24,8 +24,8 @@
  */
 
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
-import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
-import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
+import { getAllCropNames, getCropDisplayName, getCropCanonical } from '../utils/crop-names-cache.ts';
+import { getLanguageName } from '../utils/language-utils.ts';
 import { getSafeAskMoreInfoMessage } from './language-quality-validator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -224,23 +224,21 @@ function validateNarrationOutput(
   const expectedCrop = symbolicInput.land_context?.current_crop?.toLowerCase() || '';
   
   if (expectedCrop) {
-    // Build set of ALL known crop names from ICAR_CALENDARS
+    // Build set of ALL known crop names from DB SSOT (public.crops)
     const allCropNames = new Set<string>();
     const expectedCropNames = new Set<string>();
-    
-    for (const [cropCode, calendar] of Object.entries(ICAR_CALENDARS)) {
+
+    for (const row of getAllCropNames()) {
       const names = [
-        calendar.crop_name_en.toLowerCase(),
-        calendar.crop_name_mr.toLowerCase(),
-        calendar.crop_name_hi.toLowerCase(),
-        cropCode.toLowerCase()
-      ];
-      
-      // Check if this is the expected crop
-      const isExpectedCrop = names.some(n => 
-        expectedCrop.includes(n) || n.includes(expectedCrop)
+        row.label.toLowerCase(),
+        row.code.toLowerCase(),
+        ...Object.values(row.translations).map(v => v.toLowerCase()),
+      ].filter(Boolean);
+
+      const isExpectedCrop = names.some(n =>
+        expectedCrop.includes(n) || n.includes(expectedCrop),
       );
-      
+
       if (isExpectedCrop) {
         names.forEach(n => expectedCropNames.add(n));
       } else {
@@ -405,23 +403,10 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   
   if (land_context?.current_crop) {
     const cropCode = land_context.current_crop.toLowerCase();
-    const langKey = getCropNameKey(language);
-    
-    // Resolve local name from ICAR_CALENDARS
-    let cropLocalName = land_context.current_crop; // fallback to raw name
-    let cropCanonical = land_context.current_crop;
-    
-    // Search ICAR_CALENDARS for matching crop
-    for (const [code, calendar] of Object.entries(ICAR_CALENDARS)) {
-      if (code === cropCode || 
-          calendar.crop_name_en.toLowerCase() === cropCode ||
-          calendar.crop_name_mr.toLowerCase() === cropCode ||
-          calendar.crop_name_hi.toLowerCase() === cropCode) {
-        cropLocalName = calendar[langKey];
-        cropCanonical = calendar.crop_name_en;
-        break;
-      }
-    }
+
+    // DB SSOT: crop_names_cache (public.crops). Falls back to raw name on miss.
+    const cropLocalName = getCropDisplayName(cropCode, language) || land_context.current_crop;
+    const cropCanonical = getCropCanonical(cropCode) || land_context.current_crop;
     
     const authContext = {
       crop_canonical: cropCanonical,

@@ -14,6 +14,8 @@
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
+import { getStageByDAS, isStageKnowledgeLoaded } from '../utils/stage-knowledge-cache.ts';
+import { getCachedSynonymMap } from '../utils/crop-synonyms-cache.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -71,87 +73,17 @@ export interface ContextValidationInput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ICAR CROP CALENDARS — Days to Growth Stage Mapping
+// STAGE RESOLUTION — DB SSOT
 // ═══════════════════════════════════════════════════════════════════════════
-// PR-7 F6b: this table is DEPRECATED. It duplicates `crop_stage_master`
-// (the runtime SSOT read by every other stage-aware module) and was drifting.
-// The rice entry in particular modelled direct-seeded rice only — no
-// TRANSPLANTING stage — so at DAS 28 (transplant shock recovery, per
-// crop_stage_master: RICE_TRANSPLANTING = DAS 25–35) it emitted the
-// misleading "TILLERING (ICAR confirmed)" line that appeared to contradict
-// the (correctly) enforced stage-immutability lock.
-//
-// Rice numbers below are reconciled with `crop_stage_master` (verified
-// live via Supabase MCP). Full removal is scheduled once ContextValidator
-// is made async and reads crop_stage_master directly — tracked as F6b-full.
-// DO NOT re-tune these numbers here; curate the DB row instead.
-
-interface StageRange {
-  min_days: number;
-  max_days: number;
-  stage: string;
-}
-
-const ICAR_CROP_CALENDARS: Record<string, StageRange[]> = {
-  'sugarcane': [
-    { min_days: 0, max_days: 35, stage: 'GERMINATION' },
-    { min_days: 36, max_days: 90, stage: 'TILLERING' },
-    { min_days: 91, max_days: 240, stage: 'GRAND_GROWTH' },
-    { min_days: 241, max_days: 365, stage: 'MATURITY' }
-  ],
-  'wheat': [
-    { min_days: 0, max_days: 10, stage: 'GERMINATION' },
-    { min_days: 11, max_days: 25, stage: 'SEEDLING' },
-    { min_days: 26, max_days: 60, stage: 'TILLERING' },
-    { min_days: 61, max_days: 90, stage: 'FLOWERING' },
-    { min_days: 91, max_days: 120, stage: 'MATURITY' }
-  ],
-  // PR-7 F6b: reconciled with crop_stage_master (RICE_TRANSPLANTING 25–35,
-  // RICE_TILLERING 35–60). Adds the missing TRANSPLANTING window and shifts
-  // TILLERING so DAS 28 no longer misclassifies against the SSOT.
-  'rice': [
-    { min_days: 0,   max_days: 20,  stage: 'SEEDLING' },
-    { min_days: 21,  max_days: 34,  stage: 'TRANSPLANTING' },
-    { min_days: 35,  max_days: 60,  stage: 'TILLERING' },
-    { min_days: 61,  max_days: 75,  stage: 'PANICLE_INITIATION' },
-    { min_days: 76,  max_days: 100, stage: 'FLOWERING' },
-    { min_days: 101, max_days: 130, stage: 'MATURITY' }
-  ],
-  'cotton': [
-    { min_days: 0, max_days: 15, stage: 'GERMINATION' },
-    { min_days: 16, max_days: 45, stage: 'SEEDLING' },
-    { min_days: 46, max_days: 80, stage: 'SQUARING' },
-    { min_days: 81, max_days: 120, stage: 'FLOWERING' },
-    { min_days: 121, max_days: 180, stage: 'BOLL_DEVELOPMENT' }
-  ],
-  'soybean': [
-    { min_days: 0, max_days: 15, stage: 'GERMINATION' },
-    { min_days: 16, max_days: 35, stage: 'VEGETATIVE' },
-    { min_days: 36, max_days: 60, stage: 'FLOWERING' },
-    { min_days: 61, max_days: 90, stage: 'POD_DEVELOPMENT' },
-    { min_days: 91, max_days: 120, stage: 'MATURITY' }
-  ],
-  'maize': [
-    { min_days: 0, max_days: 12, stage: 'GERMINATION' },
-    { min_days: 13, max_days: 45, stage: 'VEGETATIVE' },
-    { min_days: 46, max_days: 65, stage: 'TASSELING' },
-    { min_days: 66, max_days: 85, stage: 'SILKING' },
-    { min_days: 86, max_days: 110, stage: 'MATURITY' }
-  ],
-  'onion': [
-    { min_days: 0, max_days: 30, stage: 'SEEDLING' },
-    { min_days: 31, max_days: 70, stage: 'VEGETATIVE' },
-    { min_days: 71, max_days: 110, stage: 'BULB_DEVELOPMENT' },
-    { min_days: 111, max_days: 140, stage: 'MATURITY' }
-  ],
-  'tomato': [
-    { min_days: 0, max_days: 25, stage: 'SEEDLING' },
-    { min_days: 26, max_days: 50, stage: 'VEGETATIVE' },
-    { min_days: 51, max_days: 75, stage: 'FLOWERING' },
-    { min_days: 76, max_days: 100, stage: 'FRUITING' },
-    { min_days: 101, max_days: 140, stage: 'HARVEST' }
-  ]
-};
+// PR-3: The former in-file `ICAR_CROP_CALENDARS` table (8 crops × 4-6 stages)
+// has been DELETED. It duplicated `public.crop_stage_master` (146+ curated
+// rows across all supported crops), was drifting, and violated the SSOT
+// invariant that no agronomic calendar may live outside the database.
+// Stage lookup now goes through `StageKnowledgeCache.getStageByDAS()` —
+// preloaded by the orchestrator at boot (idempotent, 10-minute TTL).
+// If the cache misses, we surface `stage_source='DEFAULT'` with a
+// `VEGETATIVE` fallback (a generic bucket, not per-crop agronomy) rather
+// than re-inject a hardcoded table.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM-NDVI CONTRADICTION PATTERNS
@@ -322,33 +254,32 @@ export class ContextValidator {
       return;
     }
     
-    // Look up stage from ICAR calendar
-    const calendar = ICAR_CROP_CALENDARS[cropCode?.toLowerCase() || ''];
-    
-    if (!calendar) {
-      // No calendar for this crop - use generic stages
-      result.reconciled_stage = this.calculateGenericStage(daysSinceSowing);
-      result.stage_source = 'CALCULATED';
-      result.warnings.push(`No ICAR calendar for ${cropCode}, using generic`);
+    // DB SSOT: crop_stage_master via StageKnowledgeCache (preloaded at
+    // orchestrator boot). No hardcoded per-crop calendars live in this file.
+    const crop = (cropCode || '').toLowerCase();
+    if (!isStageKnowledgeLoaded()) {
+      result.reconciled_stage = 'VEGETATIVE';
+      result.stage_source = 'DEFAULT';
+      result.warnings.push('Stage knowledge cache not loaded, defaulting to VEGETATIVE');
       result.gates_passed.push('G2_STAGE_DETERMINISM');
       return;
     }
-    
-    // Find matching stage from calendar
-    for (const stageRange of calendar) {
-      if (daysSinceSowing >= stageRange.min_days && daysSinceSowing <= stageRange.max_days) {
-        result.reconciled_stage = stageRange.stage;
-        result.stage_source = 'CONFIRMED';
-        result.gates_passed.push('G2_STAGE_DETERMINISM');
-        console.log(`   Stage: ${stageRange.stage} (${daysSinceSowing} DAS, ICAR confirmed)`);
-        return;
-      }
+
+    const stageRow = getStageByDAS(crop, daysSinceSowing);
+    if (stageRow?.growth_stage) {
+      result.reconciled_stage = stageRow.growth_stage.toUpperCase();
+      result.stage_source = 'CONFIRMED';
+      result.gates_passed.push('G2_STAGE_DETERMINISM');
+      console.log(`   Stage: ${result.reconciled_stage} (${daysSinceSowing} DAS, crop_stage_master)`);
+      return;
     }
-    
-    // Beyond calendar range - crop past harvest
-    result.reconciled_stage = 'MATURITY';
-    result.stage_source = 'CALCULATED';
-    result.warnings.push('Crop may be past typical harvest period');
+
+    // Cache miss for this (crop, DAS) — do NOT reintroduce a hardcoded
+    // per-crop table. Fall back to generic VEGETATIVE with a warning so the
+    // downstream pipeline continues without blocking on missing DB curation.
+    result.reconciled_stage = 'VEGETATIVE';
+    result.stage_source = 'DEFAULT';
+    result.warnings.push(`No crop_stage_master row for crop=${crop} DAS=${daysSinceSowing}; defaulting to VEGETATIVE`);
     result.gates_passed.push('G2_STAGE_DETERMINISM');
   }
   
@@ -447,27 +378,19 @@ export class ContextValidator {
   }
   
   /**
-   * Normalize crop name for comparison
+   * Normalize crop name for comparison.
+   *
+   * PR-3: The former hardcoded multilingual regex (sugarcane/wheat/rice/…)
+   * has been DELETED. Resolution now flows through the DB-loaded synonym
+   * cache (`public.crop_synonyms`, 200+ curated variants across 8 languages)
+   * plus a fall-through to the lowercased trim of the input. No agronomic
+   * or linguistic table lives in this file.
    */
   private normalizeCrop(crop: string): string {
-    return crop.toLowerCase().trim()
-      .replace(/ूस|गन्ना|sugarcane/gi, 'sugarcane')
-      .replace(/गेहूं|गहू|wheat/gi, 'wheat')
-      .replace(/कपास|कापूस|cotton/gi, 'cotton')
-      .replace(/धान|भात|rice/gi, 'rice')
-      .replace(/सोयाबीन|soybean/gi, 'soybean')
-      .replace(/मक्का|maize|corn/gi, 'maize');
-  }
-  
-  /**
-   * Generic stage calculation when no ICAR calendar
-   */
-  private calculateGenericStage(daysSinceSowing: number): string {
-    if (daysSinceSowing <= 15) return 'GERMINATION';
-    if (daysSinceSowing <= 35) return 'SEEDLING';
-    if (daysSinceSowing <= 70) return 'VEGETATIVE';
-    if (daysSinceSowing <= 100) return 'FLOWERING';
-    return 'MATURITY';
+    const raw = (crop || '').toLowerCase().trim();
+    if (!raw) return raw;
+    const canonical = getCachedSynonymMap().get(raw);
+    return canonical ? String(canonical).toLowerCase() : raw;
   }
   
   /**

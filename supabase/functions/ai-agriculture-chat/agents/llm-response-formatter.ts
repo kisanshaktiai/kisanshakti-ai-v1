@@ -31,8 +31,8 @@
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural, getVillageOfficerPersona } from '../rural-language-dictionary.ts';
-import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
-import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
+import { getLanguageName } from '../utils/language-utils.ts';
+import { getCropDisplayName, getCropCanonical } from '../utils/crop-names-cache.ts';
 import {
   getProductName,
   getActionTranslation,
@@ -1372,11 +1372,9 @@ RULES:
   let cropLockBlock = '';
   if (input.land_context?.current_crop) {
     const cropCode = input.land_context.current_crop.toLowerCase();
-    // Resolve crop local name from ICAR_CALENDARS (already imported via crop-calendar-lookup.ts)
-    const calendar = ICAR_CALENDARS[cropCode];
-    const langKey = getCropNameKey(input.language);
-    const cropLocalName = calendar?.[langKey] || input.land_context.current_crop;
-    const cropCanonical = calendar?.crop_name_en || input.land_context.current_crop;
+    // DB SSOT: crop_names_cache (public.crops). Fallback to raw name on miss.
+    const cropLocalName = getCropDisplayName(cropCode, input.language) || input.land_context.current_crop;
+    const cropCanonical = getCropCanonical(cropCode) || input.land_context.current_crop;
     
     cropLockBlock = `
 ═══ 🔒 AUTHORITATIVE CROP CONTEXT (IMMUTABLE — VIOLATING = REJECTION) ═══

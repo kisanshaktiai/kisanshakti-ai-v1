@@ -95,3 +95,13 @@ export async function loadCropSynonyms(supabase: any): Promise<Map<string, strin
 export function lookupCropSynonym(token: string, synonymMap: Map<string, string>): string | null {
   return synonymMap.get(token.toLowerCase()) || null;
 }
+
+/**
+ * Sync accessor to the module-level synonym cache.
+ * Returns an empty map when the cache has not been loaded yet — callers must
+ * treat that as "no match" rather than falling back to hardcoded regex.
+ */
+export function getCachedSynonymMap(): Map<string, string> {
+  return cache?.synonymMap ?? new Map();
+}
+

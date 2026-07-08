@@ -459,10 +459,11 @@ import {
   type DifferentialClarificationResult
 } from '../decision/differential-diagnosis-clarifier.ts';
 
-import {
-  getStageSpecificInfo,
-  calculateGrowthStageFromDAS
-} from '../decision/crop-calendar-lookup.ts';
+// PR-3: `getStageSpecificInfo` was imported but never referenced and was
+// never exported by crop-calendar-lookup — removed. `calculateGrowthStageFromDAS`
+// is retained as a re-export for downstream helpers that still resolve DAS→stage
+// through the DB-backed shim in decision/crop-calendar-lookup.ts.
+import { calculateGrowthStageFromDAS } from '../decision/crop-calendar-lookup.ts';
 
 // PHASE-8: Smart Clarification Generator - ObservationKey-based
 import {
@@ -1261,20 +1262,23 @@ export class AIAgentOrchestrator {
         { loadETLStandards },
         { loadAgroZones },
         { loadBaselineGuidelines },
-        { loadCropSynonyms }
+        { loadCropSynonyms },
+        { loadCropNames }
       ] = await Promise.all([
         import('../decision/etl-gate.ts'),
         import('../utils/agro-zone-cache.ts'),
         import('../utils/baseline-guidelines-cache.ts'),
-        import('../utils/crop-synonyms-cache.ts')
+        import('../utils/crop-synonyms-cache.ts'),
+        import('../utils/crop-names-cache.ts')
       ]);
       const settled = await Promise.allSettled([
         loadETLStandards(this.supabase),
         loadAgroZones(this.supabase),
         loadBaselineGuidelines(this.supabase),
-        loadCropSynonyms(this.supabase)
+        loadCropSynonyms(this.supabase),
+        loadCropNames(this.supabase)
       ]);
-      const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms'];
+      const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms', 'crop-names'];
       settled.forEach((s, i) => {
         if (s.status === 'rejected') {
           const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
