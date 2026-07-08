@@ -26,8 +26,9 @@
 import { ObservationKey } from './observation-ontology.ts';
 import type { SemanticExtraction } from '../agents/semantic-extractor.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
+import { getObservationsForIntent, isObservationMappingLoaded } from '../utils/observation-mapping-cache.ts';
 
-export const OBSERVATION_CODE_MAPPER_VERSION = '2.0.0';
+export const OBSERVATION_CODE_MAPPER_VERSION = '3.0.0'; // PR-1: intent map is DB-driven
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE
@@ -45,108 +46,51 @@ export interface MappedObservationCodes {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// INTENT CODE → OBSERVATION CODES MAPPING (v2.0.0 PRIMARY PATH)
+// INTENT CODE → OBSERVATION CODES  (v3.0.0 — DB-DRIVEN, SSOT)
 // ═══════════════════════════════════════════════════════════════════════════
+// The 15-row hardcoded INTENT_TO_OBSERVATION_MAPPINGS table that used to
+// live here has been DELETED (2026-07-08, PR-1). Intent→observation mapping
+// is now sourced exclusively from `public.intent_observation_mapping`
+// (13,539 active rows across 86 intents at deletion time) via the request-
+// scoped `utils/observation-mapping-cache.ts` cache preloaded in
+// `agents/orchestrator.ts`.
+//
+// The DB carries 78–406 curated observations per intent — 30–100× the old
+// hardcoded coverage — filtered to assertion_strength IN ('LITERAL','STRONG')
+// to mirror the strictness of the prior tuple set. The `default_part` field
+// is now derived from the modal `observation_master.affected_plant_part`
+// across matched observations; `default_severity` remains a runtime neutral
+// (SEVERITY_MEDIUM) because severity is not an intent-level property in the
+// current schema and belongs to the observation, not the intent.
+//
+// Cache miss policy: NEVER fall back to a hardcoded intent map. Emit
+// `[OBS_MAPPING_CACHE_MISS]` and continue with an empty intent contribution
+// — the visual/pest fallback tables below still run to salvage codes from
+// legacy free-text fields (those are separately scheduled for PR-1b).
 
-interface IntentMapping {
-  intent_codes: string[];
-  observation_codes: ObservationKey[];
-  default_part: ObservationKey;
-  default_severity: ObservationKey;
+/** DB `affected_plant_part` value → canonical ObservationKey AFFECTED_PART_*.
+ *  Purely a code-shape adapter (framework, not agronomy). */
+const AFFECTED_PART_KEY_BY_DB_VALUE: Record<string, ObservationKey> = {
+  leaf: ObservationKey.AFFECTED_PART_LEAF,
+  leaves: ObservationKey.AFFECTED_PART_LEAF,
+  stem: ObservationKey.AFFECTED_PART_STEM,
+  shoot: ObservationKey.AFFECTED_PART_STEM,
+  root: ObservationKey.AFFECTED_PART_ROOT,
+  roots: ObservationKey.AFFECTED_PART_ROOT,
+  fruit: ObservationKey.AFFECTED_PART_FRUIT,
+  fruits: ObservationKey.AFFECTED_PART_FRUIT,
+  grain: ObservationKey.AFFECTED_PART_FRUIT,
+  flower: ObservationKey.AFFECTED_PART_FLOWER,
+  boll: ObservationKey.AFFECTED_PART_BOLL,
+  whole: ObservationKey.AFFECTED_PART_WHOLE,
+  whole_plant: ObservationKey.AFFECTED_PART_WHOLE,
+  plant: ObservationKey.AFFECTED_PART_WHOLE,
+};
+
+function toAffectedPartKey(dbValue: string | null | undefined): ObservationKey {
+  const v = (dbValue || '').toLowerCase().trim().replace(/\s+/g, '_');
+  return AFFECTED_PART_KEY_BY_DB_VALUE[v] ?? ObservationKey.AFFECTED_PART_UNKNOWN;
 }
-
-const INTENT_TO_OBSERVATION_MAPPINGS: IntentMapping[] = [
-  {
-    intent_codes: ['EMERGENCE_FAILURE'],
-    observation_codes: [ObservationKey.SEEDLING_DIED, ObservationKey.STUNTED_PLANTS],
-    default_part: ObservationKey.AFFECTED_PART_WHOLE,
-    default_severity: ObservationKey.SEVERITY_HIGH
-  },
-  {
-    intent_codes: ['GROWTH_ANOMALY'],
-    observation_codes: [ObservationKey.STUNTED_PLANTS],
-    default_part: ObservationKey.AFFECTED_PART_WHOLE,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['COLOR_CHANGE'],
-    observation_codes: [ObservationKey.LEAF_YELLOWING, ObservationKey.LEAF_PALE_GREEN],
-    default_part: ObservationKey.AFFECTED_PART_LEAF,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['WILTING_OR_DROOPING'],
-    observation_codes: [ObservationKey.LEAF_WILTING],
-    default_part: ObservationKey.AFFECTED_PART_LEAF,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['LEAF_DAMAGE_VISIBLE'],
-    observation_codes: [ObservationKey.LEAF_CHEWING],
-    default_part: ObservationKey.AFFECTED_PART_LEAF,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['LEAF_MARKS_OR_SPOTS'],
-    observation_codes: [ObservationKey.LEAF_SPOTS_PRESENT],
-    default_part: ObservationKey.AFFECTED_PART_LEAF,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['STEM_DAMAGE'],
-    observation_codes: [ObservationKey.STEM_BORING_MARKS, ObservationKey.DEAD_HEART_PRESENT],
-    default_part: ObservationKey.AFFECTED_PART_STEM,
-    default_severity: ObservationKey.SEVERITY_HIGH
-  },
-  {
-    intent_codes: ['ROOT_OR_BASE_PROBLEM'],
-    observation_codes: [ObservationKey.ROOTS_ROTTED, ObservationKey.ROOT_BLACKENING],
-    default_part: ObservationKey.AFFECTED_PART_ROOT,
-    default_severity: ObservationKey.SEVERITY_HIGH
-  },
-  {
-    intent_codes: ['PEST_PRESENCE_VISIBLE'],
-    observation_codes: [ObservationKey.INSECT_PRESENCE_CONFIRMED],
-    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['DISEASE_LIKE_PATTERN'],
-    observation_codes: [ObservationKey.FUNGAL_GROWTH_VISIBLE],
-    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['WATER_STRESS_SIGNAL'],
-    observation_codes: [ObservationKey.LEAF_WILTING, ObservationKey.LEAF_DRYING],
-    default_part: ObservationKey.AFFECTED_PART_LEAF,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['NUTRIENT_STRESS_SIGNAL'],
-    observation_codes: [ObservationKey.LEAF_YELLOWING, ObservationKey.STUNTED_PLANTS],
-    default_part: ObservationKey.AFFECTED_PART_LEAF,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['UNEVEN_FIELD_PATTERN'],
-    observation_codes: [ObservationKey.PATCHY_DAMAGE],
-    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
-    default_severity: ObservationKey.SEVERITY_LOW
-  },
-  {
-    intent_codes: ['YIELD_OR_OUTPUT_ISSUE'],
-    observation_codes: [],
-    default_part: ObservationKey.AFFECTED_PART_WHOLE,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  },
-  {
-    intent_codes: ['UNKNOWN_OBSERVATION'],
-    observation_codes: [],
-    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
-    default_severity: ObservationKey.SEVERITY_MEDIUM
-  }
-];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VISUAL CHANGES → OBSERVATION CODES MAPPING (Legacy fallback)
@@ -338,29 +282,39 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
   let severityCode = ObservationKey.SEVERITY_MEDIUM;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PRIMARY PATH: Map from intent_code (v5.x SemanticExtraction)
+  // PRIMARY PATH — DB-SSOT intent → observations (v3.0.0, PR-1)
+  // Reads from `utils/observation-mapping-cache.ts` (SSOT:
+  // public.intent_observation_mapping). Cache miss NEVER falls back to a
+  // hardcoded intent map — logs `[OBS_MAPPING_CACHE_MISS]` and continues.
   // ═══════════════════════════════════════════════════════════════════════════
   if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
-    const intentMapping = INTENT_TO_OBSERVATION_MAPPINGS.find(
-      m => m.intent_codes.includes(intentCode)
-    );
-    
-    if (intentMapping) {
-      usedIntentMapping = true;
-      
-      // Add observation codes from intent mapping
-      for (const code of intentMapping.observation_codes) {
-        if (!observationCodes.includes(code)) {
-          observationCodes.push(code);
-          patternsMatched.push(`intent:${intentCode}→${code}`);
+    if (!isObservationMappingLoaded()) {
+      console.warn(`[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=cache_not_loaded action=skip_intent_expansion`);
+    } else {
+      const entry = getObservationsForIntent(intentCode);
+      if (entry && entry.observation_codes.length > 0) {
+        usedIntentMapping = true;
+        for (const rawCode of entry.observation_codes) {
+          // ObservationKey is a string-valued enum — DB observation_codes
+          // cast directly. If a code has no matching enum member it flows
+          // through as-is; the rule engine already treats these as opaque
+          // strings for matching against decision_rules.observable_characteristics.
+          const code = rawCode as ObservationKey;
+          if (!observationCodes.includes(code)) {
+            observationCodes.push(code);
+            patternsMatched.push(`intent:${intentCode}→${code}`);
+          }
         }
+        affectedPartCode = toAffectedPartKey(entry.modal_affected_part);
+        // severityCode intentionally left at runtime neutral (SEVERITY_MEDIUM).
+        // Severity is an observation-level property, not intent-level, and
+        // the DB does not curate a per-intent default.
+        patternsMatched.push(`intent_part:${affectedPartCode}`);
+        patternsMatched.push(`db_ssot:intent_observation_mapping rows=${entry.source_rows}`);
+        console.log(`[DB_SSOT_SOURCE] path=intent_observation_mapping intent=${intentCode} rows=${entry.source_rows} modal_part=${entry.modal_affected_part ?? 'none'}`);
+      } else {
+        console.warn(`[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=no_db_rows action=skip_intent_expansion`);
       }
-      
-      // Use intent-derived defaults for part and severity
-      affectedPartCode = intentMapping.default_part;
-      severityCode = intentMapping.default_severity;
-      patternsMatched.push(`intent_part:${affectedPartCode}`);
-      patternsMatched.push(`intent_severity:${severityCode}`);
     }
   }
   

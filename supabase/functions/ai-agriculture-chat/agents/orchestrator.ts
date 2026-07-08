@@ -1230,6 +1230,13 @@ export class AIAgentOrchestrator {
     });
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
+    // Pre-load DB-backed intent→observation mapping (replaces the deleted
+    // hardcoded INTENT_TO_OBSERVATION_MAPPINGS table in observation-code-mapper).
+    // Idempotent, 10min TTL — SSOT is public.intent_observation_mapping.
+    try {
+      const { loadObservationMapping } = await import('../utils/observation-mapping-cache.ts');
+      await loadObservationMapping(this.supabase);
+    } catch (_e) { /* non-fatal — mapper will log [OBS_MAPPING_CACHE_MISS] */ }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Phase H — Fix 7 (Knowledge Initialization)
