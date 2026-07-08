@@ -676,15 +676,26 @@ export async function loadAuthoritativeLandState(
       console.warn('⚠️ [AuthoritativeStateLoader] resolve_crop_phenology RPC failed:', phenologyResult.error?.message);
     }
 
+    // PR-4d: stage precedence — RPC row > persisted lands.crop_stage.
+    // Neither path invents a value; both are authored by resolve_crop_phenology
+    // (RPC on request; cron for lands.crop_stage). Falls through to null.
     const computedGrowthStage: string | null =
-      phenologyRow?.growth_stage ?? phenologyRow?.stage_code ?? null;
-    const stageSource: 'phenology_rpc' | 'UNKNOWN' =
-      computedGrowthStage ? 'phenology_rpc' : 'UNKNOWN';
+      phenologyRow?.growth_stage
+        ?? phenologyRow?.stage_code
+        ?? (land as any)?.crop_stage
+        ?? null;
+    const stageSource: 'phenology_rpc' | 'lands_persisted' | 'UNKNOWN' =
+      (phenologyRow?.growth_stage || phenologyRow?.stage_code)
+        ? 'phenology_rpc'
+        : ((land as any)?.crop_stage ? 'lands_persisted' : 'UNKNOWN');
     console.log(
       `🌱 [AuthoritativeStateLoader] growth_stage=${computedGrowthStage ?? 'null'} ` +
       `source=${stageSource} das=${daysSinceSowing ?? 'n/a'} ` +
-      `(PR-4b: no DAS ladder; null when RPC has no row)`
+      `precomputed_das=${precomputedDas ?? 'n/a'} ` +
+      `stage_uuid=${(land as any)?.stage_uuid ?? 'n/a'} ` +
+      `(PR-4d: SSOT-only; lands.das/stage_uuid preferred)`
     );
+
 
     const authoritativeState: AuthoritativeLandState = {
       land_id: land.id,
