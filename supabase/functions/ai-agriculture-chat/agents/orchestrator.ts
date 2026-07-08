@@ -10821,6 +10821,24 @@ export class AIAgentOrchestrator {
     console.error('❌ Orchestration error:', error.message);
     console.error('   Stack:', error.stack?.substring(0, 500));
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // GRAPH_PIPELINE_BYPASSED invariant reconciliation.
+    // The [ORCHESTRATOR_EXIT] audit in index.ts fails closed when it sees
+    // `_evidenceFrozen=true` but `_graphExecuted=false` on a diagnostic
+    // intent, because that pattern normally means a silent early return
+    // skipped the hypothesis graph. A genuine SYSTEM_ERROR fallback (this
+    // path) is a legitimate exit that already emits FINAL_RESPONSE_CONTRACT
+    // with fallback_reason=SYSTEM_ERROR above. Reset the runtime flags so
+    // the audit does not double-report the failure as a bypass and mask
+    // the real error with a misleading 500 GRAPH_PIPELINE_BYPASSED.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      (this as any)._evidenceFrozen = false;
+      (this as any)._graphExecuted  = false;
+      (this as any)._ruleResultExists = false;
+    } catch {/* flag reset must not throw */}
+
+
     // GRAPH CONTRACT — system-error fallback is legitimate. Emit the contract
     // line so downstream log analysis attributes the generic_template branch
     // to SYSTEM_ERROR rather than a silent symbolic-decision swap.
