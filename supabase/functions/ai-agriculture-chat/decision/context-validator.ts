@@ -14,6 +14,7 @@
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
+import type { BiologicalState } from '../agents/biological-state.ts';
 // PR-4c: getStageByDAS import DELETED. Stage is consumed from
 // biological_state / land_state.crop.growth_stage (SSOT). This validator
 // MUST NOT recompute stage from DAS — a single writer (resolve_crop_phenology)
@@ -73,6 +74,7 @@ export interface ContextValidationInput {
     area_hectares?: number;
   };
   land_state?: AuthoritativeLandState | null;
+  biological_state?: BiologicalState | null;
   facts?: SymbolicFact | null;
   symptom_keys?: string[];
   user_query?: string;
@@ -248,18 +250,20 @@ export class ContextValidator {
    *
    * This validator NO LONGER computes stage from DAS. The only authoritative
    * writer of `growth_stage` is `resolve_crop_phenology()` (surfaced on
-   * `land_state.biological_state.growth_stage` and mirrored to
-   * `land_state.crop.growth_stage` by the loader).
+   * explicit `input.biological_state.growth_stage` and mirrored to
+   * `land_state.crop.growth_stage` by the loader when available).
    *
    * Priority order:
-   *   1. land_state.biological_state.growth_stage  → stage_source='LOCKED'
-   *   2. land_state.crop.growth_stage              → stage_source='CONFIRMED'
+   *   1. input.biological_state.growth_stage       → stage_source='LOCKED'
+   *   2. land_state.biological_state.growth_stage  → stage_source='LOCKED'
+   *   3. land_state.crop.growth_stage              → stage_source='CONFIRMED'
    *   3. null                                      → stage_source='UNKNOWN'
    *
    * No hardcoded ladder. No DAS-to-stage lookup. No VEGETATIVE default.
    */
   private validateGrowthStage(input: ContextValidationInput, result: ContextValidationResult): void {
-    const bioState: any = (input.land_state as any)?.biological_state ?? null;
+    const bioState: BiologicalState | null =
+      input.biological_state ?? ((input.land_state as any)?.biological_state as BiologicalState | null) ?? null;
     const bioStage: string | null =
       bioState?.is_locked && bioState?.growth_stage ? String(bioState.growth_stage) : null;
     const loaderStage: string | null =

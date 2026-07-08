@@ -5,6 +5,7 @@
 
 import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 import { classifyEvidence } from '../runtime/evidence-classifier.ts';
+import type { BiologicalState } from './biological-state.ts';
 
 // ==================== CLOSED WORLD ENUMS ====================
 // These are the ONLY allowed values - no free text in decision brain
@@ -653,13 +654,7 @@ export interface BuildCanonicalStateInput {
     farming_mode?: string;
     // PHASE 1 — Immutable BiologicalState (SSOT). When is_locked=true, its
     // growth_stage / das MUST override GDD and any heuristic writer.
-    biological_state?: {
-      is_locked?: boolean;
-      growth_stage?: string | null;
-      das?: number | null;
-      crop_code?: string | null;
-      source?: string;
-    } | null;
+    biological_state?: BiologicalState | null;
     ndvi?: {
       value?: number;
       mean_ndvi?: number;

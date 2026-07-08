@@ -429,6 +429,15 @@ import {
   type BiologicalState,
 } from './biological-state.ts';
 
+interface BiologicalStateContradictionAudit {
+  contradiction_flag: true;
+  contradiction_codes: string[];
+  stage_confidence_before_contradiction: number;
+  adjusted_confidence: number;
+  stage: string | null;
+  trace_id: string;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANT: Emergency observation codes (used in both return paths)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1205,6 +1214,7 @@ export class AIAgentOrchestrator {
     (this as any)._graphHypothesisIds = [];
     (this as any)._graphHypothesisRuleIds = [];
     (this as any)._graphHypothesisEdgeMissing = [];
+    (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
@@ -4343,7 +4353,7 @@ export class AIAgentOrchestrator {
         // Fix 3 — biological contradiction now runs against classifier truth,
         // not any mutated graph state.
         try {
-          const bio: any = (landContext as any)?.biological_state;
+          const bio: BiologicalState | null = (landContext as any)?.biological_state ?? null;
           if (bio?.is_locked && bio?.growth_stage && trueEvidence.real_codes.length > 0) {
             const EMERGENCE_FAIL_OBS = new Set([
               'POOR_GERMINATION', 'GERMINATION_FAILURE', 'NO_GERMINATION',
@@ -4355,16 +4365,22 @@ export class AIAgentOrchestrator {
             ]);
             const stageKey = String(bio.growth_stage).toLowerCase().trim().replace(/[\s-]+/g, '_');
             const contradicting = trueEvidence.real_codes.filter(c => EMERGENCE_FAIL_OBS.has(String(c).toUpperCase()));
-            if (contradicting.length > 0 && POST_ESTABLISHMENT_STAGES.has(stageKey) && !bio.contradiction_flag) {
+            const sidecar = (this as any)._bioContradictionByLand as Map<string, BiologicalStateContradictionAudit> | undefined;
+            if (contradicting.length > 0 && POST_ESTABLISHMENT_STAGES.has(stageKey) && !sidecar?.has(bio.land_id)) {
               const prevConf = typeof bio.confidence === 'number' ? bio.confidence : 0;
-              bio.contradiction_flag = true;
-              bio.contradiction_codes = contradicting;
-              bio.stage_confidence_before_contradiction = prevConf;
-              bio.confidence = Math.min(prevConf, 0.30);
+              const adjustedConf = Math.min(prevConf, 0.30);
+              sidecar?.set(bio.land_id, {
+                contradiction_flag: true,
+                contradiction_codes: contradicting,
+                stage_confidence_before_contradiction: prevConf,
+                adjusted_confidence: adjustedConf,
+                stage: bio.growth_stage,
+                trace_id: traceId,
+              });
               console.warn(
                 `[BIO_STATE_CONTRADICTION][${traceId}] stage=${bio.growth_stage} ` +
                 `obs=[${contradicting.join(',')}] prev_conf=${prevConf.toFixed(2)} ` +
-                `new_conf=${bio.confidence.toFixed(2)} action=confidence_downgrade`,
+                `new_conf=${adjustedConf.toFixed(2)} action=sidecar_confidence_downgrade`,
               );
             }
           }
@@ -4847,8 +4863,20 @@ export class AIAgentOrchestrator {
         // This MUST happen BEFORE any generic clarification
         // ═══════════════════════════════════════════════════════════════════════════
         try {
-          const cropCode = canonicalContext?.crop_code || landContext?.current_crop?.toUpperCase() || 'UNKNOWN';
-          const growthStage = canonicalContext?.growth_stage || landContext?.growth_stage || 'UNKNOWN';
+          const bioForGraph: BiologicalState | null = (landContext as any)?.biological_state ?? null;
+          const cropCode =
+            bioForGraph?.crop_code?.toUpperCase?.() ||
+            canonicalContext?.crop_code ||
+            landContext?.current_crop?.toUpperCase() ||
+            'UNKNOWN';
+          const growthStage =
+            bioForGraph?.growth_stage ||
+            canonicalContext?.growth_stage ||
+            landContext?.growth_stage ||
+            'UNKNOWN';
+          const graphGrowthStage = growthStage && String(growthStage).toUpperCase() !== 'UNKNOWN'
+            ? growthStage
+            : null;
 
           // ═══════════════════════════════════════════════════════════════════
           // Phase Y — Fix C: bridge generic NLU codes (poor_germination,
@@ -4959,7 +4987,7 @@ export class AIAgentOrchestrator {
             const graphInput = {
               crop_code: cropCode ?? null,
               crop_group: cropCode ?? null,
-              growth_stage: growthStage ?? null,
+              growth_stage: graphGrowthStage,
               das: (typeof (canonicalContext as any)?.days_since_sowing === 'number'
                 ? (canonicalContext as any).days_since_sowing
                 : ((typeof (landContext as any)?.days_since_sowing === 'number')
@@ -10870,6 +10898,7 @@ export class AIAgentOrchestrator {
       (this as any)._evidenceFrozen = false;
       (this as any)._graphExecuted  = false;
       (this as any)._ruleResultExists = false;
+      (this as any).__decisionGraphSequence = 0;
     } catch {/* flag reset must not throw */}
 
 
