@@ -28,16 +28,15 @@ import {
 } from './decision-graph-navigator.ts';
 import { resolveNavigatorFlag, type NavigatorFlagState } from './navigator-flag.ts';
 import { canonicalizeObservationKey } from './clarification-contract.ts';
-// [GRAPH_TRUTH_PENDING] Step 6 — single-source stage family map.
-// Was previously duplicated verbatim inside this file AND
-// contradiction-engine.ts. Both now defer to stage-family-shim.ts, which
-// is itself a placeholder until crop_stage_graph is wired in.
-import { STAGE_FAMILIES } from './stage-family-shim.ts';
+// Stage adjacency is loaded from `public.crop_stage_graph` via the
+// stage-knowledge-cache and read through stage-family-shim. NO hardcoded
+// stage family lives in this file (or in the shim).
+import { stageFamily } from './stage-family-shim.ts';
 
-function stageVariants(stage?: string | null): string[] {
+function stageVariants(stage?: string | null, crop?: string | null): string[] {
   if (!stage) return ['all'];
-  const k = String(stage).toLowerCase().trim().replace(/[\s-]+/g, '_');
-  return Array.from(new Set([...((STAGE_FAMILIES[k] as string[] | undefined) || [k]), 'all']));
+  const fam = stageFamily(stage, crop) as string[];
+  return Array.from(new Set([...fam, 'all']));
 }
 
 // ─── Load farmer-observable allowlist for the turn ───────────────────────
@@ -47,6 +46,8 @@ async function loadAllowedEvidenceKeys(
 ): Promise<Set<string>> {
   const out = new Set<string>();
   if (!supabase || !args.intent_code || !args.crop_code) return out;
+
+
 
   try {
     const intentUpper = String(args.intent_code).trim().toUpperCase();
