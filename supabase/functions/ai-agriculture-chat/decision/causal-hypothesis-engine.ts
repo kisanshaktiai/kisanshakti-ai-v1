@@ -929,10 +929,13 @@ export async function runCausalHypothesisArbitration(
     const out: string[] = [];
     for (const raw of observations) {
       if (!raw) continue;
-      // Async DB-backed bridge (observation_aliases). Must be awaited or
-      // Promise objects leak into downstream string ops (`.toLowerCase` crash).
+      // Async DB-backed bridge (observation_aliases). MUST be awaited — a
+      // missing await here leaks Promise objects into graph reasoning and
+      // SymbolContract.extract will flag it as PROMISE_LEAK.
       const bridged = await bridgeToCropVocab(supabase_client, normalizedCropGroup, raw);
-      const canonical = coerceSymbol(bridged?.canonical_code) ?? coerceSymbol(raw);
+      const canonical =
+        coerceSymbolViaContract(bridged?.canonical_code, 'bridgeToCropVocab.canonical_code') ??
+        coerceSymbolViaContract(raw, 'bridgeToCropVocab.raw');
       if (!canonical) continue;
       if (seen.has(canonical)) continue;
       seen.add(canonical);
