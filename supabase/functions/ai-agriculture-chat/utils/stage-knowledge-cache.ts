@@ -195,3 +195,44 @@ export function getStageByDAS(crop: string, das: number): StageMasterRow | null 
 export function isStageKnowledgeLoaded(): boolean {
   return !!cache && cache.master.length > 0;
 }
+
+/**
+ * DB-first stage family lookup — SSOT is `public.crop_stage_graph`.
+ * Returns adjacent stages (including the query stage itself) for a given
+ * (crop, stage). Returns `null` when the cache is unloaded OR when the DB
+ * has no entry for that (crop, stage) — callers MUST treat null as
+ * "unknown, singleton fallback" and NEVER substitute a hardcoded family.
+ */
+export function getStageFamilyFromDB(
+  crop: string,
+  stage: string,
+): string[] | null {
+  if (!cache) return null;
+  const key = k(crop, stage);
+  const set = cache.stageAdjacency.get(key);
+  if (!set || set.size === 0) return null;
+  return Array.from(set);
+}
+
+/**
+ * DB-first symmetric equivalence — true iff `b` is in the DB-curated stage
+ * family of `(crop, a)` OR vice versa. Returns `null` when the DB has no
+ * data for either side; callers decide the fallback semantics.
+ */
+export function stagesEquivalentFromDB(
+  crop: string,
+  a: string,
+  b: string,
+): boolean | null {
+  if (!cache) return null;
+  const aNorm = String(a || '').toLowerCase();
+  const bNorm = String(b || '').toLowerCase();
+  if (!aNorm || !bNorm) return null;
+  if (aNorm === bNorm) return true;
+  const famA = cache.stageAdjacency.get(k(crop, aNorm));
+  if (famA && famA.has(bNorm)) return true;
+  const famB = cache.stageAdjacency.get(k(crop, bNorm));
+  if (famB && famB.has(aNorm)) return true;
+  if (!famA && !famB) return null; // no DB data — signal unknown
+  return false;
+}
