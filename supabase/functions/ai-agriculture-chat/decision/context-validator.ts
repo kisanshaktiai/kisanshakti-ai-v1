@@ -228,61 +228,53 @@ export class ContextValidator {
   }
   
   /**
-   * G2.2: Growth Stage Calculation (Deterministic from ICAR calendar)
+   * G2.2: Growth Stage Consumption (PR-4c — READ-ONLY from BiologicalState SSOT)
+   *
+   * This validator NO LONGER computes stage from DAS. The only authoritative
+   * writer of `growth_stage` is `resolve_crop_phenology()` (surfaced on
+   * `land_state.biological_state.growth_stage` and mirrored to
+   * `land_state.crop.growth_stage` by the loader).
+   *
+   * Priority order:
+   *   1. land_state.biological_state.growth_stage  → stage_source='LOCKED'
+   *   2. land_state.crop.growth_stage              → stage_source='CONFIRMED'
+   *   3. null                                      → stage_source='UNKNOWN'
+   *
+   * No hardcoded ladder. No DAS-to-stage lookup. No VEGETATIVE default.
    */
   private validateGrowthStage(input: ContextValidationInput, result: ContextValidationResult): void {
-    const sowingDate = input.land_context?.sowing_date || input.land_state?.crop.sowing_date;
-    const cropCode = result.reconciled_crop || input.land_context?.crop_code;
-    
-    if (!sowingDate) {
-      // CRITICAL FIX: Missing sowing date should NOT block the system from giving advice.
-      // The system defaults to VEGETATIVE which is a safe fallback.
-      // Previously this pushed to gates_failed, causing NEEDS_CLARIFICATION for ALL farmers
-      // without sowing dates — making the system unusable for most farmers.
-      result.warnings.push('Growth stage defaulted to VEGETATIVE - sowing_date missing');
-      result.reconciled_stage = 'VEGETATIVE'; // Safe default
-      result.stage_source = 'DEFAULT';
-      result.gates_passed.push('G2_STAGE_DETERMINISM'); // Pass with warning, don't block
-      return;
-    }
-    
-    // Calculate days since sowing
-    const sowDate = new Date(sowingDate);
-    const today = new Date();
-    const daysSinceSowing = Math.floor((today.getTime() - sowDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (daysSinceSowing < 0) {
-      result.errors.push('Invalid sowing_date (future date)');
-      result.gates_failed.push('G2_STAGE_DETERMINISM');
-      return;
-    }
-    
-    // DB SSOT: crop_stage_master via StageKnowledgeCache (preloaded at
-    // orchestrator boot). No hardcoded per-crop calendars live in this file.
-    const crop = (cropCode || '').toLowerCase();
-    if (!isStageKnowledgeLoaded()) {
-      result.reconciled_stage = 'VEGETATIVE';
-      result.stage_source = 'DEFAULT';
-      result.warnings.push('Stage knowledge cache not loaded, defaulting to VEGETATIVE');
+    const bioState: any = (input.land_state as any)?.biological_state ?? null;
+    const bioStage: string | null =
+      bioState?.is_locked && bioState?.growth_stage ? String(bioState.growth_stage) : null;
+    const loaderStage: string | null =
+      input.land_state?.crop?.growth_stage ? String(input.land_state.crop.growth_stage) : null;
+
+    if (bioStage) {
+      result.reconciled_stage = bioStage.toUpperCase();
+      result.stage_source = 'LOCKED';
       result.gates_passed.push('G2_STAGE_DETERMINISM');
+      console.log(
+        `   Stage: ${result.reconciled_stage} (source=BIOLOGICAL_STATE, ` +
+        `resolver=${bioState?.resolver_version ?? 'n/a'}, conf=${bioState?.confidence ?? 'n/a'})`
+      );
       return;
     }
 
-    const stageRow = getStageByDAS(crop, daysSinceSowing);
-    if (stageRow?.growth_stage) {
-      result.reconciled_stage = stageRow.growth_stage.toUpperCase();
+    if (loaderStage) {
+      result.reconciled_stage = loaderStage.toUpperCase();
       result.stage_source = 'CONFIRMED';
       result.gates_passed.push('G2_STAGE_DETERMINISM');
-      console.log(`   Stage: ${result.reconciled_stage} (${daysSinceSowing} DAS, crop_stage_master)`);
+      console.log(`   Stage: ${result.reconciled_stage} (source=LAND_STATE_CROP)`);
       return;
     }
 
-    // Cache miss for this (crop, DAS) — do NOT reintroduce a hardcoded
-    // per-crop table. Fall back to generic VEGETATIVE with a warning so the
-    // downstream pipeline continues without blocking on missing DB curation.
-    result.reconciled_stage = 'VEGETATIVE';
-    result.stage_source = 'DEFAULT';
-    result.warnings.push(`No crop_stage_master row for crop=${crop} DAS=${daysSinceSowing}; defaulting to VEGETATIVE`);
+    // No authoritative stage available. Do NOT invent one — downstream must
+    // either request clarification or proceed stage-agnostic.
+    result.reconciled_stage = null;
+    result.stage_source = 'UNKNOWN';
+    result.warnings.push(
+      'Growth stage UNKNOWN — resolve_crop_phenology returned no row and no biological_state is locked'
+    );
     result.gates_passed.push('G2_STAGE_DETERMINISM');
   }
   
