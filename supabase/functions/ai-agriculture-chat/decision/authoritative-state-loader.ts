@@ -463,12 +463,27 @@ export async function loadAuthoritativeLandState(
     
     // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS CROP SCHEDULE
+    // PR-4d: DAS SSOT precedence — lands.das (precomputed by RPC/cron) wins
+    // over any locally-computed value. Only compute from sowing_date when
+    // lands.das is null AND we have a schedule date to anchor from. The
+    // anchor date itself now coalesces lands.planting_date >
+    // lands.last_sowing_date > crop_schedules.transplant_date >
+    // crop_schedules.sowing_date to match resolve_crop_phenology().
     // ═══════════════════════════════════════════════════════════════════════════
     const cropSchedule = cropScheduleResult.data;
-    let daysSinceSowing: number | null = null;
-    
-    if (cropSchedule?.sowing_date) {
-      const sowingDate = new Date(cropSchedule.sowing_date);
+    const precomputedDas: number | null =
+      typeof (land as any)?.das === 'number' ? (land as any).das : null;
+    const anchorSowingDate: string | null =
+      (land as any)?.planting_date ??
+      (land as any)?.last_sowing_date ??
+      cropSchedule?.transplant_date ??
+      (land as any)?.transplant_date ??
+      cropSchedule?.sowing_date ??
+      null;
+
+    let daysSinceSowing: number | null = precomputedDas;
+    if (daysSinceSowing === null && anchorSowingDate) {
+      const sowingDate = new Date(anchorSowingDate);
       daysSinceSowing = Math.floor((now.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
     }
     
