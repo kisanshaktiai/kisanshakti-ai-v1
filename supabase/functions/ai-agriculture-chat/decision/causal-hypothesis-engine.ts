@@ -15,6 +15,41 @@
  * All biological logic comes from database tables. Zero hardcoded rules.
  */
 
+import { SymbolContract } from '../runtime/symbol-contract.ts';
+
+/**
+ * Runtime-safe symbol coercion.
+ * Accepts either a plain string OR a graph-symbol object
+ *   { raw_symbol, graph_symbol, source } | { symbol } | { code } | { observation_code }
+ * and returns a normalized identifier via SymbolContract, or null.
+ * NEVER throws — the caller may pass mixed shapes from upstream extractors.
+ */
+function coerceSymbol(x: unknown): string | null {
+  if (x == null) return null;
+  if (typeof x === 'string' || typeof x === 'number') return SymbolContract.normalize(String(x));
+  if (typeof x === 'object') {
+    const o = x as Record<string, unknown>;
+    const cand = (o.graph_symbol ?? o.raw_symbol ?? o.symbol ?? o.code ?? o.observation_code ?? o.value ?? o.id) as unknown;
+    if (cand == null) return null;
+    return SymbolContract.normalize(String(cand));
+  }
+  return null;
+}
+
+/** Coerce a mixed array of strings/objects to a deduped normalized string[]. */
+function coerceSymbolList(xs: unknown): string[] {
+  if (!Array.isArray(xs)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs) {
+    const n = coerceSymbol(x);
+    if (n && !seen.has(n)) { seen.add(n); out.push(n); }
+  }
+  return out;
+}
+
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
