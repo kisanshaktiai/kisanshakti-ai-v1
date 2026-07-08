@@ -282,29 +282,39 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
   let severityCode = ObservationKey.SEVERITY_MEDIUM;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PRIMARY PATH: Map from intent_code (v5.x SemanticExtraction)
+  // PRIMARY PATH — DB-SSOT intent → observations (v3.0.0, PR-1)
+  // Reads from `utils/observation-mapping-cache.ts` (SSOT:
+  // public.intent_observation_mapping). Cache miss NEVER falls back to a
+  // hardcoded intent map — logs `[OBS_MAPPING_CACHE_MISS]` and continues.
   // ═══════════════════════════════════════════════════════════════════════════
   if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
-    const intentMapping = INTENT_TO_OBSERVATION_MAPPINGS.find(
-      m => m.intent_codes.includes(intentCode)
-    );
-    
-    if (intentMapping) {
-      usedIntentMapping = true;
-      
-      // Add observation codes from intent mapping
-      for (const code of intentMapping.observation_codes) {
-        if (!observationCodes.includes(code)) {
-          observationCodes.push(code);
-          patternsMatched.push(`intent:${intentCode}→${code}`);
+    if (!isObservationMappingLoaded()) {
+      console.warn(`[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=cache_not_loaded action=skip_intent_expansion`);
+    } else {
+      const entry = getObservationsForIntent(intentCode);
+      if (entry && entry.observation_codes.length > 0) {
+        usedIntentMapping = true;
+        for (const rawCode of entry.observation_codes) {
+          // ObservationKey is a string-valued enum — DB observation_codes
+          // cast directly. If a code has no matching enum member it flows
+          // through as-is; the rule engine already treats these as opaque
+          // strings for matching against decision_rules.observable_characteristics.
+          const code = rawCode as ObservationKey;
+          if (!observationCodes.includes(code)) {
+            observationCodes.push(code);
+            patternsMatched.push(`intent:${intentCode}→${code}`);
+          }
         }
+        affectedPartCode = toAffectedPartKey(entry.modal_affected_part);
+        // severityCode intentionally left at runtime neutral (SEVERITY_MEDIUM).
+        // Severity is an observation-level property, not intent-level, and
+        // the DB does not curate a per-intent default.
+        patternsMatched.push(`intent_part:${affectedPartCode}`);
+        patternsMatched.push(`db_ssot:intent_observation_mapping rows=${entry.source_rows}`);
+        console.log(`[DB_SSOT_SOURCE] path=intent_observation_mapping intent=${intentCode} rows=${entry.source_rows} modal_part=${entry.modal_affected_part ?? 'none'}`);
+      } else {
+        console.warn(`[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=no_db_rows action=skip_intent_expansion`);
       }
-      
-      // Use intent-derived defaults for part and severity
-      affectedPartCode = intentMapping.default_part;
-      severityCode = intentMapping.default_severity;
-      patternsMatched.push(`intent_part:${affectedPartCode}`);
-      patternsMatched.push(`intent_severity:${severityCode}`);
     }
   }
   
