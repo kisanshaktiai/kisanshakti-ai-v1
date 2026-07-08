@@ -1126,6 +1126,8 @@ serve(async (req) => {
     let _observationContract: { promoted: boolean; hydrated: boolean; option_count: number; observation_required: boolean; reason: string | null } =
       { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: null };
     try {
+      const _orchAnyForCtx: any = orch as any;
+      const _graphScopeBlockedMeta = _orchAnyForCtx?._graphScopeBlocked ?? null;
       _observationContract = await ensureObservationSelectorContract(orchestratorResponse, {
         supabase,
         cropCode:
@@ -1138,6 +1140,18 @@ serve(async (req) => {
           null,
         language: detectedLanguage,
         traceId,
+        intentCode:
+          (orchestratorResponse as any)?.metadata?.intent_code ??
+          (orchestratorResponse as any)?.intent ??
+          _orchAnyForCtx?._lastIntentCode ??
+          null,
+        daysSinceSowing:
+          (orchestratorResponse as any)?.dataAudit?.land?.days_since_sowing ??
+          (orchestratorResponse as any)?.metadata?.canonicalContext?.days_since_sowing ??
+          null,
+        graphReason: _graphScopeBlockedMeta
+          ? `INSUFFICIENT_EVIDENCE:${_graphScopeBlockedMeta.reason ?? 'NO_HYPOTHESIS_SURVIVED_DB_GATES'}`
+          : null,
       });
       if (_observationContract.promoted || _observationContract.hydrated) {
         console.log(
