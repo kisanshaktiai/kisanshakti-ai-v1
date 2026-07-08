@@ -230,6 +230,9 @@ export async function evaluateHypothesisGraph(
         warnings: [`ELIMINATED:REQUIRED_DAS_FAILED(${dasPass.reason})`],
         clarification_required: false,
         candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: `REQUIRED_DAS_FAILED(${dasPass.reason})`,
       } as GraphHypothesisCandidate);
       continue;
     }
