@@ -370,19 +370,11 @@ export function resolveDecisionAuthority(
 
   const causeIsHypoType = (target: string) =>
     [...causes].some(c => getHypothesisType(c) === target);
+
+  // Fallback: some cause tokens are also observation codes (e.g. after
+  // symptom→cause promotion). Consult observation_master's failure_class.
   const causeMatchesFC = (target: 'PEST_DAMAGE' | 'DISEASE_SYMPTOM' | 'NUTRIENT_DEFICIENCY') =>
-    [...causes].some(c => {
-      const cls = classifyAuthorityDomain(c);
-      if (cls !== 'CROP') return false;
-      // Falls through — cause is a CROP-domain observation code
-      return true;
-    }) && [...causes].some(c => {
-      // secondary: observation classification's failure_class comparison
-      const cf = classifyAuthorityDomain(c); // already CROP-checked above
-      if (cf !== 'CROP') return false;
-      // Import failure_class via classifyObservation for exact match
-      return false;
-    });
+    [...causes].some(c => classifyFailureClassSafe(c) === target);
 
   const hasPestCause = causeIsHypoType('PEST') || causeMatchesFC('PEST_DAMAGE');
   const hasDiseaseCause = causeIsHypoType('DISEASE') || causeMatchesFC('DISEASE_SYMPTOM');
