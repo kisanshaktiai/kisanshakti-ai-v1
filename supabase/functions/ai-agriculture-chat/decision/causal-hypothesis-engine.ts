@@ -18,31 +18,30 @@
 import { SymbolContract } from '../runtime/symbol-contract.ts';
 
 /**
- * Runtime-safe symbol coercion.
- * Accepts either a plain string OR a graph-symbol object
- *   { raw_symbol, graph_symbol, source } | { symbol } | { code } | { observation_code }
- * and returns a normalized identifier via SymbolContract, or null.
- * NEVER throws — the caller may pass mixed shapes from upstream extractors.
+ * Graph-boundary symbol coercion — delegates identity to SymbolContract.
+ * SymbolContract stays a pure identity layer (never throws, never decides
+ * request failure). Here we log any [SYMBOL_CONTRACT_VIOLATION] (Promise
+ * leak, unknown shape) so the leak surfaces in logs and route decisions
+ * can be made upstream, then drop the offending element so raw string ops
+ * on Promise / object values can never crash the graph runtime.
  */
-function coerceSymbol(x: unknown): string | null {
-  if (x == null) return null;
-  if (typeof x === 'string' || typeof x === 'number') return SymbolContract.normalize(String(x));
-  if (typeof x === 'object') {
-    const o = x as Record<string, unknown>;
-    const cand = (o.graph_symbol ?? o.raw_symbol ?? o.symbol ?? o.code ?? o.observation_code ?? o.value ?? o.id) as unknown;
-    if (cand == null) return null;
-    return SymbolContract.normalize(String(cand));
+function coerceSymbolViaContract(x: unknown, site: string): string | null {
+  const res = SymbolContract.extract(x);
+  if (!res.symbol && res.violation && res.violation !== 'EMPTY') {
+    console.warn(
+      `[SYMBOL_CONTRACT_VIOLATION] site=${site} violation=${res.violation} ` +
+      `shape=${res.source_shape ?? 'unknown'}`,
+    );
   }
-  return null;
+  return res.symbol;
 }
 
-/** Coerce a mixed array of strings/objects to a deduped normalized string[]. */
-function coerceSymbolList(xs: unknown): string[] {
+function coerceSymbolList(xs: unknown, site = 'causal-hypothesis-engine'): string[] {
   if (!Array.isArray(xs)) return [];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const x of xs) {
-    const n = coerceSymbol(x);
+    const n = coerceSymbolViaContract(x, site);
     if (n && !seen.has(n)) { seen.add(n); out.push(n); }
   }
   return out;
@@ -400,12 +399,13 @@ function evaluateCondition(
     case 'STAGE': {
       const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
       if (!currentStage) return HypothesisConditionStatus.SKIPPED_NO_DATA;
-      
+
       const stages = (value_json as any)?.stages;
       if (!Array.isArray(stages)) return HypothesisConditionStatus.FAILED;
-      
-      const stageLower = currentStage.toLowerCase();
-      return stages.some((s: string) => s.toLowerCase() === stageLower)
+
+      const stageSet = SymbolContract.toNormalizedSet(stages);
+      const norm = SymbolContract.normalize(currentStage);
+      return norm && stageSet.has(norm)
         ? HypothesisConditionStatus.PASSED
         : HypothesisConditionStatus.FAILED;
     }
@@ -508,7 +508,7 @@ function checkContradictions(
       }
       case 'STAGE': {
         const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
-        if (currentStage && currentStage.toLowerCase() === contradiction_value.toLowerCase()) {
+        if (currentStage && SymbolContract.equals(currentStage, contradiction_value)) {
           found.push(`stage=${contradiction_value}: ${c.explanation || 'stage contradiction'}`);
         }
         break;
@@ -522,7 +522,7 @@ function checkContradictions(
       }
       case 'PATTERN': {
         const actual = canonicalState[contradiction_key];
-        if (actual && String(actual).toLowerCase() === contradiction_value.toLowerCase()) {
+        if (actual && SymbolContract.equals(String(actual), contradiction_value)) {
           found.push(`${contradiction_key}=${contradiction_value}: ${c.explanation || 'pattern contradiction'}`);
         }
         break;
@@ -929,10 +929,13 @@ export async function runCausalHypothesisArbitration(
     const out: string[] = [];
     for (const raw of observations) {
       if (!raw) continue;
-      // Async DB-backed bridge (observation_aliases). Must be awaited or
-      // Promise objects leak into downstream string ops (`.toLowerCase` crash).
+      // Async DB-backed bridge (observation_aliases). MUST be awaited — a
+      // missing await here leaks Promise objects into graph reasoning and
+      // SymbolContract.extract will flag it as PROMISE_LEAK.
       const bridged = await bridgeToCropVocab(supabase_client, normalizedCropGroup, raw);
-      const canonical = coerceSymbol(bridged?.canonical_code) ?? coerceSymbol(raw);
+      const canonical =
+        coerceSymbolViaContract(bridged?.canonical_code, 'bridgeToCropVocab.canonical_code') ??
+        coerceSymbolViaContract(raw, 'bridgeToCropVocab.raw');
       if (!canonical) continue;
       if (seen.has(canonical)) continue;
       seen.add(canonical);
@@ -980,22 +983,38 @@ export async function runCausalHypothesisArbitration(
   try {
     let searched_conditions = 0;
     let matched_conditions = 0;
+    const failed_summary: Record<string, number> = {
+      NO_SYMBOL_MATCH: 0,
+      STAGE_BLOCKED: 0,
+      DAS_BLOCKED: 0,
+      OTHER: 0,
+    };
     for (const conds of data.conditions.values()) {
       for (const c of conds) {
-        if (c.condition_type !== 'OBSERVATION') continue;
-        searched_conditions++;
-        const status = evaluateCondition(c, canonical_state, bridgedObservations);
-        if (status === HypothesisConditionStatus.PASSED) matched_conditions++;
+        if (c.condition_type === 'OBSERVATION') {
+          searched_conditions++;
+          const status = evaluateCondition(c, canonical_state, bridgedObservations);
+          if (status === HypothesisConditionStatus.PASSED) matched_conditions++;
+          else failed_summary.NO_SYMBOL_MATCH++;
+        } else if (c.condition_type === 'STAGE') {
+          const status = evaluateCondition(c, canonical_state, bridgedObservations);
+          if (status === HypothesisConditionStatus.FAILED) failed_summary.STAGE_BLOCKED++;
+        } else if (c.condition_type === 'DAS_RANGE') {
+          const status = evaluateCondition(c, canonical_state, bridgedObservations);
+          if (status === HypothesisConditionStatus.FAILED) failed_summary.DAS_BLOCKED++;
+        }
       }
     }
     const rejected_reason: string[] = [];
     if (bridgedObservations.length === 0) rejected_reason.push('NO_OBSERVATIONS');
-    if (searched_conditions === 0) rejected_reason.push('NO_OBSERVATION_CONDITIONS_FOR_CROP');
-    if (matched_conditions === 0 && searched_conditions > 0) rejected_reason.push('NO_OBS_TO_HYP_EDGE');
+    if (searched_conditions === 0) rejected_reason.push('GRAPH_KNOWLEDGE_GAP:NO_OBSERVATION_CONDITIONS_FOR_CROP');
+    if (matched_conditions === 0 && searched_conditions > 0) rejected_reason.push('MISSING_GRAPH_EDGE');
     console.log(
       `[OBS_TO_HYP_TRACE] trace=${trace_id ?? 'none'} crop=${normalizedCropGroup} ` +
-      `normalized_observations=[${bridgedObservations.join(',')}] ` +
+      `observations=[${bridgedObservations.join(',')}] ` +
+      `candidate_hypotheses_checked=${data.hypotheses.length} ` +
       `searched_conditions=${searched_conditions} matched_conditions=${matched_conditions} ` +
+      `failed_summary=${JSON.stringify(failed_summary)} ` +
       `rejected_reason=[${rejected_reason.join(',')}]`
     );
   } catch (_e) { /* trace never throws */ }
