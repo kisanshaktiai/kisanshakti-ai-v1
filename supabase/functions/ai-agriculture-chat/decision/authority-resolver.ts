@@ -164,8 +164,10 @@ const SYSTEM_CAUSES = new Set([
 
 import {
   classifyAuthorityDomain,
+  classifyFailureClass as classifyFailureClassSafe,
   getHypothesisType,
 } from '../utils/observation-classification-cache.ts';
+
 
 
 // ═══════════════════════════════════════════════════════════════════════════
