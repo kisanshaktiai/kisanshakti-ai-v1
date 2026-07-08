@@ -224,23 +224,21 @@ function validateNarrationOutput(
   const expectedCrop = symbolicInput.land_context?.current_crop?.toLowerCase() || '';
   
   if (expectedCrop) {
-    // Build set of ALL known crop names from ICAR_CALENDARS
+    // Build set of ALL known crop names from DB SSOT (public.crops)
     const allCropNames = new Set<string>();
     const expectedCropNames = new Set<string>();
-    
-    for (const [cropCode, calendar] of Object.entries(ICAR_CALENDARS)) {
+
+    for (const row of getAllCropNames()) {
       const names = [
-        calendar.crop_name_en.toLowerCase(),
-        calendar.crop_name_mr.toLowerCase(),
-        calendar.crop_name_hi.toLowerCase(),
-        cropCode.toLowerCase()
-      ];
-      
-      // Check if this is the expected crop
-      const isExpectedCrop = names.some(n => 
-        expectedCrop.includes(n) || n.includes(expectedCrop)
+        row.label.toLowerCase(),
+        row.code.toLowerCase(),
+        ...Object.values(row.translations).map(v => v.toLowerCase()),
+      ].filter(Boolean);
+
+      const isExpectedCrop = names.some(n =>
+        expectedCrop.includes(n) || n.includes(expectedCrop),
       );
-      
+
       if (isExpectedCrop) {
         names.forEach(n => expectedCropNames.add(n));
       } else {
