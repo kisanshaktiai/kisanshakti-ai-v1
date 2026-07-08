@@ -7063,6 +7063,9 @@ export class AIAgentOrchestrator {
         // keeps the existing intent-filtered set so unrelated flows are unaffected.
         const graphRuleIdSet = new Set<string>(((this as any)._graphHypothesisRuleIds ?? []) as string[]);
         const graphEdgeMissing: string[] = ((this as any)._graphHypothesisEdgeMissing ?? []) as string[];
+        const _graphExecutedFlag = (this as any)._graphExecuted === true;
+        const _graphSurvivors: any[] = ((this as any)._graphHypothesisResult?.candidates) ?? [];
+        const _isDiagnosticIntentForScope = typeof isDiagnosticIntent !== 'undefined' ? !!isDiagnosticIntent : true;
         let rulesForEvaluator = rulesAfterIntent;
         if (graphRuleIdSet.size > 0) {
           const scoped = rulesAfterIntent.filter((r: any) =>
@@ -7071,8 +7074,33 @@ export class AIAgentOrchestrator {
             rulesForEvaluator = scoped;
             console.log(`   🧭 [HYP_GRAPH_SCOPE] ${rulesAfterIntent.length} → ${scoped.length} (edges=${graphRuleIdSet.size})`);
           } else {
-            console.warn(`   ⚠️ [HYP_GRAPH_SCOPE] graph edges present but none in intent-filtered set (${graphRuleIdSet.size} edges); using intent set`);
+            console.warn(`   ⚠️ [HYP_GRAPH_SCOPE] graph edges present but none in intent-filtered set (${graphRuleIdSet.size} edges); blocking (Neuro-Symbolic invariant)`);
+            rulesForEvaluator = [];
           }
+        } else if (_graphExecutedFlag && _graphSurvivors.length === 0 && _isDiagnosticIntentForScope) {
+          // ═══════════════════════════════════════════════════════════════════
+          // NEURO-SYMBOLIC INVARIANT — GRAPH_SCOPE_BLOCKED
+          // Graph executed, DB gates eliminated every hypothesis. A diagnostic
+          // decision rule cannot fire without causal hypothesis lineage:
+          //   OBSERVATION → HYPOTHESIS → RULE → DECISION
+          // Force empty candidate pool so the layered evaluator returns 0
+          // matched rules and the downstream stage-clarification path takes
+          // over. Prevents leakage of unrelated PROACTIVE_* / global rules.
+          // ═══════════════════════════════════════════════════════════════════
+          const _blocked = rulesAfterIntent.length;
+          rulesForEvaluator = [];
+          (this as any)._graphScopeBlocked = {
+            graphExecuted: true,
+            hypothesisCount: 0,
+            graphRuleEdges: 0,
+            blockedRuleCount: _blocked,
+            reason: 'NO_HYPOTHESIS_SURVIVED_DB_GATES',
+          };
+          console.warn(
+            `[GRAPH_SCOPE_BLOCKED] trace=${traceId} intent=${activeIntentForRules} ` +
+            `graphExecuted=true hypothesisCount=0 graphRuleEdges=0 ` +
+            `blockedRuleCount=${_blocked} reason=NO_HYPOTHESIS_SURVIVED_DB_GATES`,
+          );
         }
         const graphHypIdsForTrace: string[] = (((this as any)._graphHypothesisResult?.candidates) ?? []).map((c: any) => c.hypothesis_id);
         const hypToRuleReason = graphHypIdsForTrace.length === 0
