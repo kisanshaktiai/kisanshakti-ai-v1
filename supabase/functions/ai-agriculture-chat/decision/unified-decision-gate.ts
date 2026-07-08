@@ -804,12 +804,18 @@ function checkIfYoungCrop(
     return true;
   }
   
-  // PRIORITY 2: Fallback to stage-based check only when DAS is unknown
-  if (cropStage) {
-    const normalizedStage = cropStage.toUpperCase().replace(/[_\s-]+/g, '_');
-    if (YOUNG_CROP_STAGES.has(normalizedStage)) {
-      console.log(`   📊 [YoungCrop] Stage=${normalizedStage} (DAS unknown) → IS young by stage`);
+  // PRIORITY 2: DB-driven stage-based fallback when DAS is unknown.
+  // A stage counts as "young" iff the DB row's das_max is within the crop's
+  // young-crop threshold (defaults to 30 days).
+  if (cropStage && cropName) {
+    const row = getStageRowFromCache(cropName, cropStage);
+    const threshold = YOUNG_CROP_MAX_DAYS[cropName.toUpperCase()] ?? 30;
+    if (row && typeof row.das_max === 'number' && row.das_max <= threshold) {
+      console.log(`   📊 [YoungCrop] DB stage=${cropStage} das_max=${row.das_max} <= ${threshold} → IS young`);
       return true;
+    }
+    if (!row) {
+      console.log(`   📊 [YoungCrop] DB miss for ${cropName}/${cropStage} — not classifiable as young`);
     }
   }
   
