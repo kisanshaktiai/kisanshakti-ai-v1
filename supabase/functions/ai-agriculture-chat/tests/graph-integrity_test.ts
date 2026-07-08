@@ -62,12 +62,15 @@ Deno.test('PR-4 · context-validator consumes biological_state and never imports
   const src = await Deno.readTextFile(
     new URL('../decision/context-validator.ts', import.meta.url),
   );
+  const executableSrc = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
   assert(
     /biological_state/.test(src) && /bioState\?\.growth_stage/.test(src),
     'context-validator must read biological_state.growth_stage as the locked stage authority',
   );
   assertEquals(
-    /import\s*\{[^}]*getStageByDAS/.test(src) || /getStageByDAS\s*\(/.test(src),
+    /import\s*\{[^}]*getStageByDAS/.test(executableSrc) || /getStageByDAS\s*\(/.test(executableSrc),
     false,
     'context-validator must not import or call getStageByDAS',
   );
