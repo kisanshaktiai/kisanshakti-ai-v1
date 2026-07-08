@@ -288,17 +288,19 @@ const OBSERVATION_ACTIONS = new Set([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// YOUNG CROP DEFINITIONS
+// YOUNG CROP DEFINITIONS — PR-2: DB-DRIVEN
+// ───────────────────────────────────────────────────────────────────────────
+// YOUNG_CROP_STAGES Set DELETED. Stage-based youngness now derives from
+// `crop_stage_master.das_max` via StageKnowledgeCache (SSOT).
+// VAGUE_SYMPTOM_PATTERNS Set DELETED. Vagueness now derives from
+// `observation_master.is_diagnostic` + `clarity_score` via
+// `isVagueObservation()` on the observation-classification-cache.
+// YOUNG_CROP_MAX_DAYS remains until `crop_baseline_guidelines_v2` gets a
+// `young_crop_max_das` column (see HARDCODE_TO_DB_MAPPING #19 / MISSING report).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const YOUNG_CROP_STAGES = new Set([
-  'GERMINATION',
-  'SEEDLING',
-  'EMERGENCE',
-  'VEGETATIVE_EARLY',
-  'VEGETATIVE',
-  'TILLERING'
-]);
+import { getStageRow as getStageRowFromCache } from '../utils/stage-knowledge-cache.ts';
+import { isVagueObservation } from '../utils/observation-classification-cache.ts';
 
 const YOUNG_CROP_MAX_DAYS: Record<string, number> = {
   'SUGARCANE': 45,
@@ -312,23 +314,9 @@ const YOUNG_CROP_MAX_DAYS: Record<string, number> = {
   'GRAM': 25,
   'ONION': 40,
   'TOMATO': 25,
-  'CHILLI': 30
+  'CHILLI': 30,
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// VAGUE SYMPTOM DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
-
-const VAGUE_SYMPTOM_PATTERNS = new Set([
-  'UNKNOWN',
-  'GENERAL',
-  'SOMETHING_WRONG',
-  'PROBLEM',
-  'ISSUE',
-  'HELP',
-  'NOT_GOOD',
-  'BAD_CONDITION'
-]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN UNIFIED GATE FUNCTION
