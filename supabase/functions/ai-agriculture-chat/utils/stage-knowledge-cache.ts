@@ -29,12 +29,26 @@ export interface StageKnowledgeRow {
   [k: string]: unknown;
 }
 
+interface StageGraphEdge {
+  crop_code: string;
+  from_stage: string;
+  to_stage: string;
+  edge_type: string;
+}
+
 interface Cache {
   loadedAt: number;
   master: StageMasterRow[];
   knowledge: StageKnowledgeRow[];
   byCropStage: Map<string, StageMasterRow>; // `${crop}|${stage}` → row
   knowledgeByCropStage: Map<string, StageKnowledgeRow>;
+  // Adjacency list built from public.crop_stage_graph — SSOT for stage
+  // equivalence/adjacency. Key = `${crop}|${stage}`, value = set of adjacent
+  // stage codes (lowercased). Built from ALL edge types symmetrically since
+  // any edge type (STAGE_PRECEDES / ENABLES / CONCURRENT_WITH / TRIGGERS)
+  // marks the two stages as belonging to the same crop's phenological family
+  // for the purpose of rule stage-gating.
+  stageAdjacency: Map<string, Set<string>>;
 }
 
 let cache: Cache | null = null;
