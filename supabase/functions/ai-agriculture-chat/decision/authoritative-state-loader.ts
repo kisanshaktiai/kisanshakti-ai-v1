@@ -712,11 +712,25 @@ export async function loadAuthoritativeLandState(
       state: null,
       
       crop: {
-        current_crop: cropSchedule?.crop_name || null,
-        crop_code: phenologyRow?.crop_code ?? null, // PR-1: from resolve_crop_phenology when available
-        growth_stage: computedGrowthStage, // PR-1: from resolve_crop_phenology (SSOT), DAS ladder is fallback only
+        // PR-4d: prefer canonical text label from phenology RPC / lands, fall back
+        // to schedule mirror only when the FK-driven sources are absent.
+        current_crop: phenologyRow?.crop_code ?? (land as any)?.current_crop ?? cropSchedule?.crop_name ?? null,
+        crop_code: phenologyRow?.crop_code ?? null,
+        crop_id: (land as any)?.current_crop_id ?? null,
+        variety_id: (land as any)?.current_crop_variety_id ?? cropSchedule?.variety_id ?? null,
+        variety_name: cropSchedule?.crop_variety ?? null,
+        growth_stage: computedGrowthStage,
+        stage_uuid: (land as any)?.stage_uuid ?? phenologyRow?.stage_uuid ?? null,
+        stage_source_authoritative: (land as any)?.stage_source ?? stageSource,
+        stage_resolved_at: (land as any)?.stage_resolved_at ?? null,
         days_since_sowing: daysSinceSowing,
-        sowing_date: cropSchedule?.sowing_date || null,
+        precomputed_das: precomputedDas,
+        sowing_date: anchorSowingDate ?? cropSchedule?.sowing_date ?? null,
+        planting_date: (land as any)?.planting_date ?? null,
+        last_sowing_date: (land as any)?.last_sowing_date ?? null,
+        transplant_date: (land as any)?.transplant_date ?? cropSchedule?.transplant_date ?? null,
+        crop_cycle: (land as any)?.crop_cycle ?? null,
+        current_gdd: typeof (land as any)?.current_gdd === 'number' ? (land as any).current_gdd : null,
         expected_harvest_date: cropSchedule?.expected_harvest_date || null,
         schedule_status: cropSchedule?.status || null
       },
