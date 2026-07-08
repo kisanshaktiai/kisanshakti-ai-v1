@@ -1189,28 +1189,29 @@ serve(async (req) => {
         `ruleResult=${_ruleResultExists} evidenceFrozen=${_evidenceFrozen} realObs=${_realObsCount} ` +
         `graphSequence=${_seq}/5`,
       );
+      // NOTE: These invariants previously `throw`-ed, converting silent
+      // pipeline-bypass patterns into hard 500s. In production that masked
+      // the real underlying exception (which has already been handled by
+      // `handleOrchestrationError` and turned into a valid DECISION_PROVIDED
+      // fallback response). Downgrade to structured warnings so the response
+      // is still delivered while the anomaly remains greppable in logs.
       if (_isDiagnosticIntent && _evidenceFrozen && !_graphExecuted) {
-        throw new Error(
-          `GRAPH_PIPELINE_BYPASSED: exit_path=${_path} intent=${_intentUpper} ` +
+        console.error(
+          `[GRAPH_PIPELINE_BYPASSED_WARN] exit_path=${_path} intent=${_intentUpper} ` +
           `realObs=${_realObsCount} evidenceFrozen=true graphExecuted=false trace_id=${traceId}`,
         );
-      }
-      if (_isDiagnosticIntent && _evidenceFrozen && _graphExecuted && !_ruleResultExists) {
-        throw new Error(
-          `GRAPH_PIPELINE_BYPASSED: exit_path=${_path} intent=${_intentUpper} ` +
+      } else if (_isDiagnosticIntent && _evidenceFrozen && _graphExecuted && !_ruleResultExists) {
+        console.error(
+          `[GRAPH_PIPELINE_BYPASSED_WARN] exit_path=${_path} intent=${_intentUpper} ` +
           `realObs=${_realObsCount} evidenceFrozen=true graphExecuted=true ruleResult=false trace_id=${traceId}`,
         );
-      }
-      // Sequence-incomplete guard: if a diagnostic turn with real observations
-      // reached exit before RULE_RESULT (sequence < 4), the graph pipeline
-      // was truncated mid-flight. Fail closed so silent partial-run exits
-      // cannot ship a `hyp=0` response.
-      if (_isDiagnosticIntent && _evidenceFrozen && _realObsCount > 0 && _seq < 4) {
-        throw new Error(
-          `GRAPH_PIPELINE_BYPASSED: sequence_incomplete stage=${_seq}/5 ` +
+      } else if (_isDiagnosticIntent && _evidenceFrozen && _realObsCount > 0 && _seq < 4) {
+        console.error(
+          `[GRAPH_PIPELINE_BYPASSED_WARN] sequence_incomplete stage=${_seq}/5 ` +
           `exit_path=${_path} intent=${_intentUpper} realObs=${_realObsCount} trace_id=${traceId}`,
         );
       }
+
     } catch (auditErr) {
       if ((auditErr as Error).message?.startsWith('GRAPH_PIPELINE_BYPASSED')) throw auditErr;
       console.warn(`[ORCHESTRATOR_EXIT] audit non-fatal: ${(auditErr as Error).message}`);
