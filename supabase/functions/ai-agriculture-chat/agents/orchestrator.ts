@@ -459,10 +459,11 @@ import {
   type DifferentialClarificationResult
 } from '../decision/differential-diagnosis-clarifier.ts';
 
-import {
-  getStageSpecificInfo,
-  calculateGrowthStageFromDAS
-} from '../decision/crop-calendar-lookup.ts';
+// PR-3: `getStageSpecificInfo` was imported but never referenced and was
+// never exported by crop-calendar-lookup — removed. `calculateGrowthStageFromDAS`
+// is retained as a re-export for downstream helpers that still resolve DAS→stage
+// through the DB-backed shim in decision/crop-calendar-lookup.ts.
+import { calculateGrowthStageFromDAS } from '../decision/crop-calendar-lookup.ts';
 
 // PHASE-8: Smart Clarification Generator - ObservationKey-based
 import {
