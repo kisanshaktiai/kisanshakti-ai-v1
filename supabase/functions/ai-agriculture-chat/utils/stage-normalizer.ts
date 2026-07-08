@@ -63,31 +63,38 @@ const MATURITY_STAGES = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 const STAGE_DB_MAP: Record<string, string> = {
-  // Seedling variants
+  // Seedling / germination variants (true germination window only)
   'seedling': 'germination',
   'sprouting': 'germination',
   'emergence': 'germination',
-  'planting': 'planting',
-  'sowing': 'germination',
-  'transplanting': 'germination',
-  'post_planting': 'planting',
+  'germination': 'germination',
+  'establishment': 'germination',
+  'early_growth': 'germination',
+
+  // Pre-establishment (self-mapping — do NOT collapse into germination)
   'pre_sowing': 'pre_sowing',
-  
-  // Vegetative variants  
+  'sowing': 'sowing',
+  'planting': 'planting',
+  'post_planting': 'post_planting',
+
+  // Transplanting (rice/tobacco/tomato) — post-germination, self-mapping.
+  // Belongs to VEGETATIVE category per crop_stage_graph TRANSPLANTING→TILLERING.
+  'transplanting': 'transplanting',
+
+  // Vegetative variants
   'vegetative': 'tillering',
   'tillering': 'tillering',
   'early_tillering': 'tillering',
   'leaf_development': 'tillering',
   'stem_elongation': 'tillering',
-  'early_growth': 'germination',
-  
+
   // Grand growth (sugarcane specific)
   'grand_growth': 'grand_growth',
   'grandgrowth': 'grand_growth',
   'grand-growth': 'grand_growth',
   'canopy': 'grand_growth',
   'cane_formation': 'grand_growth',
-  
+
   // Reproductive variants
   'flowering': 'flowering',
   'reproductive': 'flowering',
@@ -100,7 +107,7 @@ const STAGE_DB_MAP: Record<string, string> = {
   'heading': 'heading',
   'booting': 'booting',
   'squaring': 'squaring',
-  
+
   // Maturity variants
   'maturation': 'maturity',
   'maturity': 'maturity',
@@ -110,16 +117,12 @@ const STAGE_DB_MAP: Record<string, string> = {
   'harvest': 'harvest',
   'drying': 'harvest',
   'post_harvest': 'post_harvest',
-  
-  // Ratoon (sugarcane specific - NOT post_harvest!)
+
+  // Ratoon (sugarcane specific)
   'ratoon': 'ratoon',
   'ratoon_init': 'ratoon',
   'early_ratoon': 'ratoon',
   'post_irrigation': 'tillering',
-  
-  // Pass-through (already in correct format)
-  'germination': 'germination',
-  'establishment': 'germination',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
