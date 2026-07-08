@@ -337,7 +337,8 @@ export class ContextValidator {
     if (result.reconciled_crop) score += 20;
     
     // Stage data (20 points)
-    if (result.stage_source === 'CONFIRMED') score += 20;
+    if (result.stage_source === 'LOCKED') score += 20;
+    else if (result.stage_source === 'CONFIRMED') score += 20;
     else if (result.stage_source === 'CALCULATED') score += 15;
     else if (result.stage_source === 'DEFAULT') score += 5;
     
