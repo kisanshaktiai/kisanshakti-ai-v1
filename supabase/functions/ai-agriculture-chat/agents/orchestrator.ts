@@ -7435,10 +7435,20 @@ export class AIAgentOrchestrator {
             assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
           }
           if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
-            throw new Error(
-              `GRAPH_ORDER_ERROR: trace_id=${traceId} stage=BRAIN_TRACE reason=forbidden_hyp0_after_evidence_freeze`,
+            // NEURO-SYMBOLIC NO-HALLUCINATION RULE:
+            // Evidence exists but the DB has no OBS→HYP edge for the confirmed
+            // observation set. This is a knowledge-graph gap, NOT a runtime bug.
+            // Do NOT throw (that returns 500 to the farmer). Log the gap and
+            // let the downstream clarification path (observation-selector-contract)
+            // emit a CLARIFICATION_QUESTION hydrated from DB observations.
+            console.warn(
+              `[OBS_TO_HYP_GAP] trace_id=${traceId} intent=${intentCode} ` +
+              `confirmed_obs=${_cs?.confirmed?.length ?? 0} real_obs=${_realObsCount} ` +
+              `hypotheses=0 reason=no_hypothesis_edge_for_confirmed_observations ` +
+              `action=route_to_clarification_question`
             );
           }
+
           emitBrainTrace(_cs, {
             rule_candidates:  rulesToEvaluate?.length ?? 0,
             rule_eligible:    layeredRuleResult?.matched_responses?.length ?? 0,
