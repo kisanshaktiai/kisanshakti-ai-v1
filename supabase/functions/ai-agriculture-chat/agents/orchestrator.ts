@@ -25,6 +25,7 @@ import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
 import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
 import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
+import { SymbolContract } from '../runtime/symbol-contract.ts';
 
 type DecisionGraphStage =
   | 'POST_EVIDENCE_FREEZE'
@@ -4046,9 +4047,14 @@ export class AIAgentOrchestrator {
       const authoredObservations = new AuthoredObservationSet();
       const allObservationsForPreAuth = new Set<string>(); // backward-compat flat set
       
-      // BUG-3 FIX: Canonical code filter - only UPPERCASE_CODE symbols enter rule engine
-      function isCanonicalCode(s: string): boolean {
-        return /^[A-Z][A-Z0-9_]+$/.test(s);
+      // SYMBOL CONTRACT — runtime accepts any well-formed symbol regardless of
+      // casing / separators. Agricultural authority (whether a code exists in
+      // observation_master / IOM / hypothesis_conditions) is DB-owned; the
+      // runtime only normalizes graph identity via SymbolContract. Lowercase
+      // DB codes (e.g. `obs_rice_no_emergence`, `poor_germination`) MUST
+      // survive this gate.
+      function acceptSymbol(s: unknown): string | null {
+        return SymbolContract.normalize(s as any);
       }
       
       let filteredOutCount = 0;
@@ -4056,13 +4062,13 @@ export class AIAgentOrchestrator {
       // Add from observation keys - tagged as EXTRACTED (pattern-matched from farmer text)
       if (observationKeys) {
         observationKeys.forEach(key => {
-          const strKey = String(key);
-          if (isCanonicalCode(strKey)) {
-            allObservationsForPreAuth.add(strKey);
-            authoredObservations.add(strKey, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
+          const norm = acceptSymbol(key);
+          if (norm) {
+            allObservationsForPreAuth.add(norm);
+            authoredObservations.add(norm, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
           } else {
             filteredOutCount++;
-            console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical observation key: "${strKey.substring(0, 30)}"`);
+            console.log(`   🔇 [SYMBOL_CONTRACT] Rejected empty/invalid observation key: "${String(key).substring(0, 30)}"`);
           }
         });
       }
@@ -4070,12 +4076,13 @@ export class AIAgentOrchestrator {
       // Add from mapped codes - tagged as INFERRED (LLM semantic extraction)
       if (mappedCodes?.observation_codes) {
         mappedCodes.observation_codes.forEach((code: string) => {
-          if (isCanonicalCode(code)) {
-            allObservationsForPreAuth.add(code);
-            authoredObservations.add(code, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
+          const norm = acceptSymbol(code);
+          if (norm) {
+            allObservationsForPreAuth.add(norm);
+            authoredObservations.add(norm, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
           } else {
             filteredOutCount++;
-            console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical mapped code: "${code.substring(0, 30)}"`);
+            console.log(`   🔇 [SYMBOL_CONTRACT] Rejected empty/invalid mapped code: "${String(code).substring(0, 30)}"`);
           }
         });
       }
@@ -4083,35 +4090,37 @@ export class AIAgentOrchestrator {
       // Add from induction result symptoms - authority depends on source
       if (inductionResult?.symptoms) {
         inductionResult.symptoms.forEach((s: any) => {
-          if (s.symbol && isCanonicalCode(s.symbol)) {
-            allObservationsForPreAuth.add(s.symbol);
+          const norm = acceptSymbol(s?.symbol);
+          if (norm) {
+            allObservationsForPreAuth.add(norm);
             // Tag based on induction source
             const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
               ? ObservationAuthority.INFERRED 
               : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
-            authoredObservations.add(s.symbol, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
+            authoredObservations.add(norm, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
-            console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical symptom: "${String(s.symbol).substring(0, 30)}"`);
+            console.log(`   🔇 [SYMBOL_CONTRACT] Rejected empty/invalid symptom: "${String(s.symbol).substring(0, 30)}"`);
           }
         });
       }
       
       if (filteredOutCount > 0) {
-        console.log(`   📊 [CANONICAL FILTER] Total filtered out: ${filteredOutCount} non-canonical entries`);
+        console.log(`   📊 [SYMBOL_CONTRACT] Total rejected (empty/blank only, casing NOT a rejection reason): ${filteredOutCount}`);
       }
       
       // PHASE-19 v2.0: Add photo-mapped codes - tagged as CONFIRMED (photo-verified)
       if (photoMappedCodes?.observation_codes) {
         console.log(`   📸 Adding ${photoMappedCodes.observation_codes.length} photo codes as CONFIRMED`);
         photoMappedCodes.observation_codes.forEach((code: any) => {
-          const strCode = String(code);
-          if (isCanonicalCode(strCode)) {
-            allObservationsForPreAuth.add(strCode);
-            authoredObservations.add(strCode, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
+          const norm = acceptSymbol(code);
+          if (norm) {
+            allObservationsForPreAuth.add(norm);
+            authoredObservations.add(norm, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
           }
         });
       }
+      
       
       // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE-AGNOSTIC ARCHITECTURE: LLM-First Symptom Fallback
