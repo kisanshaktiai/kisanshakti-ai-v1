@@ -1,100 +1,67 @@
 
-# Neuro-Symbolic Decision Brain — Forensic Audit & Repair Plan
+# Fix Plan — Rice Transplanting DAS 29 → wrong INVARIANT_FALLBACK
 
-## Scope
+The uploaded audit already isolated the three verified bugs. The full "rewrite everything to DB-driven, purge every module-level state, wire RequestScope end-to-end" ask is a multi-week refactor across ~40 files that I will NOT attempt in one shot — it would destabilize the already-fragile pipeline. I propose landing the three surgical fixes that make the failing trace behave correctly and honor the DB contract, then discuss the larger refactor scope separately.
 
-Audit the live `supabase/functions/ai-agriculture-chat/` pipeline against the required graph:
+## Scope of this PR (blocking bug fix)
 
-```text
-Farmer → Intent → LandContextLock → Observation → Hypothesis → Confidence → DecisionRule → LLM Narrator
+### Fix 1 — `utils/stage-normalizer.ts` (Root Cause 1, blocking)
+Remove agronomically wrong lumping:
+- Remove `planting`, `sowing`, `transplanting`, `post_planting`, `pre_sowing` from `SEEDLING_STAGES`.
+- Remove `'transplanting': 'germination'`, `'sowing': 'germination'`, `'transplanting': 'germination'`, `'post_planting': 'planting'`, `'sowing': 'germination'`, `'transplanting': 'germination'` mis-mappings from `STAGE_DB_MAP`.
+- Add `transplanting` → its own key mapping to itself; treat it as a `VEGETATIVE` category member alongside `tillering` (matches `crop_stage_graph` TRANSPLANTING→TILLERING edge already present in DB).
+- Keep the module as a static fallback only. Fully DB-backed resolver is Fix 3.
+
+Effect: `calculateStageRelevanceScore([SEEDLING,NURSERY,GERMINATION], 'TRANSPLANTING')` drops from `0.7` → `0.1`, germination rules get skipped at the `< 0.2` cutoff, and transplanting-applicable hypotheses (Khaira, N-deficiency…) become winners from DB.
+
+### Fix 2 — Honor `hypothesis_conditions.is_required=true` (Root Cause 3, blocking)
+In `decision/hypothesis-evaluator.ts` (and the parallel path in `hypothesis-graph-evaluator.ts` if reached), before scoring each candidate:
+
+1. Read the candidate's `hypothesis_conditions` rows already loaded from DB.
+2. For every row where `is_required = true`:
+   - `condition_type='STAGE'` → eliminate if current stage not in the allowed list.
+   - `condition_type='DAS_RANGE'` → eliminate if current DAS is outside `[min,max]`.
+3. Emit `[HYP_ELIMINATED] reason=REQUIRED_STAGE_FAILED|REQUIRED_DAS_FAILED hypothesis_id=… required=… actual=…`.
+
+No soft matching, no penalty. Pure gate.
+
+### Fix 3 — Wire `stage-family-shim.ts` to `crop_stage_graph` (Root Cause 2)
+Convert the shim into `StageGraphReader`:
+- On cold start (per isolate), lazy-load `crop_stage_graph` into a versioned in-memory reference cache (hashed by `max(updated_at)` for invalidation).
+- Expose `stageFamily(crop, stage)`, `stagesEquivalent(crop, a, b)`, `nextStages(crop, stage)` backed by DB rows.
+- Keep `STAGE_FAMILIES` static object ONLY as fallback for crops/stages missing from `crop_stage_graph`, with a `[STAGE_GRAPH_FALLBACK]` warning trace.
+- All callers (`contradiction-engine`, `navigator-adapter`, `layered-rule-evaluator`) updated to pass `crop` in.
+
+## Traces added
+- `[HYP_ELIMINATED] reason=… hypothesis_id=… required=… actual=…`
+- `[HYP_SURVIVED] hypothesis_id=… conditions_passed=…`
+- `[STAGE_GRAPH_LOOKUP] crop=… stage=… source=DB|FALLBACK family=[…]`
+- Existing `[HYP_TO_RULE]`, `[RULE_STAGE_TRACE]`, `[RULE_WINNER]` left as-is.
+
+## Regression test (`tests/graph-integrity_test.ts`)
+Add case:
+```
+crop=RICE stage=transplanting DAS=29 msg="पिक अजून उगवले नाही"
+assert: RICE_GERMINATION_FAILURE NOT in surviving hypotheses
+assert: [HYP_ELIMINATED reason=REQUIRED_STAGE_FAILED] emitted for it
+assert: at least one transplanting-applicable hypothesis surfaced OR
+        clarification requested (never INVARIANT_FALLBACK with MONITOR_ONLY)
 ```
 
-No new files, no new tables, no new architecture. Only reconnect, delete dead paths, fix wiring.
+## Explicitly OUT of scope for this PR (needs separate plan)
+The user's brief also asks for:
+- Full RequestScope object plumbing across the whole edge function.
+- Purge of every module-level `let _authoritativeContext`, `let _confirmedDiagnosis`, `let _answeredClarifications`.
+- Search-and-destroy of all `YOUNG_CROP_MAX_DAYS`, `STAGE_ORDER`, `ICAR_CALENDARS`, `NDVI_THRESHOLDS` constants (dozens of files).
+- Ban on all singleton decision state, replace with per-request scope.
 
-## Phase 1 — Read-only Forensic Trace (no edits)
+These are correct long-term goals but each touches 20–40 files and would need its own PR with its own regression suite. I recommend landing the three blocking fixes first, verifying the trace, then tackling the RequestScope refactor as PR-2 and the hardcoded-agronomy purge as PR-3.
 
-For each node I will produce a `File / Function / Line / Issue / Fix` block. Investigation targets:
+## Files changed in this PR
+- `supabase/functions/ai-agriculture-chat/utils/stage-normalizer.ts` — remove wrong lumping.
+- `supabase/functions/ai-agriculture-chat/runtime/stage-family-shim.ts` → replaced by `runtime/stage-graph-reader.ts`; shim re-exports for back-compat.
+- `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` — hard `is_required` gate + eliminations traces.
+- `supabase/functions/ai-agriculture-chat/decision/hypothesis-graph-evaluator.ts` — same gate on the parallel path.
+- `supabase/functions/ai-agriculture-chat/tests/graph-integrity_test.ts` — regression test.
 
-1. **Entry & Orchestrator**
-   - `index.ts`, `agents/orchestrator.ts`, `agents/intent-router.ts`, `agents/query-router.ts`
-   - Verify: single entry, no LLM diagnosis, `symptomFreeRoutes` gate holds, no `GENERAL_INFO` override of `DIAGNOSTIC`.
-
-2. **Language / Intent (Node 1 + 3)**
-   - `llm-understanding-layer.ts`, `agents/nlu-agent.ts`, `agents/intent-classifier.ts`, `agents/semantic-extractor.ts`, `agents/intent-lock.ts`
-   - Verify `intent_master` + `intent_observation_mapping` reads; confirm LLM only extracts, never diagnoses; confirm crop-prefix lock (PR-7 F6) is invoked on every turn.
-
-3. **Land Context Lock (Node 2)**
-   - `decision/authoritative-state-loader.ts`, `decision/canonical-context-contract.ts`, `decision/context-authority.ts`, `decision/context-validator.ts`, `runtime/conversation-state.ts`, `src/hooks/useLandChatContext.ts`
-   - Verify context is frozen once per turn (`assertCanonicalContextLocked`), no rebuild downstream, no cross-land leakage in `context-manager.ts`.
-
-4. **Observation (Node 4)**
-   - `agents/canonical-observation-loader.ts`, `agents/observation-extractor.ts`, `agents/observation-key-mapper.ts`, `decision/observation-ontology.ts`, `decision/iom-gate.ts`, `runtime/farmer-observable-gate.ts`, `runtime/evidence-classifier.ts`
-   - Verify observations come only from `observation_master` via `intent_observation_mapping`; LLM-invented symptoms are rejected; pagination is honoured (memory rule).
-
-5. **Hypothesis (Node 5)**
-   - `decision/causal-hypothesis-engine.ts`, `decision/hypothesis-evaluator.ts`, `decision/hypothesis-graph-evaluator.ts`, `runtime/graph-runtime.ts`, `runtime/decision-graph-navigator.ts`, `runtime/graph-truth.ts`
-   - Verify `OBS_TO_HYP` always runs when observations exist; `HYP_TO_RULE` never runs with `hyp=[]`; canonical_group + stage-family invariants hold.
-
-6. **Confidence (Node 6)**
-   - `decision/confidence-calculator.ts`, `decision/confidence-chain.ts`, `runtime/contradiction-engine.ts`, `src/decision-graph/confidence-engine.ts`
-   - Verify confidence source = symbolic evidence, not LLM; low-confidence path routes to `clarification-generator`, never straight to rules.
-
-7. **Decision Rule (Node 7)**
-   - `agents/layered-rule-evaluator.ts`, `agents/rule-engine-executor.ts`, `agents/rule-module-resolver.ts`, `layers/rule-evaluation-layer.ts`, `decision/prescription-gate-enforcer.ts`, `decision/unified-decision-gate.ts`
-   - Verify hypothesis→rule mapping via `hypothesis_rule_mapping`; no `ORPHAN_RULE_SELECTION`; category registry complete (memory rule).
-
-8. **Narration (Node 8)**
-   - `agents/llm-response-generator.ts`, `agents/llm-response-formatter.ts`, `agents/deterministic-response-builder.ts`, `agents/communication-generator.ts`
-   - Verify LLM receives only approved decision payload; no dose/chemical mutation; canonical-language SSOT enforced.
-
-9. **DB wiring**
-   - For each of `intent_master`, `intent_observation_mapping`, `observation_master`, `hypothesis_conditions`, `hypothesis_master`, `hypothesis_rule_mapping`, `decision_rules`: check reader function, column names via `information_schema`, row counts, and runtime usage sites. Fill the `TABLE / Expected / Actual / Connected / Broken / Fix` grid.
-
-10. **Dead code / duplicates**
-    - Compare `_deadcode/` against live counterparts.
-    - Grep for unreferenced exports in `agents/`, `decision/`, `runtime/`.
-    - Flag duplicated graph runners (`graph-runtime.ts` vs `decision-graph-navigator.ts` vs `hypothesis-graph-evaluator.ts`) and pick the one wired to the orchestrator.
-
-11. **Graph integrity traces**
-    - Mental-trace two queries end-to-end and record real vs expected node transitions:
-      - "My sugarcane leaves are yellow"
-      - "भात अजून उगवले नाही"
-
-## Phase 2 — Deliverable (produced at end of Phase 1)
-
-A single forensic report with:
-- Executive summary (Graph Working: Y/P/N, Production Ready: Y/N)
-- Actual pipeline diagram derived from code
-- Expected-vs-Actual table per node
-- P0/P1/P2 bug list with File / Function / Line / Root cause / Fix / Risk
-- Dead code report
-- Missing-wire report
-- Minimal ordered PR plan (see Phase 3)
-
-## Phase 3 — Minimal Repair PRs (build mode, after report approval)
-
-Placeholder order — actual PRs are only defined after Phase 1 findings. Each PR must:
-- touch existing files only
-- add no tables
-- add no new agents/runners
-- carry a targeted regression test in `supabase/functions/ai-agriculture-chat/tests/`
-
-```text
-PR-A  Reconnect broken graph edge exposed by trace #1
-PR-B  Delete/quarantine duplicate graph runner not wired to orchestrator
-PR-C  Restore DB reader for the table found disconnected in Phase 1
-PR-D  Kill any LLM diagnostic fallback path discovered
-PR-E  Regression tests pinning each repaired edge
-```
-
-## Guardrails
-
-- No new files, no new tables, no schema changes.
-- No parallel pipeline; repair the existing brain.
-- Every finding must cite `file:line`; no assumptions.
-- LLM stays a narrator; any code found generating agronomy is removed, not rewritten.
-
-## What I need from you before I start
-
-1. Approve running Phase 1 as a read-only forensic sweep now (I will return the full report, then wait for approval before any edits).
-2. Confirm the two trace queries above, or give me a specific failing farmer message + `land_id` from a recent session so the trace uses real data instead of synthetic input.
+Approve to implement, or say "expand to RequestScope refactor too" and I'll extend the plan (larger, riskier).
