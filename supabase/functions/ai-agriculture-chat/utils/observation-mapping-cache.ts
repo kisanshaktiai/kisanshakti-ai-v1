@@ -63,7 +63,7 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
         .from('intent_observation_mapping')
         .select('intent_code, observation_code, assertion_strength, confidence_rank')
         .eq('is_active', true)
-        .in('assertion_strength', ['LITERAL', 'STRONG'])
+        .in('assertion_strength', ['LITERAL', 'STRONG_HYPOTHESIS'])
         .order('intent_code', { ascending: true })
         .order('confidence_rank', { ascending: true, nullsFirst: false })
         .range(offset, offset + PAGE - 1);
