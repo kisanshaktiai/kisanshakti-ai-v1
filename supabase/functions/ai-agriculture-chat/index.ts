@@ -1874,6 +1874,64 @@ serve(async (req) => {
           if (renderContext.authority_override_applied) {
             console.log(`   ✅ Authority override ensured correct crop context in fallback response`);
           }
+
+          // ─────────────────────────────────────────────────────────────────
+          // Second observation-selector contract pass — the unified gate may
+          // have promoted the response to DIAGNOSTIC_ESCALATION or a young-
+          // crop OBSERVATION response after the first enforcer ran. Re-run
+          // it so an empty escalation gets converted into a farmer-facing
+          // CLARIFICATION_QUESTION with DB-sourced options (IOM SSOT).
+          // ─────────────────────────────────────────────────────────────────
+          try {
+            const _orchAnyForCtx2: any = orch as any;
+            const _graphScopeBlockedMeta2 = _orchAnyForCtx2?._graphScopeBlocked ?? null;
+            const _postGate = await ensureObservationSelectorContract(orchestratorResponse, {
+              supabase,
+              cropCode:
+                finalCropName ??
+                (orchestratorResponse as any)?.dataAudit?.land?.current_crop ??
+                (orchestratorResponse as any)?.metadata?.canonicalContext?.crop_code ??
+                null,
+              growthStage:
+                finalGrowthStage ??
+                (orchestratorResponse as any)?.dataAudit?.land?.growth_stage ??
+                (orchestratorResponse as any)?.metadata?.canonicalContext?.growth_stage ??
+                null,
+              language: detectedLanguage,
+              traceId,
+              intentCode:
+                (orchestratorResponse as any)?.metadata?.intent_code ??
+                (orchestratorResponse as any)?.intent ??
+                _orchAnyForCtx2?._lastIntentCode ??
+                null,
+              daysSinceSowing:
+                finalDaysSinceSowing ??
+                (orchestratorResponse as any)?.dataAudit?.land?.days_since_sowing ??
+                null,
+              graphReason: _graphScopeBlockedMeta2
+                ? `INSUFFICIENT_EVIDENCE:${_graphScopeBlockedMeta2.reason ?? 'NO_HYPOTHESIS_SURVIVED_DB_GATES'}`
+                : 'INSUFFICIENT_EVIDENCE',
+            });
+            if (_postGate.promoted || _postGate.hydrated) {
+              console.log(
+                `[OBSERVATION_CONTRACT_POSTGATE] trace=${traceId} promoted=${_postGate.promoted} hydrated=${_postGate.hydrated} options=${_postGate.option_count} reason=${_postGate.reason}`,
+              );
+              // If we promoted to CLARIFICATION_QUESTION, prefer the question
+              // text over the gate-generated escalation content.
+              if ((orchestratorResponse as any).type === 'CLARIFICATION_QUESTION') {
+                const q = (orchestratorResponse as any).question;
+                if (q && typeof q === 'object' && (q.text_en || q.text)) {
+                  responseContent = String(q[`text_${detectedLanguage}`] || q.text_en || q.text || responseContent);
+                }
+              }
+            }
+          } catch (postGateErr) {
+            if ((postGateErr as Error).message?.startsWith('OBSERVATION_CONTRACT_VIOLATION')) {
+              console.error(`[OBSERVATION_CONTRACT_POSTGATE] ${(postGateErr as Error).message}`);
+            } else {
+              console.warn(`[OBSERVATION_CONTRACT_POSTGATE] non-fatal: ${(postGateErr as Error).message}`);
+            }
+          }
         } else {
           // ═══════════════════════════════════════════════════════════════════════════
           // PRESCRIPTION GATE PASSED - Continue with LLM formatting
