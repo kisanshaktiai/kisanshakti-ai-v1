@@ -195,6 +195,23 @@ export async function loadIOMAllowed(
  * drop everything on an empty allowlist because that would crash genuine
  * diagnosis flows where no IOM row exists yet.
  */
+/**
+ * AUDIT-ONLY hypothesis IOM check.
+ *
+ * Architecture invariant (2026-07-08):
+ *   `intent_observation_mapping` is the OBSERVATION discovery layer — it
+ *   answers "what observations should we collect for this intent?", NOT
+ *   "which hypotheses are valid". Hypothesis authority comes from
+ *   `hypothesis_conditions` + `hypothesis_master`. Killing hypotheses that
+ *   already survived the DB graph just because their surface observation
+ *   labels are absent from an IOM cell corrupts the neuro-symbolic pipeline
+ *   (OBS → HYP → RULE → DECISION).
+ *
+ * This function no longer removes hypotheses. It emits an [IOM_AUDIT] trace
+ * for observability and always returns the input list unchanged, with any
+ * non-overlapping candidates reported in `dropped` so downstream code can
+ * still surface them for curation review.
+ */
 export function filterHypothesesByIOM<
   T extends {
     cause?: string;
@@ -210,38 +227,28 @@ export function filterHypothesesByIOM<
     return { kept: [], dropped: [] };
   }
   if (!allowedSet || allowedSet.size === 0) {
-    console.warn(
-      `[IOM_GATE] empty allowlist for ${traceMeta?.intent}/${traceMeta?.crop}/${traceMeta?.stage} — keeping all ${hypotheses.length} hypotheses (no fail-closed drop)`,
-    );
     return { kept: hypotheses, dropped: [] };
   }
 
-  const kept: T[] = [];
-  const dropped: Array<{ cause: string; keys: string[] }> = [];
-
+  const outside: Array<{ cause: string; keys: string[] }> = [];
   for (const h of hypotheses) {
     const keys = (h.observable_characteristics || [])
       .map((o) => String(o?.observation_key || '').trim().toLowerCase().replace(/[\s-]+/g, '_'))
       .filter(Boolean);
     const hit = keys.some((k) => allowedSet.has(k));
-    if (hit) {
-      kept.push(h);
-    } else {
-      dropped.push({ cause: String(h.cause || h.canonical_group || 'unknown'), keys });
-    }
+    if (!hit) outside.push({ cause: String(h.cause || h.canonical_group || 'unknown'), keys });
   }
 
-  if (dropped.length > 0) {
+  if (outside.length > 0) {
     console.log(
-      `[IOM_GATE] dropped ${dropped.length}/${hypotheses.length} hypotheses not in IOM allowlist:`,
+      `[IOM_AUDIT] ${outside.length}/${hypotheses.length} surviving hypotheses have no observable_characteristic in the IOM cell ` +
+        `(intent=${traceMeta?.intent} crop=${traceMeta?.crop} stage=${traceMeta?.stage}) — kept for hypothesis-authority reasoning`,
     );
-    for (const d of dropped.slice(0, 6)) {
-      console.log(`[IOM_GATE]   ✗ ${d.cause} (keys=${d.keys.slice(0, 4).join(',') || 'none'})`);
+    for (const d of outside.slice(0, 6)) {
+      console.log(`[IOM_AUDIT]   ~ ${d.cause} (keys=${d.keys.slice(0, 4).join(',') || 'none'})`);
     }
   }
-  if (kept.length > 0) {
-    console.log(`[IOM_GATE] kept ${kept.length} hypotheses passing IOM gate`);
-  }
 
-  return { kept, dropped };
+  return { kept: hypotheses, dropped: outside };
 }
+
