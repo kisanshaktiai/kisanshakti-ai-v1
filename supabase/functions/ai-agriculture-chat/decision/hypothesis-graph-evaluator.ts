@@ -207,6 +207,9 @@ export async function evaluateHypothesisGraph(
         warnings: [`ELIMINATED:REQUIRED_STAGE_FAILED(${stagePass.reason})`],
         clarification_required: false,
         candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: `REQUIRED_STAGE_FAILED(${stagePass.reason})`,
       } as GraphHypothesisCandidate);
       continue;
     }
