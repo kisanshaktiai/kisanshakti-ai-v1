@@ -499,7 +499,9 @@ function checkContradictions(
 
     switch (contradiction_type) {
       case 'OBSERVATION': {
-        if (obsLower.includes(contradiction_value.toLowerCase())) {
+        const cvNorm = SymbolContract.normalize(contradiction_value);
+        if (cvNorm && obsSet.has(cvNorm)) {
+
           found.push(`${contradiction_key}=${contradiction_value}: ${c.explanation || 'contradiction detected'}`);
         }
         break;
