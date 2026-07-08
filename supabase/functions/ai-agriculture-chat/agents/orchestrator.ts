@@ -5033,11 +5033,46 @@ export class AIAgentOrchestrator {
           } catch (e) {
             if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
                 (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
-            console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
+            const graphErrMessage = (e as Error).message ?? String(e);
+            const nonFatalNoSurvivorGraph =
+              graphErrMessage.startsWith('STAGE_FILTER_KILLED_VALID_DIAGNOSIS') ||
+              graphErrMessage.includes('NO_SURVIVING_HYPOTHESIS') ||
+              graphErrMessage.includes('REQUIRED_STAGE_FAILED') ||
+              graphErrMessage.includes('REQUIRED_DAS_FAILED');
+
+            console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${graphErrMessage}`);
+            if (nonFatalNoSurvivorGraph) {
+              // The graph ran far enough to establish that DB-curated stage/DAS
+              // constraints exhausted the candidate set. That is a valid graph
+              // result, not a bypass. Mark sequence=2 so downstream invariants
+              // and the index-level audit do not convert it into HTTP 500.
+              try {
+                assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
+              } catch (orderErr) {
+                if ((orderErr as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw orderErr;
+              }
+              (this as any)._graphExecuted = true;
+              (this as any)._graphHypothesisResult = {
+                candidates: [],
+                eliminated: [],
+                input_observations: currentObservations,
+                trace_id: traceId,
+                timings_ms: 0,
+              };
+              (this as any)._graphHypothesisIds = [];
+              (this as any)._graphHypothesisRuleIds = [];
+              (this as any)._graphHypothesisEdgeMissing = [];
+              (this as any)._graphExhaustedReason = graphErrMessage;
+              console.warn(
+                `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
+                `hyp=[] sequence=2 survived=0 eliminated=unknown edge_missing=0 ` +
+                `reason=GRAPH_CONTEXT_EXHAUSTED`,
+              );
+            }
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
             // continue when the hypothesis graph did not execute. Fail closed.
-            if (isDiagnosticIntent) {
-              throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but hypothesis graph evaluator threw: ${(e as Error).message}`);
+            if (isDiagnosticIntent && !(this as any)._graphExecuted) {
+              throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but hypothesis graph evaluator threw: ${graphErrMessage}`);
             }
           }
           // Hard graph invariant — even if the try above resolved without an

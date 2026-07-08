@@ -2505,7 +2505,7 @@ serve(async (req) => {
     // client transport failure. Returning 500 makes Supabase JS throw and the
     // chat screen goes blank before the safe fallback can render. Keep the
     // anomaly greppable in logs, but return a structured 200 response.
-    if (errorMessage.startsWith('GRAPH_PIPELINE_BYPASSED')) {
+    if (errorMessage.includes('GRAPH_PIPELINE_BYPASSED')) {
       console.error(`[GRAPH_PIPELINE_BYPASSED_RECOVERED] trace_id=${traceId} ${errorMessage}`);
       return new Response(
         JSON.stringify({

@@ -1,109 +1,59 @@
-## Forensic audit — DAS / crop / variety / stage SSOT
+## Diagnosis
 
-**Verdict:** the neuro-symbolic brain currently has **four competing stage resolvers**. `public.resolve_crop_phenology()` is the true SSOT (it already reads `lands.current_crop`, `current_crop_variety_id`, `planting_date`/`last_sowing_date`/`transplant_date`, `crop_stage_master`, `variety_phenology_profile`, `evaluate_stage_transitions`, `current_gdd`, and emits `stage_uuid`, `growth_stage`, `current_das`, `confidence`, `source`, `resolver_version`). Multiple upstream and sibling code paths bypass it or run their own hardcoded ladders in parallel.
-
-### Violations found (all live on the request path)
-
-**1. `agents/orchestrator.ts` lines 9707–9779** — 85-line hardcoded ICAR ladder `calculateGrowthStage` for WHEAT/RICE/SUGARCANE/COTTON/SOYBEAN/MAIZE + DEFAULT. **Called at line 9325 BEFORE `resolve_crop_phenology` runs at line 9373.** Second brain, competing with the RPC every single turn.
-
-**2. `decision/authoritative-state-loader.ts` lines 638–645** — 7-line hardcoded DAS ladder that fires when the RPC returns no row and emits `EARLY_VEGETATIVE` / `GRAND_GROWTH` / `MATURITY`. Should emit `null` + `stage_source='UNKNOWN'`.
-
-**3. `decision/context-validator.ts::validateGrowthStage` lines 231–284** — recomputes DAS from `sowing_date` and calls `getStageByDAS(crop, DAS)` (crop_stage_master only, **variety-blind**). Third brain, ignores `biological_state.growth_stage` that the RPC already produced.
-
-**4. `decision/crop-calendar-lookup.ts::calculateGrowthStageFromDAS`** — still exported, wraps `getStageByDAS` (variety-blind). Any consumer bypasses the phenology RPC and variety overrides.
-
-### SSOT columns the loader is NOT reading
-
-`authoritative-state-loader.ts` line 370 selects nothing from these already-computed SSOT columns on `public.lands`:
-
-- `das` (int) — precomputed authoritative DAS
-- `stage_uuid`, `crop_stage`, `stage_source`, `stage_resolved_at` — resolved stage + audit
-- `current_crop_id` (FK to `crops.id`), `current_crop_variety_id` (FK to variety)
-- `planting_date`, `last_sowing_date`, `transplant_date`, `current_gdd`, `crop_cycle`
-
-Loader line 379 selects only `crop_name, crop_variety, sowing_date, expected_harvest_date, status, is_active` from `crop_schedules` — ignores `variety_id`, `transplant_date`, `stages_covered` (jsonb).
-
-**Consequence:** the loader recomputes DAS from `crop_schedules.sowing_date` alone (line 445) while the RPC coalesces `lands.planting_date > lands.last_sowing_date > crop_schedules.sowing_date` (RPC lines 57–61) — the two DAS values disagree whenever `lands.planting_date` is set. Everything downstream that reads `land_state.crop.days_since_sowing` (instead of `biological_state.das`) sees the drifted value.
-
-### Crop identity drift
-
-`AuthoritativeLandState.crop.current_crop` is set from `crop_schedules.crop_name` (text) at loader line 663, not from `lands.current_crop_id → crops.id → crops.value`. This is exactly the anti-pattern the user called out: canonical `crops.id` is the SSOT, `crop_schedules.crop_name` is a mirror that can drift.
-
-### Variety-aware phenology not propagated
-
-`variety_phenology_profile.das_min_override / das_max_override / stage_uuid` are consulted **only inside** the RPC. `getStageByDAS` in `stage-knowledge-cache.ts` is variety-blind. `AuthoritativeLandState.crop` does not carry `variety_id`. Downstream rule scoping (`landContext.current_crop_variety_id`) survives only because the orchestrator plumbs it from a different upstream source (frontend context) — fragile.
-
-### Proposed remediation (surgical PRs — one at a time)
+The failing turn is not a generic Supabase/runtime outage. The trace shows a deterministic path:
 
 ```text
-PR-4a  orchestrator.calculateGrowthStage        DELETE 85-line ladder + its
-                                                 pre-RPC call site
-PR-4b  authoritative-state-loader ladder        DELETE 7-line fallback; emit
-                                                 null + stage_source='UNKNOWN'
-PR-4c  context-validator.validateGrowthStage    Consume biological_state /
-                                                 land_state.crop.growth_stage;
-                                                 stop importing getStageByDAS;
-                                                 add stage_source='LOCKED'
-PR-4d  authoritative-state-loader queries       SELECT lands.{das,stage_uuid,
-                                                 crop_stage,current_crop_id,
-                                                 current_crop_variety_id,
-                                                 stage_source,planting_date,
-                                                 last_sowing_date,
-                                                 transplant_date,crop_cycle,
-                                                 current_gdd}; add crop_id,
-                                                 variety_id, transplant_date,
-                                                 stage_uuid, precomputed_das
-                                                 to AuthoritativeLandState.crop
-PR-4e  BiologicalState in loader                Build BiologicalState inside
-                                                 authoritative-state-loader so
-                                                 crop.growth_stage NEVER comes
-                                                 from a ladder — single freeze
-                                                 point
-PR-4f  Variety-aware getStageByDAS              Extend stage-knowledge-cache
-                                                 to preload variety_phenology_
-                                                 profile; getStageByDAS(crop,
-                                                 das, varietyId?) prefers
-                                                 override bands
-PR-4g  Canonical crop identity                  Resolve crop_code via
-                                                 lands.current_crop_id →
-                                                 crops.value; fall back to
-                                                 crop_schedules.crop_name only
-                                                 when the FK is null
-PR-4h  Integrity tests                          graph-integrity_test asserts
-                                                 (a) no DAS→stage ladders in
-                                                 decision/ or agents/, (b)
-                                                 context-validator does not
-                                                 import getStageByDAS, (c)
-                                                 loader queries include the
-                                                 lands SSOT columns above
+farmer says: rice has not emerged
+intent: EMERGENCE_FAILURE
+crop: RICE
+stage: transplanting
+matched hypothesis: RICE_GERMINATION_FAILURE
+eliminated reason: REQUIRED_STAGE_FAILED(expected germination/nursery/seedling/emergence/establishment, got transplanting)
+then orchestrator wraps it as GRAPH_PIPELINE_BYPASSED
+then edge function returns 500
 ```
 
-### Contract after all PRs land
+Do I know what the issue is? Yes.
 
-```text
-resolve_crop_phenology(land_id)   ← the only stage/DAS producer
-        │
-        ▼
-BiologicalState (frozen, single writer)
-        │
-        ▼
-AuthoritativeLandState.crop { crop_id, variety_id, growth_stage,
-                              stage_uuid, das, sowing_date,
-                              transplant_date, crop_cycle }
-        │
-        ▼
-Every downstream consumer READS from the frozen state.
-No module recomputes DAS. No module resolves stage. No hardcoded ladder.
-```
+The root cause is in the graph/orchestrator boundary:
 
-### Technical proof points (verified live)
+1. `hypothesis-graph-evaluator.ts` hard-eliminates the only matched hypothesis because the DB required stage says germination/emergence, while the authoritative biological state says transplanting.
+2. That should be a valid “no surviving hypothesis / ask for clarification or handle stage conflict” graph result, not an exception.
+3. `orchestrator.ts` catches the evaluator exception and rethrows it as `GRAPH_PIPELINE_BYPASSED` for diagnostic intents.
+4. The deployed edge function is still returning a non-2xx response for that invariant path, causing Supabase JS `FunctionsHttpError` and the blank chat error.
+5. Recent PR-4 changes also left stale tests/comments around DAS-to-stage logic and make this regression easy to miss.
 
-- `resolve_crop_phenology` signature verified via `pg_proc` — emits 24 columns including `stage_uuid`, `growth_stage`, `current_das`, `confidence`, `source`, `resolver_version`.
-- `lands` columns verified: `das int`, `stage_uuid uuid`, `crop_stage varchar`, `current_crop_id uuid`, `current_crop_variety_id uuid`, `stage_source text`, `stage_resolved_at timestamptz`, `transplant_date date`, `last_sowing_date date`, `planting_date` (implicit from RPC), `crop_cycle text`.
-- `crop_schedules` columns verified: `crop_name`, `crop_variety`, `variety_id uuid`, `sowing_date`, `transplant_date`, `stages_covered jsonb`.
-- `variety_phenology_profile` columns verified: `crop_code`, `variety_id`, `stage_uuid`, `stage_code`, `das_min_override int`, `das_max_override int`.
-- All four competing stage resolvers cited above are on the live orchestrator path (verified by `rg` and file reads).
+## Implementation plan
 
-### Question before implementation
+1. **Fix the graph evaluator contract**
+   - Change the “stage filter killed valid diagnosis” path so it does not throw for DB-required `REQUIRED_STAGE_FAILED` / `REQUIRED_DAS_FAILED` eliminations.
+   - Return a normal `GraphHypothesisResult` with eliminated candidates and `NO_SURVIVING_HYPOTHESIS` trace.
+   - Keep loud logs for audit, but no exception unless there is a true graph corruption case.
 
-Which PR do you want first? I recommend **PR-4a** (delete the 85-line ladder inside orchestrator + its pre-RPC call site) — smallest change, biggest single-brain gain, zero schema impact, immediately eliminates the largest hardcoded agronomic table still on the request path.
+2. **Fix orchestrator handling**
+   - In the graph evaluator catch block, stop converting known graph no-result/stage-conflict conditions into `GRAPH_PIPELINE_BYPASSED`.
+   - Mark the graph as executed once the evaluator has emitted/returned a graph result, even if zero candidates survive.
+   - Route zero-survivor diagnostic cases into the existing clarification/observation contract instead of a transport failure.
+
+3. **Keep stage SSOT intact**
+   - Do not reintroduce `getStageByDAS` into `context-validator`.
+   - Ensure the graph input uses `biological_state.growth_stage` / canonical context first, and only uses persisted land stage as a fallback.
+   - Preserve the rule that `transplanting` is post-germination/vegetative, not seedling.
+
+4. **Clean up PR-4 regression tests**
+   - Update stale graph tests that still look for a deleted hardcoded rice calendar in `context-validator.ts`.
+   - Add/adjust a regression test asserting that the graph evaluator returns a non-throwing empty result when a stage-required hypothesis is eliminated.
+   - Add a source-level guard that `context-validator.ts` has no `getStageByDAS` import or call.
+
+5. **Validate locally**
+   - Run targeted Deno edge-function tests for `ai-agriculture-chat`.
+   - Run the relevant TypeScript/edge-function checks available in the project harness.
+   - Confirm there are no remaining `GRAPH_PIPELINE_BYPASSED` throws on the normal zero-survivor graph path.
+
+6. **Redeploy edge function**
+   - Deploy `ai-agriculture-chat` after code/test fixes.
+   - Re-check recent edge-function logs for the same Marathi rice emergence trace pattern and verify it no longer returns HTTP 500.
+
+## Expected outcome
+
+The same farmer message should no longer blank the chat. The edge function should return a normal response/clarification path, while logs still show the stage conflict for audit and database curation.
