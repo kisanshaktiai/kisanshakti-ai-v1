@@ -922,26 +922,30 @@ export async function runCausalHypothesisArbitration(
   // crop-specific canonicals (obs_rice_no_emergence). No hardcoded per-condition
   // dictionaries — the bridge itself is data (small in-code table today,
   // observation_aliases long-term).
-  let bridgedObservations = observations;
+  let bridgedObservations: string[] = observations;
   try {
     const { bridgeToCropVocab } = await import('./concept-bridge.ts');
     const seen = new Set<string>();
     const out: string[] = [];
     for (const raw of observations) {
       if (!raw) continue;
-      const bridged = bridgeToCropVocab(normalizedCropGroup, raw);
-      const key = String(bridged).toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(bridged);
-      if (bridged !== raw) {
-        console.log(`[OBSERVATION_BRIDGE] input=${raw} resolved=${bridged} source=concept_bridge crop=${normalizedCropGroup}`);
+      // Async DB-backed bridge (observation_aliases). Must be awaited or
+      // Promise objects leak into downstream string ops (`.toLowerCase` crash).
+      const bridged = await bridgeToCropVocab(supabase_client, normalizedCropGroup, raw);
+      const canonical = coerceSymbol(bridged?.canonical_code) ?? coerceSymbol(raw);
+      if (!canonical) continue;
+      if (seen.has(canonical)) continue;
+      seen.add(canonical);
+      out.push(canonical);
+      if (bridged?.canonical_code && bridged.canonical_code !== bridged.raw_code) {
+        console.log(`[OBSERVATION_BRIDGE] input=${raw} resolved=${bridged.canonical_code} source=${bridged.source} crop=${normalizedCropGroup}`);
       }
     }
     bridgedObservations = out;
   } catch (e) {
     console.warn(`[OBSERVATION_BRIDGE] bridge failed, using raw observations: ${(e as Error).message}`);
   }
+
 
   if (!cropHasHypotheses) {
     console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
