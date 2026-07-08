@@ -342,26 +342,28 @@ function evaluateCondition(
                 : []));
       if (codes.length === 0) return HypothesisConditionStatus.FAILED;
 
-      const obsLower = observations.map((o) => String(o).toLowerCase());
-      const codesLower = codes.map((c) => c.toLowerCase());
+      // SymbolContract equality — case/separator-insensitive graph identity.
+      const obsSet = SymbolContract.toNormalizedSet(observations);
+      const normCodes = codes.map((c) => SymbolContract.normalize(c)).filter((c): c is string => !!c);
 
       if (operator === 'CONTAINS' || operator === 'IN' || operator === 'ANY_OF') {
-        return codesLower.some((c) => obsLower.includes(c))
+        return normCodes.some((c) => obsSet.has(c))
           ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
       if (operator === 'ALL_OF') {
-        return codesLower.every((c) => obsLower.includes(c))
+        return normCodes.every((c) => obsSet.has(c))
           ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
       if (operator === 'NOT_EXISTS' || operator === 'NOT_IN') {
-        return codesLower.every((c) => !obsLower.includes(c))
+        return normCodes.every((c) => !obsSet.has(c))
           ? HypothesisConditionStatus.PASSED
           : HypothesisConditionStatus.FAILED;
       }
       return HypothesisConditionStatus.FAILED;
     }
+
 
     case 'DAS_RANGE': {
       const das = canonicalState.days_since_sowing;
