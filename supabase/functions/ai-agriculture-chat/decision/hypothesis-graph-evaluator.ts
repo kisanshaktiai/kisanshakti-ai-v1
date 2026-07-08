@@ -185,6 +185,52 @@ export async function evaluateHypothesisGraph(
     const stagePass = checkStageCondition(conds, input.growth_stage);
     const dasPass = checkDasCondition(conds, input.das);
 
+    // ── HARD REQUIRED-CONDITION GATE (fix 2026-07-08) ────────────────────
+    // hypothesis_conditions.is_required=true is a DB-level HARD contract.
+    // If STAGE or DAS_RANGE with is_required=true fails, the hypothesis is
+    // eliminated — no soft penalty, no clarification fallback. This is what
+    // the DB SSOT already declares; the runtime must respect it.
+    if (stagePass.required_fail) {
+      console.log(`[HYP_ELIMINATED] trace=${trace} hypothesis_id=${hid} reason=REQUIRED_STAGE_FAILED ${stagePass.reason}`);
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: [], negative_matches: [], missing_required: [],
+        blocking_conditions: [], required_total: 0, required_matched: 0,
+        required_match_pct: 0, supporting_score: 0, confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:REQUIRED_STAGE_FAILED(${stagePass.reason})`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+      } as GraphHypothesisCandidate);
+      continue;
+    }
+    if (dasPass.required_fail) {
+      console.log(`[HYP_ELIMINATED] trace=${trace} hypothesis_id=${hid} reason=REQUIRED_DAS_FAILED ${dasPass.reason}`);
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: [], negative_matches: [], missing_required: [],
+        blocking_conditions: [], required_total: 0, required_matched: 0,
+        required_match_pct: 0, supporting_score: 0, confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:REQUIRED_DAS_FAILED(${dasPass.reason})`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+      } as GraphHypothesisCandidate);
+      continue;
+    }
+
     const rules = ruleEdges.get(hid) ?? [];
 
     const requiredTotal = buckets.requiredCodes.size;
@@ -211,13 +257,13 @@ export async function evaluateHypothesisGraph(
     if (dasPass.pass && dasPass.reason === 'DAS_UNKNOWN' && hasDasCondition(conds)) {
       context_gaps.push({ missing: 'DAS_UNKNOWN', confidence_penalty: 0.05, clarification_required: false });
     }
-    // Stage/DAS MISMATCH ≠ biological impossibility. Farmer-visible symptoms
-    // outrank derived crop calendar. Convert to soft conflict + clarification.
-    if (!stagePass.pass) {
+    // Soft (is_required=false) stage/DAS mismatch remains a soft penalty
+    // so farmer-visible symptoms can still outrank a soft calendar signal.
+    if (!stagePass.pass && !stagePass.required_fail) {
       warnings.push(`STAGE_CONTEXT_CONFLICT(${stagePass.reason})`);
       softPenalty += 0.15;
     }
-    if (!dasPass.pass) {
+    if (!dasPass.pass && !dasPass.required_fail) {
       warnings.push(`DAS_CONTEXT_CONFLICT(${dasPass.reason})`);
       softPenalty += 0.10;
     }
