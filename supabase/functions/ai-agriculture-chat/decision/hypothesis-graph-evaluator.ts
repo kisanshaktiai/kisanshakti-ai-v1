@@ -35,6 +35,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import { stagesEquivalent } from '../runtime/stage-family-shim.ts';
+import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
+
 export interface GraphHypothesisInput {
   crop_code: string | null;
   crop_group?: string | null;
@@ -182,7 +185,7 @@ export async function evaluateHypothesisGraph(
 
     // STAGE / DAS gate — enforced from the DB, not from TS ontology.
     // UNKNOWN context returns pass=true so it never eliminates.
-    const stagePass = checkStageCondition(conds, input.growth_stage);
+    const stagePass = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
     const dasPass = checkDasCondition(conds, input.das);
 
     // ── HARD REQUIRED-CONDITION GATE (fix 2026-07-08) ────────────────────
@@ -378,8 +381,13 @@ export async function evaluateHypothesisGraph(
   // reason is non-agronomic → over-filtering bug. Fail loud.
   const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION', 'NO_REQUIRED_MATCH']);
   const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP'];
+  const DB_REQUIRED_GATE_PREFIXES = ['REQUIRED_STAGE_FAILED', 'REQUIRED_DAS_FAILED'];
   const isAgronomicContradiction = (r?: string) =>
-    !!r && (CONTRADICTION_REASONS.has(r) || CONTRADICTION_PREFIXES.some((p) => r.startsWith(p)));
+    !!r && (
+      CONTRADICTION_REASONS.has(r) ||
+      CONTRADICTION_PREFIXES.some((p) => r.startsWith(p)) ||
+      DB_REQUIRED_GATE_PREFIXES.some((p) => r.startsWith(p))
+    );
   if (
     matchedHypothesisIds.length > 0 &&
     candidates.length === 0 &&
@@ -627,17 +635,21 @@ function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): B
 function checkStageCondition(
   conds: ConditionRow[],
   stage: string | null,
+  crop: string | null,
 ): { pass: boolean; reason: string; required_fail: boolean } {
   const rows = conds.filter((c) => c.condition_type === 'STAGE');
   if (rows.length === 0) return { pass: true, reason: 'NO_STAGE_COND', required_fail: false };
   if (!stage) return { pass: true, reason: 'STAGE_UNKNOWN', required_fail: false }; // don't eliminate without ground truth
-  const s = String(stage).toLowerCase();
+  const s = normalizeStageForDB(String(stage)).toLowerCase();
   let requiredFail = false;
   let failReason = '';
   for (const r of rows) {
     const allowed = extractStages(r.value_json);
     if (allowed.length === 0) continue;
-    const ok = allowed.some((x) => x === s || s.includes(x) || x.includes(s));
+    const ok = allowed.some((raw) => {
+      const x = normalizeStageForDB(raw).toLowerCase();
+      return x === s || stagesEquivalent(x, s, crop) || s.includes(x) || x.includes(s);
+    });
     if (!ok) {
       failReason = `expected=[${allowed.join('|')}] got=${s}`;
       // FIX (2026-07-08): Honor DB SSOT — is_required=true STAGE mismatch
@@ -685,6 +697,8 @@ function extractStages(v: any): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.map((x) => String(x).toLowerCase());
   if (Array.isArray(v?.stages)) return v.stages.map((x: any) => String(x).toLowerCase());
+  if (Array.isArray(v?.allowed_stages)) return v.allowed_stages.map((x: any) => String(x).toLowerCase());
+  if (typeof v === 'string') return [v.toLowerCase()];
   return [];
 }
 

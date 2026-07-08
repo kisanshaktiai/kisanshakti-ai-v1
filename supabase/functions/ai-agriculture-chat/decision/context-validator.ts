@@ -59,10 +59,13 @@ export interface ContextValidationResult {
     question_en: string;
     options?: string[];
   };
+  // Backward-compatible aliases consumed by older orchestrator call sites.
+  clarification_prompt?: string;
+  clarification_options?: Array<{ label: string; observation_key?: string }>;
 }
 
 export interface ContextValidationInput {
-  farmer_mentioned_crop?: string;
+  farmer_mentioned_crop?: string | null;
   land_context?: {
     crop_name?: string;
     crop_code?: string;
@@ -164,6 +167,17 @@ export class ContextValidator {
     } else if (result.warnings.length > 0) {
       result.status = 'WARN';
     }
+
+    if (result.clarification_question) {
+      result.clarification_prompt =
+        result.clarification_question.question_en ||
+        result.clarification_question.question_mr ||
+        result.clarification_question.question_hi;
+      result.clarification_options = (result.clarification_question.options || []).map((label) => ({
+        label,
+        observation_key: label,
+      }));
+    }
     
     console.log(`✅ [ContextValidator] Status: ${result.status}, Quality: ${result.data_quality_score}%`);
     
@@ -180,7 +194,9 @@ export class ContextValidator {
     
     const landCrop = stripUnknown(input.land_context?.crop_name) || stripUnknown(input.land_context?.crop_code);
     const farmerCrop = stripUnknown(input.farmer_mentioned_crop);
-    const landStateCrop = stripUnknown(input.land_state?.crop?.crop_name);
+    const landStateCrop =
+      stripUnknown(input.land_state?.crop?.current_crop) ||
+      stripUnknown(input.land_state?.crop?.crop_code);
     // Also check NLU output for crop
     const nluCrop = stripUnknown(
       (input as any).nlu_output?.crop_identification?.crop_code || 
@@ -352,8 +368,17 @@ export class ContextValidator {
     }
     
     // Soil data (15 points)
-    // FIX: Null-safe access to prevent "Cannot read properties of undefined"
-    if (input.land_state?.soil?.npk_available) score += 15;
+    // AuthoritativeLandState exposes raw soil values, not legacy `npk_available`.
+    const soil = input.land_state?.soil;
+    if (soil && (
+      soil.nitrogen_kg_per_ha !== null ||
+      soil.phosphorus_kg_per_ha !== null ||
+      soil.potassium_kg_per_ha !== null ||
+      soil.ph !== null ||
+      soil.texture !== null
+    )) {
+      score += 15;
+    }
     
     // Weather data (10 points)
     // FIX: Null-safe access

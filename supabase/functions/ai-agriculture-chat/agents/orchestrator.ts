@@ -444,7 +444,6 @@ const EMERGENCY_OBS_CODES = new Set([
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   validateContextCompleteness,
-  reconcileCropContext,
   performConsistencyChecks,
   type ContextValidationResult
 } from '../decision/context-validator.ts';
