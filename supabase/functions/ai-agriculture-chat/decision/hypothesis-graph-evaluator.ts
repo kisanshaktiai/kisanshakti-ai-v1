@@ -572,39 +572,61 @@ function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): B
   return b;
 }
 
-function checkStageCondition(conds: ConditionRow[], stage: string | null): { pass: boolean; reason: string } {
+function checkStageCondition(
+  conds: ConditionRow[],
+  stage: string | null,
+): { pass: boolean; reason: string; required_fail: boolean } {
   const rows = conds.filter((c) => c.condition_type === 'STAGE');
-  if (rows.length === 0) return { pass: true, reason: 'NO_STAGE_COND' };
-  if (!stage) return { pass: true, reason: 'STAGE_UNKNOWN' }; // don't eliminate without ground truth
+  if (rows.length === 0) return { pass: true, reason: 'NO_STAGE_COND', required_fail: false };
+  if (!stage) return { pass: true, reason: 'STAGE_UNKNOWN', required_fail: false }; // don't eliminate without ground truth
   const s = String(stage).toLowerCase();
+  let requiredFail = false;
+  let failReason = '';
   for (const r of rows) {
     const allowed = extractStages(r.value_json);
     if (allowed.length === 0) continue;
     const ok = allowed.some((x) => x === s || s.includes(x) || x.includes(s));
-    if (!ok) return { pass: false, reason: `expected=[${allowed.join('|')}] got=${s}` };
+    if (!ok) {
+      failReason = `expected=[${allowed.join('|')}] got=${s}`;
+      // FIX (2026-07-08): Honor DB SSOT — is_required=true STAGE mismatch
+      // is a HARD elimination, not a soft penalty. See hypothesis_conditions.
+      if (r.is_required === true) {
+        return { pass: false, reason: failReason, required_fail: true };
+      }
+      // soft fail (is_required=false) — keep prior behavior (penalty later)
+      return { pass: false, reason: failReason, required_fail: false };
+    }
   }
-  return { pass: true, reason: 'STAGE_OK' };
+  return { pass: true, reason: 'STAGE_OK', required_fail: false };
 }
 
-function checkDasCondition(conds: ConditionRow[], das: number | null): { pass: boolean; reason: string } {
+function checkDasCondition(
+  conds: ConditionRow[],
+  das: number | null,
+): { pass: boolean; reason: string; required_fail: boolean } {
   const rows = conds.filter((c) => c.condition_type === 'DAS_RANGE');
-  if (rows.length === 0) return { pass: true, reason: 'NO_DAS_COND' };
-  if (das == null || !Number.isFinite(das)) return { pass: true, reason: 'DAS_UNKNOWN' };
+  if (rows.length === 0) return { pass: true, reason: 'NO_DAS_COND', required_fail: false };
+  if (das == null || !Number.isFinite(das)) return { pass: true, reason: 'DAS_UNKNOWN', required_fail: false };
   for (const r of rows) {
     const v = r.value_json ?? {};
     const min = typeof v.min === 'number' ? v.min : null;
     const max = typeof v.max === 'number' ? v.max : null;
     const op = String(r.operator ?? 'BETWEEN').toUpperCase();
+    let failReason: string | null = null;
     if (op === 'BETWEEN') {
-      if (min != null && das < min) return { pass: false, reason: `das=${das}<min=${min}` };
-      if (max != null && das > max) return { pass: false, reason: `das=${das}>max=${max}` };
+      if (min != null && das < min) failReason = `das=${das}<min=${min}`;
+      else if (max != null && das > max) failReason = `das=${das}>max=${max}`;
     } else if (op === 'GT') {
-      if (min != null && das < min) return { pass: false, reason: `das=${das}<gt_min=${min}` };
+      if (min != null && das < min) failReason = `das=${das}<gt_min=${min}`;
     } else if (op === 'LT') {
-      if (max != null && das > max) return { pass: false, reason: `das=${das}>lt_max=${max}` };
+      if (max != null && das > max) failReason = `das=${das}>lt_max=${max}`;
+    }
+    if (failReason) {
+      // FIX (2026-07-08): Hard-eliminate on is_required=true DAS_RANGE fail.
+      return { pass: false, reason: failReason, required_fail: r.is_required === true };
     }
   }
-  return { pass: true, reason: 'DAS_OK' };
+  return { pass: true, reason: 'DAS_OK', required_fail: false };
 }
 
 function extractStages(v: any): string[] {
