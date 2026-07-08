@@ -253,33 +253,32 @@ export class ContextValidator {
       return;
     }
     
-    // Look up stage from ICAR calendar
-    const calendar = ICAR_CROP_CALENDARS[cropCode?.toLowerCase() || ''];
-    
-    if (!calendar) {
-      // No calendar for this crop - use generic stages
-      result.reconciled_stage = this.calculateGenericStage(daysSinceSowing);
-      result.stage_source = 'CALCULATED';
-      result.warnings.push(`No ICAR calendar for ${cropCode}, using generic`);
+    // DB SSOT: crop_stage_master via StageKnowledgeCache (preloaded at
+    // orchestrator boot). No hardcoded per-crop calendars live in this file.
+    const crop = (cropCode || '').toLowerCase();
+    if (!isStageKnowledgeLoaded()) {
+      result.reconciled_stage = 'VEGETATIVE';
+      result.stage_source = 'DEFAULT';
+      result.warnings.push('Stage knowledge cache not loaded, defaulting to VEGETATIVE');
       result.gates_passed.push('G2_STAGE_DETERMINISM');
       return;
     }
-    
-    // Find matching stage from calendar
-    for (const stageRange of calendar) {
-      if (daysSinceSowing >= stageRange.min_days && daysSinceSowing <= stageRange.max_days) {
-        result.reconciled_stage = stageRange.stage;
-        result.stage_source = 'CONFIRMED';
-        result.gates_passed.push('G2_STAGE_DETERMINISM');
-        console.log(`   Stage: ${stageRange.stage} (${daysSinceSowing} DAS, ICAR confirmed)`);
-        return;
-      }
+
+    const stageRow = getStageByDAS(crop, daysSinceSowing);
+    if (stageRow?.growth_stage) {
+      result.reconciled_stage = stageRow.growth_stage.toUpperCase();
+      result.stage_source = 'CONFIRMED';
+      result.gates_passed.push('G2_STAGE_DETERMINISM');
+      console.log(`   Stage: ${result.reconciled_stage} (${daysSinceSowing} DAS, crop_stage_master)`);
+      return;
     }
-    
-    // Beyond calendar range - crop past harvest
-    result.reconciled_stage = 'MATURITY';
-    result.stage_source = 'CALCULATED';
-    result.warnings.push('Crop may be past typical harvest period');
+
+    // Cache miss for this (crop, DAS) — do NOT reintroduce a hardcoded
+    // per-crop table. Fall back to generic VEGETATIVE with a warning so the
+    // downstream pipeline continues without blocking on missing DB curation.
+    result.reconciled_stage = 'VEGETATIVE';
+    result.stage_source = 'DEFAULT';
+    result.warnings.push(`No crop_stage_master row for crop=${crop} DAS=${daysSinceSowing}; defaulting to VEGETATIVE`);
     result.gates_passed.push('G2_STAGE_DETERMINISM');
   }
   
