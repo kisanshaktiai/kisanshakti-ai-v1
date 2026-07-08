@@ -582,8 +582,8 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   // If young crop without confirmed diagnosis → check for DIAGNOSTIC_ESCALATION
   if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators) {
     // Check if we have symptoms that warrant diagnostic escalation (not just observation)
-    const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 && 
-      !input.symptom_keys.every(s => VAGUE_SYMPTOM_PATTERNS.has(s.toUpperCase()));
+    const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 &&
+      !input.symptom_keys.every(s => isVagueObservation(s));
     
     if (hasSpecificSymptoms && input.crop_name && input.growth_stage) {
       console.log(`   🔬 DIAGNOSTIC ESCALATION - Expert-level response with hypotheses`);
