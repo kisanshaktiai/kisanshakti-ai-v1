@@ -897,7 +897,8 @@ export async function runCausalHypothesisArbitration(
     }
 
     crop_group = (gt.crop_code ?? crop_group) as string;
-    observations = [...gt.canonical_observations];
+    observations = coerceSymbolList([...gt.canonical_observations]);
+
   } else {
     console.warn(`[HYPOTHESIS_CONTRACT] site=CAUSAL_ARBITRATION trace=${trace_id ?? 'none'} legacy_path — no graph_truth supplied by caller`);
   }
