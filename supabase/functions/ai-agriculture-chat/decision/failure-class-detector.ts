@@ -353,35 +353,37 @@ export function getFailureClassThresholds(): Record<FailureClass, number> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Check if an observation is stage-compatible.
- * Uses canonical stage names - no language dependency.
+ * Check if an observation is stage-compatible — DB-driven.
+ *
+ * Rules:
+ *   1. If `observation_master.applies_to_stages` restricts the code to a
+ *      specific list, the query stage must appear in that list.
+ *   2. ESTABLISHMENT-class observations only apply in early DAS windows
+ *      (derived from `crop_stage_master.das_max` via StageKnowledgeCache).
+ *
+ * Backward-compatible: unknown tokens / unknown stages return true.
  */
 export function isObservationStageCompatible(
   observationKey: string,
-  stage: string
+  stage: string,
+  crop?: string
 ): boolean {
-  if (!observationKey || !stage) return true; // Allow if no stage/obs specified
-  
-  const upperStage = stage.toUpperCase();
-  const upperObs = observationKey.toUpperCase();
-  
-  // Establishment observations only valid in early stages
-  const isEarlyStage = EARLY_STAGES.has(stage) || EARLY_STAGES.has(upperStage);
-  const isEstablishmentObs = ESTABLISHMENT_OBSERVATIONS.has(upperObs);
-  
-  if (isEstablishmentObs && !isEarlyStage) {
-    // Establishment observations not valid in late stages
-    return false;
+  if (!observationKey || !stage) return true;
+
+  // (1) DB-declared applies_to_stages
+  if (!observationAppliesToStage(observationKey, stage)) return false;
+
+  // (2) Establishment-class ↔ early stage window
+  const classification = classifyObservation(observationKey);
+  if (!classification) return true; // unknown → don't block
+
+  if (classification.failure_class === 'ESTABLISHMENT_FAILURE') {
+    const early = isEarlyStageFromDB(crop ?? '', stage, null);
+    if (!early) return false;
   }
-  
-  // Flowering/fruiting observations not valid in very early stages
-  const floweringObs = new Set(['FLOWER_DROP', 'FRUIT_ROT', 'FRUIT_DROP', 'POD_BORER']);
-  if (floweringObs.has(upperObs) && isEarlyStage) {
-    return false;
-  }
-  
   return true;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FALLBACK OPTIONS FOR CLARIFICATION - CANONICAL VERSION
