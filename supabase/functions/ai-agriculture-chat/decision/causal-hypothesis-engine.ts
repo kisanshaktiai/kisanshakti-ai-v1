@@ -983,22 +983,38 @@ export async function runCausalHypothesisArbitration(
   try {
     let searched_conditions = 0;
     let matched_conditions = 0;
+    const failed_summary: Record<string, number> = {
+      NO_SYMBOL_MATCH: 0,
+      STAGE_BLOCKED: 0,
+      DAS_BLOCKED: 0,
+      OTHER: 0,
+    };
     for (const conds of data.conditions.values()) {
       for (const c of conds) {
-        if (c.condition_type !== 'OBSERVATION') continue;
-        searched_conditions++;
-        const status = evaluateCondition(c, canonical_state, bridgedObservations);
-        if (status === HypothesisConditionStatus.PASSED) matched_conditions++;
+        if (c.condition_type === 'OBSERVATION') {
+          searched_conditions++;
+          const status = evaluateCondition(c, canonical_state, bridgedObservations);
+          if (status === HypothesisConditionStatus.PASSED) matched_conditions++;
+          else failed_summary.NO_SYMBOL_MATCH++;
+        } else if (c.condition_type === 'STAGE') {
+          const status = evaluateCondition(c, canonical_state, bridgedObservations);
+          if (status === HypothesisConditionStatus.FAILED) failed_summary.STAGE_BLOCKED++;
+        } else if (c.condition_type === 'DAS_RANGE') {
+          const status = evaluateCondition(c, canonical_state, bridgedObservations);
+          if (status === HypothesisConditionStatus.FAILED) failed_summary.DAS_BLOCKED++;
+        }
       }
     }
     const rejected_reason: string[] = [];
     if (bridgedObservations.length === 0) rejected_reason.push('NO_OBSERVATIONS');
-    if (searched_conditions === 0) rejected_reason.push('NO_OBSERVATION_CONDITIONS_FOR_CROP');
-    if (matched_conditions === 0 && searched_conditions > 0) rejected_reason.push('NO_OBS_TO_HYP_EDGE');
+    if (searched_conditions === 0) rejected_reason.push('GRAPH_KNOWLEDGE_GAP:NO_OBSERVATION_CONDITIONS_FOR_CROP');
+    if (matched_conditions === 0 && searched_conditions > 0) rejected_reason.push('MISSING_GRAPH_EDGE');
     console.log(
       `[OBS_TO_HYP_TRACE] trace=${trace_id ?? 'none'} crop=${normalizedCropGroup} ` +
-      `normalized_observations=[${bridgedObservations.join(',')}] ` +
+      `observations=[${bridgedObservations.join(',')}] ` +
+      `candidate_hypotheses_checked=${data.hypotheses.length} ` +
       `searched_conditions=${searched_conditions} matched_conditions=${matched_conditions} ` +
+      `failed_summary=${JSON.stringify(failed_summary)} ` +
       `rejected_reason=[${rejected_reason.join(',')}]`
     );
   } catch (_e) { /* trace never throws */ }
