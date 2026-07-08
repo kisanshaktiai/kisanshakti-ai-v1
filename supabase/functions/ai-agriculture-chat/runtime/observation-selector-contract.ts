@@ -214,6 +214,30 @@ export async function ensureObservationSelectorContract(
     }
   }
 
+  // ── Case D: DIAGNOSTIC_ESCALATION with no options → promote to
+  // CLARIFICATION_QUESTION with DB-sourced (IOM/decision_rules) options.
+  // This is the graph-exhaustion path (hypothesis=0, rules=0). The farmer
+  // must be asked a scoped observation question instead of receiving an
+  // empty escalation card.
+  if (type === 'DIAGNOSTIC_ESCALATION' && existingOptions.length === 0) {
+    const options = await loadObservationSelectorOptions(ctx);
+    if (options.length === 0) {
+      // No DB evidence surface at all — leave escalation as-is (better than
+      // synthesising options in TypeScript). Log for curator triage.
+      console.warn(
+        `[OBSERVATION_REQUIRED_PROMOTE_SKIPPED] trace=${ctx.traceId ?? 'n/a'} reason=diagnostic_escalation_no_iom_or_rules crop=${ctx.cropCode ?? '?'} intent=${ctx.intentCode ?? '?'}`,
+      );
+      return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'diagnostic_escalation_no_options_available' };
+    }
+    promoteToClarification(response, options, ctx);
+    stampMetadata(response, options.length);
+    response.metadata.graph_reason = ctx.graphReason || 'INSUFFICIENT_EVIDENCE';
+    console.log(
+      `[OBSERVATION_REQUIRED_PROMOTED] trace=${ctx.traceId ?? 'n/a'} reason=diagnostic_escalation_empty crop=${ctx.cropCode ?? '?'} intent=${ctx.intentCode ?? '?'} stage=${ctx.growthStage ?? '?'} options=${options.length} graph_reason=${response.metadata.graph_reason}`,
+    );
+    return { promoted: true, hydrated: true, option_count: options.length, observation_required: true, reason: 'promoted_diagnostic_escalation' };
+  }
+
   return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: null };
 }
 
@@ -236,7 +260,7 @@ function promoteToClarification(
     text_en: 'To help diagnose your crop issue, please select what you observe:',
     options,
     scope: 'OBSERVATION_REQUIRED',
-    source: 'DECISION_RULES_SSOT',
+    source: ctx.intentCode ? 'INTENT_OBSERVATION_MAPPING_SSOT' : 'DECISION_RULES_SSOT',
   };
   response.communication = response.communication && typeof response.communication === 'object'
     ? response.communication
@@ -248,7 +272,8 @@ function stampMetadata(response: any, optionCount: number): void {
   response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
   response.metadata.orchestrator_type = 'CLARIFICATION_QUESTION';
   if (!response.metadata.selectionType) response.metadata.selectionType = 'MULTIPLE_CHOICE';
-  response.metadata.observation_source = 'DECISION_RULES_SSOT';
+  response.metadata.observation_source = response.metadata.observation_source || 'INTENT_OBSERVATION_MAPPING_SSOT';
   response.metadata.observation_required = true;
   response.metadata.observation_option_count = optionCount;
 }
+
