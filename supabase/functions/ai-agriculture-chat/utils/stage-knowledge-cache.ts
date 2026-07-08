@@ -93,15 +93,66 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_knowledge load failed', e);
   }
 
+  // ── crop_stage_graph → adjacency (SSOT for stage families) ───────────
+  // Joined against crop_stage_master to resolve UUIDs → growth_stage names.
+  const stageAdjacency = new Map<string, Set<string>>();
+  try {
+    // Build a UUID→stage_name map first from the master rows we already have.
+    const idToStage = new Map<string, { crop: string; stage: string }>();
+    const { data: masterFull, error: masterErr } = await supabase
+      .from('crop_stage_master')
+      .select('id, crop_code, growth_stage')
+      .limit(10000);
+    if (masterErr) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_master id-map error:', masterErr.message);
+    } else if (Array.isArray(masterFull)) {
+      for (const r of masterFull) {
+        if (r?.id) idToStage.set(String(r.id), {
+          crop: String(r.crop_code || '').toLowerCase(),
+          stage: String(r.growth_stage || '').toLowerCase(),
+        });
+      }
+    }
+
+    const { data: edges, error: edgeErr } = await supabase
+      .from('crop_stage_graph')
+      .select('crop_code, from_stage_id, to_stage_id, edge_type')
+      .limit(5000);
+    if (edgeErr) {
+      console.warn('[STAGE_KNOWLEDGE] crop_stage_graph select error:', edgeErr.message);
+    } else if (Array.isArray(edges)) {
+      let edgeCount = 0;
+      for (const e of edges) {
+        const crop = String(e.crop_code || '').toLowerCase();
+        const from = idToStage.get(String(e.from_stage_id))?.stage;
+        const to   = idToStage.get(String(e.to_stage_id))?.stage;
+        if (!crop || !from || !to) continue;
+        // Symmetric adjacency — all curated edge types (STAGE_PRECEDES,
+        // ENABLES, CONCURRENT_WITH, TRIGGERS) mark the two stages as
+        // neighbours in the same crop's phenological graph.
+        const keyF = `${crop}|${from}`;
+        const keyT = `${crop}|${to}`;
+        if (!stageAdjacency.has(keyF)) stageAdjacency.set(keyF, new Set([from]));
+        if (!stageAdjacency.has(keyT)) stageAdjacency.set(keyT, new Set([to]));
+        stageAdjacency.get(keyF)!.add(to);
+        stageAdjacency.get(keyT)!.add(from);
+        edgeCount++;
+      }
+      console.log(`[STAGE_KNOWLEDGE] crop_stage_graph edges=${edgeCount} adjacency_keys=${stageAdjacency.size}`);
+    }
+  } catch (e) {
+    console.warn('[STAGE_KNOWLEDGE] crop_stage_graph load failed', e);
+  }
+
   const byCropStage = new Map<string, StageMasterRow>();
   for (const r of master) byCropStage.set(k(r.crop_code, r.growth_stage), r);
 
   const knowledgeByCropStage = new Map<string, StageKnowledgeRow>();
   for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.growth_stage), r);
 
-  cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage };
+  cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage, stageAdjacency };
   console.log(
-    `[STAGE_KNOWLEDGE] loaded master=${master.length} knowledge=${knowledge.length}`
+    `[STAGE_KNOWLEDGE] loaded master=${master.length} knowledge=${knowledge.length} adjacency=${stageAdjacency.size}`
   );
 }
 
