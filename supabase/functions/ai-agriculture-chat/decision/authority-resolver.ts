@@ -156,26 +156,17 @@ const SYSTEM_CAUSES = new Set([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SYMPTOM-BASED TRIGGERS (For cases where cause mapping hasn't run yet)
+// SYMPTOM → AUTHORITY DOMAIN — PR-2: DB-DRIVEN
+// LAND_SYMPTOMS / CLIMATE_SYMPTOMS Sets deleted. Domain now derives from
+// `observation_master.semantic_class` + `canonical_group` via the
+// observation-classification-cache.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const LAND_SYMPTOMS = new Set([
-  'SALT_CRUST_VISIBLE',
-  'WHITE_DEPOSIT_SOIL',
-  'STANDING_WATER',
-  'WATERLOGGED_SOIL',
-  'CRACKED_SOIL',
-  'HARDPAN_VISIBLE',
-  'SOIL_CRUST'
-]);
+import {
+  classifyAuthorityDomain,
+  getHypothesisType,
+} from '../utils/observation-classification-cache.ts';
 
-const CLIMATE_SYMPTOMS = new Set([
-  'FROST_BURN',
-  'LEAF_SCORCH_HEAT',
-  'WILTING_WIDESPREAD',
-  'FLOOD_SUBMERSION',
-  'HAIL_MARKS'
-]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN RESOLVER FUNCTION (v2.0 - WITH TERMINAL DAMAGE PRE-CHECK)
