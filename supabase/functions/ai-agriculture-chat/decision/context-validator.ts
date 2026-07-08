@@ -377,27 +377,25 @@ export class ContextValidator {
   }
   
   /**
-   * Normalize crop name for comparison
+   * Normalize crop name for comparison.
+   *
+   * PR-3: The former hardcoded multilingual regex (sugarcane/wheat/rice/…)
+   * has been DELETED. Resolution now flows through the DB-loaded synonym
+   * cache (`public.crop_synonyms`, 200+ curated variants across 8 languages)
+   * plus a fall-through to the lowercased trim of the input. No agronomic
+   * or linguistic table lives in this file.
    */
   private normalizeCrop(crop: string): string {
-    return crop.toLowerCase().trim()
-      .replace(/ूस|गन्ना|sugarcane/gi, 'sugarcane')
-      .replace(/गेहूं|गहू|wheat/gi, 'wheat')
-      .replace(/कपास|कापूस|cotton/gi, 'cotton')
-      .replace(/धान|भात|rice/gi, 'rice')
-      .replace(/सोयाबीन|soybean/gi, 'soybean')
-      .replace(/मक्का|maize|corn/gi, 'maize');
-  }
-  
-  /**
-   * Generic stage calculation when no ICAR calendar
-   */
-  private calculateGenericStage(daysSinceSowing: number): string {
-    if (daysSinceSowing <= 15) return 'GERMINATION';
-    if (daysSinceSowing <= 35) return 'SEEDLING';
-    if (daysSinceSowing <= 70) return 'VEGETATIVE';
-    if (daysSinceSowing <= 100) return 'FLOWERING';
-    return 'MATURITY';
+    const raw = (crop || '').toLowerCase().trim();
+    if (!raw) return raw;
+    try {
+      // Sync accessor — safe when orchestrator has preloaded synonyms.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { getCachedSynonymMap } = require('../utils/crop-synonyms-cache.ts');
+      const canonical = getCachedSynonymMap().get(raw);
+      if (canonical) return String(canonical).toLowerCase();
+    } catch { /* non-fatal — fall through */ }
+    return raw;
   }
   
   /**
