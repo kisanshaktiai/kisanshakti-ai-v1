@@ -9312,38 +9312,32 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL: Calculate days since sowing ONLY from crop_schedules.sowing_date
-      // NEVER fall back to lands.cultivation_date - it may contain old/stale data
+      // PR-4a · SINGLE-BRAIN STAGE SSOT
+      // Stage is produced EXCLUSIVELY by resolve_crop_phenology() (RPC below).
+      // Any hardcoded DAS → stage ladder here would be a competing brain and
+      // is explicitly forbidden by the neuro-symbolic contract.
+      // We only compute DAS locally as a diagnostic fallback for logging and
+      // for the `authoritativeDas` chain when the RPC returns no row; the RPC
+      // itself coalesces lands.planting_date > lands.last_sowing_date >
+      // crop_schedules.sowing_date and remains the authoritative producer.
       // ═══════════════════════════════════════════════════════════════════════════
       let daysSinceSowing: number | null = null;
-      let growthStage: string | null = null;
-      
+      const growthStage: string | null = null; // never set locally — SSOT only
+
       if (cropSchedule?.sowing_date) {
         const sowingDate = new Date(cropSchedule.sowing_date);
         const today = new Date();
         daysSinceSowing = Math.floor((today.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
-        growthStage = this.calculateGrowthStage(daysSinceSowing, cropSchedule.crop_name);
-        
-        console.log(`✅ [SOWING_DATE_SOURCE] crop_schedules table (SINGLE SOURCE OF TRUTH)`);
+
+        console.log(`✅ [SOWING_DATE_SOURCE] crop_schedules.sowing_date (fallback DAS only)`);
         console.log(`   Crop: ${cropSchedule.crop_name}`);
         console.log(`   Sowing Date: ${cropSchedule.sowing_date}`);
-        console.log(`   Days Since Sowing: ${daysSinceSowing}`);
-        console.log(`   Growth Stage: ${growthStage}`);
-        console.log(`   ⚠️ NEVER using lands.cultivation_date (could be old season)`);
+        console.log(`   Days Since Sowing (local diag): ${daysSinceSowing}`);
+        console.log(`   ⏭️  Stage will be resolved by resolve_crop_phenology() (SSOT)`);
       } else if (land.current_crop) {
-        // ═══════════════════════════════════════════════════════════════════════════
-        // CRITICAL FIX: Fallback to lands.current_crop when no crop_schedule exists
-        // This prevents "No land current crop" warnings and enables crop-specific advice
-        // ═══════════════════════════════════════════════════════════════════════════
         console.warn(`⚠️ [SOWING_DATE_MISSING] No active crop_schedule for land ${landId}`);
-        console.warn(`   → FALLBACK: Using lands.current_crop = "${land.current_crop}"`);
-        console.warn('   → days_since_sowing and growth_stage will use DEFAULTS');
-        console.warn('   → Recommend user creates crop_schedule for accurate stage tracking');
-        
-        // Use default growth stage based on typical assumptions
-        // Without sowing_date, we assume mid-vegetative stage as safe default
-        growthStage = 'VEGETATIVE';
-        daysSinceSowing = null; // Unknown without sowing_date
+        console.warn(`   → lands.current_crop = "${land.current_crop}"`);
+        console.warn('   → days_since_sowing unknown; stage still resolved by phenology SSOT if lands.planting_date/last_sowing_date exists');
       } else {
         console.warn(`⚠️ [NO_CROP_DATA] No crop_schedule AND no lands.current_crop for ${landId}`);
         console.warn('   → Cannot provide crop-specific advice');
