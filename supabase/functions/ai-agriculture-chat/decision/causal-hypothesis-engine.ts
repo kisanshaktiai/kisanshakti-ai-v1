@@ -968,8 +968,37 @@ export async function runCausalHypothesisArbitration(
     )
   );
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // OBS_TO_HYP_TRACE — deterministic forensic trace of the observation→hypothesis
+  // edge resolution. Always emitted so zero-hypothesis outcomes are debuggable
+  // without changing runtime behavior. Purely observational.
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    let searched_conditions = 0;
+    let matched_conditions = 0;
+    for (const conds of data.conditions.values()) {
+      for (const c of conds) {
+        if (c.condition_type !== 'OBSERVATION') continue;
+        searched_conditions++;
+        const status = evaluateCondition(c, canonical_state, bridgedObservations);
+        if (status === HypothesisConditionStatus.PASSED) matched_conditions++;
+      }
+    }
+    const rejected_reason: string[] = [];
+    if (bridgedObservations.length === 0) rejected_reason.push('NO_OBSERVATIONS');
+    if (searched_conditions === 0) rejected_reason.push('NO_OBSERVATION_CONDITIONS_FOR_CROP');
+    if (matched_conditions === 0 && searched_conditions > 0) rejected_reason.push('NO_OBS_TO_HYP_EDGE');
+    console.log(
+      `[OBS_TO_HYP_TRACE] trace=${trace_id ?? 'none'} crop=${normalizedCropGroup} ` +
+      `normalized_observations=[${bridgedObservations.join(',')}] ` +
+      `searched_conditions=${searched_conditions} matched_conditions=${matched_conditions} ` +
+      `rejected_reason=[${rejected_reason.join(',')}]`
+    );
+  } catch (_e) { /* trace never throws */ }
+
   // Arbitrate
   const result = arbitrateHypotheses(scores, data.conditions, cropHasHypotheses);
+
 
   // P1-1: Guard against orphan hypotheses (survived arbitration but have no rule mappings)
   if (result.best_hypothesis && result.best_hypothesis.mapped_rule_ids.length === 0) {
