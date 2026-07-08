@@ -379,16 +379,33 @@ export async function evaluateHypothesisGraph(
   // ── GRAPH DEATH INVARIANT ─────────────────────────────────────────────
   // If OBS_TO_HYP matched hypotheses but zero survive AND every elimination
   // reason is non-agronomic → over-filtering bug. Fail loud.
+  //
+  // DB-required STAGE/DAS gates are different: they are valid curated graph
+  // outcomes. A farmer may report an emergence symptom while the locked
+  // BiologicalState says transplanting; that is a stage-context conflict / no
+  // surviving hypothesis result, not a transport failure. Do not throw here —
+  // return the eliminated candidate set so the orchestrator can ask a scoped
+  // clarification instead of wrapping this as GRAPH_PIPELINE_BYPASSED.
   const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION', 'NO_REQUIRED_MATCH']);
   const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP'];
   const DB_REQUIRED_GATE_PREFIXES = ['REQUIRED_STAGE_FAILED', 'REQUIRED_DAS_FAILED'];
+  const isDbRequiredGateElimination = (r?: string) =>
+    !!r && DB_REQUIRED_GATE_PREFIXES.some((p) => r.startsWith(p));
   const isAgronomicContradiction = (r?: string) =>
     !!r && (
       CONTRADICTION_REASONS.has(r) ||
       CONTRADICTION_PREFIXES.some((p) => r.startsWith(p)) ||
-      DB_REQUIRED_GATE_PREFIXES.some((p) => r.startsWith(p))
+      isDbRequiredGateElimination(r)
     );
-  if (
+  const allEliminatedByDbRequiredGate =
+    eliminated.length > 0 && eliminated.every((e) => isDbRequiredGateElimination(e.eliminated_reason));
+  if (matchedHypothesisIds.length > 0 && candidates.length === 0 && allEliminatedByDbRequiredGate) {
+    const detail = eliminated.map((e) => `${e.hypothesis_id}:${e.eliminated_reason ?? '?'}`).join('|');
+    console.warn(
+      `[GRAPH_STAGE_CONTEXT_EXHAUSTED] trace=${trace} matched=${matchedHypothesisIds.length} ` +
+        `survived=0 db_required_gate=[${detail}] action=return_no_surviving_hypothesis`,
+    );
+  } else if (
     matchedHypothesisIds.length > 0 &&
     candidates.length === 0 &&
     eliminated.every((e) => !isAgronomicContradiction(e.eliminated_reason))

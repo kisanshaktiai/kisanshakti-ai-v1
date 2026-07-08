@@ -2505,8 +2505,12 @@ serve(async (req) => {
     // client transport failure. Returning 500 makes Supabase JS throw and the
     // chat screen goes blank before the safe fallback can render. Keep the
     // anomaly greppable in logs, but return a structured 200 response.
-    if (errorMessage.startsWith('GRAPH_PIPELINE_BYPASSED')) {
-      console.error(`[GRAPH_PIPELINE_BYPASSED_RECOVERED] trace_id=${traceId} ${errorMessage}`);
+    if (
+      errorMessage.includes('GRAPH_PIPELINE_BYPASSED') ||
+      errorMessage.includes('GRAPH_ORDER_ERROR') ||
+      errorMessage.includes('GRAPH_RESULT_DROPPED')
+    ) {
+      console.error(`[GRAPH_INVARIANT_RECOVERED] trace_id=${traceId} ${errorMessage}`);
       return new Response(
         JSON.stringify({
           response: '🙏 I understood the crop problem, but the diagnosis engine needs one more clear observation before giving treatment advice. Please describe what you see in the field or send a crop photo.',
@@ -2517,7 +2521,11 @@ serve(async (req) => {
             orchestrator_type: 'SYSTEM_ERROR_RECOVERED',
             trace_id: traceId,
             recovered: true,
-            fallback_reason: 'GRAPH_PIPELINE_BYPASSED',
+            fallback_reason: errorMessage.includes('GRAPH_ORDER_ERROR')
+              ? 'GRAPH_ORDER_ERROR'
+              : errorMessage.includes('GRAPH_RESULT_DROPPED')
+                ? 'GRAPH_RESULT_DROPPED'
+                : 'GRAPH_PIPELINE_BYPASSED',
           },
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

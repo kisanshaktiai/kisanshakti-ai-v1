@@ -10,6 +10,7 @@
 import { assert, assertEquals, assertExists } from 'https://deno.land/std@0.220.0/assert/mod.ts';
 import { lockIntent } from '../agents/intent-lock.ts';
 import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
+import { evaluateHypothesisGraph } from '../decision/hypothesis-graph-evaluator.ts';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test 1 (F6) — Rice weed query must never accept a COTTON_* intent lock.
@@ -54,24 +55,114 @@ Deno.test('PR-7 F5 · maturity and tillering are NOT equivalent (guard against o
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// Test 3 (F6b) — the reconciled ICAR rice calendar puts DAS 28 in
-// TRANSPLANTING (matches crop_stage_master), not TILLERING.
+// PR-4 · Context validator must consume BiologicalState/land_state stage and
+// must not reintroduce a local DAS→stage calculator.
 // ───────────────────────────────────────────────────────────────────────────
-Deno.test('PR-7 F6b · rice DAS 28 maps to TRANSPLANTING per reconciled ICAR calendar', async () => {
+Deno.test('PR-4 · context-validator consumes biological_state and never imports getStageByDAS', async () => {
   const src = await Deno.readTextFile(
     new URL('../decision/context-validator.ts', import.meta.url),
   );
-  // Structural check on the reconciled rice entry: TRANSPLANTING window
-  // must cover 28 DAS, TILLERING window must start ≥ 35.
+  const executableSrc = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
   assert(
-    /stage:\s*'TRANSPLANTING'[^}]*max_days:\s*3[0-9]/.test(src) ||
-      /min_days:\s*21[^}]*max_days:\s*3[0-9][^}]*stage:\s*'TRANSPLANTING'/.test(src),
-    'ICAR rice calendar must contain a TRANSPLANTING window covering DAS 28',
+    /biological_state/.test(src) && /bioState\?\.growth_stage/.test(src),
+    'context-validator must read biological_state.growth_stage as the locked stage authority',
   );
-  assert(
-    /min_days:\s*35[^}]*stage:\s*'TILLERING'/.test(src),
-    'ICAR rice TILLERING must start at DAS 35 (aligned with crop_stage_master)',
+  assertEquals(
+    /import\s*\{[^}]*getStageByDAS/.test(executableSrc) || /getStageByDAS\s*\(/.test(executableSrc),
+    false,
+    'context-validator must not import or call getStageByDAS',
   );
+});
+
+Deno.test('PR-4 · DB-required stage exhaustion returns graph result instead of throwing', async () => {
+  const rowsByTable: Record<string, any[]> = {
+    hypothesis_conditions: [
+      {
+        hypothesis_id: 'RICE_GERMINATION_FAILURE',
+        condition_type: 'OBSERVATION',
+        condition_key: 'obs_rice_no_emergence',
+        operator: 'EQ',
+        value_json: true,
+        is_required: true,
+        is_quarantined: false,
+        weight: 1,
+      },
+      {
+        hypothesis_id: 'RICE_GERMINATION_FAILURE',
+        condition_type: 'STAGE',
+        condition_key: 'growth_stage',
+        operator: 'IN',
+        value_json: ['germination', 'nursery', 'seedling', 'emergence', 'establishment'],
+        is_required: true,
+        is_quarantined: false,
+        weight: 1,
+      },
+    ],
+    hypothesis_master: [
+      {
+        hypothesis_id: 'RICE_GERMINATION_FAILURE',
+        crop_group: 'rice',
+        canonical_group: 'GERMINATION_FAILURE',
+        cause_name_en: 'Germination failure',
+        cause_name_hi: null,
+        cause_name_mr: null,
+        severity_model: null,
+        is_active: true,
+      },
+    ],
+    hypothesis_rule_mapping: [],
+  };
+
+  class Query {
+    private filters: Array<(row: any) => boolean> = [];
+    private rangeBounds: [number, number] | null = null;
+    constructor(private rows: any[]) {}
+    select() { return this; }
+    eq(column: string, value: any) {
+      this.filters.push((row) => row[column] === value);
+      return this;
+    }
+    in(column: string, values: any[]) {
+      const allowed = new Set(values.map(String));
+      this.filters.push((row) => allowed.has(String(row[column])));
+      return this;
+    }
+    order() { return this; }
+    range(from: number, to: number) {
+      this.rangeBounds = [from, to];
+      return Promise.resolve(this.run());
+    }
+    then(resolve: (value: any) => void) {
+      resolve(this.run());
+    }
+    private run() {
+      let data = this.rows.filter((row) => this.filters.every((fn) => fn(row)));
+      if (this.rangeBounds) data = data.slice(this.rangeBounds[0], this.rangeBounds[1] + 1);
+      return { data, error: null };
+    }
+  }
+
+  const fakeSupabase = {
+    from(table: string) {
+      return new Query(rowsByTable[table] ?? []);
+    },
+  };
+
+  const result = await evaluateHypothesisGraph({
+    crop_code: 'RICE',
+    crop_group: 'RICE',
+    growth_stage: 'transplanting',
+    das: 30,
+    observation_codes: ['obs_rice_no_emergence'],
+    supabase: fakeSupabase,
+    trace_id: 'test_stage_required_exhaustion',
+  });
+
+  assertEquals(result.candidates.length, 0);
+  assertEquals(result.eliminated.length, 1);
+  assert(String(result.eliminated[0].eliminated_reason).startsWith('REQUIRED_STAGE_FAILED'));
 });
 
 // ───────────────────────────────────────────────────────────────────────────

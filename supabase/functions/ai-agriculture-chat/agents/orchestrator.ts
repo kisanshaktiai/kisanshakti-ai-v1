@@ -429,6 +429,15 @@ import {
   type BiologicalState,
 } from './biological-state.ts';
 
+interface BiologicalStateContradictionAudit {
+  contradiction_flag: true;
+  contradiction_codes: string[];
+  stage_confidence_before_contradiction: number;
+  adjusted_confidence: number;
+  stage: string | null;
+  trace_id: string;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANT: Emergency observation codes (used in both return paths)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1205,6 +1214,7 @@ export class AIAgentOrchestrator {
     (this as any)._graphHypothesisIds = [];
     (this as any)._graphHypothesisRuleIds = [];
     (this as any)._graphHypothesisEdgeMissing = [];
+    (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
@@ -4343,7 +4353,7 @@ export class AIAgentOrchestrator {
         // Fix 3 — biological contradiction now runs against classifier truth,
         // not any mutated graph state.
         try {
-          const bio: any = (landContext as any)?.biological_state;
+          const bio: BiologicalState | null = (landContext as any)?.biological_state ?? null;
           if (bio?.is_locked && bio?.growth_stage && trueEvidence.real_codes.length > 0) {
             const EMERGENCE_FAIL_OBS = new Set([
               'POOR_GERMINATION', 'GERMINATION_FAILURE', 'NO_GERMINATION',
@@ -4355,16 +4365,22 @@ export class AIAgentOrchestrator {
             ]);
             const stageKey = String(bio.growth_stage).toLowerCase().trim().replace(/[\s-]+/g, '_');
             const contradicting = trueEvidence.real_codes.filter(c => EMERGENCE_FAIL_OBS.has(String(c).toUpperCase()));
-            if (contradicting.length > 0 && POST_ESTABLISHMENT_STAGES.has(stageKey) && !bio.contradiction_flag) {
+            const sidecar = (this as any)._bioContradictionByLand as Map<string, BiologicalStateContradictionAudit> | undefined;
+            if (contradicting.length > 0 && POST_ESTABLISHMENT_STAGES.has(stageKey) && !sidecar?.has(bio.land_id)) {
               const prevConf = typeof bio.confidence === 'number' ? bio.confidence : 0;
-              bio.contradiction_flag = true;
-              bio.contradiction_codes = contradicting;
-              bio.stage_confidence_before_contradiction = prevConf;
-              bio.confidence = Math.min(prevConf, 0.30);
+              const adjustedConf = Math.min(prevConf, 0.30);
+              sidecar?.set(bio.land_id, {
+                contradiction_flag: true,
+                contradiction_codes: contradicting,
+                stage_confidence_before_contradiction: prevConf,
+                adjusted_confidence: adjustedConf,
+                stage: bio.growth_stage,
+                trace_id: traceId,
+              });
               console.warn(
                 `[BIO_STATE_CONTRADICTION][${traceId}] stage=${bio.growth_stage} ` +
                 `obs=[${contradicting.join(',')}] prev_conf=${prevConf.toFixed(2)} ` +
-                `new_conf=${bio.confidence.toFixed(2)} action=confidence_downgrade`,
+                `new_conf=${adjustedConf.toFixed(2)} action=sidecar_confidence_downgrade`,
               );
             }
           }
@@ -4847,8 +4863,20 @@ export class AIAgentOrchestrator {
         // This MUST happen BEFORE any generic clarification
         // ═══════════════════════════════════════════════════════════════════════════
         try {
-          const cropCode = canonicalContext?.crop_code || landContext?.current_crop?.toUpperCase() || 'UNKNOWN';
-          const growthStage = canonicalContext?.growth_stage || landContext?.growth_stage || 'UNKNOWN';
+          const bioForGraph: BiologicalState | null = (landContext as any)?.biological_state ?? null;
+          const cropCode =
+            bioForGraph?.crop_code?.toUpperCase?.() ||
+            canonicalContext?.crop_code ||
+            landContext?.current_crop?.toUpperCase() ||
+            'UNKNOWN';
+          const growthStage =
+            bioForGraph?.growth_stage ||
+            canonicalContext?.growth_stage ||
+            landContext?.growth_stage ||
+            'UNKNOWN';
+          const graphGrowthStage = growthStage && String(growthStage).toUpperCase() !== 'UNKNOWN'
+            ? growthStage
+            : null;
 
           // ═══════════════════════════════════════════════════════════════════
           // Phase Y — Fix C: bridge generic NLU codes (poor_germination,
@@ -4959,7 +4987,7 @@ export class AIAgentOrchestrator {
             const graphInput = {
               crop_code: cropCode ?? null,
               crop_group: cropCode ?? null,
-              growth_stage: growthStage ?? null,
+              growth_stage: graphGrowthStage,
               das: (typeof (canonicalContext as any)?.days_since_sowing === 'number'
                 ? (canonicalContext as any).days_since_sowing
                 : ((typeof (landContext as any)?.days_since_sowing === 'number')
@@ -5033,11 +5061,46 @@ export class AIAgentOrchestrator {
           } catch (e) {
             if ((e as Error).message?.startsWith('GRAPH_RESULT_DROPPED') ||
                 (e as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw e;
-            console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${(e as Error).message}`);
+            const graphErrMessage = (e as Error).message ?? String(e);
+            const nonFatalNoSurvivorGraph =
+              graphErrMessage.startsWith('STAGE_FILTER_KILLED_VALID_DIAGNOSIS') ||
+              graphErrMessage.includes('NO_SURVIVING_HYPOTHESIS') ||
+              graphErrMessage.includes('REQUIRED_STAGE_FAILED') ||
+              graphErrMessage.includes('REQUIRED_DAS_FAILED');
+
+            console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${graphErrMessage}`);
+            if (nonFatalNoSurvivorGraph) {
+              // The graph ran far enough to establish that DB-curated stage/DAS
+              // constraints exhausted the candidate set. That is a valid graph
+              // result, not a bypass. Mark sequence=2 so downstream invariants
+              // and the index-level audit do not convert it into HTTP 500.
+              try {
+                assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
+              } catch (orderErr) {
+                if ((orderErr as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw orderErr;
+              }
+              (this as any)._graphExecuted = true;
+              (this as any)._graphHypothesisResult = {
+                candidates: [],
+                eliminated: [],
+                input_observations: currentObservations,
+                trace_id: traceId,
+                timings_ms: 0,
+              };
+              (this as any)._graphHypothesisIds = [];
+              (this as any)._graphHypothesisRuleIds = [];
+              (this as any)._graphHypothesisEdgeMissing = [];
+              (this as any)._graphExhaustedReason = graphErrMessage;
+              console.warn(
+                `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
+                `hyp=[] sequence=2 survived=0 eliminated=unknown edge_missing=0 ` +
+                `reason=GRAPH_CONTEXT_EXHAUSTED`,
+              );
+            }
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
             // continue when the hypothesis graph did not execute. Fail closed.
-            if (isDiagnosticIntent) {
-              throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but hypothesis graph evaluator threw: ${(e as Error).message}`);
+            if (isDiagnosticIntent && !(this as any)._graphExecuted) {
+              throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but hypothesis graph evaluator threw: ${graphErrMessage}`);
             }
           }
           // Hard graph invariant — even if the try above resolved without an
@@ -10835,6 +10898,7 @@ export class AIAgentOrchestrator {
       (this as any)._evidenceFrozen = false;
       (this as any)._graphExecuted  = false;
       (this as any)._ruleResultExists = false;
+      (this as any).__decisionGraphSequence = 0;
     } catch {/* flag reset must not throw */}
 
 
