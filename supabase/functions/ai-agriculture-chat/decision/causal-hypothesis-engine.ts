@@ -492,7 +492,7 @@ function checkContradictions(
   observations: string[]
 ): string[] {
   const found: string[] = [];
-  const obsLower = observations.map(o => o.toLowerCase());
+  const obsSet = SymbolContract.toNormalizedSet(observations);
 
   for (const c of contradictions) {
     const { contradiction_type, contradiction_key, contradiction_value } = c;
