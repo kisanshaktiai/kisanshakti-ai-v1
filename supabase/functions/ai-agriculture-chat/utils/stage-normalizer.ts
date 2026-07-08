@@ -25,15 +25,23 @@ export const STAGE_NORMALIZER_VERSION = '1.0.0';
 
 export type StageCategory = 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURITY' | 'UNKNOWN';
 
+// FIX (2026-07-08): Removed agronomically wrong lumping of transplanting/
+// planting/sowing/post_planting/pre_sowing into SEEDLING_STAGES. Transplanting
+// means seedlings ALREADY germinated and were moved to field — biologically
+// post-germination, adjacent to VEGETATIVE. Previous mapping caused
+// RICE_GERMINATION_FAILURE to score stage_relevance=0.7 at stage=transplanting
+// DAS=29 and win as INVARIANT_FALLBACK with "monitor only" advice.
 const SEEDLING_STAGES = [
   'germination', 'seedling', 'establishment', 'sprouting', 'emergence',
-  'planting', 'sowing', 'transplanting', 'post_planting', 'pre_sowing',
   'early_growth', 'd0_7', 'd8_15', 'd16_30'
 ];
 
+// Pre-establishment stages — NEITHER germination NOR vegetative.
+const PRE_SOWING_STAGES = ['pre_sowing', 'sowing', 'planting', 'post_planting'];
+
 const VEGETATIVE_STAGES = [
-  'vegetative', 'tillering', 'early_tillering', 'grand_growth', 'cane_formation',
-  'rosette', 'leaf_development', 'stem_elongation', 'canopy', 
+  'vegetative', 'transplanting', 'tillering', 'early_tillering', 'grand_growth',
+  'cane_formation', 'rosette', 'leaf_development', 'stem_elongation', 'canopy',
   'post_irrigation', 'd31_60', 'd61_90'
 ];
 
