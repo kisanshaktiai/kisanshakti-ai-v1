@@ -1,83 +1,112 @@
-## Executive Diagnosis
+# KisanShakti Neuro-Symbolic Decision Brain — Refactor Plan
 
-Two production 500s share ONE root cause: the **observation-selector contract enforcer** (`runtime/observation-selector-contract.ts`) has three hard-throw exits that fire whenever the hypothesis-graph curator gap collides with a real turn. When the graph legitimately has no downstream edge for a `(crop, stage, DAS, observation)` cell, the enforcer should degrade — not 500. It already degrades for **Case B** when `realObservationCount > 0`, but two ancillary defects still route real turns into the throw:
+## Guiding Invariant (locked by user 2026-07-09)
 
-1. **Case B degrade is bypassed** in trace `mrddu422_bpwjh6` because `realObservationCount` reaches the enforcer as `0` even though the log records `confirmed_observations=4`. The value is read from `orch._lastRealObservations`, which is written on only ONE orchestrator path (`orchestrator.ts:4996`). The seed-graph clarification path that produced this turn never sets it, so the enforcer defaults to 0 → throws `empty_options type=CLARIFICATION_QUESTION`.
+> **We are building a 2030-ready medical-grade agriculture decision brain for rural Indian farmers.**
+> A purely DB-driven OR purely confidence-driven clarification policy is NOT scalable and does NOT
+> meet world-standard neuro-symbolic decision-brain architecture.
+> Clarification authority MUST remain a hybrid:
+>   1. **Symbolic layer** — DB contracts (`observation_intent_master`, `intent_observation_mapping`,
+>      `crop_stage_graph`, hypothesis graph, rules) provide the ontology + budget + allowlist.
+>   2. **Graph-navigator layer** — `DecisionGraphNavigator` decides ASK vs RUN via graph pruning.
+>   3. **TS heuristic residuals** — differential-diagnosis, hypothesis-clarification-builder,
+>      clarification-strategy, and the orchestrator's structured ASK branches are RETAINED as
+>      capability enrichers, NOT removed. They add farmer-facing question framing, safety
+>      escalation triggers, and cross-signal reasoning the DB alone cannot express.
+>
+> Consequence: **Phase D (removal of residual TS clarification policy) is CANCELLED.**
+> Any future work in this area must *enrich* graph nodes, not delete reasoning surface.
 
-2. **Case C has no degrade path at all** — trace `mrdebxev_a7q3mn` (stage-fallback with 0 rules) hits `DECISION_PROVIDED` with no primary/secondary/comm-text, `loadObservationSelectorOptions` returns 0, and the enforcer throws `empty_options type=DECISION_PROVIDED reason=no_recommendations`. This is the same curator-gap class as Case B and must degrade the same way.
+## Phases
 
-3. **The second contract pass** in `index.ts` (post unified-gate, line 1935) does not forward `realObservationCount`, so even after fix (1) it would still throw on the re-run.
+### Phase A — Evidence-round freeze  ✅ shipped
+- `EvidenceRoundSnapshot` in `GraphRuntimeState`, freeze-once semantics, canonical-code leak guard.
+- Orchestrator gatekeeper on `CLARIFICATION_QUESTION` re-ask sites honors DB-supplied
+  `max_clarification_rounds` (default 1).
+- Tests: `tests/evidence-round-freeze_test.ts` (7 passing).
 
-None of this is agronomy, DB schema, LLM, or graph-execution logic. It is a boundary-enforcer resilience defect.
+### Phase B — Promote `DecisionGraphNavigator` to authority  ✅ shipped
+- `navigator-flag.ts` default = `ACTIVE` (shadow still enabled for trace comparison).
+- `DECISION_GRAPH_NAVIGATOR_TENANTS_OFF` env allowlist for surgical rollback.
+- Legacy clarification producers now feed the navigator; ASK vs RUN is the navigator's call.
 
-## Broken Graph Trace
+### Phase C.1 — GraphRuntimeState SSOT consolidation  ✅ shipped
+- Four legacy orchestrator fields (`_graphHypothesisIds`, `_graphHypothesisRuleIds`,
+  `_graphObsToHypEdges`, `_lastRealObservations`) mirrored into `GraphRuntimeState` as
+  first-class typed accessors with dedupe + leak guards + freeze semantics.
+- `orchestrator.__graphRuntimeState` exposed for outer-scope reads.
+- Tests: `tests/graph-runtime-state-authority_test.ts`.
 
-**Trace 1 (`mrddu422_bpwjh6`)** — Rice / transplanting / DAS=31, farmer confirmed leaf curl:
-```
-Expected: RequestScope → LandAuth → Semantic → Obs→Hyp (0 matches) →
-          GRAPH_CONTRACT_ERROR logged → DIAGNOSTIC_ESCALATION returned to UI
-Actual:   … → GRAPH_CONTRACT_ERROR logged → CLARIFICATION_QUESTION w/ 0 opts →
-          enforcer Case B sees realObservationCount=0 (not propagated) →
-          throws OBSERVATION_CONTRACT_VIOLATION → 500
-```
+### Phase C.2 — Legacy field retirement  🟡 deferred
+- Once outer-scope readers migrate to `__graphRuntimeState`, delete legacy field writes.
+- Purely mechanical; no policy change.
 
-**Trace 2 (`mrdebxev_a7q3mn`)** — Rice / transplanting / DAS=31, selected `OBS_RICE_NO_EMERGENCE`:
-```
-Expected: … → OPTION_SELECTED → 0 rules matched → stage fallback →
-          DIAGNOSTIC_ESCALATION with curator-triage log
-Actual:   … → stage fallback → DECISION_PROVIDED (empty) →
-          enforcer Case C loads 0 options → throws unconditionally → 500
-```
+### Phase D — ~~Remove residual TS clarification policy~~  ❌ CANCELLED
+- Violates the medical-grade hybrid invariant above.
+- Do NOT reopen without explicit user reversal.
 
-## Critical Issues
+### Phase E — Enrich graph nodes (NEW, replaces D)
+Goal: make the graph *more* capable so the DB, navigator, and TS layers each contribute
+what only they can. All edits additive; no deletion of reasoning surface.
 
-| P | File | Function | Bug | Evidence | Impact | Root cause |
-|---|------|----------|-----|----------|--------|------------|
-| P0 | `runtime/observation-selector-contract.ts` | `ensureObservationSelectorContract` Case C (line 187-190) | Throws when `DECISION_PROVIDED` is empty and no options loadable, even though real observations were confirmed upstream | Trace 2 error at line 110 of file | Every stage-fallback turn with no rule match returns 500 | Missing degrade path symmetrical to Case B |
-| P0 | `index.ts` around line 1935 | Post-unified-gate contract call | Does not pass `realObservationCount` to enforcer | `grep _realObservationCountForContract` shows only first call site | Case B degrade cannot fire on the post-gate re-run | Missing field in ctx object |
-| P1 | `agents/orchestrator.ts` seed-graph clarification path | Whichever branch emits `CLARIFICATION_QUESTION` after `GRAPH_CONTRACT_ERROR` | Does not set `this._lastRealObservations` even though confirmed observations exist | Log shows `confirmed_observations=4` but enforcer receives 0 | Case B degrade cannot fire on first contract pass | Only one write site (line 4996) covers this contract |
+1. **Edge typing on `hypothesis_conditions`** — surface `condition_kind`
+   (STAGE / DAS_RANGE / OBS_REQUIRED / OBS_BLOCKS / ENV / SAFETY_ESCALATION) into
+   `GraphNode.requires` / `.blocks` / new `.escalates` so the navigator can distinguish
+   discriminators from safety triggers.
+2. **Farmer-facing predicate metadata** — carry `question_key`, `answer_shape`,
+   `safety_severity`, `farmer_observable`, and localized labels from
+   `observation_master` / `observation_translations` onto navigator candidates so
+   ranked evidence requests render directly.
+3. **Hypothesis-cluster nodes** — introduce derived cluster nodes so pathognomonic
+   hypotheses (e.g. terminal damage, systemic disease) short-circuit graph pruning
+   with a single confirming predicate.
+4. **Cross-signal predicates** — allow `requires` to reference environmental,
+   satellite, and weather-derived facts (already in tenant context) so the navigator
+   can consume more evidence classes without new tables.
+5. **Explainability lineage** — every navigator decision writes a lineage node
+   `{node_id, decision, contributing_predicates[], confidence, source_layer}` to
+   the runtime trace for post-hoc audit and regulator review (medical-grade req).
+6. **TS residuals stay** — `clarification-strategy`, `differential-diagnosis-clarifier`,
+   `hypothesis-clarification-builder` become **adapters** that consume navigator
+   output and add framing/safety wrappers. Their agronomic heuristics are preserved.
 
-## Surgical Fix Plan
+Deliverables per item: additive types → loader update → navigator scoring extension →
+trace stamp → regression test. Ship one at a time; each is independently revertable.
 
-**Fix 1 — extend Case C degrade (`runtime/observation-selector-contract.ts`, lines 185-198)**
-- WHAT: When `hasPrimary && hasSecondary && hasCommText` are all false AND `loadObservationSelectorOptions` returns 0, if `ctx.realObservationCount > 0` degrade to `DIAGNOSTIC_ESCALATION` with `[OBSERVATION_CONTRACT_DEGRADE] from=DECISION_PROVIDED reason=stage_fallback_no_rules_after_confirmed_observations` and set `metadata.graph_reason = ctx.graphReason || 'NO_RULES_MATCHED_AFTER_OBSERVATION'`. Only throw when `realObservationCount === 0` (true contract leak).
-- WHERE: same file only, mirroring the Case B block already committed at lines 143-166.
-- WHY: The stage-fallback path is a legitimate curator gap, not a runtime bug. Throwing violates the "graph exhaustion degrades, never 500s" invariant.
-- HOW to verify: run trace 2 fixture → assert response type flips to `DIAGNOSTIC_ESCALATION`, response has 200 status, log line `[OBSERVATION_CONTRACT_DEGRADE] from=DECISION_PROVIDED` present.
-
-**Fix 2 — forward `realObservationCount` on the post-gate pass (`index.ts` ~1935-1961)**
-- WHAT: Add `realObservationCount:` derived exactly like the first pass (`_orchAnyForCtx2._lastRealObservations?.length ?? orchestratorResponse.metadata.real_observations?.length ?? 0`) to the ctx object.
-- WHERE: index.ts only, inside the existing `try` around line 1935.
-- WHY: Without it, Case B/C degrade paths can't fire when the post-gate re-run hits the same graph gap.
-- HOW to verify: unit test on the post-gate branch with a stubbed orchestrator having `_lastRealObservations.length === 3` and an empty response → returns 200 with `DIAGNOSTIC_ESCALATION`.
-
-**Fix 3 — populate `_lastRealObservations` on the seed-graph clarification path (`agents/orchestrator.ts`)**
-- WHAT: In the code path that emits `CLARIFICATION_QUESTION` after `GRAPH_CONTRACT_ERROR` (the branch producing trace 1's log line `HYP_CLARIFICATION graph_gap=NO_DISCOVERY_SEEDS`), assign `(this as any)._lastRealObservations = confirmedObservationCodes` before returning, using the SAME confirmed-observation array already computed for the log line. No new state is introduced; only the existing SSOT-derived array is mirrored to the field the contract enforcer already reads.
-- WHERE: orchestrator only, additive assignment (no logic change).
-- WHY: The contract enforcer's Case B degrade already exists; the only reason it doesn't fire is that this write site is missing on this branch.
-- HOW to verify: replay trace 1 fixture → enforcer log shows `real_observations=4` and returns `DIAGNOSTIC_ESCALATION` instead of throwing.
-
-**Explicitly not touched:** DB schema, rule matching, agronomy logic, LLM prompts, hypothesis graph, `hypothesis-clarification-builder`, gates, orchestrator routing, multi-tenant scope, IOM cache. This is a boundary-enforcer + one missing state-mirror only.
-
-## Regression Tests
-
-Add to `tests/observation-selector-contract_test.ts`:
-
-1. `Case C degrades on stage-fallback with confirmed observations` — DECISION_PROVIDED empty + `realObservationCount=1` + 0 loadable options → returns `DIAGNOSTIC_ESCALATION`, no throw.
-2. `Case C still throws when no confirmed observations` — same shape with `realObservationCount=0` → throws `OBSERVATION_CONTRACT_VIOLATION`.
-3. `Post-gate pass propagates realObservationCount` — grep assertion in `index.ts` similar to existing `graph-integrity_test.ts:466`, requiring `realObservationCount` to appear in BOTH ensureObservationSelectorContract call sites.
-4. `Seed-graph clarification writes _lastRealObservations` — grep test asserting `_lastRealObservations =` appears on the seed-graph clarification branch.
-5. Cross-crop replay: rice/cotton/sugarcane fixtures each with confirmed observations but no matching hypotheses → all three degrade, none throw.
-
-## Final Architecture (unchanged; enforcer boundary reinforced)
+## Architecture (locked)
 
 ```text
-Farmer → RequestScope → LandAuthority(SSOT) → Semantic → Obs→Hyp Graph →
-Hypothesis Validation → Hypothesis→Rules → Symbolic Engine → Safety Gates →
-Decision Object ──► ContractEnforcer (degrades on curator gap, never 500) ──►
-LLM Narrator → Farmer
+Farmer
+  │
+  ▼
+RequestScope → LandAuthority(SSOT) → Semantic → Observation Ontology (DB)
+  │
+  ▼
+Obs→Hyp Graph (DB curated) ── enriched by Phase E ──►
+  │
+  ▼
+DecisionGraphNavigator (authority: ASK vs RUN, graph pruning + margin)
+  │           ▲
+  │           │ TS residual adapters (framing, safety wrapping, differential
+  │           │  diagnosis, cluster short-circuits) — retained, additive only
+  ▼
+Hypothesis Validation → Hypothesis→Rules → Symbolic Engine → Safety Gates
+  │
+  ▼
+ContractEnforcer (degrades on curator gap, never 500s)
+  │
+  ▼
+LLM Narrator (translation / narration ONLY — never agronomic decision)
+  │
+  ▼
+Farmer
 ```
 
-## Final Validation
+## Non-Negotiables
 
-After these three surgical edits the same enforcer correctly handles rice / cotton / sugarcane / tomato / wheat / unknown-crop turns with confirmed observations but no curator-authored hypothesis edge — because the degrade path is crop-agnostic and driven entirely by `realObservationCount` from SSOT-derived arrays. No new agronomy, no new hardcoding, no schema change.
+- No DB schema changes without explicit request.
+- No crop-specific logic in orchestrator or navigator.
+- No LLM agronomic diagnosis fallback — narration only.
+- No removal of TS clarification reasoning surface (Phase D cancelled).
+- Every navigator decision must be traceable via lineage stamps (Phase E.5).
+- Rollback path: `navigator-flag.ts` default flip + env allowlist.
