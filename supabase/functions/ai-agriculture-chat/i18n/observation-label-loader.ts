@@ -209,14 +209,21 @@ export function getObservationIcon(code: string): string {
   return OBSERVATION_ICONS[code.toUpperCase()] || '❓';
 }
 
-// Default observation codes for generic clarification (canonical symbols)
-export const DEFAULT_CLARIFICATION_CODES = [
-  'INSECTS_VISIBLE',
-  'LEAF_YELLOWING',
-  'LEAF_SPOTS',
-  'STUNTED_GROWTH',
-  'PHOTO_REQUEST'
-];
+// ─────────────────────────────────────────────────────────────────────────
+// CHANGE LOG
+// 2026-07-09 21:15 UTC — Neutralized DEFAULT_CLARIFICATION_CODES to [].
+//   Root cause of "every clarification shows the same INSECTS_VISIBLE /
+//   LEAF_YELLOWING / LEAF_SPOTS trio regardless of intent, crop or stage":
+//   this static list was used as a universal fallback by clarification-
+//   renderer.getContextAwareTemplateFromDB and generic-multi-match-detector,
+//   bypassing the hypothesis-graph clarification contract. Empty array
+//   forces every caller through loadClarificationCandidates (hypothesis
+//   graph) or the neutral photo-only prompt. Neuro-symbolic invariant:
+//   farmer options MUST originate from hypothesis_master ×
+//   hypothesis_conditions × observation_master for the locked (intent,
+//   crop, stage, DAS) cell — never from a hardcoded TypeScript array.
+// ─────────────────────────────────────────────────────────────────────────
+export const DEFAULT_CLARIFICATION_CODES: readonly string[] = Object.freeze([]);
 
 export default {
   loadObservationLabels,

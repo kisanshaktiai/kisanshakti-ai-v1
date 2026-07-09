@@ -510,17 +510,20 @@ async function getDefaultClarificationOptionsFromDB(
 }
 
 /**
- * Fallback when database unavailable - returns formatted English codes
- * This is language-neutral to comply with SSOT principle
+ * Fallback when database unavailable.
+ * 2026-07-09 21:15 UTC — Returns [] instead of the hardcoded English
+ *   pest/leaf list. That legacy list ("Insects Visible / Leaf Yellowing /
+ *   Leaf Spots / Send Photo") was the second source of the "same 3
+ *   options for every clarification" bug: it fired whenever the primary
+ *   DB label load failed or returned nothing, injecting a context-blind
+ *   generic list into REFINE_OBSERVATION responses regardless of intent.
+ *   Neuro-symbolic invariant: no TypeScript-authored option list may
+ *   reach the farmer. Callers already handle empty[] by falling through
+ *   to loadClarificationCandidates (hypothesis graph) or a photo-only
+ *   neutral prompt.
  */
-function getDefaultClarificationOptionsFallback(language: string): string[] {
-  // Return formatted English codes with icons (SSOT-compliant fallback)
-  return [
-    `${getObservationIcon('INSECTS_VISIBLE')} Insects Visible`,
-    `${getObservationIcon('LEAF_YELLOWING')} Leaf Yellowing`, 
-    `${getObservationIcon('LEAF_SPOTS')} Leaf Spots`,
-    `${getObservationIcon('PHOTO_REQUEST')} Send Photo`
-  ];
+function getDefaultClarificationOptionsFallback(_language: string): string[] {
+  return [];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
