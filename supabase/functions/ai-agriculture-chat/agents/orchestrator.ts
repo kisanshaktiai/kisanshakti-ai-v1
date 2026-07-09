@@ -6424,6 +6424,15 @@ export class AIAgentOrchestrator {
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
       const lockedStage = getLockedStage();
       
+      // OBSERVATION_STATE_CONTRACT — pull confirmed-only count from the frozen
+      // ConversationState so the trigger cannot be inflated by INFERRED symbols
+      // (alias expansion / IOM LITERAL peers / LLM inferences). Diagnostic
+      // intent + confirmed=0 forces clarification, regardless of coverage.
+      const __confirmedCountForTrigger = (this as any).__conversationState?.informative_count ?? 0;
+      const __isDiagnosticForTrigger =
+        (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
+        (this as any).__conversationState?.mode === 'MIXED';
+
       const clarificationTriggerInput: ClarificationTriggerInput = {
         crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
         stage_known: !!(lockedStage?.growth_stage || landContext?.growth_stage),
@@ -6431,7 +6440,9 @@ export class AIAgentOrchestrator {
         symptom_coverage: inductionResult.symbol_coverage,
         is_ambiguous: inductionResult.aggregated_confidence < 0.5 && inductionResult.symptoms.length > 0,
         has_pending_clarification: pendingOptionsCount > 0,
-        clarification_completed: clarificationCompleted
+        clarification_completed: clarificationCompleted,
+        confirmed_observation_count: __confirmedCountForTrigger,
+        diagnostic_intent: __isDiagnosticForTrigger,
       };
       
       const clarificationTrigger = shouldTriggerClarificationFirst(clarificationTriggerInput);
