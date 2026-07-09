@@ -1,142 +1,121 @@
-## Neuro-symbolic split-brain — surgical fix plan
 
-### Diagnosis (confirmed from code + latest edge log)
+## GraphRuntimeSnapshot Identity Correction — Surgical Plan (v2)
 
-Two hypothesis engines run per turn inside `agents/orchestrator.ts`:
+### Root Cause (verified against source)
+`decision/hypothesis-evaluator.ts` (Engine A) emits candidates keyed by `rule_id` (rows of `decision_rules`). `runtime/graph-snapshot.ts` currently fuses identities:
 
-1. **Engine A — `runGraphRuntime` → `evaluateCandidateHypotheses`** (line ~5380)
-   - Produces `hypothesisResult.candidates` (e.g. `RICE_GERMINATION_FAILURE`) and downstream candidate rules (`RICE_SOIL_CRUST_BREAKING_001`, …).
-   - Feeds only the diagnosis-first response builder.
-   - Result is never projected onto `ConversationState.hypotheses` or `_graphHypothesisIds`.
-
-2. **Engine B — `evaluateHypothesisGraph`** (line ~5188)
-   - Applies stage/DAS penalties; on `transplanting` mismatch it currently returns `candidates=[]`.
-   - Its (empty) `candidates` are the ONLY thing projected to `_graphHypothesisIds`, `_graphObsToHypEdges`, `_graphHypothesisRuleIds`, and `ConversationState.hypotheses`.
-
-Because `emitBrainTrace` and downstream invariants read the Engine B projection, the final line shows `hyp=0 obs_to_hyp=0` even when Engine A + `HYP_TO_RULE` already succeeded. When the diagnosis-first branch short-circuits before Engine B runs, orchestrator additionally emits the illegal synthetic line:
-
-```
-[OBS_TO_HYP] synthesized=true reason=diagnosis_first_path sequence=2
+```ts
+const id = canonicalId(c.rule_id ?? c.hypothesis_id);   // ← ontology violation
 ```
 
-That "synthesized" branch (orchestrator.ts:7302-7305) is the second graph authority the user is asking us to delete.
+Engine A rule_ids are stored as hypotheses; Engine B (which correctly emits `hypothesis_id`) never merges because keys don't intersect. Result: `_graphHypothesisIds` from Engine B is empty → `BRAIN_TRACE hyp=0` while `_graphHypothesisRuleIds` still holds rules → `rules>0 ∧ hyp=0` ontology break in the log.
 
-### Fix (surgical, no DB changes, no crop patches)
+### Scope (no DB changes, no crop logic, no LLM path)
+1. `supabase/functions/ai-agriculture-chat/runtime/graph-snapshot.ts` — rewrite as pure builder with separated node types.
+2. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — supply `edges.ruleToHypothesis`, freeze `graphResult`, collapse legacy counters to read-only mirrors.
+3. `supabase/functions/ai-agriculture-chat/tests/graph-snapshot_test.ts` — extend with four contract tests.
 
-#### 1. Create a single `GraphRuntimeResult` per turn
-File: `supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts`
+### 1. Separate node types (no fusion, ever)
 
-- Extend `GraphRuntimeResult` (already exported) so callers can produce and consume one immutable snapshot:
-
-  ```ts
-  export interface GraphRuntimeSnapshot {
-    trace_id: string;
-    observations: readonly string[];           // canonical observation ids
-    hypotheses: ReadonlyArray<{
-      id: string;
-      confidence: number;
-      matched_conditions: readonly string[];
-      candidate_rule_ids: readonly string[];
-    }>;
-    rules: readonly string[];                  // union of candidate_rule_ids
-    graph_state: 'READY_FOR_DECISION' | 'NEED_MORE_EVIDENCE' | 'NO_HYPOTHESIS' | 'GRAPH_EXHAUSTED';
-    source: 'REAL_GRAPH_PATH';
-    reason?: string;                           // eg GRAPH_CONTEXT_EXHAUSTED
-  }
-  ```
-- Add `buildGraphRuntimeSnapshot(engineA, engineB, ctx)` that:
-  - Unions Engine A + Engine B canonical hypothesis ids (preferring canonical `hypothesis_id`, deduped).
-  - Collects rule ids from `candidate_rule_ids` on either engine output.
-  - Computes `graph_state`:
-    - `hypotheses.length === 0` → `NO_HYPOTHESIS`
-    - any `hypothesis.confidence < TAU_DECISION` (existing threshold) or missing required evidence → `NEED_MORE_EVIDENCE`
-    - otherwise `READY_FOR_DECISION`
-  - Returns a `Object.freeze()`d structure — no downstream code may mutate.
-
-#### 2. Orchestrator becomes a graph-runtime consumer, not a scorekeeper
-File: `agents/orchestrator.ts`
-
-- Where Engine A finishes (~5399): call `buildGraphRuntimeSnapshot(engineA, /*engineB=*/undefined, ctx)` to produce an initial snapshot and stash it on `this._graphSnapshot`.
-- Where Engine B finishes (~5196): rebuild the snapshot with both engines' outputs and overwrite `this._graphSnapshot`. Merge, never replace-with-empty.
-- Replace ALL of these separate fields with reads from `this._graphSnapshot`:
-  - `_graphHypothesisIds`
-  - `_graphHypothesisRuleIds`
-  - `_graphHypothesisEdgeMissing`
-  - `_graphObsToHypEdges`
-  - `_graphHypothesisResult`
-  
-  Keep the property names as thin getters (`get _graphHypothesisIds() { return this._graphSnapshot?.hypotheses.map(h => h.id) ?? []; }`) so no call-site refactor is needed elsewhere.
-- Delete the synthesized branch at lines 7302-7305:
-
-  ```ts
-  console.log(`[OBS_TO_HYP] trace=${traceId} synthesized=true reason=diagnosis_first_path sequence=2`);
-  ```
-  Replace with:
-  - if `_graphSnapshot` exists → advance `assertDecisionGraphOrder(this, traceId, 'OBS_TO_HYP')` and emit a real `[OBS_TO_HYP] source=REAL_GRAPH_PATH` line whose numbers come from the snapshot.
-  - if not → let the existing `GRAPH_PIPELINE_BYPASSED` throw fire (already there at 5297).
-
-#### 3. BRAIN_TRACE reads only from the snapshot
-Files: `runtime/brain-trace.ts`, `agents/orchestrator.ts` (~7631)
-
-- Change `emitBrainTrace(...)` call site to pass the snapshot values directly:
-
-  ```ts
-  emitBrainTrace(_cs, {
-    ...,
-    hypotheses_count: snap.hypotheses.length,
-    obs_to_hyp_edges: snap.hypotheses.reduce((n,h) => n + h.matched_conditions.length, 0),
-    hyp_to_rule_edges: snap.rules.length,
-  });
-  ```
-- Add a corruption guard just before the emit:
-
-  ```ts
-  if (snap && snap.hypotheses.length > 0 && _hypIds.length === 0) {
-    throw new Error(`GRAPH_STATE_CORRUPTION_ERROR: snapshot=${snap.hypotheses.length} projection=0 trace=${traceId}`);
-  }
-  ```
-  This is the fail-loud rule the user asked for.
-
-#### 4. Clarification decision comes from `graph_state`, not symptom count
-File: `runtime/observation-selector-contract.ts` (and orchestrator sites that call it)
-
-- Replace the current heuristic that skips clarification when symptom coverage is high with:
-
-  ```ts
-  if (snapshot.graph_state === 'NEED_MORE_EVIDENCE' || snapshot.graph_state === 'NO_HYPOTHESIS') {
-    contract.observation_required = true;
-  } else if (snapshot.graph_state === 'READY_FOR_DECISION') {
-    contract.observation_required = false;
-  }
-  ```
-- Options continue to be sourced from `hypothesis-clarification-builder.ts`; the trigger authority moves to the snapshot.
-
-#### 5. Guardrail test
-File: `supabase/functions/ai-agriculture-chat/tests/graph-integrity_test.ts`
-
-Add contract test:
-- Input: `crop=RICE`, `intent=EMERGENCE_FAILURE`, observations include `POOR_EMERGENCE`.
-- Stub Engine A to return `{ hypothesis_id: 'RICE_GERMINATION_FAILURE', confidence: 0.7, candidate_rule_ids: ['RICE_SOIL_CRUST_BREAKING_001'] }`.
-- Stub Engine B to return `{ candidates: [] }` (stage mismatch path).
-- Assertions:
-  - `buildGraphRuntimeSnapshot(...).hypotheses.length === 1`
-  - projection into orchestrator yields `_graphHypothesisIds.length === 1`
-  - `emitBrainTrace` receives `hypotheses_count = 1`
-  - simulating projection loss throws `GRAPH_STATE_CORRUPTION_ERROR`
-  - the synthesized `diagnosis_first_path` log line does not appear anywhere in captured stdout.
-
-### Non-goals / boundaries
-
-- No changes to `hypothesis_master`, `hypothesis_conditions`, `hypothesis_rule_mapping`, or `decision_rules` (schema or seed).
-- No crop-specific branches; snapshot logic is generic across `RICE`, `SUGARCANE`, etc.
-- LLM narration path untouched — it will still consume the deterministic decision object, only now the object is the immutable snapshot.
-- Stage/DAS penalty logic in `hypothesis-graph-evaluator.ts` remains as-is; merging engines makes it non-fatal when Engine A already found a valid hypothesis.
-
-### Expected new trace (validation target)
-
+```ts
+interface HypothesisNode {
+  hypothesis_id: string;                  // canonical from hypothesis_master
+  confidence: number;
+  matched_observations: readonly string[];
+  sources: readonly ('ENGINE_A' | 'ENGINE_B')[];
+}
+interface RuleNode {
+  rule_id: string;
+  parent_hypothesis_id: string | null;    // null ⇒ orphan
+}
+interface GraphRuntimeSnapshot {
+  trace_id: string;
+  observations: readonly string[];
+  hypotheses: readonly HypothesisNode[];  // Map<hypothesis_id, HypothesisNode>
+  rules: readonly RuleNode[];
+  orphan_rule_ids: readonly string[];
+  graph_state: 'READY_FOR_DECISION' | 'NEED_MORE_EVIDENCE' | 'NO_HYPOTHESIS' | 'GRAPH_EXHAUSTED';
+  source: 'REAL_GRAPH_PATH';
+  reason?: string;
+}
 ```
-[GRAPH_RUNTIME] observations=13 hypotheses=1 winner=RICE_GERMINATION_FAILURE state=NEED_MORE_EVIDENCE
-[OBS_TO_HYP]    source=REAL_GRAPH_PATH hyp=[RICE_GERMINATION_FAILURE] sequence=2
-[HYP_TO_RULE]   rules=[RICE_SOIL_CRUST_BREAKING_001,RICE_SEED_ROT_REMEDIATION_001,RICE_GERMINATION_RESOW_DECISION_001] sequence=3
-[BRAIN_TRACE]   hyp=1 obs_to_hyp=1 hyp_to_rule=3 observation_required=true observation_option_count>0
+
+All layers `Object.freeze`d. Merge key is **strictly `hypothesis_id`**. `rule_id` is never a hypothesis key.
+
+### 2. Pure builder (no I/O)
+
+```ts
+buildGraphRuntimeSnapshot({
+  trace_id,
+  observations,
+  engineA,                     // candidates keyed by rule_id
+  engineB,                     // candidates keyed by hypothesis_id
+  edges: { ruleToHypothesis }, // Map<rule_id, hypothesis_id>
+}): GraphRuntimeSnapshot
 ```
+
+No async, no supabase, no fetch. Orchestrator is responsible for supplying `edges.ruleToHypothesis` — see §5.
+
+### 3. Engine A adapter
+For each Engine A candidate `{rule_id, confidence, matched_conditions}`:
+
+- `hid = edges.ruleToHypothesis.get(rule_id)`
+- If `hid` present AND `matched_conditions.length > 0`:
+  - Upsert `HypothesisNode(hid)` — max-confidence merge, union matched observations, add `'ENGINE_A'` to `sources`.
+  - Append `RuleNode(rule_id, parent_hypothesis_id: hid)`.
+- Else:
+  - Push `rule_id` to `orphan_rule_ids`, append `RuleNode(rule_id, parent_hypothesis_id: null)`.
+  - Log once per rule: `[GRAPH_ONTOLOGY] RULE_WITHOUT_HYPOTHESIS_EDGE rule_id=<x> trace=<t>`.
+  - Never synthesize a hypothesis from a rule_id.
+
+### 4. Engine B adapter
+Engine B already owns `hypothesis_id`. For each candidate:
+- Upsert `HypothesisNode(hypothesis_id)` (max-confidence merge, add `'ENGINE_B'` to `sources`).
+- For each `candidate_rule_ids[i]` → append `RuleNode(rule_id, parent_hypothesis_id: hypothesis_id)`.
+
+Deduplicate `RuleNode` by `rule_id`; if the same rule_id appears with different parents, prefer the Engine B parent (it owns the edge authoritatively) and log `[GRAPH_ONTOLOGY] RULE_PARENT_CONFLICT`.
+
+Hypothesis `sources` becomes `['ENGINE_A','ENGINE_B']` when both contribute (Test 3 = `BOTH` semantics via array membership; a `source` getter returns `'BOTH' | 'ENGINE_A' | 'ENGINE_B'` for logs).
+
+### 5. Orchestrator wiring
+- Invert Engine B's existing `queryRuleMapping` output (already fetched in `hypothesis-graph-evaluator.ts`) into a `Map<rule_id, hypothesis_id>` and stash it on the ConversationState as `_ruleToHypothesis` when Engine B runs (~line 5188 region).
+- If Engine A completes before Engine B populated the inversion (rare path), call `queryRuleMapping(supabase, engineA.rule_ids)` on demand and invert. This is the ONLY I/O; it happens in the orchestrator, NOT in the builder.
+- Both snapshot build sites (Engine A ~5446–5462, Engine B ~5217–5232) call the pure `buildGraphRuntimeSnapshot({..., edges:{ ruleToHypothesis }})`.
+- After `POST_EVIDENCE_FREEZE`: set `const graphResult = Object.freeze(this._graphSnapshot!)`. This is the only authority for BrainTrace, DecisionRenderer, and ClarificationEngine.
+- Delete direct writes at 5203, 5256–5257, 5316–5317. Convert `_graphHypothesisIds`, `_graphHypothesisRuleIds`, `_graphObsToHypEdges` into read-only getters that project from `_graphSnapshot` (temporary mirrors so downstream code keeps compiling).
+- BRAIN_TRACE emit site (~7658–7672): counts come only from `_graphSnapshot`; drop `_legacyHypIds` fallback; call `assertSnapshotNotCorrupt(snap, snap.hypotheses.length, traceId)` immediately before `emitBrainTrace`.
+
+### 6. Contract guards (in builder)
+Computed after adapters run, before freeze:
+
+- **G1 — orphan-only rules with real hypotheses absent:**
+  If `hypotheses.length === 0 && rules.some(r => r.parent_hypothesis_id !== null)` → throw `BROKEN_HYP_RULE_EDGE`. (Impossible by construction, but asserts invariant.)
+- **G2 — ontology violation:**
+  If `rules.some(r => r.parent_hypothesis_id !== null) && hypotheses.length === 0`:
+  - `Deno.env.get('GRAPH_STRICT') === '1'` (dev/test) → throw `GRAPH_ONTOLOGY_ERROR`.
+  - Production → set `graph_state = 'GRAPH_EXHAUSTED'`, `reason = 'GRAPH_ONTOLOGY_VIOLATION'`, emit `[GRAPH_ONTOLOGY] downgraded_to_exhausted`, return snapshot. No decision will be generated because DecisionRenderer requires `READY_FOR_DECISION`.
+- **G3 — post-emit projection guard** (orchestrator side, kept from prior work):
+  `assertSnapshotNotCorrupt` throws `GRAPH_STATE_CORRUPTION_ERROR` if `snapshot.hypotheses.length > 0` and projection reads 0.
+
+`graph_state` derivation (unchanged intent, tightened):
+- `hypotheses.length === 0` → `NO_HYPOTHESIS` (or `GRAPH_EXHAUSTED` when downgraded by G2 or when `reason` supplied).
+- Top hypothesis `confidence >= TAU_DECISION` AND has at least one child rule → `READY_FOR_DECISION`.
+- Otherwise → `NEED_MORE_EVIDENCE`.
+
+### 7. Tests (`tests/graph-snapshot_test.ts`)
+1. **Rule → hypothesis promotion:** Engine A `RICE_SOIL_CRUST_BREAKING_001` with mapping `→ RICE_GERMINATION_FAILURE` and matched observation → snapshot has 1 hypothesis `RICE_GERMINATION_FAILURE`, 1 rule with `parent_hypothesis_id === 'RICE_GERMINATION_FAILURE'`, `orphan_rule_ids` empty.
+2. **Missing mapping → orphan:** Engine A rule with empty `ruleToHypothesis` → `hypotheses.length === 0`, `orphan_rule_ids === [rule_id]`, `RuleNode.parent_hypothesis_id === null`, log line captured. No synthesized hypothesis.
+3. **Both engines same hypothesis:** Engine A rule maps to `H1` + Engine B emits `H1` → 1 hypothesis, `sources` contains both, exposed `source` = `'BOTH'`, confidence = max.
+4. **BRAIN_TRACE parity:** snapshot with `hypotheses.length === 1` fed to `emitBrainTrace` (via `hypotheses_count`) produces `hyp=1`; simulating projection = 0 makes `assertSnapshotNotCorrupt` throw `GRAPH_STATE_CORRUPTION_ERROR`.
+5. **Ontology guard:** rules with non-null parent but zero hypotheses (constructed by stubbing an empty Engine B and Engine A whose promotion is suppressed) with `GRAPH_STRICT=1` throws `GRAPH_ONTOLOGY_ERROR`; unset → `graph_state === 'GRAPH_EXHAUSTED'`.
+
+### Expected trace after fix
+```
+[GRAPH_RUNTIME] snapshot observations=13 hypotheses=1 winner=RICE_GERMINATION_FAILURE rules=3 orphans=0 state=NEED_MORE_EVIDENCE
+[BRAIN_TRACE] hyp=1 obs_to_hyp=1 hyp_to_rule=3 observation_required=true observation_option_count>0
+```
+
+### Non-goals
+- No edits to `hypothesis-evaluator.ts`, `hypothesis-graph-evaluator.ts`, DB schema, or LLM narration.
+- No crop-specific branches; identity model is symbol-agnostic across all crops.
+- `_graphHypothesisIds` etc. remain temporarily as read-only getters — a later cleanup PR removes them entirely once no call site references them.
