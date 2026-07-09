@@ -1,3 +1,11 @@
+// CHANGE LOG
+// 2026-07-09 21:15 UTC — DEFAULT_CLARIFICATION_CODES neutralized to [].
+//   Removes the universal INSECTS/YELLOW/SPOTS/STUNTED trio that the
+//   clarification renderer and multi-match detector were injecting for
+//   every farmer question regardless of intent/crop/stage. Options must
+//   now come exclusively from the hypothesis-graph clarification
+//   contract; renderer already handles empty[] by returning a neutral
+//   photo-only prompt.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * OBSERVATION LABEL LOADER - SSOT-COMPLIANT
