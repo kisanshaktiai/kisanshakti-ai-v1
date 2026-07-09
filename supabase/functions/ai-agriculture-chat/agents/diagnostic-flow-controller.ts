@@ -154,6 +154,13 @@ export class DiagnosticFlowController {
     // ═══════════════════════════════════════════════════════════════════════════
     // BUG FIX #5: Collect observation keys from ALL sources, not just symptom_codes
     // ═══════════════════════════════════════════════════════════════════════════
+    const explicitConfirmedObservationCodes = Array.isArray((nluOutput.entities as any)?.confirmed_observation_codes)
+      ? ((nluOutput.entities as any).confirmed_observation_codes as string[]).filter(Boolean)
+      : null;
+    const candidateObservationCodes = Array.isArray((nluOutput.entities as any)?.candidate_observation_codes)
+      ? ((nluOutput.entities as any).candidate_observation_codes as string[]).filter(Boolean)
+      : [];
+
     const observationKeys = new Set<string>([
       ...(nluOutput.entities?.symptom_codes || []),
       ...(nluOutput.symptom_extraction?.cross_crop_symptoms || []),
@@ -205,7 +212,10 @@ export class DiagnosticFlowController {
     // hypothesis pool is empty. Non-diagnostic (proactive) modules keep the
     // context-only path via a separate scheduler and never reach here.
     const hasCrop = !!nluOutput.entities?.crop_code;
-    const hasObservations = observationKeys.size > 0;
+    const confirmedObservationKeys = explicitConfirmedObservationCodes !== null
+      ? new Set(explicitConfirmedObservationCodes)
+      : observationKeys;
+    const hasObservations = confirmedObservationKeys.size > 0;
     const hasDiagnosticEvidence = hasObservations;
     const isDiagnosticIntent = !!nluOutput.intent && nluOutput.intent !== 'UNKNOWN';
 
@@ -216,7 +226,8 @@ export class DiagnosticFlowController {
       `[GRAPH_GATE] intent=${nluOutput.intent ?? 'null'} ` +
       `crop=${nluOutput.entities?.crop_code ?? 'null'} ` +
       `context_available=${hasCrop} ` +
-      `confirmed_observation_count=${observationKeys.size} ` +
+      `confirmed_observation_count=${confirmedObservationKeys.size} ` +
+      `candidate_observation_count=${candidateObservationCodes.length || observationKeys.size} ` +
       `decision=${canProceedDirectly ? 'RUN_GRAPH' : (isDiagnosticIntent ? 'ASK_OBSERVATION' : 'ASK_CLARIFICATION')}`
     );
 
