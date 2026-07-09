@@ -144,6 +144,22 @@ export async function ensureObservationSelectorContract(
   if (type === 'CLARIFICATION_QUESTION' && existingOptions.length === 0) {
     const options = await loadObservationSelectorOptions(ctx);
     if (options.length === 0) {
+      // Graph genuinely exhausted: farmer already confirmed observations but
+      // no downstream hypothesis edge exists for this (crop,stage,DAS,obs) cell.
+      // Degrade to DIAGNOSTIC_ESCALATION instead of a 500 — the greppable
+      // curator-triage warning below preserves the data-gap signal.
+      if ((ctx.realObservationCount ?? 0) > 0) {
+        console.warn(
+          `[OBSERVATION_CONTRACT_DEGRADE] trace=${ctx.traceId ?? 'n/a'} from=CLARIFICATION_QUESTION to=DIAGNOSTIC_ESCALATION reason=graph_exhausted_after_confirmed_observations crop=${ctx.cropCode ?? '?'} stage=${ctx.growthStage ?? '?'} intent=${ctx.intentCode ?? '?'} real_observations=${ctx.realObservationCount}`,
+        );
+        response.type = 'DIAGNOSTIC_ESCALATION';
+        response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+        response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
+        response.metadata.graph_reason = ctx.graphReason || 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS';
+        response.metadata.observation_required = false;
+        return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_downstream' };
+      }
+      // No confirmed observations AND no options loadable — fatal contract leak.
       throw new Error(
         `OBSERVATION_CONTRACT_VIOLATION: empty_options type=CLARIFICATION_QUESTION crop=${ctx.cropCode ?? '?'} trace_id=${ctx.traceId ?? 'n/a'}`,
       );
