@@ -1349,6 +1349,8 @@ export class AIAgentOrchestrator {
     (this as any)._ruleResultExists = false;
     (this as any)._graphHypothesisIds = [];
     (this as any)._graphHypothesisRuleIds = [];
+    // GraphRuntimeState.setX() is a no-op reset here because `graph` is
+    // constructed fresh a few lines below; nothing to mirror yet.
     (this as any)._graphHypothesisEdgeMissing = [];
     (this as any)._graphSnapshot = null;
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
@@ -2549,9 +2551,11 @@ export class AIAgentOrchestrator {
             // Mirror confirmed observations onto the enforcer-visible field so
             // the observation-selector-contract can degrade (not 500) when this
             // seed-graph clarification path also has zero loadable options.
-            (this as any)._lastRealObservations = Array.isArray(optionEvidence.real_codes)
-              ? [...optionEvidence.real_codes]
-              : [];
+            {
+              const _rc = Array.isArray(optionEvidence.real_codes) ? [...optionEvidence.real_codes] : [];
+              (this as any)._lastRealObservations = _rc;
+              try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
+            }
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
@@ -2611,9 +2615,11 @@ export class AIAgentOrchestrator {
               `[GRAPH_CONTRACT_ERROR] trace=${traceId} candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
               `matched_rules=0 reason=NO_HYPOTHESIS_RULE_EDGE options=${clarificationOptions.length}`,
             );
-            (this as any)._lastRealObservations = Array.isArray(optionEvidence.real_codes)
-              ? [...optionEvidence.real_codes]
-              : [];
+            {
+              const _rc = Array.isArray(optionEvidence.real_codes) ? [...optionEvidence.real_codes] : [];
+              (this as any)._lastRealObservations = _rc;
+              try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
+            }
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
@@ -3121,9 +3127,13 @@ export class AIAgentOrchestrator {
           // Mirror confirmed observations onto the enforcer-visible field so
           // observation-selector-contract Case C can degrade (not 500) when
           // this stage-fallback path yields no loadable options.
-          (this as any)._lastRealObservations = Array.isArray(optionEvidence?.real_codes)
-            ? [...optionEvidence.real_codes]
-            : (mappedObservationKey ? [mappedObservationKey] : []);
+          {
+            const _rc = Array.isArray(optionEvidence?.real_codes)
+              ? [...optionEvidence.real_codes]
+              : (mappedObservationKey ? [mappedObservationKey] : []);
+            (this as any)._lastRealObservations = _rc;
+            try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
+          }
 
           return {
             type: 'DECISION_PROVIDED',
@@ -5097,9 +5107,11 @@ export class AIAgentOrchestrator {
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
       // Expose real observation count for [ORCHESTRATOR_EXIT] boundary audit
       try {
-        (this as any)._lastRealObservations = Array
+        const _rc = Array
           .from(allObservationsForPreAuth)
           .filter((c) => isRealObservation(String(c)));
+        (this as any)._lastRealObservations = _rc;
+        try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
       } catch { /* audit-only, never throw */ }
       const cropDamageResult = detectCropDamageWithAuthority(
         authoredObservations,
@@ -5497,6 +5509,7 @@ export class AIAgentOrchestrator {
             graphHypothesisRuleIds = Array.from(new Set(graphHypothesisRuleIds));
             (this as any)._graphHypothesisResult = graphOut;
             (this as any)._graphHypothesisRuleIds = graphHypothesisRuleIds;
+            try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setHypothesisRuleIds(graphHypothesisRuleIds); } catch {}
             (this as any)._graphHypothesisEdgeMissing = graphHypothesisEdgeMissing;
             console.log(
               `   🧭 [HYP_GRAPH] survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} candidate_rule_ids=${graphHypothesisRuleIds.length} edge_missing=${graphHypothesisEdgeMissing.length}`,
@@ -5565,12 +5578,18 @@ export class AIAgentOrchestrator {
                 cs.hypotheses = Object.freeze(hypIds) as ReadonlyArray<string>;
               }
               (this as any)._graphHypothesisIds = hypIds;
-              (this as any)._graphObsToHypEdges = graphOut.candidates.reduce(
+              const _obsEdges = graphOut.candidates.reduce(
                 (n: number, c: any) => n + (Array.isArray(c?.matched_observations)
                   ? c.matched_observations.length
                   : (Array.isArray(c?.required_evidence) ? c.required_evidence.length : 0)),
                 0,
               );
+              (this as any)._graphObsToHypEdges = _obsEdges;
+              try {
+                const _grs2 = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+                _grs2?.setHypothesisIds(hypIds);
+                _grs2?.setObsToHypEdges(_obsEdges);
+              } catch {}
 
               // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
               // a single grep on trace= reconstructs the full edge chain.
@@ -5627,6 +5646,12 @@ export class AIAgentOrchestrator {
               (this as any)._graphHypothesisIds = [];
               (this as any)._graphHypothesisRuleIds = [];
               (this as any)._graphHypothesisEdgeMissing = [];
+              try {
+                const _grs3 = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+                _grs3?.setHypothesisIds([]);
+                _grs3?.setHypothesisRuleIds([]);
+                _grs3?.setObsToHypEdges(0);
+              } catch {}
               (this as any)._graphExhaustedReason = graphErrMessage;
               console.warn(
                 `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
