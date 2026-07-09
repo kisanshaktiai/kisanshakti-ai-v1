@@ -268,30 +268,63 @@ function safeString(str: string | undefined | null): string {
  * @param semantic - SemanticExtraction from LLM layer
  * @returns MappedObservationCodes - Canonical codes for rule engine
  */
-export function mapToObservationCodes(semantic: SemanticExtraction): MappedObservationCodes {
+/**
+ * Scope for the DB-SSOT `intent_observation_mapping` lookup. Comes from the
+ * frozen `BiologicalState` / canonical land context.
+ *
+ * IMPORTANT: absence of `crop_code` DISABLES intent expansion — we refuse to
+ * emit cross-crop observation codes. The cache would filter them away, but
+ * we log the miss loudly here so callers wire the scope through instead of
+ * silently expanding nothing.
+ */
+export interface ObservationMappingScope {
+  crop_code?: string | null;
+  growth_stage?: string | null;
+  das?: number | null;
+}
+
+export function mapToObservationCodes(
+  semantic: SemanticExtraction,
+  scope?: ObservationMappingScope,
+): MappedObservationCodes {
   console.log(`\n🔗 [ObservationCodeMapper v${OBSERVATION_CODE_MAPPER_VERSION}] Mapping to codes...`);
-  
+
   const startTime = Date.now();
   const observationCodes: ObservationKey[] = [];
   const patternsMatched: string[] = [];
-  
+
   // Determine mapping method based on intent_code presence
   const intentCode = safeString(semantic?.intent_code).toUpperCase();
   let usedIntentMapping = false;
   let affectedPartCode = ObservationKey.AFFECTED_PART_UNKNOWN;
   let severityCode = ObservationKey.SEVERITY_MEDIUM;
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // PRIMARY PATH — DB-SSOT intent → observations (v3.0.0, PR-1)
+  // PRIMARY PATH — DB-SSOT intent → observations (scope-aware, 2026-07-09)
   // Reads from `utils/observation-mapping-cache.ts` (SSOT:
   // public.intent_observation_mapping). Cache miss NEVER falls back to a
   // hardcoded intent map — logs `[OBS_MAPPING_CACHE_MISS]` and continues.
+  //
+  // The lookup is CROP / STAGE / DAS scoped so a rice land never receives
+  // brinjal / cotton / onion observation codes for the same intent.
   // ═══════════════════════════════════════════════════════════════════════════
   if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
     if (!isObservationMappingLoaded()) {
       console.warn(`[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=cache_not_loaded action=skip_intent_expansion`);
+    } else if (!scope || !scope.crop_code) {
+      // Fail-closed: without a locked crop we cannot scope, and unscoped
+      // expansion is exactly the cross-crop leak we removed.
+      console.warn(
+        `[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=no_scope ` +
+        `action=skip_intent_expansion crop=${scope?.crop_code ?? 'null'} ` +
+        `stage=${scope?.growth_stage ?? 'null'} das=${scope?.das ?? 'null'}`
+      );
     } else {
-      const entry = getObservationsForIntent(intentCode);
+      const entry = getObservationsForIntent(intentCode, {
+        crop_code: scope.crop_code,
+        growth_stage: scope.growth_stage ?? null,
+        das: typeof scope.das === 'number' ? scope.das : null,
+      });
       if (entry && entry.observation_codes.length > 0) {
         usedIntentMapping = true;
         for (const rawCode of entry.observation_codes) {
@@ -311,9 +344,17 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
         // the DB does not curate a per-intent default.
         patternsMatched.push(`intent_part:${affectedPartCode}`);
         patternsMatched.push(`db_ssot:intent_observation_mapping rows=${entry.source_rows}`);
-        console.log(`[DB_SSOT_SOURCE] path=intent_observation_mapping intent=${intentCode} rows=${entry.source_rows} modal_part=${entry.modal_affected_part ?? 'none'}`);
+        console.log(
+          `[DB_SSOT_SOURCE] path=intent_observation_mapping intent=${intentCode} ` +
+          `crop=${scope.crop_code} stage=${scope.growth_stage ?? 'null'} das=${scope.das ?? 'null'} ` +
+          `rows=${entry.source_rows} modal_part=${entry.modal_affected_part ?? 'none'}`
+        );
       } else {
-        console.warn(`[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=no_db_rows action=skip_intent_expansion`);
+        console.warn(
+          `[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=no_db_rows_in_scope ` +
+          `crop=${scope.crop_code} stage=${scope.growth_stage ?? 'null'} das=${scope.das ?? 'null'} ` +
+          `action=skip_intent_expansion`
+        );
       }
     }
   }
