@@ -7654,9 +7654,21 @@ export class AIAgentOrchestrator {
         // buildConversationState time.
         try {
           const _winner = layeredRuleResult?.primary_decision;
-          const _hypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
-          const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
-          const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
+          const _snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+
+          // Prefer the immutable snapshot over the legacy per-field projections.
+          // If snapshot has hypotheses but the legacy projection is empty, the
+          // corruption guard throws GRAPH_STATE_CORRUPTION_ERROR — fail loud.
+          const _legacyHypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
+          const _hypIds: string[] = _snap
+            ? _snap.hypotheses.map(h => h.id)
+            : _legacyHypIds;
+          const _obsToHyp: number = _snap
+            ? _snap.hypotheses.reduce((n, h) => n + h.matched_conditions.length, 0)
+            : Number((this as any)._graphObsToHypEdges ?? 0);
+          const _hypToRule: number = _snap
+            ? _snap.rules.length
+            : ((this as any)._graphHypothesisRuleIds ?? []).length;
           const _cs = (this as any).__conversationState ?? conversationState;
           const _graphRan = (this as any)._graphExecuted === true;
           const _realObsCount = Array.isArray((this as any)._lastRealObservations)
@@ -7667,11 +7679,6 @@ export class AIAgentOrchestrator {
             (_cs?.confirmed?.length ?? 0) > 0 ||
             (_cs?.inferred?.length ?? 0) > 0;
 
-          // PATCH 3 — Global fail-closed graph gate. If the turn carries any
-          // agronomic signal (diagnostic intent, real observations, confirmed
-          // or inferred symbols) and the hypothesis graph did NOT execute,
-          // the pipeline was bypassed. Fail loud so the leak surfaces in
-          // logs instead of masking as `[BRAIN_TRACE] hyp=0`.
           if (!_graphRan && _agronomicSignal) {
             throw new Error(
               `GRAPH_PIPELINE_BYPASSED: trace_id=${traceId} intent=${intentCode} ` +
@@ -7680,16 +7687,14 @@ export class AIAgentOrchestrator {
             );
           }
 
+          // FAIL LOUD — snapshot says N hypotheses but legacy projection is 0.
+          // This is the split-brain the surgical fix exists to prevent.
+          assertSnapshotNotCorrupt(_snap, _legacyHypIds.length, traceId);
+
           if ((this as any)._evidenceFrozen) {
             assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
           }
           if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
-            // NEURO-SYMBOLIC NO-HALLUCINATION RULE:
-            // Evidence exists but the DB has no OBS→HYP edge for the confirmed
-            // observation set. This is a knowledge-graph gap, NOT a runtime bug.
-            // Do NOT throw (that returns 500 to the farmer). Log the gap and
-            // let the downstream clarification path (observation-selector-contract)
-            // emit a CLARIFICATION_QUESTION hydrated from DB observations.
             console.warn(
               `[OBS_TO_HYP_GAP] trace_id=${traceId} intent=${intentCode} ` +
               `confirmed_obs=${_cs?.confirmed?.length ?? 0} real_obs=${_realObsCount} ` +
