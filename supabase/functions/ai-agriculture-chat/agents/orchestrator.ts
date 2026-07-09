@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 19:32 UTC — Kill deferred clarification leakage. Zero graph/IOM
+ *   candidates now fail closed to a neutral prompt; the old NLU/dynamic
+ *   fallback can no longer mint generic pest/leaf options after graph reject.
  * 2026-07-09 14:35 UTC — Phase C.1 (Graph SSOT authority). The four legacy
  *   `(this as any)._x` projection fields (_graphHypothesisIds,
  *   _graphHypothesisRuleIds, _graphObsToHypEdges, _lastRealObservations) are
@@ -6910,7 +6913,7 @@ export class AIAgentOrchestrator {
         // HARD INVARIANT: Rule-driven options CANNOT be overwritten by NLU fallback
         // ═══════════════════════════════════════════════════════════════════════════
         let finalClarificationOptions: string[];
-        let clarificationSource: 'DECISION_RULES' | 'NLU_FALLBACK' = 'NLU_FALLBACK';
+        let clarificationSource: 'DECISION_RULES' | 'GRAPH_EMPTY' = 'GRAPH_EMPTY';
         const observationStateCandidates = observationAuthorityRequiresClarification
           ? await loadClarificationCandidates({
               supabase: this.supabase,
@@ -6962,8 +6965,11 @@ export class AIAgentOrchestrator {
             console.log(`      ${i + 1}. ${opt.observation_key}: "${opt.label.substring(0, 50)}..."`);
           });
         } else {
-          console.log(`   ⚠️ No rule-driven options available - using NLU fallback (${nluClarificationOptions.length} options)`);
-          finalClarificationOptions = nluClarificationOptions;
+          console.warn(
+            `   ⚠️ No graph-backed clarification options available - refusing NLU fallback ` +
+            `(${nluClarificationOptions.length} proposed options dropped)`
+          );
+          finalClarificationOptions = [];
           
           // ═══════════════════════════════════════════════════════════════════════════
           // INVARIANT WARNING: When context exists, rule-driven options SHOULD exist
@@ -6990,7 +6996,20 @@ export class AIAgentOrchestrator {
         console.log(`   📋 Clarification input prepared: type=${nluClarificationType}, crop=${clarificationInput.crop_code}`);
         
         // P0 FIX: Properly await the async function
-        const clarificationResponse = await generateClarificationResponse(clarificationInput);
+        const clarificationResponse = clarificationSource === 'DECISION_RULES'
+          ? {
+              response_text: this.generateDefaultClarification(
+                options.language || 'mr',
+                farmerMessage,
+                landContext?.current_crop,
+              ),
+              options: ruleDrivenClarification?.options || finalClarificationOptions.map((label) => ({ label })),
+              photo_requested: false,
+              clarification_prompt: 'GRAPH_BACKED_OBSERVATION_OPTIONS',
+              scope: ClarificationScope.REFINE_OBSERVATION,
+              validation_passed: true,
+            }
+          : await generateClarificationResponse(clarificationInput);
         
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
@@ -7000,6 +7019,7 @@ export class AIAgentOrchestrator {
           inductionCoverage: inductionResult.symbol_coverage,
           inductionConfidence: inductionResult.aggregated_confidence,
           forceObservation: observationAuthorityRequiresClarification,
+          clarificationSource,
         };
         
         console.log(`   📋 Clarification PREPARED (will use only if symbolic brain finds 0 rules)`);
@@ -8775,28 +8795,26 @@ export class AIAgentOrchestrator {
         
         const { clarificationResponse, structuredOptions, intentConfidence, inductionCoverage, inductionConfidence } = pendingClarificationResponse;
         
-        // CRITICAL FIX: If clarification has 0 options, generate dynamic options from database
-        let safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
-        
-        if (safeOptionsForLog.length === 0 && !pendingClarificationResponse.forceObservation) {
-          console.log(`   ⚠️ Clarification has 0 options - generating dynamic fallback from database`);
-          
-          // Try to generate observation-based options from multi-match detector
-          try {
-            const { generateFallbackClarificationOptions } = await import('./generic-multi-match-detector.ts');
-            const dynamicOptions = await generateFallbackClarificationOptions(
-              landContext?.current_crop?.toUpperCase(),
-              this.supabase,
-              options.language || 'mr'
-            );
-            
-            if (dynamicOptions && dynamicOptions.length > 0) {
-              safeOptionsForLog = dynamicOptions;
-              console.log(`   ✅ Generated ${dynamicOptions.length} dynamic options from database`);
-            }
-          } catch (dynamicError) {
-            console.warn(`   ⚠️ Dynamic option generation failed:`, dynamicError);
-          }
+        // CRITICAL FIX: Farmer-visible options must already be graph/IOM-backed.
+        // Do NOT synthesize a second-chance list here; the old dynamic fallback
+        // queried generic decision_rules metadata and produced the same pest/leaf
+        // choices after the graph had correctly returned 0 candidates.
+        const rawClarificationOptions = Array.isArray(clarificationResponse?.options)
+          ? clarificationResponse.options.filter((opt: any) => opt != null)
+          : [];
+        const safeOptionsForLog = rawClarificationOptions
+          .map((opt: any) => typeof opt === 'string' ? opt : opt?.label)
+          .filter((label: any): label is string => typeof label === 'string' && label.trim().length > 0);
+        const safeStructuredOptions = rawClarificationOptions.map((opt: any, idx: number) => {
+          if (typeof opt === 'string') return structuredOptions?.[idx] || { label: opt };
+          return opt;
+        });
+
+        if (safeOptionsForLog.length === 0) {
+          console.warn(
+            `   ⚠️ Graph returned 0 farmer-observation options; returning neutral prompt with NO fallback options ` +
+            `(source=${pendingClarificationResponse.clarificationSource || 'unknown'})`
+          );
         }
         
         const responseText = clarificationResponse?.response_text || this.generateDefaultClarification(
@@ -8820,7 +8838,7 @@ export class AIAgentOrchestrator {
             options: safeOptionsForLog.map((opt: string, idx: number) => ({
               value: String(idx + 1),
               label: opt,
-              observation_key: structuredOptions?.[idx]?.observation_key,
+              observation_key: safeStructuredOptions?.[idx]?.observation_key,
             }))
           },
           metadata: {
@@ -8833,7 +8851,7 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             pendingClarificationOptions: safeOptionsForLog,
-            pendingClarificationOptionsStructured: (structuredOptions || []).map((opt: any, idx: number) => ({
+            pendingClarificationOptionsStructured: (safeStructuredOptions || []).map((opt: any, idx: number) => ({
               label: safeOptionsForLog[idx] || opt.label,
               value: String(idx + 1),
               observation_key: opt.observation_key,
