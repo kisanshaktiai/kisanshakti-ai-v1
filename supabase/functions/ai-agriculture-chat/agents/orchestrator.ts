@@ -2,6 +2,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 03:15 UTC — FIX 1 (STATE_SYNC). Call
+ *   `syncCanonicalStateFromSnapshot(canonicalState, _graphSnapshot)` right
+ *   before `checkPrescriptionGate` so `candidate_hypothesis_count` /
+ *   `matched_rules_count` reflect the frozen graph result. Closes the
+ *   graph=1 → state=0 split-brain that forced MONITOR_ONLY/INFORMATION.
  * 2026-07-09 02:07 UTC — Snapshot ontology wiring.
  *   • Import invertRuleMapping; stash `_ruleToHypothesis` after Engine B runs
  *     from graphOut.rule_edges.
