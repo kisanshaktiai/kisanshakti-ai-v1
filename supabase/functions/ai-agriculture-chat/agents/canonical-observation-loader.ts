@@ -1,3 +1,10 @@
+// CHANGE LOG
+// 2026-07-09 21:15 UTC — Emptied STAGE_KEY_PRIORITIES.all bucket. The
+//   INSECTS/YELLOW/WILT/SPOTS static list was firing as a universal
+//   fallback whenever the caller passed a stage not present in the map
+//   (e.g. `transplanting`), producing the "same options for every
+//   clarification" bug. Unknown stage now yields [] and the hypothesis
+//   graph is the only allowed source of stage-agnostic candidates.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CANONICAL OBSERVATION KEYS LOADER v3.0
@@ -97,10 +104,15 @@ const STAGE_KEY_PRIORITIES: Record<string, string[]> = {
     'INSECTS_VISIBLE', 'LARVAE_PRESENT'
   ],
   
-  all: [
-    'INSECTS_VISIBLE', 'LEAF_YELLOWING', 'LEAF_WILTING', 'LEAF_SPOTS_PRESENT',
-    'PATCHY_DAMAGE', 'ENTIRE_FIELD_AFFECTED', 'DAMAGE_AFTER_RAIN'
-  ]
+  // 'all' bucket intentionally EMPTY (2026-07-09 21:15 UTC).
+  //   Previously seeded [INSECTS_VISIBLE, LEAF_YELLOWING, LEAF_WILTING,
+  //   LEAF_SPOTS_PRESENT, ...] — this was the source of the
+  //   "same 3 pest/leaf options for every clarification" bug when the
+  //   real stage (e.g. `transplanting`) was not present in this map and
+  //   fell through to `all`. Neuro-symbolic invariant: unknown stage MUST
+  //   return no static suggestions; the hypothesis graph is the only
+  //   allowed source of stage-agnostic candidates.
+  all: []
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
