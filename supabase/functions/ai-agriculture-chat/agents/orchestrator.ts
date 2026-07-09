@@ -591,6 +591,7 @@ import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 import {
   buildGraphRuntimeSnapshot,
   assertSnapshotNotCorrupt,
+  invertRuleMapping,
   type GraphRuntimeSnapshot,
 } from '../runtime/graph-snapshot.ts';
 
@@ -5214,27 +5215,42 @@ export class AIAgentOrchestrator {
             // (diagnosis-first path arrives later) the snapshot is created
             // from Engine B alone and Engine A merges into it on arrival.
             try {
+              // Capture Engine B's rule mapping and stash the inverted view
+              // (Map<rule_id, hypothesis_id>) so Engine A can promote its
+              // rule-keyed candidates without a second DB round-trip.
+              const ruleEdgesMap = (graphOut as any).rule_edges as Map<string, string[]> | undefined;
+              const ruleToHypothesis = ruleEdgesMap ? invertRuleMapping(ruleEdgesMap) : new Map<string, string>();
+              (this as any)._ruleToHypothesis = ruleToHypothesis;
+
               const priorSnap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
-              const engineAForMerge = priorSnap
-                ? { candidates: priorSnap.hypotheses.map(h => ({
-                    rule_id: h.id,
-                    confidence: h.confidence,
-                    matched_conditions: [...h.matched_conditions],
-                    candidate_rule_ids: [...h.candidate_rule_ids],
-                  })) }
+              // Reconstruct Engine A candidates from a prior snapshot by walking
+              // rule_nodes (the pure builder never stores rule_id as a hypothesis).
+              const engineAForMerge = priorSnap && priorSnap.rule_nodes.length > 0
+                ? { candidates: priorSnap.rule_nodes
+                    .filter(r => r.parent_hypothesis_id !== null)
+                    .map(r => {
+                      const parent = priorSnap.hypotheses.find(h => h.id === r.parent_hypothesis_id);
+                      return {
+                        rule_id: r.rule_id,
+                        confidence: parent?.confidence ?? 0,
+                        matched_conditions: parent ? [...parent.matched_conditions] : [],
+                      };
+                    }) }
                 : null;
               const merged = buildGraphRuntimeSnapshot({
                 trace_id: traceId,
                 observations: (currentObservations ?? []) as string[],
                 engineA: engineAForMerge as any,
                 engineB: { candidates: graphOut.candidates as any },
+                edges: { ruleToHypothesis },
               });
               (this as any)._graphSnapshot = merged;
               console.log(
                 `[GRAPH_RUNTIME] snapshot trace=${traceId} observations=${merged.observations.length} ` +
                 `hypotheses=${merged.hypotheses.length} winner=${merged.hypotheses[0]?.id ?? 'none'} ` +
-                `rules=${merged.rules.length} state=${merged.graph_state} merge=engineB`,
+                `rules=${merged.rules.length} orphans=${merged.orphan_rule_ids.length} state=${merged.graph_state} merge=engineB`,
               );
+
             } catch (snapErr) {
               console.warn(`[GRAPH_SNAPSHOT] engineB merge non-fatal: ${(snapErr as Error).message}`);
             }
@@ -5445,17 +5461,27 @@ export class AIAgentOrchestrator {
           // hypotheses just because one engine produced zero candidates.
           try {
             const engineB = (this as any)._graphHypothesisResult ?? null;
+            // Prefer the cached rule→hypothesis map (populated when Engine B
+            // ran earlier in this turn). If absent, invert engineB.rule_edges
+            // now; otherwise fall back to an empty map — Engine A rules then
+            // route to orphan_rule_ids and log RULE_WITHOUT_HYPOTHESIS_EDGE.
+            let ruleToHypothesis: Map<string, string> = (this as any)._ruleToHypothesis ?? new Map<string, string>();
+            if (ruleToHypothesis.size === 0 && engineB?.rule_edges instanceof Map) {
+              ruleToHypothesis = invertRuleMapping(engineB.rule_edges);
+              (this as any)._ruleToHypothesis = ruleToHypothesis;
+            }
             const snap = buildGraphRuntimeSnapshot({
               trace_id: traceId,
               observations: (currentObservations ?? []) as string[],
               engineA: { candidates: hypothesisResult.candidates as any },
               engineB: engineB ? { candidates: engineB.candidates ?? [] } : null,
+              edges: { ruleToHypothesis },
             });
             (this as any)._graphSnapshot = snap;
             console.log(
               `[GRAPH_RUNTIME] snapshot trace=${traceId} observations=${snap.observations.length} ` +
               `hypotheses=${snap.hypotheses.length} winner=${snap.hypotheses[0]?.id ?? 'none'} ` +
-              `rules=${snap.rules.length} state=${snap.graph_state}`,
+              `rules=${snap.rules.length} orphans=${snap.orphan_rule_ids.length} state=${snap.graph_state}`,
             );
           } catch (snapErr) {
             console.warn(`[GRAPH_SNAPSHOT] engineA build non-fatal: ${(snapErr as Error).message}`);

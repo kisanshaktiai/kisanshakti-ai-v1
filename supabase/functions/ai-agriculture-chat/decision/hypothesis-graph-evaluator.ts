@@ -414,6 +414,10 @@ export async function evaluateHypothesisGraph(
     input_observations: observed.observations,
     trace_id: trace,
     timings_ms: Date.now() - started,
+    /** Map<hypothesis_id, rule_id[]> — exposed so the orchestrator can invert
+     *  it into the pure `edges.ruleToHypothesis` map required by
+     *  buildGraphRuntimeSnapshot. Never mutated by the caller. */
+    rule_edges: ruleEdges,
   };
 }
 
