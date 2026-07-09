@@ -338,6 +338,7 @@ import {
 import {
   buildCanonicalState,
   checkPrescriptionGate,
+  syncCanonicalStateFromSnapshot,
   CanonicalState,
   DataConfidence,
   mapCropNameToEnum,
