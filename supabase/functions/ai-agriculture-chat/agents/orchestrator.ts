@@ -3029,7 +3029,14 @@ export class AIAgentOrchestrator {
           console.log(`   clarification_active: false (answered with stage fallback)`);
           console.log(`   option_selected: "${matchResult.matched_option}"`);
           console.log(`   ═══════════════════════════════════════════════`);
-          
+
+          // Mirror confirmed observations onto the enforcer-visible field so
+          // observation-selector-contract Case C can degrade (not 500) when
+          // this stage-fallback path yields no loadable options.
+          (this as any)._lastRealObservations = Array.isArray(optionEvidence?.real_codes)
+            ? [...optionEvidence.real_codes]
+            : (mappedObservationKey ? [mappedObservationKey] : []);
+
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
