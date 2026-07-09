@@ -7937,12 +7937,39 @@ export class AIAgentOrchestrator {
             assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
           }
           if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
-            console.warn(
+            console.log(
               `[OBS_TO_HYP_GAP] trace_id=${traceId} intent=${intentCode} ` +
               `confirmed_obs=${_cs?.confirmed?.length ?? 0} real_obs=${_realObsCount} ` +
               `hypotheses=0 reason=no_hypothesis_edge_for_confirmed_observations ` +
-              `action=route_to_clarification_question`
+              `action=route_to_observation_cards`
             );
+            // F4 — HARD ROUTER: force observation-card response, refuse rule fallback.
+            // Load candidate observations from IOM cache (crop/domain-agnostic).
+            try {
+              const { getObservationsForIntent } = await import('../utils/observation-mapping-cache.ts');
+              const iomEntry = getObservationsForIntent(intentCode);
+              const candidateCodes = iomEntry?.observation_codes ?? [];
+              (this as any).__observationRequired = true;
+              (this as any).__observationCandidateCodes = candidateCodes;
+              (this as any).__observationRouterReason = 'OBS_TO_HYP_GAP';
+              // Neutralise the rule fallback so INVARIANT_FALLBACK cannot narrate.
+              if (layeredRuleResult) {
+                (layeredRuleResult as any).__suppressed_by = 'OBS_TO_HYP_GAP_ROUTER';
+                (layeredRuleResult as any).primary_decision = null;
+                (layeredRuleResult as any).matched_responses = [];
+              }
+              agentsUsed.push('OBS_TO_HYP_GAP_ROUTER');
+              console.log(
+                `[OBS_TO_HYP_GAP_ROUTER] trace_id=${traceId} intent=${intentCode} ` +
+                `candidate_options=${candidateCodes.length} rule_fallback=suppressed`
+              );
+            } catch (routerErr) {
+              console.warn(
+                `[OBS_TO_HYP_GAP_ROUTER] failed to load IOM candidates: ` +
+                `${routerErr instanceof Error ? routerErr.message : String(routerErr)}`
+              );
+            }
+          }
           }
 
           emitBrainTrace(_cs, {
