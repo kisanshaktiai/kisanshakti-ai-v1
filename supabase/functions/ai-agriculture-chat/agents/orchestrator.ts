@@ -5206,6 +5206,38 @@ export class AIAgentOrchestrator {
             );
             (this as any)._graphExecuted = true;
 
+            // ─── SNAPSHOT (Engine B merge) ────────────────────────────────
+            // If Engine A already produced a snapshot this turn, merge it
+            // with the Engine B result so a stage-filter kill on B never
+            // overwrites a valid A hypothesis. If Engine A has not run yet
+            // (diagnosis-first path arrives later) the snapshot is created
+            // from Engine B alone and Engine A merges into it on arrival.
+            try {
+              const priorSnap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+              const engineAForMerge = priorSnap
+                ? { candidates: priorSnap.hypotheses.map(h => ({
+                    rule_id: h.id,
+                    confidence: h.confidence,
+                    matched_conditions: [...h.matched_conditions],
+                    candidate_rule_ids: [...h.candidate_rule_ids],
+                  })) }
+                : null;
+              const merged = buildGraphRuntimeSnapshot({
+                trace_id: traceId,
+                observations: (currentObservations ?? []) as string[],
+                engineA: engineAForMerge as any,
+                engineB: { candidates: graphOut.candidates as any },
+              });
+              (this as any)._graphSnapshot = merged;
+              console.log(
+                `[GRAPH_RUNTIME] snapshot trace=${traceId} observations=${merged.observations.length} ` +
+                `hypotheses=${merged.hypotheses.length} winner=${merged.hypotheses[0]?.id ?? 'none'} ` +
+                `rules=${merged.rules.length} state=${merged.graph_state} merge=engineB`,
+              );
+            } catch (snapErr) {
+              console.warn(`[GRAPH_SNAPSHOT] engineB merge non-fatal: ${(snapErr as Error).message}`);
+            }
+
             // ═══════════════════════════════════════════════════════════════
             // PATCH 1 (BUG 1) — Project graph result back onto ConversationState
             // so downstream readers (BRAIN_TRACE, decision builder, invariants)
