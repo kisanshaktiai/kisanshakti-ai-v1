@@ -1243,8 +1243,10 @@ export class AIAgentOrchestrator {
         const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
         const snapHyp = snap?.hypotheses.length ?? 0;
         const snapRules = snap?.rules.length ?? 0;
-        const exitHyp = ((this as any)._graphHypothesisIds ?? []).length;
-        const exitRules = ((this as any)._graphHypothesisRuleIds ?? []).length;
+        // Phase C.1 — prefer GraphRuntimeState authority; fall back to legacy field.
+        const _grs = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+        const exitHyp = (_grs?.hypothesis_ids.length ?? ((this as any)._graphHypothesisIds ?? []).length);
+        const exitRules = (_grs?.hypothesis_rule_ids.length ?? ((this as any)._graphHypothesisRuleIds ?? []).length);
         const ok = !(snapHyp > 0 && exitHyp === 0);
         console.log(
           `[GRAPH_HANDOFF_CHECK] trace=${traceId} ` +
