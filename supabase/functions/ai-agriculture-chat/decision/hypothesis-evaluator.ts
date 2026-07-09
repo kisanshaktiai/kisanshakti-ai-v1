@@ -1,5 +1,9 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG
+ * 2026-07-09 19:38 UTC — Type-shape repair only. Existing i18n metadata fields
+ * are declared and observable-characteristic normalization is explicitly typed.
+ * ═══════════════════════════════════════════════════════════════════════════
  * HYPOTHESIS-FIRST CLARIFICATION EVALUATOR (v1.2.0)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
@@ -561,7 +565,7 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
     return str.toUpperCase().replace(/[\s-]/g, '_');
   };
   
-  return charArray.map((char: any, idx: number) => {
+  return charArray.map((char: any, idx: number): ObservableCharacteristic | null => {
     // P0 FIX: Handle string keys (new array format from migration)
     if (typeof char === 'string') {
       const normalizedKey = normalizeToObservationKey(char);
@@ -1325,12 +1329,14 @@ export interface DiagnosticConfirmationOption {
   confidence_boost: number;
   source_rule_id?: string;
   icon?: string;
+  i18n_key?: string;
 }
 
 export interface DiagnosticConfirmationResult {
   question_mr: string;
   question_hi: string;
   question_en: string;
+  question_i18n_key?: string;
   options: DiagnosticConfirmationOption[];
   photo_option_included: boolean;
   hypotheses_count: number;

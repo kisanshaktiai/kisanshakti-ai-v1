@@ -1,5 +1,10 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG
+ * 2026-07-09 19:38 UTC — Type-shape repair only. Stage lock now initializes
+ * required observation audit arrays; fallback option ID derives from
+ * observation_key; WEED_COMPETITION question added for exhaustive union.
+ * ═══════════════════════════════════════════════════════════════════════════
  * HYPOTHESIS-FIRST CLARIFICATION STRATEGY (v4.0.0)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
@@ -213,7 +218,9 @@ export function lockStageForTurn(
     growth_stage: growthStage.toUpperCase(),
     days_since_sowing: daysSinceSowing,
     locked_at: Date.now(),
-    source
+    source,
+    validated_observations: [],
+    rejected_observations: []
   };
   
   console.log(`🔒 [ClarificationStrategy] Stage LOCKED: ${_lockedStageContext.growth_stage} for ${_lockedStageContext.crop_code} (DAS: ${daysSinceSowing}, source: ${source})`);
@@ -730,7 +737,7 @@ function useHypothesisFallback(
   );
   
   const options: RuleDrivenOption[] = stageCompatible.slice(0, 3).map(opt => ({
-    id: opt.id,
+    id: opt.observation_key,
     label: opt.label,
     observation_key: opt.observation_key,
     rule_id: 'FALLBACK',
@@ -796,6 +803,11 @@ function getFailureClassQuestion(
       mr: `🍃 ${stage} अवस्थेत पोषण कमतरतेची कोणती चिन्हे दिसत आहेत?`,
       hi: `🍃 ${stage} अवस्था में पोषक तत्व की कमी के कौन से संकेत हैं?`,
       en: `🍃 What nutrient deficiency signs do you see in ${stage} stage?`
+    },
+    WEED_COMPETITION: {
+      mr: `🌾 ${stage} अवस्थेत तणांचा पिकावर किती परिणाम दिसत आहे?`,
+      hi: `🌾 ${stage} अवस्था में खरपतवार का फसल पर कितना असर दिख रहा है?`,
+      en: `🌾 What weed competition signs do you see in ${stage} stage?`
     },
     VEGETATIVE_STRESS: {
       mr: `🌿 ${stage} अवस्थेत वाढीची काय समस्या दिसत आहे?`,
