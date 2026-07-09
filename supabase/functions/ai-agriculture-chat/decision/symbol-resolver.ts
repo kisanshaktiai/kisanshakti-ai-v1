@@ -77,6 +77,19 @@ export async function resolveObservationSymbol(
       }
     }
 
+    if (aliasRows.length === 0) {
+      const aliasByText = await supabase
+        .from('observation_aliases')
+        .select('alias_code, alias_normalized, alias_text, canonical_code, active')
+        .eq('active', true)
+        .in('alias_text', variants);
+      if (aliasByText.error) {
+        console.warn(`[SYMBOL_RESOLVER] alias_text lookup failed symbol=${graph} error=${aliasByText.error.message}`);
+      } else if (Array.isArray(aliasByText.data)) {
+        aliasRows = aliasByText.data;
+      }
+    }
+
     if (Array.isArray(aliasRows) && aliasRows.length > 0) {
       const canonical = String(aliasRows[0]?.canonical_code || '').trim();
       if (canonical) {
