@@ -429,6 +429,7 @@ export class GraphRuntimeState {
       snapshot_versions: this._snapshot_versions,
       intent: this._intent_node,
       decision: this._decision_node,
+      evidence_round: this._evidence_round,
       observations: this.observation_ledger.view(),
       hypothesis_graph: this.hypothesis_graph.map((c) => ({
         rule_id: c.rule_id,
