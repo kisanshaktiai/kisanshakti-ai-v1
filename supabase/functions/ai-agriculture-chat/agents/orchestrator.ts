@@ -7360,8 +7360,18 @@ export class AIAgentOrchestrator {
           // the sequence synthetically when we already have graph output so the
           // strict HYP_TO_RULE ordering check does not crash the turn.
           if (Number((this as any).__decisionGraphSequence ?? 0) === 1) {
+            // REAL_GRAPH_PATH — no more `synthesized=true`. Emit an OBS_TO_HYP
+            // line whose numbers come from the immutable snapshot. If the
+            // snapshot is empty here the downstream GRAPH_PIPELINE_BYPASSED
+            // guard fires; we no longer paper over the miss.
             assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
-            console.log(`[OBS_TO_HYP] trace=${traceId} synthesized=true reason=diagnosis_first_path sequence=2`);
+            const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+            const snapHyp = (snap?.hypotheses ?? []).map(h => h.id).slice(0, 12).join(',');
+            console.log(
+              `[OBS_TO_HYP] trace=${traceId} source=REAL_GRAPH_PATH ` +
+              `hyp=[${snapHyp}] sequence=2 hypotheses=${snap?.hypotheses.length ?? 0} ` +
+              `state=${snap?.graph_state ?? 'NO_HYPOTHESIS'}`,
+            );
           }
           assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
         }
