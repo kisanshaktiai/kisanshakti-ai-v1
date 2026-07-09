@@ -246,6 +246,34 @@ export interface DecisionNode {
   readonly metadata: Record<string, unknown>;
 }
 
+/**
+ * Phase A — EVIDENCE ROUND SNAPSHOT
+ * Frozen once per request the moment the farmer's observation selection has
+ * been confirmed onto the ObservationLedger. Its purpose is to block the
+ * "Observation → Observation" re-ask loop: any downstream branch that wants
+ * to emit another CLARIFICATION_QUESTION MUST first check
+ *   graph.evidence_round?.round_completed && cross_turn_round_index >= max_rounds
+ * and fall through to the hypothesis/decision path when true.
+ *
+ * DB authority (no TypeScript policy):
+ *   max_rounds ← observation_intent_master.max_clarification_rounds (default 1)
+ *
+ * The snapshot is immutable — freeze-once — mirroring canonical_context /
+ * intent_node / decision_node. Cross-turn accumulation is owned by the
+ * session-state layer (clarification_turn_count), not this snapshot.
+ */
+export interface EvidenceRoundSnapshot {
+  readonly crop_code: string | null;
+  readonly growth_stage: string | null;
+  readonly days_since_sowing: number | null;
+  readonly selected_observations: readonly string[];
+  readonly intent_code: string | null;
+  readonly round_index: number;    // this turn's round number (1-indexed)
+  readonly max_rounds: number;     // from observation_intent_master
+  readonly round_completed: true;
+  readonly frozen_at: number;
+}
+
 export class GraphRuntimeState {
   public readonly trace_id: string;
   public readonly started_at: number;
@@ -257,12 +285,50 @@ export class GraphRuntimeState {
   private _intent_node: IntentNode | null = null;
   private _decision_node: DecisionNode | null = null;
   private _presentation_set = false;
+  private _evidence_round: EvidenceRoundSnapshot | null = null;
 
   constructor(trace_id: string) {
     this.trace_id = trace_id;
     this.started_at = Date.now();
     this.observation_ledger = new ObservationLedger();
     this.hypothesis_graph = [];
+  }
+
+  // ── Evidence round (Phase A — observation-loop guard) ──────────────────
+  freezeEvidenceRound(snap: Omit<EvidenceRoundSnapshot, 'round_completed' | 'frozen_at'>): void {
+    if (this._evidence_round !== null) {
+      throw new GraphStateDriftError(
+        'EVIDENCE_ROUND_FREEZE',
+        'evidence_round',
+        this._evidence_round,
+        snap,
+      );
+    }
+    const codes = Array.from(new Set((snap.selected_observations || []).filter(Boolean)));
+    for (const c of codes) assertCanonicalCode('evidence_round.selected_observations', c);
+    const frozen: EvidenceRoundSnapshot = Object.freeze({
+      crop_code: snap.crop_code ?? null,
+      growth_stage: snap.growth_stage ?? null,
+      days_since_sowing: snap.days_since_sowing ?? null,
+      selected_observations: Object.freeze([...codes]),
+      intent_code: snap.intent_code ?? null,
+      round_index: Math.max(1, Number(snap.round_index) || 1),
+      max_rounds: Math.max(1, Number(snap.max_rounds) || 1),
+      round_completed: true,
+      frozen_at: Date.now(),
+    });
+    this._evidence_round = frozen;
+    console.log(
+      `[EVIDENCE_ROUND_FREEZE][${this.trace_id}] ` +
+        `crop=${frozen.crop_code ?? 'null'} stage=${frozen.growth_stage ?? 'null'} ` +
+        `das=${frozen.days_since_sowing ?? 'null'} intent=${frozen.intent_code ?? 'null'} ` +
+        `round=${frozen.round_index}/${frozen.max_rounds} ` +
+        `selected=[${frozen.selected_observations.join(',')}]`,
+    );
+  }
+
+  get evidence_round(): EvidenceRoundSnapshot | null {
+    return this._evidence_round;
   }
 
   // ── Canonical context (Land SSOT) ────────────────────────────────────
@@ -363,6 +429,7 @@ export class GraphRuntimeState {
       snapshot_versions: this._snapshot_versions,
       intent: this._intent_node,
       decision: this._decision_node,
+      evidence_round: this._evidence_round,
       observations: this.observation_ledger.view(),
       hypothesis_graph: this.hypothesis_graph.map((c) => ({
         rule_id: c.rule_id,

@@ -2437,7 +2437,72 @@ export class AIAgentOrchestrator {
             `matched_rules=${optionGraphRuleIds.length}`,
           );
 
-          if (optionEvidence.real_symptom_count > 0 && optionGraphResolution.hypotheses.length === 0) {
+          // ═══════════════════════════════════════════════════════════════════
+          // Phase A — EVIDENCE ROUND FREEZE + OBSERVATION-LOOP GATE
+          // The farmer just selected an observation this turn. Freeze the
+          // round snapshot on the graph and consult observation_intent_master
+          // for the DB-authoritative round budget. If the budget is exhausted
+          // we MUST fall through to the hypothesis/decision path instead of
+          // emitting yet another CLARIFICATION_QUESTION (the farmer-visible
+          // "observation → observation" loop).
+          // ═══════════════════════════════════════════════════════════════════
+          const _intentCodeForRound =
+            (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY';
+          let _maxRoundsFromDb = 1;
+          try {
+            const { data: _oimRow } = await this.supabase
+              .from('observation_intent_master')
+              .select('max_clarification_rounds')
+              .eq('intent_code', _intentCodeForRound)
+              .maybeSingle();
+            if (_oimRow && Number.isFinite(Number(_oimRow.max_clarification_rounds))) {
+              _maxRoundsFromDb = Math.max(1, Number(_oimRow.max_clarification_rounds));
+            }
+          } catch (_e) {
+            /* default 1 — DB unreachable is not a reason to loop the farmer */
+          }
+          const _roundIndexThisTurn = Math.max(
+            1,
+            Number((typeof clarificationTurnCount === 'number' ? clarificationTurnCount : 1)) || 1,
+          );
+          try {
+            if (!graph.evidence_round) {
+              graph.freezeEvidenceRound({
+                crop_code: cropName || null,
+                growth_stage: growthStage || null,
+                days_since_sowing: landContextForOptionSelection?.days_since_sowing ?? null,
+                selected_observations:
+                  optionEvidence.real_codes && optionEvidence.real_codes.length > 0
+                    ? optionEvidence.real_codes
+                    : mappedObservationKey
+                    ? [mappedObservationKey]
+                    : [],
+                intent_code: _intentCodeForRound,
+                round_index: _roundIndexThisTurn,
+                max_rounds: _maxRoundsFromDb,
+              });
+            }
+          } catch (e) {
+            console.warn(
+              `[EVIDENCE_ROUND_FREEZE] non-fatal: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+          const _roundBudgetExhausted =
+            !!graph.evidence_round?.round_completed &&
+            graph.evidence_round.round_index >= graph.evidence_round.max_rounds;
+          if (_roundBudgetExhausted) {
+            console.log(
+              `[OBS_LOOP_GATE][${traceId}] round_budget_exhausted intent=${_intentCodeForRound} ` +
+                `round=${graph.evidence_round?.round_index}/${graph.evidence_round?.max_rounds} ` +
+                `→ skipping observation re-ask, routing to hypothesis/decision path`,
+            );
+          }
+
+          if (
+            !_roundBudgetExhausted &&
+            optionEvidence.real_symptom_count > 0 &&
+            optionGraphResolution.hypotheses.length === 0
+          ) {
             const graphClarification = await buildHypothesisClarificationOptions({
               supabase: this.supabase,
               intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
@@ -2500,7 +2565,11 @@ export class AIAgentOrchestrator {
             } as any;
           }
 
-          if (optionGraphResolution.hypotheses.length > 0 && optionGraphRuleIds.length === 0) {
+          if (
+            !_roundBudgetExhausted &&
+            optionGraphResolution.hypotheses.length > 0 &&
+            optionGraphRuleIds.length === 0
+          ) {
             const graphClarification = await buildHypothesisClarificationOptions({
               supabase: this.supabase,
               intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
@@ -2555,6 +2624,7 @@ export class AIAgentOrchestrator {
               },
             } as any;
           }
+
           
           const canonicalState = buildCanonicalState({
             // CRITICAL FIX: Pass landContext to preserve all land data
