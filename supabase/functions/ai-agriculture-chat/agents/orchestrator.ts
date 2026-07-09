@@ -5521,7 +5521,7 @@ export class AIAgentOrchestrator {
             trace_id: traceId,
             intent_code: intentCode,
             diagnostic_intent: isDiagnosticIntent,
-            confirmed_observations: conversationState.confirmed as string[],
+            confirmed_observations: [...conversationState.confirmed],
             // Phase F — variety-aware resistance modulation
             variety_id: (_gtForHyp?.variety_id
               ?? (landContext as any)?.current_crop_variety_id
