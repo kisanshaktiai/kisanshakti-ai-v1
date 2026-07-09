@@ -187,28 +187,52 @@ export class DiagnosticFlowController {
       return await this.evaluateRules();
     }
     
-    // v3.0: Standard path - check for essential entities (NOT NLU confidence)
-    // hasProblem is derived from observations, not NLU classification
+    // v4.0 (GRAPH_GATE): CONTEXT vs EVIDENCE separation
+    //   CONTEXT  = crop, variety, stage, DAS, soil, NDVI, weather, GPS
+    //   EVIDENCE = confirmed farmer observations, sensor observations, validated symptoms
+    // A diagnostic turn MUST have EVIDENCE (>=1 confirmed observation) before
+    // rule/hypothesis evaluation. Crop alone is CONTEXT and MUST NOT unlock
+    // decision_rules — otherwise the observation graph is skipped and the
+    // hypothesis pool is empty. Non-diagnostic (proactive) modules keep the
+    // context-only path via a separate scheduler and never reach here.
     const hasCrop = !!nluOutput.entities?.crop_code;
     const hasObservations = observationKeys.size > 0;
-    const hasEssentialEntities = hasCrop || hasObservations;
-    
-    // v3.0: canProceedDirectly is based on entities, NOT NLU confidence
-    const canProceedDirectly = hasEssentialEntities;
-    
-    console.log('📊 [DiagnosticFlow] Decision check (v3.0 - observation-based):', {
-      hasEssentialEntities,
-      hasCrop,
-      hasObservations,
-      canProceedDirectly,
-      terminalDamageDetected: terminalDamageResult.detected,
-      nluConfidence_IGNORED: overallConfidence // Logged but not used
-    });
-    
-    // If we have essential context, proceed directly to rule evaluation
+    const hasDiagnosticEvidence = hasObservations;
+    const isDiagnosticIntent = !!nluOutput.intent && nluOutput.intent !== 'UNKNOWN';
+
+    // canProceedDirectly requires EVIDENCE, not just CONTEXT.
+    const canProceedDirectly = hasDiagnosticEvidence;
+
+    console.log(
+      `[GRAPH_GATE] intent=${nluOutput.intent ?? 'null'} ` +
+      `crop=${nluOutput.entities?.crop_code ?? 'null'} ` +
+      `context_available=${hasCrop} ` +
+      `confirmed_observation_count=${observationKeys.size} ` +
+      `decision=${canProceedDirectly ? 'RUN_GRAPH' : (isDiagnosticIntent ? 'ASK_OBSERVATION' : 'ASK_CLARIFICATION')}`
+    );
+
+    // EVIDENCE present → run rule/hypothesis graph
     if (canProceedDirectly) {
-      console.log('✅ [DiagnosticFlow] Sufficient context - proceeding to rule evaluation');
+      console.log('✅ [DiagnosticFlow] Diagnostic evidence present — proceeding to rule evaluation');
       return await this.evaluateRules();
+    }
+
+    // Diagnostic intent + context but ZERO evidence → route to observation navigator.
+    // This is the neuro-symbolic invariant: intent → intent_observation_mapping →
+    // observation_master → farmer confirms → hypothesis graph → decision_rules.
+    // We MUST NOT call evaluateRules() here.
+    if (isDiagnosticIntent) {
+      console.log(
+        '❓ [DiagnosticFlow] Diagnostic intent without evidence — routing to observation navigator ' +
+        '(intent_observation_mapping → observation_master)'
+      );
+      this.session.status = 'AWAITING_CLARIFICATION';
+      return {
+        action: 'ASK_CLARIFICATION',
+        questions: [],
+        message_en: 'OBSERVATION_REQUIRED',
+        session_state: this.session,
+      };
     }
     
     // Only ask for clarification if we genuinely need it AND have high-priority questions
@@ -221,7 +245,7 @@ export class DiagnosticFlowController {
         q.priority === 'CRITICAL'
       );
       
-      if (criticalMissingQuestions.length > 0 && !hasEssentialEntities) {
+      if (criticalMissingQuestions.length > 0 && !hasDiagnosticEvidence) {
         this.session.status = 'AWAITING_CLARIFICATION';
         this.session.pending_questions = criticalMissingQuestions.map(q => q.question_id);
         
@@ -237,7 +261,7 @@ export class DiagnosticFlowController {
     }
     
     // Check if photo is needed - only if severity is high or unknown
-    if (nluOutput.contextNeeded.photo_required && !hasEssentialEntities) {
+    if (nluOutput.contextNeeded.photo_required && !hasDiagnosticEvidence) {
       this.session.status = 'AWAITING_PHOTO';
       
       console.log('📷 [DiagnosticFlow] Requesting photo');

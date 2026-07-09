@@ -143,9 +143,19 @@ export async function buildNavigatorOverride(
       reason: result.reason,
     });
   } catch (e) {
-    console.warn(
-      `[NAV_OVERRIDE] non-fatal exception: ${e instanceof Error ? e.message : String(e)} — falling back to legacy`,
+    // v4.0: FAIL-CLOSED. Graph errors MUST NOT silently fall back to the
+    // legacy chatbot path — that would let the LLM narrate diagnosis without
+    // graph authority. Surface as INSUFFICIENT_EVIDENCE with a visible reason.
+    console.error(
+      `[NAV_OVERRIDE] GRAPH_RESPONSE_FAILURE: ${e instanceof Error ? e.message : String(e)} — failing closed`,
     );
-    return NO_OVERRIDE;
+    return Object.freeze({
+      override: true,
+      decision: 'INSUFFICIENT_EVIDENCE',
+      options: [],
+      observation_keys: [],
+      labels: [],
+      reason: 'GRAPH_RESPONSE_FAILURE',
+    });
   }
 }
