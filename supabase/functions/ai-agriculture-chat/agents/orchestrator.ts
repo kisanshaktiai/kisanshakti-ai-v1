@@ -5018,6 +5018,8 @@ export class AIAgentOrchestrator {
           `route=${queryRoute.route} → forcing SYMBOLIC_DIAGNOSIS graph pipeline`,
         );
         diagnosisWithOptionalClarification = true;
+        directModeBypass = false;
+        bypassClarification = false;
         // Route authority: router cannot pin diagnostic intents to GENERAL_INFO.
         if (queryRoute.route === 'GENERAL_INFO') {
           (queryRoute as any).route = 'PEST_DISEASE_TREATMENT';
