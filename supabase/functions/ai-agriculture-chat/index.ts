@@ -1886,7 +1886,7 @@ serve(async (req) => {
           // have promoted the response to DIAGNOSTIC_ESCALATION or a young-
           // crop OBSERVATION response after the first enforcer ran. Re-run
           // it so an empty escalation gets converted into a farmer-facing
-          // CLARIFICATION_QUESTION with DB-sourced options (IOM SSOT).
+          // CLARIFICATION_QUESTION with hypothesis-graph-sourced options.
           // ─────────────────────────────────────────────────────────────────
           try {
             const _orchAnyForCtx2: any = orch as any;
