@@ -1392,6 +1392,7 @@ export const CanonicalStateBuilder = {
   build: buildCanonicalState,
   calculateConfidence: calculateDataConfidence,
   checkPrescriptionGate,
+  syncCanonicalStateFromSnapshot,
   
   // Mappers
   mapCrop: mapCropNameToEnum,
