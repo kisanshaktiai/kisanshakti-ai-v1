@@ -1,3 +1,8 @@
+// CHANGE LOG
+// 2026-07-09 19:34 UTC — Type contract widened for crop template registry.
+//   Flat crop templates (WHEAT/COTTON/RICE) are intentionally supported by
+//   getContextAwareTemplate; the TypeScript interface now matches runtime
+//   behavior so clarification tests can validate the fallback fix.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * PHASE-8: CLARIFICATION RENDERER (LLM = TRANSLATOR ONLY)
@@ -227,8 +232,8 @@ interface StageSpecificTemplates {
   [stage: string]: Partial<Record<ClarificationScope, Record<string, { question: string; options: string[] }>>>;
 }
 
-interface CropStageSpecificTemplate {
-  default: CropSpecificTemplate;
+interface CropStageSpecificTemplate extends CropSpecificTemplate {
+  default?: CropSpecificTemplate;
   stages?: StageSpecificTemplates;
 }
 
