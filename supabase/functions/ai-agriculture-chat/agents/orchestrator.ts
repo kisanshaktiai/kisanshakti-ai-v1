@@ -588,6 +588,11 @@ import {
 // Do NOT reintroduce a direct `evaluateCandidateHypotheses` import here —
 // that bypasses `graphExecuted` bookkeeping and the [GRAPH_RUNTIME] trace.
 import { runGraphRuntime } from '../runtime/graph-runtime.ts';
+import {
+  buildGraphRuntimeSnapshot,
+  assertSnapshotNotCorrupt,
+  type GraphRuntimeSnapshot,
+} from '../runtime/graph-snapshot.ts';
 
 export const ORCHESTRATOR_VERSION = '4.1.0'; // Phase-22.5: Diagnosis-First mode with hypothesis-driven options
 
