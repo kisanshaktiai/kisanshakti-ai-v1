@@ -7,11 +7,12 @@
  *
  * REAL_OBSERVATION  = farmer/sensor/image evidence of a field condition.
  * IGNORED_METADATA  = *_UNKNOWN / *_NONE / *_NOT_PROVIDED / ACTION_* /
- *                     CROP_IDENTIFIED / STAGE_IDENTIFIED / CONTEXT_* / PHOTO_*
+ *                     CROP_IDENTIFIED / STAGE_IDENTIFIED / SEVERITY_* /
+ *                     CONTEXT_* / PHOTO_*
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-const METADATA_RE = /(_UNKNOWN$|_NONE$|_NOT_PROVIDED$|^ACTION_|^CROP_IDENTIFIED$|^STAGE_IDENTIFIED$|^CONTEXT_|^PHOTO_)/i;
+const METADATA_RE = /(_UNKNOWN$|_NONE$|_NOT_PROVIDED$|^ACTION_|^CROP_IDENTIFIED$|^STAGE_IDENTIFIED$|^SEVERITY_|^CONTEXT_|^PHOTO_)/i;
 
 export interface EvidenceClassification {
   raw_count: number;

@@ -14,6 +14,7 @@ import { evaluateHypothesisGraph } from '../decision/hypothesis-graph-evaluator.
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
 import { resolveObservationSymbol, sameNode } from '../decision/symbol-resolver.ts';
+import { classifyEvidence } from '../runtime/evidence-classifier.ts';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test 1 (F6) — Rice weed query must never accept a COTTON_* intent lock.
@@ -79,7 +80,7 @@ Deno.test('PR-4 · context-validator consumes biological_state and never imports
   );
 });
 
-Deno.test('PR-4 · DB-required stage exhaustion returns graph result instead of throwing', async () => {
+Deno.test('GRAPH-CONTRACT · observation evidence survives required stage mismatch with penalty', async () => {
   const rowsByTable: Record<string, any[]> = {
     hypothesis_conditions: [
       {
@@ -163,9 +164,11 @@ Deno.test('PR-4 · DB-required stage exhaustion returns graph result instead of 
     trace_id: 'test_stage_required_exhaustion',
   });
 
-  assertEquals(result.candidates.length, 0);
-  assertEquals(result.eliminated.length, 1);
-  assert(String(result.eliminated[0].eliminated_reason).startsWith('REQUIRED_STAGE_FAILED'));
+  assertEquals(result.candidates.length, 1);
+  assertEquals(result.eliminated.length, 0);
+  assert(result.candidates[0].warnings.some((w) => w.includes('STAGE_CONTEXT_CONFLICT')));
+  assert(result.candidates[0].warnings.includes('SURVIVED_WITH_STAGE_WARNING'));
+  assert(result.candidates[0].confidence < 1, 'stage mismatch must apply confidence penalty');
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -371,10 +374,14 @@ function makeGraphSupabase() {
     ],
     observation_aliases: [
       { alias_code: 'UNEVEN_EMERGENCE', alias_normalized: 'uneven_emergence', canonical_code: 'uneven_emergence', active: true },
+      { alias_code: 'POOR_EMERGENCE', alias_normalized: 'poor_emergence', canonical_code: 'obs_rice_no_emergence', active: true },
+      { alias_code: 'poor_emergence', alias_normalized: 'poor_emergence', canonical_code: 'obs_rice_no_emergence', active: true },
+      { alias_code: 'OBS_RICE_NO_EMERGENCE', alias_normalized: 'obs_rice_no_emergence', canonical_code: 'obs_rice_no_emergence', active: true },
       { alias_code: 'कमी रोपे बाहेर आले', alias_normalized: 'कमी रोपे बाहेर आले', canonical_code: 'uneven_emergence', active: true },
     ],
     observation_master: [
       { observation_code: 'uneven_emergence', description: 'Uneven emergence', is_active: true, is_farmer_observable: true, can_generate_question: true },
+      { observation_code: 'obs_rice_no_emergence', description: 'No rice emergence', is_active: true, is_farmer_observable: true, can_generate_question: true },
       { observation_code: 'crop_stand_low', description: 'Low crop stand', is_active: true, is_farmer_observable: true, can_generate_question: true },
       { observation_code: 'cotton_square_drop', description: 'Cotton square drop', is_active: true, is_farmer_observable: true, can_generate_question: true },
       { observation_code: 'stunted_tillers', description: 'Stunted tillers', is_active: true, is_farmer_observable: true, can_generate_question: true },
@@ -438,6 +445,27 @@ Deno.test('GRAPH-CONTRACT · symbol resolver uses DB aliases for same node', asy
   assertEquals(upper.canonical_observation_code, 'uneven_emergence');
   assertEquals(lower.canonical_observation_code, 'uneven_emergence');
   assertEquals(await sameNode(db, 'UNEVEN_EMERGENCE', 'कमी रोपे बाहेर आले'), true);
+});
+
+Deno.test('GRAPH-CONTRACT · poor emergence aliases resolve to one DB node', async () => {
+  const db = makeGraphSupabase();
+  assertEquals(await sameNode(db, 'POOR_EMERGENCE', 'poor_emergence'), true);
+  assertEquals(await sameNode(db, 'POOR_EMERGENCE', 'OBS_RICE_NO_EMERGENCE'), true);
+});
+
+Deno.test('GRAPH-CONTRACT · context symbols never enter hypothesis evidence', async () => {
+  const evidence = classifyEvidence(['POOR_EMERGENCE', 'ACTION_NONE', 'PHOTO_NOT_PROVIDED', 'CROP_IDENTIFIED', 'SEVERITY_MEDIUM']);
+  assertEquals(evidence.real_codes, ['POOR_EMERGENCE']);
+  assertEquals(evidence.ignored_codes.includes('ACTION_NONE'), true);
+  assertEquals(evidence.ignored_codes.includes('PHOTO_NOT_PROVIDED'), true);
+  assertEquals(evidence.ignored_codes.includes('CROP_IDENTIFIED'), true);
+  assertEquals(evidence.ignored_codes.includes('SEVERITY_MEDIUM'), true);
+});
+
+Deno.test('GRAPH-CONTRACT · real observations with zero hypotheses cannot exit observation_required=false', async () => {
+  const selector = await Deno.readTextFile(new URL('../runtime/observation-selector-contract.ts', import.meta.url));
+  assert(/realObservationCount/.test(selector), 'contract must receive real observation count');
+  assert(/illegal_graph_exit/.test(selector), 'illegal zero-hypothesis graph exit must be fatal');
 });
 
 Deno.test('GRAPH-CONTRACT · same intent differs by crop/stage graph', async () => {

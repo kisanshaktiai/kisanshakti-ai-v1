@@ -174,6 +174,88 @@ export async function resolveObservationSymbols(
   return out;
 }
 
+/**
+ * Batched canonical map for graph matching. This is identity resolution only:
+ * aliases/master rows authored in DB decide equivalence; unresolved symbols map
+ * to themselves so exact graph identity still works without guessing.
+ */
+export async function resolveObservationSymbolMap(
+  supabase: any,
+  inputs: ReadonlyArray<unknown>,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const rawInputs = Array.from(new Set((inputs ?? [])
+    .map((x) => String(x ?? '').trim())
+    .filter(Boolean)));
+  const variants = Array.from(new Set(rawInputs.flatMap(formatVariants)));
+
+  for (const raw of rawInputs) {
+    for (const v of formatVariants(raw)) out.set(v, raw);
+  }
+  if (!supabase || variants.length === 0) return out;
+
+  const aliasRows: any[] = [];
+  for (const column of ['alias_code', 'alias_normalized', 'alias_text']) {
+    for (const batch of chunk(variants, 250)) {
+      try {
+        const { data, error } = await supabase
+          .from('observation_aliases')
+          .select('alias_code, alias_normalized, alias_text, canonical_code, active')
+          .eq('active', true)
+          .in(column, batch);
+        if (error) console.warn(`[SYMBOL_RESOLVER] batch alias ${column} lookup failed error=${error.message}`);
+        else if (Array.isArray(data)) aliasRows.push(...data);
+      } catch (e) {
+        console.warn(`[SYMBOL_RESOLVER] batch alias ${column} exception error=${(e as Error).message}`);
+      }
+    }
+  }
+
+  const canonicalCandidates = new Set<string>();
+  for (const row of aliasRows) {
+    const canonical = String(row?.canonical_code || '').trim();
+    if (!canonical) continue;
+    canonicalCandidates.add(canonical);
+    for (const key of [row.alias_code, row.alias_normalized, row.alias_text]) {
+      for (const v of formatVariants(key)) out.set(v, canonical);
+    }
+  }
+
+  const masterCandidates = Array.from(new Set([...variants, ...canonicalCandidates]));
+  for (const batch of chunk(masterCandidates, 250)) {
+    try {
+      const { data, error } = await supabase
+        .from('observation_master')
+        .select('observation_code')
+        .in('observation_code', batch);
+      if (error) {
+        console.warn(`[SYMBOL_RESOLVER] batch master lookup failed error=${error.message}`);
+      } else if (Array.isArray(data)) {
+        for (const row of data) {
+          const code = String(row?.observation_code || '').trim();
+          if (!code) continue;
+          for (const v of formatVariants(code)) out.set(v, code);
+        }
+      }
+    } catch (e) {
+      console.warn(`[SYMBOL_RESOLVER] batch master exception error=${(e as Error).message}`);
+    }
+  }
+
+  for (const raw of rawInputs) {
+    const resolved = formatVariants(raw).map((v) => out.get(v)).find(Boolean) ?? raw;
+    for (const v of formatVariants(raw)) out.set(v, resolved);
+    for (const v of formatVariants(resolved)) out.set(v, resolved);
+  }
+  return out;
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export async function sameNode(
   supabase: any,
   a: unknown,

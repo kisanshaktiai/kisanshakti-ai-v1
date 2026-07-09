@@ -12,6 +12,7 @@ import { evaluateHypothesisGraph } from './hypothesis-graph-evaluator.ts';
 import { resolveObservationSymbols } from './symbol-resolver.ts';
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { stagesEquivalent } from '../runtime/stage-family-shim.ts';
+import { classifyEvidence } from '../runtime/evidence-classifier.ts';
 
 export interface HypothesisClarificationInput {
   supabase: any;
@@ -69,7 +70,8 @@ export async function buildHypothesisClarificationOptions(
   const lang = String(input.language || 'en').toLowerCase();
   const max = input.max ?? 5;
 
-  const confirmedResolved = await resolveObservationSymbols(input.supabase, input.confirmed_observations ?? []);
+  const confirmedEvidence = classifyEvidence((input.confirmed_observations ?? []).map((o) => String(o ?? '')));
+  const confirmedResolved = await resolveObservationSymbols(input.supabase, confirmedEvidence.real_codes);
   const confirmedCodes = confirmedResolved
     .map((r) => r.canonical_observation_code)
     .filter((x): x is string => !!x);
@@ -104,6 +106,9 @@ export async function buildHypothesisClarificationOptions(
   });
 
   let hypothesisIds = resolver.hypotheses.map((h) => h.hypothesis_id);
+  if (hypothesisIds.length === 0 && resolver.nearest_hypotheses.length > 0) {
+    hypothesisIds = resolver.nearest_hypotheses.map((h) => h.hypothesis_id);
+  }
 
   // When confirmed evidence is absent, discovery can be wider than a single
   // matched edge; evaluate the graph with all seeded observations so the DB
@@ -175,6 +180,7 @@ export async function buildHypothesisClarificationOptions(
   console.log(
     `[HYP_CLARIFICATION] trace=${trace} source=hypothesis_graph intent=${input.intent_code ?? '?'} ` +
     `crop=${crop || '?'} stage=${stage ?? '?'} das=${das ?? '?'} ` +
+    `real_observations=${confirmedEvidence.real_symptom_count} ignored_context_symbols=${confirmedEvidence.ignored_metadata_count} ` +
     `candidate_hypotheses=${hypothesisIds.length} options=${options.length} ` +
     `keys=[${options.map((o) => o.observation_code).join(',')}]`,
   );

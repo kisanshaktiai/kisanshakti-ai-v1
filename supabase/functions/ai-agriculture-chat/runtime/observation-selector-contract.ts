@@ -50,6 +50,8 @@ export interface ObservationContractContext {
   intentCode?: string | null;
   /** Days since sowing — narrows the IOM cell. */
   daysSinceSowing?: number | null;
+  /** Real farmer-visible symptoms already confirmed for this turn. */
+  realObservationCount?: number | null;
   /**
    * Reason surfaced with the clarification so operators can debug graph
    * exhaustion vs empty-decision promotion vs plain hydration.
@@ -188,6 +190,11 @@ export async function ensureObservationSelectorContract(
   if (type === 'DIAGNOSTIC_ESCALATION' && existingOptions.length === 0) {
     const options = await loadObservationSelectorOptions(ctx);
     if (options.length === 0) {
+      if ((ctx.realObservationCount ?? 0) > 0) {
+        throw new Error(
+          `OBSERVATION_CONTRACT_VIOLATION: illegal_graph_exit real_observations=${ctx.realObservationCount} observation_required=false crop=${ctx.cropCode ?? '?'} trace_id=${ctx.traceId ?? 'n/a'}`,
+        );
+      }
       // No DB evidence surface at all — leave escalation as-is (better than
       // synthesising options in TypeScript). Log for curator triage.
       console.warn(

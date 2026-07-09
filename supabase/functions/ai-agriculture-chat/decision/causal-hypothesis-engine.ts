@@ -16,6 +16,7 @@
  */
 
 import { SymbolContract } from '../runtime/symbol-contract.ts';
+import { stageCompatibility } from './stage-symbol-resolver.ts';
 
 /**
  * Graph-boundary symbol coercion — delegates identity to SymbolContract.
@@ -403,9 +404,9 @@ function evaluateCondition(
       const stages = (value_json as any)?.stages;
       if (!Array.isArray(stages)) return HypothesisConditionStatus.FAILED;
 
-      const stageSet = SymbolContract.toNormalizedSet(stages);
-      const norm = SymbolContract.normalize(currentStage);
-      return norm && stageSet.has(norm)
+      const crop = canonicalState.crop_code || canonicalState.crop || canonicalState.crop_group;
+      const compatibility = stageCompatibility(currentStage, stages, crop ?? null);
+      return compatibility.unknown || compatibility.exact || compatibility.family
         ? HypothesisConditionStatus.PASSED
         : HypothesisConditionStatus.FAILED;
     }

@@ -35,8 +35,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { stagesEquivalent } from '../runtime/stage-family-shim.ts';
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
+import { stageCompatibility } from './stage-symbol-resolver.ts';
+import { resolveObservationSymbolMap } from './symbol-resolver.ts';
 
 export interface GraphHypothesisInput {
   crop_code: string | null;
@@ -118,6 +119,8 @@ interface ObservationSet {
   canonicalByKey: Map<string, string>;
 }
 
+type CanonicalCodeMap = Map<string, string>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,7 +130,7 @@ export async function evaluateHypothesisGraph(
 ): Promise<GraphHypothesisResult> {
   const started = Date.now();
   const trace = String(input.trace_id ?? `hg_${started}`);
-  const observed = normalizeObservationSet(input.observation_codes);
+  const observed = await normalizeObservationSet(input.observation_codes, input.supabase);
 
   if (observed.keys.size === 0) {
     emitObsToHyp(trace, input, [], [], [], []);
@@ -181,64 +184,8 @@ export async function evaluateHypothesisGraph(
     if (m.is_active === false) { droppedInactive.push(hid); continue; }
 
     const conds = allConditions.get(hid) ?? [];
-    const buckets = bucketizeConditions(conds, observed);
-
-    // STAGE / DAS gate — enforced from the DB, not from TS ontology.
-    // UNKNOWN context returns pass=true so it never eliminates.
-    const stagePass = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
-    const dasPass = checkDasCondition(conds, input.das);
-
-    // ── HARD REQUIRED-CONDITION GATE (fix 2026-07-08) ────────────────────
-    // hypothesis_conditions.is_required=true is a DB-level HARD contract.
-    // If STAGE or DAS_RANGE with is_required=true fails, the hypothesis is
-    // eliminated — no soft penalty, no clarification fallback. This is what
-    // the DB SSOT already declares; the runtime must respect it.
-    if (stagePass.required_fail) {
-      console.log(`[HYP_ELIMINATED] trace=${trace} hypothesis_id=${hid} reason=REQUIRED_STAGE_FAILED ${stagePass.reason}`);
-      eliminated.push({
-        hypothesis_id: hid,
-        cause_en: m.cause_name_en ?? null,
-        cause_hi: m.cause_name_hi ?? null,
-        cause_mr: m.cause_name_mr ?? null,
-        canonical_group: m.canonical_group ?? null,
-        crop_group: m.crop_group ?? null,
-        severity_model: m.severity_model ?? null,
-        positive_matches: [], negative_matches: [], missing_required: [],
-        blocking_conditions: [], required_total: 0, required_matched: 0,
-        required_match_pct: 0, supporting_score: 0, confidence: 0,
-        context_gaps: [],
-        warnings: [`ELIMINATED:REQUIRED_STAGE_FAILED(${stagePass.reason})`],
-        clarification_required: false,
-        candidate_rule_ids: [],
-        selected_rule_id: null,
-        eliminated: true,
-        eliminated_reason: `REQUIRED_STAGE_FAILED(${stagePass.reason})`,
-      } as GraphHypothesisCandidate);
-      continue;
-    }
-    if (dasPass.required_fail) {
-      console.log(`[HYP_ELIMINATED] trace=${trace} hypothesis_id=${hid} reason=REQUIRED_DAS_FAILED ${dasPass.reason}`);
-      eliminated.push({
-        hypothesis_id: hid,
-        cause_en: m.cause_name_en ?? null,
-        cause_hi: m.cause_name_hi ?? null,
-        cause_mr: m.cause_name_mr ?? null,
-        canonical_group: m.canonical_group ?? null,
-        crop_group: m.crop_group ?? null,
-        severity_model: m.severity_model ?? null,
-        positive_matches: [], negative_matches: [], missing_required: [],
-        blocking_conditions: [], required_total: 0, required_matched: 0,
-        required_match_pct: 0, supporting_score: 0, confidence: 0,
-        context_gaps: [],
-        warnings: [`ELIMINATED:REQUIRED_DAS_FAILED(${dasPass.reason})`],
-        clarification_required: false,
-        candidate_rule_ids: [],
-        selected_rule_id: null,
-        eliminated: true,
-        eliminated_reason: `REQUIRED_DAS_FAILED(${dasPass.reason})`,
-      } as GraphHypothesisCandidate);
-      continue;
-    }
+    const conditionCanonical = await buildCanonicalCodeMap(input.supabase, conds.flatMap(resolveConditionObservationCodes));
+    const buckets = bucketizeConditions(conds, observed, conditionCanonical);
 
     const rules = ruleEdges.get(hid) ?? [];
 
@@ -251,6 +198,46 @@ export async function evaluateHypothesisGraph(
     const supportingScore = buckets.positive_weight_total === 0
       ? 0
       : Math.min(1, buckets.positive_weight_matched / buckets.positive_weight_total);
+    const hasObservationEvidence = buckets.positive_matches.length > 0;
+
+    // STAGE / DAS are DB-authored context signals. Once farmer-visible
+    // observation evidence anchors a hypothesis, context mismatch reduces
+    // confidence and asks clarification; it must not delete the candidate.
+    const stagePass = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
+    const dasPass = checkDasCondition(conds, input.das);
+
+    if ((stagePass.required_fail || dasPass.required_fail) && !hasObservationEvidence) {
+      const reason = stagePass.required_fail
+        ? `REQUIRED_STAGE_FAILED(${stagePass.reason})`
+        : `REQUIRED_DAS_FAILED(${dasPass.reason})`;
+      console.log(`[HYP_ELIMINATED] trace=${trace} hypothesis_id=${hid} reason=${reason} evidence=false`);
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: buckets.positive_matches,
+        negative_matches: buckets.negative_matches,
+        missing_required: buckets.missing_required,
+        blocking_conditions: buckets.blocking_conditions,
+        required_total: requiredTotal,
+        required_matched: requiredMatched,
+        required_match_pct: requiredPct,
+        supporting_score: supportingScore,
+        confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:${reason}`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: reason,
+      } as GraphHypothesisCandidate);
+      continue;
+    }
 
     // ── Context gap detection (unknown ≠ contradiction) ──────────────────
     const context_gaps: ContextGap[] = [];
@@ -266,14 +253,14 @@ export async function evaluateHypothesisGraph(
     if (dasPass.pass && dasPass.reason === 'DAS_UNKNOWN' && hasDasCondition(conds)) {
       context_gaps.push({ missing: 'DAS_UNKNOWN', confidence_penalty: 0.05, clarification_required: false });
     }
-    // Soft (is_required=false) stage/DAS mismatch remains a soft penalty
-    // so farmer-visible symptoms can still outrank a soft calendar signal.
-    if (!stagePass.pass && !stagePass.required_fail) {
+    if (!stagePass.pass) {
       warnings.push(`STAGE_CONTEXT_CONFLICT(${stagePass.reason})`);
+      if (stagePass.required_fail && hasObservationEvidence) warnings.push('SURVIVED_WITH_STAGE_WARNING');
       softPenalty += 0.15;
     }
-    if (!dasPass.pass && !dasPass.required_fail) {
+    if (!dasPass.pass) {
       warnings.push(`DAS_CONTEXT_CONFLICT(${dasPass.reason})`);
+      if (dasPass.required_fail && hasObservationEvidence) warnings.push('SURVIVED_WITH_DAS_WARNING');
       softPenalty += 0.10;
     }
     const contextPenalty = context_gaps.reduce((s, g) => s + g.confidence_penalty, 0);
@@ -373,6 +360,7 @@ export async function evaluateHypothesisGraph(
       `survived=[${cap(candidates.map((c) => c.hypothesis_id)).join(',')}] ` +
       `blocked=${JSON.stringify(eliminated.map((c) => ({ h: c.hypothesis_id, r: c.eliminated_reason })))} ` +
       `warnings=${JSON.stringify(candidates.map((c) => ({ h: c.hypothesis_id, w: c.warnings })).filter((x) => x.w.length > 0))} ` +
+      `stage_penalty_applied=${candidates.some((c) => c.warnings.some((w) => w.includes('STAGE_CONTEXT_CONFLICT')))} ` +
       `context_gaps=${JSON.stringify(candidates.map((c) => ({ h: c.hypothesis_id, g: c.context_gaps.map((x) => x.missing) })).filter((x) => x.g.length > 0))}`,
   );
 
@@ -467,10 +455,11 @@ async function queryAnchorHypotheses(supabase: any, observed: ObservationSet, tr
       if (batch.length < pageSize) break;
     }
 
+    const conditionCanonical = await buildCanonicalCodeMap(supabase, rows.flatMap(resolveConditionObservationCodes));
     const set = new Set<string>();
     const matchedRows: Array<{ hypothesis_id: string; matched: string[]; via: string }> = [];
     for (const r of rows) {
-      const m = ObservationConditionMatcher(r, observed);
+      const m = ObservationConditionMatcher(r, observed, conditionCanonical);
       if (m.matched && r?.hypothesis_id) {
         const hid = String(r.hypothesis_id);
         set.add(hid);
@@ -599,7 +588,7 @@ interface Buckets {
   positive_weight_matched: number;
 }
 
-function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): Buckets {
+function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet, conditionCanonical: CanonicalCodeMap): Buckets {
   const b: Buckets = {
     requiredCodes: new Set(),
     supportingCodes: new Set(),
@@ -621,7 +610,7 @@ function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): B
     const w = Number(c.weight ?? 0) || (c.is_required ? 1 : 0.5);
 
     for (const conditionCode of conditionCodes) {
-      const norm = normalizeObservationCode(conditionCode);
+      const norm = normalizeObservationCode(canonicalizeWithMap(conditionCode, conditionCanonical));
       if (!norm) continue;
       const key = norm.matchKey;
       const displayCode = observed.canonicalByKey.get(key) ?? norm.canonicalCode;
@@ -663,10 +652,8 @@ function checkStageCondition(
   for (const r of rows) {
     const allowed = extractStages(r.value_json);
     if (allowed.length === 0) continue;
-    const ok = allowed.some((raw) => {
-      const x = normalizeStageForDB(raw).toLowerCase();
-      return x === s || stagesEquivalent(x, s, crop) || s.includes(x) || x.includes(s);
-    });
+    const compatibility = stageCompatibility(s, allowed, crop);
+    const ok = compatibility.unknown || compatibility.exact || compatibility.family;
     if (!ok) {
       failReason = `expected=[${allowed.join('|')}] got=${s}`;
       // FIX (2026-07-08): Honor DB SSOT — is_required=true STAGE mismatch
@@ -736,12 +723,13 @@ export function normalizeObservationCode(code: unknown): NormalizedObservationCo
   };
 }
 
-function normalizeObservationSet(codes: string[]): ObservationSet {
+async function normalizeObservationSet(codes: string[], supabase?: any): Promise<ObservationSet> {
   const observations: string[] = [];
   const keys = new Set<string>();
   const canonicalByKey = new Map<string, string>();
+  const canonicalMap = await buildCanonicalCodeMap(supabase, codes ?? []);
   for (const c of codes ?? []) {
-    const norm = normalizeObservationCode(c);
+    const norm = normalizeObservationCode(canonicalizeWithMap(c, canonicalMap));
     if (!norm || keys.has(norm.matchKey)) continue;
     keys.add(norm.matchKey);
     canonicalByKey.set(norm.matchKey, norm.canonicalCode);
@@ -756,15 +744,15 @@ interface ObservationConditionMatch {
   source: 'condition_key' | 'value_json' | 'condition_key_and_value_json';
 }
 
-function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet): ObservationConditionMatch {
+function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet, conditionCanonical: CanonicalCodeMap): ObservationConditionMatch {
   const keyCodes = normalizeObservationCode(row.condition_key) ? [String(row.condition_key)] : [];
   const valueCodes = extractObservationCodesFromValueJson(row.value_json);
   const keyMatches = keyCodes
-    .map(normalizeObservationCode)
+    .map((c) => normalizeObservationCode(canonicalizeWithMap(c, conditionCanonical)))
     .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
     .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
   const valueMatches = valueCodes
-    .map(normalizeObservationCode)
+    .map((c) => normalizeObservationCode(canonicalizeWithMap(c, conditionCanonical)))
     .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
     .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
   const matched_observations = Array.from(new Set([...keyMatches, ...valueMatches]));
@@ -774,6 +762,32 @@ function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet
       ? 'value_json'
       : 'condition_key';
   return { matched: matched_observations.length > 0, matched_observations, source };
+}
+
+async function buildCanonicalCodeMap(supabase: any, codes: ReadonlyArray<unknown>): Promise<CanonicalCodeMap> {
+  const unique = Array.from(new Set((codes ?? []).map((c) => String(c ?? '').trim()).filter(Boolean)));
+  if (unique.length === 0) return new Map();
+  return await resolveObservationSymbolMap(supabase, unique);
+}
+
+function canonicalizeWithMap(code: unknown, canonical: CanonicalCodeMap): string {
+  const raw = String(code ?? '').trim();
+  for (const v of codeVariants(raw)) {
+    const found = canonical.get(v);
+    if (found) return found;
+  }
+  return raw;
+}
+
+function codeVariants(code: unknown): string[] {
+  const raw = String(code ?? '').trim();
+  if (!raw) return [];
+  return Array.from(new Set([
+    raw,
+    raw.toLowerCase(),
+    raw.toUpperCase(),
+    raw.toLowerCase().replace(/[\s-]+/g, '_'),
+  ]));
 }
 
 function resolveConditionObservationCodes(row: ConditionRow): string[] {
