@@ -3644,7 +3644,19 @@ export class AIAgentOrchestrator {
       const directHardBypass =
         intentMetaFromDB?.clarification_mode === 'DIRECT' &&
         (intentMetaFromDB?.max_clarification_rounds ?? -1) === 0;
-      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
+      const diagnosticIntentOwnsClarification =
+        requiresAgronomicReasoningIntent(intentCode) ||
+        symptomBasedIntents.includes(currentIntentForGate);
+      if (
+        diagnosticIntentOwnsClarification &&
+        (intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass)
+      ) {
+        console.log(
+          `   🛑 [DIRECT_MODE_DIAGNOSTIC_VETO] intent=${intentCode} route=${queryRoute.route} ` +
+          `requires observation authority; direct/advisory route cannot skip symptom clarification`
+        );
+        agentsUsed.push('DIRECT_MODE_DIAGNOSTIC_VETO');
+      } else if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
         directModeBypass = true;
         bypassClarification = true;
         console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass}, hardBypass=${directHardBypass}, maxRounds=${intentMetaFromDB?.max_clarification_rounds ?? 'n/a'})`);
