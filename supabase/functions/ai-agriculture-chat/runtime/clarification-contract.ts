@@ -5,11 +5,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * ARCHITECTURAL OWNERSHIP (immutable):
- *   intent_observation_mapping  → ONLY source of clarification candidates
- *   observation_master          → metadata validator (active, farmer_observable)
- *   observation_translations    → label lookup
- *   decision_rules / conditions_json / observable_characteristics
- *                               → INTERNAL rule predicates — NEVER UI options
+ *   hypothesis_master + hypothesis_conditions → ONLY source of farmer UI
+ *   intent_observation_mapping                → discovery seed only
+ *   observation_master                        → metadata validator
+ *   observation_translations                  → label lookup
  *
  * CANONICAL SYMBOL FORMAT: lower_snake_case across the entire platform.
  * No `.toUpperCase()` on observation codes anywhere in the clarification path.
@@ -20,10 +19,18 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
+
 export interface ClarificationOption {
   observation_key: string;   // canonical lower_snake_case
   label: string;             // language-localized display text
   confidence_rank: number;
+  value?: string;
+  observation_id?: string;
+  observation_code?: string;
+  hypothesis_id?: string;
+  hypothesis_condition_id?: string;
+  source?: 'hypothesis_graph';
 }
 
 export interface ClarificationCandidateInput {
@@ -82,200 +89,28 @@ export async function loadClarificationCandidates(
     supabase, intent_code, crop_code, growth_stage, das, language, max = 3, confirmed = [],
   } = input;
 
-  const intentUpper = String(intent_code || '').trim().toUpperCase();
-  const cropLower   = String(crop_code   || '').trim().toLowerCase();
-  const langLower   = String(language    || 'en').trim().toLowerCase();
-
-  // Ontology-first dedup set: canonicalize every already-confirmed code so
-  // the farmer never sees a discriminator asking about evidence they've
-  // already given. No agronomy in code — pure key normalisation.
-  const confirmedKeys = new Set<string>(
-    (confirmed || [])
-      .map((c) => canonicalizeObservationKey(String(c || '')))
-      .filter(Boolean),
-  );
-
-  if (!intentUpper) {
-    console.warn('[CLARIFICATION_CONTRACT] missing intent_code — returning []');
-    return [];
-  }
-  if (!supabase) {
-    console.error('[CLARIFICATION_CONTRACT] missing supabase client — returning []');
-    return [];
-  }
-
-  const cropVariants  = Array.from(new Set([cropLower, 'all', 'universal'].filter(Boolean)));
-  const stageVariants = expandStageSynonyms(growth_stage);
-
   try {
-    // ── Stage 1: IOM lookup ──────────────────────────────────────────────
-    const { data: iomRows, error: iomErr } = await supabase
-      .from('intent_observation_mapping')
-      .select('observation_code, confidence_rank, das_min, das_max')
-      .eq('is_active', true)
-      .eq('intent_code', intentUpper)
-      .in('crop_code', cropVariants)
-      .in('growth_stage', stageVariants)
-      .order('confidence_rank', { ascending: true });
-
-    if (iomErr) {
-      console.error(`[CLARIFICATION_CONTRACT] IOM error: ${iomErr.message}`);
-      return [];
-    }
-
-    const dasFiltered = (iomRows || []).filter((r: any) => {
-      if (das == null || !isFinite(das as number)) return true;
-      const lo = typeof r.das_min === 'number' ? r.das_min : 0;
-      const hi = typeof r.das_max === 'number' ? r.das_max : 9999;
-      return (das as number) >= lo && (das as number) <= hi;
+    const graph = await buildHypothesisClarificationOptions({
+      supabase,
+      intent_code,
+      crop_code,
+      crop_stage: growth_stage,
+      DAS: das ?? null,
+      language,
+      max,
+      confirmed_observations: confirmed,
     });
-
-    // Dedupe by canonical key, keep lowest (best) confidence_rank
-    const candidateRank = new Map<string, number>();
-    for (const r of dasFiltered) {
-      const key = canonicalizeObservationKey(r.observation_code);
-      if (!key) continue;
-      const rank = typeof r.confidence_rank === 'number' ? r.confidence_rank : 99;
-      const prev = candidateRank.get(key);
-      if (prev == null || rank < prev) candidateRank.set(key, rank);
-    }
-
-    if (candidateRank.size === 0) {
-      console.log(
-        `[CLARIFICATION_CONTRACT] no IOM candidates for intent=${intentUpper} crop=${cropLower} stage=${growth_stage} das=${das}`,
-      );
-      console.log(
-        `[CLARIFY_EXIT] site=CONTRACT_NO_CANDIDATES intent=${intentUpper} crop=${cropLower} ` +
-        `stage=${growth_stage ?? 'n/a'} das=${das ?? 'n/a'} reason=no_iom_rows`,
-      );
-      return [];
-    }
-
-    // Drop already-confirmed observations BEFORE hitting observation_master —
-    // if evidence is locked, we must not re-ask it as a farmer discriminator.
-    const preConfirmedDrops: string[] = [];
-    const postConfirmDedup = Array.from(candidateRank.keys()).filter((k) => {
-      if (confirmedKeys.has(k)) {
-        preConfirmedDrops.push(k);
-        return false;
-      }
-      return true;
-    });
-    if (postConfirmDedup.length === 0) {
-      console.log(
-        `[CLARIFICATION_CONTRACT] all ${candidateRank.size} IOM candidates already confirmed — nothing to ask ` +
-        `confirmed=[${Array.from(confirmedKeys).join(',')}]`,
-      );
-      return [];
-    }
-    const candidateKeys = postConfirmDedup;
-
-    // ── Stage 2: observation_master gate (DB-driven, no TS enums) ────────
-    // The DB is the brain. Eligibility is a single flag on `observation_master`:
-    //   `can_generate_question=true` — curator has declared the row askable.
-    // We no longer maintain a TypeScript allow-list of `observation_type`
-    // values; that was an enum drift trap (curator uses GENERIC/PRIMARY/…,
-    // TS hardcoded SYMPTOM/OBSERVATION/… → 100% of rows dropped). See
-    // migration `observation_master.can_generate_question` for the flag.
-    const { data: masterRows, error: masterErr } = await supabase
-      .from('observation_master')
-      .select('observation_code, is_active, is_farmer_observable, can_generate_question')
-      .in('observation_code', candidateKeys);
-
-    if (masterErr) {
-      console.error(`[CLARIFICATION_CONTRACT] master error: ${masterErr.message}`);
-      return [];
-    }
-
-    const validKeys = new Set<string>();
-    const dropReasons = new Map<string, string>();
-    let droppedInactive = 0, droppedNotFarmer = 0, droppedNotAskable = 0;
-    for (const m of masterRows || []) {
-      const key = canonicalizeObservationKey(m.observation_code);
-      if (!key) continue;
-      const active = m.is_active !== false;
-      const fo = m.is_farmer_observable !== false; // default-on if null
-      // can_generate_question defaults to false in the DB, but existing rows
-      // are backfilled at migration time. Treat missing/null as false: the
-      // DB owns the decision, not us.
-      const askable = m.can_generate_question === true;
-
-      if (!active)   { dropReasons.set(key, 'inactive');              droppedInactive++;   continue; }
-      if (!fo)       { dropReasons.set(key, 'not_farmer_observable'); droppedNotFarmer++;  continue; }
-      if (!askable)  { dropReasons.set(key, 'not_askable');           droppedNotAskable++; continue; }
-      validKeys.add(key);
-    }
-
-    const gatedKeys = candidateKeys.filter((k) => validKeys.has(k));
-    console.log(
-      `[CONTRACT_GATE_V3] intent=${intentUpper} kept=${gatedKeys.length} ` +
-      `dropped_inactive=${droppedInactive} dropped_not_farmer=${droppedNotFarmer} ` +
-      `dropped_not_askable=${droppedNotAskable} of=${candidateKeys.length}`,
-    );
-    if (gatedKeys.length === 0) {
-      console.warn(
-        `[CLARIFICATION_CONTRACT] all ${candidateKeys.length} IOM candidates dropped by observation_master gate ` +
-        `reasons=${JSON.stringify(Object.fromEntries(dropReasons))}`,
-      );
-      console.log(
-        `[CLARIFY_EXIT] site=CONTRACT_EMPTY_IOM intent=${intentUpper} crop=${cropLower} ` +
-        `stage=${growth_stage ?? 'n/a'} das=${das ?? 'n/a'} reason=all_dropped ` +
-        `drop_reasons=${JSON.stringify(Object.fromEntries(dropReasons))}`,
-      );
-      return [];
-    }
-
-    // ── Stage 3: translations (language → en fallback) ──────────────────
-    const { data: trRows, error: trErr } = await supabase
-      .from('observation_translations')
-      .select('observation_code, display_text, description_text, language_code')
-      .in('observation_code', gatedKeys)
-      .in('language_code', Array.from(new Set([langLower, 'en'])));
-
-    if (trErr) {
-      console.error(`[CLARIFICATION_CONTRACT] translation error: ${trErr.message}`);
-    }
-
-    const labelByKey = new Map<string, string>();
-    const fallbackByKey = new Map<string, string>();
-    for (const t of trRows || []) {
-      const key = canonicalizeObservationKey(t.observation_code);
-      if (!key) continue;
-      const text = (t.display_text || t.description_text || '').trim();
-      if (!text) continue;
-      if (t.language_code === langLower) labelByKey.set(key, text);
-      else if (t.language_code === 'en') fallbackByKey.set(key, text);
-    }
-
-    // ── Assemble ranked, deduped options ────────────────────────────────
-    const ranked = gatedKeys
-      .map((k) => ({ key: k, rank: candidateRank.get(k) ?? 99 }))
-      .sort((a, b) => a.rank - b.rank);
-
-    const out: ClarificationOption[] = [];
-    for (const { key, rank } of ranked) {
-      const label = labelByKey.get(key) || fallbackByKey.get(key);
-      if (!label) continue; // no translated label → cannot show
-      out.push({ observation_key: key, label, confidence_rank: rank });
-      if (out.length >= max) break;
-    }
-
-    console.log(
-      `[CLARIFICATION_CONTRACT] intent=${intentUpper} crop=${cropLower} stage=${growth_stage} das=${das} ` +
-      `→ iom=${candidateRank.size} confirmed_dropped=${preConfirmedDrops.length} ` +
-      `gated=${gatedKeys.length} returned=${out.length} ` +
-      `keys=[${out.map((o) => o.observation_key).join(',')}]`,
-    );
-
-    // Forensic trace: exactly which ontology decisions produced the shown UI.
-    console.log(
-      `[CLARIFICATION_SOURCE] intent=${intentUpper} ` +
-      `confirmed_observation=[${Array.from(confirmedKeys).join(',')}] ` +
-      `dropped_already_confirmed=[${preConfirmedDrops.join(',')}] ` +
-      `shown_options=[${out.map((o) => o.observation_key).join(',')}]`,
-    );
-
-    return out;
+    return graph.options.map((o, idx) => ({
+      observation_key: o.observation_key,
+      label: o.label,
+      value: o.value,
+      confidence_rank: idx + 1,
+      observation_id: o.observation_id,
+      observation_code: o.observation_code,
+      hypothesis_id: o.hypothesis_id,
+      hypothesis_condition_id: o.hypothesis_condition_id,
+      source: 'hypothesis_graph',
+    }));
   } catch (e) {
     console.error('[CLARIFICATION_CONTRACT] exception:', e);
     return [];

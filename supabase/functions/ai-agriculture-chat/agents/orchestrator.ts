@@ -672,6 +672,8 @@ import {
   assertClarificationContract,
   canonicalizeObservationKey,
 } from '../runtime/clarification-contract.ts';
+import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
+import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
@@ -1982,21 +1984,34 @@ export class AIAgentOrchestrator {
           // are empty.
           let mappedObservationKey: string | null = null;
           const persistedObsKeys = (options.sessionState as any)?.pendingClarificationObservationKeys || [];
-          const persistedStructured: Array<{ label: string; value: string; observation_key: string }> =
+          const persistedStructured: Array<{
+            label: string;
+            value: string;
+            observation_key: string;
+            observation_id?: string;
+            observation_code?: string;
+            hypothesis_id?: string;
+            hypothesis_condition_id?: string;
+            graph_version?: string;
+            source?: string;
+          }> =
             (options.sessionState as any)?.pendingClarificationOptionsStructured || [];
+          const selectedStructuredOption = matchResult.option_index != null
+            ? persistedStructured[matchResult.option_index]
+            : null;
           if (embeddedObservationKeys.length > 0) {
             mappedObservationKey = embeddedObservationKeys[0];
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
           } else if (
             matchResult.option_index != null &&
-            persistedStructured[matchResult.option_index]?.observation_key
+            (selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key)
           ) {
             mappedObservationKey = String(
-              persistedStructured[matchResult.option_index].observation_key
+              selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key
             ).toUpperCase();
             console.log(
               `   📋 Using STRUCTURED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}" ` +
-              `(label="${persistedStructured[matchResult.option_index].label}")`
+              `(label="${selectedStructuredOption?.label}", source=${selectedStructuredOption?.source ?? 'legacy'})`
             );
           } else if (matchResult.option_index != null && persistedObsKeys[matchResult.option_index]) {
             mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
@@ -2271,6 +2286,137 @@ export class AIAgentOrchestrator {
             }
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
+
+          // ═══════════════════════════════════════════════════════════════════
+          // MANDATORY GRAPH CONTRACT: confirmed observation must traverse
+          // Observation → Hypothesis before any rule or fallback branch.
+          // ═══════════════════════════════════════════════════════════════════
+          const optionGraphResolution = await resolveHypothesesFromObservations({
+            supabase: this.supabase,
+            observations: allObservations,
+            crop_context: {
+              crop_code: cropName,
+              crop_group: cropName,
+              growth_stage: growthStage,
+              das: landContextForOptionSelection?.days_since_sowing ?? null,
+            },
+            trace_id: traceId,
+          });
+          const optionGraphRuleIds = Array.from(new Set(
+            optionGraphResolution.hypotheses.flatMap((h) => h.candidate_rule_ids || []).filter(Boolean),
+          ));
+          console.log(
+            `[EVIDENCE_COUNT_TRACE] confirmed_observations=${allObservations.length} ` +
+            `candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
+            `matched_rules=${optionGraphRuleIds.length}`,
+          );
+
+          if (allObservations.length > 0 && optionGraphResolution.hypotheses.length === 0) {
+            const graphClarification = await buildHypothesisClarificationOptions({
+              supabase: this.supabase,
+              intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
+              crop_code: cropName,
+              crop_stage: growthStage,
+              DAS: landContextForOptionSelection?.days_since_sowing ?? null,
+              language: options.language || 'mr',
+              confirmed_observations: allObservations,
+              trace_id: traceId,
+              max: 5,
+            });
+            const clarificationOptions = graphClarification.options.map((o) => ({
+              label: o.label,
+              value: o.value,
+              observation_key: o.observation_key,
+              observation_id: o.observation_id,
+              observation_code: o.observation_code,
+              hypothesis_id: o.hypothesis_id,
+              hypothesis_condition_id: o.hypothesis_condition_id,
+              graph_version: 'hypothesis_graph_v1',
+              source: 'hypothesis_graph',
+            }));
+            console.error(
+              `[GRAPH_CONTRACT_ERROR] trace=${traceId} confirmed_observations=${allObservations.length} ` +
+              `candidate_hypotheses=0 graph_gap=${graphClarification.graph_gap ?? 'NO_HYPOTHESIS_EDGE'} ` +
+              `options=${clarificationOptions.length}`,
+            );
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              question: {
+                question_id: `graph_gap_${Date.now()}`,
+                text_en: 'Please select one more visible observation from the crop so I can complete the graph diagnosis.',
+                options: clarificationOptions,
+                scope: 'GRAPH_KNOWLEDGE_GAP',
+                source: 'hypothesis_graph',
+              },
+              communication: { options: clarificationOptions },
+              metadata: {
+                orchestrator_type: 'CLARIFICATION_QUESTION',
+                observation_source: 'hypothesis_graph',
+                graph_reason: graphClarification.graph_gap ?? 'NO_HYPOTHESIS_EDGE',
+                trace_id: traceId,
+                selectionType: 'SINGLE_CHOICE',
+                session_state_update: {
+                  decision_state: 'awaiting_clarification',
+                  pending_options: clarificationOptions.length,
+                  pending_action: false,
+                },
+              },
+            } as any;
+          }
+
+          if (optionGraphResolution.hypotheses.length > 0 && optionGraphRuleIds.length === 0) {
+            const graphClarification = await buildHypothesisClarificationOptions({
+              supabase: this.supabase,
+              intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
+              crop_code: cropName,
+              crop_stage: growthStage,
+              DAS: landContextForOptionSelection?.days_since_sowing ?? null,
+              language: options.language || 'mr',
+              confirmed_observations: allObservations,
+              trace_id: traceId,
+              max: 5,
+            });
+            const clarificationOptions = graphClarification.options.map((o) => ({
+              label: o.label,
+              value: o.value,
+              observation_key: o.observation_key,
+              observation_id: o.observation_id,
+              observation_code: o.observation_code,
+              hypothesis_id: o.hypothesis_id,
+              hypothesis_condition_id: o.hypothesis_condition_id,
+              graph_version: 'hypothesis_graph_v1',
+              source: 'hypothesis_graph',
+            }));
+            console.error(
+              `[GRAPH_CONTRACT_ERROR] trace=${traceId} candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
+              `matched_rules=0 reason=NO_HYPOTHESIS_RULE_EDGE options=${clarificationOptions.length}`,
+            );
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              question: {
+                question_id: `hyp_rule_gap_${Date.now()}`,
+                text_en: 'I need one more crop observation before I can choose a safe recommendation.',
+                options: clarificationOptions,
+                scope: 'GRAPH_KNOWLEDGE_GAP',
+                source: 'hypothesis_graph',
+              },
+              communication: { options: clarificationOptions },
+              metadata: {
+                orchestrator_type: 'CLARIFICATION_QUESTION',
+                observation_source: 'hypothesis_graph',
+                graph_reason: 'NO_HYPOTHESIS_RULE_EDGE',
+                trace_id: traceId,
+                selectionType: 'SINGLE_CHOICE',
+                session_state_update: {
+                  decision_state: 'awaiting_clarification',
+                  pending_options: clarificationOptions.length,
+                  pending_action: false,
+                },
+              },
+            } as any;
+          }
           
           const canonicalState = buildCanonicalState({
             // CRITICAL FIX: Pass landContext to preserve all land data
@@ -2299,7 +2445,16 @@ export class AIAgentOrchestrator {
           
           // Use unified crop code normalizer for consistent rule filtering
           const cropCodeForRules = unifiedNormalizeCropCode(cropName).toLowerCase();
-          const allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
+          let allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
+          if (optionGraphRuleIds.length > 0) {
+            const beforeGraphScope = allRulesForOption.length;
+            const graphRuleIdSet = new Set(optionGraphRuleIds.map(String));
+            allRulesForOption = allRulesForOption.filter((r: any) => graphRuleIdSet.has(String(r.rule_id)));
+            console.log(
+              `   🧭 [OPTION_GRAPH_SCOPE] rules ${beforeGraphScope} → ${allRulesForOption.length} ` +
+              `from hypothesis_rule_mapping=${optionGraphRuleIds.length}`,
+            );
+          }
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length} (crop=${cropCodeForRules})`);
           
           // Pass user_query AND visual_symptoms for rule matching
@@ -2648,11 +2803,20 @@ export class AIAgentOrchestrator {
                   confidence: ruleResult.confidence_in_result,
                   trace_id: traceId,
                   processing_time_ms: Date.now() - startTime,
-                  agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'LAYERED_RULE_EVALUATOR'],
+                  agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'OBSERVATION_HYPOTHESIS_RESOLVER', 'LAYERED_RULE_EVALUATOR'],
                   rules_applied: ruleResult.rules_applied,
                   clarification_resolved: true,
                   selected_option: matchResult.matched_option,
                   mapped_observation: mappedObservationKey,
+                  selected_graph_node: selectedStructuredOption ? {
+                    observation_id: selectedStructuredOption.observation_id,
+                    observation_code: selectedStructuredOption.observation_code,
+                    hypothesis_id: selectedStructuredOption.hypothesis_id,
+                    hypothesis_condition_id: selectedStructuredOption.hypothesis_condition_id,
+                    source: selectedStructuredOption.source,
+                  } : undefined,
+                  candidate_hypotheses: optionGraphResolution.hypotheses.length,
+                  graph_rule_ids: optionGraphRuleIds,
                   prescription_allowed: ruleResult.prescription_allowed,
                   prescription_gate_reason: ruleResult.prescription_gate_reason,
                   // FIX: Include locked crop context in metadata
@@ -2668,8 +2832,17 @@ export class AIAgentOrchestrator {
                 safety_status: ruleResult.safety_blocks.length > 0 ? 'BLOCKED' : 'SAFE',
                 rules_applied: ruleResult.rules_matched,
                 processing_time_ms: Date.now() - startTime,
-                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'LAYERED_RULE_EVALUATOR'],
+                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'OBSERVATION_HYPOTHESIS_RESOLVER', 'LAYERED_RULE_EVALUATOR'],
                 trace_id: traceId,
+                candidate_hypotheses: optionGraphResolution.hypotheses.length,
+                graph_rule_ids: optionGraphRuleIds,
+                selected_graph_node: selectedStructuredOption ? {
+                  observation_id: selectedStructuredOption.observation_id,
+                  observation_code: selectedStructuredOption.observation_code,
+                  hypothesis_id: selectedStructuredOption.hypothesis_id,
+                  hypothesis_condition_id: selectedStructuredOption.hypothesis_condition_id,
+                  source: selectedStructuredOption.source,
+                } : undefined,
                 // CRITICAL: Clear pending options after successful selection
                 pendingClarificationOptions: undefined,
                 pendingClarificationScope: undefined,
@@ -5224,13 +5397,9 @@ export class AIAgentOrchestrator {
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 
           // ═══════════════════════════════════════════════════════════════════
-          // Phase Y — Fix B (PRIMARY): enforce intent_observation_mapping as a
-          // hard allowlist on the candidate set. IOM is the curated, agronomically
-          // valid set for (intent, crop, stage, DAS). For GENERAL_CROP_INFO +
-          // rice + seedling + DAS≤21 it correctly returns
-          // {obs_rice_no_emergence, obs_rice_patchy_emergence,
-          //  obs_rice_seedling_damping_off} and ZERO Tungro rows — so this gate
-          // is what physically removes "Tungro on an ungerminated crop".
+          // IOM AUDIT ONLY: intent_observation_mapping is an observation
+          // discovery layer, not hypothesis authority. The graph result stays
+          // owned by hypothesis_conditions + hypothesis_master.
           // ═══════════════════════════════════════════════════════════════════
           try {
             // T1 — GraphTruth integrity check before IOM gate
@@ -5343,34 +5512,38 @@ export class AIAgentOrchestrator {
             }
 
             // ═══════════════════════════════════════════════════════════════════
-            // ONTOLOGY CONTRACT — Clarification options must originate from the
-            // farmer-observation ontology (intent_observation_mapping), never
-            // from diagnosis names or rule metadata. Replace diagnosis labels
-            // with curated, observation_master-gated farmer observations for
-            // the current (intent, crop, stage, das) cell. If the contract
-            // returns nothing we DROP the diagnosis labels entirely rather
-            // than leak rule metadata to the UI.
+            // GRAPH CONTRACT — Clarification options must originate from the
+            // hypothesis graph: hypothesis_master → hypothesis_conditions →
+            // observation_master → observation_translations. IOM is discovery
+            // seed only inside the builder, never a direct UI source.
             // ═══════════════════════════════════════════════════════════════════
             try {
-              const contractOptions = await loadClarificationCandidates({
+              const graphClarification = await buildHypothesisClarificationOptions({
                 supabase: this.supabase,
                 intent_code: intentCode,
                 crop_code: cropCode,
-                growth_stage: growthStage,
-                das: (landContext as any)?.das ?? null,
+                crop_stage: growthStage,
+                DAS: (landContext as any)?.days_since_sowing ?? (landContext as any)?.das ?? null,
                 language: options.language || 'mr',
                 max: 5,
               });
+              const contractOptions = graphClarification.options;
               if (contractOptions.length > 0) {
                 diagnosisOptions = contractOptions.map((o) => ({
                   label: o.label,
-                  value: o.observation_key,
+                  value: o.value,
                   observation_key: o.observation_key,
+                  observation_id: o.observation_id,
+                  observation_code: o.observation_code,
+                  hypothesis_id: o.hypothesis_id,
+                  hypothesis_condition_id: o.hypothesis_condition_id,
+                  graph_version: 'hypothesis_graph_v1',
+                  source: 'hypothesis_graph',
                   description: undefined,
                   diagnostic_power: 'HIGH',
                 }));
                 console.log(
-                  `   ✅ [CLARIFICATION_CONTRACT] diagnosis-first replaced with ${diagnosisOptions.length} farmer-observation options`,
+                  `   ✅ [CLARIFICATION_CONTRACT] diagnosis-first replaced with ${diagnosisOptions.length} hypothesis_graph options`,
                 );
               } else {
                 const allowed = new Set<string>();
@@ -5378,7 +5551,7 @@ export class AIAgentOrchestrator {
                   intent: intentCode, crop: cropCode, stage: growthStage,
                 });
                 console.warn(
-                  `   🛡️ [CLARIFICATION_CONTRACT] no IOM candidates — diagnosis-first options dropped to preserve ontology ownership`,
+                  `   🛡️ [CLARIFICATION_CONTRACT] no hypothesis_graph candidates — diagnosis-first options dropped to preserve graph ownership`,
                 );
               }
             } catch (contractErr) {

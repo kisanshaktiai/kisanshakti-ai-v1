@@ -11,6 +11,9 @@ import { assert, assertEquals, assertExists } from 'https://deno.land/std@0.220.
 import { lockIntent } from '../agents/intent-lock.ts';
 import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
 import { evaluateHypothesisGraph } from '../decision/hypothesis-graph-evaluator.ts';
+import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
+import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
+import { resolveObservationSymbol, sameNode } from '../decision/symbol-resolver.ts';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test 1 (F6) — Rice weed query must never accept a COTTON_* intent lock.
@@ -328,4 +331,125 @@ Deno.test('PR-10 · intent-classifier emit() refuses to leak hardcoded codes on 
     /validCodes\.size\s*===\s*0/.test(body) && /GENERAL_CROP_INFO/.test(body) && /0\.1/.test(body),
     'emit() must return GENERAL_CROP_INFO@0.1 when validCodes is empty',
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRAPH-CONTRACT · Clarification options must be hypothesis-graph owned.
+// ═══════════════════════════════════════════════════════════════════════════
+
+class GraphQuery {
+  private filters: Array<(row: any) => boolean> = [];
+  private rangeBounds: [number, number] | null = null;
+  private orderColumn: string | null = null;
+  constructor(private rows: any[]) {}
+  select() { return this; }
+  eq(column: string, value: any) { this.filters.push((row) => row[column] === value); return this; }
+  in(column: string, values: any[]) { const s = new Set(values.map(String)); this.filters.push((row) => s.has(String(row[column]))); return this; }
+  or() { return this; }
+  ilike(column: string, value: string) { this.filters.push((row) => String(row[column] ?? '').toLowerCase() === String(value).toLowerCase()); return this; }
+  not() { return this; }
+  limit() { return this; }
+  order(column: string) { this.orderColumn = column; return this; }
+  maybeSingle() { const r = this.run(); return Promise.resolve({ data: r.data[0] ?? null, error: null }); }
+  single() { const r = this.run(); return Promise.resolve({ data: r.data[0] ?? null, error: null }); }
+  range(from: number, to: number) { this.rangeBounds = [from, to]; return Promise.resolve(this.run()); }
+  then(resolve: (value: any) => void) { resolve(this.run()); }
+  private run() {
+    let data = this.rows.filter((row) => this.filters.every((fn) => fn(row)));
+    if (this.orderColumn) data = [...data].sort((a, b) => Number(a[this.orderColumn!] ?? 0) - Number(b[this.orderColumn!] ?? 0));
+    if (this.rangeBounds) data = data.slice(this.rangeBounds[0], this.rangeBounds[1] + 1);
+    return { data, error: null };
+  }
+}
+
+function makeGraphSupabase() {
+  const rowsByTable: Record<string, any[]> = {
+    intent_observation_mapping: [
+      { intent_code: 'EMERGENCE_FAILURE', crop_code: 'rice', growth_stage: 'transplanting', das_min: 0, das_max: 60, observation_code: 'uneven_emergence', confidence_rank: 1, assertion_strength: 'LITERAL', is_active: true },
+      { intent_code: 'EMERGENCE_FAILURE', crop_code: 'cotton', growth_stage: 'vegetative', das_min: 0, das_max: 60, observation_code: 'cotton_square_drop', confidence_rank: 1, assertion_strength: 'LITERAL', is_active: true },
+      { intent_code: 'EMERGENCE_FAILURE', crop_code: 'sugarcane', growth_stage: 'grand_growth', das_min: 0, das_max: 180, observation_code: 'stunted_tillers', confidence_rank: 1, assertion_strength: 'LITERAL', is_active: true },
+    ],
+    observation_aliases: [
+      { alias_code: 'UNEVEN_EMERGENCE', alias_normalized: 'uneven_emergence', canonical_code: 'uneven_emergence', active: true },
+      { alias_code: 'कमी रोपे बाहेर आले', alias_normalized: 'कमी रोपे बाहेर आले', canonical_code: 'uneven_emergence', active: true },
+    ],
+    observation_master: [
+      { observation_code: 'uneven_emergence', description: 'Uneven emergence', is_active: true, is_farmer_observable: true, can_generate_question: true },
+      { observation_code: 'crop_stand_low', description: 'Low crop stand', is_active: true, is_farmer_observable: true, can_generate_question: true },
+      { observation_code: 'cotton_square_drop', description: 'Cotton square drop', is_active: true, is_farmer_observable: true, can_generate_question: true },
+      { observation_code: 'stunted_tillers', description: 'Stunted tillers', is_active: true, is_farmer_observable: true, can_generate_question: true },
+    ],
+    observation_translations: [
+      { observation_code: 'uneven_emergence', language_code: 'en', display_text: 'Uneven emergence', description_text: null },
+      { observation_code: 'crop_stand_low', language_code: 'en', display_text: 'Low crop stand', description_text: null },
+      { observation_code: 'cotton_square_drop', language_code: 'en', display_text: 'Cotton square drop', description_text: null },
+      { observation_code: 'stunted_tillers', language_code: 'en', display_text: 'Stunted tillers', description_text: null },
+    ],
+    hypothesis_master: [
+      { hypothesis_id: 'RICE_STAND_ESTABLISHMENT_STRESS', crop_group: 'rice', canonical_group: 'establishment', cause_name_en: 'Stand establishment stress', cause_name_hi: null, cause_name_mr: null, severity_model: null, is_active: true },
+      { hypothesis_id: 'COTTON_ESTABLISHMENT_STRESS', crop_group: 'cotton', canonical_group: 'establishment', cause_name_en: 'Cotton establishment stress', cause_name_hi: null, cause_name_mr: null, severity_model: null, is_active: true },
+      { hypothesis_id: 'SUGARCANE_ESTABLISHMENT_STRESS', crop_group: 'sugarcane', canonical_group: 'establishment', cause_name_en: 'Sugarcane establishment stress', cause_name_hi: null, cause_name_mr: null, severity_model: null, is_active: true },
+    ],
+    hypothesis_conditions: [
+      { id: 'rice_obs_1', hypothesis_id: 'RICE_STAND_ESTABLISHMENT_STRESS', condition_type: 'OBSERVATION', condition_key: 'reported_codes', operator: 'CONTAINS', value_json: ['uneven_emergence', 'crop_stand_low'], is_required: true, is_discriminator: true, weight: 1, is_quarantined: false },
+      { id: 'rice_stage_1', hypothesis_id: 'RICE_STAND_ESTABLISHMENT_STRESS', condition_type: 'STAGE', condition_key: 'growth_stage', operator: 'IN', value_json: ['transplanting'], is_required: true, is_discriminator: false, weight: 1, is_quarantined: false },
+      { id: 'cotton_obs_1', hypothesis_id: 'COTTON_ESTABLISHMENT_STRESS', condition_type: 'OBSERVATION', condition_key: 'reported_codes', operator: 'CONTAINS', value_json: ['cotton_square_drop'], is_required: true, is_discriminator: true, weight: 1, is_quarantined: false },
+      { id: 'cotton_stage_1', hypothesis_id: 'COTTON_ESTABLISHMENT_STRESS', condition_type: 'STAGE', condition_key: 'growth_stage', operator: 'IN', value_json: ['vegetative'], is_required: true, is_discriminator: false, weight: 1, is_quarantined: false },
+      { id: 'sugar_obs_1', hypothesis_id: 'SUGARCANE_ESTABLISHMENT_STRESS', condition_type: 'OBSERVATION', condition_key: 'reported_codes', operator: 'CONTAINS', value_json: ['stunted_tillers'], is_required: true, is_discriminator: true, weight: 1, is_quarantined: false },
+      { id: 'sugar_stage_1', hypothesis_id: 'SUGARCANE_ESTABLISHMENT_STRESS', condition_type: 'STAGE', condition_key: 'growth_stage', operator: 'IN', value_json: ['grand_growth'], is_required: true, is_discriminator: false, weight: 1, is_quarantined: false },
+    ],
+    hypothesis_rule_mapping: [
+      { hypothesis_id: 'RICE_STAND_ESTABLISHMENT_STRESS', rule_id: 'RICE_RULE_1', priority: 1 },
+      { hypothesis_id: 'COTTON_ESTABLISHMENT_STRESS', rule_id: 'COTTON_RULE_1', priority: 1 },
+      { hypothesis_id: 'SUGARCANE_ESTABLISHMENT_STRESS', rule_id: 'SUGARCANE_RULE_1', priority: 1 },
+    ],
+  };
+  return { from(table: string) { return new GraphQuery(rowsByTable[table] ?? []); } };
+}
+
+Deno.test('GRAPH-CONTRACT · clarification options are hypothesis_graph sourced', async () => {
+  const res = await buildHypothesisClarificationOptions({
+    supabase: makeGraphSupabase(),
+    intent_code: 'EMERGENCE_FAILURE',
+    crop_code: 'rice',
+    crop_stage: 'transplanting',
+    DAS: 30,
+    language: 'en',
+  });
+  assert(res.options.length > 0, 'graph must produce stage-valid options');
+  assertEquals(res.options.every((o) => o.source === 'hypothesis_graph'), true);
+  assertEquals(res.options.some((o) => o.hypothesis_id === 'RICE_STAND_ESTABLISHMENT_STRESS'), true);
+});
+
+Deno.test('GRAPH-CONTRACT · confirmed observation resolves to hypotheses or contract error', async () => {
+  const res = await resolveHypothesesFromObservations({
+    supabase: makeGraphSupabase(),
+    observations: ['UNEVEN_EMERGENCE'],
+    crop_context: { crop_code: 'rice', crop_group: 'rice', growth_stage: 'transplanting', das: 30 },
+  });
+  assertEquals(res.graph_contract_error, null);
+  assert(res.hypotheses.length > 0, 'confirmed observation must resolve to candidate hypotheses');
+});
+
+Deno.test('GRAPH-CONTRACT · symbol resolver uses DB aliases for same node', async () => {
+  const db = makeGraphSupabase();
+  const upper = await resolveObservationSymbol(db, 'UNEVEN_EMERGENCE');
+  const lower = await resolveObservationSymbol(db, 'uneven_emergence');
+  assertEquals(upper.canonical_observation_code, 'uneven_emergence');
+  assertEquals(lower.canonical_observation_code, 'uneven_emergence');
+  assertEquals(await sameNode(db, 'UNEVEN_EMERGENCE', 'कमी रोपे बाहेर आले'), true);
+});
+
+Deno.test('GRAPH-CONTRACT · same intent differs by crop/stage graph', async () => {
+  const db = makeGraphSupabase();
+  const rice = await buildHypothesisClarificationOptions({ supabase: db, intent_code: 'EMERGENCE_FAILURE', crop_code: 'rice', crop_stage: 'transplanting', DAS: 30, language: 'en' });
+  const cotton = await buildHypothesisClarificationOptions({ supabase: db, intent_code: 'EMERGENCE_FAILURE', crop_code: 'cotton', crop_stage: 'vegetative', DAS: 30, language: 'en' });
+  const sugar = await buildHypothesisClarificationOptions({ supabase: db, intent_code: 'EMERGENCE_FAILURE', crop_code: 'sugarcane', crop_stage: 'grand_growth', DAS: 90, language: 'en' });
+  assert(rice.options.map((o) => o.observation_code).join(',') !== cotton.options.map((o) => o.observation_code).join(','));
+  assert(cotton.options.map((o) => o.observation_code).join(',') !== sugar.options.map((o) => o.observation_code).join(','));
+});
+
+Deno.test('GRAPH-CONTRACT · live clarification contract must not stamp IOM as UI authority', async () => {
+  const selector = await Deno.readTextFile(new URL('../runtime/observation-selector-contract.ts', import.meta.url));
+  assertEquals(selector.includes('INTENT_OBSERVATION_MAPPING_SSOT'), false);
 });

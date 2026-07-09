@@ -655,6 +655,12 @@ serve(async (req) => {
         label: string;
         value: string;
         observation_key: string;
+        observation_id?: string;
+        observation_code?: string;
+        hypothesis_id?: string;
+        hypothesis_condition_id?: string;
+        graph_version?: string;
+        source?: string;
         diagnostic_power?: string;
       }>;
       // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
@@ -1880,7 +1886,7 @@ serve(async (req) => {
           // have promoted the response to DIAGNOSTIC_ESCALATION or a young-
           // crop OBSERVATION response after the first enforcer ran. Re-run
           // it so an empty escalation gets converted into a farmer-facing
-          // CLARIFICATION_QUESTION with DB-sourced options (IOM SSOT).
+          // CLARIFICATION_QUESTION with hypothesis-graph-sourced options.
           // ─────────────────────────────────────────────────────────────────
           try {
             const _orchAnyForCtx2: any = orch as any;
@@ -2331,6 +2337,12 @@ serve(async (req) => {
         label: String(o?.label ?? ''),
         value: String(o?.value ?? o?.label ?? ''),
         observation_key: String(o?.observation_key ?? ''),
+        observation_id: o?.observation_id,
+        observation_code: o?.observation_code,
+        hypothesis_id: o?.hypothesis_id,
+        hypothesis_condition_id: o?.hypothesis_condition_id,
+        graph_version: o?.graph_version,
+        source: o?.source,
         diagnostic_power: o?.diagnostic_power,
       }))
       .filter((o) => o.label || o.observation_key);
@@ -4279,6 +4291,12 @@ function transformOrchestratorResponse(
             label: typeof o === 'string' ? o : (o?.label || String(o)),
             value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
             observation_key: typeof o === 'object' ? (o?.observation_key || o?.value) : undefined,
+            observation_id: typeof o === 'object' ? o?.observation_id : undefined,
+            observation_code: typeof o === 'object' ? o?.observation_code : undefined,
+            hypothesis_id: typeof o === 'object' ? o?.hypothesis_id : undefined,
+            hypothesis_condition_id: typeof o === 'object' ? o?.hypothesis_condition_id : undefined,
+            graph_version: typeof o === 'object' ? o?.graph_version : undefined,
+            source: typeof o === 'object' ? o?.source : undefined,
             description: typeof o === 'object' ? o?.description : undefined,
             diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
           })),
