@@ -25,15 +25,19 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
-import { loadIOMAllowed } from '../decision/iom-gate.ts';
-import { SymbolContract } from './symbol-contract.ts';
+import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 
 export interface ObservationOption {
   value: string;
   label: string;
   observation_key: string;
   i18n_key: string;
+  observation_id?: string;
+  observation_code?: string;
+  hypothesis_id?: string;
+  hypothesis_condition_id?: string;
+  graph_version?: string;
+  source?: 'hypothesis_graph';
 }
 
 export interface ObservationContractContext {
@@ -54,76 +58,38 @@ export interface ObservationContractContext {
 }
 
 /**
- * SSOT loader — prefer `intent_observation_mapping` (DB observation discovery
- * layer) when an intent is known; fall back to `decision_rules`
- * observable_characteristics only when no intent is available. Adds
- * PHOTO_REQUEST as the final option. All symbols pass through SymbolContract
- * so lowercase / snake_case DB codes are treated as first-class graph nodes.
+ * SSOT loader — farmer-visible clarification options come from the hypothesis
+ * graph. `intent_observation_mapping` may be used inside the builder only as a
+ * discovery seed; it must never directly emit UI options.
  */
 export async function loadObservationSelectorOptions(
   ctx: ObservationContractContext,
 ): Promise<ObservationOption[]> {
-  const cropUpper = (ctx.cropCode || 'ALL').toUpperCase();
   const lang = ctx.language || 'mr';
 
   try {
-    let obsCodes: string[] = [];
-
-    // Preferred SSOT: intent_observation_mapping — same source the graph uses
-    // to decide which observations to collect for this intent/crop/stage/DAS.
-    if (ctx.intentCode) {
-      try {
-        const iom = await loadIOMAllowed(
-          ctx.supabase,
-          ctx.intentCode,
-          ctx.cropCode || 'all',
-          ctx.growthStage,
-          ctx.daysSinceSowing ?? null,
-        );
-        obsCodes = iom.allowedRanked.slice(0, 6).map((r) => SymbolContract.normalizeOrEmpty(r.observation_code)).filter(Boolean);
-      } catch (iomErr) {
-        console.warn(`[OBS_SELECTOR_LOADER] IOM load failed, will try decision_rules: ${(iomErr as Error).message}`);
-      }
-    }
-
-    // Fallback: decision_rules observable_characteristics (legacy path).
-    if (obsCodes.length === 0) {
-      const { data: topRules } = await ctx.supabase
-        .from('decision_rules')
-        .select('observable_characteristics')
-        .eq('is_active', true)
-        .or(`crop_code.eq.${cropUpper},crop_code.eq.all,crop_code.eq.ALL`)
-        .not('observable_characteristics', 'is', null)
-        .limit(20);
-
-      const obsCodesSet = new Set<string>();
-      for (const rule of topRules || []) {
-        const chars = rule.observable_characteristics;
-        if (Array.isArray(chars)) {
-          chars.slice(0, 3).forEach((c: string) => {
-            const n = SymbolContract.normalize(c);
-            if (n) obsCodesSet.add(n);
-          });
-        }
-      }
-      obsCodes = Array.from(obsCodesSet).slice(0, 4);
-    }
-
-    if (obsCodes.length === 0) return [];
-
-    obsCodes.push('PHOTO_REQUEST');
-
-    const labelMap = await loadObservationLabels(ctx.supabase, obsCodes, lang);
-
-    return obsCodes.map((code) => {
-      const label = labelMap.get(code.toUpperCase());
-      return {
-        value: code,
-        label: label ? `${label.icon || ''} ${label.display_text}`.trim() : code,
-        observation_key: code,
-        i18n_key: `observation.${code.toLowerCase()}`,
-      };
+    const graph = await buildHypothesisClarificationOptions({
+      supabase: ctx.supabase,
+      intent_code: ctx.intentCode,
+      crop_code: ctx.cropCode,
+      crop_stage: ctx.growthStage,
+      DAS: ctx.daysSinceSowing ?? null,
+      language: lang,
+      max: 6,
+      trace_id: ctx.traceId,
     });
+    return graph.options.map((o) => ({
+      value: o.value,
+      label: o.label,
+      observation_key: o.observation_key,
+      i18n_key: `observation.${o.observation_code.toLowerCase()}`,
+      observation_id: o.observation_id,
+      observation_code: o.observation_code,
+      hypothesis_id: o.hypothesis_id,
+      hypothesis_condition_id: o.hypothesis_condition_id,
+      graph_version: 'hypothesis_graph_v1',
+      source: 'hypothesis_graph',
+    }));
   } catch (err) {
     console.warn(
       `[OBS_SELECTOR_LOADER] trace=${ctx.traceId ?? 'n/a'} failed: ${(err as Error).message}`,
@@ -260,7 +226,7 @@ function promoteToClarification(
     text_en: 'To help diagnose your crop issue, please select what you observe:',
     options,
     scope: 'OBSERVATION_REQUIRED',
-    source: ctx.intentCode ? 'INTENT_OBSERVATION_MAPPING_SSOT' : 'DECISION_RULES_SSOT',
+    source: 'hypothesis_graph',
   };
   response.communication = response.communication && typeof response.communication === 'object'
     ? response.communication
@@ -272,7 +238,7 @@ function stampMetadata(response: any, optionCount: number): void {
   response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
   response.metadata.orchestrator_type = 'CLARIFICATION_QUESTION';
   if (!response.metadata.selectionType) response.metadata.selectionType = 'MULTIPLE_CHOICE';
-  response.metadata.observation_source = response.metadata.observation_source || 'INTENT_OBSERVATION_MAPPING_SSOT';
+  response.metadata.observation_source = response.metadata.observation_source || 'hypothesis_graph';
   response.metadata.observation_required = true;
   response.metadata.observation_option_count = optionCount;
 }

@@ -51,18 +51,33 @@ export async function resolveObservationSymbol(
   const variants = formatVariants(raw);
 
   try {
-    const { data: aliasRows, error: aliasErr } = await supabase
+    let aliasRows: any[] = [];
+    const aliasByCode = await supabase
       .from('observation_aliases')
       .select('alias_code, alias_normalized, alias_text, canonical_code, active')
       .eq('active', true)
-      .or(
-        `alias_code.in.(${variants.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')}),` +
-        `alias_normalized.in.(${variants.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')})`,
-      );
+      .in('alias_code', variants);
 
-    if (aliasErr) {
-      console.warn(`[SYMBOL_RESOLVER] alias lookup failed symbol=${graph} error=${aliasErr.message}`);
-    } else if (Array.isArray(aliasRows) && aliasRows.length > 0) {
+    if (aliasByCode.error) {
+      console.warn(`[SYMBOL_RESOLVER] alias_code lookup failed symbol=${graph} error=${aliasByCode.error.message}`);
+    } else if (Array.isArray(aliasByCode.data)) {
+      aliasRows = aliasByCode.data;
+    }
+
+    if (aliasRows.length === 0) {
+      const aliasByNormalized = await supabase
+        .from('observation_aliases')
+        .select('alias_code, alias_normalized, alias_text, canonical_code, active')
+        .eq('active', true)
+        .in('alias_normalized', variants);
+      if (aliasByNormalized.error) {
+        console.warn(`[SYMBOL_RESOLVER] alias_normalized lookup failed symbol=${graph} error=${aliasByNormalized.error.message}`);
+      } else if (Array.isArray(aliasByNormalized.data)) {
+        aliasRows = aliasByNormalized.data;
+      }
+    }
+
+    if (Array.isArray(aliasRows) && aliasRows.length > 0) {
       const canonical = String(aliasRows[0]?.canonical_code || '').trim();
       if (canonical) {
         const master = await resolveMasterRow(supabase, canonical);
