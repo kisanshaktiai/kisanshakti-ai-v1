@@ -1217,6 +1217,31 @@ serve(async (req) => {
         `ruleResult=${_ruleResultExists} evidenceFrozen=${_evidenceFrozen} realObs=${_realObsCount} ` +
         `graphSequence=${_seq}/5`,
       );
+
+      // FIX 2 (GRAPH_HANDOFF_CHECK) — snapshot vs canonical-state vs exit must
+      // agree. Any drift is a contract violation and is logged loudly; we do
+      // NOT throw here (response is already framed), but the log is greppable.
+      try {
+        const _snap = _orchAny?._graphSnapshot;
+        const _snapHyp: number = Array.isArray(_snap?.hypotheses) ? _snap.hypotheses.length : -1;
+        const _snapRules: number = Array.isArray(_snap?.rules) ? _snap.rules.length : -1;
+        const _csHyp: number = Number(_orchAny?.__conversationState?.hypotheses?.length ?? -1);
+        const _mismatch =
+          (_snapHyp >= 0 && _snapHyp !== _hypCount) ||
+          (_snapRules >= 0 && _snapRules !== _ruleCount);
+        console.log(
+          `[GRAPH_HANDOFF_CHECK] trace=${traceId} snapshot_hyp=${_snapHyp} snapshot_rules=${_snapRules} ` +
+          `exit_hyp=${_hypCount} exit_rules=${_ruleCount} cs_hyp=${_csHyp} ok=${!_mismatch}`,
+        );
+        if (_mismatch) {
+          console.error(
+            `[GRAPH_CONTRACT_VIOLATION] handoff drift trace=${traceId} ` +
+            `snapshot=(${_snapHyp}/${_snapRules}) exit=(${_hypCount}/${_ruleCount})`,
+          );
+        }
+      } catch (hcErr) {
+        console.warn(`[GRAPH_HANDOFF_CHECK] non-fatal: ${(hcErr as Error).message}`);
+      }
       // NOTE: These invariants previously `throw`-ed, converting silent
       // pipeline-bypass patterns into hard 500s. In production that masked
       // the real underlying exception (which has already been handled by
