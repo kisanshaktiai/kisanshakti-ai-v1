@@ -5463,34 +5463,38 @@ export class AIAgentOrchestrator {
             }
 
             // ═══════════════════════════════════════════════════════════════════
-            // ONTOLOGY CONTRACT — Clarification options must originate from the
-            // farmer-observation ontology (intent_observation_mapping), never
-            // from diagnosis names or rule metadata. Replace diagnosis labels
-            // with curated, observation_master-gated farmer observations for
-            // the current (intent, crop, stage, das) cell. If the contract
-            // returns nothing we DROP the diagnosis labels entirely rather
-            // than leak rule metadata to the UI.
+            // GRAPH CONTRACT — Clarification options must originate from the
+            // hypothesis graph: hypothesis_master → hypothesis_conditions →
+            // observation_master → observation_translations. IOM is discovery
+            // seed only inside the builder, never a direct UI source.
             // ═══════════════════════════════════════════════════════════════════
             try {
-              const contractOptions = await loadClarificationCandidates({
+              const graphClarification = await buildHypothesisClarificationOptions({
                 supabase: this.supabase,
                 intent_code: intentCode,
                 crop_code: cropCode,
-                growth_stage: growthStage,
-                das: (landContext as any)?.das ?? null,
+                crop_stage: growthStage,
+                DAS: (landContext as any)?.days_since_sowing ?? (landContext as any)?.das ?? null,
                 language: options.language || 'mr',
                 max: 5,
               });
+              const contractOptions = graphClarification.options;
               if (contractOptions.length > 0) {
                 diagnosisOptions = contractOptions.map((o) => ({
                   label: o.label,
-                  value: o.observation_key,
+                  value: o.value,
                   observation_key: o.observation_key,
+                  observation_id: o.observation_id,
+                  observation_code: o.observation_code,
+                  hypothesis_id: o.hypothesis_id,
+                  hypothesis_condition_id: o.hypothesis_condition_id,
+                  graph_version: 'hypothesis_graph_v1',
+                  source: 'hypothesis_graph',
                   description: undefined,
                   diagnostic_power: 'HIGH',
                 }));
                 console.log(
-                  `   ✅ [CLARIFICATION_CONTRACT] diagnosis-first replaced with ${diagnosisOptions.length} farmer-observation options`,
+                  `   ✅ [CLARIFICATION_CONTRACT] diagnosis-first replaced with ${diagnosisOptions.length} hypothesis_graph options`,
                 );
               } else {
                 const allowed = new Set<string>();
@@ -5498,7 +5502,7 @@ export class AIAgentOrchestrator {
                   intent: intentCode, crop: cropCode, stage: growthStage,
                 });
                 console.warn(
-                  `   🛡️ [CLARIFICATION_CONTRACT] no IOM candidates — diagnosis-first options dropped to preserve ontology ownership`,
+                  `   🛡️ [CLARIFICATION_CONTRACT] no hypothesis_graph candidates — diagnosis-first options dropped to preserve graph ownership`,
                 );
               }
             } catch (contractErr) {
