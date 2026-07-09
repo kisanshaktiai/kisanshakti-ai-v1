@@ -2286,6 +2286,84 @@ export class AIAgentOrchestrator {
             }
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
+
+          // ═══════════════════════════════════════════════════════════════════
+          // MANDATORY GRAPH CONTRACT: confirmed observation must traverse
+          // Observation → Hypothesis before any rule or fallback branch.
+          // ═══════════════════════════════════════════════════════════════════
+          const optionGraphResolution = await resolveHypothesesFromObservations({
+            supabase: this.supabase,
+            observations: allObservations,
+            crop_context: {
+              crop_code: cropName,
+              crop_group: cropName,
+              growth_stage: growthStage,
+              das: landContextForOptionSelection?.days_since_sowing ?? null,
+            },
+            trace_id: traceId,
+          });
+          const optionGraphRuleIds = Array.from(new Set(
+            optionGraphResolution.hypotheses.flatMap((h) => h.candidate_rule_ids || []).filter(Boolean),
+          ));
+          console.log(
+            `[EVIDENCE_COUNT_TRACE] confirmed_observations=${allObservations.length} ` +
+            `candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
+            `matched_rules=${optionGraphRuleIds.length}`,
+          );
+
+          if (allObservations.length > 0 && optionGraphResolution.hypotheses.length === 0) {
+            const graphClarification = await buildHypothesisClarificationOptions({
+              supabase: this.supabase,
+              intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
+              crop_code: cropName,
+              crop_stage: growthStage,
+              DAS: landContextForOptionSelection?.days_since_sowing ?? null,
+              language: options.language || 'mr',
+              confirmed_observations: allObservations,
+              trace_id: traceId,
+              max: 5,
+            });
+            const clarificationOptions = graphClarification.options.map((o) => ({
+              label: o.label,
+              value: o.value,
+              observation_key: o.observation_key,
+              observation_id: o.observation_id,
+              observation_code: o.observation_code,
+              hypothesis_id: o.hypothesis_id,
+              hypothesis_condition_id: o.hypothesis_condition_id,
+              graph_version: 'hypothesis_graph_v1',
+              source: 'hypothesis_graph',
+            }));
+            console.error(
+              `[GRAPH_CONTRACT_ERROR] trace=${traceId} confirmed_observations=${allObservations.length} ` +
+              `candidate_hypotheses=0 graph_gap=${graphClarification.graph_gap ?? 'NO_HYPOTHESIS_EDGE'} ` +
+              `options=${clarificationOptions.length}`,
+            );
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              question: {
+                question_id: `graph_gap_${Date.now()}`,
+                text_en: 'Please select one more visible observation from the crop so I can complete the graph diagnosis.',
+                options: clarificationOptions,
+                scope: 'GRAPH_KNOWLEDGE_GAP',
+                source: 'hypothesis_graph',
+              },
+              communication: { options: clarificationOptions },
+              metadata: {
+                orchestrator_type: 'CLARIFICATION_QUESTION',
+                observation_source: 'hypothesis_graph',
+                graph_reason: graphClarification.graph_gap ?? 'NO_HYPOTHESIS_EDGE',
+                trace_id: traceId,
+                selectionType: 'SINGLE_CHOICE',
+                session_state_update: {
+                  decision_state: 'awaiting_clarification',
+                  pending_options: clarificationOptions.length,
+                  pending_action: false,
+                },
+              },
+            } as any;
+          }
           
           const canonicalState = buildCanonicalState({
             // CRITICAL FIX: Pass landContext to preserve all land data
