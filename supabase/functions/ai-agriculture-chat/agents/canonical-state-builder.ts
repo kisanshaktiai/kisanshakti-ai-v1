@@ -1312,6 +1312,69 @@ export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateRe
   };
 }
 
+// ==================== STATE SYNC (FIX 1) ====================
+/**
+ * SINGLE writer of graph-derived counts onto CanonicalState.
+ *
+ * The prescription gate reads `candidate_hypothesis_count` /
+ * `matched_rules_count`. Before this helper existed nothing wrote those
+ * fields, so a graph result of `{hyp:1, rules:4}` degraded to `0/0`
+ * downstream — the split-brain the runtime log documents.
+ *
+ * Idempotent. First call stamps `__graphStateSynced=true`. A second call
+ * with matching counts is a no-op. A second call with *different* counts
+ * logs `GRAPH_CONTRACT_VIOLATION` and rewrites (never silently repair;
+ * upstream is the bug).
+ */
+export function syncCanonicalStateFromSnapshot(
+  state: CanonicalState,
+  snapshot: GraphRuntimeSnapshot | null | undefined,
+  opts: { trace_id?: string } = {},
+): void {
+  const anyState = state as any;
+  if (!snapshot) {
+    console.log(
+      `[STATE_SYNC] trace=${opts.trace_id ?? 'n/a'} source=GRAPH_RUNTIME ` +
+      `snapshot=absent hypotheses=0 rules=0`,
+    );
+    return;
+  }
+  const hypCount = snapshot.hypotheses.length;
+  const ruleCount = snapshot.rules.length;
+  const hypIds = snapshot.hypotheses.map((h) => h.id);
+  const ruleIds = [...snapshot.rules];
+  const orphanIds = [...snapshot.orphan_rule_ids];
+
+  if (anyState.__graphStateSynced === true) {
+    const priorH = Number(anyState.candidate_hypothesis_count ?? 0);
+    const priorR = Number(anyState.matched_rules_count ?? 0);
+    if (priorH !== hypCount || priorR !== ruleCount) {
+      console.error(
+        `[GRAPH_CONTRACT_VIOLATION] STATE_SYNC re-sync mismatch ` +
+        `trace=${opts.trace_id ?? 'n/a'} prior_hyp=${priorH} prior_rules=${priorR} ` +
+        `snapshot_hyp=${hypCount} snapshot_rules=${ruleCount}`,
+      );
+    } else {
+      return; // idempotent no-op
+    }
+  }
+
+  anyState.candidate_hypothesis_count = hypCount;
+  anyState.matched_rules_count       = ruleCount;
+  anyState.hypothesis_ids            = hypIds;
+  anyState.rule_ids                  = ruleIds;
+  anyState.orphan_rule_ids           = orphanIds;
+  anyState.__graphStateSynced        = true;
+  anyState.__graph_snapshot__        = snapshot;
+
+  console.log(
+    `[STATE_SYNC] trace=${opts.trace_id ?? 'n/a'} source=GRAPH_RUNTIME ` +
+    `hypotheses=${hypCount} rules=${ruleCount} orphans=${orphanIds.length} ` +
+    `state=${snapshot.graph_state}`,
+  );
+}
+
+
 function getRequiredDataForConfidence(state: CanonicalState): string[] {
   const required: string[] = [];
   
