@@ -8446,7 +8446,7 @@ export class AIAgentOrchestrator {
         // CRITICAL FIX: If clarification has 0 options, generate dynamic options from database
         let safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
         
-        if (safeOptionsForLog.length === 0) {
+        if (safeOptionsForLog.length === 0 && !pendingClarificationResponse.forceObservation) {
           console.log(`   ⚠️ Clarification has 0 options - generating dynamic fallback from database`);
           
           // Try to generate observation-based options from multi-match detector
