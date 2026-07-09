@@ -6424,6 +6424,15 @@ export class AIAgentOrchestrator {
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
       const lockedStage = getLockedStage();
       
+      // OBSERVATION_STATE_CONTRACT — pull confirmed-only count from the frozen
+      // ConversationState so the trigger cannot be inflated by INFERRED symbols
+      // (alias expansion / IOM LITERAL peers / LLM inferences). Diagnostic
+      // intent + confirmed=0 forces clarification, regardless of coverage.
+      const __confirmedCountForTrigger = (this as any).__conversationState?.informative_count ?? 0;
+      const __isDiagnosticForTrigger =
+        (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
+        (this as any).__conversationState?.mode === 'MIXED';
+
       const clarificationTriggerInput: ClarificationTriggerInput = {
         crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
         stage_known: !!(lockedStage?.growth_stage || landContext?.growth_stage),
@@ -6431,7 +6440,9 @@ export class AIAgentOrchestrator {
         symptom_coverage: inductionResult.symbol_coverage,
         is_ambiguous: inductionResult.aggregated_confidence < 0.5 && inductionResult.symptoms.length > 0,
         has_pending_clarification: pendingOptionsCount > 0,
-        clarification_completed: clarificationCompleted
+        clarification_completed: clarificationCompleted,
+        confirmed_observation_count: __confirmedCountForTrigger,
+        diagnostic_intent: __isDiagnosticForTrigger,
       };
       
       const clarificationTrigger = shouldTriggerClarificationFirst(clarificationTriggerInput);
@@ -7788,6 +7799,34 @@ export class AIAgentOrchestrator {
             sequence:         (this as any)._evidenceFrozen ? 5 : undefined,
             total_ms:         Date.now() - startTime,
           });
+
+          // HYPOTHESIS_INVARIANT_CONTRACT — diagnostic + graph_ran + hyp=0 +
+          // observation_required=false is an impossible state that historically
+          // caused silent rule fallbacks. Fail loud in dev; fail closed in prod
+          // (force clarification instead of hallucinated diagnosis).
+          try {
+            const { assertObservationRequiredWhenNoHypothesis } =
+              await import('../runtime/graph-contracts.ts');
+            const _obsRequired =
+              (this as any).__observationRequired === true ||
+              (this as any)._observationRequired === true ||
+              (_cs?.clarification_required === true);
+            const _invariant = assertObservationRequiredWhenNoHypothesis({
+              diagnosticIntent: requiresAgronomicReasoningIntent(intentCode),
+              hypothesesCount: _hypIds.length,
+              observationRequired: _obsRequired,
+              graphExecuted: _graphRan,
+              confirmedCount: _cs?.confirmed?.length ?? 0,
+              traceId,
+            });
+            if (!_invariant.ok && _invariant.forced_observation_required) {
+              (this as any).__observationRequired = true;
+            }
+          } catch (invErr) {
+            if ((invErr as Error).name === 'GraphContractViolation') throw invErr;
+            // Non-fatal: contract library missing → keep prior behavior.
+          }
+
           // Retain forensic detail on a separate line — auditors still grep
           // POST_RULE for winner_score / action_text / prescription flags.
           console.log(

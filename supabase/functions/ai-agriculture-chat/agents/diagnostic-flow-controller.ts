@@ -172,19 +172,28 @@ export class DiagnosticFlowController {
     
     // Check for terminal damage from observations (NOT NLU intent)
     const terminalDamageResult = detectTerminalDamageForAuthority(observationKeys);
-    
-    // v3.0: If terminal damage detected, proceed DIRECTLY to rule evaluation
-    // NLU confidence is COMPLETELY IGNORED - authority comes from observations
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TERMINAL_DAMAGE_CONTRACT (v2.0.0) — priority boost, NEVER bypass
+    // ─────────────────────────────────────────────────────────────────────────
+    // Prior bug: terminal damage jumped straight to evaluateRules() and
+    // skipped the observation graph entirely. That is unsafe — "plant died"
+    // has many causes (drought, seed rot, disease, chemical injury, pest).
+    // We keep the CROP authority uplift but STILL route through the normal
+    // GRAPH_GATE below. If the farmer's text already contains an observation
+    // (e.g. PLANT_DIED) the gate will proceed to evaluateRules; otherwise it
+    // will ask the observation navigator for confirmation.
+    // ═══════════════════════════════════════════════════════════════════════════
     if (terminalDamageResult.detected) {
-      console.log('🚨 [DiagnosticFlow] Terminal damage detected - proceeding directly to rule evaluation');
-      console.log('   Mode=DIAGNOSIS_ONLY');
+      console.log('🚨 [DiagnosticFlow] Terminal damage detected — PRIORITY BOOST, still routing through observation graph');
+      console.log('   Mode=DIAGNOSIS');
       console.log('   Authority=CROP (ENFORCED)');
       console.log('   Trigger=TERMINAL_DAMAGE_OBSERVATION');
-      console.log('   NLU_ROLE=OBSERVATION_ONLY');
+      console.log('   Bypass=DISABLED (v2 contract: no rule-engine shortcut)');
       console.log(`   Terminal indicators: ${terminalDamageResult.terminal_damage.join(', ')}`);
-      
-      // Proceed directly to rule evaluation - skip all clarification
-      return await this.evaluateRules();
+      (this.session as any).__priority_boost = 'TERMINAL_DAMAGE';
+      // Fall through — the GRAPH_GATE below decides RUN_GRAPH vs ASK_OBSERVATION
+      // based on whether any confirmed observation is actually present.
     }
     
     // v4.0 (GRAPH_GATE): CONTEXT vs EVIDENCE separation

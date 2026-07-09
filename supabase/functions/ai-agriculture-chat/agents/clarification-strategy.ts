@@ -90,6 +90,15 @@ export interface ClarificationTriggerInput {
   clarification_completed: boolean;
   user_query?: string; // Added for failure class detection
   symptom_scope?: 'WHOLE_PLANT' | 'PART' | 'UNKNOWN'; // Added for failure class detection
+  /**
+   * OBSERVATION_STATE_CONTRACT — Only CONFIRMED farmer observations count as
+   * evidence. INFERRED symbols (alias expansion, IOM LITERAL peers, LLM
+   * guesses) MUST NOT satisfy the clarification gate for a diagnostic intent.
+   * When these are provided, they take priority over the legacy symptom_count
+   * / symptom_coverage inputs (which historically conflated the three classes).
+   */
+  confirmed_observation_count?: number;
+  diagnostic_intent?: boolean;
 }
 
 export interface ClarificationTriggerResult {
@@ -247,8 +256,8 @@ export function shouldTriggerClarificationFirst(
   input: ClarificationTriggerInput
 ): ClarificationTriggerResult {
   // Log the trigger evaluation
-  console.log(`📋 [ClarificationTrigger] Evaluating: crop=${input.crop_known}, stage=${input.stage_known}, symptoms=${input.symptom_count}, coverage=${(input.symptom_coverage * 100).toFixed(0)}%, ambiguous=${input.is_ambiguous}`);
-  
+  console.log(`📋 [ClarificationTrigger] Evaluating: crop=${input.crop_known}, stage=${input.stage_known}, symptoms=${input.symptom_count}, coverage=${(input.symptom_coverage * 100).toFixed(0)}%, ambiguous=${input.is_ambiguous}, confirmed=${input.confirmed_observation_count ?? 'n/a'}, diagnostic=${input.diagnostic_intent ?? 'n/a'}`);
+
   // If clarification already completed for this turn, don't re-trigger
   if (input.clarification_completed) {
     console.log(`   ✅ [ClarificationTrigger] Clarification already completed - proceeding to rules`);
@@ -259,13 +268,32 @@ export function shouldTriggerClarificationFirst(
       bypass_allowed: true
     };
   }
-  
+
   // If pending clarification exists, must complete it first
   if (input.has_pending_clarification) {
     console.log(`   ⚠️ [ClarificationTrigger] Pending clarification exists - must complete`);
     return {
       should_clarify: true,
       reason: 'PENDING_CLARIFICATION_INCOMPLETE',
+      priority: 'HIGH',
+      bypass_allowed: false
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OBSERVATION_STATE_CONTRACT — CONFIRMED-ONLY GATE (v1.0.0)
+  // A diagnostic turn with ZERO confirmed farmer observations MUST clarify,
+  // regardless of how many INFERRED / candidate symbols the induction layer
+  // produced. This closes the "sufficient symptom coverage" bypass that let
+  // AI-inferred codes pose as farmer evidence.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (input.diagnostic_intent === true
+      && typeof input.confirmed_observation_count === 'number'
+      && input.confirmed_observation_count === 0) {
+    console.log(`   🚦 [ClarificationTrigger] OBSERVATION_STATE_CONTRACT: diagnostic intent + 0 confirmed observations → clarify`);
+    return {
+      should_clarify: true,
+      reason: 'NO_CONFIRMED_OBSERVATIONS',
       priority: 'HIGH',
       bypass_allowed: false
     };
