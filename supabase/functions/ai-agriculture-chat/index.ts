@@ -1,5 +1,15 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 03:15 UTC — FIX 2 (GRAPH_HANDOFF_CHECK). New audit log in
+ *   [ORCHESTRATOR_EXIT] compares snapshot vs canonical-state vs exit
+ *   counters and emits [GRAPH_CONTRACT_VIOLATION] on drift (no throw;
+ *   response already framed). Makes graph→state handoff greppable.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/index.ts
  * ROLE:      HTTP entrypoint — routes every farmer chat request into the
  *            9-agent orchestrator.
