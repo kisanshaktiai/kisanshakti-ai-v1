@@ -2473,9 +2473,9 @@ export class AIAgentOrchestrator {
           const stateWithQuery = { 
             ...canonicalState, 
             user_query: farmerMessage,
-            visual_symptoms: allObservations,
-            confirmed_observations: allObservations,
-            known_observations: allObservations,
+            visual_symptoms: optionEvidence.real_codes,
+            confirmed_observations: optionEvidence.real_codes,
+            known_observations: optionEvidence.real_codes,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
           console.log(
