@@ -6500,9 +6500,34 @@ export class AIAgentOrchestrator {
         }
       );
       
-      // Use PHASE-20 trigger as primary, legacy as fallback
-      // CRITICAL FIX: Symptom-free routes (irrigation, crop health, etc.) MUST NOT be blocked by clarification
-      const shouldPrepareClarification = !isSymptomFreeRoute && (
+      // Use PHASE-20 trigger as primary, legacy as fallback.
+      // OBSERVATION_STATE_CONTRACT is stronger than route labels: if the
+      // frozen conversation state says diagnostic evidence is missing, even a
+      // GENERAL_INFO/symptom-free route must render observation choices.
+      const observationAuthorityRequiresClarification =
+        !!(this as any).__conversationState?.clarification_required &&
+        (
+          (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
+          (this as any).__conversationState?.mode === 'MIXED'
+        );
+      if (observationAuthorityRequiresClarification && isSymptomFreeRoute) {
+        console.log(
+          `   🛑 [SYMPTOM_FREE_ROUTE_VETO] route=${queryRoute.route} intent=${intentCode} ` +
+          `reason=${(this as any).__conversationState?.clarification_reason}`
+        );
+        agentsUsed.push('SYMPTOM_FREE_ROUTE_VETO');
+      }
+      if (observationAuthorityRequiresClarification && bypassClarification) {
+        console.log(
+          `   🛑 [BYPASS_CLARIFICATION_VETO] diagnostic observation authority requires UI; ` +
+          `confirmed=${(this as any).__conversationState?.confirmed?.length ?? 0}`
+        );
+        bypassClarification = false;
+        directModeBypass = false;
+        agentsUsed.push('BYPASS_CLARIFICATION_VETO');
+      }
+
+      const shouldPrepareClarification = (!isSymptomFreeRoute || observationAuthorityRequiresClarification) && (
         (clarificationTrigger.should_clarify && !clarificationTrigger.bypass_allowed) || 
         (inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass))
       );
@@ -6519,7 +6544,9 @@ export class AIAgentOrchestrator {
           const ruleDrivenInput: RuleDrivenClarificationInput = {
             crop_code: lockedStage.crop_code,
             stage: lockedStage.growth_stage,
-            current_symptoms: inductionResult.symptoms.map(s => s.symbol),
+            current_symptoms: observationAuthorityRequiresClarification
+              ? []
+              : inductionResult.symptoms.map(s => s.symbol),
             language: options.language || 'mr',
             supabaseClient: this.supabase,
             // Phase F — variety-aware resistance modulation
