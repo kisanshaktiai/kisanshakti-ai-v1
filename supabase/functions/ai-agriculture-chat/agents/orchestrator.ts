@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 09:20 UTC — Wire observation-state authority into direct-mode
+ *   and deferred clarification. Diagnostic turns with 0 confirmed observations
+ *   now force observation cards before rule/stage fallback; GENERAL_INFO cannot
+ *   suppress the graph's observation request.
  * 2026-07-09 04:16 UTC — v4 Graph Contracts wired at TURN_EVIDENCE_LOCK.
  *   P5 SYMBOL_IDENTITY_CONTRACT (assertObservationsExist) runs BEFORE
  *   bridge; unknown obs never enter graph. P1 BIOLOGICAL_SCOPE_CONTRACT
@@ -3640,7 +3644,19 @@ export class AIAgentOrchestrator {
       const directHardBypass =
         intentMetaFromDB?.clarification_mode === 'DIRECT' &&
         (intentMetaFromDB?.max_clarification_rounds ?? -1) === 0;
-      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
+      const diagnosticIntentOwnsClarification =
+        requiresAgronomicReasoningIntent(intentCode) ||
+        symptomBasedIntents.includes(currentIntentForGate);
+      if (
+        diagnosticIntentOwnsClarification &&
+        (intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass)
+      ) {
+        console.log(
+          `   🛑 [DIRECT_MODE_DIAGNOSTIC_VETO] intent=${intentCode} route=${queryRoute.route} ` +
+          `requires observation authority; direct/advisory route cannot skip symptom clarification`
+        );
+        agentsUsed.push('DIRECT_MODE_DIAGNOSTIC_VETO');
+      } else if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
         directModeBypass = true;
         bypassClarification = true;
         console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass}, hardBypass=${directHardBypass}, maxRounds=${intentMetaFromDB?.max_clarification_rounds ?? 'n/a'})`);
@@ -4847,8 +4863,17 @@ export class AIAgentOrchestrator {
 
       // Phase H — Fix 2: ConversationState owns clarification. Sync the
       // legacy boolean so downstream gates stay consistent without recomputing.
-      if (conversationState.clarification_required && !bypassClarification) {
-        shouldBlockDiagnosis = shouldBlockDiagnosis || true;
+      if (conversationState.clarification_required) {
+        shouldBlockDiagnosis = true;
+        if (bypassClarification) {
+          console.log(
+            `   🛑 [DIRECT_MODE_CONVERSATION_VETO] clarification_required=${conversationState.clarification_reason} ` +
+            `confirmed=${conversationState.confirmed.length}; clearing bypassClarification`
+          );
+          directModeBypass = false;
+          bypassClarification = false;
+          agentsUsed.push('DIRECT_MODE_CONVERSATION_VETO');
+        }
       }
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
@@ -4993,6 +5018,8 @@ export class AIAgentOrchestrator {
           `route=${queryRoute.route} → forcing SYMBOLIC_DIAGNOSIS graph pipeline`,
         );
         diagnosisWithOptionalClarification = true;
+        directModeBypass = false;
+        bypassClarification = false;
         // Route authority: router cannot pin diagnostic intents to GENERAL_INFO.
         if (queryRoute.route === 'GENERAL_INFO') {
           (queryRoute as any).route = 'PEST_DISEASE_TREATMENT';
@@ -5232,6 +5259,17 @@ export class AIAgentOrchestrator {
               trace_id: traceId,
             };
             const graphOut = await evaluateHypothesisGraph(graphInput);
+            if (graphOut.candidates.length === 0 && conversationState.clarification_required) {
+              shouldBlockDiagnosis = true;
+              bypassClarification = false;
+              directModeBypass = false;
+              console.log(
+                `[OBS_TO_HYP_GAP] trace=${traceId} intent=${intentCode} ` +
+                `confirmed_obs=${conversationState.confirmed.length} real_obs=${currentObservations.length} ` +
+                `hypotheses=0 action=route_to_clarification_question`
+              );
+              agentsUsed.push('OBS_TO_HYP_GAP_CLARIFICATION');
+            }
             for (const c of graphOut.candidates) {
               for (const rid of c.candidate_rule_ids) {
                 if (rid) graphHypothesisRuleIds.push(rid);
@@ -5482,6 +5520,8 @@ export class AIAgentOrchestrator {
             user_query: farmerMessage,
             trace_id: traceId,
             intent_code: intentCode,
+            diagnostic_intent: isDiagnosticIntent,
+            confirmed_observations: [...conversationState.confirmed],
             // Phase F — variety-aware resistance modulation
             variety_id: (_gtForHyp?.variety_id
               ?? (landContext as any)?.current_crop_variety_id
@@ -6462,9 +6502,34 @@ export class AIAgentOrchestrator {
         }
       );
       
-      // Use PHASE-20 trigger as primary, legacy as fallback
-      // CRITICAL FIX: Symptom-free routes (irrigation, crop health, etc.) MUST NOT be blocked by clarification
-      const shouldPrepareClarification = !isSymptomFreeRoute && (
+      // Use PHASE-20 trigger as primary, legacy as fallback.
+      // OBSERVATION_STATE_CONTRACT is stronger than route labels: if the
+      // frozen conversation state says diagnostic evidence is missing, even a
+      // GENERAL_INFO/symptom-free route must render observation choices.
+      const observationAuthorityRequiresClarification =
+        !!(this as any).__conversationState?.clarification_required &&
+        (
+          (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
+          (this as any).__conversationState?.mode === 'MIXED'
+        );
+      if (observationAuthorityRequiresClarification && isSymptomFreeRoute) {
+        console.log(
+          `   🛑 [SYMPTOM_FREE_ROUTE_VETO] route=${queryRoute.route} intent=${intentCode} ` +
+          `reason=${(this as any).__conversationState?.clarification_reason}`
+        );
+        agentsUsed.push('SYMPTOM_FREE_ROUTE_VETO');
+      }
+      if (observationAuthorityRequiresClarification && bypassClarification) {
+        console.log(
+          `   🛑 [BYPASS_CLARIFICATION_VETO] diagnostic observation authority requires UI; ` +
+          `confirmed=${(this as any).__conversationState?.confirmed?.length ?? 0}`
+        );
+        bypassClarification = false;
+        directModeBypass = false;
+        agentsUsed.push('BYPASS_CLARIFICATION_VETO');
+      }
+
+      const shouldPrepareClarification = (!isSymptomFreeRoute || observationAuthorityRequiresClarification) && (
         (clarificationTrigger.should_clarify && !clarificationTrigger.bypass_allowed) || 
         (inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass))
       );
@@ -6481,7 +6546,9 @@ export class AIAgentOrchestrator {
           const ruleDrivenInput: RuleDrivenClarificationInput = {
             crop_code: lockedStage.crop_code,
             stage: lockedStage.growth_stage,
-            current_symptoms: inductionResult.symptoms.map(s => s.symbol),
+            current_symptoms: observationAuthorityRequiresClarification
+              ? []
+              : inductionResult.symptoms.map(s => s.symbol),
             language: options.language || 'mr',
             supabaseClient: this.supabase,
             // Phase F — variety-aware resistance modulation
@@ -6569,8 +6636,41 @@ export class AIAgentOrchestrator {
         // ═══════════════════════════════════════════════════════════════════════════
         let finalClarificationOptions: string[];
         let clarificationSource: 'DECISION_RULES' | 'NLU_FALLBACK' = 'NLU_FALLBACK';
+        const observationStateCandidates = observationAuthorityRequiresClarification
+          ? await loadClarificationCandidates({
+              supabase: this.supabase,
+              intent_code: String(intentCode || 'UNKNOWN'),
+              crop_code: String(
+                landContext?.current_crop ||
+                inductionResult.crop?.symbol ||
+                (this as any).__conversationState?.crop ||
+                'all'
+              ).toLowerCase(),
+              growth_stage: lockedStage?.growth_stage || landContext?.growth_stage || (this as any).__conversationState?.stage || null,
+              das: landContext?.days_since_sowing ?? (this as any).__conversationState?.das ?? null,
+              language: options.language || 'mr',
+              max: 3,
+              confirmed: (this as any).__conversationState?.confirmed ?? [],
+            }).catch((e: unknown) => {
+              console.warn(`[OBS_GATE] candidate load failed: ${e instanceof Error ? e.message : String(e)}`);
+              return [] as any[];
+            })
+          : [];
         
-        if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
+        if (observationStateCandidates.length > 0) {
+          console.log(
+            `[OBS_GATE] awaiting_confirmed_observations intent=${intentCode} ` +
+            `candidates=${observationStateCandidates.length} source=intent_observation_mapping`
+          );
+          finalClarificationOptions = observationStateCandidates.map((o: any) => o.label);
+          clarificationSource = 'DECISION_RULES';
+          ruleDrivenClarification = {
+            options: observationStateCandidates.map((o: any) => ({
+              label: o.label,
+              observation_key: o.observation_key,
+            })),
+          } as any;
+        } else if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
           console.log(`   ✅ Using ${ruleDrivenClarification.options.length} RULE-DRIVEN options (Source=DECISION_RULES)`);
           console.log(`      Options sourced from: hypothesis-first candidate rules`);
           // Translate rule-driven option labels to farmer language
@@ -6620,9 +6720,11 @@ export class AIAgentOrchestrator {
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
           clarificationResponse,
+          structuredOptions: ruleDrivenClarification?.options || [],
           intentConfidence,
           inductionCoverage: inductionResult.symbol_coverage,
-          inductionConfidence: inductionResult.aggregated_confidence
+          inductionConfidence: inductionResult.aggregated_confidence,
+          forceObservation: observationAuthorityRequiresClarification,
         };
         
         console.log(`   📋 Clarification PREPARED (will use only if symbolic brain finds 0 rules)`);
@@ -8333,16 +8435,20 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       const totalRulesMatched = layeredRuleResult?.rules_matched || 0;
       
-      if (pendingClarificationResponse && totalRulesMatched === 0) {
+      if (pendingClarificationResponse && (totalRulesMatched === 0 || pendingClarificationResponse.forceObservation)) {
         console.log(`\n🔄 DEFERRED CLARIFICATION TRIGGERED`);
-        console.log(`   📊 Symbolic brain found 0 rules - now returning prepared clarification`);
+        console.log(
+          pendingClarificationResponse.forceObservation
+            ? `   🚦 Observation authority requires farmer confirmation - returning prepared clarification`
+            : `   📊 Symbolic brain found 0 rules - now returning prepared clarification`
+        );
         
-        const { clarificationResponse, intentConfidence, inductionCoverage, inductionConfidence } = pendingClarificationResponse;
+        const { clarificationResponse, structuredOptions, intentConfidence, inductionCoverage, inductionConfidence } = pendingClarificationResponse;
         
         // CRITICAL FIX: If clarification has 0 options, generate dynamic options from database
         let safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
         
-        if (safeOptionsForLog.length === 0) {
+        if (safeOptionsForLog.length === 0 && !pendingClarificationResponse.forceObservation) {
           console.log(`   ⚠️ Clarification has 0 options - generating dynamic fallback from database`);
           
           // Try to generate observation-based options from multi-match detector
@@ -8383,7 +8489,8 @@ export class AIAgentOrchestrator {
             text_en: responseText,
             options: safeOptionsForLog.map((opt: string, idx: number) => ({
               value: String(idx + 1),
-              label: opt
+              label: opt,
+              observation_key: structuredOptions?.[idx]?.observation_key,
             }))
           },
           metadata: {
@@ -8396,6 +8503,11 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             pendingClarificationOptions: safeOptionsForLog,
+            pendingClarificationOptionsStructured: (structuredOptions || []).map((opt: any, idx: number) => ({
+              label: safeOptionsForLog[idx] || opt.label,
+              value: String(idx + 1),
+              observation_key: opt.observation_key,
+            })).filter((opt: any) => !!opt.observation_key),
             symptomKeys: Array.from(allObservationsForPreAuth || []),
             isEmergency: false,
             // Language Induction Layer metrics (independent of intent confidence)
@@ -8429,6 +8541,8 @@ export class AIAgentOrchestrator {
           existingSymptomCodes.add(obs);
         }
         nluWithRuleMapping.entities.symptom_codes = Array.from(existingSymptomCodes);
+        (nluWithRuleMapping.entities as any).candidate_observation_codes = Array.from(existingSymptomCodes);
+        (nluWithRuleMapping.entities as any).confirmed_observation_codes = (this as any).__conversationState?.confirmed ?? [];
         console.log(`   🔗 [OBSERVATION_WIRING] Injected ${allObservationsForPreAuth.size} observations into nluWithRuleMapping.entities.symptom_codes (total: ${nluWithRuleMapping.entities.symptom_codes.length})`);
       }
       const symbolicAlreadyProduced = (totalRulesMatched > 0) || 
@@ -8969,7 +9083,18 @@ export class AIAgentOrchestrator {
       const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision;
       const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
       const hasNoPhoto = !options.photoUrl && !photoAnalysisResult;
-      const shouldUseStageAdvisoryFallback = hasNoRecommendations && hasNoPhoto && (isSymptomFreeRoute || bypassClarification) && !!landContext?.current_crop;
+      const observationAuthorityStillRequiresClarification =
+        !!(this as any).__conversationState?.clarification_required &&
+        (
+          (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
+          (this as any).__conversationState?.mode === 'MIXED'
+        );
+      const shouldUseStageAdvisoryFallback =
+        hasNoRecommendations &&
+        hasNoPhoto &&
+        !observationAuthorityStillRequiresClarification &&
+        (isSymptomFreeRoute || bypassClarification) &&
+        !!landContext?.current_crop;
       
       if (shouldUseStageAdvisoryFallback) {
         const cropName = landContext.current_crop || 'crop';

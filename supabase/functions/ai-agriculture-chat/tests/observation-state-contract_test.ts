@@ -2,6 +2,7 @@
  * OBSERVATION_STATE_CONTRACT — regression tests (crop-agnostic)
  *
  * CHANGE LOG (newest first):
+ *   2026-07-09 09:32 UTC — Added T6 for GraphRuntime final OBS_GATE.
  *   2026-07-09 07:58 UTC — Initial. T1..T5 cover:
  *     T1: 0 confirmed + N inferred → clarification required, no graph run.
  *     T2: farmer confirms one candidate → moves to confirmed, gate opens.
@@ -24,6 +25,7 @@ import {
   GraphContractViolation,
 } from '../runtime/graph-contracts.ts';
 import { shouldTriggerClarificationFirst } from '../agents/clarification-strategy.ts';
+import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 
 Deno.test('T1 — 0 confirmed + N inferred → WAITING_FOR_OBSERVATION', () => {
   const set = new AuthoredObservationSet();
@@ -107,4 +109,26 @@ Deno.test('T5 — ClarificationTrigger: diagnostic + confirmed=0 forces clarify 
   assertEquals(r.should_clarify, true);
   assertEquals(r.reason, 'NO_CONFIRMED_OBSERVATIONS');
   assertEquals(r.bypass_allowed, false);
+});
+
+Deno.test('T6 — GraphRuntime final gate blocks diagnostic graph with 0 confirmed observations', async () => {
+  let graphExecuted = false;
+  const res = await runGraphRuntime({
+    supabase: {},
+    crop_code: 'rice',
+    growth_stage: 'germination',
+    days_since_sowing: 7,
+    known_observations: ['POOR_EMERGENCE', 'OBS_RICE_NO_EMERGENCE'],
+    confirmed_observations: [],
+    candidate_observations: ['OBS_RICE_NO_EMERGENCE'],
+    diagnostic_intent: true,
+    user_query: 'rice not emerged',
+    intent_code: 'EMERGENCE_FAILURE',
+    markExecuted: () => { graphExecuted = true; },
+  });
+
+  assertEquals(res.state, 'WAITING_FOR_OBSERVATION');
+  assertEquals(res.candidates, 0);
+  assertEquals(res.candidate_observations, ['OBS_RICE_NO_EMERGENCE']);
+  assertEquals(graphExecuted, false);
 });
