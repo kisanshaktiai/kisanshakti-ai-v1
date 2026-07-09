@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 04:16 UTC — v4 Graph Contracts wired at TURN_EVIDENCE_LOCK.
+ *   P5 SYMBOL_IDENTITY_CONTRACT (assertObservationsExist) runs BEFORE
+ *   bridge; unknown obs never enter graph. P1 BIOLOGICAL_SCOPE_CONTRACT
+ *   is invoked inside `bridgeCodesDb` via cropContext; foreign-crop/organ
+ *   codes are dropped with [OBS_SCOPE_REJECT] before GRAPH_TRUTH_BUILT.
+ *   Contract library: runtime/graph-contracts.ts (crop-agnostic, DB-driven).
  * 2026-07-09 03:15 UTC — FIX 1 (STATE_SYNC). Call
  *   `syncCanonicalStateFromSnapshot(canonicalState, _graphSnapshot)` right
  *   before `checkPrescriptionGate` so `candidate_hypothesis_count` /
@@ -5118,7 +5124,21 @@ export class AIAgentOrchestrator {
             crop_identified: ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'CROP_IDENTIFIED'),
             metadata: ignoredRawCodes,
           };
-          const bridged = await bridgeCodesDb(this.supabase, cropCode, real_codes);
+          // P5 SYMBOL_IDENTITY_CONTRACT + P1 BIOLOGICAL_SCOPE_CONTRACT
+          // Identity check runs first (unknown obs never enter graph); scope
+          // filter then drops cross-crop/foreign-organ codes. All wiring is
+          // DB-driven (observation_master); no hardcoded agronomy.
+          const { assertObservationsExist } = await import('../runtime/graph-contracts.ts');
+          const _identity = await assertObservationsExist(this.supabase, real_codes);
+          if (_identity.unknown.length) {
+            console.warn(`[UNKNOWN_OBSERVATION_SYMBOL] dropped_before_graph=[${_identity.unknown.join(',')}]`);
+          }
+          const bridged = await bridgeCodesDb(
+            this.supabase,
+            cropCode,
+            _identity.known,
+            { crop_code: cropCode ?? null, crop_group: null },
+          );
           const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
 
           // TURN_EVIDENCE_LOCK — ledger: INFERRED entries for any DB-bridged code

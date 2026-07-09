@@ -1,139 +1,202 @@
 
-# Surgical Fix: Neuro-Symbolic Graph Handoff & Response Honesty
+# Neuro-Symbolic Graph Repair — 6 Surgical Patches (v4, crop-agnostic)
 
-The graph runtime already works end-to-end (obs→hyp→rule). The failure is **downstream state drift** and **fabricated fallbacks**. This plan fixes handoff, contracts, and honesty — no crop code, no DB changes, no LLM diagnosis fallback.
+Corrections applied from the audit: contracts are now graph-agnostic to crop, symbol identity runs BEFORE biological scope, orphan-rule fallback removed from runtime, action contract generalized to decision-output contract, regression suite is crop-independent. No new architecture, no DB changes, no hardcoded agronomy, no LLM diagnosis path.
 
-## Root cause (verified against edge log)
+## Universal bug being fixed
 
-- `GraphRuntimeSnapshot` reports `hypotheses=1 rules=4`.
-- `EVIDENCE_COUNT_TRACE` and `ORCHESTRATOR_EXIT` read `candidate_hypotheses=0`.
-- With `hyp=0`, downstream picks `MONITOR_ONLY` → response mode defaults to `INFORMATION`.
+Graph accepts nodes without validating: (1) does the symbol exist? (2) is it biologically permissible in this context? (3) does an edge exist from it? (4) is a decision reachable? The rice/brinjal trace in the log is only one instance of this class.
 
-Cause: canonical state fields (`candidate_hypothesis_count`, `matched_rules_count`, `hypothesis_ids`) are never written from the frozen snapshot. Multiple writers race; snapshot is not the single authority. Rule condition matcher compares raw strings instead of alias-resolved canonical keys.
-
-## Files touched (surgical, no rewrites)
-
-- `agents/canonical-state-builder.ts` — write graph counts from snapshot exactly once.
-- `agents/orchestrator.ts` — call the sync after `POST_EVIDENCE_FREEZE`; add `[STATE_SYNC]` / `[GRAPH_HANDOFF_CHECK]` traces; freeze snapshot as sole authority; mark legacy fields as derived getters.
-- `agents/layered-rule-evaluator.ts` + `bundled-rules/loader.ts` — resolve every condition key and observation through `observation_aliases` before comparison; emit `[RULE_COND_CANON]` + `[RULE_CONDITION_LEDGER]`.
-- `decision/causal-hypothesis-engine.ts` — declare `pipeline_role=CAUSAL_ARBITRATION`; consume graph hypotheses instead of producing new ones.
-- `agents/decision-representation.ts` / response builder — replace fabricated `MONITOR_ONLY` with `INSUFFICIENT_KNOWLEDGE` + `gap_reason`.
-- Response mode resolver — replace default `INFORMATION` with `COVERAGE_GAP_DISCLOSURE`.
-- `agents/biological-state.ts` / orchestrator — surface `stage_context_conflict` object, do not silently penalize confidence.
-- `tests/graph-handoff_test.ts` (new) — seven regression tests.
-
-Every touched file gets its `CHANGE LOG` header updated per project rule.
-
-## The seven fixes
-
-### 1. Canonical state synchronization (single write from snapshot)
-
-After the graph pipeline resolves and `POST_EVIDENCE_FREEZE` fires, the orchestrator invokes one new helper:
+## Enforced pipeline (order matters)
 
 ```text
-syncCanonicalStateFromSnapshot(state, snapshot):
-  state.candidate_hypothesis_count = snapshot.hypotheses.length
-  state.matched_rules_count        = snapshot.rules.length
-  state.hypothesis_ids             = snapshot.hypotheses.map(h => h.hypothesis_id)
-  state.rule_ids                   = snapshot.rules.map(r => r.rule_id) // non-orphan
-  state.orphan_rule_ids            = [...snapshot.orphan_rule_ids]
-  log("[STATE_SYNC]", { hypotheses, rules, source: "GRAPH_RUNTIME" })
+Farmer Input
+   ↓ Intent Detection (no decision)
+   ↓ Observation Extraction
+   ↓ SYMBOL_IDENTITY_CONTRACT      ← Patch 5 (runs FIRST)
+   ↓ BIOLOGICAL_SCOPE_CONTRACT     ← Patch 1
+   ↓ Observation Authority
+   ↓ OBS → HYP edge
+   ↓ Hypothesis Validation
+   ↓ HYP → RULE edge
+   ↓ GRAPH_AUTHORITY_GATE          ← Patch 2
+   ↓ Rule Execution (graph nodes only)  ← Patch 3
+   ↓ DECISION_OUTPUT_CONTRACT      ← Patch 4
+   ↓ LLM Narration (render only)
 ```
 
-Called exactly once. Any later mutation of these fields is a `GRAPH_CONTRACT_VIOLATION`.
+---
 
-### 2. Single snapshot authority + handoff guard
+## Patch 5 — SYMBOL_IDENTITY_CONTRACT (runs first)
 
-- `graphResult` / `_graphSnapshot` is `Object.freeze`d and stored on `state.__graph_snapshot__`.
-- `_graphHypothesisIds`, `_graphHypothesisRuleIds`, `_graphObsToHypEdges` become **read-only getters** derived from the snapshot. No independent writes.
-- Allowed readers: `BrainTrace`, `DecisionRenderer`, `ClarificationEngine`, `RuleExecutor`.
-- New guard right before orchestrator exit:
+**Files:** `runtime/symbol-contract.ts` (extend), call sites in `agents/orchestrator.ts`, `decision/hypothesis-graph-evaluator.ts`, decision-representation.
+
+Three gates loaded once per turn from data the pipeline already fetches:
 
 ```text
-[GRAPH_HANDOFF_CHECK]
-  snapshot.hyp === state.candidate_hypothesis_count === exit.hypotheses
-  snapshot.rules === state.matched_rules_count === exit.rules
-  mismatch => throw GRAPH_CONTRACT_VIOLATION (do NOT silently repair)
+BEFORE any scope check : obs.code   ∈ observation_master   else drop, log [UNKNOWN_OBSERVATION_SYMBOL]
+BEFORE HYP_TO_RULE     : hyp.code   ∈ hypothesis_master    else drop, log [UNKNOWN_HYPOTHESIS_SYMBOL]
+BEFORE final execution : rule.rule_id ∈ decision_rules     else drop, log [UNKNOWN_RULE_SYMBOL]
 ```
 
-### 3. Engine pipeline ownership (no dual authorship)
+Rationale: unknown symbols have no reliable crop metadata; scope evaluation on them is meaningless. Never inspect an object that isn't in the graph.
 
-Neither engine is deleted. Explicit roles logged on every candidate:
+## Patch 1 — BIOLOGICAL_SCOPE_CONTRACT (crop-agnostic)
 
-- `pipeline_role=GRAPH_STEP_8` — owns candidate hypotheses (Engine B / graph evaluator).
-- `pipeline_role=CAUSAL_ARBITRATION` — only ranks/arbitrates the graph-owned set; must not add hypotheses.
+**Files:** `decision/concept-bridge.ts`, `runtime/observation-authority.ts`, any observation-code-mapper / cross-crop-mapper publish point.
 
-Causal engine now receives `snapshot.hypotheses` as input and returns a reordered subset — never a superset.
-
-### 4. Canonical rule condition matching
-
-All condition→observation comparisons route through the symbol resolver:
+Runs AFTER Patch 5. Uses only DB metadata already available on `observation_master` / `observation_aliases` (`crop_code`, `crop_group`, `host_family`, `scope`, `semantic_type`) — no hardcoded species lists.
 
 ```text
-raw condition key ──► symbol_resolver ──► observation_aliases ──► canonical_id
-raw observation   ──► symbol_resolver ──► observation_aliases ──► canonical_id
-compare canonical_ids only
+ACCEPT observation o if ANY:
+  o.crop_code == current_crop_code
+  o.scope IN ('UNIVERSAL','GENERIC_SYMPTOM')
+  o.crop_group  == current_crop_group        // e.g. grasses, solanaceae
+  o.host_family == current_crop_family
+  o.semantic_type == 'SYMPTOM'               // biological symptom, not organ-specific
+
+REJECT if:
+  o.semantic_type == 'CROP_ORGAN_SPECIFIC' AND crop/family/group mismatch
+  → reason=CROSS_CROP_SCOPE_VIOLATION
 ```
 
-Traces per rule:
+Effect:
+- Rice ACCEPTS: `YELLOW_LEAF`, `STUNTED_GROWTH`, `ROOT_DAMAGE`, `POOR_TILLERING` (shared with sugarcane/maize/wheat via grass family).
+- Rice REJECTS: `CANE_INTERNODE_BORING`, `COTTON_BOLL_DAMAGE`, `BRINJAL_FRUIT_ROT` (organ-specific to another crop).
+- Solanaceae members share `BACTERIAL_WILT`, `LEAF_CURL`, nematode symptoms via `crop_group`/`host_family`.
+
+Dropped codes go to `dropped_cross_crop[]` and NEVER enter `confirmed_observations`, `real_codes`, `GRAPH_TRUTH_BUILT.obs`, `CANONICAL_PROJECTION_ONLY`, `HYPOTHESIS_CONTRACT`, or `ObservationAuthority.INFERRED`. Trace: `[OBS_SCOPE_REJECT] crop=<ctx> dropped=[...] reason=CROSS_CROP_SCOPE_VIOLATION`.
+
+## Patch 2 — GRAPH_AUTHORITY_GATE (unchanged, mandatory)
+
+**File:** `agents/orchestrator.ts`, immediately after `syncCanonicalStateFromSnapshot`, before `LayeredRuleEvaluator`.
 
 ```text
-[RULE_COND_CANON] rule_id, raw_key, canonical_key, matched, via
-[RULE_CONDITION_LEDGER] rule_id, passed[], failed[], missing[]
+if diagnostic_intent
+   and graphExecuted
+   and confirmed_observations.length > 0
+   and snapshot.hypotheses.length == 0:
+       decision_outcome = INSUFFICIENT_KNOWLEDGE
+       gap_reason       = NO_HYPOTHESIS_EDGE
+       route            = ClarificationEngine   // questions from hypothesis_conditions of nearest_hypotheses
+       SKIP LayeredRuleEvaluator
+       log [GRAPH_AUTHORITY_GATE] blocked=RULE_EVALUATOR reason=NO_HYPOTHESIS_EDGE
 ```
 
-No crop branches. Alias table is the only vocabulary bridge.
+`[GRAPH_HANDOFF_CHECK]` in `index.ts` throws `GRAPH_CONTRACT_VIOLATION` on `graphExecuted && hypotheses==0 && rules==0 && ruleResult==true`. Non-diagnostic intents (proactive, monitoring, rotation, cron) keep existing path.
 
-### 5. Remove fabricated `MONITOR_ONLY`
+## Patch 3 — Graph-Only Rule Firewall (no runtime orphan fallback)
 
-When the rule executor returns `winner=none`:
+**Files:** `agents/layered-rule-evaluator.ts`, bundled-rules loader, `INTENT_FILTER` call site.
 
-- Replace advice with `verdict=INSUFFICIENT_KNOWLEDGE`.
-- Populate `gap_reason ∈ {NO_RULE_MATCH, NO_HYPOTHESIS, STAGE_CONTEXT_CONFLICT, COVERAGE_GAP}`.
-- `MONITOR_ONLY` is emitted **only** when a DB rule explicitly returns it.
-
-### 6. Remove silent `INFORMATION` fallback
-
-`ResponseModeResolver` default becomes `COVERAGE_GAP_DISCLOSURE`. Narrator prompt must produce three literal blocks and nothing agronomic:
-
-- `farmer_reported` — verbatim observations.
-- `graph_understood` — hypotheses/rules from snapshot.
-- `evidence_missing` — hypothesis conditions still unmatched.
-
-LLM MUST NOT synthesize any treatment.
-
-### 7. Stage conflict as first-class signal
-
-- `biological-state` emits `state.stage_context_conflict = { declared_stage, observed_stage_family, evidence[] }` whenever DAS-derived stage disagrees with symptom-implied stage family from DB `crop_stage_graph`.
-- Hypothesis evaluator treats stage as **uncertain context** (soft) rather than eliminating the hypothesis.
-- Clarification engine promotes stage-clarifying questions when the conflict flag is set.
-- No hardcoded stage table — all lookups via existing `crop_stage_graph` cache.
-
-## Regression tests (`tests/graph-handoff_test.ts`)
-
-1. Snapshot `hyp=1` ⇒ `EVIDENCE_COUNT_TRACE.candidate_hypotheses=1`.
-2. `ORCHESTRATOR_EXIT` counts equal snapshot counts (mismatch throws).
-3. `rules=4` present ⇒ never `hyp=0` in exit.
-4. Rule condition matching emits `[RULE_COND_CANON]` and lookups go through aliases.
-5. `RULE_RESULT.winner=none` never yields `MONITOR_ONLY`; yields `INSUFFICIENT_KNOWLEDGE`.
-6. No path emits default `INFORMATION`; uses `COVERAGE_GAP_DISCLOSURE`.
-7. `BIO_STATE_CONTRADICTION` populates `state.stage_context_conflict`.
-
-## Expected trace after fix
+Production runtime:
 
 ```text
-GRAPH_RUNTIME       hypotheses=1 rules=4
-STATE_SYNC          hypotheses=1 rules=4 source=GRAPH_RUNTIME
-EVIDENCE_COUNT      candidate_hypotheses=1 matched_rules=4
-RULE_COND_CANON     rule_id=… matched=true via=alias
-GRAPH_HANDOFF_CHECK ok
-ORCHESTRATOR_EXIT   hypotheses=1 rules=4
+candidate_rules = snapshot.rule_ids     // ONLY. No orphan admission at runtime.
 ```
 
-If evidence still insufficient: `ClarificationEngine → observation_required=true` with advisor-style questions built from `hypothesis_conditions` — never `MONITOR_ONLY`, never generic `INFORMATION`.
+Missing HYP→RULE edge is a data-quality issue, not a runtime feature. When a hypothesis has no rule edge:
+- Emit `[GRAPH_EDGE_MISSING] hypothesis=<code> reason=NO_RULE_EDGE`.
+- Route to clarification / gap disclosure via Patch 4.
+- Never silently repair by pulling a "close-looking" rule.
+
+Development/debug mode (env flag `GRAPH_DEBUG_ORPHAN_DISCOVERY=true`, off in prod): may compute candidate orphans and write an audit report — but MUST NOT feed them into the evaluator.
+
+`INTENT_FILTER` must actually intersect with `decision_rules.applicable_intents` — current `202→202` no-op is a bug. Trace: `[INTENT_FILTER] before=X after=Y removed=[...]`.
+
+## Patch 4 — DECISION_OUTPUT_CONTRACT (generalized)
+
+**File:** `agents/decision-representation.ts` and actions-populator.
+
+Every farmer-visible turn must terminate in EXACTLY ONE of:
+
+```text
+ACTION               → rule.action_text + action_type (spray/irrigate/fertilize/…)
+MONITORING_PLAN      → observation window + trigger conditions
+CLARIFICATION_REQUEST→ missing observations from hypothesis_conditions
+NO_ACTION_REASON     → healthy / no-op justification from graph
+```
+
+Every output kind sources content from graph nodes (`decision_rules`, `hypothesis_master`, `observation_master`) — never from LLM synthesis. Missing all four → `EXECUTION_INVALID`, log `[DECISION_OUTPUT_CONTRACT_VIOLATION] kind=NONE`, degrade to `INSUFFICIENT_KNOWLEDGE`. Never a silent empty primary.
+
+## Patch 6 — Crop-Independent Regression Harness
+
+**File (new):** `tests/graph-authority_test.ts`. Parametrized by crop — no rice-specific asserts.
+
+```text
+T1 FOREIGN_ORGAN_SYMBOL
+   for crop in [RICE, SUGARCANE, COTTON, ONION, TOMATO, GRAPES]:
+     inject observation whose semantic_type=CROP_ORGAN_SPECIFIC belongs to another crop
+     expect: [OBS_SCOPE_REJECT]; GRAPH_TRUTH_BUILT.obs clean
+
+T2 UNIVERSAL_SYMPTOM
+   for crop in [RICE, COTTON, SUGARCANE, ONION]:
+     inject YELLOWING (scope=UNIVERSAL)
+     expect: accepted; projects to at least one crop-appropriate hypothesis
+
+T3 FAMILY_SHARED_SYMPTOM
+   inject BACTERIAL_WILT for each Solanaceae member (TOMATO, BRINJAL, CHILLI, POTATO)
+     expect: accepted via crop_group / host_family
+
+T4 GRAPH_AUTHORITY_GATE
+   confirmed>0, hypotheses==0, diagnostic intent
+     expect: [GRAPH_AUTHORITY_GATE]; evaluator not called; response=INSUFFICIENT_KNOWLEDGE
+
+T5 GRAPH_ONLY_RULES
+   diagnostic intent
+     expect: evaluator candidate_rules ⊆ snapshot.rule_ids;
+             no CROT_* / PROACTIVE_FLOOD_* leaking in
+
+T6 GRAPH_EDGE_MISSING
+   hypothesis present but no HYP→RULE edge
+     expect: [GRAPH_EDGE_MISSING]; NO silent orphan use in prod mode
+
+T7 DECISION_OUTPUT_CONTRACT
+   for each kind ∈ {ACTION, MONITORING_PLAN, CLARIFICATION_REQUEST, NO_ACTION_REASON}:
+     expect: terminal turn passes; missing all → EXECUTION_INVALID
+
+T8 UNKNOWN_SYMBOL
+   inject obs.code / hyp.code / rule_id not in master tables
+     expect: [UNKNOWN_*_SYMBOL]; dropped before graph traversal
+
+T9 LLM_DIAGNOSIS_ATTEMPT
+   force narrator to emit a diagnosis not in graph output
+     expect: rejected by output validator; narrator restricted to rendering
+```
+
+## Change-log headers
+
+Every touched file under `supabase/functions/ai-agriculture-chat/**` gets a newest-first entry `2026-07-09 HH:MM UTC — <summary>` per project rule.
+
+## Expected trace after fix (audit-log turn)
+
+```text
+SYMBOL_CONTRACT      obs_ok=N hyp_ok=M rule_ok=K unknown=0
+CONCEPT_BRIDGE       crop=RICE output=[universal + rice-family only]
+OBS_SCOPE_REJECT     crop=RICE dropped=[BRINJAL_OBS_STUNTED_PLANT, STUNTED_CANES, STUNTED_INTERNODES, STUNTED_TILLERS]  reason=CROSS_CROP_SCOPE_VIOLATION
+GRAPH_TRUTH_BUILT    obs=[rice/family/universal only]
+OBS_TO_HYP_TRACE     matched_conditions>=1
+HYP_TO_RULE_TRACE    rules>=1                    (else [GRAPH_EDGE_MISSING] + clarification)
+INTENT_FILTER        before=202 after=<<
+RULE_EVALUATOR_INPUT count=snapshot.rule_ids     (graph-scoped only)
+DECISION_OUTPUT      kind ∈ {ACTION|MONITORING_PLAN|CLARIFICATION_REQUEST|NO_ACTION_REASON}
+ORCHESTRATOR_EXIT    graphExecuted=true hypotheses>=1 rules>=1 output_kind!=NONE ruleResult=true
+```
+
+`PROACTIVE_FLOOD_PREPAREDNESS_001` cannot win a diagnostic turn — it's not in `snapshot.rule_ids`. Silent `MONITOR_ONLY` and empty-actions primaries are eliminated by Patch 4.
 
 ## Guarantees
 
-- No hardcoded agriculture; no crop branches; no DB migration.
-- Working graph, snapshot builder, and observation resolver are untouched.
-- Every edited file (all under `supabase/functions/ai-agriculture-chat/**`) gets a dated `CHANGE LOG` header entry per project rule.
+- Fully crop-agnostic: no rice/sugarcane/cotton/onion/tomato/grape branches anywhere.
+- No new architecture; working graph runtime, snapshot builder, hypothesis validator untouched.
+- No runtime orphan repair; missing edges surface as data-quality signals.
+- DB unchanged. LLM restricted to narration.
+- Scales to millions of farmers and all future crops loaded from DB metadata.
+
+## Deliverables after implementation
+
+1. Files changed with change-log entries.
+2. Contracts added: `SYMBOL_IDENTITY`, `BIOLOGICAL_SCOPE`, `GRAPH_AUTHORITY_GATE`, `GRAPH_ONLY_RULE_FIREWALL`, `DECISION_OUTPUT`.
+3. Before/after execution trace of the audit-log turn.
+4. Regression test results (T1–T9, parametrized across ≥6 crops).
+5. Confirmation the old failure log cannot reproduce (golden replay green).
