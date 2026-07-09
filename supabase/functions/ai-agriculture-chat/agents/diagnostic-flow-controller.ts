@@ -245,7 +245,7 @@ export class DiagnosticFlowController {
         q.priority === 'CRITICAL'
       );
       
-      if (criticalMissingQuestions.length > 0 && !hasEssentialEntities) {
+      if (criticalMissingQuestions.length > 0 && !hasDiagnosticEvidence) {
         this.session.status = 'AWAITING_CLARIFICATION';
         this.session.pending_questions = criticalMissingQuestions.map(q => q.question_id);
         
