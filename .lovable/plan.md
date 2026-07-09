@@ -1,121 +1,139 @@
 
-## GraphRuntimeSnapshot Identity Correction — Surgical Plan (v2)
+# Surgical Fix: Neuro-Symbolic Graph Handoff & Response Honesty
 
-### Root Cause (verified against source)
-`decision/hypothesis-evaluator.ts` (Engine A) emits candidates keyed by `rule_id` (rows of `decision_rules`). `runtime/graph-snapshot.ts` currently fuses identities:
+The graph runtime already works end-to-end (obs→hyp→rule). The failure is **downstream state drift** and **fabricated fallbacks**. This plan fixes handoff, contracts, and honesty — no crop code, no DB changes, no LLM diagnosis fallback.
 
-```ts
-const id = canonicalId(c.rule_id ?? c.hypothesis_id);   // ← ontology violation
+## Root cause (verified against edge log)
+
+- `GraphRuntimeSnapshot` reports `hypotheses=1 rules=4`.
+- `EVIDENCE_COUNT_TRACE` and `ORCHESTRATOR_EXIT` read `candidate_hypotheses=0`.
+- With `hyp=0`, downstream picks `MONITOR_ONLY` → response mode defaults to `INFORMATION`.
+
+Cause: canonical state fields (`candidate_hypothesis_count`, `matched_rules_count`, `hypothesis_ids`) are never written from the frozen snapshot. Multiple writers race; snapshot is not the single authority. Rule condition matcher compares raw strings instead of alias-resolved canonical keys.
+
+## Files touched (surgical, no rewrites)
+
+- `agents/canonical-state-builder.ts` — write graph counts from snapshot exactly once.
+- `agents/orchestrator.ts` — call the sync after `POST_EVIDENCE_FREEZE`; add `[STATE_SYNC]` / `[GRAPH_HANDOFF_CHECK]` traces; freeze snapshot as sole authority; mark legacy fields as derived getters.
+- `agents/layered-rule-evaluator.ts` + `bundled-rules/loader.ts` — resolve every condition key and observation through `observation_aliases` before comparison; emit `[RULE_COND_CANON]` + `[RULE_CONDITION_LEDGER]`.
+- `decision/causal-hypothesis-engine.ts` — declare `pipeline_role=CAUSAL_ARBITRATION`; consume graph hypotheses instead of producing new ones.
+- `agents/decision-representation.ts` / response builder — replace fabricated `MONITOR_ONLY` with `INSUFFICIENT_KNOWLEDGE` + `gap_reason`.
+- Response mode resolver — replace default `INFORMATION` with `COVERAGE_GAP_DISCLOSURE`.
+- `agents/biological-state.ts` / orchestrator — surface `stage_context_conflict` object, do not silently penalize confidence.
+- `tests/graph-handoff_test.ts` (new) — seven regression tests.
+
+Every touched file gets its `CHANGE LOG` header updated per project rule.
+
+## The seven fixes
+
+### 1. Canonical state synchronization (single write from snapshot)
+
+After the graph pipeline resolves and `POST_EVIDENCE_FREEZE` fires, the orchestrator invokes one new helper:
+
+```text
+syncCanonicalStateFromSnapshot(state, snapshot):
+  state.candidate_hypothesis_count = snapshot.hypotheses.length
+  state.matched_rules_count        = snapshot.rules.length
+  state.hypothesis_ids             = snapshot.hypotheses.map(h => h.hypothesis_id)
+  state.rule_ids                   = snapshot.rules.map(r => r.rule_id) // non-orphan
+  state.orphan_rule_ids            = [...snapshot.orphan_rule_ids]
+  log("[STATE_SYNC]", { hypotheses, rules, source: "GRAPH_RUNTIME" })
 ```
 
-Engine A rule_ids are stored as hypotheses; Engine B (which correctly emits `hypothesis_id`) never merges because keys don't intersect. Result: `_graphHypothesisIds` from Engine B is empty → `BRAIN_TRACE hyp=0` while `_graphHypothesisRuleIds` still holds rules → `rules>0 ∧ hyp=0` ontology break in the log.
+Called exactly once. Any later mutation of these fields is a `GRAPH_CONTRACT_VIOLATION`.
 
-### Scope (no DB changes, no crop logic, no LLM path)
-1. `supabase/functions/ai-agriculture-chat/runtime/graph-snapshot.ts` — rewrite as pure builder with separated node types.
-2. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — supply `edges.ruleToHypothesis`, freeze `graphResult`, collapse legacy counters to read-only mirrors.
-3. `supabase/functions/ai-agriculture-chat/tests/graph-snapshot_test.ts` — extend with four contract tests.
+### 2. Single snapshot authority + handoff guard
 
-### 1. Separate node types (no fusion, ever)
+- `graphResult` / `_graphSnapshot` is `Object.freeze`d and stored on `state.__graph_snapshot__`.
+- `_graphHypothesisIds`, `_graphHypothesisRuleIds`, `_graphObsToHypEdges` become **read-only getters** derived from the snapshot. No independent writes.
+- Allowed readers: `BrainTrace`, `DecisionRenderer`, `ClarificationEngine`, `RuleExecutor`.
+- New guard right before orchestrator exit:
 
-```ts
-interface HypothesisNode {
-  hypothesis_id: string;                  // canonical from hypothesis_master
-  confidence: number;
-  matched_observations: readonly string[];
-  sources: readonly ('ENGINE_A' | 'ENGINE_B')[];
-}
-interface RuleNode {
-  rule_id: string;
-  parent_hypothesis_id: string | null;    // null ⇒ orphan
-}
-interface GraphRuntimeSnapshot {
-  trace_id: string;
-  observations: readonly string[];
-  hypotheses: readonly HypothesisNode[];  // Map<hypothesis_id, HypothesisNode>
-  rules: readonly RuleNode[];
-  orphan_rule_ids: readonly string[];
-  graph_state: 'READY_FOR_DECISION' | 'NEED_MORE_EVIDENCE' | 'NO_HYPOTHESIS' | 'GRAPH_EXHAUSTED';
-  source: 'REAL_GRAPH_PATH';
-  reason?: string;
-}
+```text
+[GRAPH_HANDOFF_CHECK]
+  snapshot.hyp === state.candidate_hypothesis_count === exit.hypotheses
+  snapshot.rules === state.matched_rules_count === exit.rules
+  mismatch => throw GRAPH_CONTRACT_VIOLATION (do NOT silently repair)
 ```
 
-All layers `Object.freeze`d. Merge key is **strictly `hypothesis_id`**. `rule_id` is never a hypothesis key.
+### 3. Engine pipeline ownership (no dual authorship)
 
-### 2. Pure builder (no I/O)
+Neither engine is deleted. Explicit roles logged on every candidate:
 
-```ts
-buildGraphRuntimeSnapshot({
-  trace_id,
-  observations,
-  engineA,                     // candidates keyed by rule_id
-  engineB,                     // candidates keyed by hypothesis_id
-  edges: { ruleToHypothesis }, // Map<rule_id, hypothesis_id>
-}): GraphRuntimeSnapshot
+- `pipeline_role=GRAPH_STEP_8` — owns candidate hypotheses (Engine B / graph evaluator).
+- `pipeline_role=CAUSAL_ARBITRATION` — only ranks/arbitrates the graph-owned set; must not add hypotheses.
+
+Causal engine now receives `snapshot.hypotheses` as input and returns a reordered subset — never a superset.
+
+### 4. Canonical rule condition matching
+
+All condition→observation comparisons route through the symbol resolver:
+
+```text
+raw condition key ──► symbol_resolver ──► observation_aliases ──► canonical_id
+raw observation   ──► symbol_resolver ──► observation_aliases ──► canonical_id
+compare canonical_ids only
 ```
 
-No async, no supabase, no fetch. Orchestrator is responsible for supplying `edges.ruleToHypothesis` — see §5.
+Traces per rule:
 
-### 3. Engine A adapter
-For each Engine A candidate `{rule_id, confidence, matched_conditions}`:
-
-- `hid = edges.ruleToHypothesis.get(rule_id)`
-- If `hid` present AND `matched_conditions.length > 0`:
-  - Upsert `HypothesisNode(hid)` — max-confidence merge, union matched observations, add `'ENGINE_A'` to `sources`.
-  - Append `RuleNode(rule_id, parent_hypothesis_id: hid)`.
-- Else:
-  - Push `rule_id` to `orphan_rule_ids`, append `RuleNode(rule_id, parent_hypothesis_id: null)`.
-  - Log once per rule: `[GRAPH_ONTOLOGY] RULE_WITHOUT_HYPOTHESIS_EDGE rule_id=<x> trace=<t>`.
-  - Never synthesize a hypothesis from a rule_id.
-
-### 4. Engine B adapter
-Engine B already owns `hypothesis_id`. For each candidate:
-- Upsert `HypothesisNode(hypothesis_id)` (max-confidence merge, add `'ENGINE_B'` to `sources`).
-- For each `candidate_rule_ids[i]` → append `RuleNode(rule_id, parent_hypothesis_id: hypothesis_id)`.
-
-Deduplicate `RuleNode` by `rule_id`; if the same rule_id appears with different parents, prefer the Engine B parent (it owns the edge authoritatively) and log `[GRAPH_ONTOLOGY] RULE_PARENT_CONFLICT`.
-
-Hypothesis `sources` becomes `['ENGINE_A','ENGINE_B']` when both contribute (Test 3 = `BOTH` semantics via array membership; a `source` getter returns `'BOTH' | 'ENGINE_A' | 'ENGINE_B'` for logs).
-
-### 5. Orchestrator wiring
-- Invert Engine B's existing `queryRuleMapping` output (already fetched in `hypothesis-graph-evaluator.ts`) into a `Map<rule_id, hypothesis_id>` and stash it on the ConversationState as `_ruleToHypothesis` when Engine B runs (~line 5188 region).
-- If Engine A completes before Engine B populated the inversion (rare path), call `queryRuleMapping(supabase, engineA.rule_ids)` on demand and invert. This is the ONLY I/O; it happens in the orchestrator, NOT in the builder.
-- Both snapshot build sites (Engine A ~5446–5462, Engine B ~5217–5232) call the pure `buildGraphRuntimeSnapshot({..., edges:{ ruleToHypothesis }})`.
-- After `POST_EVIDENCE_FREEZE`: set `const graphResult = Object.freeze(this._graphSnapshot!)`. This is the only authority for BrainTrace, DecisionRenderer, and ClarificationEngine.
-- Delete direct writes at 5203, 5256–5257, 5316–5317. Convert `_graphHypothesisIds`, `_graphHypothesisRuleIds`, `_graphObsToHypEdges` into read-only getters that project from `_graphSnapshot` (temporary mirrors so downstream code keeps compiling).
-- BRAIN_TRACE emit site (~7658–7672): counts come only from `_graphSnapshot`; drop `_legacyHypIds` fallback; call `assertSnapshotNotCorrupt(snap, snap.hypotheses.length, traceId)` immediately before `emitBrainTrace`.
-
-### 6. Contract guards (in builder)
-Computed after adapters run, before freeze:
-
-- **G1 — orphan-only rules with real hypotheses absent:**
-  If `hypotheses.length === 0 && rules.some(r => r.parent_hypothesis_id !== null)` → throw `BROKEN_HYP_RULE_EDGE`. (Impossible by construction, but asserts invariant.)
-- **G2 — ontology violation:**
-  If `rules.some(r => r.parent_hypothesis_id !== null) && hypotheses.length === 0`:
-  - `Deno.env.get('GRAPH_STRICT') === '1'` (dev/test) → throw `GRAPH_ONTOLOGY_ERROR`.
-  - Production → set `graph_state = 'GRAPH_EXHAUSTED'`, `reason = 'GRAPH_ONTOLOGY_VIOLATION'`, emit `[GRAPH_ONTOLOGY] downgraded_to_exhausted`, return snapshot. No decision will be generated because DecisionRenderer requires `READY_FOR_DECISION`.
-- **G3 — post-emit projection guard** (orchestrator side, kept from prior work):
-  `assertSnapshotNotCorrupt` throws `GRAPH_STATE_CORRUPTION_ERROR` if `snapshot.hypotheses.length > 0` and projection reads 0.
-
-`graph_state` derivation (unchanged intent, tightened):
-- `hypotheses.length === 0` → `NO_HYPOTHESIS` (or `GRAPH_EXHAUSTED` when downgraded by G2 or when `reason` supplied).
-- Top hypothesis `confidence >= TAU_DECISION` AND has at least one child rule → `READY_FOR_DECISION`.
-- Otherwise → `NEED_MORE_EVIDENCE`.
-
-### 7. Tests (`tests/graph-snapshot_test.ts`)
-1. **Rule → hypothesis promotion:** Engine A `RICE_SOIL_CRUST_BREAKING_001` with mapping `→ RICE_GERMINATION_FAILURE` and matched observation → snapshot has 1 hypothesis `RICE_GERMINATION_FAILURE`, 1 rule with `parent_hypothesis_id === 'RICE_GERMINATION_FAILURE'`, `orphan_rule_ids` empty.
-2. **Missing mapping → orphan:** Engine A rule with empty `ruleToHypothesis` → `hypotheses.length === 0`, `orphan_rule_ids === [rule_id]`, `RuleNode.parent_hypothesis_id === null`, log line captured. No synthesized hypothesis.
-3. **Both engines same hypothesis:** Engine A rule maps to `H1` + Engine B emits `H1` → 1 hypothesis, `sources` contains both, exposed `source` = `'BOTH'`, confidence = max.
-4. **BRAIN_TRACE parity:** snapshot with `hypotheses.length === 1` fed to `emitBrainTrace` (via `hypotheses_count`) produces `hyp=1`; simulating projection = 0 makes `assertSnapshotNotCorrupt` throw `GRAPH_STATE_CORRUPTION_ERROR`.
-5. **Ontology guard:** rules with non-null parent but zero hypotheses (constructed by stubbing an empty Engine B and Engine A whose promotion is suppressed) with `GRAPH_STRICT=1` throws `GRAPH_ONTOLOGY_ERROR`; unset → `graph_state === 'GRAPH_EXHAUSTED'`.
-
-### Expected trace after fix
-```
-[GRAPH_RUNTIME] snapshot observations=13 hypotheses=1 winner=RICE_GERMINATION_FAILURE rules=3 orphans=0 state=NEED_MORE_EVIDENCE
-[BRAIN_TRACE] hyp=1 obs_to_hyp=1 hyp_to_rule=3 observation_required=true observation_option_count>0
+```text
+[RULE_COND_CANON] rule_id, raw_key, canonical_key, matched, via
+[RULE_CONDITION_LEDGER] rule_id, passed[], failed[], missing[]
 ```
 
-### Non-goals
-- No edits to `hypothesis-evaluator.ts`, `hypothesis-graph-evaluator.ts`, DB schema, or LLM narration.
-- No crop-specific branches; identity model is symbol-agnostic across all crops.
-- `_graphHypothesisIds` etc. remain temporarily as read-only getters — a later cleanup PR removes them entirely once no call site references them.
+No crop branches. Alias table is the only vocabulary bridge.
+
+### 5. Remove fabricated `MONITOR_ONLY`
+
+When the rule executor returns `winner=none`:
+
+- Replace advice with `verdict=INSUFFICIENT_KNOWLEDGE`.
+- Populate `gap_reason ∈ {NO_RULE_MATCH, NO_HYPOTHESIS, STAGE_CONTEXT_CONFLICT, COVERAGE_GAP}`.
+- `MONITOR_ONLY` is emitted **only** when a DB rule explicitly returns it.
+
+### 6. Remove silent `INFORMATION` fallback
+
+`ResponseModeResolver` default becomes `COVERAGE_GAP_DISCLOSURE`. Narrator prompt must produce three literal blocks and nothing agronomic:
+
+- `farmer_reported` — verbatim observations.
+- `graph_understood` — hypotheses/rules from snapshot.
+- `evidence_missing` — hypothesis conditions still unmatched.
+
+LLM MUST NOT synthesize any treatment.
+
+### 7. Stage conflict as first-class signal
+
+- `biological-state` emits `state.stage_context_conflict = { declared_stage, observed_stage_family, evidence[] }` whenever DAS-derived stage disagrees with symptom-implied stage family from DB `crop_stage_graph`.
+- Hypothesis evaluator treats stage as **uncertain context** (soft) rather than eliminating the hypothesis.
+- Clarification engine promotes stage-clarifying questions when the conflict flag is set.
+- No hardcoded stage table — all lookups via existing `crop_stage_graph` cache.
+
+## Regression tests (`tests/graph-handoff_test.ts`)
+
+1. Snapshot `hyp=1` ⇒ `EVIDENCE_COUNT_TRACE.candidate_hypotheses=1`.
+2. `ORCHESTRATOR_EXIT` counts equal snapshot counts (mismatch throws).
+3. `rules=4` present ⇒ never `hyp=0` in exit.
+4. Rule condition matching emits `[RULE_COND_CANON]` and lookups go through aliases.
+5. `RULE_RESULT.winner=none` never yields `MONITOR_ONLY`; yields `INSUFFICIENT_KNOWLEDGE`.
+6. No path emits default `INFORMATION`; uses `COVERAGE_GAP_DISCLOSURE`.
+7. `BIO_STATE_CONTRADICTION` populates `state.stage_context_conflict`.
+
+## Expected trace after fix
+
+```text
+GRAPH_RUNTIME       hypotheses=1 rules=4
+STATE_SYNC          hypotheses=1 rules=4 source=GRAPH_RUNTIME
+EVIDENCE_COUNT      candidate_hypotheses=1 matched_rules=4
+RULE_COND_CANON     rule_id=… matched=true via=alias
+GRAPH_HANDOFF_CHECK ok
+ORCHESTRATOR_EXIT   hypotheses=1 rules=4
+```
+
+If evidence still insufficient: `ClarificationEngine → observation_required=true` with advisor-style questions built from `hypothesis_conditions` — never `MONITOR_ONLY`, never generic `INFORMATION`.
+
+## Guarantees
+
+- No hardcoded agriculture; no crop branches; no DB migration.
+- Working graph, snapshot builder, and observation resolver are untouched.
+- Every edited file (all under `supabase/functions/ai-agriculture-chat/**`) gets a dated `CHANGE LOG` header entry per project rule.

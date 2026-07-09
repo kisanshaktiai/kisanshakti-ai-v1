@@ -2,6 +2,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 03:15 UTC — FIX 1 (STATE_SYNC). Call
+ *   `syncCanonicalStateFromSnapshot(canonicalState, _graphSnapshot)` right
+ *   before `checkPrescriptionGate` so `candidate_hypothesis_count` /
+ *   `matched_rules_count` reflect the frozen graph result. Closes the
+ *   graph=1 → state=0 split-brain that forced MONITOR_ONLY/INFORMATION.
  * 2026-07-09 02:07 UTC — Snapshot ontology wiring.
  *   • Import invertRuleMapping; stash `_ruleToHypothesis` after Engine B runs
  *     from graphOut.rule_edges.
@@ -338,6 +343,7 @@ import {
 import {
   buildCanonicalState,
   checkPrescriptionGate,
+  syncCanonicalStateFromSnapshot,
   CanonicalState,
   DataConfidence,
   mapCropNameToEnum,
@@ -7176,6 +7182,15 @@ export class AIAgentOrchestrator {
         };
         
         // Check prescription gate before rule engine
+        // FIX 1 (STATE_SYNC) — publish frozen GraphRuntimeSnapshot counts onto
+        // canonicalState BEFORE the prescription gate reads them. Without this,
+        // graph=1 hyp / 4 rules degraded to 0/0 downstream (split-brain).
+        try {
+          const _snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+          syncCanonicalStateFromSnapshot(canonicalState as any, _snap, { trace_id: traceId });
+        } catch (syncErr) {
+          console.warn(`[STATE_SYNC] non-fatal: ${(syncErr as Error).message}`);
+        }
         const prescriptionGate = checkPrescriptionGate(canonicalState);
         if (!prescriptionGate.allowed) {
           console.warn(`   ⚠️ Prescription Gate BLOCKED: ${prescriptionGate.reason}`);
