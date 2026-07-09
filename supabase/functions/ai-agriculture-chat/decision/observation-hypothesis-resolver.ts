@@ -85,9 +85,13 @@ export async function resolveHypothesesFromObservations(
       : 'NO_MATCH',
   }));
 
+  const gapCode: 'GRAPH_NEEDS_DISAMBIGUATION' | 'GRAPH_CONTRACT_ERROR' = nearest_hypotheses.length > 0
+    ? 'GRAPH_NEEDS_DISAMBIGUATION'
+    : 'GRAPH_CONTRACT_ERROR';
+
   const graph_contract_error = canonical.length > 0 && hypotheses.length === 0
     ? {
-        code: (nearest_hypotheses.length > 0 ? 'GRAPH_NEEDS_DISAMBIGUATION' : 'GRAPH_CONTRACT_ERROR') as const,
+        code: gapCode,
         confirmed_observation_ids: canonical,
         resolved_symbols: resolved.map((r) => r.canonical_observation_code),
         attempted_edges,
