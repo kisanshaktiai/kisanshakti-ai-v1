@@ -146,8 +146,35 @@ export async function bridgeCodesDb(
     seenCanonical.add(canonKey);
     out.push({ raw_code: raw, canonical_code: canonical, source });
   }
+
+  // BIOLOGICAL_SCOPE_CONTRACT (P1) — drop cross-crop / foreign-organ codes.
+  // Backward compatible: no context → skip filtering.
+  const effectiveCtx: CropContext | null =
+    cropContext ?? (cropCode ? { crop_code: cropCode, crop_group: null } : null);
+  if (effectiveCtx && out.length > 0) {
+    try {
+      const canonicalList = out.map((b) => b.canonical_code);
+      const scope = await filterByBiologicalScope(supabase, effectiveCtx, canonicalList);
+      if (scope.dropped_cross_crop.length || scope.dropped_unknown.length) {
+        const kept = new Set(scope.accepted);
+        const before = out.length;
+        const filtered = out.filter((b) => kept.has(b.canonical_code));
+        console.warn(
+          `[CONCEPT_BRIDGE][SCOPE_FILTER] crop=${effectiveCtx.crop_code ?? 'UNKNOWN'} ` +
+          `in=${before} out=${filtered.length} ` +
+          `dropped_cross_crop=${scope.dropped_cross_crop.length} ` +
+          `dropped_unknown=${scope.dropped_unknown.length}`,
+        );
+        return filtered;
+      }
+    } catch (e) {
+      console.warn(`[CONCEPT_BRIDGE][SCOPE_FILTER][EXCEPTION] error=${(e as Error).message}`);
+    }
+  }
+
   return out;
 }
+
 
 /**
  * DEPRECATED — sync pass-through kept for legacy call sites during transition.
