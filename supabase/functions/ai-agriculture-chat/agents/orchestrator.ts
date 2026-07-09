@@ -7772,7 +7772,10 @@ export class AIAgentOrchestrator {
         // Union NOT intersection: if the graph edge set is available and non-empty,
         // it is treated as the authoritative candidate scope. Fallback path (no edges)
         // keeps the existing intent-filtered set so unrelated flows are unaffected.
-        const graphRuleIdSet = new Set<string>(((this as any)._graphHypothesisRuleIds ?? []) as string[]);
+        const graphRuleIdSet = new Set<string>(
+          (((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.hypothesis_rule_ids)
+            ?? ((this as any)._graphHypothesisRuleIds ?? []) as string[],
+        );
         const graphEdgeMissing: string[] = ((this as any)._graphHypothesisEdgeMissing ?? []) as string[];
         const _graphExecutedFlag = (this as any)._graphExecuted === true;
         const _graphSurvivors: any[] = ((this as any)._graphHypothesisResult?.candidates) ?? [];
@@ -8122,20 +8125,26 @@ export class AIAgentOrchestrator {
           // Prefer the immutable snapshot over the legacy per-field projections.
           // If snapshot has hypotheses but the legacy projection is empty, the
           // corruption guard throws GRAPH_STATE_CORRUPTION_ERROR — fail loud.
-          const _legacyHypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
+          const _grsRead = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+          const _legacyHypIds: string[] = [
+            ...((_grsRead?.hypothesis_ids) ?? ((this as any)._graphHypothesisIds ?? []) as string[]),
+          ];
           const _hypIds: string[] = _snap
             ? _snap.hypotheses.map(h => h.id)
             : _legacyHypIds;
           const _obsToHyp: number = _snap
             ? _snap.hypotheses.reduce((n, h) => n + h.matched_conditions.length, 0)
-            : Number((this as any)._graphObsToHypEdges ?? 0);
+            : Number(_grsRead?.obs_to_hyp_edges ?? (this as any)._graphObsToHypEdges ?? 0);
           const _hypToRule: number = _snap
             ? _snap.rules.length
-            : ((this as any)._graphHypothesisRuleIds ?? []).length;
+            : (_grsRead?.hypothesis_rule_ids.length ?? ((this as any)._graphHypothesisRuleIds ?? []).length);
           const _cs = (this as any).__conversationState ?? conversationState;
           const _graphRan = (this as any)._graphExecuted === true;
-          const _realObsCount = Array.isArray((this as any)._lastRealObservations)
-            ? (this as any)._lastRealObservations.length : 0;
+          const _lastRealFromGraph = _grsRead?.last_real_observations;
+          const _realObsCount = _lastRealFromGraph
+            ? _lastRealFromGraph.length
+            : (Array.isArray((this as any)._lastRealObservations)
+              ? (this as any)._lastRealObservations.length : 0);
           const _agronomicSignal =
             requiresAgronomicReasoningIntent(intentCode) ||
             _realObsCount > 0 ||
@@ -9422,9 +9431,13 @@ export class AIAgentOrchestrator {
         const stageName = landContext.growth_stage || 'current stage';
         const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
         const userLanguage = options.language || 'mr';
-        const stageAdvisoryRealObservations = Array.isArray((this as any)._lastRealObservations)
-          ? [...(this as any)._lastRealObservations]
-          : [];
+        const _grsForStageAdvisory = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+        const _stageRealFromGraph = _grsForStageAdvisory?.last_real_observations;
+        const stageAdvisoryRealObservations = _stageRealFromGraph && _stageRealFromGraph.length > 0
+          ? [..._stageRealFromGraph]
+          : (Array.isArray((this as any)._lastRealObservations)
+              ? [...(this as any)._lastRealObservations]
+              : []);
         const stageFallback = this.generateStageAwareFallback(
           cropName,
           stageName,
