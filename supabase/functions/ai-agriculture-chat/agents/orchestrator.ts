@@ -8433,11 +8433,15 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       const totalRulesMatched = layeredRuleResult?.rules_matched || 0;
       
-      if (pendingClarificationResponse && totalRulesMatched === 0) {
+      if (pendingClarificationResponse && (totalRulesMatched === 0 || pendingClarificationResponse.forceObservation)) {
         console.log(`\n🔄 DEFERRED CLARIFICATION TRIGGERED`);
-        console.log(`   📊 Symbolic brain found 0 rules - now returning prepared clarification`);
+        console.log(
+          pendingClarificationResponse.forceObservation
+            ? `   🚦 Observation authority requires farmer confirmation - returning prepared clarification`
+            : `   📊 Symbolic brain found 0 rules - now returning prepared clarification`
+        );
         
-        const { clarificationResponse, intentConfidence, inductionCoverage, inductionConfidence } = pendingClarificationResponse;
+        const { clarificationResponse, structuredOptions, intentConfidence, inductionCoverage, inductionConfidence } = pendingClarificationResponse;
         
         // CRITICAL FIX: If clarification has 0 options, generate dynamic options from database
         let safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
@@ -8483,7 +8487,8 @@ export class AIAgentOrchestrator {
             text_en: responseText,
             options: safeOptionsForLog.map((opt: string, idx: number) => ({
               value: String(idx + 1),
-              label: opt
+              label: opt,
+              observation_key: structuredOptions?.[idx]?.observation_key,
             }))
           },
           metadata: {
@@ -8496,6 +8501,11 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             pendingClarificationOptions: safeOptionsForLog,
+            pendingClarificationOptionsStructured: (structuredOptions || []).map((opt: any, idx: number) => ({
+              label: safeOptionsForLog[idx] || opt.label,
+              value: String(idx + 1),
+              observation_key: opt.observation_key,
+            })).filter((opt: any) => !!opt.observation_key),
             symptomKeys: Array.from(allObservationsForPreAuth || []),
             isEmergency: false,
             // Language Induction Layer metrics (independent of intent confidence)
