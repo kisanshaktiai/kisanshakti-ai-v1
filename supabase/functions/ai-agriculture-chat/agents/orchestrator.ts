@@ -5405,6 +5405,29 @@ export class AIAgentOrchestrator {
 
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
 
+          // ─── SNAPSHOT (Engine A) ─────────────────────────────────────────
+          // Build the initial immutable snapshot from Engine A. Engine B
+          // (evaluateHypothesisGraph) runs earlier in the pipeline — if its
+          // result was stored, merge it in here so the snapshot never loses
+          // hypotheses just because one engine produced zero candidates.
+          try {
+            const engineB = (this as any)._graphHypothesisResult ?? null;
+            const snap = buildGraphRuntimeSnapshot({
+              trace_id: traceId,
+              observations: (currentObservations ?? []) as string[],
+              engineA: { candidates: hypothesisResult.candidates as any },
+              engineB: engineB ? { candidates: engineB.candidates ?? [] } : null,
+            });
+            (this as any)._graphSnapshot = snap;
+            console.log(
+              `[GRAPH_RUNTIME] snapshot trace=${traceId} observations=${snap.observations.length} ` +
+              `hypotheses=${snap.hypotheses.length} winner=${snap.hypotheses[0]?.id ?? 'none'} ` +
+              `rules=${snap.rules.length} state=${snap.graph_state}`,
+            );
+          } catch (snapErr) {
+            console.warn(`[GRAPH_SNAPSHOT] engineA build non-fatal: ${(snapErr as Error).message}`);
+          }
+
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 
           // ═══════════════════════════════════════════════════════════════════
