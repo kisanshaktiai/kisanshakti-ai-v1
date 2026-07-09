@@ -2364,6 +2364,59 @@ export class AIAgentOrchestrator {
               },
             } as any;
           }
+
+          if (optionGraphResolution.hypotheses.length > 0 && optionGraphRuleIds.length === 0) {
+            const graphClarification = await buildHypothesisClarificationOptions({
+              supabase: this.supabase,
+              intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
+              crop_code: cropName,
+              crop_stage: growthStage,
+              DAS: landContextForOptionSelection?.days_since_sowing ?? null,
+              language: options.language || 'mr',
+              confirmed_observations: allObservations,
+              trace_id: traceId,
+              max: 5,
+            });
+            const clarificationOptions = graphClarification.options.map((o) => ({
+              label: o.label,
+              value: o.value,
+              observation_key: o.observation_key,
+              observation_id: o.observation_id,
+              observation_code: o.observation_code,
+              hypothesis_id: o.hypothesis_id,
+              hypothesis_condition_id: o.hypothesis_condition_id,
+              graph_version: 'hypothesis_graph_v1',
+              source: 'hypothesis_graph',
+            }));
+            console.error(
+              `[GRAPH_CONTRACT_ERROR] trace=${traceId} candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
+              `matched_rules=0 reason=NO_HYPOTHESIS_RULE_EDGE options=${clarificationOptions.length}`,
+            );
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              question: {
+                question_id: `hyp_rule_gap_${Date.now()}`,
+                text_en: 'I need one more crop observation before I can choose a safe recommendation.',
+                options: clarificationOptions,
+                scope: 'GRAPH_KNOWLEDGE_GAP',
+                source: 'hypothesis_graph',
+              },
+              communication: { options: clarificationOptions },
+              metadata: {
+                orchestrator_type: 'CLARIFICATION_QUESTION',
+                observation_source: 'hypothesis_graph',
+                graph_reason: 'NO_HYPOTHESIS_RULE_EDGE',
+                trace_id: traceId,
+                selectionType: 'SINGLE_CHOICE',
+                session_state_update: {
+                  decision_state: 'awaiting_clarification',
+                  pending_options: clarificationOptions.length,
+                  pending_action: false,
+                },
+              },
+            } as any;
+          }
           
           const canonicalState = buildCanonicalState({
             // CRITICAL FIX: Pass landContext to preserve all land data
