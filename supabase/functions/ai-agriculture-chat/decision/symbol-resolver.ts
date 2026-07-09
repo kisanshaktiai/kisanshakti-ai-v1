@@ -33,7 +33,8 @@ export async function resolveObservationSymbol(
   input: unknown,
 ): Promise<ResolvedObservationSymbol> {
   const extracted = SymbolContract.extract(input);
-  const raw = extracted.symbol ?? String(input ?? '').trim();
+  const originalRaw = String(input ?? '').trim();
+  const raw = originalRaw || extracted.symbol || '';
   const graph = extracted.symbol;
 
   if (!graph || !supabase) {
