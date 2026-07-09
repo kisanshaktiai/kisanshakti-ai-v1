@@ -67,11 +67,17 @@ export async function bridgeToCropVocab(
  * Batch bridge. Preserves input order, deduplicates canonical outputs
  * case-insensitively. Emits a single trace line per bridged (non-identity)
  * transformation.
+ *
+ * When `cropContext` is provided, the BIOLOGICAL_SCOPE_CONTRACT (P1) is
+ * applied AFTER bridging: canonical codes scoped to a foreign crop / organ
+ * are dropped with [OBS_SCOPE_REJECT]. Universal / generic / current-crop /
+ * current-crop-group codes pass through.
  */
 export async function bridgeCodesDb(
   supabase: any,
   cropCode: string | null | undefined,
   codes: ReadonlyArray<string>,
+  cropContext?: CropContext | null,
 ): Promise<BridgedObservation[]> {
   if (!Array.isArray(codes) || codes.length === 0) return [];
 
