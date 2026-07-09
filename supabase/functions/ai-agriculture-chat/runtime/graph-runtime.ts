@@ -35,6 +35,11 @@
  *     `../decision/hypothesis-evaluator.ts` until the loader-based SSOT
  *     collapse lands (tracked separately).
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG
+ *   2026-07-09 09:25 UTC — Added final OBS_GATE runtime invariant: diagnostic
+ *     calls with zero confirmed observations return WAITING_FOR_OBSERVATION
+ *     and do not execute evaluateCandidateHypotheses.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import {
@@ -56,6 +61,12 @@ export interface GraphRuntimeInput {
   weather?: any;
   trace_id?: string;
   intent_code?: string;
+  /** OBSERVATION_STATE_CONTRACT: true only when caller knows this is diagnostic. */
+  diagnostic_intent?: boolean;
+  /** CONFIRMED/EXTRACTED farmer evidence only. Defaults to known_observations for legacy callers. */
+  confirmed_observations?: string[];
+  /** DB-loaded UI candidates to return when waiting for farmer confirmation. */
+  candidate_observations?: string[];
   /** Verbatim pass-through to the evaluator for fields not modelled above. */
   passthrough?: Record<string, unknown>;
   /**
@@ -72,6 +83,19 @@ export interface GraphRuntimeResult {
   candidates: number;
   winner: string | null;
   ms: number;
+  state?: 'WAITING_FOR_OBSERVATION' | 'READY_FOR_GRAPH';
+  candidate_observations?: string[];
+}
+
+function emptyHypothesisResult(traceId: string | undefined, stage: string | null | undefined): HypothesisEvaluationOutput {
+  return {
+    candidates: [],
+    total_rules_evaluated: 0,
+    stage_locked: String(stage ?? 'UNKNOWN'),
+    evaluation_method: 'PARTIAL_MATCH',
+    timestamp: Date.now(),
+    trace_id: String(traceId ?? `obs_gate_${Date.now()}`),
+  };
 }
 
 export async function runGraphRuntime(
@@ -79,6 +103,23 @@ export async function runGraphRuntime(
 ): Promise<GraphRuntimeResult> {
   const t0 = Date.now();
   const passthrough = input.passthrough ?? {};
+  const confirmed = input.confirmed_observations ?? input.known_observations ?? [];
+
+  if (input.diagnostic_intent === true && confirmed.length === 0) {
+    const ms = Date.now() - t0;
+    console.log(
+      `[OBS_GATE] awaiting_confirmed_observations trace=${input.trace_id ?? 'n/a'} ` +
+      `intent=${input.intent_code ?? 'n/a'} candidates=${input.candidate_observations?.length ?? 0}`,
+    );
+    return {
+      result: emptyHypothesisResult(input.trace_id, input.growth_stage),
+      candidates: 0,
+      winner: null,
+      ms,
+      state: 'WAITING_FOR_OBSERVATION',
+      candidate_observations: input.candidate_observations ?? [],
+    };
+  }
 
   const result = await evaluateCandidateHypotheses({
     graph_truth: input.graph_truth ?? null,
@@ -127,5 +168,5 @@ export async function runGraphRuntime(
     `ms=${ms}`,
   );
 
-  return { result, candidates, winner, ms };
+  return { result, candidates, winner, ms, state: 'READY_FOR_GRAPH' };
 }
