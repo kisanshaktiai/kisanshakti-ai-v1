@@ -3221,8 +3221,16 @@ export class AIAgentOrchestrator {
       );
       agentsUsed.push('SEMANTIC_EXTRACTOR');
       
-      // STEP 2: Deterministic mapper converts English → ObservationKeys
-      const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
+      // STEP 2: Deterministic mapper converts English → ObservationKeys.
+      // Scope-aware (2026-07-09) — pass frozen crop/stage/DAS from the locked
+      // land context so cross-crop observation codes never leak into the turn.
+      const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction, {
+        crop_code: landContext?.current_crop ?? null,
+        growth_stage: landContext?.growth_stage ?? null,
+        das: typeof landContext?.days_since_sowing === 'number'
+          ? landContext.days_since_sowing
+          : null,
+      });
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
 
       // STEP 2b: Vocabulary bridge expansion (generic ↔ specific)
