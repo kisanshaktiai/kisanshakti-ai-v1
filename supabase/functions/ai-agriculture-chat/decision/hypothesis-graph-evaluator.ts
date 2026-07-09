@@ -37,6 +37,7 @@
 
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { stageCompatibility } from './stage-symbol-resolver.ts';
+import { resolveObservationSymbol } from './symbol-resolver.ts';
 
 export interface GraphHypothesisInput {
   crop_code: string | null;
@@ -118,6 +119,8 @@ interface ObservationSet {
   canonicalByKey: Map<string, string>;
 }
 
+type CanonicalCodeMap = Map<string, string>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,7 +130,7 @@ export async function evaluateHypothesisGraph(
 ): Promise<GraphHypothesisResult> {
   const started = Date.now();
   const trace = String(input.trace_id ?? `hg_${started}`);
-  const observed = normalizeObservationSet(input.observation_codes);
+  const observed = await normalizeObservationSet(input.observation_codes, input.supabase);
 
   if (observed.keys.size === 0) {
     emitObsToHyp(trace, input, [], [], [], []);
@@ -181,7 +184,8 @@ export async function evaluateHypothesisGraph(
     if (m.is_active === false) { droppedInactive.push(hid); continue; }
 
     const conds = allConditions.get(hid) ?? [];
-    const buckets = bucketizeConditions(conds, observed);
+    const conditionCanonical = await buildCanonicalCodeMap(input.supabase, conds.flatMap(resolveConditionObservationCodes));
+    const buckets = bucketizeConditions(conds, observed, conditionCanonical);
 
     const rules = ruleEdges.get(hid) ?? [];
 
@@ -451,10 +455,11 @@ async function queryAnchorHypotheses(supabase: any, observed: ObservationSet, tr
       if (batch.length < pageSize) break;
     }
 
+    const conditionCanonical = await buildCanonicalCodeMap(supabase, rows.flatMap(resolveConditionObservationCodes));
     const set = new Set<string>();
     const matchedRows: Array<{ hypothesis_id: string; matched: string[]; via: string }> = [];
     for (const r of rows) {
-      const m = ObservationConditionMatcher(r, observed);
+      const m = ObservationConditionMatcher(r, observed, conditionCanonical);
       if (m.matched && r?.hypothesis_id) {
         const hid = String(r.hypothesis_id);
         set.add(hid);
@@ -583,7 +588,7 @@ interface Buckets {
   positive_weight_matched: number;
 }
 
-function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): Buckets {
+function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet, conditionCanonical: CanonicalCodeMap): Buckets {
   const b: Buckets = {
     requiredCodes: new Set(),
     supportingCodes: new Set(),
@@ -605,7 +610,7 @@ function bucketizeConditions(conds: ConditionRow[], observed: ObservationSet): B
     const w = Number(c.weight ?? 0) || (c.is_required ? 1 : 0.5);
 
     for (const conditionCode of conditionCodes) {
-      const norm = normalizeObservationCode(conditionCode);
+      const norm = normalizeObservationCode(canonicalizeWithMap(conditionCode, conditionCanonical));
       if (!norm) continue;
       const key = norm.matchKey;
       const displayCode = observed.canonicalByKey.get(key) ?? norm.canonicalCode;
@@ -718,12 +723,13 @@ export function normalizeObservationCode(code: unknown): NormalizedObservationCo
   };
 }
 
-function normalizeObservationSet(codes: string[]): ObservationSet {
+async function normalizeObservationSet(codes: string[], supabase?: any): Promise<ObservationSet> {
   const observations: string[] = [];
   const keys = new Set<string>();
   const canonicalByKey = new Map<string, string>();
+  const canonicalMap = await buildCanonicalCodeMap(supabase, codes ?? []);
   for (const c of codes ?? []) {
-    const norm = normalizeObservationCode(c);
+    const norm = normalizeObservationCode(canonicalizeWithMap(c, canonicalMap));
     if (!norm || keys.has(norm.matchKey)) continue;
     keys.add(norm.matchKey);
     canonicalByKey.set(norm.matchKey, norm.canonicalCode);
@@ -738,15 +744,15 @@ interface ObservationConditionMatch {
   source: 'condition_key' | 'value_json' | 'condition_key_and_value_json';
 }
 
-function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet): ObservationConditionMatch {
+function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet, conditionCanonical: CanonicalCodeMap): ObservationConditionMatch {
   const keyCodes = normalizeObservationCode(row.condition_key) ? [String(row.condition_key)] : [];
   const valueCodes = extractObservationCodesFromValueJson(row.value_json);
   const keyMatches = keyCodes
-    .map(normalizeObservationCode)
+    .map((c) => normalizeObservationCode(canonicalizeWithMap(c, conditionCanonical)))
     .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
     .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
   const valueMatches = valueCodes
-    .map(normalizeObservationCode)
+    .map((c) => normalizeObservationCode(canonicalizeWithMap(c, conditionCanonical)))
     .filter((x): x is NormalizedObservationCode => !!x && observed.keys.has(x.matchKey))
     .map((x) => observed.canonicalByKey.get(x.matchKey) ?? x.canonicalCode);
   const matched_observations = Array.from(new Set([...keyMatches, ...valueMatches]));
@@ -756,6 +762,43 @@ function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet
       ? 'value_json'
       : 'condition_key';
   return { matched: matched_observations.length > 0, matched_observations, source };
+}
+
+async function buildCanonicalCodeMap(supabase: any, codes: ReadonlyArray<unknown>): Promise<CanonicalCodeMap> {
+  const out: CanonicalCodeMap = new Map();
+  const unique = Array.from(new Set((codes ?? []).map((c) => String(c ?? '').trim()).filter(Boolean)));
+  if (!supabase || unique.length === 0) return out;
+  for (const code of unique) {
+    try {
+      const resolved = await resolveObservationSymbol(supabase, code);
+      const canonical = resolved.canonical_observation_code || resolved.graph_symbol || code;
+      for (const v of codeVariants(code)) out.set(v, canonical);
+      for (const v of codeVariants(canonical)) out.set(v, canonical);
+    } catch {
+      for (const v of codeVariants(code)) out.set(v, code);
+    }
+  }
+  return out;
+}
+
+function canonicalizeWithMap(code: unknown, canonical: CanonicalCodeMap): string {
+  const raw = String(code ?? '').trim();
+  for (const v of codeVariants(raw)) {
+    const found = canonical.get(v);
+    if (found) return found;
+  }
+  return raw;
+}
+
+function codeVariants(code: unknown): string[] {
+  const raw = String(code ?? '').trim();
+  if (!raw) return [];
+  return Array.from(new Set([
+    raw,
+    raw.toLowerCase(),
+    raw.toUpperCase(),
+    raw.toLowerCase().replace(/[\s-]+/g, '_'),
+  ]));
 }
 
 function resolveConditionObservationCodes(row: ConditionRow): string[] {
