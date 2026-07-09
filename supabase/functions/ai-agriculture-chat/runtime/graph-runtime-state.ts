@@ -287,12 +287,51 @@ export class GraphRuntimeState {
   private _presentation_set = false;
   private _evidence_round: EvidenceRoundSnapshot | null = null;
 
+  // ── Phase C — Legacy graph-projection SSOT ─────────────────────────────
+  // These four fields were previously kept as `(this as any)._x` on the
+  // orchestrator instance. They are now owned by GraphRuntimeState so every
+  // reader crosses a single authority. Legacy write-through remains in the
+  // orchestrator for one release (Phase C.1); Phase C.2 will delete it.
+  private _hypothesis_ids: readonly string[] = Object.freeze([] as string[]);
+  private _hypothesis_rule_ids: readonly string[] = Object.freeze([] as string[]);
+  private _obs_to_hyp_edges = 0;
+  private _last_real_observations: readonly string[] = Object.freeze([] as string[]);
+
   constructor(trace_id: string) {
     this.trace_id = trace_id;
     this.started_at = Date.now();
     this.observation_ledger = new ObservationLedger();
     this.hypothesis_graph = [];
   }
+
+  // ── Phase C — Hypothesis-projection accessors ──────────────────────────
+  setHypothesisIds(ids: readonly string[]): void {
+    const clean = Array.from(new Set((ids || []).filter(Boolean).map(String)));
+    for (const c of clean) assertCanonicalCode('graph.hypothesis_ids', c);
+    this._hypothesis_ids = Object.freeze(clean);
+  }
+  get hypothesis_ids(): readonly string[] { return this._hypothesis_ids; }
+
+  setHypothesisRuleIds(ids: readonly string[]): void {
+    const clean = Array.from(new Set((ids || []).filter(Boolean).map(String)));
+    for (const c of clean) assertCanonicalCode('graph.hypothesis_rule_ids', c);
+    this._hypothesis_rule_ids = Object.freeze(clean);
+  }
+  get hypothesis_rule_ids(): readonly string[] { return this._hypothesis_rule_ids; }
+
+  setObsToHypEdges(n: number): void {
+    this._obs_to_hyp_edges = Math.max(0, Number(n) || 0);
+  }
+  get obs_to_hyp_edges(): number { return this._obs_to_hyp_edges; }
+
+  setLastRealObservations(codes: readonly string[]): void {
+    const clean = Array.from(new Set((codes || []).filter(Boolean).map(String)));
+    // NOTE: real-obs list may include semantic-class codes; keep the loose
+    // canonical shape check without asserting a stricter regex here — the
+    // orchestrator already filters via isRealObservation().
+    this._last_real_observations = Object.freeze(clean);
+  }
+  get last_real_observations(): readonly string[] { return this._last_real_observations; }
 
   // ── Evidence round (Phase A — observation-loop guard) ──────────────────
   freezeEvidenceRound(snap: Omit<EvidenceRoundSnapshot, 'round_completed' | 'frozen_at'>): void {
@@ -430,6 +469,10 @@ export class GraphRuntimeState {
       intent: this._intent_node,
       decision: this._decision_node,
       evidence_round: this._evidence_round,
+      hypothesis_ids: this._hypothesis_ids,
+      hypothesis_rule_ids: this._hypothesis_rule_ids,
+      obs_to_hyp_edges: this._obs_to_hyp_edges,
+      last_real_observations: this._last_real_observations,
       observations: this.observation_ledger.view(),
       hypothesis_graph: this.hypothesis_graph.map((c) => ({
         rule_id: c.rule_id,

@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 14:35 UTC — Phase C.1 (Graph SSOT authority). The four legacy
+ *   `(this as any)._x` projection fields (_graphHypothesisIds,
+ *   _graphHypothesisRuleIds, _graphObsToHypEdges, _lastRealObservations) are
+ *   now owned by GraphRuntimeState. Every write mirrors through the setter;
+ *   every read prefers the graph accessor and falls back to the legacy field
+ *   for one release. Orchestrator exposes `__graphRuntimeState` on `this` so
+ *   outer wrappers (finally-block audit, response stamping) can reach the
+ *   authority. Phase C.2 will delete the legacy fields once traces confirm no
+ *   drift.
  * 2026-07-09 14:03 UTC — Add response-level real_observations bridge to
  *   STAGE_ADVISORY_FALLBACK so index/contract fallback count survives even
  *   if orchestrator side-channel state is unavailable.
@@ -1234,8 +1243,10 @@ export class AIAgentOrchestrator {
         const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
         const snapHyp = snap?.hypotheses.length ?? 0;
         const snapRules = snap?.rules.length ?? 0;
-        const exitHyp = ((this as any)._graphHypothesisIds ?? []).length;
-        const exitRules = ((this as any)._graphHypothesisRuleIds ?? []).length;
+        // Phase C.1 — prefer GraphRuntimeState authority; fall back to legacy field.
+        const _grs = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+        const exitHyp = (_grs?.hypothesis_ids.length ?? ((this as any)._graphHypothesisIds ?? []).length);
+        const exitRules = (_grs?.hypothesis_rule_ids.length ?? ((this as any)._graphHypothesisRuleIds ?? []).length);
         const ok = !(snapHyp > 0 && exitHyp === 0);
         console.log(
           `[GRAPH_HANDOFF_CHECK] trace=${traceId} ` +
@@ -1338,6 +1349,8 @@ export class AIAgentOrchestrator {
     (this as any)._ruleResultExists = false;
     (this as any)._graphHypothesisIds = [];
     (this as any)._graphHypothesisRuleIds = [];
+    // GraphRuntimeState.setX() is a no-op reset here because `graph` is
+    // constructed fresh a few lines below; nothing to mirror yet.
     (this as any)._graphHypothesisEdgeMissing = [];
     (this as any)._graphSnapshot = null;
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
@@ -1353,6 +1366,10 @@ export class AIAgentOrchestrator {
     // ─────────────────────────────────────────────────────────────────
     const graph = new GraphRuntimeState(traceId);
     let graphCp = graphCheckpoint(graph);
+    // Phase C.1 — expose GraphRuntimeState as SSOT on `this` so the outer
+    // orchestrate() wrapper (finally-block audit + response stamp) and any
+    // helper method not carrying `graph` in closure can read the authority.
+    (this as any).__graphRuntimeState = graph;
 
     // ─────────────────────────────────────────────────────────────────
     // PHASE Y — RuntimeTraceCollector (single per request).
@@ -2534,9 +2551,11 @@ export class AIAgentOrchestrator {
             // Mirror confirmed observations onto the enforcer-visible field so
             // the observation-selector-contract can degrade (not 500) when this
             // seed-graph clarification path also has zero loadable options.
-            (this as any)._lastRealObservations = Array.isArray(optionEvidence.real_codes)
-              ? [...optionEvidence.real_codes]
-              : [];
+            {
+              const _rc = Array.isArray(optionEvidence.real_codes) ? [...optionEvidence.real_codes] : [];
+              (this as any)._lastRealObservations = _rc;
+              try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
+            }
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
@@ -2596,9 +2615,11 @@ export class AIAgentOrchestrator {
               `[GRAPH_CONTRACT_ERROR] trace=${traceId} candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
               `matched_rules=0 reason=NO_HYPOTHESIS_RULE_EDGE options=${clarificationOptions.length}`,
             );
-            (this as any)._lastRealObservations = Array.isArray(optionEvidence.real_codes)
-              ? [...optionEvidence.real_codes]
-              : [];
+            {
+              const _rc = Array.isArray(optionEvidence.real_codes) ? [...optionEvidence.real_codes] : [];
+              (this as any)._lastRealObservations = _rc;
+              try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
+            }
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
@@ -3106,9 +3127,13 @@ export class AIAgentOrchestrator {
           // Mirror confirmed observations onto the enforcer-visible field so
           // observation-selector-contract Case C can degrade (not 500) when
           // this stage-fallback path yields no loadable options.
-          (this as any)._lastRealObservations = Array.isArray(optionEvidence?.real_codes)
-            ? [...optionEvidence.real_codes]
-            : (mappedObservationKey ? [mappedObservationKey] : []);
+          {
+            const _rc = Array.isArray(optionEvidence?.real_codes)
+              ? [...optionEvidence.real_codes]
+              : (mappedObservationKey ? [mappedObservationKey] : []);
+            (this as any)._lastRealObservations = _rc;
+            try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
+          }
 
           return {
             type: 'DECISION_PROVIDED',
@@ -5082,9 +5107,11 @@ export class AIAgentOrchestrator {
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
       // Expose real observation count for [ORCHESTRATOR_EXIT] boundary audit
       try {
-        (this as any)._lastRealObservations = Array
+        const _rc = Array
           .from(allObservationsForPreAuth)
           .filter((c) => isRealObservation(String(c)));
+        (this as any)._lastRealObservations = _rc;
+        try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
       } catch { /* audit-only, never throw */ }
       const cropDamageResult = detectCropDamageWithAuthority(
         authoredObservations,
@@ -5482,6 +5509,7 @@ export class AIAgentOrchestrator {
             graphHypothesisRuleIds = Array.from(new Set(graphHypothesisRuleIds));
             (this as any)._graphHypothesisResult = graphOut;
             (this as any)._graphHypothesisRuleIds = graphHypothesisRuleIds;
+            try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setHypothesisRuleIds(graphHypothesisRuleIds); } catch {}
             (this as any)._graphHypothesisEdgeMissing = graphHypothesisEdgeMissing;
             console.log(
               `   🧭 [HYP_GRAPH] survived=${graphOut.candidates.length} eliminated=${graphOut.eliminated.length} candidate_rule_ids=${graphHypothesisRuleIds.length} edge_missing=${graphHypothesisEdgeMissing.length}`,
@@ -5550,12 +5578,18 @@ export class AIAgentOrchestrator {
                 cs.hypotheses = Object.freeze(hypIds) as ReadonlyArray<string>;
               }
               (this as any)._graphHypothesisIds = hypIds;
-              (this as any)._graphObsToHypEdges = graphOut.candidates.reduce(
+              const _obsEdges = graphOut.candidates.reduce(
                 (n: number, c: any) => n + (Array.isArray(c?.matched_observations)
                   ? c.matched_observations.length
                   : (Array.isArray(c?.required_evidence) ? c.required_evidence.length : 0)),
                 0,
               );
+              (this as any)._graphObsToHypEdges = _obsEdges;
+              try {
+                const _grs2 = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+                _grs2?.setHypothesisIds(hypIds);
+                _grs2?.setObsToHypEdges(_obsEdges);
+              } catch {}
 
               // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
               // a single grep on trace= reconstructs the full edge chain.
@@ -5612,6 +5646,12 @@ export class AIAgentOrchestrator {
               (this as any)._graphHypothesisIds = [];
               (this as any)._graphHypothesisRuleIds = [];
               (this as any)._graphHypothesisEdgeMissing = [];
+              try {
+                const _grs3 = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+                _grs3?.setHypothesisIds([]);
+                _grs3?.setHypothesisRuleIds([]);
+                _grs3?.setObsToHypEdges(0);
+              } catch {}
               (this as any)._graphExhaustedReason = graphErrMessage;
               console.warn(
                 `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
@@ -7732,7 +7772,10 @@ export class AIAgentOrchestrator {
         // Union NOT intersection: if the graph edge set is available and non-empty,
         // it is treated as the authoritative candidate scope. Fallback path (no edges)
         // keeps the existing intent-filtered set so unrelated flows are unaffected.
-        const graphRuleIdSet = new Set<string>(((this as any)._graphHypothesisRuleIds ?? []) as string[]);
+        const graphRuleIdSet = new Set<string>(
+          (((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.hypothesis_rule_ids)
+            ?? ((this as any)._graphHypothesisRuleIds ?? []) as string[],
+        );
         const graphEdgeMissing: string[] = ((this as any)._graphHypothesisEdgeMissing ?? []) as string[];
         const _graphExecutedFlag = (this as any)._graphExecuted === true;
         const _graphSurvivors: any[] = ((this as any)._graphHypothesisResult?.candidates) ?? [];
@@ -8082,20 +8125,26 @@ export class AIAgentOrchestrator {
           // Prefer the immutable snapshot over the legacy per-field projections.
           // If snapshot has hypotheses but the legacy projection is empty, the
           // corruption guard throws GRAPH_STATE_CORRUPTION_ERROR — fail loud.
-          const _legacyHypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
+          const _grsRead = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+          const _legacyHypIds: string[] = [
+            ...((_grsRead?.hypothesis_ids) ?? ((this as any)._graphHypothesisIds ?? []) as string[]),
+          ];
           const _hypIds: string[] = _snap
             ? _snap.hypotheses.map(h => h.id)
             : _legacyHypIds;
           const _obsToHyp: number = _snap
             ? _snap.hypotheses.reduce((n, h) => n + h.matched_conditions.length, 0)
-            : Number((this as any)._graphObsToHypEdges ?? 0);
+            : Number(_grsRead?.obs_to_hyp_edges ?? (this as any)._graphObsToHypEdges ?? 0);
           const _hypToRule: number = _snap
             ? _snap.rules.length
-            : ((this as any)._graphHypothesisRuleIds ?? []).length;
+            : (_grsRead?.hypothesis_rule_ids.length ?? ((this as any)._graphHypothesisRuleIds ?? []).length);
           const _cs = (this as any).__conversationState ?? conversationState;
           const _graphRan = (this as any)._graphExecuted === true;
-          const _realObsCount = Array.isArray((this as any)._lastRealObservations)
-            ? (this as any)._lastRealObservations.length : 0;
+          const _lastRealFromGraph = _grsRead?.last_real_observations;
+          const _realObsCount = _lastRealFromGraph
+            ? _lastRealFromGraph.length
+            : (Array.isArray((this as any)._lastRealObservations)
+              ? (this as any)._lastRealObservations.length : 0);
           const _agronomicSignal =
             requiresAgronomicReasoningIntent(intentCode) ||
             _realObsCount > 0 ||
@@ -9382,9 +9431,13 @@ export class AIAgentOrchestrator {
         const stageName = landContext.growth_stage || 'current stage';
         const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
         const userLanguage = options.language || 'mr';
-        const stageAdvisoryRealObservations = Array.isArray((this as any)._lastRealObservations)
-          ? [...(this as any)._lastRealObservations]
-          : [];
+        const _grsForStageAdvisory = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+        const _stageRealFromGraph = _grsForStageAdvisory?.last_real_observations;
+        const stageAdvisoryRealObservations = _stageRealFromGraph && _stageRealFromGraph.length > 0
+          ? [..._stageRealFromGraph]
+          : (Array.isArray((this as any)._lastRealObservations)
+              ? [...(this as any)._lastRealObservations]
+              : []);
         const stageFallback = this.generateStageAwareFallback(
           cropName,
           stageName,
