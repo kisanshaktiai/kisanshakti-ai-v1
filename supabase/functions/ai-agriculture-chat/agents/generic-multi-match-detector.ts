@@ -1,3 +1,10 @@
+// CHANGE LOG
+// 2026-07-09 21:15 UTC — getDefaultClarificationOptionsFallback() now
+//   returns []. The hardcoded English list ("Insects Visible / Leaf
+//   Yellowing / Leaf Spots / Send Photo") was a second source of the
+//   universal-generic-options bug. Empty[] forces upstream callers to
+//   fall through to the hypothesis-graph clarification contract or the
+//   neutral photo-only prompt.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * GENERIC MULTI-MATCH DETECTOR - World-Class Clarification System
