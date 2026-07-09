@@ -7009,7 +7009,18 @@ export class AIAgentOrchestrator {
               scope: ClarificationScope.REFINE_OBSERVATION,
               validation_passed: true,
             }
-          : await generateClarificationResponse(clarificationInput);
+          : {
+              response_text: this.generateDefaultClarification(
+                options.language || 'mr',
+                farmerMessage,
+                landContext?.current_crop,
+              ),
+              options: [],
+              photo_requested: true,
+              clarification_prompt: 'GRAPH_EMPTY_NEEDS_MORE_EVIDENCE',
+              scope: ClarificationScope.REFINE_OBSERVATION,
+              validation_passed: true,
+            };
         
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
