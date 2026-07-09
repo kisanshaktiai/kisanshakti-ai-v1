@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 14:35 UTC — Phase C.1 (Graph SSOT authority). The four legacy
+ *   `(this as any)._x` projection fields (_graphHypothesisIds,
+ *   _graphHypothesisRuleIds, _graphObsToHypEdges, _lastRealObservations) are
+ *   now owned by GraphRuntimeState. Every write mirrors through the setter;
+ *   every read prefers the graph accessor and falls back to the legacy field
+ *   for one release. Orchestrator exposes `__graphRuntimeState` on `this` so
+ *   outer wrappers (finally-block audit, response stamping) can reach the
+ *   authority. Phase C.2 will delete the legacy fields once traces confirm no
+ *   drift.
  * 2026-07-09 14:03 UTC — Add response-level real_observations bridge to
  *   STAGE_ADVISORY_FALLBACK so index/contract fallback count survives even
  *   if orchestrator side-channel state is unavailable.
