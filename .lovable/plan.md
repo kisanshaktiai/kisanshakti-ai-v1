@@ -1,136 +1,83 @@
+## Executive Diagnosis
 
-# Forensic finding — why the wrong observations show
+Two production 500s share ONE root cause: the **observation-selector contract enforcer** (`runtime/observation-selector-contract.ts`) has three hard-throw exits that fire whenever the hypothesis-graph curator gap collides with a real turn. When the graph legitimately has no downstream edge for a `(crop, stage, DAS, observation)` cell, the enforcer should degrade — not 500. It already degrades for **Case B** when `realObservationCount > 0`, but two ancillary defects still route real turns into the throw:
 
-The land‑specific chat has a hard SSOT for each turn: `land_id → crop_code, growth_stage, DAS, biological_state`. The clarification UI must only show symptoms that belong to that (crop, stage, DAS) cell.
+1. **Case B degrade is bypassed** in trace `mrddu422_bpwjh6` because `realObservationCount` reaches the enforcer as `0` even though the log records `confirmed_observations=4`. The value is read from `orch._lastRealObservations`, which is written on only ONE orchestrator path (`orchestrator.ts:4996`). The seed-graph clarification path that produced this turn never sets it, so the enforcer defaults to 0 → throws `empty_options type=CLARIFICATION_QUESTION`.
 
-Two independent paths in the pipeline collapse those 4 dimensions down to `intent_code` only, and re‑emit ALL crops' observations as candidates for the current turn. That's what puts wrong symptoms on screen.
+2. **Case C has no degrade path at all** — trace `mrdebxev_a7q3mn` (stage-fallback with 0 rules) hits `DECISION_PROVIDED` with no primary/secondary/comm-text, `loadObservationSelectorOptions` returns 0, and the enforcer throws `empty_options type=DECISION_PROVIDED reason=no_recommendations`. This is the same curator-gap class as Case B and must degrade the same way.
 
-## Evidence (grep + DB + latest edge log `trace_mrdcv2my_90bz8x`)
+3. **The second contract pass** in `index.ts` (post unified-gate, line 1935) does not forward `realObservationCount`, so even after fix (1) it would still throw on the re-run.
 
-DB shape of `public.intent_observation_mapping` (SSOT):
+None of this is agronomy, DB schema, LLM, or graph-execution logic. It is a boundary-enforcer resilience defect.
+
+## Broken Graph Trace
+
+**Trace 1 (`mrddu422_bpwjh6`)** — Rice / transplanting / DAS=31, farmer confirmed leaf curl:
 ```
-intent_code, crop_code, growth_stage, das_min, das_max,
-observation_code, assertion_strength, confidence_rank, is_active
+Expected: RequestScope → LandAuth → Semantic → Obs→Hyp (0 matches) →
+          GRAPH_CONTRACT_ERROR logged → DIAGNOSTIC_ESCALATION returned to UI
+Actual:   … → GRAPH_CONTRACT_ERROR logged → CLARIFICATION_QUESTION w/ 0 opts →
+          enforcer Case B sees realObservationCount=0 (not propagated) →
+          throws OBSERVATION_CONTRACT_VIOLATION → 500
 ```
-Sample rows for `EMERGENCE_FAILURE` include: `brinjal_obs_flower_drop`, `chilli_obs_first_picking`, `cotton.boll_opening_visible`, `onion_obs_split_bulb`, `sugarcane.plant_emergence_low`, `rice.obs_rice_no_emergence` … i.e. **6+ crops share the same intent bucket**.
 
-Runtime today:
-
-1. `utils/observation-mapping-cache.ts::loadObservationMapping()` selects only `intent_code, observation_code, assertion_strength, confidence_rank` — it **drops** `crop_code`, `growth_stage`, `das_min`, `das_max`. It then groups by `intent_code` alone. `getObservationsForIntent(intent)` returns the union across all crops/stages/DAS.
-2. `decision/observation-code-mapper.ts::mapToObservationCodes()` (line ~294) calls `getObservationsForIntent(intentCode)` and pushes every returned code into the turn's observation set as INFERRED evidence. For a RICE land + intent `EMERGENCE_FAILURE` at DAS=31 stage=transplanting, this injects brinjal / chilli / cotton / onion / sugarcane observation codes.
-3. `agents/orchestrator.ts` line 8033 (`OBS_TO_HYP_GAP_ROUTER`) uses the same unscoped cache and stores `candidate_options=12` on `__observationCandidateCodes`. Latest log confirms:
-   `[OBS_TO_HYP_GAP_ROUTER] intent=EMERGENCE_FAILURE candidate_options=12 rule_fallback=suppressed`
-   Those 12 include non‑rice codes.
-4. Downstream, the injected cross‑crop observations pollute:
-   - the hypothesis anchor scan (`queryAnchorHypotheses`) → extra hypotheses that only die later via IMPOSSIBLE_CROP,
-   - the observation ledger and `ConversationState.inferred` (memory‑relevant to the OBSERVATION_STATE_CONTRACT),
-   - and any UI surface that hydrates from the "candidate observations" bag.
-
-The correct crop/stage/DAS scoping already exists — but only in `decision/iom-gate.ts::loadIOMAllowed` (used by `hypothesis-clarification-builder`). The two hot paths above bypass it.
-
-# Fix — one contract, one scope‑aware cache, no agronomy in code
-
-## 1. Make the cache scope‑aware (single change, DB‑driven)
-
-`supabase/functions/ai-agriculture-chat/utils/observation-mapping-cache.ts`
-
-- Extend the paged SELECT to include `crop_code, growth_stage, das_min, das_max`.
-- Store rows per intent as a list, not a pre‑unioned set:
-  ```
-  Map<intent_code, IOMRow[]>
-  ```
-- Replace `getObservationsForIntent(intentCode)` with:
-  ```
-  getObservationsForIntent(intentCode, {
-    crop_code:    string | null,
-    growth_stage: string | null,
-    das:          number | null,
-  }): IntentMappingEntry
-  ```
-  The filter runs entirely on cached rows (no DB round‑trip):
-  - `crop_code ∈ { cropCode.toLowerCase(), 'all', 'universal' }`
-  - `growth_stage ∈ { normalizeStageForDB(stage), 'all' }` (delegate cross‑stage equivalence to `runtime/stage-family-shim.ts` + `crop_stage_graph` — no new synonym map)
-  - `das == null OR (das_min ≤ das ≤ das_max)`
-  - Order: `assertion_strength` (LITERAL > STRONG_HYPOTHESIS > DIFFERENTIAL) then `confidence_rank` asc; dedupe by `observation_code`, keeping the best row.
-- `modal_affected_part` recomputed from the filtered subset (same modal logic).
-- Log line stays greppable: `[OBS_MAPPING_CACHE] loaded iom_rows=… intents=…` plus a per‑lookup `[OBS_MAPPING_SCOPE] intent=… crop=… stage=… das=… returned=…`.
-
-Fail‑closed: if the filtered result is empty the function returns `{ observation_codes: [], modal_affected_part: null, source_rows: 0 }`. **No fallback to unscoped union, ever.**
-
-## 2. Pass the SSOT context at both call sites
-
-`supabase/functions/ai-agriculture-chat/decision/observation-code-mapper.ts`
-
-- Extend `mapToObservationCodes(semantic, scope?)` with an optional scope `{ crop_code, growth_stage, das }`. Callers already have `canonicalContext` / `biological_state`; wire it through. When scope is absent, log `[OBS_MAPPING_CACHE_MISS] reason=no_scope` and skip intent expansion (do NOT emit unscoped codes).
-
-`supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (line ~8033, `OBS_TO_HYP_GAP_ROUTER`)
-
-- Read scope from the already frozen locked biological state:
-  ```
-  { crop_code: landContext.current_crop,
-    growth_stage: bioStage,
-    das: resolvedDAS }
-  ```
-- Call `getObservationsForIntent(intentCode, scope)`.
-- Either consume `__observationCandidateCodes` (feed into the clarification response as observation options) or delete the write. Today it is written and never read; that dead‑write is what surfaces cross‑crop codes in the audit log even when the UI ignores them. Deleting keeps the surgical footprint minimal.
-
-Every other caller of the cache (search shows only these two) is now automatically scope‑correct.
-
-## 3. Keep the outer clarification contract unchanged
-
-`buildHypothesisClarificationOptions` → `loadIOMAllowed` already does the same scoping via a live SQL query. After the fix, both the cache‑backed and DB‑backed paths return the same crop/stage/DAS‑correct set. This restores the invariant that the UI symptom picker for a rice/transplanting/DAS=31 land can only offer rice observations valid for that cell.
-
-## 4. Regression tests (Deno test runner)
-
-`supabase/functions/ai-agriculture-chat/tests/observation-mapping-cache-scope_test.ts` (new)
-
-- Load fake IOM rows across `rice, cotton, brinjal, onion, sugarcane, all` for one intent.
-- Assert `getObservationsForIntent('EMERGENCE_FAILURE', { crop_code:'rice', growth_stage:'nursery', das:15 })` returns only `crop_code ∈ {'rice','all','universal'}` rows AND `das_min ≤ 15 ≤ das_max`.
-- Assert cross‑crop pollution never appears.
-- Parametrise across 5 crops.
-
-`supabase/functions/ai-agriculture-chat/tests/hypothesis-clarification-scope_test.ts` (new)
-
-- Mock supabase to return the same rows for `intent_observation_mapping`, `observation_master`, `observation_translations`, `hypothesis_conditions`, `hypothesis_master`.
-- Run `buildHypothesisClarificationOptions` for `(rice, transplanting, 31)` and assert output `observation_code`s all belong to rice (or `all`), never brinjal/cotton/onion/sugarcane.
-
-## Technical details
-
-Files touched (5):
-- `supabase/functions/ai-agriculture-chat/utils/observation-mapping-cache.ts` — scope‑aware refactor
-- `supabase/functions/ai-agriculture-chat/decision/observation-code-mapper.ts` — accept + pass scope
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — pass scope to line 8033, remove or wire `__observationCandidateCodes`
-- `supabase/functions/ai-agriculture-chat/tests/observation-mapping-cache-scope_test.ts` — new
-- `supabase/functions/ai-agriculture-chat/tests/hypothesis-clarification-scope_test.ts` — new
-
-Do NOT touch:
-- DB rows (no migrations)
-- `iom-gate.ts` (already correct)
-- `hypothesis-clarification-builder.ts` (already correct)
-- Any agronomy rule, hypothesis, or observation code
-- LLM prompts / narration
-
-Guarantees:
-- No hardcoded crop / stage / DAS lists in TypeScript; every filter dimension comes from `intent_observation_mapping` columns.
-- Fail‑closed: unscoped or ambiguous calls return `[]` instead of a cross‑crop union.
-- No LLM path, no rule engine change.
-- Every crop, pest, disease, nutrient, and stress category benefits automatically because the filter is dimensional, not per‑domain.
-
-## Expected effect on the log
-
-For the same query on a rice/transplanting/DAS=31 land you should see:
-
+**Trace 2 (`mrdebxev_a7q3mn`)** — Rice / transplanting / DAS=31, selected `OBS_RICE_NO_EMERGENCE`:
 ```
-[OBS_MAPPING_SCOPE] intent=EMERGENCE_FAILURE crop=rice stage=transplanting das=31 returned=0
-[OBS_TO_HYP_GAP_ROUTER] intent=EMERGENCE_FAILURE candidate_options=0 rule_fallback=suppressed
-[OBSERVATION_REQUIRED_PROMOTE_SKIPPED] reason=diagnostic_escalation_no_iom_or_rules
+Expected: … → OPTION_SELECTED → 0 rules matched → stage fallback →
+          DIAGNOSTIC_ESCALATION with curator-triage log
+Actual:   … → stage fallback → DECISION_PROVIDED (empty) →
+          enforcer Case C loads 0 options → throws unconditionally → 500
 ```
-…which correctly asks the farmer to add a photo/observation instead of showing brinjal/onion/cotton symptoms.
 
-For a query on a rice/nursery/DAS=10 land you'll see:
+## Critical Issues
 
+| P | File | Function | Bug | Evidence | Impact | Root cause |
+|---|------|----------|-----|----------|--------|------------|
+| P0 | `runtime/observation-selector-contract.ts` | `ensureObservationSelectorContract` Case C (line 187-190) | Throws when `DECISION_PROVIDED` is empty and no options loadable, even though real observations were confirmed upstream | Trace 2 error at line 110 of file | Every stage-fallback turn with no rule match returns 500 | Missing degrade path symmetrical to Case B |
+| P0 | `index.ts` around line 1935 | Post-unified-gate contract call | Does not pass `realObservationCount` to enforcer | `grep _realObservationCountForContract` shows only first call site | Case B degrade cannot fire on the post-gate re-run | Missing field in ctx object |
+| P1 | `agents/orchestrator.ts` seed-graph clarification path | Whichever branch emits `CLARIFICATION_QUESTION` after `GRAPH_CONTRACT_ERROR` | Does not set `this._lastRealObservations` even though confirmed observations exist | Log shows `confirmed_observations=4` but enforcer receives 0 | Case B degrade cannot fire on first contract pass | Only one write site (line 4996) covers this contract |
+
+## Surgical Fix Plan
+
+**Fix 1 — extend Case C degrade (`runtime/observation-selector-contract.ts`, lines 185-198)**
+- WHAT: When `hasPrimary && hasSecondary && hasCommText` are all false AND `loadObservationSelectorOptions` returns 0, if `ctx.realObservationCount > 0` degrade to `DIAGNOSTIC_ESCALATION` with `[OBSERVATION_CONTRACT_DEGRADE] from=DECISION_PROVIDED reason=stage_fallback_no_rules_after_confirmed_observations` and set `metadata.graph_reason = ctx.graphReason || 'NO_RULES_MATCHED_AFTER_OBSERVATION'`. Only throw when `realObservationCount === 0` (true contract leak).
+- WHERE: same file only, mirroring the Case B block already committed at lines 143-166.
+- WHY: The stage-fallback path is a legitimate curator gap, not a runtime bug. Throwing violates the "graph exhaustion degrades, never 500s" invariant.
+- HOW to verify: run trace 2 fixture → assert response type flips to `DIAGNOSTIC_ESCALATION`, response has 200 status, log line `[OBSERVATION_CONTRACT_DEGRADE] from=DECISION_PROVIDED` present.
+
+**Fix 2 — forward `realObservationCount` on the post-gate pass (`index.ts` ~1935-1961)**
+- WHAT: Add `realObservationCount:` derived exactly like the first pass (`_orchAnyForCtx2._lastRealObservations?.length ?? orchestratorResponse.metadata.real_observations?.length ?? 0`) to the ctx object.
+- WHERE: index.ts only, inside the existing `try` around line 1935.
+- WHY: Without it, Case B/C degrade paths can't fire when the post-gate re-run hits the same graph gap.
+- HOW to verify: unit test on the post-gate branch with a stubbed orchestrator having `_lastRealObservations.length === 3` and an empty response → returns 200 with `DIAGNOSTIC_ESCALATION`.
+
+**Fix 3 — populate `_lastRealObservations` on the seed-graph clarification path (`agents/orchestrator.ts`)**
+- WHAT: In the code path that emits `CLARIFICATION_QUESTION` after `GRAPH_CONTRACT_ERROR` (the branch producing trace 1's log line `HYP_CLARIFICATION graph_gap=NO_DISCOVERY_SEEDS`), assign `(this as any)._lastRealObservations = confirmedObservationCodes` before returning, using the SAME confirmed-observation array already computed for the log line. No new state is introduced; only the existing SSOT-derived array is mirrored to the field the contract enforcer already reads.
+- WHERE: orchestrator only, additive assignment (no logic change).
+- WHY: The contract enforcer's Case B degrade already exists; the only reason it doesn't fire is that this write site is missing on this branch.
+- HOW to verify: replay trace 1 fixture → enforcer log shows `real_observations=4` and returns `DIAGNOSTIC_ESCALATION` instead of throwing.
+
+**Explicitly not touched:** DB schema, rule matching, agronomy logic, LLM prompts, hypothesis graph, `hypothesis-clarification-builder`, gates, orchestrator routing, multi-tenant scope, IOM cache. This is a boundary-enforcer + one missing state-mirror only.
+
+## Regression Tests
+
+Add to `tests/observation-selector-contract_test.ts`:
+
+1. `Case C degrades on stage-fallback with confirmed observations` — DECISION_PROVIDED empty + `realObservationCount=1` + 0 loadable options → returns `DIAGNOSTIC_ESCALATION`, no throw.
+2. `Case C still throws when no confirmed observations` — same shape with `realObservationCount=0` → throws `OBSERVATION_CONTRACT_VIOLATION`.
+3. `Post-gate pass propagates realObservationCount` — grep assertion in `index.ts` similar to existing `graph-integrity_test.ts:466`, requiring `realObservationCount` to appear in BOTH ensureObservationSelectorContract call sites.
+4. `Seed-graph clarification writes _lastRealObservations` — grep test asserting `_lastRealObservations =` appears on the seed-graph clarification branch.
+5. Cross-crop replay: rice/cotton/sugarcane fixtures each with confirmed observations but no matching hypotheses → all three degrade, none throw.
+
+## Final Architecture (unchanged; enforcer boundary reinforced)
+
+```text
+Farmer → RequestScope → LandAuthority(SSOT) → Semantic → Obs→Hyp Graph →
+Hypothesis Validation → Hypothesis→Rules → Symbolic Engine → Safety Gates →
+Decision Object ──► ContractEnforcer (degrades on curator gap, never 500) ──►
+LLM Narrator → Farmer
 ```
-[OBS_MAPPING_SCOPE] intent=EMERGENCE_FAILURE crop=rice stage=nursery das=10 returned=6
-[HYP_CLARIFICATION] options=6 keys=[obs_rice_no_emergence,obs_rice_patchy_emergence,germination_failure,delayed_germination,seed_not_germinated,poor_germination]
-```
-— only rice, only germination‑stage, DAS‑valid symptoms. That is what the UI will render.
+
+## Final Validation
+
+After these three surgical edits the same enforcer correctly handles rice / cotton / sugarcane / tomato / wheat / unknown-crop turns with confirmed observations but no curator-authored hypothesis edge — because the degrade path is crop-agnostic and driven entirely by `realObservationCount` from SSOT-derived arrays. No new agronomy, no new hardcoding, no schema change.
