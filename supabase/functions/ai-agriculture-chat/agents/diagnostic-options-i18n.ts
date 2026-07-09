@@ -7,11 +7,14 @@
  *
  * HARD RULE:
  *   No hardcoded diagnostic option sets, no crop / stage / observation names
- *   in TypeScript. All candidates originate from:
+ *   in TypeScript. Farmer UI candidates originate from:
  *
- *     intent_observation_mapping   ── candidate set for (intent, crop, stage, DAS)
- *     observation_master           ── farmer_observable + active gate
- *     observation_translations     ── language-specific label
+ *     hypothesis_master + hypothesis_conditions ── graph-owned evidence
+ *     observation_master                         ── farmer_observable gate
+ *     observation_translations                   ── language-specific label
+ *
+ * `intent_observation_mapping` is allowed only as a discovery seed inside the
+ * graph builder; it must never directly emit farmer UI options.
  *
  * Already-confirmed observations are filtered out so we never re-ask what
  * the farmer has already stated.

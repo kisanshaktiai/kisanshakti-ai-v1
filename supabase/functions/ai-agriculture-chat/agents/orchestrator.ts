@@ -5397,13 +5397,9 @@ export class AIAgentOrchestrator {
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 
           // ═══════════════════════════════════════════════════════════════════
-          // Phase Y — Fix B (PRIMARY): enforce intent_observation_mapping as a
-          // hard allowlist on the candidate set. IOM is the curated, agronomically
-          // valid set for (intent, crop, stage, DAS). For GENERAL_CROP_INFO +
-          // rice + seedling + DAS≤21 it correctly returns
-          // {obs_rice_no_emergence, obs_rice_patchy_emergence,
-          //  obs_rice_seedling_damping_off} and ZERO Tungro rows — so this gate
-          // is what physically removes "Tungro on an ungerminated crop".
+          // IOM AUDIT ONLY: intent_observation_mapping is an observation
+          // discovery layer, not hypothesis authority. The graph result stays
+          // owned by hypothesis_conditions + hypothesis_master.
           // ═══════════════════════════════════════════════════════════════════
           try {
             // T1 — GraphTruth integrity check before IOM gate
