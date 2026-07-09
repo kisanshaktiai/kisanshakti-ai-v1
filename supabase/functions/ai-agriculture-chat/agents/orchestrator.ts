@@ -3647,7 +3647,29 @@ export class AIAgentOrchestrator {
       const diagnosticIntentOwnsClarification =
         requiresAgronomicReasoningIntent(intentCode) ||
         symptomBasedIntents.includes(currentIntentForGate);
-      if (
+      // F3 — HARD PREEMPT: diagnostic intent + zero confirmed observations
+      // must NEVER take the DIRECT_MODE bypass, regardless of route label
+      // (GENERAL_INFO / CROP_HEALTH / …) or intent metadata. This is the only
+      // way to guarantee observation cards render for the first-diagnostic-turn
+      // pattern (farmer says "पीक अजून उगवले नाही" → 1 confirmed obs, no hyp).
+      const __preemptConvState = (this as any).__conversationState;
+      const __preemptConfirmed = __preemptConvState?.informative_count ?? 0;
+      const __preemptIsDiagnostic =
+        requiresAgronomicReasoningIntent(intentCode) ||
+        __preemptConvState?.mode === 'DIAGNOSIS' ||
+        __preemptConvState?.mode === 'MIXED';
+      const __preemptHardBlock = __preemptIsDiagnostic && __preemptConfirmed === 0;
+
+      if (__preemptHardBlock) {
+        console.log(
+          `   🛑 [DIRECT_MODE_ZERO_CONFIRMED_PREEMPT] intent=${intentCode} ` +
+          `route=${queryRoute.route} confirmed=0 — bypass refused; observation authority required`,
+        );
+        agentsUsed.push('DIRECT_MODE_ZERO_CONFIRMED_PREEMPT');
+        // Ensure downstream sees clarification intent.
+        bypassClarification = false;
+        directModeBypass = false;
+      } else if (
         diagnosticIntentOwnsClarification &&
         (intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass)
       ) {
@@ -6464,26 +6486,58 @@ export class AIAgentOrchestrator {
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
       const lockedStage = getLockedStage();
       
-      // OBSERVATION_STATE_CONTRACT — pull confirmed-only count from the frozen
-      // ConversationState so the trigger cannot be inflated by INFERRED symbols
-      // (alias expansion / IOM LITERAL peers / LLM inferences). Diagnostic
-      // intent + confirmed=0 forces clarification, regardless of coverage.
-      const __confirmedCountForTrigger = (this as any).__conversationState?.informative_count ?? 0;
+      // ═══════════════════════════════════════════════════════════════════════
+      // OBSERVATION_STATE_CONTRACT (F1) — feed the trigger with CONFIRMED-ONLY
+      // counts from the frozen ConversationState. The prior wiring passed
+      // `inductionResult.symptoms.length` and `inductionResult.symbol_coverage`
+      // which include INFERRED IOM LITERAL peers + alias expansions + LLM
+      // guesses, so `SUFFICIENT_SYMPTOM_COVERAGE` fired with 1 confirmed
+      // symptom and 13 inferred peers.
+      //
+      // symptom_count / symptom_coverage are ALWAYS derived from
+      // `informative_count`. Diagnostic intent is derived from the DB-driven
+      // authority set — no route labels, no crop-specific gates.
+      // ═══════════════════════════════════════════════════════════════════════
+      const __convState = (this as any).__conversationState;
+      const __confirmedCountForTrigger = __convState?.informative_count ?? 0;
       const __isDiagnosticForTrigger =
-        (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
-        (this as any).__conversationState?.mode === 'MIXED';
+        requiresAgronomicReasoningIntent(intentCode) ||
+        __convState?.mode === 'DIAGNOSIS' ||
+        __convState?.mode === 'MIXED';
+
+      // Confirmed-only coverage: 3 informative observations is treated as full
+      // coverage (crop-agnostic — matches the hypothesis engine's minimum
+      // 3-observation quorum used across all domains). Cap at 1.0.
+      const CONFIRMED_COVERAGE_QUORUM = 3;
+      const __confirmedCoverageForTrigger = Math.min(
+        1,
+        __confirmedCountForTrigger / CONFIRMED_COVERAGE_QUORUM,
+      );
 
       const clarificationTriggerInput: ClarificationTriggerInput = {
         crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
         stage_known: !!(lockedStage?.growth_stage || landContext?.growth_stage),
-        symptom_count: inductionResult.symptoms.length,
-        symptom_coverage: inductionResult.symbol_coverage,
-        is_ambiguous: inductionResult.aggregated_confidence < 0.5 && inductionResult.symptoms.length > 0,
+        // F1: confirmed-only — inferred peers are ranking priors, not evidence.
+        symptom_count: __confirmedCountForTrigger,
+        symptom_coverage: __confirmedCoverageForTrigger,
+        is_ambiguous: inductionResult.aggregated_confidence < 0.5 && __confirmedCountForTrigger > 0,
         has_pending_clarification: pendingOptionsCount > 0,
         clarification_completed: clarificationCompleted,
         confirmed_observation_count: __confirmedCountForTrigger,
         diagnostic_intent: __isDiagnosticForTrigger,
       };
+
+      // F2 — Authority-aware evidence log. Prior [EVIDENCE_CLASSIFICATION]
+      // conflated INFERRED with "real". Emit the split explicitly so audit
+      // greps show both classes.
+      console.log(
+        `[EVIDENCE_CLASSIFICATION_AUTHORITY] trace=${traceId} ` +
+        `informative_confirmed=${__confirmedCountForTrigger} ` +
+        `inferred=${__convState?.inferred?.length ?? 0} ` +
+        `confirmed_total=${__convState?.confirmed?.length ?? 0} ` +
+        `coverage=${__confirmedCoverageForTrigger.toFixed(2)} ` +
+        `diagnostic=${__isDiagnosticForTrigger}`,
+      );
       
       const clarificationTrigger = shouldTriggerClarificationFirst(clarificationTriggerInput);
       
@@ -7883,13 +7937,41 @@ export class AIAgentOrchestrator {
             assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
           }
           if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
-            console.warn(
+            console.log(
               `[OBS_TO_HYP_GAP] trace_id=${traceId} intent=${intentCode} ` +
               `confirmed_obs=${_cs?.confirmed?.length ?? 0} real_obs=${_realObsCount} ` +
               `hypotheses=0 reason=no_hypothesis_edge_for_confirmed_observations ` +
-              `action=route_to_clarification_question`
+              `action=route_to_observation_cards`
             );
+            // F4 — HARD ROUTER: force observation-card response, refuse rule fallback.
+            // Load candidate observations from IOM cache (crop/domain-agnostic).
+            try {
+              const { getObservationsForIntent } = await import('../utils/observation-mapping-cache.ts');
+              const iomEntry = getObservationsForIntent(intentCode);
+              const candidateCodes = iomEntry?.observation_codes ?? [];
+              (this as any).__observationRequired = true;
+              (this as any).__observationCandidateCodes = candidateCodes;
+              (this as any).__observationRouterReason = 'OBS_TO_HYP_GAP';
+              // Neutralise the rule fallback so INVARIANT_FALLBACK cannot narrate.
+              if (layeredRuleResult) {
+                (layeredRuleResult as any).__suppressed_by = 'OBS_TO_HYP_GAP_ROUTER';
+                (layeredRuleResult as any).primary_decision = null;
+                (layeredRuleResult as any).matched_responses = [];
+              }
+              agentsUsed.push('OBS_TO_HYP_GAP_ROUTER');
+              console.log(
+                `[OBS_TO_HYP_GAP_ROUTER] trace_id=${traceId} intent=${intentCode} ` +
+                `candidate_options=${candidateCodes.length} rule_fallback=suppressed`
+              );
+            } catch (routerErr) {
+              console.warn(
+                `[OBS_TO_HYP_GAP_ROUTER] failed to load IOM candidates: ` +
+                `${routerErr instanceof Error ? routerErr.message : String(routerErr)}`
+              );
+            }
           }
+
+
 
           emitBrainTrace(_cs, {
             rule_candidates:  rulesToEvaluate?.length ?? 0,

@@ -1,135 +1,108 @@
 
-# Observation-State Contract Fix — Single Phase
+# Forensic fix: farmer never sees observation cards
 
-## Root cause (from edge log + code audit)
+## Evidence (from uploaded edge log, trace `trace_mrdaicsf_hd7ofn`)
 
-The runtime conflates three distinct epistemic classes into one "symptom_count":
-- **candidate** (UI options loaded from `intent_observation_mapping`)
-- **inferred** (alias expansion, LLM extraction, IOM LITERAL peers)
-- **confirmed** (farmer tapped an option / explicit statement / photo)
+```
+[ClarificationTrigger] Evaluating: ...symptoms=10, coverage=100%, ambiguous=false
+   Details: {"should_clarify":false,"reason":"SUFFICIENT_SYMPTOM_COVERAGE","symptom_count":10,"coverage":1}
+[EVIDENCE_CLASSIFICATION] raw_count=13 real_symptom_count=13 ignored_metadata_count=0
+BRAIN_TRACE ... confirmed=2(info=1) inferred=13 ... clarify=false(sufficient_evidence)
+              observation_required=false observation_option_count=0
+[OBS_TO_HYP_GAP] ... hypotheses=0 ... action=route_to_clarification_question   ← warn only, ignored
+[DIRECT_MODE] Intent EMERGENCE_FAILURE / route GENERAL_INFO skips symptom clarification
+```
 
-`ClarificationTrigger` sees `real_symptom_count=13` (mostly INFERRED) → declares `SUFFICIENT_SYMPTOM_COVERAGE` → overwrites `[UnderstandingChecker].ClarificationRequired=true` and `[OBS_TO_HYP_GAP].action=route_to_clarification_question` → graph runs with `confirmed=2, hyp=0` → rules fire without evidence. Terminal-damage shortcut compounds this by skipping observation graph entirely.
+The farmer typed only "पीक अजून उगवले नाही" → 1 confirmed symptom (`POOR_GERMINATION`). The 13 "real" symptoms are INFERRED IOM LITERAL peers and alias expansions. They are being fed into the ClarificationTrigger, coverage engine, and hypothesis graph as farmer evidence — that is the contract violation.
 
-Fix is crop-agnostic, DB-driven, no new agronomic logic.
+## Root causes (five, all runtime; no DB / no crop hardcoding)
 
----
+1. **CT-INPUT-LEAK** — Orchestrator call site to `shouldTriggerClarificationFirst` builds `symptom_count` from `inductionResult.symptoms.length` and passes `symptom_coverage` from the coverage engine, but never populates `confirmed_observation_count` / `diagnostic_intent`. The `OBSERVATION_STATE_CONTRACT` gate at `clarification-strategy.ts:290-300` therefore never fires. (`orchestrator.ts` ~6471–6500 — the `__confirmedCountForTrigger` local is computed but not passed into the input object.)
+2. **EVIDENCE-CLASSIFICATION-LEAK** — `[EVIDENCE_CLASSIFICATION]` classifies every non-metadata code as `real_symptom_count`, ignoring `ObservationAuthority`. INFERRED codes must not be counted as "real" for coverage or trigger inputs.
+3. **DIRECT-MODE-ORDER-LEAK** — `DIRECT_MODE_DIAGNOSTIC_VETO` (orchestrator ~3655) is guarded so it doesn't fire for `route=GENERAL_INFO + diagnosticIntent` when the current condition also permits `DIRECT_MODE_BYPASS` (~3662). Log shows the BYPASS ran and the veto did not. Needs an unconditional pre-check: if `diagnosticIntent && confirmed==0 && candidate_pool>0`, refuse both bypass paths.
+4. **OBS_TO_HYP_GAP-SOFT-EXIT** — The second `[OBS_TO_HYP_GAP]` emission in the BRAIN_TRACE finalizer (~7887) is `console.warn` only. When `graph_ran && diagnostic && hyp=0 && confirmed>0`, it must set `observationRequired=true`, load candidate options from `intent_observation_mapping` + `observation_master`, and short-circuit to the observation-card response.
+5. **NAVIGATOR-CANDIDATE-MISS** — When the runtime enters `WAITING_FOR_OBSERVATION` (either from `graph-runtime OBS_GATE` or the invariant), the response builder does not attach `candidate_observations`, so the UI sees `observation_option_count=0`. `navigator-response.ts` must be given the candidate codes from `ObservationMappingCache.getObservationsForIntent(intent)`, hydrated through `observation_master` for display_text.
 
-## Patches (single phase, ordered)
+## Fix plan (surgical, generic across all crops/domains)
 
-### Patch 1 — Three-state Observation Contract
-**File:** `supabase/functions/ai-agriculture-chat/runtime/observation-state.ts` (new)
+### F1 — Pass full state into ClarificationTrigger  *(orchestrator.ts, ~6470–6510)*
+Replace the input builder with the frozen `ConversationState`:
+```
+symptom_count            = conversationState.confirmed.length            // was inductionResult.symptoms.length
+symptom_coverage         = conversationState.confirmed_coverage           // NEW field; inferred excluded
+confirmed_observation_count = conversationState.confirmed.length
+diagnostic_intent        = requiresAgronomicReasoningIntent(intentCode)
+```
+Delete the `__confirmedCountForTrigger` shim once the object is wired.
 
-```ts
-interface ObservationState {
-  candidate_observations: string[];   // UI only
-  inferred_observations:  string[];   // ranking / hypothesis prior only
-  confirmed_observations: string[];   // ONLY input allowed into OBS_TO_HYP
+### F2 — Authority-aware evidence classifier  *(runtime/observation-state.ts + orchestrator EVIDENCE_CLASSIFICATION log site)*
+Extend `ObservationState` with `confirmed_coverage()` and change the `[EVIDENCE_CLASSIFICATION]` log to emit both counts:
+```
+real_symptom_count = state.confirmed.length     // authority ∈ {CONFIRMED, EXTRACTED}
+inferred_count     = state.inferred.length      // no longer counted as evidence
+```
+No coverage numerator may include INFERRED / SYNTHETIC. This is the single source of `symptom_count` / `symptom_coverage`.
+
+### F3 — Hard preempt for diagnostic + zero-confirmed  *(orchestrator.ts ~3620–3670)*
+Move the `DIRECT_MODE_DIAGNOSTIC_VETO` block above the `DIRECT_MODE_BYPASS` block and make the condition:
+```
+if (isDiagnosticIntent && confirmed.length === 0 && candidateOptions.length > 0) {
+  bypassClarification = false;
+  directModeBypass    = false;
+  agentsUsed.push('DIRECT_MODE_DIAGNOSTIC_VETO');
 }
 ```
+This is crop-agnostic; `candidateOptions` comes from `ObservationMappingCache.getObservationsForIntent(intentCode).observation_codes`.
 
-Frozen per turn. Built from `AuthoredObservationSet`:
-- `CONFIRMED` authority → `confirmed_observations`
-- `EXTRACTED` authority (pattern match on farmer's own text) → `confirmed_observations`
-- `INFERRED` / `SYNTHETIC` (alias expand, IOM LITERAL peer, cross-crop, LLM guess) → `inferred_observations`
-- Loaded IOM candidates not yet chosen → `candidate_observations`
+### F4 — Promote OBS_TO_HYP_GAP to a hard router  *(orchestrator.ts ~7870–7920)*
+When `graph_ran && diagnosticIntent && hypotheses.length === 0`:
+- set `(this as any).__observationRequired = true`
+- attach `candidate_observations` from IOM cache (see F5) to the response envelope
+- set `layeredRuleResult = null` (do NOT emit `INVARIANT_FALLBACK`)
+- push `agentsUsed: ['OBS_TO_HYP_GAP_ROUTER']`
+- log promoted from `warn` → `info`, keep the same `[OBS_TO_HYP_GAP]` marker.
 
-### Patch 2 — ClarificationTrigger uses confirmed-only
-**File:** `runtime/conversation-state.ts`, `agents/clarification-generator.ts`, and wherever `SUFFICIENT_SYMPTOM_COVERAGE` / `real_symptom_count` is computed for the gate.
+### F5 — Navigator emits candidate observations  *(runtime/navigator-response.ts + graph-runtime.ts)*
+- `runGraphRuntime` already exposes `state: WAITING_FOR_OBSERVATION` + `candidate_observations`. Pipe both into the response envelope (`observation_required: true`, `observation_option_count: candidate_observations.length`).
+- `navigator-response.ts` hydrates each candidate code via `observation_master` (label/description/affected_plant_part) in a single `.in()` chunked query — no per-crop table, no hardcoded label map.
 
-- `informative_count` and `coverage` must count `confirmed_observations` ONLY (drop INFERRED from the coverage numerator).
-- Replace gate with:
-  ```
-  if (diagnosticIntent && confirmed_observations.length === 0) {
-    clarification_required = true;
-    reason = 'no_confirmed_observations';
-    // load & return candidate_observations for UI
-  }
-  ```
-- Remove any path where INFERRED codes flip `should_clarify` to false.
+### F6 — Regression tests  *(tests/observation-state-contract_test.ts)*
+Add T7–T9, parametrized across `[RICE, COTTON, SUGARCANE, TOMATO, ONION]`:
+- T7: 1 confirmed + 13 inferred ⇒ `clarify=true, reason=NO_CONFIRMED_OBSERVATIONS_ENOUGH_FOR_HYP`, `observation_option_count>0`, `route=OBSERVATION_CARDS`.
+- T8: `graph_ran && hyp=0 && confirmed>0` ⇒ `OBS_TO_HYP_GAP_ROUTER` fires and no `INVARIANT_FALLBACK` is emitted.
+- T9: `route=GENERAL_INFO && diagnosticIntent && confirmed=0` ⇒ direct-mode bypass refused.
 
-### Patch 3 — Graph gate before OBS_TO_HYP
-**File:** `agents/orchestrator.ts` (at TURN_EVIDENCE_LOCK, before `evaluateCandidateHypotheses`).
+## Files touched (no schema, no LLM, no crop-specific lists)
 
-```
-if (diagnosticIntent && confirmed_observations.length === 0) {
-  return {
-    state: 'WAITING_FOR_OBSERVATION',
-    source: 'intent_observation_mapping',
-    candidate_observations,
-  };
-}
-```
+Edit:
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`  (F1, F3, F4)
+- `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts`  (accept `symptom_coverage` from confirmed-only)
+- `supabase/functions/ai-agriculture-chat/runtime/observation-state.ts`  (F2 helper)
+- `supabase/functions/ai-agriculture-chat/runtime/navigator-response.ts`  (F5 hydration)
+- `supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts`  (F5 envelope passthrough)
 
-Emits `[OBS_GATE] awaiting_confirmed_observations` and short-circuits into ClarificationEngine.
+New:
+- `supabase/functions/ai-agriculture-chat/tests/observation-state-contract_test.ts`  (F6, extend existing)
 
-### Patch 4 — Remove terminal-damage rule-engine shortcut
-**Files:** `agents/diagnostic-flow-controller.ts`, `runtime/diagnosis-only-mode.ts` (or wherever `TERMINAL_DAMAGE → RULE_ENGINE` bypass lives).
+Update memory: `mem://architecture/observation-classification-db-ssot` — record the confirmed-only coverage rule and the OBS_TO_HYP_GAP router.
 
-Replace bypass with:
-```
-if (terminalDamage) {
-  hypothesisPriorityBoost = true;
-  // still runs OBSERVATION_GRAPH → OBS_TO_HYP → HYP_TO_RULE
-}
-```
-
-Terminal codes only *raise priority* of matching hypotheses; they never skip observation confirmation. Retains sovereignty of the symbolic graph.
-
-Note: this supersedes `.lovable/memories/logic/diagnosis-only-mode-terminal-damage-v1.md`; memory will be updated to reflect the new invariant.
-
-### Patch 5 — Impossible-state invariant
-**File:** `runtime/graph-contracts.ts` (extend existing module).
+## Success invariants (must all hold post-fix)
 
 ```
-export function assertObservationRequiredWhenNoHypothesis(ctx) {
-  if (ctx.diagnosticIntent
-      && ctx.hypotheses.length === 0
-      && ctx.observation_required === false
-      && ctx.graphExecuted) {
-    throw new GraphContractViolation(
-      'IMPOSSIBLE_STATE: diagnostic intent + 0 hypotheses + observation_required=false'
-    );
-  }
-}
+diagnostic_intent = true
+AND confirmed_observations = 0
+⇒ observation_required = true
+AND observation_option_count > 0
+AND no decision_rule fired
+AND no INVARIANT_FALLBACK narration emitted
 ```
 
-Called at orchestrator exit. Dev = throw; prod = log `[GRAPH_CONTRACT_VIOLATION]` + force `observation_required=true` + route to clarification (fail-closed).
+```
+diagnostic_intent = true
+AND graph_executed = true
+AND hypotheses = 0
+⇒ observation cards rendered (OBS_TO_HYP_GAP_ROUTER),
+   never legacy rule fallback.
+```
 
-### Patch 6 — Regression tests
-**File:** `supabase/functions/ai-agriculture-chat/tests/observation-state-contract_test.ts` (new)
-
-Parametrized across Rice / Sugarcane / Cotton / Tomato / Onion:
-- T1: farmer text with 0 confirmed + N inferred → `clarification_required=true`, candidates returned, graph NOT executed.
-- T2: farmer selects 1 candidate → moves to `confirmed_observations`, OBS_TO_HYP runs.
-- T3: terminal damage present, 0 confirmed → still routes to observation graph with priority boost (no rule-engine bypass).
-- T4: `hypotheses=0 && observation_required=false && diagnosticIntent=true` → `GraphContractViolation` in dev.
-- T5: INFERRED-only evidence never satisfies coverage gate.
-
----
-
-## Files touched
-
-- **new**: `runtime/observation-state.ts`, `tests/observation-state-contract_test.ts`
-- **edit**: `runtime/conversation-state.ts`, `runtime/evidence-coverage.ts`, `runtime/graph-contracts.ts`, `agents/orchestrator.ts`, `agents/diagnostic-flow-controller.ts`, `agents/clarification-generator.ts`, `runtime/diagnosis-only-mode.ts` (if present), `runtime/navigator-response.ts`
-- **memory**: update `logic/diagnosis-only-mode-terminal-damage-v1.md` to record the removal of the rule-engine bypass
-
-## Contracts added
-
-1. `OBSERVATION_STATE_CONTRACT` — three disjoint sets; only `confirmed` enters graph.
-2. `CLARIFICATION_TRIGGER_CONTRACT` — coverage computed on confirmed-only.
-3. `OBS_GATE_CONTRACT` — diagnostic intent + 0 confirmed ⇒ `WAITING_FOR_OBSERVATION`.
-4. `TERMINAL_DAMAGE_CONTRACT` — priority boost, never bypass.
-5. `HYPOTHESIS_INVARIANT_CONTRACT` — `hyp=0 ∧ obs_required=false ∧ diagnostic` is impossible.
-
-## Expected before/after trace (rice emergence turn)
-
-**Before:** `confirmed=2 inferred=13 hyp=0 clarify=false observation_required=false` → rule fallback.
-
-**After:** `confirmed=0 inferred=13 candidates=8 clarify=true reason=no_confirmed_observations observation_required=true` → farmer sees selectable options → on tap → `confirmed=1` → OBS_TO_HYP → hypotheses ≥ 1 → HYP_TO_RULE → decision.
-
-## Non-goals
-
-- No DB schema changes.
-- No new LLM prompts or agronomic reasoning in TypeScript.
-- No crop-specific code paths.
-- No changes to `intent_observation_mapping`, `observation_master`, `hypothesis_conditions`, or `decision_rules`.
+No agronomy is added or moved into TS. All candidate options come from `intent_observation_mapping` + `observation_master`. Works for every crop / pest / disease / nutrient / stress domain.
