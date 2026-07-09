@@ -44,7 +44,7 @@ Deno.test('snapshot merges same hypothesis from both engines', () => {
   assertEquals(snap.hypotheses.length, 1);
   assertEquals(snap.hypotheses[0].source, 'BOTH');
   assertEquals(snap.hypotheses[0].confidence, 0.8); // max wins
-  assertEquals(snap.rules.sort(), ['R1', 'R2']);
+  assertEquals([...snap.rules].sort(), ['R1', 'R2']);
 });
 
 Deno.test('empty engines yield NO_HYPOTHESIS state', () => {
