@@ -589,7 +589,12 @@ import {
 // that bypasses `graphExecuted` bookkeeping and the [GRAPH_RUNTIME] trace.
 import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 import {
+import {
   buildGraphRuntimeSnapshot,
+  assertSnapshotNotCorrupt,
+  invertRuleMapping,
+  type GraphRuntimeSnapshot,
+} from '../runtime/graph-snapshot.ts';
   assertSnapshotNotCorrupt,
   type GraphRuntimeSnapshot,
 } from '../runtime/graph-snapshot.ts';
