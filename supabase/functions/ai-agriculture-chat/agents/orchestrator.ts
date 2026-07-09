@@ -5461,17 +5461,27 @@ export class AIAgentOrchestrator {
           // hypotheses just because one engine produced zero candidates.
           try {
             const engineB = (this as any)._graphHypothesisResult ?? null;
+            // Prefer the cached rule→hypothesis map (populated when Engine B
+            // ran earlier in this turn). If absent, invert engineB.rule_edges
+            // now; otherwise fall back to an empty map — Engine A rules then
+            // route to orphan_rule_ids and log RULE_WITHOUT_HYPOTHESIS_EDGE.
+            let ruleToHypothesis: Map<string, string> = (this as any)._ruleToHypothesis ?? new Map<string, string>();
+            if (ruleToHypothesis.size === 0 && engineB?.rule_edges instanceof Map) {
+              ruleToHypothesis = invertRuleMapping(engineB.rule_edges);
+              (this as any)._ruleToHypothesis = ruleToHypothesis;
+            }
             const snap = buildGraphRuntimeSnapshot({
               trace_id: traceId,
               observations: (currentObservations ?? []) as string[],
               engineA: { candidates: hypothesisResult.candidates as any },
               engineB: engineB ? { candidates: engineB.candidates ?? [] } : null,
+              edges: { ruleToHypothesis },
             });
             (this as any)._graphSnapshot = snap;
             console.log(
               `[GRAPH_RUNTIME] snapshot trace=${traceId} observations=${snap.observations.length} ` +
               `hypotheses=${snap.hypotheses.length} winner=${snap.hypotheses[0]?.id ?? 'none'} ` +
-              `rules=${snap.rules.length} state=${snap.graph_state}`,
+              `rules=${snap.rules.length} orphans=${snap.orphan_rule_ids.length} state=${snap.graph_state}`,
             );
           } catch (snapErr) {
             console.warn(`[GRAPH_SNAPSHOT] engineA build non-fatal: ${(snapErr as Error).message}`);
