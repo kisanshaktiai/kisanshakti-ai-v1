@@ -5118,7 +5118,21 @@ export class AIAgentOrchestrator {
             crop_identified: ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'CROP_IDENTIFIED'),
             metadata: ignoredRawCodes,
           };
-          const bridged = await bridgeCodesDb(this.supabase, cropCode, real_codes);
+          // P5 SYMBOL_IDENTITY_CONTRACT + P1 BIOLOGICAL_SCOPE_CONTRACT
+          // Identity check runs first (unknown obs never enter graph); scope
+          // filter then drops cross-crop/foreign-organ codes. All wiring is
+          // DB-driven (observation_master); no hardcoded agronomy.
+          const { assertObservationsExist } = await import('../runtime/graph-contracts.ts');
+          const _identity = await assertObservationsExist(this.supabase, real_codes);
+          if (_identity.unknown.length) {
+            console.warn(`[UNKNOWN_OBSERVATION_SYMBOL] dropped_before_graph=[${_identity.unknown.join(',')}]`);
+          }
+          const bridged = await bridgeCodesDb(
+            this.supabase,
+            cropCode,
+            _identity.known,
+            { crop_code: cropCode ?? null, crop_group: null },
+          );
           const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
 
           // TURN_EVIDENCE_LOCK — ledger: INFERRED entries for any DB-bridged code
