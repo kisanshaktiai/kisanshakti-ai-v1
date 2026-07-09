@@ -1,4 +1,10 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-09 13:58 UTC — Derive confirmed observations from response metadata
+ *   before enforcing empty DECISION_PROVIDED/CLARIFICATION contracts, and pass
+ *   those confirmed codes into the hypothesis clarification builder.
+ */
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * OBSERVATION SELECTOR CONTRACT
  * ═══════════════════════════════════════════════════════════════════════════
@@ -52,6 +58,8 @@ export interface ObservationContractContext {
   daysSinceSowing?: number | null;
   /** Real farmer-visible symptoms already confirmed for this turn. */
   realObservationCount?: number | null;
+  /** Confirmed farmer-visible observation codes already selected/extracted. */
+  confirmedObservationCodes?: ReadonlyArray<string> | null;
   /**
    * Reason surfaced with the clarification so operators can debug graph
    * exhaustion vs empty-decision promotion vs plain hydration.
@@ -78,6 +86,7 @@ export async function loadObservationSelectorOptions(
       DAS: ctx.daysSinceSowing ?? null,
       language: lang,
       max: 6,
+      confirmed_observations: ctx.confirmedObservationCodes ?? [],
       trace_id: ctx.traceId,
     });
     return graph.options.map((o) => ({
@@ -123,6 +132,18 @@ export async function ensureObservationSelectorContract(
     return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: null };
   }
 
+  const responseObservationCodes = extractConfirmedObservationCodes(response);
+  const explicitObservationCodes = (ctx.confirmedObservationCodes ?? [])
+    .map((code) => String(code ?? '').trim())
+    .filter(Boolean);
+  const confirmedObservationCodes = Array.from(new Set([...explicitObservationCodes, ...responseObservationCodes]));
+  const realObservationCount = Math.max(ctx.realObservationCount ?? 0, confirmedObservationCodes.length);
+  const effectiveCtx: ObservationContractContext = {
+    ...ctx,
+    realObservationCount,
+    confirmedObservationCodes,
+  };
+
   const type = String(response.type || '');
   const existingOptions: any[] = Array.isArray(response?.question?.options)
     ? response.question.options
@@ -142,26 +163,27 @@ export async function ensureObservationSelectorContract(
 
   // ── Case B: CLARIFICATION_QUESTION with empty options → hydrate.
   if (type === 'CLARIFICATION_QUESTION' && existingOptions.length === 0) {
-    const options = await loadObservationSelectorOptions(ctx);
+    const options = await loadObservationSelectorOptions(effectiveCtx);
     if (options.length === 0) {
       // Graph genuinely exhausted: farmer already confirmed observations but
       // no downstream hypothesis edge exists for this (crop,stage,DAS,obs) cell.
       // Degrade to DIAGNOSTIC_ESCALATION instead of a 500 — the greppable
       // curator-triage warning below preserves the data-gap signal.
-      if ((ctx.realObservationCount ?? 0) > 0) {
+      if (realObservationCount > 0) {
         console.warn(
-          `[OBSERVATION_CONTRACT_DEGRADE] trace=${ctx.traceId ?? 'n/a'} from=CLARIFICATION_QUESTION to=DIAGNOSTIC_ESCALATION reason=graph_exhausted_after_confirmed_observations crop=${ctx.cropCode ?? '?'} stage=${ctx.growthStage ?? '?'} intent=${ctx.intentCode ?? '?'} real_observations=${ctx.realObservationCount}`,
+          `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=CLARIFICATION_QUESTION to=DIAGNOSTIC_ESCALATION reason=graph_exhausted_after_confirmed_observations crop=${effectiveCtx.cropCode ?? '?'} stage=${effectiveCtx.growthStage ?? '?'} intent=${effectiveCtx.intentCode ?? '?'} real_observations=${realObservationCount}`,
         );
         response.type = 'DIAGNOSTIC_ESCALATION';
         response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
         response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
-        response.metadata.graph_reason = ctx.graphReason || 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS';
+        response.metadata.graph_reason = effectiveCtx.graphReason || 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS';
         response.metadata.observation_required = false;
+        response.metadata.confirmed_observation_count = realObservationCount;
         return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_downstream' };
       }
       // No confirmed observations AND no options loadable — fatal contract leak.
       throw new Error(
-        `OBSERVATION_CONTRACT_VIOLATION: empty_options type=CLARIFICATION_QUESTION crop=${ctx.cropCode ?? '?'} trace_id=${ctx.traceId ?? 'n/a'}`,
+        `OBSERVATION_CONTRACT_VIOLATION: empty_options type=CLARIFICATION_QUESTION crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
       );
     }
     injectOptions(response, options);
@@ -183,27 +205,28 @@ export async function ensureObservationSelectorContract(
     );
 
     if (!hasPrimary && !hasSecondary && !hasCommText) {
-      const options = await loadObservationSelectorOptions(ctx);
+      const options = await loadObservationSelectorOptions(effectiveCtx);
       if (options.length === 0) {
         // Curator gap: farmer already confirmed observations upstream but the
         // downstream graph has no rules/hypothesis edge for this cell.
         // Degrade to DIAGNOSTIC_ESCALATION (symmetric to Case B) instead of 500.
-        if ((ctx.realObservationCount ?? 0) > 0) {
+        if (realObservationCount > 0) {
           console.warn(
-            `[OBSERVATION_CONTRACT_DEGRADE] trace=${ctx.traceId ?? 'n/a'} from=DECISION_PROVIDED to=DIAGNOSTIC_ESCALATION reason=stage_fallback_no_rules_after_confirmed_observations crop=${ctx.cropCode ?? '?'} stage=${ctx.growthStage ?? '?'} intent=${ctx.intentCode ?? '?'} real_observations=${ctx.realObservationCount}`,
+            `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=DECISION_PROVIDED to=DIAGNOSTIC_ESCALATION reason=stage_fallback_no_rules_after_confirmed_observations crop=${effectiveCtx.cropCode ?? '?'} stage=${effectiveCtx.growthStage ?? '?'} intent=${effectiveCtx.intentCode ?? '?'} real_observations=${realObservationCount}`,
           );
           response.type = 'DIAGNOSTIC_ESCALATION';
           response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
           response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
-          response.metadata.graph_reason = ctx.graphReason || 'NO_RULES_MATCHED_AFTER_OBSERVATION';
+          response.metadata.graph_reason = effectiveCtx.graphReason || 'NO_RULES_MATCHED_AFTER_OBSERVATION';
           response.metadata.observation_required = false;
+          response.metadata.confirmed_observation_count = realObservationCount;
           return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_rules_after_observation' };
         }
         throw new Error(
-          `OBSERVATION_CONTRACT_VIOLATION: empty_options type=DECISION_PROVIDED reason=no_recommendations crop=${ctx.cropCode ?? '?'} trace_id=${ctx.traceId ?? 'n/a'}`,
+          `OBSERVATION_CONTRACT_VIOLATION: empty_options type=DECISION_PROVIDED reason=no_recommendations crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
         );
       }
-      promoteToClarification(response, options, ctx);
+      promoteToClarification(response, options, effectiveCtx);
       stampMetadata(response, options.length);
       console.log(
         `[OBSERVATION_REQUIRED_PROMOTED] trace=${ctx.traceId ?? 'n/a'} reason=decision_provided_empty crop=${ctx.cropCode ?? '?'} stage=${ctx.growthStage ?? '?'} options=${options.length}`,
@@ -218,11 +241,11 @@ export async function ensureObservationSelectorContract(
   // must be asked a scoped observation question instead of receiving an
   // empty escalation card.
   if (type === 'DIAGNOSTIC_ESCALATION' && existingOptions.length === 0) {
-    const options = await loadObservationSelectorOptions(ctx);
+    const options = await loadObservationSelectorOptions(effectiveCtx);
     if (options.length === 0) {
-      if ((ctx.realObservationCount ?? 0) > 0) {
+      if (realObservationCount > 0) {
         throw new Error(
-          `OBSERVATION_CONTRACT_VIOLATION: illegal_graph_exit real_observations=${ctx.realObservationCount} observation_required=false crop=${ctx.cropCode ?? '?'} trace_id=${ctx.traceId ?? 'n/a'}`,
+          `OBSERVATION_CONTRACT_VIOLATION: illegal_graph_exit real_observations=${realObservationCount} observation_required=false crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
         );
       }
       // No DB evidence surface at all — leave escalation as-is (better than
@@ -232,7 +255,7 @@ export async function ensureObservationSelectorContract(
       );
       return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'diagnostic_escalation_no_options_available' };
     }
-    promoteToClarification(response, options, ctx);
+    promoteToClarification(response, options, effectiveCtx);
     stampMetadata(response, options.length);
     response.metadata.graph_reason = ctx.graphReason || 'INSUFFICIENT_EVIDENCE';
     console.log(
@@ -242,6 +265,36 @@ export async function ensureObservationSelectorContract(
   }
 
   return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: null };
+}
+
+function extractConfirmedObservationCodes(response: any): string[] {
+  const out: string[] = [];
+  const push = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) push(item);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      push(record.observation_code ?? record.observation_key ?? record.code ?? record.value);
+      return;
+    }
+    const code = String(value ?? '').trim();
+    if (code) out.push(code);
+  };
+
+  push(response?.metadata?.real_observations);
+  push(response?.metadata?.confirmed_observations);
+  push(response?.metadata?.confirmedObservationCodes);
+  push(response?.metadata?.mapped_observation);
+  push(response?.metadata?.selected_graph_node?.observation_code);
+  push(response?.decision_output?.metadata?.real_observations);
+  push(response?.decision_output?.metadata?.confirmed_observations);
+  push(response?.decision_output?.metadata?.confirmedObservationCodes);
+  push(response?.decision_output?.metadata?.mapped_observation);
+  push(response?.decision_output?.metadata?.selected_graph_node?.observation_code);
+
+  return Array.from(new Set(out));
 }
 
 function injectOptions(response: any, options: ObservationOption[]): void {
