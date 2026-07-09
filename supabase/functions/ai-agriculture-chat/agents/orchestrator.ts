@@ -2463,6 +2463,12 @@ export class AIAgentOrchestrator {
               `candidate_hypotheses=0 graph_gap=${graphClarification.graph_gap ?? 'NO_HYPOTHESIS_EDGE'} ` +
               `clarification_source=hypothesis_graph options=${clarificationOptions.length}`,
             );
+            // Mirror confirmed observations onto the enforcer-visible field so
+            // the observation-selector-contract can degrade (not 500) when this
+            // seed-graph clarification path also has zero loadable options.
+            (this as any)._lastRealObservations = Array.isArray(optionEvidence.real_codes)
+              ? [...optionEvidence.real_codes]
+              : [];
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
