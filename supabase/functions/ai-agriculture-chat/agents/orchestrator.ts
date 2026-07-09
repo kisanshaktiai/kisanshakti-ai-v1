@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 09:20 UTC — Wire observation-state authority into direct-mode
+ *   and deferred clarification. Diagnostic turns with 0 confirmed observations
+ *   now force observation cards before rule/stage fallback; GENERAL_INFO cannot
+ *   suppress the graph's observation request.
  * 2026-07-09 04:16 UTC — v4 Graph Contracts wired at TURN_EVIDENCE_LOCK.
  *   P5 SYMBOL_IDENTITY_CONTRACT (assertObservationsExist) runs BEFORE
  *   bridge; unknown obs never enter graph. P1 BIOLOGICAL_SCOPE_CONTRACT
