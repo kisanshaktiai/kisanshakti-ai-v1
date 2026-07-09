@@ -261,7 +261,7 @@ export class DiagnosticFlowController {
     }
     
     // Check if photo is needed - only if severity is high or unknown
-    if (nluOutput.contextNeeded.photo_required && !hasEssentialEntities) {
+    if (nluOutput.contextNeeded.photo_required && !hasDiagnosticEvidence) {
       this.session.status = 'AWAITING_PHOTO';
       
       console.log('📷 [DiagnosticFlow] Requesting photo');
