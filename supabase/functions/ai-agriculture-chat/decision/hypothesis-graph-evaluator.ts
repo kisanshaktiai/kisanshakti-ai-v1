@@ -37,7 +37,7 @@
 
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { stageCompatibility } from './stage-symbol-resolver.ts';
-import { resolveObservationSymbol } from './symbol-resolver.ts';
+import { resolveObservationSymbolMap } from './symbol-resolver.ts';
 
 export interface GraphHypothesisInput {
   crop_code: string | null;
@@ -765,20 +765,9 @@ function ObservationConditionMatcher(row: ConditionRow, observed: ObservationSet
 }
 
 async function buildCanonicalCodeMap(supabase: any, codes: ReadonlyArray<unknown>): Promise<CanonicalCodeMap> {
-  const out: CanonicalCodeMap = new Map();
   const unique = Array.from(new Set((codes ?? []).map((c) => String(c ?? '').trim()).filter(Boolean)));
-  if (!supabase || unique.length === 0) return out;
-  for (const code of unique) {
-    try {
-      const resolved = await resolveObservationSymbol(supabase, code);
-      const canonical = resolved.canonical_observation_code || resolved.graph_symbol || code;
-      for (const v of codeVariants(code)) out.set(v, canonical);
-      for (const v of codeVariants(canonical)) out.set(v, canonical);
-    } catch {
-      for (const v of codeVariants(code)) out.set(v, code);
-    }
-  }
-  return out;
+  if (unique.length === 0) return new Map();
+  return await resolveObservationSymbolMap(supabase, unique);
 }
 
 function canonicalizeWithMap(code: unknown, canonical: CanonicalCodeMap): string {
