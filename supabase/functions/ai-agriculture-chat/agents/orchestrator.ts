@@ -8541,6 +8541,8 @@ export class AIAgentOrchestrator {
           existingSymptomCodes.add(obs);
         }
         nluWithRuleMapping.entities.symptom_codes = Array.from(existingSymptomCodes);
+        (nluWithRuleMapping.entities as any).candidate_observation_codes = Array.from(existingSymptomCodes);
+        (nluWithRuleMapping.entities as any).confirmed_observation_codes = (this as any).__conversationState?.confirmed ?? [];
         console.log(`   🔗 [OBSERVATION_WIRING] Injected ${allObservationsForPreAuth.size} observations into nluWithRuleMapping.entities.symptom_codes (total: ${nluWithRuleMapping.entities.symptom_codes.length})`);
       }
       const symbolicAlreadyProduced = (totalRulesMatched > 0) || 
