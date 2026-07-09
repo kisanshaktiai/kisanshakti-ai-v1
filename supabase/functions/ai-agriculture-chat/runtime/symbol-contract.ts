@@ -3,6 +3,13 @@
  * SYMBOL CONTRACT — deterministic runtime identity for graph symbols
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ * CHANGE LOG (newest first):
+ *   2026-07-09 04:14 UTC — Pointer to SYMBOL_IDENTITY_CONTRACT (P5). DB-backed
+ *     existence checks for observation / hypothesis / rule symbols live in
+ *     `runtime/graph-contracts.ts` (assertObservationsExist,
+ *     assertHypothesesExist, assertRulesExist). This module remains the
+ *     agriculture-free normalization / equality layer.
+ *
  * Owns ONE responsibility: "Are these two symbolic graph nodes identical?"
  *
  * MUST NOT contain agriculture meaning:
@@ -15,10 +22,6 @@
  *   - public.intent_observation_mapping
  *   - public.hypothesis_conditions / hypothesis_master
  *   - public.decision_rules / hypothesis_rule_mapping
- *
- * This module only normalizes / compares symbolic identity so the DB and the
- * runtime can freely mix cases and separators without breaking graph
- * matching, hashing, cache keys, or deterministic replay.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
