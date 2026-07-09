@@ -5259,6 +5259,17 @@ export class AIAgentOrchestrator {
               trace_id: traceId,
             };
             const graphOut = await evaluateHypothesisGraph(graphInput);
+            if (graphOut.candidates.length === 0 && conversationState.clarification_required) {
+              shouldBlockDiagnosis = true;
+              bypassClarification = false;
+              directModeBypass = false;
+              console.log(
+                `[OBS_TO_HYP_GAP] trace=${traceId} intent=${intentCode} ` +
+                `confirmed_obs=${conversationState.confirmed.length} real_obs=${currentObservations.length} ` +
+                `hypotheses=0 action=route_to_clarification_question`
+              );
+              agentsUsed.push('OBS_TO_HYP_GAP_CLARIFICATION');
+            }
             for (const c of graphOut.candidates) {
               for (const rid of c.candidate_rule_ids) {
                 if (rid) graphHypothesisRuleIds.push(rid);
