@@ -1,8 +1,8 @@
 // CHANGE LOG
-// 2026-07-09 19:34 UTC — Type contract widened for crop template registry.
-//   Flat crop templates (WHEAT/COTTON/RICE) are intentionally supported by
-//   getContextAwareTemplate; the TypeScript interface now matches runtime
-//   behavior so clarification tests can validate the fallback fix.
+// 2026-07-09 19:36 UTC — Type contract widened for crop template registry.
+//   Flat/default crop templates can be indexed by any ClarificationScope;
+//   missing scopes fall through at runtime. This matches existing resolver
+//   behavior and unblocks clarification fallback validation.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * PHASE-8: CLARIFICATION RENDERER (LLM = TRANSLATOR ONLY)
@@ -218,10 +218,7 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
 // CROP-SPECIFIC TEMPLATES - Different options for different crops
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface CropSpecificTemplate {
-  [ClarificationScope.IDENTIFY_LOCATION]?: Record<string, { question: string; options: string[] }>;
-  [ClarificationScope.REFINE_OBSERVATION]?: Record<string, { question: string; options: string[] }>;
-}
+type CropSpecificTemplate = Partial<Record<ClarificationScope, Record<string, { question: string; options: string[] }>>>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP-STAGE-SPECIFIC TEMPLATES
