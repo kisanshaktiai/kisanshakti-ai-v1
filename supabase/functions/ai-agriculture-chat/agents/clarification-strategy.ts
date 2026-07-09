@@ -90,6 +90,15 @@ export interface ClarificationTriggerInput {
   clarification_completed: boolean;
   user_query?: string; // Added for failure class detection
   symptom_scope?: 'WHOLE_PLANT' | 'PART' | 'UNKNOWN'; // Added for failure class detection
+  /**
+   * OBSERVATION_STATE_CONTRACT — Only CONFIRMED farmer observations count as
+   * evidence. INFERRED symbols (alias expansion, IOM LITERAL peers, LLM
+   * guesses) MUST NOT satisfy the clarification gate for a diagnostic intent.
+   * When these are provided, they take priority over the legacy symptom_count
+   * / symptom_coverage inputs (which historically conflated the three classes).
+   */
+  confirmed_observation_count?: number;
+  diagnostic_intent?: boolean;
 }
 
 export interface ClarificationTriggerResult {
