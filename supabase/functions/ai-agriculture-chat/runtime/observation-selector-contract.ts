@@ -185,6 +185,20 @@ export async function ensureObservationSelectorContract(
     if (!hasPrimary && !hasSecondary && !hasCommText) {
       const options = await loadObservationSelectorOptions(ctx);
       if (options.length === 0) {
+        // Curator gap: farmer already confirmed observations upstream but the
+        // downstream graph has no rules/hypothesis edge for this cell.
+        // Degrade to DIAGNOSTIC_ESCALATION (symmetric to Case B) instead of 500.
+        if ((ctx.realObservationCount ?? 0) > 0) {
+          console.warn(
+            `[OBSERVATION_CONTRACT_DEGRADE] trace=${ctx.traceId ?? 'n/a'} from=DECISION_PROVIDED to=DIAGNOSTIC_ESCALATION reason=stage_fallback_no_rules_after_confirmed_observations crop=${ctx.cropCode ?? '?'} stage=${ctx.growthStage ?? '?'} intent=${ctx.intentCode ?? '?'} real_observations=${ctx.realObservationCount}`,
+          );
+          response.type = 'DIAGNOSTIC_ESCALATION';
+          response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+          response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
+          response.metadata.graph_reason = ctx.graphReason || 'NO_RULES_MATCHED_AFTER_OBSERVATION';
+          response.metadata.observation_required = false;
+          return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_rules_after_observation' };
+        }
         throw new Error(
           `OBSERVATION_CONTRACT_VIOLATION: empty_options type=DECISION_PROVIDED reason=no_recommendations crop=${ctx.cropCode ?? '?'} trace_id=${ctx.traceId ?? 'n/a'}`,
         );
