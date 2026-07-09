@@ -588,6 +588,11 @@ import {
 // Do NOT reintroduce a direct `evaluateCandidateHypotheses` import here —
 // that bypasses `graphExecuted` bookkeeping and the [GRAPH_RUNTIME] trace.
 import { runGraphRuntime } from '../runtime/graph-runtime.ts';
+import {
+  buildGraphRuntimeSnapshot,
+  assertSnapshotNotCorrupt,
+  type GraphRuntimeSnapshot,
+} from '../runtime/graph-snapshot.ts';
 
 export const ORCHESTRATOR_VERSION = '4.1.0'; // Phase-22.5: Diagnosis-First mode with hypothesis-driven options
 
@@ -1217,6 +1222,7 @@ export class AIAgentOrchestrator {
     (this as any)._graphHypothesisIds = [];
     (this as any)._graphHypothesisRuleIds = [];
     (this as any)._graphHypothesisEdgeMissing = [];
+    (this as any)._graphSnapshot = null;
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -5201,6 +5207,38 @@ export class AIAgentOrchestrator {
             );
             (this as any)._graphExecuted = true;
 
+            // ─── SNAPSHOT (Engine B merge) ────────────────────────────────
+            // If Engine A already produced a snapshot this turn, merge it
+            // with the Engine B result so a stage-filter kill on B never
+            // overwrites a valid A hypothesis. If Engine A has not run yet
+            // (diagnosis-first path arrives later) the snapshot is created
+            // from Engine B alone and Engine A merges into it on arrival.
+            try {
+              const priorSnap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+              const engineAForMerge = priorSnap
+                ? { candidates: priorSnap.hypotheses.map(h => ({
+                    rule_id: h.id,
+                    confidence: h.confidence,
+                    matched_conditions: [...h.matched_conditions],
+                    candidate_rule_ids: [...h.candidate_rule_ids],
+                  })) }
+                : null;
+              const merged = buildGraphRuntimeSnapshot({
+                trace_id: traceId,
+                observations: (currentObservations ?? []) as string[],
+                engineA: engineAForMerge as any,
+                engineB: { candidates: graphOut.candidates as any },
+              });
+              (this as any)._graphSnapshot = merged;
+              console.log(
+                `[GRAPH_RUNTIME] snapshot trace=${traceId} observations=${merged.observations.length} ` +
+                `hypotheses=${merged.hypotheses.length} winner=${merged.hypotheses[0]?.id ?? 'none'} ` +
+                `rules=${merged.rules.length} state=${merged.graph_state} merge=engineB`,
+              );
+            } catch (snapErr) {
+              console.warn(`[GRAPH_SNAPSHOT] engineB merge non-fatal: ${(snapErr as Error).message}`);
+            }
+
             // ═══════════════════════════════════════════════════════════════
             // PATCH 1 (BUG 1) — Project graph result back onto ConversationState
             // so downstream readers (BRAIN_TRACE, decision builder, invariants)
@@ -5399,6 +5437,29 @@ export class AIAgentOrchestrator {
           const hypothesisResult = _graphRun.result;
 
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
+
+          // ─── SNAPSHOT (Engine A) ─────────────────────────────────────────
+          // Build the initial immutable snapshot from Engine A. Engine B
+          // (evaluateHypothesisGraph) runs earlier in the pipeline — if its
+          // result was stored, merge it in here so the snapshot never loses
+          // hypotheses just because one engine produced zero candidates.
+          try {
+            const engineB = (this as any)._graphHypothesisResult ?? null;
+            const snap = buildGraphRuntimeSnapshot({
+              trace_id: traceId,
+              observations: (currentObservations ?? []) as string[],
+              engineA: { candidates: hypothesisResult.candidates as any },
+              engineB: engineB ? { candidates: engineB.candidates ?? [] } : null,
+            });
+            (this as any)._graphSnapshot = snap;
+            console.log(
+              `[GRAPH_RUNTIME] snapshot trace=${traceId} observations=${snap.observations.length} ` +
+              `hypotheses=${snap.hypotheses.length} winner=${snap.hypotheses[0]?.id ?? 'none'} ` +
+              `rules=${snap.rules.length} state=${snap.graph_state}`,
+            );
+          } catch (snapErr) {
+            console.warn(`[GRAPH_SNAPSHOT] engineA build non-fatal: ${(snapErr as Error).message}`);
+          }
 
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 
@@ -7300,8 +7361,18 @@ export class AIAgentOrchestrator {
           // the sequence synthetically when we already have graph output so the
           // strict HYP_TO_RULE ordering check does not crash the turn.
           if (Number((this as any).__decisionGraphSequence ?? 0) === 1) {
+            // REAL_GRAPH_PATH — no more `synthesized=true`. Emit an OBS_TO_HYP
+            // line whose numbers come from the immutable snapshot. If the
+            // snapshot is empty here the downstream GRAPH_PIPELINE_BYPASSED
+            // guard fires; we no longer paper over the miss.
             assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
-            console.log(`[OBS_TO_HYP] trace=${traceId} synthesized=true reason=diagnosis_first_path sequence=2`);
+            const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+            const snapHyp = (snap?.hypotheses ?? []).map(h => h.id).slice(0, 12).join(',');
+            console.log(
+              `[OBS_TO_HYP] trace=${traceId} source=REAL_GRAPH_PATH ` +
+              `hyp=[${snapHyp}] sequence=2 hypotheses=${snap?.hypotheses.length ?? 0} ` +
+              `state=${snap?.graph_state ?? 'NO_HYPOTHESIS'}`,
+            );
           }
           assertDecisionGraphOrder(this as any, traceId, 'HYP_TO_RULE');
         }
@@ -7584,9 +7655,21 @@ export class AIAgentOrchestrator {
         // buildConversationState time.
         try {
           const _winner = layeredRuleResult?.primary_decision;
-          const _hypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
-          const _obsToHyp: number = Number((this as any)._graphObsToHypEdges ?? 0);
-          const _hypToRule: number = ((this as any)._graphHypothesisRuleIds ?? []).length;
+          const _snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+
+          // Prefer the immutable snapshot over the legacy per-field projections.
+          // If snapshot has hypotheses but the legacy projection is empty, the
+          // corruption guard throws GRAPH_STATE_CORRUPTION_ERROR — fail loud.
+          const _legacyHypIds: string[] = ((this as any)._graphHypothesisIds ?? []) as string[];
+          const _hypIds: string[] = _snap
+            ? _snap.hypotheses.map(h => h.id)
+            : _legacyHypIds;
+          const _obsToHyp: number = _snap
+            ? _snap.hypotheses.reduce((n, h) => n + h.matched_conditions.length, 0)
+            : Number((this as any)._graphObsToHypEdges ?? 0);
+          const _hypToRule: number = _snap
+            ? _snap.rules.length
+            : ((this as any)._graphHypothesisRuleIds ?? []).length;
           const _cs = (this as any).__conversationState ?? conversationState;
           const _graphRan = (this as any)._graphExecuted === true;
           const _realObsCount = Array.isArray((this as any)._lastRealObservations)
@@ -7597,11 +7680,6 @@ export class AIAgentOrchestrator {
             (_cs?.confirmed?.length ?? 0) > 0 ||
             (_cs?.inferred?.length ?? 0) > 0;
 
-          // PATCH 3 — Global fail-closed graph gate. If the turn carries any
-          // agronomic signal (diagnostic intent, real observations, confirmed
-          // or inferred symbols) and the hypothesis graph did NOT execute,
-          // the pipeline was bypassed. Fail loud so the leak surfaces in
-          // logs instead of masking as `[BRAIN_TRACE] hyp=0`.
           if (!_graphRan && _agronomicSignal) {
             throw new Error(
               `GRAPH_PIPELINE_BYPASSED: trace_id=${traceId} intent=${intentCode} ` +
@@ -7610,16 +7688,14 @@ export class AIAgentOrchestrator {
             );
           }
 
+          // FAIL LOUD — snapshot says N hypotheses but legacy projection is 0.
+          // This is the split-brain the surgical fix exists to prevent.
+          assertSnapshotNotCorrupt(_snap, _legacyHypIds.length, traceId);
+
           if ((this as any)._evidenceFrozen) {
             assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
           }
           if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
-            // NEURO-SYMBOLIC NO-HALLUCINATION RULE:
-            // Evidence exists but the DB has no OBS→HYP edge for the confirmed
-            // observation set. This is a knowledge-graph gap, NOT a runtime bug.
-            // Do NOT throw (that returns 500 to the farmer). Log the gap and
-            // let the downstream clarification path (observation-selector-contract)
-            // emit a CLARIFICATION_QUESTION hydrated from DB observations.
             console.warn(
               `[OBS_TO_HYP_GAP] trace_id=${traceId} intent=${intentCode} ` +
               `confirmed_obs=${_cs?.confirmed?.length ?? 0} real_obs=${_realObsCount} ` +
