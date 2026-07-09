@@ -1222,6 +1222,7 @@ export class AIAgentOrchestrator {
     (this as any)._graphHypothesisIds = [];
     (this as any)._graphHypothesisRuleIds = [];
     (this as any)._graphHypothesisEdgeMissing = [];
+    (this as any)._graphSnapshot = null;
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
 
     // ═══════════════════════════════════════════════════════════════════════════
