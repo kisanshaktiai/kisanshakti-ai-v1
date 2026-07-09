@@ -7177,6 +7177,15 @@ export class AIAgentOrchestrator {
         };
         
         // Check prescription gate before rule engine
+        // FIX 1 (STATE_SYNC) — publish frozen GraphRuntimeSnapshot counts onto
+        // canonicalState BEFORE the prescription gate reads them. Without this,
+        // graph=1 hyp / 4 rules degraded to 0/0 downstream (split-brain).
+        try {
+          const _snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+          syncCanonicalStateFromSnapshot(canonicalState as any, _snap, { trace_id: traceId });
+        } catch (syncErr) {
+          console.warn(`[STATE_SYNC] non-fatal: ${(syncErr as Error).message}`);
+        }
         const prescriptionGate = checkPrescriptionGate(canonicalState);
         if (!prescriptionGate.allowed) {
           console.warn(`   ⚠️ Prescription Gate BLOCKED: ${prescriptionGate.reason}`);
