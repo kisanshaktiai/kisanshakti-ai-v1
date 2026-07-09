@@ -1,3 +1,16 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 03:15 UTC — FIX 1 (STATE_SYNC). Added
+ *   `syncCanonicalStateFromSnapshot(state, snapshot, opts)` — the ONLY
+ *   writer of `candidate_hypothesis_count` / `matched_rules_count` /
+ *   `hypothesis_ids` / `rule_ids` / `orphan_rule_ids` on CanonicalState.
+ *   Emits `[STATE_SYNC] source=GRAPH_RUNTIME` exactly once per turn.
+ *   Idempotent; second call with same snapshot is a no-op; mismatch logs
+ *   `GRAPH_CONTRACT_VIOLATION` and rewrites (fail-loud, no silent drift).
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 // ============= CANONICAL STATE BUILDER =============
 // Creates a unified, deterministic state object for the Symbolic Decision Brain
 // LLM understands → CanonicalState → Rules decide → LLM explains
@@ -6,6 +19,8 @@
 import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 import { classifyEvidence } from '../runtime/evidence-classifier.ts';
 import type { BiologicalState } from './biological-state.ts';
+import type { GraphRuntimeSnapshot } from '../runtime/graph-snapshot.ts';
+
 
 // ==================== CLOSED WORLD ENUMS ====================
 // These are the ONLY allowed values - no free text in decision brain
