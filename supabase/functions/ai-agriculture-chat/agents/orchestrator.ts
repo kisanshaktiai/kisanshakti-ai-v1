@@ -1,5 +1,18 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 02:07 UTC — Snapshot ontology wiring.
+ *   • Import invertRuleMapping; stash `_ruleToHypothesis` after Engine B runs
+ *     from graphOut.rule_edges.
+ *   • Engine B snapshot merge: reconstruct prior Engine A candidates from
+ *     snapshot.rule_nodes (rule_id NEVER read as hypothesis_id).
+ *   • Engine A snapshot build: pass edges.ruleToHypothesis (falls back to
+ *     inverting engineB.rule_edges); log orphan count.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
  * ROLE:      Master orchestrator — coordinates 9 specialized agents for
  *            end-to-end agronomic advisory (intent → rules → narration).
