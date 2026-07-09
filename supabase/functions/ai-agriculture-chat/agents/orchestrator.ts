@@ -6634,8 +6634,41 @@ export class AIAgentOrchestrator {
         // ═══════════════════════════════════════════════════════════════════════════
         let finalClarificationOptions: string[];
         let clarificationSource: 'DECISION_RULES' | 'NLU_FALLBACK' = 'NLU_FALLBACK';
+        const observationStateCandidates = observationAuthorityRequiresClarification
+          ? await loadClarificationCandidates({
+              supabase: this.supabase,
+              intent_code: String(intentCode || 'UNKNOWN'),
+              crop_code: String(
+                landContext?.current_crop ||
+                inductionResult.crop?.symbol ||
+                (this as any).__conversationState?.crop ||
+                'all'
+              ).toLowerCase(),
+              growth_stage: lockedStage?.growth_stage || landContext?.growth_stage || (this as any).__conversationState?.stage || null,
+              das: landContext?.days_since_sowing ?? (this as any).__conversationState?.das ?? null,
+              language: options.language || 'mr',
+              max: 3,
+              confirmed: (this as any).__conversationState?.confirmed ?? [],
+            }).catch((e: unknown) => {
+              console.warn(`[OBS_GATE] candidate load failed: ${e instanceof Error ? e.message : String(e)}`);
+              return [] as any[];
+            })
+          : [];
         
-        if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
+        if (observationStateCandidates.length > 0) {
+          console.log(
+            `[OBS_GATE] awaiting_confirmed_observations intent=${intentCode} ` +
+            `candidates=${observationStateCandidates.length} source=intent_observation_mapping`
+          );
+          finalClarificationOptions = observationStateCandidates.map((o: any) => o.label);
+          clarificationSource = 'DECISION_RULES';
+          ruleDrivenClarification = {
+            options: observationStateCandidates.map((o: any) => ({
+              label: o.label,
+              observation_key: o.observation_key,
+            })),
+          } as any;
+        } else if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
           console.log(`   ✅ Using ${ruleDrivenClarification.options.length} RULE-DRIVEN options (Source=DECISION_RULES)`);
           console.log(`      Options sourced from: hypothesis-first candidate rules`);
           // Translate rule-driven option labels to farmer language
@@ -6685,9 +6718,11 @@ export class AIAgentOrchestrator {
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
           clarificationResponse,
+          structuredOptions: ruleDrivenClarification?.options || [],
           intentConfidence,
           inductionCoverage: inductionResult.symbol_coverage,
-          inductionConfidence: inductionResult.aggregated_confidence
+          inductionConfidence: inductionResult.aggregated_confidence,
+          forceObservation: observationAuthorityRequiresClarification,
         };
         
         console.log(`   📋 Clarification PREPARED (will use only if symbolic brain finds 0 rules)`);
