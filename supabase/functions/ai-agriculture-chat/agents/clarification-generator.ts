@@ -238,9 +238,10 @@ export async function generateScopedClarification(
     const url = Deno.env.get('SUPABASE_URL');
     const srk = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+    // v4.0 (OBS_GRAPH): observation loading requires INTENT ONLY.
+    // Land context (NDVI, soil, GPS, weather) enriches ranking but MUST NOT
+    // gate the observation graph. Crop scope defaults to 'all' when absent.
     if (
-      effectiveHasLandContext &&
-      canonicalContext &&
       resolvedIntent &&
       resolvedIntent !== 'UNKNOWN' &&
       resolvedIntent !== 'UNKNOWN_OBSERVATION' &&
@@ -248,23 +249,42 @@ export async function generateScopedClarification(
     ) {
       try {
         const client = createSupabaseClient(url, srk);
+        const resolvedCrop =
+          canonicalContext?.crop_code ||
+          canonicalContext?.crop_name ||
+          stateCrop ||
+          'all';
+        const resolvedStage =
+          canonicalContext?.growth_stage || stateStage || null;
+        const resolvedDas =
+          canonicalContext?.days_since_sowing ?? null;
+
+        console.log(
+          `[OBS_GRAPH] intent_code=${resolvedIntent} crop=${resolvedCrop} ` +
+          `stage=${resolvedStage ?? 'null'} das=${resolvedDas ?? 'null'} ` +
+          `land_context=${effectiveHasLandContext}`
+        );
+
         const candidates: ClarificationOption[] = await loadClarificationCandidates({
           supabase: client,
           intent_code: resolvedIntent,
-          crop_code: canonicalContext.crop_code || canonicalContext.crop_name || 'all',
-          growth_stage: canonicalContext.growth_stage || stateStage || null,
-          das: canonicalContext.days_since_sowing ?? null,
+          crop_code: resolvedCrop,
+          growth_stage: resolvedStage,
+          das: resolvedDas,
           language,
           max: 3,
           // Rule 2: never re-ask evidence the farmer has already confirmed.
-          // ConversationState.confirmed is the SSOT for locked observations.
           confirmed: conversationState?.confirmed ?? [],
         });
+
+        console.log(
+          `[OBS_GRAPH] intent_code=${resolvedIntent} candidate_observations=${candidates.length}`
+        );
 
         if (candidates.length > 0) {
           console.log(
             `   ✅ [CLARIFICATION_CONTRACT] ${candidates.length} farmer-observation options ` +
-            `for intent=${resolvedIntent} crop=${canonicalContext.crop_code} stage=${canonicalContext.growth_stage}`,
+            `for intent=${resolvedIntent} crop=${resolvedCrop} stage=${resolvedStage}`,
           );
 
           // Render the question framing only — options come from the contract.
@@ -296,7 +316,7 @@ export async function generateScopedClarification(
       }
     } else {
       console.warn(
-        `   ⚠️ [CLARIFICATION_CONTRACT] missing intent/context (intent=${resolvedIntent}, ctx=${effectiveHasLandContext}) — neutral prompt`,
+        `   ⚠️ [CLARIFICATION_CONTRACT] missing intent (intent=${resolvedIntent}) — neutral prompt`,
       );
     }
 
