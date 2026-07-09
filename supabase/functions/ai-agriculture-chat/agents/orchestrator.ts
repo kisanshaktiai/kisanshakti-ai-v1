@@ -1362,6 +1362,10 @@ export class AIAgentOrchestrator {
     // ─────────────────────────────────────────────────────────────────
     const graph = new GraphRuntimeState(traceId);
     let graphCp = graphCheckpoint(graph);
+    // Phase C.1 — expose GraphRuntimeState as SSOT on `this` so the outer
+    // orchestrate() wrapper (finally-block audit + response stamp) and any
+    // helper method not carrying `graph` in closure can read the authority.
+    (this as any).__graphRuntimeState = graph;
 
     // ─────────────────────────────────────────────────────────────────
     // PHASE Y — RuntimeTraceCollector (single per request).
