@@ -3647,7 +3647,29 @@ export class AIAgentOrchestrator {
       const diagnosticIntentOwnsClarification =
         requiresAgronomicReasoningIntent(intentCode) ||
         symptomBasedIntents.includes(currentIntentForGate);
-      if (
+      // F3 — HARD PREEMPT: diagnostic intent + zero confirmed observations
+      // must NEVER take the DIRECT_MODE bypass, regardless of route label
+      // (GENERAL_INFO / CROP_HEALTH / …) or intent metadata. This is the only
+      // way to guarantee observation cards render for the first-diagnostic-turn
+      // pattern (farmer says "पीक अजून उगवले नाही" → 1 confirmed obs, no hyp).
+      const __preemptConvState = (this as any).__conversationState;
+      const __preemptConfirmed = __preemptConvState?.informative_count ?? 0;
+      const __preemptIsDiagnostic =
+        requiresAgronomicReasoningIntent(intentCode) ||
+        __preemptConvState?.mode === 'DIAGNOSIS' ||
+        __preemptConvState?.mode === 'MIXED';
+      const __preemptHardBlock = __preemptIsDiagnostic && __preemptConfirmed === 0;
+
+      if (__preemptHardBlock) {
+        console.log(
+          `   🛑 [DIRECT_MODE_ZERO_CONFIRMED_PREEMPT] intent=${intentCode} ` +
+          `route=${queryRoute.route} confirmed=0 — bypass refused; observation authority required`,
+        );
+        agentsUsed.push('DIRECT_MODE_ZERO_CONFIRMED_PREEMPT');
+        // Ensure downstream sees clarification intent.
+        bypassClarification = false;
+        directModeBypass = false;
+      } else if (
         diagnosticIntentOwnsClarification &&
         (intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass)
       ) {
