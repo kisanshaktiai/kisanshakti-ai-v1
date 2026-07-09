@@ -1200,9 +1200,93 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Main orchestration function - coordinates all agents
+   * Public entrypoint. Wraps `_orchestrateImpl` with the GraphRuntime
+   * ownership-boundary invariant: after graph execution the immutable
+   * `_graphSnapshot` is the sole source of truth for hypotheses,
+   * candidate rules, and graph lineage. Downstream layers may enrich
+   * the response (clarification options, narration, safety metadata)
+   * but MUST NOT drop the graph's hypotheses/rules before exit.
+   *
+   * Emits one canonical [GRAPH_HANDOFF_CHECK] line per turn and throws
+   * GRAPH_CONTRACT_VIOLATION when hypotheses are lost across the
+   * runtime→response handoff. Also stamps the response with the frozen
+   * snapshot so CLARIFICATION_QUESTION continuations carry the graph
+   * lineage (graphExecuted, hypotheses, candidateRules, winner, trace_id).
    */
   async orchestrate(
+    farmerMessage: string,
+    sessionId: string,
+    farmerId: string,
+    tenantId: string,
+    options: any = {},
+  ): Promise<OrchestratorResponse> {
+    const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    let response: OrchestratorResponse;
+    try {
+      response = await this._orchestrateImpl(farmerMessage, sessionId, farmerId, tenantId, options);
+    } finally {
+      // Emit handoff check even when the impl throws so we can attribute
+      // GraphRuntime ownership violations from partial failures too.
+      try {
+        const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+        const snapHyp = snap?.hypotheses.length ?? 0;
+        const snapRules = snap?.rules.length ?? 0;
+        const exitHyp = ((this as any)._graphHypothesisIds ?? []).length;
+        const exitRules = ((this as any)._graphHypothesisRuleIds ?? []).length;
+        const ok = !(snapHyp > 0 && exitHyp === 0);
+        console.log(
+          `[GRAPH_HANDOFF_CHECK] trace=${traceId} ` +
+          `snapshot_hyp=${snapHyp} exit_hyp=${exitHyp} ` +
+          `snapshot_rules=${snapRules} exit_rules=${exitRules} ok=${ok}`,
+        );
+        if (!ok) {
+          console.error(
+            `[GRAPH_CONTRACT_VIOLATION] trace=${traceId} ` +
+            `Graph hypothesis lost after runtime execution ` +
+            `(snapshot_hyp=${snapHyp} exit_hyp=${exitHyp})`,
+          );
+          // eslint-disable-next-line no-unsafe-finally
+          throw new Error(
+            `GRAPH_CONTRACT_VIOLATION: Graph hypothesis lost after runtime execution ` +
+            `trace=${traceId} snapshot_hyp=${snapHyp} exit_hyp=${exitHyp} ` +
+            `snapshot_rules=${snapRules} exit_rules=${exitRules}`,
+          );
+        }
+      } catch (chkErr) {
+        if ((chkErr as Error).message?.startsWith('GRAPH_CONTRACT_VIOLATION')) throw chkErr;
+        /* trace-only; never mask underlying impl error */
+      }
+    }
+
+    // Stamp frozen graph lineage onto the response so CLARIFICATION_QUESTION
+    // (and every other type) carries the SSOT out of the runtime boundary.
+    try {
+      const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+      if (snap) {
+        (response as any).graph_snapshot = Object.freeze({
+          trace_id: snap.trace_id,
+          observations: snap.observations,
+          hypotheses: snap.hypotheses.map(h => h.id),
+          winner_hypothesis: snap.hypotheses[0]?.id ?? null,
+          candidate_rules: snap.rules,
+          graph_state: snap.graph_state,
+          graph_executed: (this as any)._graphExecuted === true,
+        });
+        response.metadata = {
+          ...(response.metadata ?? {} as any),
+          graph_hypotheses_count: snap.hypotheses.length,
+          graph_candidate_rules_count: snap.rules.length,
+          graph_winner_hypothesis: snap.hypotheses[0]?.id ?? null,
+          graph_state: snap.graph_state,
+          graph_executed: (this as any)._graphExecuted === true,
+        } as any;
+      }
+    } catch { /* stamping is additive; never fatal */ }
+
+    return response;
+  }
+
+  private async _orchestrateImpl(
     farmerMessage: string,
     sessionId: string,
     farmerId: string,
