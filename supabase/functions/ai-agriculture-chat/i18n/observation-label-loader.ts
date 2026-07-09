@@ -231,7 +231,7 @@ export function getObservationIcon(code: string): string {
 //   hypothesis_conditions × observation_master for the locked (intent,
 //   crop, stage, DAS) cell — never from a hardcoded TypeScript array.
 // ─────────────────────────────────────────────────────────────────────────
-export const DEFAULT_CLARIFICATION_CODES: readonly string[] = Object.freeze([]);
+export const DEFAULT_CLARIFICATION_CODES: string[] = [];
 
 export default {
   loadObservationLabels,
