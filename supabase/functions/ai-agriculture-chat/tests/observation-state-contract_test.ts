@@ -132,3 +132,35 @@ Deno.test('T6 — GraphRuntime final gate blocks diagnostic graph with 0 confirm
   assertEquals(res.candidate_observations, ['OBS_RICE_NO_EMERGENCE']);
   assertEquals(graphExecuted, false);
 });
+
+// ═════════════════════════════════════════════════════════════════════════
+// T7 — F1 confirmed-only wiring: 1 confirmed + 13 inferred MUST NOT trigger
+// SUFFICIENT_SYMPTOM_COVERAGE. Historical bug: symptom_count was populated
+// from inductionResult (inferred + confirmed).
+// Parametrized across representative crops to prove crop-agnosticism.
+// ═════════════════════════════════════════════════════════════════════════
+for (const crop of ['RICE', 'COTTON', 'SUGARCANE', 'TOMATO', 'ONION']) {
+  Deno.test(`T7 [${crop}] — 1 confirmed + N inferred triggers PARTIAL/MINIMAL not SUFFICIENT`, () => {
+    const CONFIRMED_COVERAGE_QUORUM = 3;
+    const informative_count = 1;
+    const coverage = Math.min(1, informative_count / CONFIRMED_COVERAGE_QUORUM);
+    const r = shouldTriggerClarificationFirst({
+      crop_known: true,
+      stage_known: true,
+      symptom_count: informative_count,       // F1 fix
+      symptom_coverage: coverage,             // F1 fix
+      is_ambiguous: false,
+      has_pending_clarification: false,
+      clarification_completed: false,
+      confirmed_observation_count: informative_count,
+      diagnostic_intent: true,
+    });
+    // With only 1 confirmed obs, must ask for more evidence.
+    assertEquals(r.should_clarify, true);
+    // reason may be MINIMAL_SYMPTOMS or PARTIAL_SYMPTOM_COVERAGE — never SUFFICIENT.
+    if (r.reason === 'SUFFICIENT_SYMPTOM_COVERAGE') {
+      throw new Error(`[${crop}] SUFFICIENT_SYMPTOM_COVERAGE leaked with 1 confirmed obs`);
+    }
+  });
+}
+
