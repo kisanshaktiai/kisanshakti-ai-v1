@@ -116,6 +116,8 @@ export interface GraphHypothesisResult {
   input_observations: string[];
   trace_id: string;
   timings_ms: number;
+  /** Map<hypothesis_id, rule_id[]> — orchestrator inverts to ruleToHypothesis. */
+  rule_edges?: Map<string, string[]> | Record<string, string[]>;
 }
 
 export interface NormalizedObservationCode {
