@@ -2,30 +2,52 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * OBSERVATION MAPPING CACHE — DB-backed SSOT for intent → observations
  * ═══════════════════════════════════════════════════════════════════════════
- * Replaces the deleted hardcoded `INTENT_TO_OBSERVATION_MAPPINGS` table in
- * `decision/observation-code-mapper.ts`.
+ * CHANGE LOG
+ *   2026-07-09 10:35 UTC — SCOPE-AWARE REFACTOR. The cache no longer collapses
+ *     `intent_observation_mapping` down to `intent_code`. It now retains the
+ *     full 4-dimensional row set (crop_code, growth_stage, das_min, das_max,
+ *     assertion_strength, confidence_rank) and applies scope at lookup time.
  *
- * SSOT: `public.intent_observation_mapping` (13,539 active rows across 86
- * intents at 2026-07-08) joined against `public.observation_master` for the
- * modal `affected_plant_part` per intent — the DB-derived analogue of the
- * old `default_part` field.
+ *     Previously `getObservationsForIntent(intent)` returned the UNION of
+ *     every crop / stage / DAS row for that intent, which put wrong-crop
+ *     observation codes (brinjal, chilli, onion, cotton, sugarcane, …) on
+ *     screen for a rice land at DAS=31 stage=transplanting.
+ *
+ *     Fail-closed: an out-of-scope lookup returns an empty entry. There is
+ *     NO fallback to the unscoped union anywhere.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * SSOT: `public.intent_observation_mapping` joined against
+ * `public.observation_master` for the modal `affected_plant_part` per intent.
  *
  * CONTRACT (2030 Neuro-Symbolic Brain):
  *  - Loaded ONCE per edge request boot by `orchestrator.ts` alongside
  *    `StageKnowledgeCache.loadStageKnowledge`.
- *  - Consumers call `getObservationsForIntent(intentCode)` synchronously.
- *  - Cache MISS returns `null` — caller MUST log `[OBS_MAPPING_CACHE_MISS]`
- *    and produce an empty result. NEVER fall back to hardcoded agronomy.
+ *  - Consumers call `getObservationsForIntent(intentCode, scope)` where
+ *    `scope = { crop_code, growth_stage, das }` from the frozen
+ *    BiologicalState / canonical land context.
+ *  - Cache MISS or empty scope-filtered result → returns an empty entry —
+ *    caller MUST log `[OBS_MAPPING_CACHE_MISS]` and produce NO observation
+ *    codes. NEVER fall back to hardcoded agronomy or unscoped unions.
  *
  * FILTER POLICY:
- *  - `is_active=true`
- *  - `assertion_strength IN ('LITERAL','STRONG')` — mirrors the report's
- *    recommendation, avoids flooding rule engine with weak associations.
+ *  - Row filter:      `is_active=true`
+ *  - Assertion order: LITERAL > STRONG_HYPOTHESIS > DIFFERENTIAL
+ *  - Crop scope:      cropCode.toLowerCase() ∪ 'all' ∪ 'universal'
+ *  - Stage scope:     normalizeStageForDB(stage) ∪ 'all'
+ *  - DAS scope:       das === null OR das_min ≤ das ≤ das_max
+ *  - Dedup by `observation_code` — keep row with best (lowest) rank
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import { normalizeStageForDB } from './stage-normalizer.ts';
+
 interface IOMRow {
   intent_code: string;
+  crop_code: string | null;
+  growth_stage: string | null;
+  das_min: number | null;
+  das_max: number | null;
   observation_code: string;
   assertion_strength: string | null;
   confidence_rank: number | null;
@@ -36,16 +58,37 @@ interface ObsMasterRow {
   affected_plant_part: string | null;
 }
 
-interface IntentMappingEntry {
-  observation_codes: string[];       // deduped, ordered by confidence_rank
-  modal_affected_part: string | null; // DB-derived, replaces hardcoded default_part
+export interface IntentMappingScope {
+  crop_code?: string | null;
+  growth_stage?: string | null;
+  das?: number | null;
+}
+
+export interface IntentMappingEntry {
+  observation_codes: string[];       // deduped, ordered by assertion + rank
+  modal_affected_part: string | null; // DB-derived from filtered subset
   source_rows: number;
 }
 
 interface Cache {
   loadedAt: number;
-  byIntent: Map<string, IntentMappingEntry>;
+  /** intent_code → all curated rows for that intent (raw, 4-D). */
+  rowsByIntent: Map<string, IOMRow[]>;
+  /** observation_code → modal affected_plant_part (from observation_master). */
+  partByObservationCode: Map<string, string>;
 }
+
+const EMPTY_ENTRY: IntentMappingEntry = Object.freeze({
+  observation_codes: Object.freeze([]) as unknown as string[],
+  modal_affected_part: null,
+  source_rows: 0,
+});
+
+const ASSERTION_PRIORITY: Record<string, number> = {
+  LITERAL: 0,
+  STRONG_HYPOTHESIS: 1,
+  DIFFERENTIAL: 2,
+};
 
 let cache: Cache | null = null;
 const TTL_MS = 10 * 60 * 1000;
@@ -61,9 +104,8 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
     for (let offset = 0; ; offset += PAGE) {
       const { data, error } = await supabase
         .from('intent_observation_mapping')
-        .select('intent_code, observation_code, assertion_strength, confidence_rank')
+        .select('intent_code, crop_code, growth_stage, das_min, das_max, observation_code, assertion_strength, confidence_rank')
         .eq('is_active', true)
-        .in('assertion_strength', ['LITERAL', 'STRONG_HYPOTHESIS'])
         .order('intent_code', { ascending: true })
         .order('confidence_rank', { ascending: true, nullsFirst: false })
         .range(offset, offset + PAGE - 1);
@@ -79,11 +121,12 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
     console.warn('[OBS_MAPPING_CACHE] IOM load failed', e);
   }
 
-  // Load affected_plant_part for the involved observations.
+  // Load affected_plant_part for all observation codes seen — one small
+  // hydration step keeps modal_affected_part scope-agnostic (an observation
+  // code's affected_plant_part is a property of the code, not of the cell).
   const codes = Array.from(new Set(iom.map((r) => r.observation_code).filter(Boolean)));
   const partByCode = new Map<string, string>();
   try {
-    // Chunk the .in() list — PostgREST caps around 1000-2000 predicate values.
     const CHUNK = 500;
     for (let i = 0; i < codes.length; i += CHUNK) {
       const slice = codes.slice(i, i + CHUNK);
@@ -97,7 +140,7 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
       }
       for (const r of (data as ObsMasterRow[] | null) ?? []) {
         if (r?.observation_code && r.affected_plant_part) {
-          partByCode.set(r.observation_code, r.affected_plant_part);
+          partByCode.set(String(r.observation_code).toLowerCase(), r.affected_plant_part);
         }
       }
     }
@@ -105,56 +148,149 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
     console.warn('[OBS_MAPPING_CACHE] observation_master enrichment failed', e);
   }
 
-  // Group by intent.
-  const grouping = new Map<string, { codes: string[]; parts: string[] }>();
+  // Group rows by intent (raw — no scope collapse).
+  const rowsByIntent = new Map<string, IOMRow[]>();
   for (const r of iom) {
-    const key = (r.intent_code || '').toUpperCase();
+    const key = String(r.intent_code || '').toUpperCase();
     if (!key || !r.observation_code) continue;
-    let bucket = grouping.get(key);
+    let bucket = rowsByIntent.get(key);
     if (!bucket) {
-      bucket = { codes: [], parts: [] };
-      grouping.set(key, bucket);
+      bucket = [];
+      rowsByIntent.set(key, bucket);
     }
-    if (!bucket.codes.includes(r.observation_code)) bucket.codes.push(r.observation_code);
-    const part = partByCode.get(r.observation_code);
-    if (part) bucket.parts.push(part);
+    bucket.push(r);
   }
 
-  const byIntent = new Map<string, IntentMappingEntry>();
-  for (const [intent, bucket] of grouping.entries()) {
-    // Modal (most common) affected part across matched observations.
-    const partCounts = new Map<string, number>();
-    for (const p of bucket.parts) partCounts.set(p, (partCounts.get(p) ?? 0) + 1);
-    let modal: string | null = null;
-    let modalCount = 0;
-    for (const [p, c] of partCounts) {
-      if (c > modalCount) { modal = p; modalCount = c; }
-    }
-    byIntent.set(intent, {
-      observation_codes: bucket.codes,
-      modal_affected_part: modal,
-      source_rows: bucket.codes.length,
-    });
-  }
-
-  cache = { loadedAt: now, byIntent };
+  cache = {
+    loadedAt: now,
+    rowsByIntent,
+    partByObservationCode: partByCode,
+  };
   console.log(
-    `[OBS_MAPPING_CACHE] loaded iom_rows=${iom.length} intents=${byIntent.size} obs_with_part=${partByCode.size}`
+    `[OBS_MAPPING_CACHE] loaded iom_rows=${iom.length} intents=${rowsByIntent.size} obs_with_part=${partByCode.size}`
   );
 }
 
 /**
- * DB-backed intent → observations lookup. Returns `null` on cache miss so
- * callers can emit `[OBS_MAPPING_CACHE_MISS]` and produce an empty result.
- * NEVER substitute a hardcoded fallback.
+ * DB-backed intent → observations lookup — SCOPE-AWARE.
+ *
+ * `scope` fields come from the frozen BiologicalState / canonical land
+ * context. Missing `crop_code` returns an empty entry to prevent cross-crop
+ * pollution; missing `growth_stage` or `das` degrade to "match `all`" and
+ * "no DAS filter", which is safe because the DB curates `all` cells
+ * intentionally.
+ *
+ * Returns EMPTY_ENTRY on cache miss or empty scope-filtered result. Never
+ * substitute a hardcoded fallback or an unscoped union.
  */
-export function getObservationsForIntent(intentCode: string): IntentMappingEntry | null {
-  if (!cache) return null;
-  const key = (intentCode || '').toUpperCase();
-  if (!key) return null;
-  return cache.byIntent.get(key) ?? null;
+export function getObservationsForIntent(
+  intentCode: string,
+  scope?: IntentMappingScope,
+): IntentMappingEntry {
+  if (!cache) return EMPTY_ENTRY;
+  const key = String(intentCode || '').toUpperCase();
+  if (!key) return EMPTY_ENTRY;
+
+  const rows = cache.rowsByIntent.get(key);
+  if (!rows || rows.length === 0) return EMPTY_ENTRY;
+
+  const cropRaw = scope?.crop_code == null ? '' : String(scope.crop_code).trim().toLowerCase();
+  const cropAllowed = new Set<string>();
+  if (cropRaw) cropAllowed.add(cropRaw);
+  cropAllowed.add('all');
+  cropAllowed.add('universal');
+
+  const stageAllowed = new Set<string>(['all']);
+  if (scope?.growth_stage) {
+    const s = normalizeStageForDB(String(scope.growth_stage)).toLowerCase();
+    if (s) stageAllowed.add(s);
+  }
+
+  const das = typeof scope?.das === 'number' && isFinite(scope!.das!) ? scope!.das! : null;
+
+  // Dedup by observation_code; keep best row (lowest assertion priority, then
+  // lowest confidence_rank).
+  const bestByCode = new Map<string, IOMRow>();
+  for (const r of rows) {
+    const rowCrop = String(r.crop_code || '').trim().toLowerCase();
+    if (rowCrop && !cropAllowed.has(rowCrop)) continue;
+
+    const rowStage = String(r.growth_stage || 'all').trim().toLowerCase();
+    if (!stageAllowed.has(rowStage)) continue;
+
+    if (das != null) {
+      const lo = typeof r.das_min === 'number' ? r.das_min : 0;
+      const hi = typeof r.das_max === 'number' ? r.das_max : 9999;
+      if (das < lo || das > hi) continue;
+    }
+
+    const code = String(r.observation_code || '').trim();
+    if (!code) continue;
+
+    const strength = String(r.assertion_strength || 'DIFFERENTIAL').toUpperCase();
+    const rowPriority = ASSERTION_PRIORITY[strength] ?? 3;
+    const rowRank = typeof r.confidence_rank === 'number' ? r.confidence_rank : 999;
+
+    const prev = bestByCode.get(code);
+    if (!prev) {
+      bestByCode.set(code, r);
+      continue;
+    }
+    const prevPriority = ASSERTION_PRIORITY[String(prev.assertion_strength || 'DIFFERENTIAL').toUpperCase()] ?? 3;
+    const prevRank = typeof prev.confidence_rank === 'number' ? prev.confidence_rank : 999;
+    if (rowPriority < prevPriority || (rowPriority === prevPriority && rowRank < prevRank)) {
+      bestByCode.set(code, r);
+    }
+  }
+
+  if (bestByCode.size === 0) {
+    console.log(
+      `[OBS_MAPPING_SCOPE] intent=${key} crop=${cropRaw || 'null'} ` +
+      `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} returned=0`
+    );
+    return EMPTY_ENTRY;
+  }
+
+  const ordered = Array.from(bestByCode.values()).sort((a, b) => {
+    const pa = ASSERTION_PRIORITY[String(a.assertion_strength || 'DIFFERENTIAL').toUpperCase()] ?? 3;
+    const pb = ASSERTION_PRIORITY[String(b.assertion_strength || 'DIFFERENTIAL').toUpperCase()] ?? 3;
+    if (pa !== pb) return pa - pb;
+    const ra = typeof a.confidence_rank === 'number' ? a.confidence_rank : 999;
+    const rb = typeof b.confidence_rank === 'number' ? b.confidence_rank : 999;
+    return ra - rb;
+  });
+
+  const observation_codes = ordered.map((r) => r.observation_code);
+
+  // Modal affected_plant_part across the filtered subset only.
+  const partCounts = new Map<string, number>();
+  for (const code of observation_codes) {
+    const part = cache.partByObservationCode.get(code.toLowerCase());
+    if (part) partCounts.set(part, (partCounts.get(part) ?? 0) + 1);
+  }
+  let modal: string | null = null;
+  let modalCount = 0;
+  for (const [p, c] of partCounts) {
+    if (c > modalCount) { modal = p; modalCount = c; }
+  }
+
+  console.log(
+    `[OBS_MAPPING_SCOPE] intent=${key} crop=${cropRaw || 'null'} ` +
+    `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} returned=${observation_codes.length}`
+  );
+
+  return {
+    observation_codes,
+    modal_affected_part: modal,
+    source_rows: observation_codes.length,
+  };
 }
 
 export function isObservationMappingLoaded(): boolean {
-  return !!cache && cache.byIntent.size > 0;
+  return !!cache && cache.rowsByIntent.size > 0;
+}
+
+/** Test-only cache reset. */
+export function __resetObservationMappingCache(): void {
+  cache = null;
 }

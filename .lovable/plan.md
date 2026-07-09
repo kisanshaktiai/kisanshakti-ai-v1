@@ -1,108 +1,136 @@
 
-# Forensic fix: farmer never sees observation cards
+# Forensic finding — why the wrong observations show
 
-## Evidence (from uploaded edge log, trace `trace_mrdaicsf_hd7ofn`)
+The land‑specific chat has a hard SSOT for each turn: `land_id → crop_code, growth_stage, DAS, biological_state`. The clarification UI must only show symptoms that belong to that (crop, stage, DAS) cell.
+
+Two independent paths in the pipeline collapse those 4 dimensions down to `intent_code` only, and re‑emit ALL crops' observations as candidates for the current turn. That's what puts wrong symptoms on screen.
+
+## Evidence (grep + DB + latest edge log `trace_mrdcv2my_90bz8x`)
+
+DB shape of `public.intent_observation_mapping` (SSOT):
+```
+intent_code, crop_code, growth_stage, das_min, das_max,
+observation_code, assertion_strength, confidence_rank, is_active
+```
+Sample rows for `EMERGENCE_FAILURE` include: `brinjal_obs_flower_drop`, `chilli_obs_first_picking`, `cotton.boll_opening_visible`, `onion_obs_split_bulb`, `sugarcane.plant_emergence_low`, `rice.obs_rice_no_emergence` … i.e. **6+ crops share the same intent bucket**.
+
+Runtime today:
+
+1. `utils/observation-mapping-cache.ts::loadObservationMapping()` selects only `intent_code, observation_code, assertion_strength, confidence_rank` — it **drops** `crop_code`, `growth_stage`, `das_min`, `das_max`. It then groups by `intent_code` alone. `getObservationsForIntent(intent)` returns the union across all crops/stages/DAS.
+2. `decision/observation-code-mapper.ts::mapToObservationCodes()` (line ~294) calls `getObservationsForIntent(intentCode)` and pushes every returned code into the turn's observation set as INFERRED evidence. For a RICE land + intent `EMERGENCE_FAILURE` at DAS=31 stage=transplanting, this injects brinjal / chilli / cotton / onion / sugarcane observation codes.
+3. `agents/orchestrator.ts` line 8033 (`OBS_TO_HYP_GAP_ROUTER`) uses the same unscoped cache and stores `candidate_options=12` on `__observationCandidateCodes`. Latest log confirms:
+   `[OBS_TO_HYP_GAP_ROUTER] intent=EMERGENCE_FAILURE candidate_options=12 rule_fallback=suppressed`
+   Those 12 include non‑rice codes.
+4. Downstream, the injected cross‑crop observations pollute:
+   - the hypothesis anchor scan (`queryAnchorHypotheses`) → extra hypotheses that only die later via IMPOSSIBLE_CROP,
+   - the observation ledger and `ConversationState.inferred` (memory‑relevant to the OBSERVATION_STATE_CONTRACT),
+   - and any UI surface that hydrates from the "candidate observations" bag.
+
+The correct crop/stage/DAS scoping already exists — but only in `decision/iom-gate.ts::loadIOMAllowed` (used by `hypothesis-clarification-builder`). The two hot paths above bypass it.
+
+# Fix — one contract, one scope‑aware cache, no agronomy in code
+
+## 1. Make the cache scope‑aware (single change, DB‑driven)
+
+`supabase/functions/ai-agriculture-chat/utils/observation-mapping-cache.ts`
+
+- Extend the paged SELECT to include `crop_code, growth_stage, das_min, das_max`.
+- Store rows per intent as a list, not a pre‑unioned set:
+  ```
+  Map<intent_code, IOMRow[]>
+  ```
+- Replace `getObservationsForIntent(intentCode)` with:
+  ```
+  getObservationsForIntent(intentCode, {
+    crop_code:    string | null,
+    growth_stage: string | null,
+    das:          number | null,
+  }): IntentMappingEntry
+  ```
+  The filter runs entirely on cached rows (no DB round‑trip):
+  - `crop_code ∈ { cropCode.toLowerCase(), 'all', 'universal' }`
+  - `growth_stage ∈ { normalizeStageForDB(stage), 'all' }` (delegate cross‑stage equivalence to `runtime/stage-family-shim.ts` + `crop_stage_graph` — no new synonym map)
+  - `das == null OR (das_min ≤ das ≤ das_max)`
+  - Order: `assertion_strength` (LITERAL > STRONG_HYPOTHESIS > DIFFERENTIAL) then `confidence_rank` asc; dedupe by `observation_code`, keeping the best row.
+- `modal_affected_part` recomputed from the filtered subset (same modal logic).
+- Log line stays greppable: `[OBS_MAPPING_CACHE] loaded iom_rows=… intents=…` plus a per‑lookup `[OBS_MAPPING_SCOPE] intent=… crop=… stage=… das=… returned=…`.
+
+Fail‑closed: if the filtered result is empty the function returns `{ observation_codes: [], modal_affected_part: null, source_rows: 0 }`. **No fallback to unscoped union, ever.**
+
+## 2. Pass the SSOT context at both call sites
+
+`supabase/functions/ai-agriculture-chat/decision/observation-code-mapper.ts`
+
+- Extend `mapToObservationCodes(semantic, scope?)` with an optional scope `{ crop_code, growth_stage, das }`. Callers already have `canonicalContext` / `biological_state`; wire it through. When scope is absent, log `[OBS_MAPPING_CACHE_MISS] reason=no_scope` and skip intent expansion (do NOT emit unscoped codes).
+
+`supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (line ~8033, `OBS_TO_HYP_GAP_ROUTER`)
+
+- Read scope from the already frozen locked biological state:
+  ```
+  { crop_code: landContext.current_crop,
+    growth_stage: bioStage,
+    das: resolvedDAS }
+  ```
+- Call `getObservationsForIntent(intentCode, scope)`.
+- Either consume `__observationCandidateCodes` (feed into the clarification response as observation options) or delete the write. Today it is written and never read; that dead‑write is what surfaces cross‑crop codes in the audit log even when the UI ignores them. Deleting keeps the surgical footprint minimal.
+
+Every other caller of the cache (search shows only these two) is now automatically scope‑correct.
+
+## 3. Keep the outer clarification contract unchanged
+
+`buildHypothesisClarificationOptions` → `loadIOMAllowed` already does the same scoping via a live SQL query. After the fix, both the cache‑backed and DB‑backed paths return the same crop/stage/DAS‑correct set. This restores the invariant that the UI symptom picker for a rice/transplanting/DAS=31 land can only offer rice observations valid for that cell.
+
+## 4. Regression tests (Deno test runner)
+
+`supabase/functions/ai-agriculture-chat/tests/observation-mapping-cache-scope_test.ts` (new)
+
+- Load fake IOM rows across `rice, cotton, brinjal, onion, sugarcane, all` for one intent.
+- Assert `getObservationsForIntent('EMERGENCE_FAILURE', { crop_code:'rice', growth_stage:'nursery', das:15 })` returns only `crop_code ∈ {'rice','all','universal'}` rows AND `das_min ≤ 15 ≤ das_max`.
+- Assert cross‑crop pollution never appears.
+- Parametrise across 5 crops.
+
+`supabase/functions/ai-agriculture-chat/tests/hypothesis-clarification-scope_test.ts` (new)
+
+- Mock supabase to return the same rows for `intent_observation_mapping`, `observation_master`, `observation_translations`, `hypothesis_conditions`, `hypothesis_master`.
+- Run `buildHypothesisClarificationOptions` for `(rice, transplanting, 31)` and assert output `observation_code`s all belong to rice (or `all`), never brinjal/cotton/onion/sugarcane.
+
+## Technical details
+
+Files touched (5):
+- `supabase/functions/ai-agriculture-chat/utils/observation-mapping-cache.ts` — scope‑aware refactor
+- `supabase/functions/ai-agriculture-chat/decision/observation-code-mapper.ts` — accept + pass scope
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — pass scope to line 8033, remove or wire `__observationCandidateCodes`
+- `supabase/functions/ai-agriculture-chat/tests/observation-mapping-cache-scope_test.ts` — new
+- `supabase/functions/ai-agriculture-chat/tests/hypothesis-clarification-scope_test.ts` — new
+
+Do NOT touch:
+- DB rows (no migrations)
+- `iom-gate.ts` (already correct)
+- `hypothesis-clarification-builder.ts` (already correct)
+- Any agronomy rule, hypothesis, or observation code
+- LLM prompts / narration
+
+Guarantees:
+- No hardcoded crop / stage / DAS lists in TypeScript; every filter dimension comes from `intent_observation_mapping` columns.
+- Fail‑closed: unscoped or ambiguous calls return `[]` instead of a cross‑crop union.
+- No LLM path, no rule engine change.
+- Every crop, pest, disease, nutrient, and stress category benefits automatically because the filter is dimensional, not per‑domain.
+
+## Expected effect on the log
+
+For the same query on a rice/transplanting/DAS=31 land you should see:
 
 ```
-[ClarificationTrigger] Evaluating: ...symptoms=10, coverage=100%, ambiguous=false
-   Details: {"should_clarify":false,"reason":"SUFFICIENT_SYMPTOM_COVERAGE","symptom_count":10,"coverage":1}
-[EVIDENCE_CLASSIFICATION] raw_count=13 real_symptom_count=13 ignored_metadata_count=0
-BRAIN_TRACE ... confirmed=2(info=1) inferred=13 ... clarify=false(sufficient_evidence)
-              observation_required=false observation_option_count=0
-[OBS_TO_HYP_GAP] ... hypotheses=0 ... action=route_to_clarification_question   ← warn only, ignored
-[DIRECT_MODE] Intent EMERGENCE_FAILURE / route GENERAL_INFO skips symptom clarification
+[OBS_MAPPING_SCOPE] intent=EMERGENCE_FAILURE crop=rice stage=transplanting das=31 returned=0
+[OBS_TO_HYP_GAP_ROUTER] intent=EMERGENCE_FAILURE candidate_options=0 rule_fallback=suppressed
+[OBSERVATION_REQUIRED_PROMOTE_SKIPPED] reason=diagnostic_escalation_no_iom_or_rules
 ```
+…which correctly asks the farmer to add a photo/observation instead of showing brinjal/onion/cotton symptoms.
 
-The farmer typed only "पीक अजून उगवले नाही" → 1 confirmed symptom (`POOR_GERMINATION`). The 13 "real" symptoms are INFERRED IOM LITERAL peers and alias expansions. They are being fed into the ClarificationTrigger, coverage engine, and hypothesis graph as farmer evidence — that is the contract violation.
-
-## Root causes (five, all runtime; no DB / no crop hardcoding)
-
-1. **CT-INPUT-LEAK** — Orchestrator call site to `shouldTriggerClarificationFirst` builds `symptom_count` from `inductionResult.symptoms.length` and passes `symptom_coverage` from the coverage engine, but never populates `confirmed_observation_count` / `diagnostic_intent`. The `OBSERVATION_STATE_CONTRACT` gate at `clarification-strategy.ts:290-300` therefore never fires. (`orchestrator.ts` ~6471–6500 — the `__confirmedCountForTrigger` local is computed but not passed into the input object.)
-2. **EVIDENCE-CLASSIFICATION-LEAK** — `[EVIDENCE_CLASSIFICATION]` classifies every non-metadata code as `real_symptom_count`, ignoring `ObservationAuthority`. INFERRED codes must not be counted as "real" for coverage or trigger inputs.
-3. **DIRECT-MODE-ORDER-LEAK** — `DIRECT_MODE_DIAGNOSTIC_VETO` (orchestrator ~3655) is guarded so it doesn't fire for `route=GENERAL_INFO + diagnosticIntent` when the current condition also permits `DIRECT_MODE_BYPASS` (~3662). Log shows the BYPASS ran and the veto did not. Needs an unconditional pre-check: if `diagnosticIntent && confirmed==0 && candidate_pool>0`, refuse both bypass paths.
-4. **OBS_TO_HYP_GAP-SOFT-EXIT** — The second `[OBS_TO_HYP_GAP]` emission in the BRAIN_TRACE finalizer (~7887) is `console.warn` only. When `graph_ran && diagnostic && hyp=0 && confirmed>0`, it must set `observationRequired=true`, load candidate options from `intent_observation_mapping` + `observation_master`, and short-circuit to the observation-card response.
-5. **NAVIGATOR-CANDIDATE-MISS** — When the runtime enters `WAITING_FOR_OBSERVATION` (either from `graph-runtime OBS_GATE` or the invariant), the response builder does not attach `candidate_observations`, so the UI sees `observation_option_count=0`. `navigator-response.ts` must be given the candidate codes from `ObservationMappingCache.getObservationsForIntent(intent)`, hydrated through `observation_master` for display_text.
-
-## Fix plan (surgical, generic across all crops/domains)
-
-### F1 — Pass full state into ClarificationTrigger  *(orchestrator.ts, ~6470–6510)*
-Replace the input builder with the frozen `ConversationState`:
-```
-symptom_count            = conversationState.confirmed.length            // was inductionResult.symptoms.length
-symptom_coverage         = conversationState.confirmed_coverage           // NEW field; inferred excluded
-confirmed_observation_count = conversationState.confirmed.length
-diagnostic_intent        = requiresAgronomicReasoningIntent(intentCode)
-```
-Delete the `__confirmedCountForTrigger` shim once the object is wired.
-
-### F2 — Authority-aware evidence classifier  *(runtime/observation-state.ts + orchestrator EVIDENCE_CLASSIFICATION log site)*
-Extend `ObservationState` with `confirmed_coverage()` and change the `[EVIDENCE_CLASSIFICATION]` log to emit both counts:
-```
-real_symptom_count = state.confirmed.length     // authority ∈ {CONFIRMED, EXTRACTED}
-inferred_count     = state.inferred.length      // no longer counted as evidence
-```
-No coverage numerator may include INFERRED / SYNTHETIC. This is the single source of `symptom_count` / `symptom_coverage`.
-
-### F3 — Hard preempt for diagnostic + zero-confirmed  *(orchestrator.ts ~3620–3670)*
-Move the `DIRECT_MODE_DIAGNOSTIC_VETO` block above the `DIRECT_MODE_BYPASS` block and make the condition:
-```
-if (isDiagnosticIntent && confirmed.length === 0 && candidateOptions.length > 0) {
-  bypassClarification = false;
-  directModeBypass    = false;
-  agentsUsed.push('DIRECT_MODE_DIAGNOSTIC_VETO');
-}
-```
-This is crop-agnostic; `candidateOptions` comes from `ObservationMappingCache.getObservationsForIntent(intentCode).observation_codes`.
-
-### F4 — Promote OBS_TO_HYP_GAP to a hard router  *(orchestrator.ts ~7870–7920)*
-When `graph_ran && diagnosticIntent && hypotheses.length === 0`:
-- set `(this as any).__observationRequired = true`
-- attach `candidate_observations` from IOM cache (see F5) to the response envelope
-- set `layeredRuleResult = null` (do NOT emit `INVARIANT_FALLBACK`)
-- push `agentsUsed: ['OBS_TO_HYP_GAP_ROUTER']`
-- log promoted from `warn` → `info`, keep the same `[OBS_TO_HYP_GAP]` marker.
-
-### F5 — Navigator emits candidate observations  *(runtime/navigator-response.ts + graph-runtime.ts)*
-- `runGraphRuntime` already exposes `state: WAITING_FOR_OBSERVATION` + `candidate_observations`. Pipe both into the response envelope (`observation_required: true`, `observation_option_count: candidate_observations.length`).
-- `navigator-response.ts` hydrates each candidate code via `observation_master` (label/description/affected_plant_part) in a single `.in()` chunked query — no per-crop table, no hardcoded label map.
-
-### F6 — Regression tests  *(tests/observation-state-contract_test.ts)*
-Add T7–T9, parametrized across `[RICE, COTTON, SUGARCANE, TOMATO, ONION]`:
-- T7: 1 confirmed + 13 inferred ⇒ `clarify=true, reason=NO_CONFIRMED_OBSERVATIONS_ENOUGH_FOR_HYP`, `observation_option_count>0`, `route=OBSERVATION_CARDS`.
-- T8: `graph_ran && hyp=0 && confirmed>0` ⇒ `OBS_TO_HYP_GAP_ROUTER` fires and no `INVARIANT_FALLBACK` is emitted.
-- T9: `route=GENERAL_INFO && diagnosticIntent && confirmed=0` ⇒ direct-mode bypass refused.
-
-## Files touched (no schema, no LLM, no crop-specific lists)
-
-Edit:
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`  (F1, F3, F4)
-- `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts`  (accept `symptom_coverage` from confirmed-only)
-- `supabase/functions/ai-agriculture-chat/runtime/observation-state.ts`  (F2 helper)
-- `supabase/functions/ai-agriculture-chat/runtime/navigator-response.ts`  (F5 hydration)
-- `supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts`  (F5 envelope passthrough)
-
-New:
-- `supabase/functions/ai-agriculture-chat/tests/observation-state-contract_test.ts`  (F6, extend existing)
-
-Update memory: `mem://architecture/observation-classification-db-ssot` — record the confirmed-only coverage rule and the OBS_TO_HYP_GAP router.
-
-## Success invariants (must all hold post-fix)
+For a query on a rice/nursery/DAS=10 land you'll see:
 
 ```
-diagnostic_intent = true
-AND confirmed_observations = 0
-⇒ observation_required = true
-AND observation_option_count > 0
-AND no decision_rule fired
-AND no INVARIANT_FALLBACK narration emitted
+[OBS_MAPPING_SCOPE] intent=EMERGENCE_FAILURE crop=rice stage=nursery das=10 returned=6
+[HYP_CLARIFICATION] options=6 keys=[obs_rice_no_emergence,obs_rice_patchy_emergence,germination_failure,delayed_germination,seed_not_germinated,poor_germination]
 ```
-
-```
-diagnostic_intent = true
-AND graph_executed = true
-AND hypotheses = 0
-⇒ observation cards rendered (OBS_TO_HYP_GAP_ROUTER),
-   never legacy rule fallback.
-```
-
-No agronomy is added or moved into TS. All candidate options come from `intent_observation_mapping` + `observation_master`. Works for every crop / pest / disease / nutrient / stress domain.
+— only rice, only germination‑stage, DAS‑valid symptoms. That is what the UI will render.
