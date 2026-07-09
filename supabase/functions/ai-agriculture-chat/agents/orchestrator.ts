@@ -8036,10 +8036,27 @@ export class AIAgentOrchestrator {
               `action=route_to_observation_cards`
             );
             // F4 — HARD ROUTER: force observation-card response, refuse rule fallback.
-            // Load candidate observations from IOM cache (crop/domain-agnostic).
+            // Load candidate observations from IOM cache SCOPED to the frozen
+            // land context (crop / stage / DAS). 2026-07-09 — unscoped calls
+            // used to leak brinjal / cotton / onion codes into rice turns.
             try {
               const { getObservationsForIntent } = await import('../utils/observation-mapping-cache.ts');
-              const iomEntry = getObservationsForIntent(intentCode);
+              const _routerCrop = (typeof cropCode === 'string' && cropCode)
+                ? cropCode
+                : (landContext?.current_crop ?? null);
+              const _routerStage = (typeof growthStage === 'string' && growthStage)
+                ? growthStage
+                : (landContext?.growth_stage ?? null);
+              const _routerDAS = typeof resolvedDAS === 'number'
+                ? resolvedDAS
+                : (typeof landContext?.days_since_sowing === 'number'
+                    ? landContext.days_since_sowing
+                    : null);
+              const iomEntry = getObservationsForIntent(intentCode, {
+                crop_code: _routerCrop,
+                growth_stage: _routerStage,
+                das: _routerDAS,
+              });
               const candidateCodes = iomEntry?.observation_codes ?? [];
               (this as any).__observationRequired = true;
               (this as any).__observationCandidateCodes = candidateCodes;
@@ -8053,6 +8070,7 @@ export class AIAgentOrchestrator {
               agentsUsed.push('OBS_TO_HYP_GAP_ROUTER');
               console.log(
                 `[OBS_TO_HYP_GAP_ROUTER] trace_id=${traceId} intent=${intentCode} ` +
+                `crop=${_routerCrop ?? 'null'} stage=${_routerStage ?? 'null'} das=${_routerDAS ?? 'null'} ` +
                 `candidate_options=${candidateCodes.length} rule_fallback=suppressed`
               );
             } catch (routerErr) {
