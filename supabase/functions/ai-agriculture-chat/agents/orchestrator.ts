@@ -9079,7 +9079,18 @@ export class AIAgentOrchestrator {
       const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision;
       const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
       const hasNoPhoto = !options.photoUrl && !photoAnalysisResult;
-      const shouldUseStageAdvisoryFallback = hasNoRecommendations && hasNoPhoto && (isSymptomFreeRoute || bypassClarification) && !!landContext?.current_crop;
+      const observationAuthorityStillRequiresClarification =
+        !!(this as any).__conversationState?.clarification_required &&
+        (
+          (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
+          (this as any).__conversationState?.mode === 'MIXED'
+        );
+      const shouldUseStageAdvisoryFallback =
+        hasNoRecommendations &&
+        hasNoPhoto &&
+        !observationAuthorityStillRequiresClarification &&
+        (isSymptomFreeRoute || bypassClarification) &&
+        !!landContext?.current_crop;
       
       if (shouldUseStageAdvisoryFallback) {
         const cropName = landContext.current_crop || 'crop';
