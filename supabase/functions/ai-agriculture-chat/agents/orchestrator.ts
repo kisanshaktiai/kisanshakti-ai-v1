@@ -6464,26 +6464,58 @@ export class AIAgentOrchestrator {
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
       const lockedStage = getLockedStage();
       
-      // OBSERVATION_STATE_CONTRACT — pull confirmed-only count from the frozen
-      // ConversationState so the trigger cannot be inflated by INFERRED symbols
-      // (alias expansion / IOM LITERAL peers / LLM inferences). Diagnostic
-      // intent + confirmed=0 forces clarification, regardless of coverage.
-      const __confirmedCountForTrigger = (this as any).__conversationState?.informative_count ?? 0;
+      // ═══════════════════════════════════════════════════════════════════════
+      // OBSERVATION_STATE_CONTRACT (F1) — feed the trigger with CONFIRMED-ONLY
+      // counts from the frozen ConversationState. The prior wiring passed
+      // `inductionResult.symptoms.length` and `inductionResult.symbol_coverage`
+      // which include INFERRED IOM LITERAL peers + alias expansions + LLM
+      // guesses, so `SUFFICIENT_SYMPTOM_COVERAGE` fired with 1 confirmed
+      // symptom and 13 inferred peers.
+      //
+      // symptom_count / symptom_coverage are ALWAYS derived from
+      // `informative_count`. Diagnostic intent is derived from the DB-driven
+      // authority set — no route labels, no crop-specific gates.
+      // ═══════════════════════════════════════════════════════════════════════
+      const __convState = (this as any).__conversationState;
+      const __confirmedCountForTrigger = __convState?.informative_count ?? 0;
       const __isDiagnosticForTrigger =
-        (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
-        (this as any).__conversationState?.mode === 'MIXED';
+        requiresAgronomicReasoningIntent(intentCode) ||
+        __convState?.mode === 'DIAGNOSIS' ||
+        __convState?.mode === 'MIXED';
+
+      // Confirmed-only coverage: 3 informative observations is treated as full
+      // coverage (crop-agnostic — matches the hypothesis engine's minimum
+      // 3-observation quorum used across all domains). Cap at 1.0.
+      const CONFIRMED_COVERAGE_QUORUM = 3;
+      const __confirmedCoverageForTrigger = Math.min(
+        1,
+        __confirmedCountForTrigger / CONFIRMED_COVERAGE_QUORUM,
+      );
 
       const clarificationTriggerInput: ClarificationTriggerInput = {
         crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
         stage_known: !!(lockedStage?.growth_stage || landContext?.growth_stage),
-        symptom_count: inductionResult.symptoms.length,
-        symptom_coverage: inductionResult.symbol_coverage,
-        is_ambiguous: inductionResult.aggregated_confidence < 0.5 && inductionResult.symptoms.length > 0,
+        // F1: confirmed-only — inferred peers are ranking priors, not evidence.
+        symptom_count: __confirmedCountForTrigger,
+        symptom_coverage: __confirmedCoverageForTrigger,
+        is_ambiguous: inductionResult.aggregated_confidence < 0.5 && __confirmedCountForTrigger > 0,
         has_pending_clarification: pendingOptionsCount > 0,
         clarification_completed: clarificationCompleted,
         confirmed_observation_count: __confirmedCountForTrigger,
         diagnostic_intent: __isDiagnosticForTrigger,
       };
+
+      // F2 — Authority-aware evidence log. Prior [EVIDENCE_CLASSIFICATION]
+      // conflated INFERRED with "real". Emit the split explicitly so audit
+      // greps show both classes.
+      console.log(
+        `[EVIDENCE_CLASSIFICATION_AUTHORITY] trace=${traceId} ` +
+        `informative_confirmed=${__confirmedCountForTrigger} ` +
+        `inferred=${__convState?.inferred?.length ?? 0} ` +
+        `confirmed_total=${__convState?.confirmed?.length ?? 0} ` +
+        `coverage=${__confirmedCoverageForTrigger.toFixed(2)} ` +
+        `diagnostic=${__isDiagnosticForTrigger}`,
+      );
       
       const clarificationTrigger = shouldTriggerClarificationFirst(clarificationTriggerInput);
       
