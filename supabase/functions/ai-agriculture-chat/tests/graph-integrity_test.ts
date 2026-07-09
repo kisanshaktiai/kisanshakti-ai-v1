@@ -376,6 +376,7 @@ function makeGraphSupabase() {
       { alias_code: 'UNEVEN_EMERGENCE', alias_normalized: 'uneven_emergence', canonical_code: 'uneven_emergence', active: true },
       { alias_code: 'POOR_EMERGENCE', alias_normalized: 'poor_emergence', canonical_code: 'obs_rice_no_emergence', active: true },
       { alias_code: 'poor_emergence', alias_normalized: 'poor_emergence', canonical_code: 'obs_rice_no_emergence', active: true },
+      { alias_code: 'OBS_RICE_NO_EMERGENCE', alias_normalized: 'obs_rice_no_emergence', canonical_code: 'obs_rice_no_emergence', active: true },
       { alias_code: 'कमी रोपे बाहेर आले', alias_normalized: 'कमी रोपे बाहेर आले', canonical_code: 'uneven_emergence', active: true },
     ],
     observation_master: [
