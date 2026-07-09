@@ -3,27 +3,21 @@
  * CONCEPT BRIDGE — extractor vocabulary → canonical IOM observation codes
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * v3.0 — 2026-07-04 (DB-wired)
+ * CHANGE LOG (newest first):
+ *   2026-07-09 04:12 UTC — Wired BIOLOGICAL_SCOPE_CONTRACT (P1). New optional
+ *     `cropContext` on `bridgeCodesDb` triggers a post-bridge scope filter
+ *     via `runtime/graph-contracts.ts::filterByBiologicalScope`. Cross-crop
+ *     organ-specific codes are dropped with [OBS_SCOPE_REJECT] before they
+ *     enter GRAPH_TRUTH_BUILT. Backward compatible: no context → no filter.
+ *   2026-07-04 — DB-wired v3.0 using public.observation_aliases.
  *
  * Runtime bridge from raw extractor labels into canonical observation
  * codes using the `public.observation_aliases` table as the ONLY source
- * of truth.
- *
- * NO hardcoded crop/stage/symptom/pest/disease mappings live here. Adding a
- * new bridge = inserting a row in `observation_aliases`, not editing code.
- *
- * Table columns used:
- *     alias_code       (text) - lookup key (case-insensitive)
- *     canonical_code   (text) - target canonical observation code
- *     source           (text) - provenance label
- *     active           (bool) - only active rows participate
- *
- * NOTE: `observation_aliases` currently has no `crop_code` column. The
- * `cropCode` parameter is threaded through the API for future crop-scoped
- * curation and for forensic traces; it is NOT used to fabricate mappings
- * in code.
+ * of truth. NO hardcoded crop/stage/symptom/pest/disease mappings.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+import { filterByBiologicalScope, type CropContext } from '../runtime/graph-contracts.ts';
 
 export interface BridgedObservation {
   raw_code: string;
