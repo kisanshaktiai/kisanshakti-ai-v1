@@ -1984,21 +1984,34 @@ export class AIAgentOrchestrator {
           // are empty.
           let mappedObservationKey: string | null = null;
           const persistedObsKeys = (options.sessionState as any)?.pendingClarificationObservationKeys || [];
-          const persistedStructured: Array<{ label: string; value: string; observation_key: string }> =
+          const persistedStructured: Array<{
+            label: string;
+            value: string;
+            observation_key: string;
+            observation_id?: string;
+            observation_code?: string;
+            hypothesis_id?: string;
+            hypothesis_condition_id?: string;
+            graph_version?: string;
+            source?: string;
+          }> =
             (options.sessionState as any)?.pendingClarificationOptionsStructured || [];
+          const selectedStructuredOption = matchResult.option_index != null
+            ? persistedStructured[matchResult.option_index]
+            : null;
           if (embeddedObservationKeys.length > 0) {
             mappedObservationKey = embeddedObservationKeys[0];
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
           } else if (
             matchResult.option_index != null &&
-            persistedStructured[matchResult.option_index]?.observation_key
+            (selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key)
           ) {
             mappedObservationKey = String(
-              persistedStructured[matchResult.option_index].observation_key
+              selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key
             ).toUpperCase();
             console.log(
               `   📋 Using STRUCTURED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}" ` +
-              `(label="${persistedStructured[matchResult.option_index].label}")`
+              `(label="${selectedStructuredOption?.label}", source=${selectedStructuredOption?.source ?? 'legacy'})`
             );
           } else if (matchResult.option_index != null && persistedObsKeys[matchResult.option_index]) {
             mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
