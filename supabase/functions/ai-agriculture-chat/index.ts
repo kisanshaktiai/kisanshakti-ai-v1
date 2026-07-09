@@ -1932,6 +1932,11 @@ serve(async (req) => {
           try {
             const _orchAnyForCtx2: any = orch as any;
             const _graphScopeBlockedMeta2 = _orchAnyForCtx2?._graphScopeBlocked ?? null;
+            const _realObservationCountForContract2 = Array.isArray(_orchAnyForCtx2?._lastRealObservations)
+              ? _orchAnyForCtx2._lastRealObservations.length
+              : (Array.isArray((orchestratorResponse as any)?.metadata?.real_observations)
+                  ? (orchestratorResponse as any).metadata.real_observations.length
+                  : 0);
             const _postGate = await ensureObservationSelectorContract(orchestratorResponse, {
               supabase,
               cropCode:
@@ -1955,6 +1960,7 @@ serve(async (req) => {
                 finalDaysSinceSowing ??
                 (orchestratorResponse as any)?.dataAudit?.land?.days_since_sowing ??
                 null,
+              realObservationCount: _realObservationCountForContract2,
               graphReason: _graphScopeBlockedMeta2
                 ? `INSUFFICIENT_EVIDENCE:${_graphScopeBlockedMeta2.reason ?? 'NO_HYPOTHESIS_SURVIVED_DB_GATES'}`
                 : 'INSUFFICIENT_EVIDENCE',
