@@ -1,5 +1,15 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 02:07 UTC — Expose `rule_edges` (Map<hypothesis_id, rule_id[]>)
+ *   on evaluator return value so the orchestrator can invert it into
+ *   `edges.ruleToHypothesis` for the pure graph-snapshot builder. No logic
+ *   change; additive field only.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
  * HYPOTHESIS GRAPH EVALUATOR — v1.0 (Step 8, graph-first)
  * ═══════════════════════════════════════════════════════════════════════════
  *

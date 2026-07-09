@@ -1,5 +1,22 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 02:07 UTC — Snapshot ontology fix (v2).
+ *   • Separated HypothesisNode / RuleNode; rule_id NEVER a hypothesis key.
+ *   • Pure builder: no I/O. Requires edges.ruleToHypothesis from orchestrator.
+ *   • Engine A rules with no mapping OR no evidence → orphan_rule_ids + log
+ *     RULE_WITHOUT_HYPOTHESIS_EDGE. Never fabricates a hypothesis.
+ *   • Guards: BROKEN_HYP_RULE_EDGE (throw), GRAPH_ONTOLOGY_ERROR under
+ *     GRAPH_STRICT=1, otherwise downgrade to graph_state=GRAPH_EXHAUSTED.
+ *   • Added invertRuleMapping(Map<hid,rid[]>) → Map<rid,hid>.
+ *   • Back-compat projections: hypotheses[] / rules[] kept for readers.
+ * 2026-07-08 — Initial snapshot introduced to unify Engine A + Engine B and
+ *   stop split-brain BRAIN_TRACE hyp=0 corruption.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
  * GRAPH SNAPSHOT — immutable per-turn result of the graph runtime.
  *
  * Ontology (strict, non-negotiable):

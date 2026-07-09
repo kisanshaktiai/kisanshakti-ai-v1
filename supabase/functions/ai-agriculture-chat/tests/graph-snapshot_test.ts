@@ -1,4 +1,16 @@
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 02:07 UTC — Rewrote against separated node ontology.
+ *   • Test 1: rule → hypothesis promotion via edges.ruleToHypothesis.
+ *   • Test 2: missing mapping → orphan_rule_ids, no fake hypothesis.
+ *   • Test 3: both engines same hypothesis → source=BOTH, dedup rule_nodes.
+ *   • Test 4: BRAIN_TRACE parity + GRAPH_STATE_CORRUPTION_ERROR guard.
+ *   • Test 5: invertRuleMapping. Test 6: NO_HYPOTHESIS. Test 7: no-evidence orphan.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
  * GraphRuntimeSnapshot contract tests.
  *
  * Enforces the Observation → Hypothesis → Rule ontology:
