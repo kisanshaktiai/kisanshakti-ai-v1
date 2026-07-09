@@ -2392,7 +2392,16 @@ export class AIAgentOrchestrator {
           
           // Use unified crop code normalizer for consistent rule filtering
           const cropCodeForRules = unifiedNormalizeCropCode(cropName).toLowerCase();
-          const allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
+          let allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
+          if (optionGraphRuleIds.length > 0) {
+            const beforeGraphScope = allRulesForOption.length;
+            const graphRuleIdSet = new Set(optionGraphRuleIds.map(String));
+            allRulesForOption = allRulesForOption.filter((r: any) => graphRuleIdSet.has(String(r.rule_id)));
+            console.log(
+              `   🧭 [OPTION_GRAPH_SCOPE] rules ${beforeGraphScope} → ${allRulesForOption.length} ` +
+              `from hypothesis_rule_mapping=${optionGraphRuleIds.length}`,
+            );
+          }
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length} (crop=${cropCodeForRules})`);
           
           // Pass user_query AND visual_symptoms for rule matching
