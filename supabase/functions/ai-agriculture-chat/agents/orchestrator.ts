@@ -1218,7 +1218,7 @@ export class AIAgentOrchestrator {
     sessionId: string,
     farmerId: string,
     tenantId: string,
-    options: Parameters<AIAgentOrchestrator['_orchestrateImpl']>[4] = {},
+    options: any = {},
   ): Promise<OrchestratorResponse> {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     let response: OrchestratorResponse;
