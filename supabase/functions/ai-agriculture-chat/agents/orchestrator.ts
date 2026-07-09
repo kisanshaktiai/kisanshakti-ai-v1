@@ -2524,6 +2524,9 @@ export class AIAgentOrchestrator {
               `[GRAPH_CONTRACT_ERROR] trace=${traceId} candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
               `matched_rules=0 reason=NO_HYPOTHESIS_RULE_EDGE options=${clarificationOptions.length}`,
             );
+            (this as any)._lastRealObservations = Array.isArray(optionEvidence.real_codes)
+              ? [...optionEvidence.real_codes]
+              : [];
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
