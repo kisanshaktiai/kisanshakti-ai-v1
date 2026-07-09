@@ -2291,9 +2291,10 @@ export class AIAgentOrchestrator {
           // MANDATORY GRAPH CONTRACT: confirmed observation must traverse
           // Observation → Hypothesis before any rule or fallback branch.
           // ═══════════════════════════════════════════════════════════════════
+          const optionEvidence = classifyEvidence(allObservations);
           const optionGraphResolution = await resolveHypothesesFromObservations({
             supabase: this.supabase,
-            observations: allObservations,
+            observations: optionEvidence.real_codes,
             crop_context: {
               crop_code: cropName,
               crop_group: cropName,
@@ -2307,11 +2308,13 @@ export class AIAgentOrchestrator {
           ));
           console.log(
             `[EVIDENCE_COUNT_TRACE] confirmed_observations=${allObservations.length} ` +
+            `real_observations=${optionEvidence.real_symptom_count} ` +
+            `ignored_context_symbols=${optionEvidence.ignored_metadata_count} ` +
             `candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
             `matched_rules=${optionGraphRuleIds.length}`,
           );
 
-          if (allObservations.length > 0 && optionGraphResolution.hypotheses.length === 0) {
+          if (optionEvidence.real_symptom_count > 0 && optionGraphResolution.hypotheses.length === 0) {
             const graphClarification = await buildHypothesisClarificationOptions({
               supabase: this.supabase,
               intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
@@ -2319,7 +2322,7 @@ export class AIAgentOrchestrator {
               crop_stage: growthStage,
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
-              confirmed_observations: allObservations,
+              confirmed_observations: optionEvidence.real_codes,
               trace_id: traceId,
               max: 5,
             });
@@ -2336,8 +2339,9 @@ export class AIAgentOrchestrator {
             }));
             console.error(
               `[GRAPH_CONTRACT_ERROR] trace=${traceId} confirmed_observations=${allObservations.length} ` +
+              `real_observations=${optionEvidence.real_symptom_count} ` +
               `candidate_hypotheses=0 graph_gap=${graphClarification.graph_gap ?? 'NO_HYPOTHESIS_EDGE'} ` +
-              `options=${clarificationOptions.length}`,
+              `clarification_source=hypothesis_graph options=${clarificationOptions.length}`,
             );
             return {
               type: 'CLARIFICATION_QUESTION',
@@ -2353,7 +2357,9 @@ export class AIAgentOrchestrator {
               metadata: {
                 orchestrator_type: 'CLARIFICATION_QUESTION',
                 observation_source: 'hypothesis_graph',
-                graph_reason: graphClarification.graph_gap ?? 'NO_HYPOTHESIS_EDGE',
+                graph_reason: graphClarification.graph_gap ?? 'GRAPH_NEEDS_DISAMBIGUATION',
+                real_observations: optionEvidence.real_codes,
+                ignored_context_symbols: optionEvidence.ignored_codes,
                 trace_id: traceId,
                 selectionType: 'SINGLE_CHOICE',
                 session_state_update: {
@@ -2373,7 +2379,7 @@ export class AIAgentOrchestrator {
               crop_stage: growthStage,
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
-              confirmed_observations: allObservations,
+              confirmed_observations: optionEvidence.real_codes,
               trace_id: traceId,
               max: 5,
             });
