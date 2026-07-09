@@ -451,6 +451,66 @@ export function validateDecisionOutput(d: DecisionOutputCandidate | null | undef
   return { valid: true, kind, missing: [] };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HYPOTHESIS_INVARIANT_CONTRACT — impossible-state guard
+// ─────────────────────────────────────────────────────────────────────────
+//   In a diagnostic turn, `hypotheses=0 ∧ observation_required=false` is
+//   agronomically impossible: the graph either found candidate hypotheses
+//   or it must ask the farmer for more evidence. Silent exit means the
+//   system will fall back to orphan rules and hallucinate an answer.
+//
+//   Dev  → throw GraphContractViolation
+//   Prod → log [GRAPH_CONTRACT_VIOLATION] and force observation_required=true
+// ═══════════════════════════════════════════════════════════════════════════
+
+export class GraphContractViolation extends Error {
+  constructor(msg: string) { super(msg); this.name = 'GraphContractViolation'; }
+}
+
+export interface HypothesisInvariantCtx {
+  diagnosticIntent: boolean;
+  hypothesesCount: number;
+  observationRequired: boolean;
+  graphExecuted: boolean;
+  confirmedCount: number;
+  traceId?: string;
+}
+
+export interface HypothesisInvariantResult {
+  ok: boolean;
+  forced_observation_required?: boolean;
+  reason?: string;
+}
+
+export function assertObservationRequiredWhenNoHypothesis(
+  ctx: HypothesisInvariantCtx,
+  opts: { throwInDev?: boolean } = {},
+): HypothesisInvariantResult {
+  if (!ctx.diagnosticIntent) return { ok: true };
+  if (!ctx.graphExecuted)    return { ok: true };
+  if (ctx.hypothesesCount > 0) return { ok: true };
+  if (ctx.observationRequired) return { ok: true };
+
+  const msg =
+    `IMPOSSIBLE_STATE trace=${ctx.traceId ?? 'n/a'} ` +
+    `diagnosticIntent=true hypotheses=0 observation_required=false ` +
+    `confirmed=${ctx.confirmedCount} — graph exited without hypotheses ` +
+    `AND without requesting more evidence.`;
+
+  console.error(`[GRAPH_CONTRACT_VIOLATION][HYPOTHESIS_INVARIANT] ${msg}`);
+
+  const isDev = (globalThis as any)?.Deno?.env?.get?.('DENO_ENV') === 'development';
+  if (isDev && opts.throwInDev !== false) {
+    throw new GraphContractViolation(msg);
+  }
+  // Fail-closed in prod: force clarification instead of silent rule fallback.
+  return {
+    ok: false,
+    forced_observation_required: true,
+    reason: 'HYPOTHESIS_INVARIANT_FAIL_CLOSED',
+  };
+}
+
 export const GraphContracts = {
   assertObservationsExist,
   assertHypothesesExist,
@@ -460,7 +520,9 @@ export const GraphContracts = {
   graphAuthorityGate,
   enforceGraphOnlyRules,
   validateDecisionOutput,
+  assertObservationRequiredWhenNoHypothesis,
   normalize,
 };
 
 export default GraphContracts;
+
