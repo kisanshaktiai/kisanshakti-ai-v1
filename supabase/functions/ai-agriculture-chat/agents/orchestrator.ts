@@ -4863,8 +4863,17 @@ export class AIAgentOrchestrator {
 
       // Phase H — Fix 2: ConversationState owns clarification. Sync the
       // legacy boolean so downstream gates stay consistent without recomputing.
-      if (conversationState.clarification_required && !bypassClarification) {
-        shouldBlockDiagnosis = shouldBlockDiagnosis || true;
+      if (conversationState.clarification_required) {
+        shouldBlockDiagnosis = true;
+        if (bypassClarification) {
+          console.log(
+            `   🛑 [DIRECT_MODE_CONVERSATION_VETO] clarification_required=${conversationState.clarification_reason} ` +
+            `confirmed=${conversationState.confirmed.length}; clearing bypassClarification`
+          );
+          directModeBypass = false;
+          bypassClarification = false;
+          agentsUsed.push('DIRECT_MODE_CONVERSATION_VETO');
+        }
       }
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
