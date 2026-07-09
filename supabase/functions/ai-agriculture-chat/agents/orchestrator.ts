@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 04:16 UTC — v4 Graph Contracts wired at TURN_EVIDENCE_LOCK.
+ *   P5 SYMBOL_IDENTITY_CONTRACT (assertObservationsExist) runs BEFORE
+ *   bridge; unknown obs never enter graph. P1 BIOLOGICAL_SCOPE_CONTRACT
+ *   is invoked inside `bridgeCodesDb` via cropContext; foreign-crop/organ
+ *   codes are dropped with [OBS_SCOPE_REJECT] before GRAPH_TRUTH_BUILT.
+ *   Contract library: runtime/graph-contracts.ts (crop-agnostic, DB-driven).
  * 2026-07-09 03:15 UTC — FIX 1 (STATE_SYNC). Call
  *   `syncCanonicalStateFromSnapshot(canonicalState, _graphSnapshot)` right
  *   before `checkPrescriptionGate` so `candidate_hypothesis_count` /
