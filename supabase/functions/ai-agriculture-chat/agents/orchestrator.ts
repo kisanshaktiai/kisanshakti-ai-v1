@@ -7970,7 +7970,8 @@ export class AIAgentOrchestrator {
               );
             }
           }
-          }
+
+
 
           emitBrainTrace(_cs, {
             rule_candidates:  rulesToEvaluate?.length ?? 0,
