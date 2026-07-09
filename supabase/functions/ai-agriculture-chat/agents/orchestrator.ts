@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-09 14:03 UTC — Add response-level real_observations bridge to
+ *   STAGE_ADVISORY_FALLBACK so index/contract fallback count survives even
+ *   if orchestrator side-channel state is unavailable.
  * 2026-07-09 09:20 UTC — Wire observation-state authority into direct-mode
  *   and deferred clarification. Diagnostic turns with 0 confirmed observations
  *   now force observation cards before rule/stage fallback; GENERAL_INFO cannot
@@ -9309,6 +9312,9 @@ export class AIAgentOrchestrator {
         const stageName = landContext.growth_stage || 'current stage';
         const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
         const userLanguage = options.language || 'mr';
+        const stageAdvisoryRealObservations = Array.isArray((this as any)._lastRealObservations)
+          ? [...(this as any)._lastRealObservations]
+          : [];
         const stageFallback = this.generateStageAwareFallback(
           cropName,
           stageName,
@@ -9337,7 +9343,8 @@ export class AIAgentOrchestrator {
               ...stageFallback.metadata,
               route: queryRoute.route,
               reason: 'ZERO_RULES_FOR_SYMPTOM_FREE_ADVISORY',
-              i18n_key: stageFallback.i18n_key
+              i18n_key: stageFallback.i18n_key,
+              real_observations: stageAdvisoryRealObservations
             }
           } as any,
           dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
@@ -9350,6 +9357,7 @@ export class AIAgentOrchestrator {
             trace_id: traceId,
             response_source: 'STAGE_ADVISORY_FALLBACK',
             symptomKeys: Array.from(allObservationsForPreAuth || []),
+            real_observations: stageAdvisoryRealObservations,
             isEmergency: false
           }
         } as any;
