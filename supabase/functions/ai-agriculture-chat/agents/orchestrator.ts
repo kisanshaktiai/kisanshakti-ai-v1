@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-10 — IOM-FIRST invariant for clarification. Widened the gate on
+ *   `loadClarificationCandidates` (intent_observation_mapping SSOT) so it
+ *   runs whenever `intent_code` is a valid diagnostic intent, not only when
+ *   ConversationState has already flipped to DIAGNOSIS/MIXED. This closes
+ *   the priority race that let the failure-class fallback (VEGETATIVE_STRESS
+ *   → STUNTED_GROWTH / WILTING / LEAF_CURLING) reach the farmer for
+ *   EMERGENCE_FAILURE queries such as "भात अजून उगवले नाही". Intent still
+ *   ≠ Observation; intent only opens the graph path — IOM produces the
+ *   farmer-observable options. Trace: [IOM_FIRST].
  * 2026-07-09 19:32 UTC — Kill deferred clarification leakage. Zero graph/IOM
  *   candidates now fail closed to a neutral prompt; the old NLU/dynamic
  *   fallback can no longer mint generic pest/leaf options after graph reject.
@@ -6914,7 +6923,26 @@ export class AIAgentOrchestrator {
         // ═══════════════════════════════════════════════════════════════════════════
         let finalClarificationOptions: string[];
         let clarificationSource: 'DECISION_RULES' | 'GRAPH_EMPTY' = 'GRAPH_EMPTY';
-        const observationStateCandidates = observationAuthorityRequiresClarification
+        // ═══════════════════════════════════════════════════════════════════
+        // IOM-FIRST INVARIANT (Neuro-Symbolic Contract)
+        // Whenever the pipeline has a valid diagnostic intent, the SSOT for
+        // farmer-observation options is `intent_observation_mapping`. Do NOT
+        // gate this on ConversationState mode alone — that gate caused the
+        // legacy VEGETATIVE_STRESS fallback (STUNTED_GROWTH / WILTING /
+        // LEAF_CURLING) to leak whenever the state classifier had not yet
+        // flipped to DIAGNOSIS. Intent ≠ Observation, but a valid intent
+        // MUST open the IOM graph path first.
+        // ═══════════════════════════════════════════════════════════════════
+        const _intentStr = String(intentCode || 'UNKNOWN').toUpperCase();
+        const _isDiagnosticIntent =
+          !!intentCode &&
+          _intentStr !== 'UNKNOWN' &&
+          _intentStr !== 'UNKNOWN_OBSERVATION' &&
+          _intentStr !== 'GENERAL_QUERY' &&
+          _intentStr !== 'GREETING' &&
+          _intentStr !== 'APP_HELP';
+        const _shouldLoadIom = (observationAuthorityRequiresClarification || _isDiagnosticIntent) && !!this.supabase;
+        const observationStateCandidates = _shouldLoadIom
           ? await loadClarificationCandidates({
               supabase: this.supabase,
               intent_code: String(intentCode || 'UNKNOWN'),
@@ -6934,6 +6962,11 @@ export class AIAgentOrchestrator {
               return [] as any[];
             })
           : [];
+        console.log(
+          `[IOM_FIRST] intent=${_intentStr} diagnostic=${_isDiagnosticIntent} ` +
+          `authority_gate=${observationAuthorityRequiresClarification} loaded=${_shouldLoadIom} ` +
+          `candidates=${observationStateCandidates.length}`
+        );
         
         if (observationStateCandidates.length > 0) {
           console.log(
