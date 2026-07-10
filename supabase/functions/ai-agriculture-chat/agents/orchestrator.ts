@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-10 — IOM-FIRST invariant for clarification. Widened the gate on
+ *   `loadClarificationCandidates` (intent_observation_mapping SSOT) so it
+ *   runs whenever `intent_code` is a valid diagnostic intent, not only when
+ *   ConversationState has already flipped to DIAGNOSIS/MIXED. This closes
+ *   the priority race that let the failure-class fallback (VEGETATIVE_STRESS
+ *   → STUNTED_GROWTH / WILTING / LEAF_CURLING) reach the farmer for
+ *   EMERGENCE_FAILURE queries such as "भात अजून उगवले नाही". Intent still
+ *   ≠ Observation; intent only opens the graph path — IOM produces the
+ *   farmer-observable options. Trace: [IOM_FIRST].
  * 2026-07-09 19:32 UTC — Kill deferred clarification leakage. Zero graph/IOM
  *   candidates now fail closed to a neutral prompt; the old NLU/dynamic
  *   fallback can no longer mint generic pest/leaf options after graph reject.
