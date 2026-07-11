@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-11 — Context preservation: pass frozen CanonicalContext v2.1.0
+ *   into runGraphRuntime alongside the existing primitives. Enables DB
+ *   predicates referencing soil.moisture, weather.forecast_7d,
+ *   transplant_date, irrigation_type, biological_state.stage_uuid to resolve.
+ *   No new files, no new agronomy in TS. Split-check enforced only on
+ *   authority-owned fields (crop / stage / dates / sources.crop=crop_schedules).
  * 2026-07-10 — IOM-FIRST invariant for clarification. Widened the gate on
  *   `loadClarificationCandidates` (intent_observation_mapping SSOT) so it
  *   runs whenever `intent_code` is a valid diagnostic intent, not only when
