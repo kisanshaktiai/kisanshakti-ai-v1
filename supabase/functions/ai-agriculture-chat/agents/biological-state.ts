@@ -45,7 +45,46 @@ export interface BiologicalState {
   readonly source: string;                  // 'phenology_ssot' | ...
   readonly resolver_version: string | null;
 
+  /**
+   * PATCH v4-P1 — Predicted-stage confidence (0..1). Starts at `confidence`
+   * and is decayed by biological_constraints[].severity via runtime graph
+   * math (SEVERITY_WEIGHTS). NEVER contains agronomy.
+   */
+  readonly predicted_stage_confidence: number;
+
+  /**
+   * PATCH v4-P1 — Biological CONSTRAINTS (not stages).
+   * Codes are emitted by DB constraint rules (e.g. decision_rules with
+   * category='BIOLOGICAL_CONSTRAINT'). Runtime NEVER invents these codes.
+   * Empty [] until DB rules are seeded — inert but downstream-readable.
+   */
+  readonly biological_constraints: ReadonlyArray<BiologicalConstraint>;
+
   readonly raw: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * PATCH v4-P1 — Biological constraint DTO. `code` and `source` are opaque
+ * strings owned by the DB. TS never synthesises these values.
+ */
+export interface BiologicalConstraint {
+  readonly code: string;                                     // e.g. EMERGENCE_NOT_CONFIRMED
+  readonly severity: 'INFO' | 'WARN' | 'BLOCK';
+  readonly evidence: Readonly<Record<string, unknown>>;
+  readonly source: string;                                   // DB rule id
+}
+
+/** Graph-math weights for severity — NOT agronomy. */
+const SEVERITY_WEIGHTS: Readonly<Record<'INFO' | 'WARN' | 'BLOCK', number>> = Object.freeze({
+  INFO: 0,
+  WARN: 0.2,
+  BLOCK: 0.6,
+});
+
+function decayConfidence(base: number, cs: ReadonlyArray<BiologicalConstraint>): number {
+  if (!Array.isArray(cs) || cs.length === 0) return base;
+  const decay = cs.reduce((s, c) => s + (SEVERITY_WEIGHTS[c.severity] ?? 0), 0);
+  return Math.max(0, Math.min(1, base * Math.max(0, 1 - decay)));
 }
 
 export interface RawPhenologyRow {
