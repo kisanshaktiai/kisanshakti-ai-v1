@@ -1,148 +1,255 @@
 
-# Context Preservation Fix — CanonicalContext → GraphRuntime (v3, SSOT-corrected)
+# All-Crop Neuro-Symbolic Reasoning Fix (v4 — Generic Graph Correction)
 
-## Guiding Invariant
+## Guiding Invariants (unchanged)
 
-DB = Agriculture Brain (SSOT). GraphRuntime = deterministic reasoning pathway. LLM = farmer language layer only.
-**This fix is context preservation, NOT new intelligence.** Every field below already exists in the DB or in `landContext`; nothing new is invented, no new tables, no new agronomy in TS.
+- **DB = Agriculture Brain / Knowledge Graph** (SSOT for all agronomy).
+- **Runtime = deterministic graph executor** — carries context, resolves paths, ranks evidence. No agronomy.
+- **LLM = language layer only** — no diagnosis, no invention.
 
-## Authoritative Field → Source Table (locked)
-
-| Field | Authority (primary) | Fallback / cache |
-|---|---|---|
-| crop identity (crop_code, crop_name) | `crop_schedules` | — (no fallback allowed) |
-| crop variety (variety_id, crop_variety) | `crop_schedules` | — |
-| lifecycle dates (sowing_date, transplant_date, expected_harvest_date, crop_cycle) | `crop_schedules` | — |
-| stage_uuid, stage_code, growth_stage | `biological_state` (phenology SSOT) | — |
-| DAS | `biological_state` | — |
-| GDD accumulated | phenology engine (via `biological_state`) | — |
-| soil nutrients (N, P, K) | `soil_health` | `lands` (cache) |
-| soil pH | `soil_health` | `lands` (cache) |
-| organic carbon % | `soil_health` | `lands` (cache) |
-| soil moisture / current_moisture_status | moisture source (soil sensor / `soil_health`) | `lands` (cache) |
-| soil_type, soil confidence | `soil_health` | `lands` (cache) |
-| NDVI value, reliability, observed_at | `ndvi_data` | `lands.last_ndvi_*` (cache) |
-| NDVI trend | ndvi history | `lands` (cache) |
-| weather current (temp, humidity, rainfall) | `weather_current` | — |
-| weather forecast (forecast_7d) | `weather_forecasts` | — |
-| rain history / rainfall_after_sowing_mm | `weather_aggregates` | — |
-| irrigation_source, water_source, irrigation_type | `lands` | — |
-| village, taluka, district, state | `lands` | — |
-| boundary, gps_lat, gps_lng, elevation, slope | `lands` | — |
-| land_id, farmer_id, area_acres | `lands` | — |
-
-`lands` role: **identity + management + latest cache** — NOT the authority for soil / NDVI / weather.
-
-## Audit Findings (confirmed)
-
-- `runGraphRuntime` call sites: `agents/orchestrator.ts:5766`, `agents/clarification-strategy.ts:447`, entrypoint `runtime/graph-runtime.ts:101`, test `tests/observation-state-contract_test.ts:116`.
-- Both prod callers pass only primitives (`crop_code`, `growth_stage`, `days_since_sowing`, optional NDVI + weather). Field twin is dropped.
-- `CanonicalContext` v2.0.0 preserves crop/stage/DAS/NDVI(3)/soil(NPK+pH)/weather(temp/hum/rain) only — misses biological_state ref, dates, moisture, irrigation, geo, forecast, rainfall_after_sowing.
-- Evaluators (`hypothesis-graph-evaluator.ts`, `hypothesis-evaluator.ts`) reference **none** of `sowing_date | transplant_date | farming_type | biological_state | soil_moisture | rainfall` — because they never receive them.
-
-## Root Cause
-
-Two-stage compression: (1) `buildCanonicalContext()` discards field-twin fields; (2) both `runGraphRuntime()` sites flatten survivors to primitives. DB rules that could discriminate (DSR vs transplanted, dry vs irrigated, low moisture, rainfall-after-sowing) never see the discriminating facts.
+The rice "भात अजून उगवले नाही → STUNTED_GROWTH / WILTING / LEAF_CURLING" bug is treated as a symptom of **six generic graph defects**, not a rice fix.
 
 ---
 
-# Surgical Patch Plan (execute all)
+## Verdict on Previous Patch Set (v3)
 
-Zero new files. Zero DB schema changes. No crop-specific TS branches.
+| Old Patch | Verdict | Reason |
+|---|---|---|
+| P1 — Bio validation writes `validated_stage = NOT_ESTABLISHED` | **REJECTED — redesign** | Mixes stage dimension with condition dimension. `NOT_ESTABLISHED` is a biological *constraint*, not a stage. |
+| P2 — Dotted-path resolver in condition evaluator | **ACCEPTED as-is** | Pure runtime plumbing, no agronomy. |
+| P3 — "If intent = EMERGENCE_FAILURE then ignore stage" | **REJECTED — redesign** | Intent-specific branch = crop/intent agronomy in TS. Replace with generic stage-as-ranking. |
+| P4 — Remove hardcoded VEGETATIVE_STRESS list | **ACCEPTED, widen scope** | Sweep ALL hardcoded symptom lists across 4 files, not just one. |
+| P5 — Intent-guard fallback → WAITING_FOR_OBSERVATION | **ACCEPTED, generalized** | Applies to every intent when DB returns 0 candidates. Never guess. |
+| — | **NEW P6** — Graph-order audit | Stage must be evidence, not controller. |
+| — | **NEW P7** — Intent ≠ Observation safety | Intent opens graph; observations require evidence. |
 
-### Patch 1 — Extend `decision/canonical-context-contract.ts` → v2.1.0
+---
 
-Additive `readonly` fields on `CanonicalContext`, all optional / nullable (back-compat preserved). Every value carries provenance in a `readonly sources` sub-object.
+## Target Graph Flow (locked)
 
-Additions:
-- Crop authority (from `crop_schedules` only):
-  `sowing_date`, `transplant_date`, `expected_harvest_date`, `crop_cycle`, `variety_id`, `crop_variety`
-- Biological state reference (already immutable):
-  `biological_state: Readonly<BiologicalState> | null`
-- Soil (extend): `soil.type`, `soil.organic_carbon_percent`, `soil.moisture_status`, `soil.confidence`
-- Water: `water.irrigation_source`, `water.water_source`, `water.irrigation_type`
-- Weather (extend): `weather.rainfall_after_sowing_mm`, `weather.forecast_7d`
-- NDVI (extend): `ndvi.reliability`, `ndvi.observed_at`
-- Geo: `geo.village`, `geo.taluka`, `geo.district`, `geo.state`, `geo.gps_lat`, `geo.gps_lng`, `geo.elevation`, `geo.slope`
-- Land meta: `area_acres`
+```text
+Farmer utterance
+   │
+   ▼
+Intent classification            (LLM + DB intent ontology)
+   │
+   ▼
+Canonical Field Twin build       (crop_schedules + biological_state + soil_health + weather_* + ndvi_data + lands)
+   │
+   ▼
+Observation candidate load       (intent_observation_mapping — DB-driven; stage = ranking factor only)
+   │
+   ▼
+Biological State (predicted + constraints)
+   ├── predicted_stage            from resolve_crop_phenology (DAS/GDD/schedule)
+   ├── predicted_stage_confidence
+   ├── biological_evidence[]      from canonical_context signals
+   └── biological_constraints[]   emitted by DB constraint rules (never by TS)
+   │
+   ▼
+Hypothesis graph evaluation      (uses canonical_context via generic path resolver)
+   │
+   ▼
+Decision rules
+   │
+   ▼
+LLM farmer voice rendering
+```
 
-**Provenance shape (locked):**
+Stage is **evidence** on the graph, never a gate.
+
+---
+
+## Patch Set v4 (execute in order)
+
+### Patch 1 (REDESIGNED) — Biological State: prediction + constraints, never overwrite stage
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/biological-state.ts`
+**File:** `supabase/functions/ai-agriculture-chat/runtime/phenology-reconciler.ts`
+
+Extend the frozen `BiologicalState` with two additive fields:
+
 ```ts
-sources: {
-  crop:  'crop_schedules',
-  stage: 'biological_state',
-  soil:  { primary: 'soil_health',      fallback: 'lands_cache' },
-  ndvi:  { primary: 'ndvi_data',        fallback: 'lands_cache' },
-  weather: {
-    current:  'weather_current',
-    forecast: 'weather_forecasts',
-    history:  'weather_aggregates',
-  },
-  water: 'lands',
-  geo:   'lands',
+readonly predicted_stage_confidence: number;       // 0..1
+readonly biological_constraints: readonly BiologicalConstraint[];
+```
+
+Where:
+
+```ts
+interface BiologicalConstraint {
+  readonly code: string;               // e.g. EMERGENCE_NOT_CONFIRMED, LOW_TILLER_POPULATION
+  readonly severity: 'INFO'|'WARN'|'BLOCK';
+  readonly evidence: Readonly<Record<string, unknown>>;   // fields that triggered it
+  readonly source: string;             // DB rule id — NEVER a TS literal
 }
 ```
 
-`buildCanonicalContext()` populates these from `landContext` with the **crop-authority guard**: `crop_name`, `crop_variety`, `sowing_date`, `transplant_date`, `expected_harvest_date`, `crop_cycle` are read only from the `crop_schedules`-sourced fields on `landContext`. If absent, they stay `null` — never fall back to `lands.last_sowing_date` / `lands.planting_date` for those six. Soil/NDVI values may use `lands_cache` as fallback and the `sources` sub-tree records which path was taken. Existing invariants (`is_locked`, `phase1_locked`, UNKNOWN guards) untouched.
+Rules:
+1. `growth_stage` / `stage_code` / `stage_uuid` remain untouched — still authored by `resolve_crop_phenology`.
+2. Constraints are produced by **DB constraint rules** (existing `decision_rules` table, filtered `category = 'BIOLOGICAL_CONSTRAINT'` — no schema change; rules seeded outside this patch).
+3. `phenology-reconciler.ts` only *reads* constraint outputs from DB and packages them into the frozen state. **Zero literals in TS** — no `if rainfall === 0`, no crop names.
+4. Confidence is multiplied by `1 − Σ severity_weights(constraint)` where weights come from a small runtime table `SEVERITY_WEIGHTS = {INFO:0, WARN:0.2, BLOCK:0.6}` — this is graph math, not agronomy.
 
-### Patch 2 — Extend `runtime/graph-runtime.ts`
+Downstream consumers (hypothesis evaluator, orchestrator) read `predicted_stage`, `predicted_stage_confidence`, and `biological_constraints[]` — they must not fabricate any of these.
 
-Add to `GraphRuntimeInput`: `canonical_context?: CanonicalContext`.
+### Patch 2 (ACCEPTED) — Generic dotted-path condition resolver
 
-Inside `runGraphRuntime`:
-1. If both `canonical_context` and primitive counterparts are supplied, run a strict split-check on `crop_code`, `growth_stage`, `days_since_sowing`, `variety_id`, `ndvi_level`, `ndvi_trend`. On mismatch throw `GRAPH_CONTEXT_SPLIT_ERROR` naming the divergent field.
-2. If only `canonical_context` supplied, derive primitives from it (back-compat).
-3. Forward full `canonical_context` into `evaluateCandidateHypotheses` via existing `passthrough` spread — DB predicates that reference moisture, forecast, transplant_date, irrigation_type, biological_state.stage_uuid now resolve.
-4. Emit one additive audit line:
-   `[CANONICAL_CONTEXT_FLOW] trace=… crop=… stage=… das=… sowing=… transplant=… irrig=… moisture=… bio_locked=… src.crop=crop_schedules src.soil=soil_health|lands_cache src.ndvi=ndvi_data|lands_cache`
+**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
 
-**Unchanged:** single-entrypoint invariant, `markExecuted` semantics, `[GRAPH_RUNTIME]` line, OBS_GATE, PR-2 SSOT.
+Add pure utility:
 
-### Patch 3 — Call-site migration (2 sites)
+```ts
+function resolvePath(obj: unknown, path: string): unknown { /* a.b.c walker */ }
+```
 
-- `agents/orchestrator.ts:5766` — pass `canonical_context: canonicalContext` alongside existing primitives (kept temporarily so the split-check has both sides).
-- `agents/clarification-strategy.ts:447` — add optional `canonical_context` to input type and forward from orchestrator.
-- `tests/observation-state-contract_test.ts` — pass `canonical_context`, assert no split error.
+Replace the flat-key lookup in the condition resolver with `resolvePath(canonical_context, condition.key)`. DB conditions may now reference:
 
-### Patch 4 — Evaluator input plumbing (no logic change)
+- `weather.rainfall_after_sowing_mm`
+- `weather.forecast_7d[0].tmax`
+- `soil.moisture_status`
+- `soil.organic_carbon_percent`
+- `ndvi.value`, `ndvi.reliability`
+- `biological_state.predicted_stage`
+- `biological_state.biological_constraints[*].code`
+- `crop_schedule.transplant_date`
 
-`decision/hypothesis-graph-evaluator.ts` and `decision/hypothesis-evaluator.ts`: extend input types to accept `canonical_context?: CanonicalContext`; store on the evaluation context. **No new rules, thresholds, or crop-specific branches in TS.** DB predicates referencing the newly-plumbed fields now resolve; unrelated predicates unaffected.
+All resolution is generic. Missing paths return `undefined` and the condition evaluates per existing NULL semantics (no change to comparator logic).
 
-### Patch 5 — Split-check guard (scoped)
+### Patch 3 (REDESIGNED) — Stage as ranking factor, never a hard gate
 
-Fail loud with `GRAPH_CONTEXT_SPLIT_ERROR` ONLY for **authority-owned** fields:
-- crop identity (`crop_code`, `crop_name`)
-- crop variety
-- lifecycle dates (`sowing_date`, `transplant_date`, `expected_harvest_date`, `crop_cycle`)
-- biological_state derivatives (`stage_uuid`, `growth_stage`, `das`)
+**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (observation candidate load, ~line 6957)
 
-For these, also assert `sources.crop === 'crop_schedules'` and `sources.stage === 'biological_state'`. Any drift or wrong source = throw.
+Replace the current stage `WHERE` filter on `intent_observation_mapping` with:
 
-**Do NOT apply strict split-check to** `soil`, `ndvi`, `weather` — `lands_cache` fallback is legitimate (e.g. satellite outage → `lands.last_ndvi_value` still better than nothing). For these, the `sources.*` provenance sub-tree is recorded but a fallback path is NOT an error; it is logged in the `[CANONICAL_CONTEXT_FLOW]` line so audits can distinguish live vs cache.
+1. Query candidates by `crop_code + intent_code` only (drop `growth_stage` from the WHERE).
+2. Rank candidates via a generic scoring function that combines DB-provided weights only:
+   - `iom.stage_compatibility_score(candidate, predicted_stage)`  ← already available or defaulted to 0.5
+   - `iom.assertion_strength` (existing)
+   - constraint alignment: +bonus if candidate's `semantic_class` matches any active `biological_constraints[*].code`
+3. Never drop a candidate for stage mismatch; low-score candidates simply sort lower.
 
-### Files modified (exact list)
+This is crop/intent-agnostic. Removes the `EMERGENCE_FAILURE`-specific branch entirely.
 
-1. `supabase/functions/ai-agriculture-chat/decision/canonical-context-contract.ts`
-2. `supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts`
-3. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (single call site ~5766 + builder invocation)
-4. `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` (call site 447 + input type)
-5. `supabase/functions/ai-agriculture-chat/decision/hypothesis-graph-evaluator.ts` (input type only)
-6. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` (input type only)
-7. `supabase/functions/ai-agriculture-chat/tests/observation-state-contract_test.ts` (pass `canonical_context`)
+### Patch 4 (ACCEPTED, widened) — Purge all hardcoded symptom lists
 
-Every modified file gets its mandatory CHANGE LOG header entry.
+Sweep and remove hardcoded observation arrays (`STUNTED_GROWTH`, `WILTING`, `LEAF_CURLING`, `LEAF_YELLOWING`, and any per-`FailureClass` map) from:
 
-### Explicitly out of scope
+1. `supabase/functions/ai-agriculture-chat/decision/failure-class-detector.ts` (`getFailureClassFallbackOptions`, lines 411–455)
+2. `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` (`useHypothesisFallback` path ~line 734)
+3. `supabase/functions/ai-agriculture-chat/agents/language-induction-layer.ts` (any symptom-list constants)
+4. `supabase/functions/ai-agriculture-chat/agents/llm-understanding-layer.ts` (same)
 
-- No `if rainfall < X` / DSR-vs-transplanted / crop-specific branches in TS.
-- No new files, no new DB tables/columns, no new agronomy authority.
-- No removal of primitive parameters in this pass (kept for split-check safety net; removal is a follow-up after one clean release).
-- Does not touch Phase A/B/C/E deliverables from the master refactor plan.
+Replacement: single DB lookup
 
-### Why GraphRuntime contract remains unchanged
+```ts
+selectObservationsByFailureClass(supabase, {
+  crop_code, failure_class, limit
+})
+```
 
-Single entrypoint preserved. `evaluateCandidateHypotheses` still called from exactly one place. `[GRAPH_RUNTIME]` trace unchanged. `markExecuted` unchanged. OBS_GATE unchanged. New audit line and optional field are purely additive.
+reading `observation_master` filtered by `semantic_class` mapped to `failure_class` via existing `intent_semantic_class_allowlist`. Language synonym normalization is retained (that's language, not agronomy).
 
-### Rollback
+### Patch 5 (ACCEPTED, generalized) — No-evidence path never guesses
 
-Revert Patches 2–4; Patch 1 canonical context extension is inert without a consumer.
+**Files:** `clarification-strategy.ts`, `failure-class-detector.ts`
+
+When the DB returns **zero** candidates for a valid `(crop, intent, failure_class)`:
+
+- Do **not** fall back to any TS list.
+- Return sentinel `WAITING_FOR_OBSERVATION` — `graph-runtime.ts` OBS_GATE already handles this and drives ASK-clarification.
+
+Applies to every intent, every crop, every stage.
+
+### Patch 6 (NEW) — Graph order correction
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
+
+Audit and reorder the pipeline sections so stage is never consulted **before** observation candidate load. Current call order in orchestrator:
+
+```text
+build canonical_context → resolve_phenology → filter observations by stage → hypothesis eval
+```
+
+New order:
+
+```text
+build canonical_context (includes biological_state.predicted_stage) →
+load observation candidates by (crop, intent) →
+score with stage as one factor →
+hypothesis evaluation with full canonical_context (Patch 2)
+```
+
+No new modules. Only reordering + removing the stage `WHERE` filter (already covered by Patch 3). Verify no other call site treats `growth_stage` as a hard filter (`rg "growth_stage" supabase/functions/ai-agriculture-chat` and audit each hit).
+
+### Patch 7 (NEW) — Intent ≠ Observation safety
+
+**Files (audit):** `orchestrator.ts`, `clarification-strategy.ts`, `language-induction-layer.ts`, `llm-understanding-layer.ts`
+
+Sweep:
+
+```bash
+rg "confirmed_observations|known_observations\.push|inferred_observations\.push"
+```
+
+Rules enforced at each hit:
+
+1. An **intent code** may never be pushed into `confirmed_observations` or `known_observations`.
+2. Only outputs of the observation candidate loader, image classifier, or explicit farmer confirmation may enter these arrays.
+3. Add a runtime invariant guard (single utility in `runtime/graph-runtime.ts`, no new file):
+
+   ```ts
+   assertNotAnIntentCode(obsCode)   // throws OBS_INTENT_LEAK if obsCode ∈ intent_master
+   ```
+
+   Called at every push site. Uses in-memory intent code set already loaded at boot.
+
+---
+
+## Files Touched (exact list, no new files)
+
+1. `supabase/functions/ai-agriculture-chat/agents/biological-state.ts` (P1)
+2. `supabase/functions/ai-agriculture-chat/runtime/phenology-reconciler.ts` (P1)
+3. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` (P2)
+4. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (P3, P6, P7)
+5. `supabase/functions/ai-agriculture-chat/decision/failure-class-detector.ts` (P4, P5)
+6. `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` (P4, P5, P7)
+7. `supabase/functions/ai-agriculture-chat/agents/language-induction-layer.ts` (P4, P7)
+8. `supabase/functions/ai-agriculture-chat/agents/llm-understanding-layer.ts` (P4, P7)
+9. `supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts` (P7 guard utility)
+10. `supabase/functions/ai-agriculture-chat/tests/observation-state-contract_test.ts` (new assertions, no new file)
+
+Each file gets a CHANGE LOG entry per project rule.
+
+---
+
+## Proofs
+
+**Proof no agronomy enters TS:**
+- No literal rainfall thresholds, no crop names, no stage-transition rules, no symptom lists remain (Patches 4, 5, 1).
+- Constraint codes (`EMERGENCE_NOT_CONFIRMED`, etc.) originate in `decision_rules` rows only; TS carries strings opaquely.
+- Stage scoring weights come from `intent_observation_mapping` columns; only `SEVERITY_WEIGHTS` is a runtime math constant (INFO/WARN/BLOCK), not agronomy.
+
+**Proof DB remains SSOT:**
+- No new tables, no schema changes.
+- New behavior driven by existing tables: `decision_rules`, `intent_observation_mapping`, `observation_master`, `intent_semantic_class_allowlist`, `crop_stage_master`.
+- Bio constraints seeded via DB rules outside this patch (out of scope; runtime just consumes them).
+
+---
+
+## Expected New Graph Flow — Rice example (illustrative only, logic is generic)
+
+1. Farmer: "भात अजून उगवले नाही"
+2. Intent = `EMERGENCE_FAILURE` (DB intent map).
+3. Canonical field twin built; `biological_state.predicted_stage = TILLERING` (DAS/GDD), `predicted_stage_confidence = 0.35` after DB constraint rule fires `EMERGENCE_NOT_CONFIRMED` (rainfall=0, NDVI null, moisture DRY) with `severity = BLOCK`.
+4. Observation candidates loaded by `(RICE, EMERGENCE_FAILURE)` — stage NOT filtered. DB returns germination-family observations. Ranking bonus from `EMERGENCE_NOT_CONFIRMED` constraint alignment lifts them further.
+5. If DB returns zero candidates → `WAITING_FOR_OBSERVATION`, ASK clarification.
+6. No TS ever pushed `STUNTED_GROWTH` etc.
+
+Same flow applies to cotton (POOR_ESTABLISHMENT), sugarcane (LOW_TILLER_POPULATION), wheat (heat stress), fruit crops — because none of the logic is per-crop.
+
+---
+
+## Rollback
+
+Each patch is independently revertible. Patch 1's additive fields are inert without Patch 2. Patches 3/6 are reordering + removing a WHERE clause — trivial revert. Patches 4/5 revert restores the deleted TS lists.
