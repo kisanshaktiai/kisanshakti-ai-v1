@@ -23,6 +23,16 @@
  * biological_state is locked and log a `[BIO_STATE_WRITE_BLOCKED]` line.
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-11 UTC — v5-P8: activated biological constraint producer.
+ *     New export `evaluateBiologicalConstraints(supabase, canonicalDraft,
+ *     cropCode)` reads `decision_rules` WHERE category='BIOLOGICAL_CONSTRAINT'
+ *     (crop-scoped OR crop_code IS NULL) and evaluates each rule's
+ *     `conditions_json.canonical` predicate map via `resolvePath` +
+ *     `comparePredicate`. Emits BiologicalConstraint[] whose `code`,
+ *     `severity`, and `source` all originate in DB rows — zero TS agronomy.
+ *     Orchestrator now passes the result as the 3rd arg to
+ *     `buildBiologicalState`, so `predicted_stage_confidence` finally
+ *     decays when the field twin contradicts the calendar-picked stage.
  *   2026-07-11 UTC — v4-P1 (generic all-crop): additive fields
  *     `predicted_stage_confidence` and `biological_constraints[]` +
  *     `BiologicalConstraint` DTO. Constraints are DB-authored (opaque codes);
@@ -33,6 +43,8 @@
  *     still works; `biologicalConstraints` param defaults to [].
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+import { resolvePath, comparePredicate } from '../decision/hypothesis-evaluator.ts';
 
 export interface BiologicalState {
   readonly is_locked: true;
