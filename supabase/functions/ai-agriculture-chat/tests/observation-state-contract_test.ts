@@ -164,3 +164,94 @@ for (const crop of ['RICE', 'COTTON', 'SUGARCANE', 'TOMATO', 'ONION']) {
   });
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// T8 — CANONICAL_CONTEXT_FLOW: runGraphRuntime accepts a frozen
+// CanonicalContext v2.1.0 and passes the OBS_GATE path without split error
+// when authority-owned primitives agree with the canonical object.
+// ═════════════════════════════════════════════════════════════════════════
+Deno.test('T8 — canonical_context aligned with primitives → no split error', async () => {
+  const cctx = Object.freeze({
+    crop_code: 'RICE',
+    crop_name: 'Rice',
+    growth_stage: 'GERMINATION',
+    days_since_sowing: 7,
+    ndvi: Object.freeze({ value: null, trend: null, interpretation: null }),
+    soil: Object.freeze({ nitrogen: null, phosphorus: null, potassium: null, ph: null }),
+    weather: Object.freeze({ temperature: null, humidity: null, rainfall_mm: null }),
+    land_id: 'L1',
+    farmer_id: 'F1',
+    source: 'CROP_SCHEDULES',
+    created_at: Date.now(),
+    sources: Object.freeze({
+      crop: 'crop_schedules',
+      stage: 'biological_state',
+      soil: Object.freeze({ primary: 'soil_health', fallback: 'lands_cache', used: 'none' }),
+      ndvi: Object.freeze({ primary: 'ndvi_data', fallback: 'lands_cache', used: 'none' }),
+      weather: Object.freeze({ current: 'weather_current', forecast: 'weather_forecasts', history: 'weather_aggregates' }),
+      water: 'lands',
+      geo: 'lands',
+    }),
+    is_locked: true,
+    phase1_locked: true,
+  }) as any;
+
+  const res = await runGraphRuntime({
+    supabase: {},
+    crop_code: 'RICE',
+    growth_stage: 'GERMINATION',
+    days_since_sowing: 7,
+    known_observations: ['POOR_EMERGENCE'],
+    confirmed_observations: [],
+    candidate_observations: ['OBS_RICE_NO_EMERGENCE'],
+    diagnostic_intent: true,
+    user_query: 'rice not emerged',
+    intent_code: 'EMERGENCE_FAILURE',
+    canonical_context: cctx,
+  });
+
+  assertEquals(res.state, 'WAITING_FOR_OBSERVATION');
+});
+
+Deno.test('T8b — canonical_context crop mismatch → GRAPH_CONTEXT_SPLIT_ERROR', async () => {
+  const cctx = Object.freeze({
+    crop_code: 'COTTON',
+    crop_name: 'Cotton',
+    growth_stage: 'GERMINATION',
+    days_since_sowing: 7,
+    ndvi: Object.freeze({ value: null, trend: null, interpretation: null }),
+    soil: Object.freeze({ nitrogen: null, phosphorus: null, potassium: null, ph: null }),
+    weather: Object.freeze({ temperature: null, humidity: null, rainfall_mm: null }),
+    land_id: 'L1', farmer_id: 'F1',
+    source: 'CROP_SCHEDULES',
+    created_at: Date.now(),
+    sources: Object.freeze({
+      crop: 'crop_schedules',
+      stage: 'biological_state',
+      soil: Object.freeze({ primary: 'soil_health', fallback: 'lands_cache', used: 'none' }),
+      ndvi: Object.freeze({ primary: 'ndvi_data', fallback: 'lands_cache', used: 'none' }),
+      weather: Object.freeze({ current: 'weather_current', forecast: 'weather_forecasts', history: 'weather_aggregates' }),
+      water: 'lands', geo: 'lands',
+    }),
+    is_locked: true, phase1_locked: true,
+  }) as any;
+
+  let threw = false;
+  try {
+    await runGraphRuntime({
+      supabase: {},
+      crop_code: 'RICE',
+      growth_stage: 'GERMINATION',
+      days_since_sowing: 7,
+      known_observations: [],
+      confirmed_observations: [],
+      diagnostic_intent: true,
+      user_query: 'x',
+      canonical_context: cctx,
+    });
+  } catch (e) {
+    threw = String(e).includes('GRAPH_CONTEXT_SPLIT_ERROR');
+  }
+  assertEquals(threw, true);
+});
+
+

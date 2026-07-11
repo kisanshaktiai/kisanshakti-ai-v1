@@ -1,6 +1,11 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ * 2026-07-11 UTC — Accept optional frozen `canonical_context` on
+ *   RuleDrivenClarificationInput and forward it into runGraphRuntime so DB
+ *   predicates referencing the field-twin (soil moisture, weather forecast,
+ *   transplant_date, irrigation_type, biological_state) can resolve during
+ *   hypothesis pre-evaluation. Additive; no logic change.
  * 2026-07-09 19:38 UTC — Type-shape repair only. Stage lock now initializes
  * required observation audit arrays; fallback option ID derives from
  * observation_key; WEED_COMPETITION question added for exhaustive union.
@@ -65,6 +70,7 @@ import {
 // `evaluateCandidateHypotheses` import — see runtime/graph-runtime.ts.
 import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
+import type { CanonicalContext } from '../decision/canonical-context-contract.ts';
 
 export const CLARIFICATION_STRATEGY_VERSION = '4.0.0';
 
@@ -135,6 +141,8 @@ export interface RuleDrivenClarificationInput {
   };
   // Phase F — variety-aware resistance modulation
   variety_id?: string | null;
+  // v2.1.0 — optional frozen field-twin, forwarded to runGraphRuntime.
+  canonical_context?: CanonicalContext | null;
 }
 
 export interface RuleDrivenOption {
@@ -457,6 +465,7 @@ export async function fetchRuleDrivenClarificationOptions(
     trace_id: traceId,
     intent_code: input.detected_intent,
     variety_id: input.variety_id ?? null,
+    canonical_context: input.canonical_context ?? null,
   });
   const hypothesisResult = _graphRun.result;
   

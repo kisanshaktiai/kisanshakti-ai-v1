@@ -36,6 +36,15 @@
  *     collapse lands (tracked separately).
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-11 UTC — Context preservation: accept optional `canonical_context`
+ *     (frozen CanonicalContext v2.1.0), enforce strict split-check on
+ *     authority-owned fields (crop_code, growth_stage, DAS, variety_id, NDVI
+ *     primitives + sources.crop === 'crop_schedules' + sources.stage present),
+ *     forward the full canonical object into the evaluator via `passthrough`
+ *     so DB predicates that reference soil.moisture, weather.forecast_7d,
+ *     transplant_date, irrigation_type, biological_state.stage_uuid can now
+ *     resolve. Soil/NDVI/weather fallback to lands_cache is legitimate — logged,
+ *     never errored. Emits one additive audit line [CANONICAL_CONTEXT_FLOW].
  *   2026-07-09 09:25 UTC — Added final OBS_GATE runtime invariant: diagnostic
  *     calls with zero confirmed observations return WAITING_FOR_OBSERVATION
  *     and do not execute evaluateCandidateHypotheses.
@@ -46,6 +55,7 @@ import {
   evaluateCandidateHypotheses,
   type HypothesisEvaluationOutput,
 } from '../decision/hypothesis-evaluator.ts';
+import type { CanonicalContext } from '../decision/canonical-context-contract.ts';
 
 export interface GraphRuntimeInput {
   supabase: any;
@@ -69,6 +79,13 @@ export interface GraphRuntimeInput {
   candidate_observations?: string[];
   /** Verbatim pass-through to the evaluator for fields not modelled above. */
   passthrough?: Record<string, unknown>;
+  /**
+   * v2.1.0 — Full frozen CanonicalContext. When present, forwarded into
+   * the evaluator via passthrough so DB predicates that reference the
+   * field-twin can resolve. Also triggers the strict split-check against
+   * the primitive counterparts on authority-owned fields.
+   */
+  canonical_context?: CanonicalContext | null;
   /**
    * Caller-supplied hook flipped to true on successful graph execution.
    * Provided as a callback (not a shared object) so this module stays
@@ -104,6 +121,51 @@ export async function runGraphRuntime(
   const t0 = Date.now();
   const passthrough = input.passthrough ?? {};
   const confirmed = input.confirmed_observations ?? input.known_observations ?? [];
+  const cctx = input.canonical_context ?? null;
+
+  // ─── Split-check on authority-owned fields (crop/stage/dates only) ─────
+  // Soil / NDVI / weather are intentionally excluded — lands_cache is a
+  // legitimate fallback for those and is recorded in cctx.sources.
+  if (cctx) {
+    const norm = (v: unknown) => (v == null ? null : String(v).toUpperCase());
+    const mismatches: string[] = [];
+    if (input.crop_code != null && norm(input.crop_code) !== norm(cctx.crop_code)) {
+      mismatches.push(`crop_code(primitive=${input.crop_code} canonical=${cctx.crop_code})`);
+    }
+    if (input.growth_stage != null && norm(input.growth_stage) !== norm(cctx.growth_stage)) {
+      mismatches.push(`growth_stage(primitive=${input.growth_stage} canonical=${cctx.growth_stage})`);
+    }
+    if (
+      input.days_since_sowing != null &&
+      cctx.days_since_sowing != null &&
+      Number(input.days_since_sowing) !== Number(cctx.days_since_sowing)
+    ) {
+      mismatches.push(`days_since_sowing(primitive=${input.days_since_sowing} canonical=${cctx.days_since_sowing})`);
+    }
+    if (
+      input.variety_id != null &&
+      cctx.variety_id != null &&
+      String(input.variety_id) !== String(cctx.variety_id)
+    ) {
+      mismatches.push(`variety_id(primitive=${input.variety_id} canonical=${cctx.variety_id})`);
+    }
+    // Provenance guard — crop identity MUST originate from crop_schedules;
+    // stage MUST originate from biological_state or crop_schedules.
+    if (cctx.sources) {
+      if (cctx.sources.crop !== 'crop_schedules') {
+        mismatches.push(`sources.crop(expected=crop_schedules got=${cctx.sources.crop})`);
+      }
+      if (cctx.sources.stage !== 'biological_state' && cctx.sources.stage !== 'crop_schedules') {
+        mismatches.push(`sources.stage(expected=biological_state|crop_schedules got=${cctx.sources.stage})`);
+      }
+    }
+    if (mismatches.length > 0) {
+      const msg =
+        `GRAPH_CONTEXT_SPLIT_ERROR trace=${input.trace_id ?? 'n/a'} fields=[${mismatches.join('; ')}]`;
+      console.error(`[GRAPH_CONTEXT_SPLIT_ERROR] ${msg}`);
+      throw new Error(msg);
+    }
+  }
 
   if (input.diagnostic_intent === true && confirmed.length === 0) {
     const ms = Date.now() - t0;
@@ -134,6 +196,10 @@ export async function runGraphRuntime(
     supabaseClient: input.supabase,
     trace_id: input.trace_id,
     variety_id: input.variety_id ?? null,
+    // Forward the frozen canonical context so DB predicates that reference
+    // soil.moisture, weather.forecast_7d, transplant_date, irrigation_type,
+    // biological_state.stage_uuid, etc. can resolve.
+    canonical_context: cctx,
     ...passthrough,
   } as any);
 
@@ -167,6 +233,19 @@ export async function runGraphRuntime(
     `winner=${winner ?? 'none'} ` +
     `ms=${ms}`,
   );
+
+  if (cctx) {
+    const s = cctx.sources;
+    console.log(
+      `[CANONICAL_CONTEXT_FLOW] trace=${input.trace_id ?? 'n/a'} ` +
+      `crop=${cctx.crop_code} stage=${cctx.growth_stage} das=${cctx.days_since_sowing ?? 'null'} ` +
+      `sowing=${cctx.sowing_date ?? 'null'} transplant=${cctx.transplant_date ?? 'null'} ` +
+      `irrig=${cctx.water?.irrigation_type ?? 'null'} moisture=${cctx.soil?.moisture_status ?? 'null'} ` +
+      `bio_locked=${!!cctx.biological_state?.is_locked} ` +
+      `src.crop=${s?.crop ?? 'n/a'} src.stage=${s?.stage ?? 'n/a'} ` +
+      `src.soil=${s?.soil.used ?? 'n/a'} src.ndvi=${s?.ndvi.used ?? 'n/a'}`
+    );
+  }
 
   return { result, candidates, winner, ms, state: 'READY_FOR_GRAPH' };
 }

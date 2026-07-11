@@ -1,27 +1,39 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CANONICAL CONTEXT CONTRACT (v1.0.0)
+ * CANONICAL CONTEXT CONTRACT (v2.1.0)
  * ═══════════════════════════════════════════════════════════════════════════
- * 
+ *
  * PURPOSE:
  * Define a SINGLE, IMMUTABLE canonical context object that is passed by
  * reference through the entire decision flow:
- * 
+ *
  *   orchestrator → hypothesis-evaluator → clarification-generator → UI
- * 
+ *
  * HARD INVARIANTS:
  * 1. CanonicalContext is created EXACTLY ONCE per turn
  * 2. Once created, it CANNOT be modified, rebuilt, or partially reconstructed
  * 3. If hasContext=true but context is incomplete, the system MUST fail fast
  * 4. No function may infer or reconstruct land/crop context - use passed object
- * 
+ *
  * AGRONOMIST PRINCIPLE:
  * "Once I know the crop, stage, and land - I NEVER forget it during diagnosis"
- * 
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (newest first)
+ * 2026-07-11 — v2.1.0 context-preservation extension. Added additive optional
+ *   field-twin fields (crop lifecycle dates from crop_schedules, biological_state
+ *   ref, soil extras, water/irrigation, weather forecast + rainfall_after_sowing,
+ *   ndvi reliability, geo, area_acres) plus a `sources` provenance sub-tree.
+ *   Strict authority: crop identity / variety / lifecycle dates MUST originate
+ *   from `crop_schedules`; stage from `biological_state`. Soil / NDVI / weather
+ *   may legitimately fall back to `lands_cache` — logged, not errored. Existing
+ *   lock invariants untouched; all additions are optional/nullable.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CANONICAL_CONTEXT_CONTRACT_VERSION = '2.0.0'; // v2: Phase-1 locking enforcement
+import type { BiologicalState } from '../agents/biological-state.ts';
+
+export const CANONICAL_CONTEXT_CONTRACT_VERSION = '2.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FAIL-FAST ASSERTION (MANDATORY GUARD)
@@ -80,6 +92,9 @@ export interface CanonicalContext {
     readonly value: number | null;
     readonly trend: string | null;
     readonly interpretation: string | null;
+    // v2.1.0 additions (optional/nullable)
+    readonly reliability?: number | null;
+    readonly observed_at?: string | null;
   };
   
   readonly soil: {
@@ -87,13 +102,54 @@ export interface CanonicalContext {
     readonly phosphorus: number | null;
     readonly potassium: number | null;
     readonly ph: number | null;
+    // v2.1.0 additions
+    readonly type?: string | null;
+    readonly organic_carbon_percent?: number | null;
+    readonly moisture_status?: string | null;
+    readonly confidence?: number | null;
   };
   
   readonly weather: {
     readonly temperature: number | null;
     readonly humidity: number | null;
     readonly rainfall_mm: number | null;
+    // v2.1.0 additions
+    readonly rainfall_after_sowing_mm?: number | null;
+    readonly forecast_7d?: readonly any[] | null;
   };
+
+  // v2.1.0 — crop lifecycle (AUTHORITY: crop_schedules only)
+  readonly sowing_date?: string | null;
+  readonly transplant_date?: string | null;
+  readonly expected_harvest_date?: string | null;
+  readonly crop_cycle?: string | null;
+  readonly variety_id?: string | null;
+  readonly crop_variety?: string | null;
+
+  // v2.1.0 — biological state reference (already immutable object)
+  readonly biological_state?: Readonly<BiologicalState> | null;
+
+  // v2.1.0 — water/irrigation (AUTHORITY: lands)
+  readonly water?: {
+    readonly irrigation_source?: string | null;
+    readonly water_source?: string | null;
+    readonly irrigation_type?: string | null;
+  };
+
+  // v2.1.0 — geo (AUTHORITY: lands)
+  readonly geo?: {
+    readonly village?: string | null;
+    readonly taluka?: string | null;
+    readonly district?: string | null;
+    readonly state?: string | null;
+    readonly gps_lat?: number | null;
+    readonly gps_lng?: number | null;
+    readonly elevation?: number | null;
+    readonly slope?: number | null;
+  };
+
+  // v2.1.0 — land meta
+  readonly area_acres?: number | null;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // METADATA
@@ -102,6 +158,21 @@ export interface CanonicalContext {
   readonly farmer_id: string | null;
   readonly source: 'BIOLOGICAL_STATE' | 'BIOLOGICAL_STATE_UNAVAILABLE' | 'CROP_SCHEDULES' | 'LAND_DATA' | 'INFERRED';
   readonly created_at: number;
+
+  // v2.1.0 — per-field provenance (locked shape)
+  readonly sources?: Readonly<{
+    crop: 'crop_schedules';
+    stage: 'biological_state' | 'crop_schedules';
+    soil: Readonly<{ primary: 'soil_health'; fallback: 'lands_cache' | null; used: 'primary' | 'fallback' | 'none' }>;
+    ndvi: Readonly<{ primary: 'ndvi_data'; fallback: 'lands_cache' | null; used: 'primary' | 'fallback' | 'none' }>;
+    weather: Readonly<{
+      current: 'weather_current';
+      forecast: 'weather_forecasts';
+      history: 'weather_aggregates';
+    }>;
+    water: 'lands';
+    geo: 'lands';
+  }>;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // LOCK FLAGS: Once true, this context CANNOT be modified
@@ -170,73 +241,215 @@ export function buildCanonicalContext(
     throw new Error(`INVARIANT VIOLATION: hasLandContext=true but crop/stage is incomplete. Cannot proceed with partial context.`);
   }
   
-  // Extract NDVI with fallback chain
-  const ndviValue = 
-    landContext.ndvi?.latest_value ?? 
-    landContext.ndvi?.value ?? 
-    landContext.ndvi_value ?? 
+  // Extract NDVI with fallback chain (primary: ndvi_data → cache: lands)
+  const ndviObj = landContext.ndvi ?? null;
+  const ndviValue =
+    ndviObj?.latest_value ??
+    ndviObj?.value ??
+    landContext.ndvi_value ??
+    landContext.last_ndvi_value ??
     null;
-  
-  const ndviTrend = 
-    landContext.ndvi?.trend ?? 
-    landContext.ndvi_trend ?? 
+
+  const ndviTrend =
+    ndviObj?.trend ??
+    landContext.ndvi_trend ??
     null;
-  
-  const ndviInterpretation = 
-    landContext.ndvi?.interpretation ?? 
-    landContext.ndvi_interpretation ?? 
+
+  const ndviInterpretation =
+    ndviObj?.interpretation ??
+    landContext.ndvi_interpretation ??
     null;
-  
-  // Extract soil data
-  const soilN = landContext.soil?.nitrogen ?? landContext.soil_n ?? null;
-  const soilP = landContext.soil?.phosphorus ?? landContext.soil_p ?? null;
-  const soilK = landContext.soil?.potassium ?? landContext.soil_k ?? null;
-  const soilPH = landContext.soil?.ph ?? landContext.soil_ph ?? null;
-  
+
+  const ndviReliability =
+    ndviObj?.reliability ??
+    landContext.ndvi_reliability ??
+    null;
+  const ndviObservedAt =
+    ndviObj?.observed_at ??
+    ndviObj?.captured_at ??
+    landContext.last_ndvi_date ??
+    null;
+  // Fallback detection: value present but no ndvi_data-shaped object → lands cache
+  const ndviUsedFallback =
+    ndviValue != null && !ndviObj?.latest_value && !ndviObj?.value;
+
+  // Extract soil data (primary: soil_health → cache: lands)
+  const soilObj = landContext.soil ?? null;
+  const soilHealthObj = landContext.soil_health ?? null;
+  const soilN = soilHealthObj?.nitrogen ?? soilObj?.nitrogen ?? landContext.soil_n ?? null;
+  const soilP = soilHealthObj?.phosphorus ?? soilObj?.phosphorus ?? landContext.soil_p ?? null;
+  const soilK = soilHealthObj?.potassium ?? soilObj?.potassium ?? landContext.soil_k ?? null;
+  const soilPH = soilHealthObj?.ph ?? soilObj?.ph ?? landContext.soil_ph ?? null;
+  const soilType = soilHealthObj?.soil_type ?? soilObj?.type ?? landContext.soil_type ?? null;
+  const soilOC =
+    soilHealthObj?.organic_carbon_percent ?? soilObj?.organic_carbon_percent ??
+    landContext.organic_carbon_percent ?? null;
+  const soilMoisture =
+    landContext.current_moisture_status ?? soilObj?.moisture_status ?? soilHealthObj?.moisture_status ?? null;
+  const soilConfidence = soilHealthObj?.confidence ?? soilObj?.confidence ?? null;
+  const soilUsedFallback = !soilHealthObj && (soilN != null || soilP != null || soilK != null || soilPH != null);
+
   // Extract weather data
-  const temp = landContext.weather?.temperature ?? landContext.weather?.temp ?? null;
-  const humidity = landContext.weather?.humidity ?? null;
-  const rainfall = landContext.weather?.rainfall_mm ?? landContext.weather?.rain_mm ?? null;
-  
+  const weatherObj = landContext.weather ?? null;
+  const temp = weatherObj?.temperature ?? weatherObj?.temp ?? null;
+  const humidity = weatherObj?.humidity ?? null;
+  const rainfall = weatherObj?.rainfall_mm ?? weatherObj?.rain_mm ?? null;
+  const rainAfterSowing =
+    weatherObj?.rainfall_after_sowing_mm ??
+    landContext.rainfall_after_sowing_mm ?? null;
+  const forecast7d =
+    weatherObj?.forecast_7d ??
+    landContext.weather_forecast_7d ?? null;
+
+  // Crop lifecycle — AUTHORITY: crop_schedules ONLY (never lands.last_sowing_date)
+  const cropSchedule = landContext.crop_schedule ?? landContext.current_crop_schedule ?? null;
+  const sowingDate =
+    cropSchedule?.sowing_date ??
+    landContext.sowing_date_from_schedule ??
+    null;
+  const transplantDate =
+    cropSchedule?.transplant_date ??
+    landContext.transplant_date_from_schedule ??
+    null;
+  const expectedHarvestDate =
+    cropSchedule?.expected_harvest_date ??
+    landContext.expected_harvest_date_from_schedule ??
+    null;
+  const cropCycle =
+    cropSchedule?.crop_cycle ??
+    landContext.crop_cycle ??
+    null;
+  const varietyId =
+    cropSchedule?.variety_id ??
+    landContext.current_crop_variety_id ??
+    landContext.variety_id ??
+    null;
+  const cropVariety =
+    cropSchedule?.crop_variety ??
+    landContext.current_crop_variety ??
+    landContext.crop_variety ??
+    null;
+
+  // Biological state reference (already immutable)
+  const biologicalState = (landContext.biological_state ?? null) as BiologicalState | null;
+  const stageSource: 'biological_state' | 'crop_schedules' =
+    biologicalState?.is_locked ? 'biological_state' : 'crop_schedules';
+
+  // Water / irrigation — lands
+  const waterBlock = Object.freeze({
+    irrigation_source: landContext.irrigation_source ?? null,
+    water_source: landContext.water_source ?? null,
+    irrigation_type: landContext.irrigation_type ?? null,
+  });
+
+  // Geo — lands
+  const geoBlock = Object.freeze({
+    village: landContext.village ?? null,
+    taluka: landContext.taluka ?? null,
+    district: landContext.district ?? null,
+    state: landContext.state ?? null,
+    gps_lat: landContext.gps_lat ?? landContext.center_lat ?? null,
+    gps_lng: landContext.gps_lng ?? landContext.center_lng ?? null,
+    elevation: landContext.elevation ?? null,
+    slope: landContext.slope ?? null,
+  });
+
+  const sourcesBlock = Object.freeze({
+    crop: 'crop_schedules' as const,
+    stage: stageSource,
+    soil: Object.freeze({
+      primary: 'soil_health' as const,
+      fallback: 'lands_cache' as const,
+      used: (soilHealthObj ? 'primary' : soilUsedFallback ? 'fallback' : 'none') as 'primary' | 'fallback' | 'none',
+    }),
+    ndvi: Object.freeze({
+      primary: 'ndvi_data' as const,
+      fallback: 'lands_cache' as const,
+      used: (ndviObj?.latest_value != null || ndviObj?.value != null
+        ? 'primary'
+        : ndviUsedFallback
+          ? 'fallback'
+          : 'none') as 'primary' | 'fallback' | 'none',
+    }),
+    weather: Object.freeze({
+      current: 'weather_current' as const,
+      forecast: 'weather_forecasts' as const,
+      history: 'weather_aggregates' as const,
+    }),
+    water: 'lands' as const,
+    geo: 'lands' as const,
+  });
+
   // Build the immutable canonical context
   const canonicalContext: CanonicalContext = Object.freeze({
     crop_code: cropCode || 'UNKNOWN',
     crop_name: cropName || 'Unknown',
     growth_stage: growthStage || 'UNKNOWN',
     days_since_sowing: daysSinceSowing,
-    
+
     ndvi: Object.freeze({
       value: ndviValue,
       trend: ndviTrend,
-      interpretation: ndviInterpretation
+      interpretation: ndviInterpretation,
+      reliability: ndviReliability,
+      observed_at: ndviObservedAt,
     }),
-    
+
     soil: Object.freeze({
       nitrogen: soilN,
       phosphorus: soilP,
       potassium: soilK,
-      ph: soilPH
+      ph: soilPH,
+      type: soilType,
+      organic_carbon_percent: soilOC,
+      moisture_status: soilMoisture,
+      confidence: soilConfidence,
     }),
-    
+
     weather: Object.freeze({
       temperature: temp,
       humidity: humidity,
-      rainfall_mm: rainfall
+      rainfall_mm: rainfall,
+      rainfall_after_sowing_mm: rainAfterSowing,
+      forecast_7d: forecast7d ? Object.freeze([...forecast7d]) : null,
     }),
-    
+
+    sowing_date: sowingDate,
+    transplant_date: transplantDate,
+    expected_harvest_date: expectedHarvestDate,
+    crop_cycle: cropCycle,
+    variety_id: varietyId,
+    crop_variety: cropVariety,
+
+    biological_state: biologicalState,
+
+    water: waterBlock,
+    geo: geoBlock,
+
+    area_acres: landContext.area_acres ?? landContext.total_area_acres ?? null,
+
     land_id: landContext.land_id || null,
     farmer_id: landContext.farmer_id || null,
     source: landContext.source || 'LAND_DATA',
     created_at: Date.now(),
+
+    sources: sourcesBlock,
+
     is_locked: true,
-    phase1_locked: true
+    phase1_locked: true,
   });
-  
+
   console.log(`✅ [CanonicalContext] Built and LOCKED:`);
   console.log(`   Crop=${canonicalContext.crop_code}, Stage=${canonicalContext.growth_stage}`);
   console.log(`   DAS=${canonicalContext.days_since_sowing}, NDVI=${canonicalContext.ndvi.value}`);
   console.log(`   Source=${canonicalContext.source}, is_locked=true`);
-  
+  console.log(
+    `[CANONICAL_CONTEXT_SRC] src.crop=crop_schedules src.stage=${sourcesBlock.stage} ` +
+    `src.soil=${sourcesBlock.soil.used}(${sourcesBlock.soil.primary}|${sourcesBlock.soil.fallback}) ` +
+    `src.ndvi=${sourcesBlock.ndvi.used}(${sourcesBlock.ndvi.primary}|${sourcesBlock.ndvi.fallback}) ` +
+    `bio_locked=${!!biologicalState?.is_locked} sowing=${sowingDate ?? 'null'} transplant=${transplantDate ?? 'null'}`
+  );
+
   return canonicalContext;
 }
 

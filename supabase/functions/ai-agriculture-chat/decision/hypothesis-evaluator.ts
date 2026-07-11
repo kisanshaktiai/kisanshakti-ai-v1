@@ -1,6 +1,11 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ * 2026-07-11 UTC — Additive: HypothesisEvaluationInput accepts optional
+ *   `canonical_context` (frozen CanonicalContext v2.1.0). Forwarded verbatim
+ *   from runGraphRuntime; DB rule predicates that reference field-twin fields
+ *   (soil moisture, weather forecast, transplant_date, irrigation_type,
+ *   biological_state) can now resolve. No agronomic logic change.
  * 2026-07-09 19:38 UTC — Type-shape repair only. Existing i18n metadata fields
  * are declared and observable-characteristic normalization is explicitly typed.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -83,6 +88,9 @@ export interface HypothesisEvaluationInput {
   // Phase F — variety-aware resistance modulation. Optional; when present,
   // candidate scores get a bounded resistance multiplier from `variety_resistance`.
   variety_id?: string | null;
+  // v2.1.0 — optional frozen CanonicalContext. Forwarded by runGraphRuntime
+  // so downstream predicates can read the field-twin. No agronomic logic here.
+  canonical_context?: unknown;
 }
 
 
