@@ -80,6 +80,13 @@ export interface GraphRuntimeInput {
   /** Verbatim pass-through to the evaluator for fields not modelled above. */
   passthrough?: Record<string, unknown>;
   /**
+   * v2.1.0 — Full frozen CanonicalContext. When present, forwarded into
+   * the evaluator via passthrough so DB predicates that reference the
+   * field-twin can resolve. Also triggers the strict split-check against
+   * the primitive counterparts on authority-owned fields.
+   */
+  canonical_context?: CanonicalContext | null;
+  /**
    * Caller-supplied hook flipped to true on successful graph execution.
    * Provided as a callback (not a shared object) so this module stays
    * dependency-free and reusable across orchestrator, clarification, and
