@@ -70,6 +70,7 @@ import {
 // `evaluateCandidateHypotheses` import — see runtime/graph-runtime.ts.
 import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
+import type { CanonicalContext } from '../decision/canonical-context-contract.ts';
 
 export const CLARIFICATION_STRATEGY_VERSION = '4.0.0';
 
