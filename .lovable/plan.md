@@ -1,4 +1,56 @@
 
+# v5-P8 — Biological Constraint Graph Activation (2026-07-11)
+
+Activates the biological constraint producer so `biological_constraints[]`
+finally flows into `BiologicalState` and decays `predicted_stage_confidence`
+when the field twin contradicts the calendar-picked stage.
+
+## Changes
+
+1. `decision/hypothesis-evaluator.ts` — `resolvePath` / `comparePredicate`
+   promoted to `export` so the constraint emitter reuses the same predicate
+   engine used by DB hypothesis rules.
+2. `agents/biological-state.ts` — new `evaluateBiologicalConstraints(supabase,
+   canonicalDraft, cropCode)`. Reads `decision_rules WHERE
+   category='BIOLOGICAL_CONSTRAINT' AND is_active=true AND (crop_code=$1 OR
+   crop_code IS NULL)`. For each row, AND-matches
+   `conditions_json.canonical` predicates via `resolvePath` +
+   `comparePredicate`; emits `{code, severity, evidence, source: rule_id}`.
+   Zero TS agronomy — codes, severities, thresholds, paths all live in DB.
+3. `agents/orchestrator.ts` (line ~10460) — builds a lightweight canonical
+   field-twin draft from data already loaded (soil_health + ndvi_data +
+   crop_schedule + phenology + land), calls the emitter, and passes the
+   resulting constraints as the 3rd arg to `buildBiologicalState()`.
+   Emits `[BIO_CONSTRAINT_GRAPH]` audit log.
+4. `decision/hypothesis-graph-evaluator.ts` — `GraphHypothesisInput` gains
+   optional `predicted_stage_confidence`. Runtime reads threshold from
+   `system_config.bio_stage_hard_gate_threshold` (default 0.6). When
+   `predicted_stage_confidence < threshold` the `is_required=true` STAGE
+   mismatch downgrades from HARD elimination to SOFT penalty
+   (`STAGE_CONTEXT_CONFLICT`). DAS hard-gate is untouched.
+5. Orchestrator hypothesis-graph call site (line ~5498) wires
+   `predicted_stage_confidence` and `canonical_context` into `graphInput`.
+
+## Proofs
+
+- **No TS agronomy**: no rainfall thresholds, no crop `if` branches, no
+  symptom lists. Constraint codes/severities/predicates all originate in DB
+  rows. Only the graph-math threshold `0.6` and `SEVERITY_WEIGHTS`
+  (INFO=0/WARN=0.2/BLOCK=0.6) live in code — both are runtime graph
+  constants, not agronomy.
+- **DB is SSOT**: no schema changes. Reuses existing `decision_rules.category`
+  and `conditions_json`, plus `system_config` for the threshold override.
+- **All crops**: `crop_code IS NULL` clause makes constraint rules global by
+  default; crop-scoped when authors set `decision_rules.crop_code`.
+
+## Out-of-scope (DB seeding)
+
+Generic biological constraint rows to be seeded separately, e.g.
+`EMERGENCE_NOT_CONFIRMED`, `LOW_TILLER_POPULATION`,
+`HEAT_STRESS_AT_ANTHESIS`. All crop-agnostic; runtime already ready.
+
+---
+
 # All-Crop Neuro-Symbolic Reasoning Fix (v4 — Generic Graph Correction)
 
 ## Guiding Invariants (unchanged)
