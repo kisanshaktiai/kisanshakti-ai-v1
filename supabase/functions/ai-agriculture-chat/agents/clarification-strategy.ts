@@ -728,8 +728,17 @@ function getHypothesisAwareQuestion(
 }
 
 /**
- * Fallback when no hypothesis candidates or all options filtered.
- * Uses failure-class-specific options, NOT generic symptom lists.
+ * PATCH v4-P5 — When the hypothesis graph returns zero candidates for a
+ * valid (crop, intent, failure_class), the runtime MUST NOT guess a symptom
+ * list. Return a WAITING_FOR_OBSERVATION sentinel (empty options + explicit
+ * source tag). Downstream (`graph-runtime.ts` OBS_GATE / clarification
+ * generator) drives an ASK-clarification anchored on the farmer's own text
+ * rather than on a fabricated symptom list.
+ *
+ * The legacy path called `getFailureClassFallbackOptions()` which returned
+ * hardcoded arrays like STUNTED_GROWTH/WILTING/LEAF_CURLING — that regressed
+ * the rice "उगवले नाही" turn and would resurface across cotton, sugarcane,
+ * wheat, fruit crops identically. All-crop fix: never invent symptoms.
  */
 function useHypothesisFallback(
   failureResult: FailureClassResult,
@@ -738,27 +747,13 @@ function useHypothesisFallback(
   traceId: string,
   reason: string
 ): RuleDrivenClarificationOutput {
-  const fallbackOptions = getFailureClassFallbackOptions(failureResult.primary_class, language);
-  
-  // Filter by stage compatibility
-  const stageCompatible = fallbackOptions.filter(opt => 
-    isObservationStageCompatible(opt.observation_key, stage)
-  );
-  
-  const options: RuleDrivenOption[] = stageCompatible.slice(0, 3).map(opt => ({
-    id: opt.observation_key,
-    label: opt.label,
-    observation_key: opt.observation_key,
-    rule_id: 'FALLBACK',
-    confidence_boost: 0.10
-  }));
-  
   const question = getFailureClassQuestion(failureResult.primary_class, stage, language);
-  
-  console.log(`   🔄 [HypothesisFallback] Using ${failureResult.primary_class} fallback (${options.length} options)`);
-  console.log(`   📝 Fallback reason: ${reason}`);
-  
-  // Log for audit
+
+  console.warn(
+    `[HypothesisFallback] WAITING_FOR_OBSERVATION class=${failureResult.primary_class} ` +
+    `stage=${stage} reason=${reason} — no DB candidates; refusing to invent symptoms`
+  );
+
   const failureClassInput: FailureClassInput = {
     crop_code: '',
     growth_stage: stage,
@@ -768,17 +763,20 @@ function useHypothesisFallback(
     detected_intent: 'UNKNOWN',
     symptom_scope: 'UNKNOWN',
   };
-  logFailureClassDetection(traceId, failureClassInput, failureResult, 'FALLBACK', true, reason);
-  
+  logFailureClassDetection(
+    traceId, failureClassInput, failureResult,
+    'WAITING_FOR_OBSERVATION', true, reason,
+  );
+
   return {
     question,
-    options,
-    source: 'FAILURE_CLASS_FALLBACK',
+    options: [],
+    source: 'WAITING_FOR_OBSERVATION',
     stage_locked: stage,
     generated_at: Date.now(),
     failure_class: failureResult.primary_class,
     fallback_used: true,
-    fallback_reason: reason
+    fallback_reason: reason,
   };
 }
 
