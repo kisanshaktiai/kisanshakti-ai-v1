@@ -272,8 +272,20 @@ export async function evaluateHypothesisGraph(
     // STAGE / DAS are DB-authored context signals. Once farmer-visible
     // observation evidence anchors a hypothesis, context mismatch reduces
     // confidence and asks clarification; it must not delete the candidate.
-    const stagePass = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
+    const stagePassRaw = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
     const dasPass = checkDasCondition(conds, input.das);
+
+    // v5-P8 — downgrade STAGE hard-fail to soft when biological stage
+    // authority is below the DB-defined threshold. DAS hard-fail is unchanged.
+    const stagePass = (stagePassRaw.required_fail && !stageHardGateActive)
+      ? (() => {
+          console.log(
+            `[BIO_STAGE_AUTHORITY][downgrade] trace=${trace} hypothesis_id=${hid} ` +
+              `stage_reason="${stagePassRaw.reason}" → SOFT (predicted_stage_confidence=${predictedStageConfidence.toFixed(2)} < ${bioStageThreshold.toFixed(2)})`,
+          );
+          return { pass: false, reason: stagePassRaw.reason, required_fail: false };
+        })()
+      : stagePassRaw;
 
     if ((stagePass.required_fail || dasPass.required_fail) && !hasObservationEvidence) {
       const reason = stagePass.required_fail
