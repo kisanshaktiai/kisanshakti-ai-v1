@@ -121,6 +121,51 @@ export async function runGraphRuntime(
   const t0 = Date.now();
   const passthrough = input.passthrough ?? {};
   const confirmed = input.confirmed_observations ?? input.known_observations ?? [];
+  const cctx = input.canonical_context ?? null;
+
+  // ─── Split-check on authority-owned fields (crop/stage/dates only) ─────
+  // Soil / NDVI / weather are intentionally excluded — lands_cache is a
+  // legitimate fallback for those and is recorded in cctx.sources.
+  if (cctx) {
+    const norm = (v: unknown) => (v == null ? null : String(v).toUpperCase());
+    const mismatches: string[] = [];
+    if (input.crop_code != null && norm(input.crop_code) !== norm(cctx.crop_code)) {
+      mismatches.push(`crop_code(primitive=${input.crop_code} canonical=${cctx.crop_code})`);
+    }
+    if (input.growth_stage != null && norm(input.growth_stage) !== norm(cctx.growth_stage)) {
+      mismatches.push(`growth_stage(primitive=${input.growth_stage} canonical=${cctx.growth_stage})`);
+    }
+    if (
+      input.days_since_sowing != null &&
+      cctx.days_since_sowing != null &&
+      Number(input.days_since_sowing) !== Number(cctx.days_since_sowing)
+    ) {
+      mismatches.push(`days_since_sowing(primitive=${input.days_since_sowing} canonical=${cctx.days_since_sowing})`);
+    }
+    if (
+      input.variety_id != null &&
+      cctx.variety_id != null &&
+      String(input.variety_id) !== String(cctx.variety_id)
+    ) {
+      mismatches.push(`variety_id(primitive=${input.variety_id} canonical=${cctx.variety_id})`);
+    }
+    // Provenance guard — crop identity MUST originate from crop_schedules;
+    // stage MUST originate from biological_state or crop_schedules.
+    if (cctx.sources) {
+      if (cctx.sources.crop !== 'crop_schedules') {
+        mismatches.push(`sources.crop(expected=crop_schedules got=${cctx.sources.crop})`);
+      }
+      if (cctx.sources.stage !== 'biological_state' && cctx.sources.stage !== 'crop_schedules') {
+        mismatches.push(`sources.stage(expected=biological_state|crop_schedules got=${cctx.sources.stage})`);
+      }
+    }
+    if (mismatches.length > 0) {
+      const msg =
+        `GRAPH_CONTEXT_SPLIT_ERROR trace=${input.trace_id ?? 'n/a'} fields=[${mismatches.join('; ')}]`;
+      console.error(`[GRAPH_CONTEXT_SPLIT_ERROR] ${msg}`);
+      throw new Error(msg);
+    }
+  }
 
   if (input.diagnostic_intent === true && confirmed.length === 0) {
     const ms = Date.now() - t0;
@@ -151,6 +196,10 @@ export async function runGraphRuntime(
     supabaseClient: input.supabase,
     trace_id: input.trace_id,
     variety_id: input.variety_id ?? null,
+    // Forward the frozen canonical context so DB predicates that reference
+    // soil.moisture, weather.forecast_7d, transplant_date, irrigation_type,
+    // biological_state.stage_uuid, etc. can resolve.
+    canonical_context: cctx,
     ...passthrough,
   } as any);
 
