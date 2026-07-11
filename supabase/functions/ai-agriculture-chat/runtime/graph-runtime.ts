@@ -36,6 +36,15 @@
  *     collapse lands (tracked separately).
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-11 UTC — Context preservation: accept optional `canonical_context`
+ *     (frozen CanonicalContext v2.1.0), enforce strict split-check on
+ *     authority-owned fields (crop_code, growth_stage, DAS, variety_id, NDVI
+ *     primitives + sources.crop === 'crop_schedules' + sources.stage present),
+ *     forward the full canonical object into the evaluator via `passthrough`
+ *     so DB predicates that reference soil.moisture, weather.forecast_7d,
+ *     transplant_date, irrigation_type, biological_state.stage_uuid can now
+ *     resolve. Soil/NDVI/weather fallback to lands_cache is legitimate — logged,
+ *     never errored. Emits one additive audit line [CANONICAL_CONTEXT_FLOW].
  *   2026-07-09 09:25 UTC — Added final OBS_GATE runtime invariant: diagnostic
  *     calls with zero confirmed observations return WAITING_FOR_OBSERVATION
  *     and do not execute evaluateCandidateHypotheses.
@@ -46,6 +55,7 @@ import {
   evaluateCandidateHypotheses,
   type HypothesisEvaluationOutput,
 } from '../decision/hypothesis-evaluator.ts';
+import type { CanonicalContext } from '../decision/canonical-context-contract.ts';
 
 export interface GraphRuntimeInput {
   supabase: any;
