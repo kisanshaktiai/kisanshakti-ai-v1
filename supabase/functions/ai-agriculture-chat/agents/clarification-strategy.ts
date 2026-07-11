@@ -465,6 +465,7 @@ export async function fetchRuleDrivenClarificationOptions(
     trace_id: traceId,
     intent_code: input.detected_intent,
     variety_id: input.variety_id ?? null,
+    canonical_context: input.canonical_context ?? null,
   });
   const hypothesisResult = _graphRun.result;
   
