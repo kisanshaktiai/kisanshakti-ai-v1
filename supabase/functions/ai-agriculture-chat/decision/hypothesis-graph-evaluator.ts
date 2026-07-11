@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-11 UTC — v5-P8: STAGE hard-gate is now confidence-aware.
+ *   `GraphHypothesisInput.predicted_stage_confidence` (0..1) is compared to
+ *   a runtime graph threshold (`system_config.bio_stage_hard_gate_threshold`
+ *   with fallback constant DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD = 0.6).
+ *   When confidence >= threshold the DB SSOT is honored (HARD elimination
+ *   on `is_required=true` STAGE mismatch). When confidence < threshold the
+ *   stage gate downgrades to a SOFT penalty (STAGE_CONTEXT_CONFLICT warning)
+ *   so hypotheses can survive when the field twin contradicts the calendar.
+ *   Threshold is graph math, not agronomy.
  * 2026-07-11 UTC — Additive: GraphHypothesisInput accepts optional
  *   `canonical_context`. Stored on the evaluation context so DB rule
  *   predicates that reference field-twin fields can resolve. No logic change.
@@ -63,6 +72,36 @@ export interface GraphHypothesisInput {
   // v2.1.0 — optional frozen field-twin. Not evaluated by this module; stored
   // for downstream predicate evaluators that reference the extended context.
   canonical_context?: unknown;
+  // v5-P8 — biological stage-authority signal (0..1). When below the runtime
+  // threshold, STAGE hard-gates on `is_required=true` mismatch downgrade to
+  // soft penalties (STAGE_CONTEXT_CONFLICT).
+  predicted_stage_confidence?: number;
+}
+
+/** v5-P8 — graph-math fallback used when `system_config` key is missing. */
+const DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD = 0.6;
+let _bioStageHardGateThresholdCache: number | null = null;
+async function readBioStageHardGateThreshold(supabase: any): Promise<number> {
+  if (_bioStageHardGateThresholdCache !== null) return _bioStageHardGateThresholdCache;
+  try {
+    const { data } = await supabase
+      .from('system_config')
+      .select('config_value')
+      .eq('config_key', 'bio_stage_hard_gate_threshold')
+      .maybeSingle();
+    const raw = data?.config_value;
+    const n = typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string'
+        ? Number(raw)
+        : (raw && typeof raw === 'object' && 'value' in raw ? Number((raw as any).value) : NaN);
+    _bioStageHardGateThresholdCache = Number.isFinite(n) && n >= 0 && n <= 1
+      ? n
+      : DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD;
+  } catch {
+    _bioStageHardGateThresholdCache = DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD;
+  }
+  return _bioStageHardGateThresholdCache;
 }
 
 /**
@@ -180,6 +219,18 @@ export async function evaluateHypothesisGraph(
   // Step 2 — pull FULL condition sets for those hypotheses (positive + negative)
   const allConditions = await queryAllConditions(input.supabase, anchorHypIds);
 
+  // v5-P8 — biological stage-authority threshold (graph math, not agronomy).
+  const bioStageThreshold = await readBioStageHardGateThreshold(input.supabase);
+  const predictedStageConfidence =
+    typeof input.predicted_stage_confidence === 'number'
+      ? input.predicted_stage_confidence
+      : 1.0;
+  const stageHardGateActive = predictedStageConfidence >= bioStageThreshold;
+  console.log(
+    `[BIO_STAGE_AUTHORITY] trace=${trace} predicted_stage_confidence=${predictedStageConfidence.toFixed(2)} ` +
+      `threshold=${bioStageThreshold.toFixed(2)} hard_gate=${stageHardGateActive}`,
+  );
+
   // Step 3 — join hypothesis_master metadata (active only; NO crop filter here;
   // crop mismatch is evaluated per-candidate as a true contradiction below).
   const master = await queryMaster(input.supabase, anchorHypIds);
@@ -221,8 +272,20 @@ export async function evaluateHypothesisGraph(
     // STAGE / DAS are DB-authored context signals. Once farmer-visible
     // observation evidence anchors a hypothesis, context mismatch reduces
     // confidence and asks clarification; it must not delete the candidate.
-    const stagePass = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
+    const stagePassRaw = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
     const dasPass = checkDasCondition(conds, input.das);
+
+    // v5-P8 — downgrade STAGE hard-fail to soft when biological stage
+    // authority is below the DB-defined threshold. DAS hard-fail is unchanged.
+    const stagePass = (stagePassRaw.required_fail && !stageHardGateActive)
+      ? (() => {
+          console.log(
+            `[BIO_STAGE_AUTHORITY][downgrade] trace=${trace} hypothesis_id=${hid} ` +
+              `stage_reason="${stagePassRaw.reason}" → SOFT (predicted_stage_confidence=${predictedStageConfidence.toFixed(2)} < ${bioStageThreshold.toFixed(2)})`,
+          );
+          return { pass: false, reason: stagePassRaw.reason, required_fail: false };
+        })()
+      : stagePassRaw;
 
     if ((stagePass.required_fail || dasPass.required_fail) && !hasObservationEvidence) {
       const reason = stagePass.required_fail

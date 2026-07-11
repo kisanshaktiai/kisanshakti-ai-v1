@@ -23,6 +23,16 @@
  * biological_state is locked and log a `[BIO_STATE_WRITE_BLOCKED]` line.
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-11 UTC — v5-P8: activated biological constraint producer.
+ *     New export `evaluateBiologicalConstraints(supabase, canonicalDraft,
+ *     cropCode)` reads `decision_rules` WHERE category='BIOLOGICAL_CONSTRAINT'
+ *     (crop-scoped OR crop_code IS NULL) and evaluates each rule's
+ *     `conditions_json.canonical` predicate map via `resolvePath` +
+ *     `comparePredicate`. Emits BiologicalConstraint[] whose `code`,
+ *     `severity`, and `source` all originate in DB rows — zero TS agronomy.
+ *     Orchestrator now passes the result as the 3rd arg to
+ *     `buildBiologicalState`, so `predicted_stage_confidence` finally
+ *     decays when the field twin contradicts the calendar-picked stage.
  *   2026-07-11 UTC — v4-P1 (generic all-crop): additive fields
  *     `predicted_stage_confidence` and `biological_constraints[]` +
  *     `BiologicalConstraint` DTO. Constraints are DB-authored (opaque codes);
@@ -33,6 +43,8 @@
  *     still works; `biologicalConstraints` param defaults to [].
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+import { resolvePath, comparePredicate } from '../decision/hypothesis-evaluator.ts';
 
 export interface BiologicalState {
   readonly is_locked: true;
@@ -236,3 +248,94 @@ export function blockStageWriteIfLocked(
   );
   return true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v5-P8 — Biological Constraint Producer (DB-driven, crop-agnostic)
+// ───────────────────────────────────────────────────────────────────────────
+// Reads `decision_rules WHERE category='BIOLOGICAL_CONSTRAINT'` and evaluates
+// each rule's `conditions_json.canonical` predicate map against a lightweight
+// canonical field-twin draft. Emits BiologicalConstraint[] whose codes,
+// severities, and thresholds all originate in DB rows.
+//
+// Runtime does NOT understand agronomy — it only:
+//   1. resolves dotted paths (`weather.rainfall_after_sowing_mm`, ...)
+//   2. compares against predicate literals (`{ eq }`, `{ in }`, `{ lt }`, ...)
+//   3. AND-matches all canonical predicates → emits the constraint row as-is.
+// Expected DB rule shape (owned by DB rule authors, not TS):
+//   conditions_json = {
+//     "constraint_code": "EMERGENCE_NOT_CONFIRMED",
+//     "severity":       "BLOCK" | "WARN" | "INFO",
+//     "canonical": {
+//       "weather.rainfall_after_sowing_mm": { "eq": 0 },
+//       "soil.moisture_status":              { "in": ["DRY","VERY_DRY"] },
+//       "ndvi.value":                        { "present": false }
+//     }
+//   }
+// Rules apply to a specific crop_code OR globally when crop_code IS NULL.
+// ═══════════════════════════════════════════════════════════════════════════
+export async function evaluateBiologicalConstraints(
+  supabase: any,
+  canonicalDraft: unknown,
+  cropCode: string | null | undefined,
+  traceId?: string | null,
+): Promise<BiologicalConstraint[]> {
+  const trace = traceId ?? `bio_${Date.now()}`;
+  const emitted: BiologicalConstraint[] = [];
+  const matchedRules: string[] = [];
+
+  try {
+    let q = supabase
+      .from('decision_rules')
+      .select('id, rule_id, crop_code, conditions_json')
+      .eq('category', 'BIOLOGICAL_CONSTRAINT')
+      .eq('is_active', true);
+    if (cropCode) q = q.or(`crop_code.eq.${cropCode},crop_code.is.null`);
+    else          q = q.is('crop_code', null);
+
+    const { data: rows, error } = await q;
+    if (error) {
+      console.warn(`[BIO_CONSTRAINT_GRAPH] query_error trace=${trace} msg=${error.message}`);
+      return [];
+    }
+
+    for (const r of (rows ?? [])) {
+      const cj = r?.conditions_json ?? {};
+      const code = cj.constraint_code ?? cj.code ?? null;
+      const rawSev = String(cj.severity ?? 'INFO').toUpperCase();
+      const severity: 'INFO' | 'WARN' | 'BLOCK' =
+        rawSev === 'BLOCK' || rawSev === 'WARN' ? rawSev : 'INFO';
+      const canonical = cj.canonical && typeof cj.canonical === 'object' ? cj.canonical : null;
+      if (!code || !canonical) continue;
+
+      const evidence: Record<string, unknown> = {};
+      let allPass = true;
+      for (const [path, expected] of Object.entries(canonical)) {
+        const actual = resolvePath(canonicalDraft, path);
+        const pass = comparePredicate(actual, expected);
+        evidence[path] = actual;
+        if (!pass) { allPass = false; break; }
+      }
+      if (!allPass) continue;
+
+      const ruleId = String(r.rule_id ?? r.id ?? 'db_rule');
+      matchedRules.push(ruleId);
+      emitted.push({
+        code: String(code),
+        severity,
+        evidence,
+        source: ruleId,
+      });
+    }
+  } catch (e) {
+    console.warn(`[BIO_CONSTRAINT_GRAPH] threw trace=${trace} err=${(e as Error).message}`);
+    return [];
+  }
+
+  console.log(
+    `[BIO_CONSTRAINT_GRAPH] trace=${trace} crop=${cropCode ?? 'null'} ` +
+      `constraints_count=${emitted.length} matched_rules=[${matchedRules.join(',')}]`,
+  );
+
+  return emitted;
+}
+
