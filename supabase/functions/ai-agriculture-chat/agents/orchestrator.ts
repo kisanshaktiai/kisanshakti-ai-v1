@@ -5782,6 +5782,13 @@ export class AIAgentOrchestrator {
               ?? (landContext as any)?.current_crop_variety_id
               ?? (landContext as any)?.variety_id
               ?? null),
+            // v2.1.0 — full frozen field-twin. Enables DB predicates that
+            // reference soil.moisture / weather.forecast_7d / transplant_date
+            // / irrigation_type / biological_state.stage_uuid to resolve.
+            // GRAPH_CONTEXT_SPLIT_ERROR fires if any authority-owned field
+            // (crop / stage / DAS / variety / sources.crop / sources.stage)
+            // drifts from the primitive counterparts above.
+            canonical_context: canonicalContext ?? null,
             markExecuted: () => { (this as any)._graphExecuted = true; },
           });
           const hypothesisResult = _graphRun.result;
