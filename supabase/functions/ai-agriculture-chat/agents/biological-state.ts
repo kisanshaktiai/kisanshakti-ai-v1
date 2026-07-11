@@ -106,12 +106,30 @@ export interface RawPhenologyRow {
  * Build an immutable BiologicalState from the phenology resolver row.
  * Returns `null` when the resolver produced no row — callers must treat this
  * as "no biological authority" and fall back to legacy heuristics safely.
+ *
+ * PATCH v4-P1 — optional `biologicalConstraints` are additive DB-emitted
+ * constraint records; they DECAY predicted_stage_confidence but never
+ * overwrite growth_stage. Defaults to [] (inert).
  */
 export function buildBiologicalState(
   landId: string,
   phenology: RawPhenologyRow | null | undefined,
+  biologicalConstraints: ReadonlyArray<BiologicalConstraint> = [],
 ): BiologicalState | null {
   if (!phenology) return null;
+
+  const baseConfidence = typeof phenology.confidence === 'number' ? phenology.confidence : 0;
+  const constraints: ReadonlyArray<BiologicalConstraint> = Object.freeze(
+    (biologicalConstraints ?? []).map((c) =>
+      Object.freeze({
+        code: String(c.code),
+        severity: (c.severity === 'BLOCK' || c.severity === 'WARN' ? c.severity : 'INFO') as
+          | 'INFO' | 'WARN' | 'BLOCK',
+        evidence: Object.freeze({ ...(c.evidence ?? {}) }),
+        source: String(c.source ?? 'db_rule'),
+      }),
+    ),
+  );
 
   const state: BiologicalState = {
     is_locked: true,
@@ -131,9 +149,12 @@ export function buildBiologicalState(
       typeof phenology.gdd_accumulated === 'number' ? phenology.gdd_accumulated : null,
     sowing_date: phenology.sowing_date ?? null,
 
-    confidence: typeof phenology.confidence === 'number' ? phenology.confidence : 0,
+    confidence: baseConfidence,
     source: phenology.source ?? 'phenology_ssot',
     resolver_version: phenology.resolver_version ?? null,
+
+    predicted_stage_confidence: decayConfidence(baseConfidence, constraints),
+    biological_constraints: constraints,
 
     raw: Object.freeze({ ...phenology }),
   };
@@ -153,6 +174,8 @@ export function buildBiologicalState(
           source: state.source,
           resolver_version: state.resolver_version,
           confidence: state.confidence,
+          predicted_stage_confidence: state.predicted_stage_confidence,
+          constraints: constraints.map((c) => `${c.code}(${c.severity})`),
         }),
     );
   } catch {/* trace must not throw */}
