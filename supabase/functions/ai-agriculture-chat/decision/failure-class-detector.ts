@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * FAILURE CLASS DETECTOR - CANONICAL SYMBOL VERSION
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG
+ *   2026-07-11 UTC — v4-P4: `getFailureClassFallbackOptions` no longer
+ *     returns per-class hardcoded observation lists (STUNTED_GROWTH / WILTING
+ *     / LEAF_CURLING / etc.). Symptom generation is DB territory. Empty [] is
+ *     returned; callers must fall through to WAITING_FOR_OBSERVATION.
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
  * Determine primary failure class before generating clarification options.
