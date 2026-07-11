@@ -36,6 +36,11 @@
  *     collapse lands (tracked separately).
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-11 UTC — v4-P7: added `assertNotAnIntentCode(code, site)` +
+ *     `registerIntentCodeSet(codes)` intent-leak guard. Non-throwing log
+ *     `[OBS_INTENT_LEAK]` so `confirmed_observations` / `known_observations`
+ *     never absorb intent codes (e.g. EMERGENCE_FAILURE becoming an
+ *     "observation"). Wire callers on push sites; flip to throw once clean.
  *   2026-07-11 UTC — Context preservation: accept optional `canonical_context`
  *     (frozen CanonicalContext v2.1.0), enforce strict split-check on
  *     authority-owned fields (crop_code, growth_stage, DAS, variety_id, NDVI
