@@ -141,6 +141,8 @@ export interface RuleDrivenClarificationInput {
   };
   // Phase F — variety-aware resistance modulation
   variety_id?: string | null;
+  // v2.1.0 — optional frozen field-twin, forwarded to runGraphRuntime.
+  canonical_context?: CanonicalContext | null;
 }
 
 export interface RuleDrivenOption {
