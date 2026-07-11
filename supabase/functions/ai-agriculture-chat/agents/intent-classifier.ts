@@ -16,6 +16,7 @@
 
 import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { registerIntentCodeSet } from '../runtime/graph-runtime.ts';
 
 export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 
