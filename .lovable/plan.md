@@ -1,307 +1,155 @@
 
-# v5-P8 — Biological Constraint Graph Activation (2026-07-11)
+# Clarification Graph Forensic Audit + Single-Phase Surgical Repair
 
-Activates the biological constraint producer so `biological_constraints[]`
-finally flows into `BiologicalState` and decays `predicted_stage_confidence`
-when the field twin contradicts the calendar-picked stage.
-
-## Changes
-
-1. `decision/hypothesis-evaluator.ts` — `resolvePath` / `comparePredicate`
-   promoted to `export` so the constraint emitter reuses the same predicate
-   engine used by DB hypothesis rules.
-2. `agents/biological-state.ts` — new `evaluateBiologicalConstraints(supabase,
-   canonicalDraft, cropCode)`. Reads `decision_rules WHERE
-   category='BIOLOGICAL_CONSTRAINT' AND is_active=true AND (crop_code=$1 OR
-   crop_code IS NULL)`. For each row, AND-matches
-   `conditions_json.canonical` predicates via `resolvePath` +
-   `comparePredicate`; emits `{code, severity, evidence, source: rule_id}`.
-   Zero TS agronomy — codes, severities, thresholds, paths all live in DB.
-3. `agents/orchestrator.ts` (line ~10460) — builds a lightweight canonical
-   field-twin draft from data already loaded (soil_health + ndvi_data +
-   crop_schedule + phenology + land), calls the emitter, and passes the
-   resulting constraints as the 3rd arg to `buildBiologicalState()`.
-   Emits `[BIO_CONSTRAINT_GRAPH]` audit log.
-4. `decision/hypothesis-graph-evaluator.ts` — `GraphHypothesisInput` gains
-   optional `predicted_stage_confidence`. Runtime reads threshold from
-   `system_config.bio_stage_hard_gate_threshold` (default 0.6). When
-   `predicted_stage_confidence < threshold` the `is_required=true` STAGE
-   mismatch downgrades from HARD elimination to SOFT penalty
-   (`STAGE_CONTEXT_CONFLICT`). DAS hard-gate is untouched.
-5. Orchestrator hypothesis-graph call site (line ~5498) wires
-   `predicted_stage_confidence` and `canonical_context` into `graphInput`.
-
-## Proofs
-
-- **No TS agronomy**: no rainfall thresholds, no crop `if` branches, no
-  symptom lists. Constraint codes/severities/predicates all originate in DB
-  rows. Only the graph-math threshold `0.6` and `SEVERITY_WEIGHTS`
-  (INFO=0/WARN=0.2/BLOCK=0.6) live in code — both are runtime graph
-  constants, not agronomy.
-- **DB is SSOT**: no schema changes. Reuses existing `decision_rules.category`
-  and `conditions_json`, plus `system_config` for the threshold override.
-- **All crops**: `crop_code IS NULL` clause makes constraint rules global by
-  default; crop-scoped when authors set `decision_rules.crop_code`.
-
-## Out-of-scope (DB seeding)
-
-Generic biological constraint rows to be seeded separately, e.g.
-`EMERGENCE_NOT_CONFIRMED`, `LOW_TILLER_POPULATION`,
-`HEAT_STRESS_AT_ANTHESIS`. All crop-agnostic; runtime already ready.
+Scope: `supabase/functions/ai-agriculture-chat/**` clarification path only. No new files. No agronomy in TS. No crop-specific code. DB remains SSOT.
 
 ---
 
-# All-Crop Neuro-Symbolic Reasoning Fix (v4 — Generic Graph Correction)
+## 1. Verified Runtime Flow (with line numbers)
 
-## Guiding Invariants (unchanged)
-
-- **DB = Agriculture Brain / Knowledge Graph** (SSOT for all agronomy).
-- **Runtime = deterministic graph executor** — carries context, resolves paths, ranks evidence. No agronomy.
-- **LLM = language layer only** — no diagnosis, no invention.
-
-The rice "भात अजून उगवले नाही → STUNTED_GROWTH / WILTING / LEAF_CURLING" bug is treated as a symptom of **six generic graph defects**, not a rice fix.
-
----
-
-## Verdict on Previous Patch Set (v3)
-
-| Old Patch | Verdict | Reason |
-|---|---|---|
-| P1 — Bio validation writes `validated_stage = NOT_ESTABLISHED` | **REJECTED — redesign** | Mixes stage dimension with condition dimension. `NOT_ESTABLISHED` is a biological *constraint*, not a stage. |
-| P2 — Dotted-path resolver in condition evaluator | **ACCEPTED as-is** | Pure runtime plumbing, no agronomy. |
-| P3 — "If intent = EMERGENCE_FAILURE then ignore stage" | **REJECTED — redesign** | Intent-specific branch = crop/intent agronomy in TS. Replace with generic stage-as-ranking. |
-| P4 — Remove hardcoded VEGETATIVE_STRESS list | **ACCEPTED, widen scope** | Sweep ALL hardcoded symptom lists across 4 files, not just one. |
-| P5 — Intent-guard fallback → WAITING_FOR_OBSERVATION | **ACCEPTED, generalized** | Applies to every intent when DB returns 0 candidates. Never guess. |
-| — | **NEW P6** — Graph-order audit | Stage must be evidence, not controller. |
-| — | **NEW P7** — Intent ≠ Observation safety | Intent opens graph; observations require evidence. |
-
----
-
-## Target Graph Flow (locked)
-
-```text
-Farmer utterance
-   │
-   ▼
-Intent classification            (LLM + DB intent ontology)
-   │
-   ▼
-Canonical Field Twin build       (crop_schedules + biological_state + soil_health + weather_* + ndvi_data + lands)
-   │
-   ▼
-Observation candidate load       (intent_observation_mapping — DB-driven; stage = ranking factor only)
-   │
-   ▼
-Biological State (predicted + constraints)
-   ├── predicted_stage            from resolve_crop_phenology (DAS/GDD/schedule)
-   ├── predicted_stage_confidence
-   ├── biological_evidence[]      from canonical_context signals
-   └── biological_constraints[]   emitted by DB constraint rules (never by TS)
-   │
-   ▼
-Hypothesis graph evaluation      (uses canonical_context via generic path resolver)
-   │
-   ▼
-Decision rules
-   │
-   ▼
-LLM farmer voice rendering
+```
+agents/clarification-generator.ts:268
+  loadClarificationCandidates(max: 3)                     ← HARD CAP #1
+    → runtime/clarification-contract.ts:85
+        loadClarificationCandidates(max=3)
+        → decision/hypothesis-clarification-builder.ts:63
+            buildHypothesisClarificationOptions(max)
+              1. resolveObservationSymbols(confirmed)     line 74
+              2. seedCodes = confirmed OR loadIOMAllowed  line 79-89
+              3. resolveHypothesesFromObservations        line 101
+                 → hypothesis-graph-evaluator (stage/DAS HARD gates)
+              4. hypothesisIds = matched OR nearest       line 108-111
+              5. loadConditions (OBSERVATION only)        line 138-139
+              6. extractObservationCodes per condition    line 143-148
+              7. DEDUP by code, keep MAX weight edge      line 150-155 ← LINEAGE LOSS
+              8. loadObservationMaster gate               line 157
+              9. sort by weight desc, break at >= max     line 161,177 ← HARD CAP #2
 ```
 
-Stage is **evidence** on the graph, never a gate.
+## 2. Verified Defects (evidence only, no assumptions)
 
----
+### D1 — Hypothesis lineage discarded at dedup (hypothesis-clarification-builder.ts:150-155)
+`dedup` keeps a single `{code, condition}` per observation code, keyed only by `code.toLowerCase()`. All other hypotheses that share the same observation edge are silently dropped from the option set. Consequence: the graph collapses `Observation → Hypothesis → Observation` (one edge per code) instead of preserving `Hypothesis₁, Hypothesis₂, … → competing observation edges`.
 
-## Patch Set v4 (execute in order)
+### D2 — First-N truncation before diversification (line 161-177 + line 71 `max = 5`, caller `max: 3`)
+Options are sorted purely by `condition.weight` and cut at `max`. When one hypothesis has three highest-weighted edges, ALL three options come from the same hypothesis. No round-robin across `hypothesis_id`. Graph search behaves as retrieval, not as competing-hypothesis discrimination.
 
-### Patch 1 (REDESIGNED) — Biological State: prediction + constraints, never overwrite stage
+### D3 — `is_discriminator` selected from DB but never used for ranking (line 195)
+`hypothesis_conditions.is_discriminator` and `is_required` are loaded, then ignored. Information-gain ranking (discriminator > shared symptom) is not applied. Runtime picks "highest weight" instead of "highest discrimination", which are different (Phase 9 of audit brief).
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/biological-state.ts`
-**File:** `supabase/functions/ai-agriculture-chat/runtime/phenology-reconciler.ts`
+### D4 — `max=3` propagated end-to-end (clarification-generator.ts:275, contract.ts:89, builder caller `max: 3`)
+Farmer never sees enough competing options to discriminate hypotheses. Combined with D1+D2, output is 1–2 near-identical options for the same hypothesis, matching the reported production symptom (single/repetitive observation returned).
 
-Extend the frozen `BiologicalState` with two additive fields:
+### D5 — Only exact-match hypotheses expanded; nearest-hypothesis expansion is all-or-nothing (line 108-127)
+When `resolver.hypotheses` returns non-empty, `nearest_hypotheses` are ignored entirely. Competing but weaker hypotheses (which is precisely what a discrimination question exists to separate) never contribute observation edges.
 
-```ts
-readonly predicted_stage_confidence: number;       // 0..1
-readonly biological_constraints: readonly BiologicalConstraint[];
+### D6 — Graph does not include second-hop conditions from `hypothesis_master` neighbours
+Loader queries `hypothesis_conditions` only for the pre-matched `hypothesisIds`. There is no expansion via `hypothesis_master`/`hypothesis_condition` graph to sibling hypotheses whose activation would be tested by the same discriminator. Graph search terminates after one hop.
+
+## 3. Where information disappears
+
+```
+IOM seeds (~18)
+    │  resolveObservationSymbols            ok
+    ▼
+Canonical symbols (~6–10)
+    │  hypothesis-graph-evaluator: stage/DAS HARD gate
+    ▼
+Matched hypotheses (~2–5)   nearest_hypotheses (~3–6) ── DROPPED when matched>0  (D5)
+    │  loadConditions
+    ▼
+OBSERVATION conditions (~10–25)
+    │  dedup by code, keep max-weight edge only                                   (D1)
+    ▼
+Unique codes (~6–12)
+    │  sort by weight, take first `max`=3                                          (D2)
+    ▼
+UI options (1–3, often same hypothesis)                                            (D4)
 ```
 
-Where:
+## 4. Root Causes (one sentence each)
 
-```ts
-interface BiologicalConstraint {
-  readonly code: string;               // e.g. EMERGENCE_NOT_CONFIRMED, LOW_TILLER_POPULATION
-  readonly severity: 'INFO'|'WARN'|'BLOCK';
-  readonly evidence: Readonly<Record<string, unknown>>;   // fields that triggered it
-  readonly source: string;             // DB rule id — NEVER a TS literal
-}
-```
+- D1: dedup key = observation code, so all but the top-weight hypothesis edge for that code is deleted before ranking.
+- D2: single-sort + cut at N eliminates hypothesis diversity when one hypothesis dominates by weight.
+- D3: `is_discriminator` / `is_required` are queried but never contribute to score.
+- D4: `max = 3` default is enforced at three layers; graph never explores wider.
+- D5: `nearest_hypotheses` are only used as fallback, never merged with matched set.
+- D6: no BFS over `hypothesis_master` neighbours → graph is one-hop.
 
-Rules:
-1. `growth_stage` / `stage_code` / `stage_uuid` remain untouched — still authored by `resolve_crop_phenology`.
-2. Constraints are produced by **DB constraint rules** (existing `decision_rules` table, filtered `category = 'BIOLOGICAL_CONSTRAINT'` — no schema change; rules seeded outside this patch).
-3. `phenology-reconciler.ts` only *reads* constraint outputs from DB and packages them into the frozen state. **Zero literals in TS** — no `if rainfall === 0`, no crop names.
-4. Confidence is multiplied by `1 − Σ severity_weights(constraint)` where weights come from a small runtime table `SEVERITY_WEIGHTS = {INFO:0, WARN:0.2, BLOCK:0.6}` — this is graph math, not agronomy.
+## 5. Single-Phase Surgical Repair (files & functions only)
 
-Downstream consumers (hypothesis evaluator, orchestrator) read `predicted_stage`, `predicted_stage_confidence`, and `biological_constraints[]` — they must not fabricate any of these.
+All edits are inside `decision/hypothesis-clarification-builder.ts` and thin config plumbing in `runtime/clarification-contract.ts` + `agents/clarification-generator.ts`. No new files. No DB schema change. No agronomy.
 
-### Patch 2 (ACCEPTED) — Generic dotted-path condition resolver
+### Patch A — Preserve hypothesis lineage (`hypothesis-clarification-builder.ts`)
+- Change `dedup: Map<code, edge>` to `edgesByCode: Map<code, Edge[]>` where `Edge = {condition, hypothesis_id, weight, is_discriminator, is_required}`.
+- Compute per-code aggregate score = `max(weight)` + `discrimination_bonus` (from `is_discriminator=true`) + `required_bonus` (from `is_required=true`). Values come from DB via `system_config` keys (`clarification_discriminator_bonus`, `clarification_required_bonus`), default 0.25 / 0.15 — configurable, not agronomic.
+- Retain `hypothesis_ids: string[]` per code for downstream telemetry and diversification.
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
+### Patch B — Round-robin diversification + information-gain ranking
+- Replace the "sort by weight, break at max" loop with a two-stage selector:
+  1. Rank codes by aggregate score (Patch A).
+  2. Emit options in a per-hypothesis round-robin: for each rank pass, pick the top remaining code whose primary hypothesis has not yet contributed an option; only after every candidate hypothesis has contributed do we allow a second option from the same hypothesis.
+- Stops when either `options.length >= max` **or** `hypotheses_covered === hypothesisIds.length` (whichever is later, so competing hypotheses are always represented).
 
-Add pure utility:
+### Patch C — Union matched + nearest hypotheses (D5, D6 partial)
+- Replace `if (matched===0) use nearest` with `hypothesisIds = union(matched, nearest.slice(0, N))` where `N` is `system_config.clarification_nearest_expansion` (default 3). This is graph completeness, not agronomy.
+- Guarded by `resolver.nearest_hypotheses.length > 0` and stage/DAS soft-filter already produced upstream (no re-derivation here).
 
-```ts
-function resolvePath(obj: unknown, path: string): unknown { /* a.b.c walker */ }
-```
+### Patch D — Raise `max` and split "collect" from "return"
+- `loadClarificationCandidates` (contract.ts) and caller (clarification-generator.ts) pass a `collect_max` (default 12 via DB `system_config.clarification_collect_max`) to the builder, and a separate `render_max` (default 4) used only at final serialization.
+- Builder does global ranking over `collect_max`, then returns `render_max` post-diversification. Collect-then-rank replaces first-N truncation.
 
-Replace the flat-key lookup in the condition resolver with `resolvePath(canonical_context, condition.key)`. DB conditions may now reference:
+### Patch E — Structured trace at every hop
+Extend the existing `[HYP_CLARIFICATION]` log with counters: `iom_seeds`, `resolved_symbols`, `hypotheses_matched`, `hypotheses_nearest`, `hypotheses_used`, `edges_pre_dedup`, `edges_post_dedup`, `codes_ranked`, `options_emitted`, `options_by_hypothesis`. Reuses `graph-node-trace.ts::emitNodeTrace('HYPOTHESIS', …)` — no new file.
 
-- `weather.rainfall_after_sowing_mm`
-- `weather.forecast_7d[0].tmax`
-- `soil.moisture_status`
-- `soil.organic_carbon_percent`
-- `ndvi.value`, `ndvi.reliability`
-- `biological_state.predicted_stage`
-- `biological_state.biological_constraints[*].code`
-- `crop_schedule.transplant_date`
+## 6. Impact Analysis
 
-All resolution is generic. Missing paths return `undefined` and the condition evaluates per existing NULL semantics (no change to comparator logic).
+| Layer | Effect |
+|---|---|
+| Intent | none — unchanged inputs |
+| Observation | none — same `observation_master` gate |
+| Hypothesis | competing hypotheses now survive to UI stage |
+| Rule | none — clarification is pre-rule |
+| Treatment | none |
+| Clarification | 3-4 diverse options, one per top hypothesis, ranked by discriminator power |
+| GraphRuntime | one extra `.in()` query is avoided — same DB round-trips |
+| CanonicalContext | untouched, still passed by reference |
+| Performance | O(k log k) sort over ≤12 codes; per-turn cost unchanged |
+| Scalability | no new tables, no full-scan queries, safe for millions QPS |
 
-### Patch 3 (REDESIGNED) — Stage as ranking factor, never a hard gate
+## 7. Regression Analysis
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (observation candidate load, ~line 6957)
+- GraphTruth preserved — no changes to `hypothesis-graph-evaluator` or predicate resolution.
+- CanonicalContext preserved — still immutable, passed by reference.
+- DB remains SSOT — new tunables read from `system_config`, defaults only when key absent.
+- LLM unchanged — clarification renderer still consumes `{label, observation_key}` objects; shape unchanged (Patch B enriches the array, doesn't rename fields).
+- Existing empty-result path (`graph_gap = NO_STAGE_VALID_HYPOTHESES`) untouched.
+- Confirmed-observation dedup (line 141-145) untouched — we still never re-ask a confirmed code.
+- Outbound `assertClarificationContract` allowlist logic untouched.
 
-Replace the current stage `WHERE` filter on `intent_observation_mapping` with:
+## 8. Verification Checklist (crop-agnostic — DB drives behaviour)
 
-1. Query candidates by `crop_code + intent_code` only (drop `growth_stage` from the WHERE).
-2. Rank candidates via a generic scoring function that combines DB-provided weights only:
-   - `iom.stage_compatibility_score(candidate, predicted_stage)`  ← already available or defaulted to 0.5
-   - `iom.assertion_strength` (existing)
-   - constraint alignment: +bonus if candidate's `semantic_class` matches any active `biological_constraints[*].code`
-3. Never drop a candidate for stage mismatch; low-score candidates simply sort lower.
+For each scenario the repaired graph must return ≥ 2 discriminator-ranked options drawn from ≥ 2 distinct hypotheses (assuming DB has ≥ 2 hypotheses for the cell):
 
-This is crop/intent-agnostic. Removes the `EMERGENCE_FAILURE`-specific branch entirely.
+- [ ] Emergence failure (rice DSR DAS 17 — production trigger)
+- [ ] Poor germination (any crop, DAS ≤ 30)
+- [ ] Establishment failure (any transplanted crop)
+- [ ] Pest diagnosis with ≥ 2 candidate pests
+- [ ] Disease diagnosis with ≥ 2 candidate pathogens
+- [ ] Nutrient deficiency (N vs K vs micro)
+- [ ] Irrigation stress vs drought vs waterlogging
+- [ ] Abiotic stress (heat / cold / salinity)
+- [ ] Weather-triggered damage (post-rain, post-hail)
+- [ ] Mixed observations (biotic + abiotic co-present)
 
-### Patch 4 (ACCEPTED, widened) — Purge all hardcoded symptom lists
+## 9. Files to change
 
-Sweep and remove hardcoded observation arrays (`STUNTED_GROWTH`, `WILTING`, `LEAF_CURLING`, `LEAF_YELLOWING`, and any per-`FailureClass` map) from:
+- `supabase/functions/ai-agriculture-chat/decision/hypothesis-clarification-builder.ts` (Patches A, B, C, E)
+- `supabase/functions/ai-agriculture-chat/runtime/clarification-contract.ts` (Patch D — plumb `collect_max`)
+- `supabase/functions/ai-agriculture-chat/agents/clarification-generator.ts` (Patch D — pass `collect_max` from `system_config`)
 
-1. `supabase/functions/ai-agriculture-chat/decision/failure-class-detector.ts` (`getFailureClassFallbackOptions`, lines 411–455)
-2. `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` (`useHypothesisFallback` path ~line 734)
-3. `supabase/functions/ai-agriculture-chat/agents/language-induction-layer.ts` (any symptom-list constants)
-4. `supabase/functions/ai-agriculture-chat/agents/llm-understanding-layer.ts` (same)
+No new files. No DB migration. No crop / stage / symptom string added to TypeScript.
 
-Replacement: single DB lookup
+## 10. Deploy
 
-```ts
-selectObservationsByFailureClass(supabase, {
-  crop_code, failure_class, limit
-})
-```
-
-reading `observation_master` filtered by `semantic_class` mapped to `failure_class` via existing `intent_semantic_class_allowlist`. Language synonym normalization is retained (that's language, not agronomy).
-
-### Patch 5 (ACCEPTED, generalized) — No-evidence path never guesses
-
-**Files:** `clarification-strategy.ts`, `failure-class-detector.ts`
-
-When the DB returns **zero** candidates for a valid `(crop, intent, failure_class)`:
-
-- Do **not** fall back to any TS list.
-- Return sentinel `WAITING_FOR_OBSERVATION` — `graph-runtime.ts` OBS_GATE already handles this and drives ASK-clarification.
-
-Applies to every intent, every crop, every stage.
-
-### Patch 6 (NEW) — Graph order correction
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-Audit and reorder the pipeline sections so stage is never consulted **before** observation candidate load. Current call order in orchestrator:
-
-```text
-build canonical_context → resolve_phenology → filter observations by stage → hypothesis eval
-```
-
-New order:
-
-```text
-build canonical_context (includes biological_state.predicted_stage) →
-load observation candidates by (crop, intent) →
-score with stage as one factor →
-hypothesis evaluation with full canonical_context (Patch 2)
-```
-
-No new modules. Only reordering + removing the stage `WHERE` filter (already covered by Patch 3). Verify no other call site treats `growth_stage` as a hard filter (`rg "growth_stage" supabase/functions/ai-agriculture-chat` and audit each hit).
-
-### Patch 7 (NEW) — Intent ≠ Observation safety
-
-**Files (audit):** `orchestrator.ts`, `clarification-strategy.ts`, `language-induction-layer.ts`, `llm-understanding-layer.ts`
-
-Sweep:
-
-```bash
-rg "confirmed_observations|known_observations\.push|inferred_observations\.push"
-```
-
-Rules enforced at each hit:
-
-1. An **intent code** may never be pushed into `confirmed_observations` or `known_observations`.
-2. Only outputs of the observation candidate loader, image classifier, or explicit farmer confirmation may enter these arrays.
-3. Add a runtime invariant guard (single utility in `runtime/graph-runtime.ts`, no new file):
-
-   ```ts
-   assertNotAnIntentCode(obsCode)   // throws OBS_INTENT_LEAK if obsCode ∈ intent_master
-   ```
-
-   Called at every push site. Uses in-memory intent code set already loaded at boot.
-
----
-
-## Files Touched (exact list, no new files)
-
-1. `supabase/functions/ai-agriculture-chat/agents/biological-state.ts` (P1)
-2. `supabase/functions/ai-agriculture-chat/runtime/phenology-reconciler.ts` (P1)
-3. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` (P2)
-4. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (P3, P6, P7)
-5. `supabase/functions/ai-agriculture-chat/decision/failure-class-detector.ts` (P4, P5)
-6. `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` (P4, P5, P7)
-7. `supabase/functions/ai-agriculture-chat/agents/language-induction-layer.ts` (P4, P7)
-8. `supabase/functions/ai-agriculture-chat/agents/llm-understanding-layer.ts` (P4, P7)
-9. `supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts` (P7 guard utility)
-10. `supabase/functions/ai-agriculture-chat/tests/observation-state-contract_test.ts` (new assertions, no new file)
-
-Each file gets a CHANGE LOG entry per project rule.
-
----
-
-## Proofs
-
-**Proof no agronomy enters TS:**
-- No literal rainfall thresholds, no crop names, no stage-transition rules, no symptom lists remain (Patches 4, 5, 1).
-- Constraint codes (`EMERGENCE_NOT_CONFIRMED`, etc.) originate in `decision_rules` rows only; TS carries strings opaquely.
-- Stage scoring weights come from `intent_observation_mapping` columns; only `SEVERITY_WEIGHTS` is a runtime math constant (INFO/WARN/BLOCK), not agronomy.
-
-**Proof DB remains SSOT:**
-- No new tables, no schema changes.
-- New behavior driven by existing tables: `decision_rules`, `intent_observation_mapping`, `observation_master`, `intent_semantic_class_allowlist`, `crop_stage_master`.
-- Bio constraints seeded via DB rules outside this patch (out of scope; runtime just consumes them).
-
----
-
-## Expected New Graph Flow — Rice example (illustrative only, logic is generic)
-
-1. Farmer: "भात अजून उगवले नाही"
-2. Intent = `EMERGENCE_FAILURE` (DB intent map).
-3. Canonical field twin built; `biological_state.predicted_stage = TILLERING` (DAS/GDD), `predicted_stage_confidence = 0.35` after DB constraint rule fires `EMERGENCE_NOT_CONFIRMED` (rainfall=0, NDVI null, moisture DRY) with `severity = BLOCK`.
-4. Observation candidates loaded by `(RICE, EMERGENCE_FAILURE)` — stage NOT filtered. DB returns germination-family observations. Ranking bonus from `EMERGENCE_NOT_CONFIRMED` constraint alignment lifts them further.
-5. If DB returns zero candidates → `WAITING_FOR_OBSERVATION`, ASK clarification.
-6. No TS ever pushed `STUNTED_GROWTH` etc.
-
-Same flow applies to cotton (POOR_ESTABLISHMENT), sugarcane (LOW_TILLER_POPULATION), wheat (heat stress), fruit crops — because none of the logic is per-crop.
-
----
-
-## Rollback
-
-Each patch is independently revertible. Patch 1's additive fields are inert without Patch 2. Patches 3/6 are reordering + removing a WHERE clause — trivial revert. Patches 4/5 revert restores the deleted TS lists.
+Redeploy `ai-agriculture-chat` edge function after edits. Verify with a single Marathi emergence-failure query and confirm `[HYP_CLARIFICATION]` shows `hypotheses_used ≥ 2`, `options_by_hypothesis` shows round-robin distribution, and UI returns ≥ 2 distinct options.
