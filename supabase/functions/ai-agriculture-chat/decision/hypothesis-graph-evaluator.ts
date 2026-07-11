@@ -72,6 +72,36 @@ export interface GraphHypothesisInput {
   // v2.1.0 — optional frozen field-twin. Not evaluated by this module; stored
   // for downstream predicate evaluators that reference the extended context.
   canonical_context?: unknown;
+  // v5-P8 — biological stage-authority signal (0..1). When below the runtime
+  // threshold, STAGE hard-gates on `is_required=true` mismatch downgrade to
+  // soft penalties (STAGE_CONTEXT_CONFLICT).
+  predicted_stage_confidence?: number;
+}
+
+/** v5-P8 — graph-math fallback used when `system_config` key is missing. */
+const DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD = 0.6;
+let _bioStageHardGateThresholdCache: number | null = null;
+async function readBioStageHardGateThreshold(supabase: any): Promise<number> {
+  if (_bioStageHardGateThresholdCache !== null) return _bioStageHardGateThresholdCache;
+  try {
+    const { data } = await supabase
+      .from('system_config')
+      .select('config_value')
+      .eq('config_key', 'bio_stage_hard_gate_threshold')
+      .maybeSingle();
+    const raw = data?.config_value;
+    const n = typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string'
+        ? Number(raw)
+        : (raw && typeof raw === 'object' && 'value' in raw ? Number((raw as any).value) : NaN);
+    _bioStageHardGateThresholdCache = Number.isFinite(n) && n >= 0 && n <= 1
+      ? n
+      : DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD;
+  } catch {
+    _bioStageHardGateThresholdCache = DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD;
+  }
+  return _bioStageHardGateThresholdCache;
 }
 
 /**
