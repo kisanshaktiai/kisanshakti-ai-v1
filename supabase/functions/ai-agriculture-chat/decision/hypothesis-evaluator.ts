@@ -88,6 +88,9 @@ export interface HypothesisEvaluationInput {
   // Phase F — variety-aware resistance modulation. Optional; when present,
   // candidate scores get a bounded resistance multiplier from `variety_resistance`.
   variety_id?: string | null;
+  // v2.1.0 — optional frozen CanonicalContext. Forwarded by runGraphRuntime
+  // so downstream predicates can read the field-twin. No agronomic logic here.
+  canonical_context?: unknown;
 }
 
 
