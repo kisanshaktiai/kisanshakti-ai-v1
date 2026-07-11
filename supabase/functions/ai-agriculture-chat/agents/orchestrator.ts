@@ -5495,6 +5495,9 @@ export class AIAgentOrchestrator {
           let graphHypothesisEdgeMissing: string[] = [];
           try {
             const { evaluateHypothesisGraph } = await import('../decision/hypothesis-graph-evaluator.ts');
+            const bioStateForGraph = (landContext as any)?.biological_state as
+              | { predicted_stage_confidence?: number }
+              | undefined;
             const graphInput = {
               crop_code: cropCode ?? null,
               crop_group: cropCode ?? null,
@@ -5507,6 +5510,14 @@ export class AIAgentOrchestrator {
               observation_codes: currentObservations,
               supabase: this.supabase,
               trace_id: traceId,
+              canonical_context: canonicalContext,
+              // v5-P8 — carry the biological stage-authority signal so the
+              // evaluator can downgrade STAGE hard-gates when the field twin
+              // contradicts the calendar-picked stage.
+              predicted_stage_confidence:
+                typeof bioStateForGraph?.predicted_stage_confidence === 'number'
+                  ? bioStateForGraph.predicted_stage_confidence
+                  : 1.0,
             };
             const graphOut = await evaluateHypothesisGraph(graphInput);
             if (graphOut.candidates.length === 0 && conversationState.clarification_required) {
