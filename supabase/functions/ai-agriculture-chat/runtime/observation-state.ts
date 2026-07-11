@@ -63,11 +63,15 @@ export function buildObservationState(i: BuildObservationStateInput): Observatio
       switch (obs.authority) {
         case ObservationAuthority.CONFIRMED:
         case ObservationAuthority.EXTRACTED:
-          confirmed.add(obs.code);
+          if (assertNotAnIntentCode(obs.code, 'buildObservationState.confirmed')) {
+            confirmed.add(obs.code);
+          }
           break;
         case ObservationAuthority.INFERRED:
         case ObservationAuthority.SYNTHETIC:
-          inferred.add(obs.code);
+          if (assertNotAnIntentCode(obs.code, 'buildObservationState.inferred')) {
+            inferred.add(obs.code);
+          }
           break;
       }
     }
