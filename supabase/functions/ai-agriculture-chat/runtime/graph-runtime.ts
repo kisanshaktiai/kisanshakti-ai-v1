@@ -36,6 +36,11 @@
  *     collapse lands (tracked separately).
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-11 UTC — v4-P7: added `assertNotAnIntentCode(code, site)` +
+ *     `registerIntentCodeSet(codes)` intent-leak guard. Non-throwing log
+ *     `[OBS_INTENT_LEAK]` so `confirmed_observations` / `known_observations`
+ *     never absorb intent codes (e.g. EMERGENCE_FAILURE becoming an
+ *     "observation"). Wire callers on push sites; flip to throw once clean.
  *   2026-07-11 UTC — Context preservation: accept optional `canonical_context`
  *     (frozen CanonicalContext v2.1.0), enforce strict split-check on
  *     authority-owned fields (crop_code, growth_stage, DAS, variety_id, NDVI
@@ -249,3 +254,47 @@ export async function runGraphRuntime(
 
   return { result, candidates, winner, ms, state: 'READY_FOR_GRAPH' };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PATCH v4-P7 — INTENT ≠ OBSERVATION safety guard
+// ═══════════════════════════════════════════════════════════════════════════
+// Intent codes (opened by the classifier) MUST NEVER leak into the
+// confirmed/known/inferred observation arrays. Only outputs of the DB
+// observation candidate loader, image classifier, or explicit farmer
+// confirmation may enter those arrays.
+//
+// This is a runtime invariant guard. It is intentionally NON-THROWING for
+// the initial rollout to avoid production blast-radius; a `[OBS_INTENT_LEAK]`
+// log line is emitted so ingestion can convert to an alert. Flip to
+// `throw`-mode once the leak count is proven zero for 7 days.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let __INTENT_CODE_SET: Set<string> | null = null;
+
+/** Called once at boot with the current intent_master code set. */
+export function registerIntentCodeSet(codes: Iterable<string>): void {
+  __INTENT_CODE_SET = new Set(
+    Array.from(codes)
+      .filter((c): c is string => typeof c === 'string' && c.length > 0)
+      .map((c) => c.toUpperCase()),
+  );
+}
+
+/**
+ * Assert that `obsCode` is NOT a known intent code. Returns true when the
+ * code is safe to push into an observation array; false when it looks like
+ * an intent leak (guard logs and lets caller decide whether to drop).
+ */
+export function assertNotAnIntentCode(
+  obsCode: string | null | undefined,
+  site: string,
+): boolean {
+  if (!obsCode || typeof obsCode !== 'string') return true;
+  const up = obsCode.toUpperCase();
+  if (__INTENT_CODE_SET && __INTENT_CODE_SET.has(up)) {
+    console.warn(`[OBS_INTENT_LEAK] site=${site} code=${up} rejected — intent codes must not enter observation arrays`);
+    return false;
+  }
+  return true;
+}
+

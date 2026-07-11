@@ -22,6 +22,16 @@
  * reconciler, sanity-check overrides in index.ts) must SKIP their write when
  * biological_state is locked and log a `[BIO_STATE_WRITE_BLOCKED]` line.
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG
+ *   2026-07-11 UTC — v4-P1 (generic all-crop): additive fields
+ *     `predicted_stage_confidence` and `biological_constraints[]` +
+ *     `BiologicalConstraint` DTO. Constraints are DB-authored (opaque codes);
+ *     runtime graph-math weights (SEVERITY_WEIGHTS: INFO=0/WARN=0.2/BLOCK=0.6)
+ *     decay predicted-stage confidence without ever mutating growth_stage.
+ *     `NOT_ESTABLISHED` explicitly rejected as a stage — it is a constraint.
+ *     Existing callers unaffected: `buildBiologicalState(landId, phenology)`
+ *     still works; `biologicalConstraints` param defaults to [].
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 export interface BiologicalState {
@@ -45,7 +55,46 @@ export interface BiologicalState {
   readonly source: string;                  // 'phenology_ssot' | ...
   readonly resolver_version: string | null;
 
+  /**
+   * PATCH v4-P1 — Predicted-stage confidence (0..1). Starts at `confidence`
+   * and is decayed by biological_constraints[].severity via runtime graph
+   * math (SEVERITY_WEIGHTS). NEVER contains agronomy.
+   */
+  readonly predicted_stage_confidence: number;
+
+  /**
+   * PATCH v4-P1 — Biological CONSTRAINTS (not stages).
+   * Codes are emitted by DB constraint rules (e.g. decision_rules with
+   * category='BIOLOGICAL_CONSTRAINT'). Runtime NEVER invents these codes.
+   * Empty [] until DB rules are seeded — inert but downstream-readable.
+   */
+  readonly biological_constraints: ReadonlyArray<BiologicalConstraint>;
+
   readonly raw: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * PATCH v4-P1 — Biological constraint DTO. `code` and `source` are opaque
+ * strings owned by the DB. TS never synthesises these values.
+ */
+export interface BiologicalConstraint {
+  readonly code: string;                                     // e.g. EMERGENCE_NOT_CONFIRMED
+  readonly severity: 'INFO' | 'WARN' | 'BLOCK';
+  readonly evidence: Readonly<Record<string, unknown>>;
+  readonly source: string;                                   // DB rule id
+}
+
+/** Graph-math weights for severity — NOT agronomy. */
+const SEVERITY_WEIGHTS: Readonly<Record<'INFO' | 'WARN' | 'BLOCK', number>> = Object.freeze({
+  INFO: 0,
+  WARN: 0.2,
+  BLOCK: 0.6,
+});
+
+function decayConfidence(base: number, cs: ReadonlyArray<BiologicalConstraint>): number {
+  if (!Array.isArray(cs) || cs.length === 0) return base;
+  const decay = cs.reduce((s, c) => s + (SEVERITY_WEIGHTS[c.severity] ?? 0), 0);
+  return Math.max(0, Math.min(1, base * Math.max(0, 1 - decay)));
 }
 
 export interface RawPhenologyRow {
@@ -67,12 +116,30 @@ export interface RawPhenologyRow {
  * Build an immutable BiologicalState from the phenology resolver row.
  * Returns `null` when the resolver produced no row — callers must treat this
  * as "no biological authority" and fall back to legacy heuristics safely.
+ *
+ * PATCH v4-P1 — optional `biologicalConstraints` are additive DB-emitted
+ * constraint records; they DECAY predicted_stage_confidence but never
+ * overwrite growth_stage. Defaults to [] (inert).
  */
 export function buildBiologicalState(
   landId: string,
   phenology: RawPhenologyRow | null | undefined,
+  biologicalConstraints: ReadonlyArray<BiologicalConstraint> = [],
 ): BiologicalState | null {
   if (!phenology) return null;
+
+  const baseConfidence = typeof phenology.confidence === 'number' ? phenology.confidence : 0;
+  const constraints: ReadonlyArray<BiologicalConstraint> = Object.freeze(
+    (biologicalConstraints ?? []).map((c) =>
+      Object.freeze({
+        code: String(c.code),
+        severity: (c.severity === 'BLOCK' || c.severity === 'WARN' ? c.severity : 'INFO') as
+          | 'INFO' | 'WARN' | 'BLOCK',
+        evidence: Object.freeze({ ...(c.evidence ?? {}) }),
+        source: String(c.source ?? 'db_rule'),
+      }),
+    ),
+  );
 
   const state: BiologicalState = {
     is_locked: true,
@@ -92,9 +159,12 @@ export function buildBiologicalState(
       typeof phenology.gdd_accumulated === 'number' ? phenology.gdd_accumulated : null,
     sowing_date: phenology.sowing_date ?? null,
 
-    confidence: typeof phenology.confidence === 'number' ? phenology.confidence : 0,
+    confidence: baseConfidence,
     source: phenology.source ?? 'phenology_ssot',
     resolver_version: phenology.resolver_version ?? null,
+
+    predicted_stage_confidence: decayConfidence(baseConfidence, constraints),
+    biological_constraints: constraints,
 
     raw: Object.freeze({ ...phenology }),
   };
@@ -114,6 +184,8 @@ export function buildBiologicalState(
           source: state.source,
           resolver_version: state.resolver_version,
           confidence: state.confidence,
+          predicted_stage_confidence: state.predicted_stage_confidence,
+          constraints: constraints.map((c) => `${c.code}(${c.severity})`),
         }),
     );
   } catch {/* trace must not throw */}

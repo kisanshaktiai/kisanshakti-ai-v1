@@ -1,6 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ * 2026-07-11 UTC — v4-P2: generic dotted-path predicate resolver.
+ *   `evaluatePartialConditionMatch` now honours `conditions_json.canonical`,
+ *   a DB-authored map of `path → predicate` (eq/in/gt/gte/lt/lte/present/ne).
+ *   Paths walk the frozen `canonical_context` (soil.moisture_status,
+ *   weather.rainfall_after_sowing_mm, biological_state.biological_constraints,
+ *   crop_schedule.transplant_date, etc.). No agronomy in TS.
  * 2026-07-11 UTC — Additive: HypothesisEvaluationInput accepts optional
  *   `canonical_context` (frozen CanonicalContext v2.1.0). Forwarded verbatim
  *   from runGraphRuntime; DB rule predicates that reference field-twin fields
@@ -387,6 +393,58 @@ function normalizeCauseForDedup(cause: string): string {
 // Evaluate how well a rule's conditions match available facts
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * PATCH v4-P2 — Generic dotted-path getter for canonical_context predicates.
+ * Walks `a.b.c` (and numeric segments for arrays). Missing paths return
+ * `undefined`. No agronomy — pure runtime utility.
+ */
+function resolvePath(root: unknown, path: string): unknown {
+  if (root === null || root === undefined || typeof path !== 'string' || path.length === 0) {
+    return undefined;
+  }
+  const parts = path.split('.').filter((p) => p.length > 0);
+  let cur: any = root;
+  for (const seg of parts) {
+    if (cur === null || cur === undefined) return undefined;
+    const idx = /^\d+$/.test(seg) ? Number(seg) : seg;
+    cur = cur[idx as any];
+  }
+  return cur;
+}
+
+/**
+ * PATCH v4-P2 — Compare a resolved value against a predicate literal.
+ * Supported literal shapes (all optional, no crop-specific ops):
+ *   - primitive:            equality (case-insensitive for strings)
+ *   - { eq }/{ ne }:        equality / inequality
+ *   - { in: [...] }:        membership
+ *   - { gt|gte|lt|lte: n }: numeric compare
+ *   - { present: true/false }: value defined / undefined
+ */
+function comparePredicate(actual: unknown, expected: unknown): boolean {
+  if (expected === null || expected === undefined) return actual === expected;
+  if (typeof expected !== 'object') {
+    if (typeof actual === 'string' && typeof expected === 'string') {
+      return actual.toLowerCase() === expected.toLowerCase();
+    }
+    return actual === expected;
+  }
+  const e = expected as Record<string, unknown>;
+  if ('present' in e) return (actual !== undefined && actual !== null) === !!e.present;
+  if ('eq' in e) return comparePredicate(actual, e.eq);
+  if ('ne' in e) return !comparePredicate(actual, e.ne);
+  if ('in' in e && Array.isArray(e.in)) return e.in.some((v) => comparePredicate(actual, v));
+  const n = typeof actual === 'number' ? actual : Number(actual);
+  if (Number.isFinite(n)) {
+    if ('gt'  in e && !(n >  Number(e.gt)))  return false;
+    if ('gte' in e && !(n >= Number(e.gte))) return false;
+    if ('lt'  in e && !(n <  Number(e.lt)))  return false;
+    if ('lte' in e && !(n <= Number(e.lte))) return false;
+    return true;
+  }
+  return false;
+}
+
 function evaluatePartialConditionMatch(
   conditionsJson: any,
   input: HypothesisEvaluationInput
@@ -440,7 +498,26 @@ function evaluatePartialConditionMatch(
       matchedConditions.push('ndvi_level');
     }
   }
-  
+
+  // ─── PATCH v4-P2 — canonical_context.* dotted-path predicates ─────────
+  // DB rules may include: conditions_json.canonical: { "soil.moisture_status": "DRY",
+  //   "weather.rainfall_after_sowing_mm": { "lte": 0 },
+  //   "biological_state.biological_constraints.0.code": "EMERGENCE_NOT_CONFIRMED" }
+  // Runtime only WALKS paths; agronomy stays in the DB row.
+  const canonicalPreds = conditionsJson.canonical && typeof conditionsJson.canonical === 'object'
+    ? (conditionsJson.canonical as Record<string, unknown>)
+    : null;
+  if (canonicalPreds && input.canonical_context) {
+    for (const [path, expected] of Object.entries(canonicalPreds)) {
+      totalConditions++;
+      const actual = resolvePath(input.canonical_context, path);
+      if (comparePredicate(actual, expected)) {
+        matchedCount++;
+        matchedConditions.push(`canonical:${path}`);
+      }
+    }
+  }
+
   // Calculate score (0-1)
   const score = totalConditions > 0 ? matchedCount / (totalConditions + 1) : 0.3;
   

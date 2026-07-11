@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * FAILURE CLASS DETECTOR - CANONICAL SYMBOL VERSION
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG
+ *   2026-07-11 UTC — v4-P4: `getFailureClassFallbackOptions` no longer
+ *     returns per-class hardcoded observation lists (STUNTED_GROWTH / WILTING
+ *     / LEAF_CURLING / etc.). Symptom generation is DB territory. Empty [] is
+ *     returned; callers must fall through to WAITING_FOR_OBSERVATION.
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
  * Determine primary failure class before generating clarification options.
@@ -386,7 +392,7 @@ export function isObservationStageCompatible(
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FALLBACK OPTIONS FOR CLARIFICATION - CANONICAL VERSION
+// FALLBACK OPTIONS FOR CLARIFICATION — DB-ONLY (v4-P4)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface FallbackOption {
@@ -396,63 +402,26 @@ export interface FallbackOption {
 }
 
 /**
- * Get fallback clarification options for a failure class.
- * Returns canonical observation keys with English labels.
- * Localization happens at the rendering layer via i18n.
+ * PATCH v4-P4 — Hardcoded per-failure-class observation lists have been
+ * REMOVED. Symptom generation is DB territory (observation_master +
+ * intent_observation_mapping + intent_semantic_class_allowlist). This
+ * function now returns an empty array; callers MUST fall through to the
+ * WAITING_FOR_OBSERVATION path (see clarification-strategy.useHypothesisFallback
+ * and runtime/graph-runtime OBS_GATE).
+ *
+ * The signature is preserved for interface compatibility. Do NOT re-introduce
+ * literal observation codes here — that regressed the rice
+ * "उगवले नाही" → STUNTED_GROWTH/WILTING/LEAF_CURLING bug and would resurface
+ * across cotton, sugarcane, wheat, fruit crops the same way.
  */
 export function getFailureClassFallbackOptions(
   failureClass: FailureClass,
   _language: string = 'en'
 ): FallbackOption[] {
-  // NOTE: Language parameter retained for interface compatibility
-  // Actual localization uses i18n keys at render time
-  
-  // FIX 34: Labels are observation_keys only — localization happens via translateClarificationOptions() at render time
-  const optionsByClass: Record<FailureClass, FallbackOption[]> = {
-    ESTABLISHMENT_FAILURE: [
-      { observation_key: 'GERMINATION_FAILURE', label: 'GERMINATION_FAILURE', category: 'establishment' },
-      { observation_key: 'SEEDLING_DEATH', label: 'SEEDLING_DEATH', category: 'establishment' },
-      { observation_key: 'GAPS_IN_FIELD', label: 'GAPS_IN_FIELD', category: 'establishment' },
-      { observation_key: 'ROOT_ROT', label: 'ROOT_ROT', category: 'establishment' }
-    ],
-    VEGETATIVE_STRESS: [
-      { observation_key: 'STUNTED_GROWTH', label: 'STUNTED_GROWTH', category: 'stress' },
-      { observation_key: 'WILTING', label: 'WILTING', category: 'stress' },
-      { observation_key: 'LEAF_CURLING', label: 'LEAF_CURLING', category: 'stress' },
-      { observation_key: 'LEAF_YELLOWING', label: 'LEAF_YELLOWING', category: 'stress' }
-    ],
-    PEST_DAMAGE: [
-      { observation_key: 'INSECTS_VISIBLE', label: 'INSECTS_VISIBLE', category: 'pest' },
-      { observation_key: 'HOLES_VISIBLE', label: 'HOLES_VISIBLE', category: 'pest' },
-      { observation_key: 'DEAD_HEART', label: 'DEAD_HEART', category: 'pest' },
-      { observation_key: 'CATERPILLAR_VISIBLE', label: 'CATERPILLAR_VISIBLE', category: 'pest' }
-    ],
-    DISEASE_SYMPTOM: [
-      { observation_key: 'LEAF_SPOTS', label: 'LEAF_SPOTS', category: 'disease' },
-      { observation_key: 'FUNGAL_GROWTH', label: 'FUNGAL_GROWTH', category: 'disease' },
-      { observation_key: 'WILT_DISEASE', label: 'WILT_DISEASE', category: 'disease' },
-      { observation_key: 'RUST_PRESENT', label: 'RUST_PRESENT', category: 'disease' }
-    ],
-    NUTRIENT_DEFICIENCY: [
-      { observation_key: 'LEAF_YELLOWING', label: 'LEAF_YELLOWING', category: 'nutrient' },
-      { observation_key: 'CHLOROSIS', label: 'CHLOROSIS', category: 'nutrient' },
-      { observation_key: 'PURPLISH_LEAVES', label: 'PURPLISH_LEAVES', category: 'nutrient' },
-      { observation_key: 'STUNTED_GROWTH', label: 'STUNTED_GROWTH', category: 'nutrient' }
-    ],
-    WEED_COMPETITION: [
-      { observation_key: 'WEED_PRESENT', label: 'WEED_PRESENT', category: 'weed' },
-      { observation_key: 'WEED_HEAVY', label: 'WEED_HEAVY', category: 'weed' },
-      { observation_key: 'WEED_ABOVE_CROP', label: 'WEED_ABOVE_CROP', category: 'weed' },
-      { observation_key: 'GRASS_WEEDS', label: 'GRASS_WEEDS', category: 'weed' }
-    ],
-    UNKNOWN: [
-      { observation_key: 'UNKNOWN_SYMPTOM', label: 'UNKNOWN_SYMPTOM', category: 'general' },
-      { observation_key: 'PHOTO_REQUEST', label: 'PHOTO_REQUEST', category: 'general' }
-    ]
-  };
-  
-  return optionsByClass[failureClass] || optionsByClass.UNKNOWN;
+  void failureClass;
+  return [];
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AUDIT LOGGING
