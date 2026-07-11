@@ -27,6 +27,7 @@ import {
   AuthoredObservationSet,
   ObservationAuthority,
 } from '../utils/observation-authority.ts';
+import { assertNotAnIntentCode } from './graph-runtime.ts';
 
 export interface ObservationState {
   readonly candidate_observations: ReadonlyArray<string>;
