@@ -16,6 +16,7 @@
 
 import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { registerIntentCodeSet } from '../runtime/graph-runtime.ts';
 
 export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 
@@ -53,6 +54,10 @@ async function loadCanonicalIntentCodes(): Promise<Set<string>> {
       }
       const set = new Set<string>(data.map((r: any) => r.intent_code));
       _validIntentCodes = set;
+      // v4-P7 — feed the same authoritative intent set to the graph-runtime
+      // intent-leak guard so `assertNotAnIntentCode()` can flag any code that
+      // tries to enter confirmed/known/inferred observation arrays.
+      try { registerIntentCodeSet(set); } catch (_e) { /* non-fatal */ }
       console.log(`[IntentValidator] Loaded ${set.size} canonical intent codes from DB`);
       return set;
     } catch (e) {

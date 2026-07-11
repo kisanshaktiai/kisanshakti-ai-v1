@@ -3,6 +3,9 @@
  * OBSERVATION STATE CONTRACT (v1.0.0)
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-11 UTC — v4-P7 wire-up: filter intent codes out of confirmed/
+ *     inferred sets via `assertNotAnIntentCode` before they can enter the
+ *     hypothesis graph. Non-throwing: leaks are dropped + logged.
  *   2026-07-09 07:55 UTC — Introduced three-state observation contract.
  *     Separates candidate (UI options), inferred (ranking priors) and
  *     confirmed (only class allowed to enter OBS_TO_HYP).
@@ -24,6 +27,7 @@ import {
   AuthoredObservationSet,
   ObservationAuthority,
 } from '../utils/observation-authority.ts';
+import { assertNotAnIntentCode } from './graph-runtime.ts';
 
 export interface ObservationState {
   readonly candidate_observations: ReadonlyArray<string>;
@@ -59,11 +63,15 @@ export function buildObservationState(i: BuildObservationStateInput): Observatio
       switch (obs.authority) {
         case ObservationAuthority.CONFIRMED:
         case ObservationAuthority.EXTRACTED:
-          confirmed.add(obs.code);
+          if (assertNotAnIntentCode(obs.code, 'buildObservationState.confirmed')) {
+            confirmed.add(obs.code);
+          }
           break;
         case ObservationAuthority.INFERRED:
         case ObservationAuthority.SYNTHETIC:
-          inferred.add(obs.code);
+          if (assertNotAnIntentCode(obs.code, 'buildObservationState.inferred')) {
+            inferred.add(obs.code);
+          }
           break;
       }
     }
