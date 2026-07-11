@@ -159,7 +159,7 @@ export interface RuleDrivenOption {
 export interface RuleDrivenClarificationOutput {
   question: string;
   options: RuleDrivenOption[];
-  source: 'HYPOTHESIS_RULES' | 'DECISION_RULES' | 'FAILURE_CLASS_FALLBACK';
+  source: 'HYPOTHESIS_RULES' | 'DECISION_RULES' | 'FAILURE_CLASS_FALLBACK' | 'WAITING_FOR_OBSERVATION';
   stage_locked: string;
   generated_at: number;
   failure_class: FailureClass;
