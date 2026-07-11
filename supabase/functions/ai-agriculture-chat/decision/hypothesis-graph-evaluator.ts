@@ -219,6 +219,18 @@ export async function evaluateHypothesisGraph(
   // Step 2 — pull FULL condition sets for those hypotheses (positive + negative)
   const allConditions = await queryAllConditions(input.supabase, anchorHypIds);
 
+  // v5-P8 — biological stage-authority threshold (graph math, not agronomy).
+  const bioStageThreshold = await readBioStageHardGateThreshold(input.supabase);
+  const predictedStageConfidence =
+    typeof input.predicted_stage_confidence === 'number'
+      ? input.predicted_stage_confidence
+      : 1.0;
+  const stageHardGateActive = predictedStageConfidence >= bioStageThreshold;
+  console.log(
+    `[BIO_STAGE_AUTHORITY] trace=${trace} predicted_stage_confidence=${predictedStageConfidence.toFixed(2)} ` +
+      `threshold=${bioStageThreshold.toFixed(2)} hard_gate=${stageHardGateActive}`,
+  );
+
   // Step 3 — join hypothesis_master metadata (active only; NO crop filter here;
   // crop mismatch is evaluated per-candidate as a true contradiction below).
   const master = await queryMaster(input.supabase, anchorHypIds);
