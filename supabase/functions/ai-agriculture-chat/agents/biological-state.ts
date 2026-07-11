@@ -22,6 +22,16 @@
  * reconciler, sanity-check overrides in index.ts) must SKIP their write when
  * biological_state is locked and log a `[BIO_STATE_WRITE_BLOCKED]` line.
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG
+ *   2026-07-11 UTC — v4-P1 (generic all-crop): additive fields
+ *     `predicted_stage_confidence` and `biological_constraints[]` +
+ *     `BiologicalConstraint` DTO. Constraints are DB-authored (opaque codes);
+ *     runtime graph-math weights (SEVERITY_WEIGHTS: INFO=0/WARN=0.2/BLOCK=0.6)
+ *     decay predicted-stage confidence without ever mutating growth_stage.
+ *     `NOT_ESTABLISHED` explicitly rejected as a stage — it is a constraint.
+ *     Existing callers unaffected: `buildBiologicalState(landId, phenology)`
+ *     still works; `biologicalConstraints` param defaults to [].
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 export interface BiologicalState {
