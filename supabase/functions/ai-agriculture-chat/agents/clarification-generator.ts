@@ -272,7 +272,7 @@ export async function generateScopedClarification(
           growth_stage: resolvedStage,
           das: resolvedDas,
           language,
-          max: 3,
+          max: 4,
           // Rule 2: never re-ask evidence the farmer has already confirmed.
           confirmed: conversationState?.confirmed ?? [],
         });
