@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-11 UTC — v5-P8: STAGE hard-gate is now confidence-aware.
+ *   `GraphHypothesisInput.predicted_stage_confidence` (0..1) is compared to
+ *   a runtime graph threshold (`system_config.bio_stage_hard_gate_threshold`
+ *   with fallback constant DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD = 0.6).
+ *   When confidence >= threshold the DB SSOT is honored (HARD elimination
+ *   on `is_required=true` STAGE mismatch). When confidence < threshold the
+ *   stage gate downgrades to a SOFT penalty (STAGE_CONTEXT_CONFLICT warning)
+ *   so hypotheses can survive when the field twin contradicts the calendar.
+ *   Threshold is graph math, not agronomy.
  * 2026-07-11 UTC — Additive: GraphHypothesisInput accepts optional
  *   `canonical_context`. Stored on the evaluation context so DB rule
  *   predicates that reference field-twin fields can resolve. No logic change.
