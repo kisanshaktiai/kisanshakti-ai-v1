@@ -398,7 +398,7 @@ function normalizeCauseForDedup(cause: string): string {
  * Walks `a.b.c` (and numeric segments for arrays). Missing paths return
  * `undefined`. No agronomy — pure runtime utility.
  */
-function resolvePath(root: unknown, path: string): unknown {
+export function resolvePath(root: unknown, path: string): unknown {
   if (root === null || root === undefined || typeof path !== 'string' || path.length === 0) {
     return undefined;
   }
