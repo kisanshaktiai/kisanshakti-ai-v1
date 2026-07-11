@@ -1,6 +1,11 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ * 2026-07-11 UTC — Additive: HypothesisEvaluationInput accepts optional
+ *   `canonical_context` (frozen CanonicalContext v2.1.0). Forwarded verbatim
+ *   from runGraphRuntime; DB rule predicates that reference field-twin fields
+ *   (soil moisture, weather forecast, transplant_date, irrigation_type,
+ *   biological_state) can now resolve. No agronomic logic change.
  * 2026-07-09 19:38 UTC — Type-shape repair only. Existing i18n metadata fields
  * are declared and observable-characteristic normalization is explicitly typed.
  * ═══════════════════════════════════════════════════════════════════════════
