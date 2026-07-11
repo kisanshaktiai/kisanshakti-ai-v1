@@ -86,7 +86,7 @@ export async function loadClarificationCandidates(
   input: ClarificationCandidateInput,
 ): Promise<ClarificationOption[]> {
   const {
-    supabase, intent_code, crop_code, growth_stage, das, language, max = 3, confirmed = [],
+    supabase, intent_code, crop_code, growth_stage, das, language, max = 4, confirmed = [],
   } = input;
 
   try {
