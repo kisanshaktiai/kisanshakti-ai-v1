@@ -1,6 +1,11 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ * 2026-07-11 UTC — Accept optional frozen `canonical_context` on
+ *   RuleDrivenClarificationInput and forward it into runGraphRuntime so DB
+ *   predicates referencing the field-twin (soil moisture, weather forecast,
+ *   transplant_date, irrigation_type, biological_state) can resolve during
+ *   hypothesis pre-evaluation. Additive; no logic change.
  * 2026-07-09 19:38 UTC — Type-shape repair only. Stage lock now initializes
  * required observation audit arrays; fallback option ID derives from
  * observation_key; WEED_COMPETITION question added for exhaustive union.
