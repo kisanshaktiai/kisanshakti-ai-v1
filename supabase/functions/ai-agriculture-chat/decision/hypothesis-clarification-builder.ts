@@ -120,7 +120,10 @@ export async function buildHypothesisClarificationOptions(
   const stage = input.crop_stage ?? input.land_context?.growth_stage ?? null;
   const das = input.DAS ?? input.land_context?.days_since_sowing ?? null;
   const lang = String(input.language || 'en').toLowerCase();
-  const max = input.max ?? 5;
+  const renderMaxIn = input.max ?? 4;
+  const tun = await readTunables(input.supabase, renderMaxIn);
+  const renderMax = tun.render_max;
+  const collectMax = Math.max(tun.collect_max, renderMax);
 
   const confirmedEvidence = classifyEvidence((input.confirmed_observations ?? []).map((o) => String(o ?? '')));
   const confirmedResolved = await resolveObservationSymbols(input.supabase, confirmedEvidence.real_codes);
@@ -129,6 +132,7 @@ export async function buildHypothesisClarificationOptions(
     .filter((x): x is string => !!x);
 
   let seedCodes = confirmedCodes;
+  let iomSeedCount = 0;
   if (seedCodes.length === 0 && input.intent_code) {
     const iom = await loadIOMAllowed(
       input.supabase,
@@ -138,6 +142,7 @@ export async function buildHypothesisClarificationOptions(
       typeof das === 'number' ? das : null,
     );
     seedCodes = iom.allowedRanked.map((r) => r.observation_code).filter(Boolean);
+    iomSeedCount = seedCodes.length;
   }
 
   const seedResolved = await resolveObservationSymbols(input.supabase, seedCodes);
@@ -157,14 +162,15 @@ export async function buildHypothesisClarificationOptions(
     trace_id: trace,
   });
 
-  let hypothesisIds = resolver.hypotheses.map((h) => h.hypothesis_id);
-  if (hypothesisIds.length === 0 && resolver.nearest_hypotheses.length > 0) {
-    hypothesisIds = resolver.nearest_hypotheses.map((h) => h.hypothesis_id);
-  }
+  // Patch C — union matched + nearest hypotheses so competing lineage survives.
+  const matchedIds = resolver.hypotheses.map((h) => h.hypothesis_id);
+  const nearestIds = resolver.nearest_hypotheses
+    .map((h) => h.hypothesis_id)
+    .slice(0, tun.nearest_expansion);
+  let hypothesisIds = Array.from(new Set([...matchedIds, ...nearestIds]));
 
-  // When confirmed evidence is absent, discovery can be wider than a single
-  // matched edge; evaluate the graph with all seeded observations so the DB
-  // stage/DAS gates pick the viable hypothesis space.
+  // When confirmed evidence is absent AND the observation→hypothesis resolver
+  // returned nothing, run the wider graph evaluator over all IOM seeds.
   if (hypothesisIds.length === 0 && seedCodes.length > 0) {
     const graphOut = await evaluateHypothesisGraph({
       crop_code: crop || null,
@@ -175,10 +181,9 @@ export async function buildHypothesisClarificationOptions(
       supabase: input.supabase,
       trace_id: `${trace}_seed_graph`,
     });
-    hypothesisIds = graphOut.candidates.map((c) => c.hypothesis_id);
+    hypothesisIds = Array.from(new Set(graphOut.candidates.map((c) => c.hypothesis_id)));
   }
 
-  hypothesisIds = Array.from(new Set(hypothesisIds));
   if (hypothesisIds.length === 0) {
     console.warn(
       `[HYP_CLARIFICATION] trace=${trace} graph_gap=NO_STAGE_VALID_HYPOTHESES ` +
@@ -199,41 +204,133 @@ export async function buildHypothesisClarificationOptions(
     }
   }
 
-  const dedup = new Map<string, { code: string; condition: ConditionRow }>();
+  // Patch A — preserve hypothesis lineage: group edges per code, keep ALL
+  // contributing hypotheses, compute an aggregate information-gain score.
+  interface CodeBucket {
+    code: string;
+    edges: Array<{ condition: ConditionRow }>;
+    hypothesis_ids: Set<string>;
+    max_weight: number;
+    is_discriminator: boolean;
+    is_required: boolean;
+    top_condition: ConditionRow;
+    aggregate_score: number;
+  }
+  const buckets = new Map<string, CodeBucket>();
   for (const edge of optionEdges) {
     const key = edge.code.toLowerCase();
-    const prev = dedup.get(key);
-    if (!prev || Number(edge.condition.weight ?? 0) > Number(prev.condition.weight ?? 0)) dedup.set(key, edge);
+    const w = Number(edge.condition.weight ?? 0);
+    let b = buckets.get(key);
+    if (!b) {
+      b = {
+        code: edge.code,
+        edges: [],
+        hypothesis_ids: new Set<string>(),
+        max_weight: w,
+        is_discriminator: !!edge.condition.is_discriminator,
+        is_required: !!edge.condition.is_required,
+        top_condition: edge.condition,
+        aggregate_score: 0,
+      };
+      buckets.set(key, b);
+    }
+    b.edges.push({ condition: edge.condition });
+    b.hypothesis_ids.add(edge.condition.hypothesis_id);
+    if (w > b.max_weight) { b.max_weight = w; b.top_condition = edge.condition; }
+    if (edge.condition.is_discriminator) b.is_discriminator = true;
+    if (edge.condition.is_required) b.is_required = true;
+  }
+  for (const b of buckets.values()) {
+    b.aggregate_score =
+      b.max_weight +
+      (b.is_discriminator ? tun.discriminator_bonus : 0) +
+      (b.is_required ? tun.required_bonus : 0);
   }
 
-  const masterRows = await loadObservationMaster(input.supabase, Array.from(dedup.values()).map((e) => e.code));
+  const edgesPreDedup = optionEdges.length;
+  const edgesPostDedup = buckets.size;
+
+  // Global rank by aggregate score, then cap the collect window.
+  const rankedBuckets = Array.from(buckets.values())
+    .sort((a, b) => b.aggregate_score - a.aggregate_score)
+    .slice(0, collectMax);
+
+  const masterRows = await loadObservationMaster(input.supabase, rankedBuckets.map((b) => b.code));
   const labels = await loadTranslations(input.supabase, Array.from(masterRows.keys()), lang);
 
+  // Patch B — round-robin diversification across candidate hypotheses.
+  // Each pass emits one option per hypothesis that has not yet contributed.
+  // Only after every candidate hypothesis has contributed do we allow a
+  // second option from the same hypothesis. Stops at renderMax (but always
+  // guarantees ≥ min(renderMax, distinct_hypotheses) coverage).
+  const hypothesisFor = (b: CodeBucket): string => {
+    // Prefer the intersection with the resolved candidate hypothesis set
+    // (matched ∪ nearest), then fall back to the top-weight condition.
+    for (const hid of b.hypothesis_ids) {
+      if (hypothesisIds.includes(hid)) return hid;
+    }
+    return b.top_condition.hypothesis_id;
+  };
+
+  const remaining = rankedBuckets.slice();
+  const emittedHypotheses = new Set<string>();
   const options: HypothesisClarificationOption[] = [];
-  for (const edge of Array.from(dedup.values()).sort((a, b) => Number(b.condition.weight ?? 0) - Number(a.condition.weight ?? 0))) {
-    const master = masterRows.get(edge.code.toLowerCase());
-    if (!master) continue;
+  const optionsByHypothesis: Record<string, number> = {};
+
+  const emitBucket = (b: CodeBucket, primary: string) => {
+    const master = masterRows.get(b.code.toLowerCase());
+    if (!master) return false;
     const label = labels.get(master.observation_code.toLowerCase()) || master.description || master.observation_code;
     options.push({
       observation_id: master.observation_code,
       observation_code: master.observation_code,
       observation_key: master.observation_code,
-      hypothesis_id: edge.condition.hypothesis_id,
-      hypothesis_condition_id: edge.condition.id,
+      hypothesis_id: primary,
+      hypothesis_condition_id: b.top_condition.id,
       display_text: label,
       label,
       value: master.observation_code,
-      confidence_weight: Number(edge.condition.weight ?? 0.5),
+      confidence_weight: b.max_weight || 0.5,
       source: 'hypothesis_graph',
+      hypothesis_ids: Array.from(b.hypothesis_ids),
+      is_discriminator: b.is_discriminator,
+      is_required: b.is_required,
+      aggregate_score: b.aggregate_score,
     });
-    if (options.length >= max) break;
+    optionsByHypothesis[primary] = (optionsByHypothesis[primary] ?? 0) + 1;
+    return true;
+  };
+
+  // Pass 1: one per uncovered hypothesis, in rank order.
+  for (let i = 0; i < remaining.length && options.length < Math.max(renderMax, hypothesisIds.length); ) {
+    const b = remaining[i];
+    const primary = hypothesisFor(b);
+    if (emittedHypotheses.has(primary)) { i++; continue; }
+    if (emitBucket(b, primary)) {
+      emittedHypotheses.add(primary);
+      remaining.splice(i, 1);
+    } else {
+      remaining.splice(i, 1);
+    }
+    if (options.length >= renderMax && emittedHypotheses.size >= hypothesisIds.length) break;
+  }
+  // Pass 2: fill remaining renderMax slots from top of the ranked list.
+  for (const b of remaining) {
+    if (options.length >= renderMax) break;
+    const primary = hypothesisFor(b);
+    emitBucket(b, primary);
   }
 
+  // Patch E — structured trace.
   console.log(
     `[HYP_CLARIFICATION] trace=${trace} source=hypothesis_graph intent=${input.intent_code ?? '?'} ` +
     `crop=${crop || '?'} stage=${stage ?? '?'} das=${das ?? '?'} ` +
     `real_observations=${confirmedEvidence.real_symptom_count} ignored_context_symbols=${confirmedEvidence.ignored_metadata_count} ` +
-    `candidate_hypotheses=${hypothesisIds.length} options=${options.length} ` +
+    `iom_seeds=${iomSeedCount} graph_seeds=${graphSeeds.length} ` +
+    `hypotheses_matched=${matchedIds.length} hypotheses_nearest=${nearestIds.length} hypotheses_used=${hypothesisIds.length} ` +
+    `edges_pre_dedup=${edgesPreDedup} edges_post_dedup=${edgesPostDedup} codes_ranked=${rankedBuckets.length} ` +
+    `collect_max=${collectMax} render_max=${renderMax} options=${options.length} ` +
+    `options_by_hypothesis=${JSON.stringify(optionsByHypothesis)} ` +
     `keys=[${options.map((o) => o.observation_code).join(',')}]`,
   );
 
