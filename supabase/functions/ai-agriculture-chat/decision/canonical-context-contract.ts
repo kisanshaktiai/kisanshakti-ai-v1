@@ -241,73 +241,215 @@ export function buildCanonicalContext(
     throw new Error(`INVARIANT VIOLATION: hasLandContext=true but crop/stage is incomplete. Cannot proceed with partial context.`);
   }
   
-  // Extract NDVI with fallback chain
-  const ndviValue = 
-    landContext.ndvi?.latest_value ?? 
-    landContext.ndvi?.value ?? 
-    landContext.ndvi_value ?? 
+  // Extract NDVI with fallback chain (primary: ndvi_data → cache: lands)
+  const ndviObj = landContext.ndvi ?? null;
+  const ndviValue =
+    ndviObj?.latest_value ??
+    ndviObj?.value ??
+    landContext.ndvi_value ??
+    landContext.last_ndvi_value ??
     null;
-  
-  const ndviTrend = 
-    landContext.ndvi?.trend ?? 
-    landContext.ndvi_trend ?? 
+
+  const ndviTrend =
+    ndviObj?.trend ??
+    landContext.ndvi_trend ??
     null;
-  
-  const ndviInterpretation = 
-    landContext.ndvi?.interpretation ?? 
-    landContext.ndvi_interpretation ?? 
+
+  const ndviInterpretation =
+    ndviObj?.interpretation ??
+    landContext.ndvi_interpretation ??
     null;
-  
-  // Extract soil data
-  const soilN = landContext.soil?.nitrogen ?? landContext.soil_n ?? null;
-  const soilP = landContext.soil?.phosphorus ?? landContext.soil_p ?? null;
-  const soilK = landContext.soil?.potassium ?? landContext.soil_k ?? null;
-  const soilPH = landContext.soil?.ph ?? landContext.soil_ph ?? null;
-  
+
+  const ndviReliability =
+    ndviObj?.reliability ??
+    landContext.ndvi_reliability ??
+    null;
+  const ndviObservedAt =
+    ndviObj?.observed_at ??
+    ndviObj?.captured_at ??
+    landContext.last_ndvi_date ??
+    null;
+  // Fallback detection: value present but no ndvi_data-shaped object → lands cache
+  const ndviUsedFallback =
+    ndviValue != null && !ndviObj?.latest_value && !ndviObj?.value;
+
+  // Extract soil data (primary: soil_health → cache: lands)
+  const soilObj = landContext.soil ?? null;
+  const soilHealthObj = landContext.soil_health ?? null;
+  const soilN = soilHealthObj?.nitrogen ?? soilObj?.nitrogen ?? landContext.soil_n ?? null;
+  const soilP = soilHealthObj?.phosphorus ?? soilObj?.phosphorus ?? landContext.soil_p ?? null;
+  const soilK = soilHealthObj?.potassium ?? soilObj?.potassium ?? landContext.soil_k ?? null;
+  const soilPH = soilHealthObj?.ph ?? soilObj?.ph ?? landContext.soil_ph ?? null;
+  const soilType = soilHealthObj?.soil_type ?? soilObj?.type ?? landContext.soil_type ?? null;
+  const soilOC =
+    soilHealthObj?.organic_carbon_percent ?? soilObj?.organic_carbon_percent ??
+    landContext.organic_carbon_percent ?? null;
+  const soilMoisture =
+    landContext.current_moisture_status ?? soilObj?.moisture_status ?? soilHealthObj?.moisture_status ?? null;
+  const soilConfidence = soilHealthObj?.confidence ?? soilObj?.confidence ?? null;
+  const soilUsedFallback = !soilHealthObj && (soilN != null || soilP != null || soilK != null || soilPH != null);
+
   // Extract weather data
-  const temp = landContext.weather?.temperature ?? landContext.weather?.temp ?? null;
-  const humidity = landContext.weather?.humidity ?? null;
-  const rainfall = landContext.weather?.rainfall_mm ?? landContext.weather?.rain_mm ?? null;
-  
+  const weatherObj = landContext.weather ?? null;
+  const temp = weatherObj?.temperature ?? weatherObj?.temp ?? null;
+  const humidity = weatherObj?.humidity ?? null;
+  const rainfall = weatherObj?.rainfall_mm ?? weatherObj?.rain_mm ?? null;
+  const rainAfterSowing =
+    weatherObj?.rainfall_after_sowing_mm ??
+    landContext.rainfall_after_sowing_mm ?? null;
+  const forecast7d =
+    weatherObj?.forecast_7d ??
+    landContext.weather_forecast_7d ?? null;
+
+  // Crop lifecycle — AUTHORITY: crop_schedules ONLY (never lands.last_sowing_date)
+  const cropSchedule = landContext.crop_schedule ?? landContext.current_crop_schedule ?? null;
+  const sowingDate =
+    cropSchedule?.sowing_date ??
+    landContext.sowing_date_from_schedule ??
+    null;
+  const transplantDate =
+    cropSchedule?.transplant_date ??
+    landContext.transplant_date_from_schedule ??
+    null;
+  const expectedHarvestDate =
+    cropSchedule?.expected_harvest_date ??
+    landContext.expected_harvest_date_from_schedule ??
+    null;
+  const cropCycle =
+    cropSchedule?.crop_cycle ??
+    landContext.crop_cycle ??
+    null;
+  const varietyId =
+    cropSchedule?.variety_id ??
+    landContext.current_crop_variety_id ??
+    landContext.variety_id ??
+    null;
+  const cropVariety =
+    cropSchedule?.crop_variety ??
+    landContext.current_crop_variety ??
+    landContext.crop_variety ??
+    null;
+
+  // Biological state reference (already immutable)
+  const biologicalState = (landContext.biological_state ?? null) as BiologicalState | null;
+  const stageSource: 'biological_state' | 'crop_schedules' =
+    biologicalState?.is_locked ? 'biological_state' : 'crop_schedules';
+
+  // Water / irrigation — lands
+  const waterBlock = Object.freeze({
+    irrigation_source: landContext.irrigation_source ?? null,
+    water_source: landContext.water_source ?? null,
+    irrigation_type: landContext.irrigation_type ?? null,
+  });
+
+  // Geo — lands
+  const geoBlock = Object.freeze({
+    village: landContext.village ?? null,
+    taluka: landContext.taluka ?? null,
+    district: landContext.district ?? null,
+    state: landContext.state ?? null,
+    gps_lat: landContext.gps_lat ?? landContext.center_lat ?? null,
+    gps_lng: landContext.gps_lng ?? landContext.center_lng ?? null,
+    elevation: landContext.elevation ?? null,
+    slope: landContext.slope ?? null,
+  });
+
+  const sourcesBlock = Object.freeze({
+    crop: 'crop_schedules' as const,
+    stage: stageSource,
+    soil: Object.freeze({
+      primary: 'soil_health' as const,
+      fallback: 'lands_cache' as const,
+      used: (soilHealthObj ? 'primary' : soilUsedFallback ? 'fallback' : 'none') as 'primary' | 'fallback' | 'none',
+    }),
+    ndvi: Object.freeze({
+      primary: 'ndvi_data' as const,
+      fallback: 'lands_cache' as const,
+      used: (ndviObj?.latest_value != null || ndviObj?.value != null
+        ? 'primary'
+        : ndviUsedFallback
+          ? 'fallback'
+          : 'none') as 'primary' | 'fallback' | 'none',
+    }),
+    weather: Object.freeze({
+      current: 'weather_current' as const,
+      forecast: 'weather_forecasts' as const,
+      history: 'weather_aggregates' as const,
+    }),
+    water: 'lands' as const,
+    geo: 'lands' as const,
+  });
+
   // Build the immutable canonical context
   const canonicalContext: CanonicalContext = Object.freeze({
     crop_code: cropCode || 'UNKNOWN',
     crop_name: cropName || 'Unknown',
     growth_stage: growthStage || 'UNKNOWN',
     days_since_sowing: daysSinceSowing,
-    
+
     ndvi: Object.freeze({
       value: ndviValue,
       trend: ndviTrend,
-      interpretation: ndviInterpretation
+      interpretation: ndviInterpretation,
+      reliability: ndviReliability,
+      observed_at: ndviObservedAt,
     }),
-    
+
     soil: Object.freeze({
       nitrogen: soilN,
       phosphorus: soilP,
       potassium: soilK,
-      ph: soilPH
+      ph: soilPH,
+      type: soilType,
+      organic_carbon_percent: soilOC,
+      moisture_status: soilMoisture,
+      confidence: soilConfidence,
     }),
-    
+
     weather: Object.freeze({
       temperature: temp,
       humidity: humidity,
-      rainfall_mm: rainfall
+      rainfall_mm: rainfall,
+      rainfall_after_sowing_mm: rainAfterSowing,
+      forecast_7d: forecast7d ? Object.freeze([...forecast7d]) : null,
     }),
-    
+
+    sowing_date: sowingDate,
+    transplant_date: transplantDate,
+    expected_harvest_date: expectedHarvestDate,
+    crop_cycle: cropCycle,
+    variety_id: varietyId,
+    crop_variety: cropVariety,
+
+    biological_state: biologicalState,
+
+    water: waterBlock,
+    geo: geoBlock,
+
+    area_acres: landContext.area_acres ?? landContext.total_area_acres ?? null,
+
     land_id: landContext.land_id || null,
     farmer_id: landContext.farmer_id || null,
     source: landContext.source || 'LAND_DATA',
     created_at: Date.now(),
+
+    sources: sourcesBlock,
+
     is_locked: true,
-    phase1_locked: true
+    phase1_locked: true,
   });
-  
+
   console.log(`✅ [CanonicalContext] Built and LOCKED:`);
   console.log(`   Crop=${canonicalContext.crop_code}, Stage=${canonicalContext.growth_stage}`);
   console.log(`   DAS=${canonicalContext.days_since_sowing}, NDVI=${canonicalContext.ndvi.value}`);
   console.log(`   Source=${canonicalContext.source}, is_locked=true`);
-  
+  console.log(
+    `[CANONICAL_CONTEXT_SRC] src.crop=crop_schedules src.stage=${sourcesBlock.stage} ` +
+    `src.soil=${sourcesBlock.soil.used}(${sourcesBlock.soil.primary}|${sourcesBlock.soil.fallback}) ` +
+    `src.ndvi=${sourcesBlock.ndvi.used}(${sourcesBlock.ndvi.primary}|${sourcesBlock.ndvi.fallback}) ` +
+    `bio_locked=${!!biologicalState?.is_locked} sowing=${sowingDate ?? 'null'} transplant=${transplantDate ?? 'null'}`
+  );
+
   return canonicalContext;
 }
 
