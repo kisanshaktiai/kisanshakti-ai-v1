@@ -1,6 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ * 2026-07-11 UTC — v4-P5: `useHypothesisFallback` no longer emits hardcoded
+ *   observation options from `getFailureClassFallbackOptions`. Zero DB
+ *   candidates → returns `source: 'WAITING_FOR_OBSERVATION'` with empty
+ *   options; OBS_GATE drives ASK-clarification anchored on farmer text.
+ *   Applies to all crops / stages / intents — kills the rice
+ *   STUNTED_GROWTH/WILTING/LEAF_CURLING regression at the source.
  * 2026-07-11 UTC — Accept optional frozen `canonical_context` on
  *   RuleDrivenClarificationInput and forward it into runGraphRuntime so DB
  *   predicates referencing the field-twin (soil moisture, weather forecast,
