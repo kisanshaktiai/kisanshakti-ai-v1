@@ -60,6 +60,9 @@ export interface GraphHypothesisInput {
   observation_codes: string[];
   supabase: any;
   trace_id?: string | null;
+  // v2.1.0 — optional frozen field-twin. Not evaluated by this module; stored
+  // for downstream predicate evaluators that reference the extended context.
+  canonical_context?: unknown;
 }
 
 /**
