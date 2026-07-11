@@ -1,6 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ * 2026-07-11 UTC — v4-P2: generic dotted-path predicate resolver.
+ *   `evaluatePartialConditionMatch` now honours `conditions_json.canonical`,
+ *   a DB-authored map of `path → predicate` (eq/in/gt/gte/lt/lte/present/ne).
+ *   Paths walk the frozen `canonical_context` (soil.moisture_status,
+ *   weather.rainfall_after_sowing_mm, biological_state.biological_constraints,
+ *   crop_schedule.transplant_date, etc.). No agronomy in TS.
  * 2026-07-11 UTC — Additive: HypothesisEvaluationInput accepts optional
  *   `canonical_context` (frozen CanonicalContext v2.1.0). Forwarded verbatim
  *   from runGraphRuntime; DB rule predicates that reference field-twin fields
