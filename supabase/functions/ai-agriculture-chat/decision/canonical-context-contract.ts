@@ -1,27 +1,39 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CANONICAL CONTEXT CONTRACT (v1.0.0)
+ * CANONICAL CONTEXT CONTRACT (v2.1.0)
  * ═══════════════════════════════════════════════════════════════════════════
- * 
+ *
  * PURPOSE:
  * Define a SINGLE, IMMUTABLE canonical context object that is passed by
  * reference through the entire decision flow:
- * 
+ *
  *   orchestrator → hypothesis-evaluator → clarification-generator → UI
- * 
+ *
  * HARD INVARIANTS:
  * 1. CanonicalContext is created EXACTLY ONCE per turn
  * 2. Once created, it CANNOT be modified, rebuilt, or partially reconstructed
  * 3. If hasContext=true but context is incomplete, the system MUST fail fast
  * 4. No function may infer or reconstruct land/crop context - use passed object
- * 
+ *
  * AGRONOMIST PRINCIPLE:
  * "Once I know the crop, stage, and land - I NEVER forget it during diagnosis"
- * 
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (newest first)
+ * 2026-07-11 — v2.1.0 context-preservation extension. Added additive optional
+ *   field-twin fields (crop lifecycle dates from crop_schedules, biological_state
+ *   ref, soil extras, water/irrigation, weather forecast + rainfall_after_sowing,
+ *   ndvi reliability, geo, area_acres) plus a `sources` provenance sub-tree.
+ *   Strict authority: crop identity / variety / lifecycle dates MUST originate
+ *   from `crop_schedules`; stage from `biological_state`. Soil / NDVI / weather
+ *   may legitimately fall back to `lands_cache` — logged, not errored. Existing
+ *   lock invariants untouched; all additions are optional/nullable.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CANONICAL_CONTEXT_CONTRACT_VERSION = '2.0.0'; // v2: Phase-1 locking enforcement
+import type { BiologicalState } from '../agents/biological-state.ts';
+
+export const CANONICAL_CONTEXT_CONTRACT_VERSION = '2.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FAIL-FAST ASSERTION (MANDATORY GUARD)
