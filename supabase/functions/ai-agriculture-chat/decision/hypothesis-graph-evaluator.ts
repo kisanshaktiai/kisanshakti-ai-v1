@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-11 UTC — Additive: GraphHypothesisInput accepts optional
+ *   `canonical_context`. Stored on the evaluation context so DB rule
+ *   predicates that reference field-twin fields can resolve. No logic change.
  * 2026-07-09 02:07 UTC — Expose `rule_edges` (Map<hypothesis_id, rule_id[]>)
  *   on evaluator return value so the orchestrator can invert it into
  *   `edges.ruleToHypothesis` for the pure graph-snapshot builder. No logic
