@@ -486,7 +486,9 @@ import {
   buildBiologicalState,
   blockStageWriteIfLocked,
   isBiologicalStateLocked,
+  evaluateBiologicalConstraints,
   type BiologicalState,
+  type BiologicalConstraint,
 } from './biological-state.ts';
 
 interface BiologicalStateContradictionAudit {
