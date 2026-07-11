@@ -234,5 +234,18 @@ export async function runGraphRuntime(
     `ms=${ms}`,
   );
 
+  if (cctx) {
+    const s = cctx.sources;
+    console.log(
+      `[CANONICAL_CONTEXT_FLOW] trace=${input.trace_id ?? 'n/a'} ` +
+      `crop=${cctx.crop_code} stage=${cctx.growth_stage} das=${cctx.days_since_sowing ?? 'null'} ` +
+      `sowing=${cctx.sowing_date ?? 'null'} transplant=${cctx.transplant_date ?? 'null'} ` +
+      `irrig=${cctx.water?.irrigation_type ?? 'null'} moisture=${cctx.soil?.moisture_status ?? 'null'} ` +
+      `bio_locked=${!!cctx.biological_state?.is_locked} ` +
+      `src.crop=${s?.crop ?? 'n/a'} src.stage=${s?.stage ?? 'n/a'} ` +
+      `src.soil=${s?.soil.used ?? 'n/a'} src.ndvi=${s?.ndvi.used ?? 'n/a'}`
+    );
+  }
+
   return { result, candidates, winner, ms, state: 'READY_FOR_GRAPH' };
 }
