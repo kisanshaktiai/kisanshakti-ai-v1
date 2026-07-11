@@ -92,6 +92,9 @@ export interface CanonicalContext {
     readonly value: number | null;
     readonly trend: string | null;
     readonly interpretation: string | null;
+    // v2.1.0 additions (optional/nullable)
+    readonly reliability?: number | null;
+    readonly observed_at?: string | null;
   };
   
   readonly soil: {
@@ -99,13 +102,54 @@ export interface CanonicalContext {
     readonly phosphorus: number | null;
     readonly potassium: number | null;
     readonly ph: number | null;
+    // v2.1.0 additions
+    readonly type?: string | null;
+    readonly organic_carbon_percent?: number | null;
+    readonly moisture_status?: string | null;
+    readonly confidence?: number | null;
   };
   
   readonly weather: {
     readonly temperature: number | null;
     readonly humidity: number | null;
     readonly rainfall_mm: number | null;
+    // v2.1.0 additions
+    readonly rainfall_after_sowing_mm?: number | null;
+    readonly forecast_7d?: readonly any[] | null;
   };
+
+  // v2.1.0 — crop lifecycle (AUTHORITY: crop_schedules only)
+  readonly sowing_date?: string | null;
+  readonly transplant_date?: string | null;
+  readonly expected_harvest_date?: string | null;
+  readonly crop_cycle?: string | null;
+  readonly variety_id?: string | null;
+  readonly crop_variety?: string | null;
+
+  // v2.1.0 — biological state reference (already immutable object)
+  readonly biological_state?: Readonly<BiologicalState> | null;
+
+  // v2.1.0 — water/irrigation (AUTHORITY: lands)
+  readonly water?: {
+    readonly irrigation_source?: string | null;
+    readonly water_source?: string | null;
+    readonly irrigation_type?: string | null;
+  };
+
+  // v2.1.0 — geo (AUTHORITY: lands)
+  readonly geo?: {
+    readonly village?: string | null;
+    readonly taluka?: string | null;
+    readonly district?: string | null;
+    readonly state?: string | null;
+    readonly gps_lat?: number | null;
+    readonly gps_lng?: number | null;
+    readonly elevation?: number | null;
+    readonly slope?: number | null;
+  };
+
+  // v2.1.0 — land meta
+  readonly area_acres?: number | null;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // METADATA
@@ -114,6 +158,21 @@ export interface CanonicalContext {
   readonly farmer_id: string | null;
   readonly source: 'BIOLOGICAL_STATE' | 'BIOLOGICAL_STATE_UNAVAILABLE' | 'CROP_SCHEDULES' | 'LAND_DATA' | 'INFERRED';
   readonly created_at: number;
+
+  // v2.1.0 — per-field provenance (locked shape)
+  readonly sources?: Readonly<{
+    crop: 'crop_schedules';
+    stage: 'biological_state' | 'crop_schedules';
+    soil: Readonly<{ primary: 'soil_health'; fallback: 'lands_cache' | null; used: 'primary' | 'fallback' | 'none' }>;
+    ndvi: Readonly<{ primary: 'ndvi_data'; fallback: 'lands_cache' | null; used: 'primary' | 'fallback' | 'none' }>;
+    weather: Readonly<{
+      current: 'weather_current';
+      forecast: 'weather_forecasts';
+      history: 'weather_aggregates';
+    }>;
+    water: 'lands';
+    geo: 'lands';
+  }>;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // LOCK FLAGS: Once true, this context CANNOT be modified
