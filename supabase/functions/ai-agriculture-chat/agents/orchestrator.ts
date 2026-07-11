@@ -10457,7 +10457,67 @@ export class AIAgentOrchestrator {
           console.warn(`[PHENOLOGY_RECONCILIATION] failed err=${(e as Error).message}`);
         }
       }
-      const biological_state: BiologicalState | null = buildBiologicalState(landId, phenology);
+      // ═════════════════════════════════════════════════════════════════════
+      // v5-P8 — Biological Constraint Graph
+      // Build a lightweight canonical field-twin DRAFT from the data already
+      // loaded above (soil_health + ndvi_data + phenology + schedule + land).
+      // DB rules (decision_rules.category='BIOLOGICAL_CONSTRAINT') evaluate
+      // dotted-path predicates against this draft and emit constraints that
+      // decay predicted_stage_confidence inside buildBiologicalState().
+      // No agronomy in TS — all thresholds/codes/severities come from DB.
+      // ═════════════════════════════════════════════════════════════════════
+      const bioCropCode: string | null =
+        (phenology?.crop_code as string | null | undefined) ??
+        (land?.current_crop as string | null | undefined) ??
+        null;
+      const canonicalDraft = {
+        crop_code: bioCropCode,
+        crop_schedule: cropSchedule ? {
+          sowing_date: cropSchedule.sowing_date ?? null,
+          transplant_date: (cropSchedule as any).transplant_date ?? null,
+          crop_name: (cropSchedule as any).crop_name ?? null,
+          variety: (cropSchedule as any).variety ?? null,
+        } : null,
+        soil: soilHealth ? {
+          moisture_status: (soilHealth as any).moisture_status ?? null,
+          soil_moisture_percent: (soilHealth as any).soil_moisture_percent ?? null,
+          ph: (soilHealth as any).ph ?? (soilHealth as any).ph_level ?? null,
+          organic_carbon_percent:
+            (soilHealth as any).organic_carbon_percent ??
+            (soilHealth as any).organic_carbon ?? null,
+          ec: (soilHealth as any).ec ?? null,
+          texture: (soilHealth as any).texture ?? null,
+        } : null,
+        ndvi: ndviData ? {
+          value: (ndviData as any).ndvi_value ?? (ndviData as any).mean_ndvi ?? null,
+          reliability: (ndviData as any).quality_score ?? null,
+          date: (ndviData as any).date ?? null,
+        } : { value: null, reliability: null, date: null },
+        weather: {
+          // rainfall_after_sowing_mm & forecast_7d are hydrated later in the
+          // full canonical_context; DB rules that need them will simply
+          // return undefined here and not match. Safe for v5-P8.
+        },
+        biological_state: {
+          predicted_stage: phenology?.growth_stage ?? null,
+          predicted_das:   phenology?.current_das  ?? daysSinceSowing ?? null,
+          crop_code:       bioCropCode,
+        },
+      };
+
+      let bioConstraints: BiologicalConstraint[] = [];
+      try {
+        bioConstraints = await evaluateBiologicalConstraints(
+          this.supabase,
+          canonicalDraft,
+          bioCropCode,
+          `bio_${landId}`,
+        );
+      } catch (e) {
+        console.warn(`[BIO_CONSTRAINT_GRAPH] wire_error land=${landId} err=${(e as Error).message}`);
+      }
+
+      const biological_state: BiologicalState | null = buildBiologicalState(landId, phenology, bioConstraints);
       if (biological_state) {
         console.log(
           `🔒 [BIO_STATE_LOCKED] land_id=${landId} crop=${biological_state.crop_code} ` +
