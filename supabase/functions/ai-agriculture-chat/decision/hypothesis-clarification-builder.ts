@@ -39,6 +39,11 @@ export interface HypothesisClarificationOption {
   confidence_weight: number;
   confidence_rank?: number;
   source: 'hypothesis_graph';
+  /** Every hypothesis whose OBSERVATION conditions include this code. */
+  hypothesis_ids?: string[];
+  is_discriminator?: boolean;
+  is_required?: boolean;
+  aggregate_score?: number;
 }
 
 interface ConditionRow {
@@ -58,6 +63,53 @@ export interface HypothesisClarificationResult {
   source: 'hypothesis_graph';
   graph_gap?: string;
   candidate_hypotheses: number;
+}
+
+/**
+ * Tunables sourced from `system_config` (DB is SSOT). Defaults are execution
+ * hints only — no agronomy encoded here.
+ */
+interface ClarificationTunables {
+  discriminator_bonus: number;
+  required_bonus: number;
+  nearest_expansion: number;
+  collect_max: number;
+  render_max: number;
+}
+
+async function readTunables(supabase: any, renderMaxFromCaller: number): Promise<ClarificationTunables> {
+  const defaults: ClarificationTunables = {
+    discriminator_bonus: 0.25,
+    required_bonus: 0.15,
+    nearest_expansion: 3,
+    collect_max: 12,
+    render_max: renderMaxFromCaller,
+  };
+  try {
+    const { data } = await supabase
+      .from('system_config')
+      .select('key, value')
+      .in('key', [
+        'clarification_discriminator_bonus',
+        'clarification_required_bonus',
+        'clarification_nearest_expansion',
+        'clarification_collect_max',
+        'clarification_render_max',
+      ]);
+    for (const row of data ?? []) {
+      const raw = typeof row.value === 'object' && row.value !== null ? (row.value as any).value : row.value;
+      const v = Number(raw);
+      if (!isFinite(v)) continue;
+      if (row.key === 'clarification_discriminator_bonus') defaults.discriminator_bonus = v;
+      else if (row.key === 'clarification_required_bonus') defaults.required_bonus = v;
+      else if (row.key === 'clarification_nearest_expansion') defaults.nearest_expansion = Math.max(0, Math.floor(v));
+      else if (row.key === 'clarification_collect_max') defaults.collect_max = Math.max(1, Math.floor(v));
+      else if (row.key === 'clarification_render_max') defaults.render_max = Math.max(1, Math.floor(v));
+    }
+  } catch (e) {
+    console.warn(`[HYP_CLARIFICATION] tunable load failed, using defaults: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return defaults;
 }
 
 export async function buildHypothesisClarificationOptions(
