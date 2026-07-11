@@ -421,7 +421,7 @@ export function resolvePath(root: unknown, path: string): unknown {
  *   - { gt|gte|lt|lte: n }: numeric compare
  *   - { present: true/false }: value defined / undefined
  */
-function comparePredicate(actual: unknown, expected: unknown): boolean {
+export function comparePredicate(actual: unknown, expected: unknown): boolean {
   if (expected === null || expected === undefined) return actual === expected;
   if (typeof expected !== 'object') {
     if (typeof actual === 'string' && typeof expected === 'string') {
