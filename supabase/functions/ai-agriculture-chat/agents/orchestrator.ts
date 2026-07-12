@@ -4208,11 +4208,30 @@ export class AIAgentOrchestrator {
       requestCtx.chain.set('observation',
         observationExtraction.raw_symptom_text.length > 0 ? 0.9 : 0.5);
       try {
-        const semObs = (observationExtraction.raw_symptom_text || []).map((t: string) => ({
-          code: String(t).toLowerCase().replace(/\s+/g, '_'),
-          semantic_class: null,
-          source: 'observation-extractor',
-        }));
+        // FIX 1 — parse the `[obs_keys:code1,code2]` annotation attached by
+        // the UI/normalizer. Without this, the semantic gate was looking up
+        // the raw Marathi/Hindi surface string in observation_master and
+        // dropping every observation as "missing semantic_class metadata".
+        const OBS_KEYS_RE = /\[obs_keys:([^\]]+)\]/i;
+        const semObs = (observationExtraction.raw_symptom_text || []).map((t: string) => {
+          const raw = String(t);
+          const m = raw.match(OBS_KEYS_RE);
+          const obsKeys = m
+            ? m[1].split(',').map((k) => k.trim()).filter(Boolean)
+            : [];
+          const stripped = raw.replace(OBS_KEYS_RE, '').trim();
+          // Prefer the first canonical code as `code`; fall back to the
+          // normalized surface label when no annotation is present.
+          const code = obsKeys[0]
+            ? obsKeys[0]
+            : stripped.toLowerCase().replace(/\s+/g, '_');
+          return {
+            code,
+            semantic_class: null,
+            source: 'observation-extractor',
+            obs_keys: obsKeys,
+          };
+        });
         const semResult = await evaluateSemanticGate({
           intent: (typeof intentCode !== 'undefined' ? String(intentCode) : 'GENERAL_QUERY'),
           observations: semObs,
@@ -4220,6 +4239,7 @@ export class AIAgentOrchestrator {
           ledger: requestCtx.ledger,
           chain: requestCtx.chain,
         });
+
         if (semResult.dropped.length > 0) {
           console.log(`      🚦 [SEMANTIC_GATE] dropped ${semResult.dropped.length} cross-class observations`);
         }
