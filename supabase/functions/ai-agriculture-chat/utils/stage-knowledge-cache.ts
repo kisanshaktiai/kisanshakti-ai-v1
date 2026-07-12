@@ -18,7 +18,14 @@ export interface StageMasterRow {
   das_min?: number | null;
   das_max?: number | null;
   stage_description?: string | null;
+  /**
+   * v6 — cultivation_method dimension (e.g. 'direct_seeded', 'transplanted',
+   * 'any', or NULL). Callers of getStageByDAS may filter by this to respect
+   * the biological path recorded in crop_schedules.
+   */
+  cultivation_method?: string | null;
 }
+
 
 export interface StageKnowledgeRow {
   crop_code: string;
