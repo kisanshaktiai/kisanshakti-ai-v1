@@ -1,155 +1,140 @@
 
-# Clarification Graph Forensic Audit + Single-Phase Surgical Repair
+# Surgical Refactor: Biological Profile as SSOT Input to Phenology Resolver
 
-Scope: `supabase/functions/ai-agriculture-chat/**` clarification path only. No new files. No agronomy in TS. No crop-specific code. DB remains SSOT.
+Addresses the 3 architectural issues raised in review:
+1. **Decouple** `resolve_crop_phenology` from `crop_schedules` — resolver must not know where authority originates.
+2. **Separate responsibilities** — schedule resolution, biological profile assembly, and phenology resolution are distinct nodes.
+3. **NULL ≠ wildcard** — `'any'` is the only universal match; `NULL` means missing data and never matches at runtime.
+
+No agronomic rules change. No TypeScript agronomic logic added. DB remains SSOT.
 
 ---
 
-## 1. Verified Runtime Flow (with line numbers)
+## 1. New SQL (single migration)
 
-```
-agents/clarification-generator.ts:268
-  loadClarificationCandidates(max: 3)                     ← HARD CAP #1
-    → runtime/clarification-contract.ts:85
-        loadClarificationCandidates(max=3)
-        → decision/hypothesis-clarification-builder.ts:63
-            buildHypothesisClarificationOptions(max)
-              1. resolveObservationSymbols(confirmed)     line 74
-              2. seedCodes = confirmed OR loadIOMAllowed  line 79-89
-              3. resolveHypothesesFromObservations        line 101
-                 → hypothesis-graph-evaluator (stage/DAS HARD gates)
-              4. hypothesisIds = matched OR nearest       line 108-111
-              5. loadConditions (OBSERVATION only)        line 138-139
-              6. extractObservationCodes per condition    line 143-148
-              7. DEDUP by code, keep MAX weight edge      line 150-155 ← LINEAGE LOSS
-              8. loadObservationMaster gate               line 157
-              9. sort by weight desc, break at >= max     line 161,177 ← HARD CAP #2
-```
+Two functions replace the current monolithic one:
 
-## 2. Verified Defects (evidence only, no assumptions)
+### 1a. `public.resolve_biological_profile(p_land_id, p_as_of)` — NEW
+Single responsibility: assemble the authoritative biological context for a land, from whatever sources exist today (and tomorrow, by only extending this function).
 
-### D1 — Hypothesis lineage discarded at dedup (hypothesis-clarification-builder.ts:150-155)
-`dedup` keeps a single `{code, condition}` per observation code, keyed only by `code.toLowerCase()`. All other hypotheses that share the same observation edge are silently dropped from the option set. Consequence: the graph collapses `Observation → Hypothesis → Observation` (one edge per code) instead of preserving `Hypothesis₁, Hypothesis₂, … → competing observation edges`.
+Returns a single row:
+`crop_code, crop_cycle, cultivation_method, establishment_method, production_system, planting_method, variety_id, sowing_date, sowing_source, transplant_date, current_gdd, evidence text[]`
 
-### D2 — First-N truncation before diversification (line 161-177 + line 71 `max = 5`, caller `max: 3`)
-Options are sorted purely by `condition.weight` and cut at `max`. When one hypothesis has three highest-weighted edges, ALL three options come from the same hypothesis. No round-robin across `hypothesis_id`. Graph search behaves as retrieval, not as competing-hypothesis discrimination.
+Source precedence (today):
+- `crop_schedules` (active row) → `cultivation_method`, `sowing_date`
+- `lands.planting_date` > `lands.last_sowing_date` > `crop_schedules.sowing_date`
+- `lands.current_crop`, `lands.crop_cycle`, `lands.current_crop_variety_id`, `lands.transplant_date`, `lands.current_gdd`
 
-### D3 — `is_discriminator` selected from DB but never used for ranking (line 195)
-`hypothesis_conditions.is_discriminator` and `is_required` are loaded, then ignored. Information-gain ranking (discriminator > shared symptom) is not applied. Runtime picks "highest weight" instead of "highest discrimination", which are different (Phase 9 of audit brief).
+Future sources (manual override / IoT / AI-inferred / ERP) are added here only — never inside the resolver.
 
-### D4 — `max=3` propagated end-to-end (clarification-generator.ts:275, contract.ts:89, builder caller `max: 3`)
-Farmer never sees enough competing options to discriminate hypotheses. Combined with D1+D2, output is 1–2 near-identical options for the same hypothesis, matching the reported production symptom (single/repetitive observation returned).
+### 1b. `public.resolve_crop_phenology(...)` — REWRITTEN with pure-input signature
 
-### D5 — Only exact-match hypotheses expanded; nearest-hypothesis expansion is all-or-nothing (line 108-127)
-When `resolver.hypotheses` returns non-empty, `nearest_hypotheses` are ignored entirely. Competing but weaker hypotheses (which is precisely what a discrimination question exists to separate) never contribute observation edges.
+```sql
+DROP FUNCTION IF EXISTS public.resolve_crop_phenology(uuid, date);
 
-### D6 — Graph does not include second-hop conditions from `hypothesis_master` neighbours
-Loader queries `hypothesis_conditions` only for the pre-matched `hypothesisIds`. There is no expansion via `hypothesis_master`/`hypothesis_condition` graph to sibling hypotheses whose activation would be tested by the same discriminator. Graph search terminates after one hop.
-
-## 3. Where information disappears
-
-```
-IOM seeds (~18)
-    │  resolveObservationSymbols            ok
-    ▼
-Canonical symbols (~6–10)
-    │  hypothesis-graph-evaluator: stage/DAS HARD gate
-    ▼
-Matched hypotheses (~2–5)   nearest_hypotheses (~3–6) ── DROPPED when matched>0  (D5)
-    │  loadConditions
-    ▼
-OBSERVATION conditions (~10–25)
-    │  dedup by code, keep max-weight edge only                                   (D1)
-    ▼
-Unique codes (~6–12)
-    │  sort by weight, take first `max`=3                                          (D2)
-    ▼
-UI options (1–3, often same hypothesis)                                            (D4)
+CREATE OR REPLACE FUNCTION public.resolve_crop_phenology(
+  p_crop_code           text,
+  p_crop_cycle          text,
+  p_cultivation_method  text,
+  p_variety_id          uuid,
+  p_sow_date            date,
+  p_transplant_date     date,
+  p_current_gdd         numeric,
+  p_as_of               date DEFAULT CURRENT_DATE,
+  p_land_id             uuid DEFAULT NULL  -- passthrough for evaluate_stage_transitions only
+) RETURNS TABLE (... same shape as before ...)
 ```
 
-## 4. Root Causes (one sentence each)
+Resolver behavior:
+- Knows **nothing** about `lands` or `crop_schedules`.
+- Computes `das`, `dat`, phenology_index from inputs only.
+- `crop_stage_master` match rules — **NULL is no longer a match**:
+  - `csm.cultivation_method = p_cultivation_method` (exact), OR
+  - `lower(csm.cultivation_method) = 'any'`
+  - Rows with `csm.cultivation_method IS NULL` are treated as data-quality issues and **excluded** at runtime.
+- ORDER BY (kept as reviewer approved):
+  1. exact cultivation match
+  2. `'any'`
+  3. crop_cycle match
+  4. `stage_node_type = 'biological'`
+  5. `das_min ASC`
+- Prev/next stage lookups use the **same** exclusion rule.
+- `evaluate_stage_transitions(p_land_id, ...)` only called when `p_land_id` is provided.
 
-- D1: dedup key = observation code, so all but the top-weight hypothesis edge for that code is deleted before ranking.
-- D2: single-sort + cut at N eliminates hypothesis diversity when one hypothesis dominates by weight.
-- D3: `is_discriminator` / `is_required` are queried but never contribute to score.
-- D4: `max = 3` default is enforced at three layers; graph never explores wider.
-- D5: `nearest_hypotheses` are only used as fallback, never merged with matched set.
-- D6: no BFS over `hypothesis_master` neighbours → graph is one-hop.
+### 1c. `public.resolve_crop_phenology_for_land(p_land_id, p_as_of)` — thin orchestrator
+Backwards-compatible wrapper for existing callers. Composes the two nodes:
+```
+SELECT bp.* INTO ... FROM public.resolve_biological_profile(p_land_id, p_as_of) bp;
+RETURN QUERY SELECT * FROM public.resolve_crop_phenology(bp.crop_code, ..., p_as_of, p_land_id);
+```
+This preserves every existing call site while making the pure resolver reusable.
 
-## 5. Single-Phase Surgical Repair (files & functions only)
+### 1d. Data-quality view (non-blocking)
+```sql
+CREATE OR REPLACE VIEW public.v_crop_stage_master_null_method AS
+SELECT id, crop_code, stage_code, growth_stage
+FROM public.crop_stage_master
+WHERE is_active AND cultivation_method IS NULL;
+```
+Surfaces rows that will no longer match at runtime so the DB team can backfill with `'any'` or an explicit method.
 
-All edits are inside `decision/hypothesis-clarification-builder.ts` and thin config plumbing in `runtime/clarification-contract.ts` + `agents/clarification-generator.ts`. No new files. No DB schema change. No agronomy.
+---
 
-### Patch A — Preserve hypothesis lineage (`hypothesis-clarification-builder.ts`)
-- Change `dedup: Map<code, edge>` to `edgesByCode: Map<code, Edge[]>` where `Edge = {condition, hypothesis_id, weight, is_discriminator, is_required}`.
-- Compute per-code aggregate score = `max(weight)` + `discrimination_bonus` (from `is_discriminator=true`) + `required_bonus` (from `is_required=true`). Values come from DB via `system_config` keys (`clarification_discriminator_bonus`, `clarification_required_bonus`), default 0.25 / 0.15 — configurable, not agronomic.
-- Retain `hypothesis_ids: string[]` per code for downstream telemetry and diversification.
+## 2. TypeScript changes (minimum surgical)
 
-### Patch B — Round-robin diversification + information-gain ranking
-- Replace the "sort by weight, break at max" loop with a two-stage selector:
-  1. Rank codes by aggregate score (Patch A).
-  2. Emit options in a per-hypothesis round-robin: for each rank pass, pick the top remaining code whose primary hypothesis has not yet contributed an option; only after every candidate hypothesis has contributed do we allow a second option from the same hypothesis.
-- Stops when either `options.length >= max` **or** `hypotheses_covered === hypothesisIds.length` (whichever is later, so competing hypotheses are always represented).
+Files:
+- `supabase/functions/ai-agriculture-chat/agents/biological-state.ts`
+  - Rename internal type `cultivation_method` carrier to `biological_profile { crop, crop_cycle, cultivation_method, establishment_method, production_system, planting_method, variety_id, stage, ... }`.
+  - Keep `cultivation_method` field for backward compat; new fields are optional.
+- `supabase/functions/ai-agriculture-chat/utils/stage-knowledge-cache.ts`
+  - Match ranking: exact `cultivation_method` > `'any'` > (no match). Remove any NULL-as-wildcard fallback.
+- `supabase/functions/ai-agriculture-chat/runtime/phenology-reconciler.ts`
+  - Same NULL-exclusion rule; propagate full `biological_profile` instead of a single field.
+- `supabase/functions/ai-agriculture-chat/decision/canonical-context-contract.ts`
+  - `[CANONICAL_CONTEXT_SRC]` trace surfaces the whole `biological_profile` and `stage_source`.
+- Update top-of-file CHANGE LOG blocks per project rule.
 
-### Patch C — Union matched + nearest hypotheses (D5, D6 partial)
-- Replace `if (matched===0) use nearest` with `hypothesisIds = union(matched, nearest.slice(0, N))` where `N` is `system_config.clarification_nearest_expansion` (default 3). This is graph completeness, not agronomy.
-- Guarded by `resolver.nearest_hypotheses.length > 0` and stage/DAS soft-filter already produced upstream (no re-derivation here).
+No other files touched. No graph nodes rewritten.
 
-### Patch D — Raise `max` and split "collect" from "return"
-- `loadClarificationCandidates` (contract.ts) and caller (clarification-generator.ts) pass a `collect_max` (default 12 via DB `system_config.clarification_collect_max`) to the builder, and a separate `render_max` (default 4) used only at final serialization.
-- Builder does global ranking over `collect_max`, then returns `render_max` post-diversification. Collect-then-rank replaces first-N truncation.
+---
 
-### Patch E — Structured trace at every hop
-Extend the existing `[HYP_CLARIFICATION]` log with counters: `iom_seeds`, `resolved_symbols`, `hypotheses_matched`, `hypotheses_nearest`, `hypotheses_used`, `edges_pre_dedup`, `edges_post_dedup`, `codes_ranked`, `options_emitted`, `options_by_hypothesis`. Reuses `graph-node-trace.ts::emitNodeTrace('HYPOTHESIS', …)` — no new file.
+## 3. Updated data flow
 
-## 6. Impact Analysis
+```text
+Land Context
+     │
+     ▼
+resolve_biological_profile()      ← ONLY node that reads crop_schedules/lands
+     │  biological_profile
+     ▼
+resolve_crop_phenology(profile)   ← pure, reusable, crop-agnostic
+     │  BiologicalState
+     ▼
+Canonical Context (carries biological_profile)
+     │
+     ▼
+Observation Resolver → Intent → Hypothesis Graph → Decision Rules
+     │
+     ▼
+Unified Gate → Safety Gates → LLM Formatter
+```
 
-| Layer | Effect |
-|---|---|
-| Intent | none — unchanged inputs |
-| Observation | none — same `observation_master` gate |
-| Hypothesis | competing hypotheses now survive to UI stage |
-| Rule | none — clarification is pre-rule |
-| Treatment | none |
-| Clarification | 3-4 diverse options, one per top hypothesis, ranked by discriminator power |
-| GraphRuntime | one extra `.in()` query is avoided — same DB round-trips |
-| CanonicalContext | untouched, still passed by reference |
-| Performance | O(k log k) sort over ≤12 codes; per-turn cost unchanged |
-| Scalability | no new tables, no full-scan queries, safe for millions QPS |
+---
 
-## 7. Regression Analysis
+## 4. Regression guarantees
 
-- GraphTruth preserved — no changes to `hypothesis-graph-evaluator` or predicate resolution.
-- CanonicalContext preserved — still immutable, passed by reference.
-- DB remains SSOT — new tunables read from `system_config`, defaults only when key absent.
-- LLM unchanged — clarification renderer still consumes `{label, observation_key}` objects; shape unchanged (Patch B enriches the array, doesn't rename fields).
-- Existing empty-result path (`graph_gap = NO_STAGE_VALID_HYPOTHESES`) untouched.
-- Confirmed-observation dedup (line 141-145) untouched — we still never re-ask a confirmed code.
-- Outbound `assertClarificationContract` allowlist logic untouched.
+- `resolve_crop_phenology_for_land(land_id, as_of)` returns the same shape and semantics as today's `resolve_crop_phenology(land_id, as_of)` for all existing call sites.
+- Rice DAS 34 + Direct Seeded → `RICE_DSR_EARLY_VEGETATIVE`.
+- Rice DAS 34 + Transplanted → `RICE_TRANSPLANTING`.
+- Rows in `crop_stage_master` with `cultivation_method IS NULL` will stop matching — surfaced via the data-quality view for backfill. This is intentional per reviewer's Problem 3.
 
-## 8. Verification Checklist (crop-agnostic — DB drives behaviour)
+---
 
-For each scenario the repaired graph must return ≥ 2 discriminator-ranked options drawn from ≥ 2 distinct hypotheses (assuming DB has ≥ 2 hypotheses for the cell):
+## 5. Deliverables order
 
-- [ ] Emergence failure (rice DSR DAS 17 — production trigger)
-- [ ] Poor germination (any crop, DAS ≤ 30)
-- [ ] Establishment failure (any transplanted crop)
-- [ ] Pest diagnosis with ≥ 2 candidate pests
-- [ ] Disease diagnosis with ≥ 2 candidate pathogens
-- [ ] Nutrient deficiency (N vs K vs micro)
-- [ ] Irrigation stress vs drought vs waterlogging
-- [ ] Abiotic stress (heat / cold / salinity)
-- [ ] Weather-triggered damage (post-rain, post-hail)
-- [ ] Mixed observations (biotic + abiotic co-present)
-
-## 9. Files to change
-
-- `supabase/functions/ai-agriculture-chat/decision/hypothesis-clarification-builder.ts` (Patches A, B, C, E)
-- `supabase/functions/ai-agriculture-chat/runtime/clarification-contract.ts` (Patch D — plumb `collect_max`)
-- `supabase/functions/ai-agriculture-chat/agents/clarification-generator.ts` (Patch D — pass `collect_max` from `system_config`)
-
-No new files. No DB migration. No crop / stage / symptom string added to TypeScript.
-
-## 10. Deploy
-
-Redeploy `ai-agriculture-chat` edge function after edits. Verify with a single Marathi emergence-failure query and confirm `[HYP_CLARIFICATION]` shows `hypotheses_used ≥ 2`, `options_by_hypothesis` shows round-robin distribution, and UI returns ≥ 2 distinct options.
+1. `supabase--migration` with: new `resolve_biological_profile`, rewritten pure `resolve_crop_phenology`, wrapper `resolve_crop_phenology_for_land`, data-quality view. Migration also updates any internal callers to use the wrapper name.
+2. After migration approval: TS edits to the 4 files above (biological_profile propagation, NULL-exclusion in cache/reconciler, canonical context trace, CHANGE LOG updates).
+3. Verification traces:
+   - `[BIO_PROFILE_SRC] cultivation_method=direct_seeded source=crop_schedules`
+   - `[PHENOLOGY_RESOLVE] method=direct_seeded stage=RICE_DSR_EARLY_VEGETATIVE order=exact`
+   - `[CANONICAL_CONTEXT_SRC] biological_profile={...}`
