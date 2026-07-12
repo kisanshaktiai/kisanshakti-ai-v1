@@ -24,8 +24,16 @@ export interface HypothesisClarificationInput {
   language?: string | null;
   max?: number;
   confirmed_observations?: ReadonlyArray<unknown>;
+  /**
+   * FIX 3 — observation keys that are already pending farmer confirmation
+   * from a previous turn (session.pending_clarification_observation_keys).
+   * Excluded from the clarification candidate pool so we never re-ask the
+   * exact same option the farmer just tapped.
+   */
+  pending_obs_keys?: ReadonlyArray<string>;
   trace_id?: string | null;
 }
+
 
 export interface HypothesisClarificationOption {
   observation_id: string;
