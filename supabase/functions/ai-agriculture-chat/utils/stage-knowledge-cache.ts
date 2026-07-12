@@ -186,18 +186,47 @@ export function getStageCategoryFromDB(
   return row?.growth_stage ? row.growth_stage.toUpperCase() : null;
 }
 
-/** DB-first DAS → stage lookup. */
-export function getStageByDAS(crop: string, das: number): StageMasterRow | null {
+/**
+ * DB-first DAS → stage lookup.
+ *
+ * v6 — accepts an optional `cultivationMethod` filter. When provided, a row
+ * matches only if its own `cultivation_method` is NULL, equal to 'any', or
+ * equal to the requested method (all case-insensitive). Exact method match
+ * is preferred over 'any' / NULL when multiple rows satisfy the DAS window.
+ *
+ * When `cultivationMethod` is undefined the legacy first-hit behaviour is
+ * preserved so existing callers stay green.
+ */
+export function getStageByDAS(
+  crop: string,
+  das: number,
+  cultivationMethod?: string | null,
+): StageMasterRow | null {
   if (!cache) return null;
   const cropKey = (crop || '').toLowerCase();
+  const method = cultivationMethod ? String(cultivationMethod).toLowerCase() : null;
+
+  let exact: StageMasterRow | null = null;
+  let anyRow: StageMasterRow | null = null;
+  let nullRow: StageMasterRow | null = null;
+
   for (const r of cache.master) {
     if (r.crop_code?.toLowerCase() !== cropKey) continue;
-    if ((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das) {
+    if (!((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das)) continue;
+    const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
+
+    if (method) {
+      if (rowMethod === method && !exact) exact = r;
+      else if (rowMethod === 'any' && !anyRow) anyRow = r;
+      else if (rowMethod === null && !nullRow) nullRow = r;
+    } else {
+      // Legacy path — return first hit as before.
       return r;
     }
   }
-  return null;
+  return exact ?? anyRow ?? nullRow;
 }
+
 
 
 export function isStageKnowledgeLoaded(): boolean {
