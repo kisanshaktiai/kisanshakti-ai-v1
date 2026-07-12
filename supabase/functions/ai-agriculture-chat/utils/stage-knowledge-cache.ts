@@ -18,7 +18,14 @@ export interface StageMasterRow {
   das_min?: number | null;
   das_max?: number | null;
   stage_description?: string | null;
+  /**
+   * v6 — cultivation_method dimension (e.g. 'direct_seeded', 'transplanted',
+   * 'any', or NULL). Callers of getStageByDAS may filter by this to respect
+   * the biological path recorded in crop_schedules.
+   */
+  cultivation_method?: string | null;
 }
+
 
 export interface StageKnowledgeRow {
   crop_code: string;
@@ -68,8 +75,9 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
   try {
     const { data, error } = await supabase
       .from('crop_stage_master')
-      .select('crop_code, growth_stage, stage_description, das_min, das_max')
+      .select('crop_code, growth_stage, stage_description, das_min, das_max, cultivation_method')
       .limit(5000);
+
     if (error) {
       console.warn('[STAGE_KNOWLEDGE] crop_stage_master select error:', error.message);
     } else if (Array.isArray(data)) {
@@ -178,18 +186,47 @@ export function getStageCategoryFromDB(
   return row?.growth_stage ? row.growth_stage.toUpperCase() : null;
 }
 
-/** DB-first DAS → stage lookup. */
-export function getStageByDAS(crop: string, das: number): StageMasterRow | null {
+/**
+ * DB-first DAS → stage lookup.
+ *
+ * v6 — accepts an optional `cultivationMethod` filter. When provided, a row
+ * matches only if its own `cultivation_method` is NULL, equal to 'any', or
+ * equal to the requested method (all case-insensitive). Exact method match
+ * is preferred over 'any' / NULL when multiple rows satisfy the DAS window.
+ *
+ * When `cultivationMethod` is undefined the legacy first-hit behaviour is
+ * preserved so existing callers stay green.
+ */
+export function getStageByDAS(
+  crop: string,
+  das: number,
+  cultivationMethod?: string | null,
+): StageMasterRow | null {
   if (!cache) return null;
   const cropKey = (crop || '').toLowerCase();
+  const method = cultivationMethod ? String(cultivationMethod).toLowerCase() : null;
+
+  let exact: StageMasterRow | null = null;
+  let anyRow: StageMasterRow | null = null;
+  let nullRow: StageMasterRow | null = null;
+
   for (const r of cache.master) {
     if (r.crop_code?.toLowerCase() !== cropKey) continue;
-    if ((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das) {
+    if (!((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das)) continue;
+    const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
+
+    if (method) {
+      if (rowMethod === method && !exact) exact = r;
+      else if (rowMethod === 'any' && !anyRow) anyRow = r;
+      else if (rowMethod === null && !nullRow) nullRow = r;
+    } else {
+      // Legacy path — return first hit as before.
       return r;
     }
   }
-  return null;
+  return exact ?? anyRow ?? nullRow;
 }
+
 
 
 export function isStageKnowledgeLoaded(): boolean {

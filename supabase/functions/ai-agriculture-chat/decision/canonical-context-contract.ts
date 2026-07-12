@@ -125,6 +125,13 @@ export interface CanonicalContext {
   readonly crop_cycle?: string | null;
   readonly variety_id?: string | null;
   readonly crop_variety?: string | null;
+  /**
+   * v6 — cultivation_method (AUTHORITY: crop_schedules). Values:
+   * 'direct_seeded' | 'transplanted' | 'any' | null. Consumed by
+   * downstream logs + biological gating; never used to encode agronomy.
+   */
+  readonly cultivation_method?: string | null;
+
 
   // v2.1.0 — biological state reference (already immutable object)
   readonly biological_state?: Readonly<BiologicalState> | null;
@@ -330,10 +337,20 @@ export function buildCanonicalContext(
     landContext.crop_variety ??
     null;
 
+  // v6 — cultivation_method: crop_schedules is authoritative; biological_state
+  // mirrors it once resolve_crop_phenology has returned. Fall back through
+  // the same lineage so downstream nodes see a stable value.
+  const cultivationMethod =
+    (landContext.biological_state as BiologicalState | null | undefined)?.cultivation_method ??
+    cropSchedule?.cultivation_method ??
+    landContext.cultivation_method ??
+    null;
+
   // Biological state reference (already immutable)
   const biologicalState = (landContext.biological_state ?? null) as BiologicalState | null;
   const stageSource: 'biological_state' | 'crop_schedules' =
     biologicalState?.is_locked ? 'biological_state' : 'crop_schedules';
+
 
   // Water / irrigation — lands
   const waterBlock = Object.freeze({
@@ -418,8 +435,12 @@ export function buildCanonicalContext(
     transplant_date: transplantDate,
     expected_harvest_date: expectedHarvestDate,
     crop_cycle: cropCycle,
+    cultivation_method: cultivationMethod
+      ? String(cultivationMethod).toLowerCase()
+      : null,
     variety_id: varietyId,
     crop_variety: cropVariety,
+
 
     biological_state: biologicalState,
 
@@ -447,8 +468,14 @@ export function buildCanonicalContext(
     `[CANONICAL_CONTEXT_SRC] src.crop=crop_schedules src.stage=${sourcesBlock.stage} ` +
     `src.soil=${sourcesBlock.soil.used}(${sourcesBlock.soil.primary}|${sourcesBlock.soil.fallback}) ` +
     `src.ndvi=${sourcesBlock.ndvi.used}(${sourcesBlock.ndvi.primary}|${sourcesBlock.ndvi.fallback}) ` +
-    `bio_locked=${!!biologicalState?.is_locked} sowing=${sowingDate ?? 'null'} transplant=${transplantDate ?? 'null'}`
+    `bio_locked=${!!biologicalState?.is_locked} ` +
+    `cultivation_method=${cultivationMethod ?? 'null'} ` +
+    `resolved_stage=${biologicalState?.resolved_stage ?? biologicalState?.growth_stage ?? 'null'} ` +
+    `stage_code=${biologicalState?.stage_code ?? 'null'} ` +
+    `stage_source=${biologicalState?.stage_source ?? biologicalState?.source ?? 'null'} ` +
+    `sowing=${sowingDate ?? 'null'} transplant=${transplantDate ?? 'null'}`
   );
+
 
   return canonicalContext;
 }

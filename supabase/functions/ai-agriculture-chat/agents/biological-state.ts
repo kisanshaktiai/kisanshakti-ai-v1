@@ -54,10 +54,31 @@ export interface BiologicalState {
   readonly land_id: string;
   readonly crop_code: string | null;
   readonly crop_variety: string | null;
+  /**
+   * v6 — cultivation_method carried through from `crop_schedules` via
+   * `resolve_crop_phenology`. Values: 'direct_seeded' | 'transplanted' |
+   * 'any' | null. Consumed by CANONICAL_CONTEXT_SRC and downstream logs.
+   * NEVER used to branch biology in TS — biology remains DB-owned.
+   */
+  readonly cultivation_method: string | null;
 
   readonly growth_stage: string | null;     // canonical label (e.g. TILLERING)
   readonly stage_code:   string | null;     // ontology code
   readonly stage_uuid:   string | null;
+  /**
+   * v6 — resolved_stage is an alias for `growth_stage` exposed under the
+   * name mandated by the biological-model contract. It always equals
+   * `growth_stage`. Kept as a distinct field so downstream code can assert
+   * it explicitly without depending on legacy field names.
+   */
+  readonly resolved_stage: string | null;
+  /**
+   * v6 — stage_source labels the authority behind the stage decision. Mirror
+   * of `source` (e.g. 'crop_stage_ssot', 'gdd_model',
+   * 'completed_stage_transitions'). Preserved separately so the canonical
+   * context can log a stable, contract-named field.
+   */
+  readonly stage_source: string;
 
   readonly das: number | null;              // days after sowing (authoritative)
   readonly gdd_accumulated: number | null;
@@ -84,6 +105,7 @@ export interface BiologicalState {
 
   readonly raw: Readonly<Record<string, unknown>>;
 }
+
 
 /**
  * PATCH v4-P1 — Biological constraint DTO. `code` and `source` are opaque
@@ -112,6 +134,8 @@ function decayConfidence(base: number, cs: ReadonlyArray<BiologicalConstraint>):
 export interface RawPhenologyRow {
   crop_code?: string | null;
   crop_variety?: string | null;
+  /** v6 — cultivation_method from resolve_crop_phenology (crop_schedules). */
+  cultivation_method?: string | null;
   growth_stage?: string | null;
   stage_code?: string | null;
   stage_uuid?: string | null;
@@ -123,6 +147,7 @@ export interface RawPhenologyRow {
   resolver_version?: string | null;
   [k: string]: unknown;
 }
+
 
 /**
  * Build an immutable BiologicalState from the phenology resolver row.
@@ -153,6 +178,11 @@ export function buildBiologicalState(
     ),
   );
 
+  const stageSource = String(phenology.source ?? 'phenology_ssot');
+  const cultivationMethod = phenology.cultivation_method
+    ? String(phenology.cultivation_method).toLowerCase()
+    : null;
+
   const state: BiologicalState = {
     is_locked: true,
     version: 'v1',
@@ -161,10 +191,13 @@ export function buildBiologicalState(
     land_id: landId,
     crop_code:    phenology.crop_code    ?? null,
     crop_variety: phenology.crop_variety ?? null,
+    cultivation_method: cultivationMethod,
 
-    growth_stage: phenology.growth_stage ?? null,
-    stage_code:   phenology.stage_code   ?? null,
-    stage_uuid:   phenology.stage_uuid   ?? null,
+    growth_stage:  phenology.growth_stage ?? null,
+    stage_code:    phenology.stage_code   ?? null,
+    stage_uuid:    phenology.stage_uuid   ?? null,
+    resolved_stage: phenology.growth_stage ?? null,
+    stage_source:  stageSource,
 
     das: typeof phenology.current_das === 'number' ? phenology.current_das : null,
     gdd_accumulated:
@@ -172,7 +205,7 @@ export function buildBiologicalState(
     sowing_date: phenology.sowing_date ?? null,
 
     confidence: baseConfidence,
-    source: phenology.source ?? 'phenology_ssot',
+    source: stageSource,
     resolver_version: phenology.resolver_version ?? null,
 
     predicted_stage_confidence: decayConfidence(baseConfidence, constraints),
@@ -189,10 +222,14 @@ export function buildBiologicalState(
         JSON.stringify({
           crop: state.crop_code,
           variety: state.crop_variety,
+          cultivation_method: state.cultivation_method,
           das: state.das,
           gdd: state.gdd_accumulated,
           biological_stage: state.growth_stage,
+          resolved_stage: state.resolved_stage,
+          stage_code: state.stage_code,
           stage_uuid: state.stage_uuid,
+          stage_source: state.stage_source,
           source: state.source,
           resolver_version: state.resolver_version,
           confidence: state.confidence,
@@ -201,6 +238,7 @@ export function buildBiologicalState(
         }),
     );
   } catch {/* trace must not throw */}
+
 
   return Object.freeze(state);
 }
