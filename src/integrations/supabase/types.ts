@@ -6543,6 +6543,7 @@ export type Database = {
           created_at: string | null
           crop_name: string
           crop_variety: string | null
+          cultivation_method: string | null
           data_quality_score: number | null
           district_name: string | null
           expected_gross_revenue: number | null
@@ -6657,6 +6658,7 @@ export type Database = {
           created_at?: string | null
           crop_name: string
           crop_variety?: string | null
+          cultivation_method?: string | null
           data_quality_score?: number | null
           district_name?: string | null
           expected_gross_revenue?: number | null
@@ -6771,6 +6773,7 @@ export type Database = {
           created_at?: string | null
           crop_name?: string
           crop_variety?: string | null
+          cultivation_method?: string | null
           data_quality_score?: number | null
           district_name?: string | null
           expected_gross_revenue?: number | null
@@ -7124,6 +7127,7 @@ export type Database = {
           created_at: string | null
           crop_code: string
           crop_cycle: string
+          cultivation_method: string
           das_max: number
           das_min: number
           expected_height_cm_max: number | null
@@ -7156,6 +7160,7 @@ export type Database = {
           created_at?: string | null
           crop_code: string
           crop_cycle?: string
+          cultivation_method?: string
           das_max: number
           das_min: number
           expected_height_cm_max?: number | null
@@ -7188,6 +7193,7 @@ export type Database = {
           created_at?: string | null
           crop_code?: string
           crop_cycle?: string
+          cultivation_method?: string
           das_max?: number
           das_min?: number
           expected_height_cm_max?: number | null
