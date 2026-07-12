@@ -24,7 +24,17 @@ export interface ObservationCandidate {
   semantic_class?: string | null;
   confidence?: number;
   source?: string;
+  /**
+   * Canonical observation_code(s) extracted from the surface annotation
+   * `[obs_keys:code1,code2]`. When present and `semantic_class` is missing,
+   * the semantic gate resolves the class from `observation_master` by these
+   * canonical codes instead of by the surface label. This is the fix for
+   * SEMANTIC_GATE IGNORE ... missing semantic_class metadata caused by using
+   * the raw Marathi/Hindi surface string as the lookup key.
+   */
+  obs_keys?: string[];
 }
+
 
 export interface SemanticGateInput {
   intent: string;
