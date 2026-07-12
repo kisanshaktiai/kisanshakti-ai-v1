@@ -10498,7 +10498,8 @@ export class AIAgentOrchestrator {
       );
 
       try {
-        const rpc = await this.supabase.rpc('resolve_crop_phenology', { p_land_id: landId });
+        // v7 — composed wrapper: resolve_biological_profile → pure resolve_crop_phenology.
+        const rpc = await this.supabase.rpc('resolve_crop_phenology_for_land', { p_land_id: landId });
         phenErr = rpc.error;
         const phenRows = rpc.data;
         if (phenErr) {

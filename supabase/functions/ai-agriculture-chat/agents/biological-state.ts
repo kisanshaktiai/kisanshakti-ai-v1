@@ -23,6 +23,12 @@
  * biological_state is locked and log a `[BIO_STATE_WRITE_BLOCKED]` line.
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
+ *   2026-07-12 UTC — v7: cultivation_method now sourced from the composed
+ *     wrapper resolve_crop_phenology_for_land, which internally calls
+ *     resolve_biological_profile (assembles context from lands/schedules)
+ *     and hands it to the pure resolve_crop_phenology. TS shape unchanged.
+ *     NULL cultivation_method rows in crop_stage_master are treated as
+ *     data-quality issues and never match at runtime (see SQL + cache).
  *   2026-07-11 UTC — v5-P8: activated biological constraint producer.
  *     New export `evaluateBiologicalConstraints(supabase, canonicalDraft,
  *     cropCode)` reads `decision_rules` WHERE category='BIOLOGICAL_CONSTRAINT'

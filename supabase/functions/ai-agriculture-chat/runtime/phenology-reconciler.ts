@@ -12,6 +12,12 @@
  *   4. gdd_model                      → 0.80..0.90 (freshness-scaled)
  *   5. crop_stage_master DAS window   → 0.70
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (newest first)
+ *   2026-07-12 UTC — v7: NULL cultivation_method rows are excluded from GDD
+ *     stage candidates (data-quality issue, mirrors SQL resolver). Only
+ *     exact method match or explicit 'any' qualify. Rank order preserved:
+ *     exact > 'any'.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 export interface PhenologyCandidate {
@@ -82,14 +88,15 @@ export async function reconcilePhenology(
         .eq('crop_code', cropCode)
         .eq('is_active', true);
       if (method) {
+        // v7 — NULL cultivation_method is a data-quality issue and never matches.
         stagesQ = stagesQ.or(
-          `cultivation_method.is.null,cultivation_method.eq.any,cultivation_method.eq.${method}`,
+          `cultivation_method.eq.any,cultivation_method.eq.${method}`,
         );
       }
       const { data: stages } = await stagesQ;
 
       if (Array.isArray(stages) && stages.length > 0) {
-        // Rank: exact method match > 'any' > null.
+        // Rank: exact method match > 'any' (NULL excluded at query time).
         const rank = (r: any) => {
           const m = r?.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
           if (method && m === method) return 0;
@@ -99,6 +106,7 @@ export async function reconcilePhenology(
         const hits = stages
           .filter(
             (s: any) =>
+              s.cultivation_method != null &&
               s.gdd_min !== null &&
               s.gdd_max !== null &&
               latestGdd >= Number(s.gdd_min) &&

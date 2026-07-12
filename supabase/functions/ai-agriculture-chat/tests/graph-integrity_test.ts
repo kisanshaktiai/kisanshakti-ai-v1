@@ -219,13 +219,13 @@ Deno.test('PR-7 F2 · GENERAL_INFO is removed from symptomFreeRoutes', async () 
 // PR-1 · authoritative-state-loader MUST consume resolve_crop_phenology
 // (variety-aware SSOT) instead of the crop-agnostic DAS ladder.
 // ───────────────────────────────────────────────────────────────────────────
-Deno.test('PR-1 · authoritative-state-loader calls resolve_crop_phenology RPC', async () => {
+Deno.test('PR-1 · authoritative-state-loader calls resolve_crop_phenology_for_land RPC', async () => {
   const src = await Deno.readTextFile(
     new URL('../decision/authoritative-state-loader.ts', import.meta.url),
   );
   assert(
-    /supabase\.rpc\(\s*['"]resolve_crop_phenology['"]/.test(src),
-    'authoritative-state-loader must call supabase.rpc("resolve_crop_phenology", ...)',
+    /supabase\.rpc\(\s*['"]resolve_crop_phenology(_for_land)?['"]/.test(src),
+    'authoritative-state-loader must call supabase.rpc("resolve_crop_phenology_for_land", ...)',
   );
 });
 

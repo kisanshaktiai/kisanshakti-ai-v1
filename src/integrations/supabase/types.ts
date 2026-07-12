@@ -5537,6 +5537,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "crop_baseline_guidelines_v2_stage_master_id_fkey"
+            columns: ["stage_master_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "crop_baseline_guidelines_v2_variety_id_fkey"
             columns: ["variety_id"]
             isOneToOne: false
@@ -6998,6 +7005,13 @@ export type Database = {
             referencedRelation: "crop_stage_master"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "crop_stage_aliases_canonical_id_fkey"
+            columns: ["canonical_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
         ]
       }
       crop_stage_graph: {
@@ -7049,10 +7063,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "crop_stage_graph_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "crop_stage_graph_to_stage_id_fkey"
             columns: ["to_stage_id"]
             isOneToOne: false
             referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_graph_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
         ]
@@ -7229,10 +7257,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "crop_stage_master_canonical_stage_id_fkey"
+            columns: ["canonical_stage_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "crop_stage_master_next_stage_id_fkey"
             columns: ["next_stage_id"]
             isOneToOne: false
             referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_master_next_stage_id_fkey"
+            columns: ["next_stage_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
           {
@@ -7243,10 +7285,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "crop_stage_master_parent_stage_id_fkey"
+            columns: ["parent_stage_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "crop_stage_master_prev_stage_id_fkey"
             columns: ["prev_stage_id"]
             isOneToOne: false
             referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_master_prev_stage_id_fkey"
+            columns: ["prev_stage_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
         ]
@@ -14454,6 +14510,13 @@ export type Database = {
             columns: ["stage_uuid"]
             isOneToOne: false
             referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_stage_uuid_fkey"
+            columns: ["stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
         ]
@@ -24830,10 +24893,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "stage_transition_conditions_from_stage_uuid_fkey"
+            columns: ["from_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "stage_transition_conditions_to_stage_uuid_fkey"
             columns: ["to_stage_uuid"]
             isOneToOne: false
             referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_conditions_to_stage_uuid_fkey"
+            columns: ["to_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
         ]
@@ -24878,6 +24955,13 @@ export type Database = {
             columns: ["from_stage_uuid"]
             isOneToOne: false
             referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_from_stage_uuid_fkey"
+            columns: ["from_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
           {
@@ -24934,6 +25018,13 @@ export type Database = {
             columns: ["to_stage_uuid"]
             isOneToOne: false
             referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_to_stage_uuid_fkey"
+            columns: ["to_stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
         ]
@@ -28751,6 +28842,13 @@ export type Database = {
             referencedRelation: "crop_stage_master"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "variety_phenology_profile_stage_uuid_fkey"
+            columns: ["stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
         ]
       }
       variety_resistance: {
@@ -31240,6 +31338,36 @@ export type Database = {
         }
         Relationships: []
       }
+      v_crop_stage_master_null_method: {
+        Row: {
+          crop_code: string | null
+          crop_cycle: string | null
+          das_max: number | null
+          das_min: number | null
+          growth_stage: string | null
+          id: string | null
+          stage_code: string | null
+        }
+        Insert: {
+          crop_code?: string | null
+          crop_cycle?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          stage_code?: string | null
+        }
+        Update: {
+          crop_code?: string | null
+          crop_cycle?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          stage_code?: string | null
+        }
+        Relationships: []
+      }
       v_crop_varieties: {
         Row: {
           company_id: string | null
@@ -33200,12 +33328,70 @@ export type Database = {
         Args: { p_workflow_id: string }
         Returns: Json
       }
+      resolve_biological_profile: {
+        Args: { p_as_of?: string; p_land_id: string }
+        Returns: {
+          crop_code: string
+          crop_cycle: string
+          cultivation_method: string
+          current_gdd: number
+          establishment_method: string
+          evidence: string[]
+          planting_method: string
+          production_system: string
+          sowing_date: string
+          sowing_source: string
+          transplant_date: string
+          variety_id: string
+        }[]
+      }
       resolve_crop_phenology: {
+        Args: {
+          p_as_of?: string
+          p_crop_code: string
+          p_crop_cycle: string
+          p_cultivation_method: string
+          p_current_gdd: number
+          p_land_id?: string
+          p_sow_date: string
+          p_transplant_date: string
+          p_variety_id: string
+        }
+        Returns: {
+          confidence: number
+          crop_code: string
+          crop_cycle: string
+          cultivation_method: string
+          current_das: number
+          current_dat: number
+          current_gdd: number
+          evidence_sources: string[]
+          expected_height_cm_max: number
+          expected_height_cm_min: number
+          expected_leaf_count_max: number
+          expected_leaf_count_min: number
+          expected_ndvi_max: number
+          expected_ndvi_min: number
+          expected_transition_date: string
+          growth_stage: string
+          next_stage_uuid: string
+          phenology_index: number
+          phenology_model: string
+          previous_stage_uuid: string
+          reference_system: string
+          resolver_version: number
+          source: string
+          stage_code: string
+          stage_uuid: string
+        }[]
+      }
+      resolve_crop_phenology_for_land: {
         Args: { p_as_of?: string; p_land_id: string }
         Returns: {
           confidence: number
           crop_code: string
           crop_cycle: string
+          cultivation_method: string
           current_das: number
           current_dat: number
           current_gdd: number
