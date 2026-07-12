@@ -40,13 +40,6 @@ export interface ClarificationCandidateInput {
   growth_stage?: string | null;
   das?: number | null;
   language: string;
-export interface ClarificationCandidateInput {
-  supabase: any;
-  intent_code: string;
-  crop_code: string;
-  growth_stage?: string | null;
-  das?: number | null;
-  language: string;
   max?: number;
   /**
    * Observation codes already confirmed for this conversation (from
@@ -62,6 +55,7 @@ export interface ClarificationCandidateInput {
    */
   pending?: ReadonlyArray<string>;
 }
+
 
 
 // ─── Canonical key helper ──────────────────────────────────────────────────
