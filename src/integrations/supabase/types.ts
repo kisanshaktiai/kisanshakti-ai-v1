@@ -2864,6 +2864,411 @@ export type Database = {
           },
         ]
       }
+      backup_20260711_crop_stage_master: {
+        Row: {
+          base_temperature_c: number | null
+          canonical_stage_id: string | null
+          created_at: string | null
+          crop_code: string | null
+          crop_cycle: string | null
+          das_max: number | null
+          das_min: number | null
+          expected_height_cm_max: number | null
+          expected_height_cm_min: number | null
+          expected_leaf_count_max: number | null
+          expected_leaf_count_min: number | null
+          expected_ndvi_max: number | null
+          expected_ndvi_min: number | null
+          gdd_max: number | null
+          gdd_min: number | null
+          growth_stage: string | null
+          id: string | null
+          is_active: boolean | null
+          is_photoperiod_sensitive: boolean | null
+          next_stage_id: string | null
+          ontology_id: string | null
+          parent_stage_id: string | null
+          phenology_index: number | null
+          phenology_model: string | null
+          prev_stage_id: string | null
+          reference_system: string | null
+          stage_code: string | null
+          stage_description: string | null
+          stage_node_type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          base_temperature_c?: number | null
+          canonical_stage_id?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          crop_cycle?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          expected_height_cm_max?: number | null
+          expected_height_cm_min?: number | null
+          expected_leaf_count_max?: number | null
+          expected_leaf_count_min?: number | null
+          expected_ndvi_max?: number | null
+          expected_ndvi_min?: number | null
+          gdd_max?: number | null
+          gdd_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          is_photoperiod_sensitive?: boolean | null
+          next_stage_id?: string | null
+          ontology_id?: string | null
+          parent_stage_id?: string | null
+          phenology_index?: number | null
+          phenology_model?: string | null
+          prev_stage_id?: string | null
+          reference_system?: string | null
+          stage_code?: string | null
+          stage_description?: string | null
+          stage_node_type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          base_temperature_c?: number | null
+          canonical_stage_id?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          crop_cycle?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          expected_height_cm_max?: number | null
+          expected_height_cm_min?: number | null
+          expected_leaf_count_max?: number | null
+          expected_leaf_count_min?: number | null
+          expected_ndvi_max?: number | null
+          expected_ndvi_min?: number | null
+          gdd_max?: number | null
+          gdd_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          is_photoperiod_sensitive?: boolean | null
+          next_stage_id?: string | null
+          ontology_id?: string | null
+          parent_stage_id?: string | null
+          phenology_index?: number | null
+          phenology_model?: string | null
+          prev_stage_id?: string | null
+          reference_system?: string | null
+          stage_code?: string | null
+          stage_description?: string | null
+          stage_node_type?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      backup_20260711_intent_assertion_pattern: {
+        Row: {
+          assertion_strength: string | null
+          created_at: string | null
+          id: string | null
+          intent_code: string | null
+          is_active: boolean | null
+          notes: string | null
+          obs_code_regex: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          assertion_strength?: string | null
+          created_at?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          notes?: string | null
+          obs_code_regex?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          assertion_strength?: string | null
+          created_at?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          notes?: string | null
+          obs_code_regex?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      backup_20260711_intent_observation_mapping: {
+        Row: {
+          assertion_strength: string | null
+          confidence_rank: number | null
+          created_at: string | null
+          crop_code: string | null
+          das_max: number | null
+          das_min: number | null
+          growth_stage: string | null
+          id: string | null
+          intent_code: string | null
+          is_active: boolean | null
+          observation_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          assertion_strength?: string | null
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          assertion_strength?: string | null
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      backup_20260711_intent_translations: {
+        Row: {
+          created_at: string | null
+          display_text: string | null
+          id: string | null
+          intent_code: string | null
+          language_code: string | null
+          question_text: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_text?: string | null
+          id?: string | null
+          intent_code?: string | null
+          language_code?: string | null
+          question_text?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_text?: string | null
+          id?: string | null
+          intent_code?: string | null
+          language_code?: string | null
+          question_text?: string | null
+        }
+        Relationships: []
+      }
+      backup_20260711_observation_aliases: {
+        Row: {
+          active: boolean | null
+          alias_code: string | null
+          alias_normalized: string | null
+          alias_text: string | null
+          canonical_code: string | null
+          confidence: number | null
+          created_at: string | null
+          language: string | null
+          source: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          alias_code?: string | null
+          alias_normalized?: string | null
+          alias_text?: string | null
+          canonical_code?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          language?: string | null
+          source?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          alias_code?: string | null
+          alias_normalized?: string | null
+          alias_text?: string | null
+          canonical_code?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          language?: string | null
+          source?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      backup_20260711_observation_intent_master: {
+        Row: {
+          allowed_observation_groups: string[] | null
+          clarification_mode: string | null
+          created_at: string | null
+          intent_category: string | null
+          intent_code: string | null
+          intent_description: string | null
+          is_active: boolean | null
+          is_biological: boolean | null
+          max_clarification_rounds: number | null
+          requires_crop_context: boolean | null
+          requires_stage_context: boolean | null
+          routing_target: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          allowed_observation_groups?: string[] | null
+          clarification_mode?: string | null
+          created_at?: string | null
+          intent_category?: string | null
+          intent_code?: string | null
+          intent_description?: string | null
+          is_active?: boolean | null
+          is_biological?: boolean | null
+          max_clarification_rounds?: number | null
+          requires_crop_context?: boolean | null
+          requires_stage_context?: boolean | null
+          routing_target?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          allowed_observation_groups?: string[] | null
+          clarification_mode?: string | null
+          created_at?: string | null
+          intent_category?: string | null
+          intent_code?: string | null
+          intent_description?: string | null
+          is_active?: boolean | null
+          is_biological?: boolean | null
+          max_clarification_rounds?: number | null
+          requires_crop_context?: boolean | null
+          requires_stage_context?: boolean | null
+          routing_target?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      backup_20260711_observation_master: {
+        Row: {
+          affected_plant_part: string | null
+          applicable_crop_groups: string[] | null
+          applies_to_stages: string[] | null
+          can_generate_question: boolean | null
+          canonical_group: string | null
+          clarity_score: number | null
+          created_at: string | null
+          crop_group: string | null
+          description: string | null
+          discriminator_score: number | null
+          frequency_score: number | null
+          is_active: boolean | null
+          is_diagnostic: boolean | null
+          is_farmer_observable: boolean | null
+          observation_category: string | null
+          observation_code: string | null
+          observation_type: string | null
+          polarity: string | null
+          semantic_class: string | null
+          severity_level: string | null
+          symptom_category: string | null
+          symptom_pattern: string | null
+          symptom_type: string | null
+          updated_at: string | null
+          version_hash: string | null
+        }
+        Insert: {
+          affected_plant_part?: string | null
+          applicable_crop_groups?: string[] | null
+          applies_to_stages?: string[] | null
+          can_generate_question?: boolean | null
+          canonical_group?: string | null
+          clarity_score?: number | null
+          created_at?: string | null
+          crop_group?: string | null
+          description?: string | null
+          discriminator_score?: number | null
+          frequency_score?: number | null
+          is_active?: boolean | null
+          is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_category?: string | null
+          observation_code?: string | null
+          observation_type?: string | null
+          polarity?: string | null
+          semantic_class?: string | null
+          severity_level?: string | null
+          symptom_category?: string | null
+          symptom_pattern?: string | null
+          symptom_type?: string | null
+          updated_at?: string | null
+          version_hash?: string | null
+        }
+        Update: {
+          affected_plant_part?: string | null
+          applicable_crop_groups?: string[] | null
+          applies_to_stages?: string[] | null
+          can_generate_question?: boolean | null
+          canonical_group?: string | null
+          clarity_score?: number | null
+          created_at?: string | null
+          crop_group?: string | null
+          description?: string | null
+          discriminator_score?: number | null
+          frequency_score?: number | null
+          is_active?: boolean | null
+          is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_category?: string | null
+          observation_code?: string | null
+          observation_type?: string | null
+          polarity?: string | null
+          semantic_class?: string | null
+          severity_level?: string | null
+          symptom_category?: string | null
+          symptom_pattern?: string | null
+          symptom_type?: string | null
+          updated_at?: string | null
+          version_hash?: string | null
+        }
+        Relationships: []
+      }
+      backup_20260711_observation_translations: {
+        Row: {
+          created_at: string | null
+          crop_code: string | null
+          description_text: string | null
+          display_text: string | null
+          id: string | null
+          language_code: string | null
+          observation_code: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          crop_code?: string | null
+          description_text?: string | null
+          display_text?: string | null
+          id?: string | null
+          language_code?: string | null
+          observation_code?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          crop_code?: string | null
+          description_text?: string | null
+          display_text?: string | null
+          id?: string | null
+          language_code?: string | null
+          observation_code?: string | null
+        }
+        Relationships: []
+      }
       billing_analytics: {
         Row: {
           active_subscriptions: number | null
