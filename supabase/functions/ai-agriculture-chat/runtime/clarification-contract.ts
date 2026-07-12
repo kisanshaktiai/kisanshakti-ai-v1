@@ -40,6 +40,13 @@ export interface ClarificationCandidateInput {
   growth_stage?: string | null;
   das?: number | null;
   language: string;
+export interface ClarificationCandidateInput {
+  supabase: any;
+  intent_code: string;
+  crop_code: string;
+  growth_stage?: string | null;
+  das?: number | null;
+  language: string;
   max?: number;
   /**
    * Observation codes already confirmed for this conversation (from
@@ -48,7 +55,14 @@ export interface ClarificationCandidateInput {
    * something the farmer has already stated.
    */
   confirmed?: ReadonlyArray<string>;
+  /**
+   * FIX 3 — observation keys still pending farmer confirmation from a
+   * previous turn (session.pending_clarification_observation_keys). Excluded
+   * from the candidate pool so the same option is never re-offered.
+   */
+  pending?: ReadonlyArray<string>;
 }
+
 
 // ─── Canonical key helper ──────────────────────────────────────────────────
 export function canonicalizeObservationKey(s: string | null | undefined): string {
