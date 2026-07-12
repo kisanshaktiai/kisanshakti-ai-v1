@@ -7084,7 +7084,11 @@ export class AIAgentOrchestrator {
               language: options.language || 'mr',
               max: 3,
               confirmed: (this as any).__conversationState?.confirmed ?? [],
+              // FIX 3 — carry forward pending keys from the previous turn
+              // so we never re-offer the exact option the farmer just tapped.
+              pending: (options.sessionState as any)?.pendingClarificationObservationKeys ?? [],
             }).catch((e: unknown) => {
+
               console.warn(`[OBS_GATE] candidate load failed: ${e instanceof Error ? e.message : String(e)}`);
               return [] as any[];
             })
