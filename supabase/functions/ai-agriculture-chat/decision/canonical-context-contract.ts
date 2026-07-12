@@ -337,10 +337,20 @@ export function buildCanonicalContext(
     landContext.crop_variety ??
     null;
 
+  // v6 — cultivation_method: crop_schedules is authoritative; biological_state
+  // mirrors it once resolve_crop_phenology has returned. Fall back through
+  // the same lineage so downstream nodes see a stable value.
+  const cultivationMethod =
+    (landContext.biological_state as BiologicalState | null | undefined)?.cultivation_method ??
+    cropSchedule?.cultivation_method ??
+    landContext.cultivation_method ??
+    null;
+
   // Biological state reference (already immutable)
   const biologicalState = (landContext.biological_state ?? null) as BiologicalState | null;
   const stageSource: 'biological_state' | 'crop_schedules' =
     biologicalState?.is_locked ? 'biological_state' : 'crop_schedules';
+
 
   // Water / irrigation — lands
   const waterBlock = Object.freeze({
