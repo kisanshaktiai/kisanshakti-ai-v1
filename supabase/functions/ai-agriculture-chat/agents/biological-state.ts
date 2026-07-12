@@ -54,10 +54,31 @@ export interface BiologicalState {
   readonly land_id: string;
   readonly crop_code: string | null;
   readonly crop_variety: string | null;
+  /**
+   * v6 — cultivation_method carried through from `crop_schedules` via
+   * `resolve_crop_phenology`. Values: 'direct_seeded' | 'transplanted' |
+   * 'any' | null. Consumed by CANONICAL_CONTEXT_SRC and downstream logs.
+   * NEVER used to branch biology in TS — biology remains DB-owned.
+   */
+  readonly cultivation_method: string | null;
 
   readonly growth_stage: string | null;     // canonical label (e.g. TILLERING)
   readonly stage_code:   string | null;     // ontology code
   readonly stage_uuid:   string | null;
+  /**
+   * v6 — resolved_stage is an alias for `growth_stage` exposed under the
+   * name mandated by the biological-model contract. It always equals
+   * `growth_stage`. Kept as a distinct field so downstream code can assert
+   * it explicitly without depending on legacy field names.
+   */
+  readonly resolved_stage: string | null;
+  /**
+   * v6 — stage_source labels the authority behind the stage decision. Mirror
+   * of `source` (e.g. 'crop_stage_ssot', 'gdd_model',
+   * 'completed_stage_transitions'). Preserved separately so the canonical
+   * context can log a stable, contract-named field.
+   */
+  readonly stage_source: string;
 
   readonly das: number | null;              // days after sowing (authoritative)
   readonly gdd_accumulated: number | null;
@@ -84,6 +105,7 @@ export interface BiologicalState {
 
   readonly raw: Readonly<Record<string, unknown>>;
 }
+
 
 /**
  * PATCH v4-P1 — Biological constraint DTO. `code` and `source` are opaque
