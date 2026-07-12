@@ -75,8 +75,9 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
   try {
     const { data, error } = await supabase
       .from('crop_stage_master')
-      .select('crop_code, growth_stage, stage_description, das_min, das_max')
+      .select('crop_code, growth_stage, stage_description, das_min, das_max, cultivation_method')
       .limit(5000);
+
     if (error) {
       console.warn('[STAGE_KNOWLEDGE] crop_stage_master select error:', error.message);
     } else if (Array.isArray(data)) {
