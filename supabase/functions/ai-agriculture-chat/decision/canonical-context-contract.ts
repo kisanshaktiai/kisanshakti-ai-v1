@@ -435,8 +435,12 @@ export function buildCanonicalContext(
     transplant_date: transplantDate,
     expected_harvest_date: expectedHarvestDate,
     crop_cycle: cropCycle,
+    cultivation_method: cultivationMethod
+      ? String(cultivationMethod).toLowerCase()
+      : null,
     variety_id: varietyId,
     crop_variety: cropVariety,
+
 
     biological_state: biologicalState,
 
