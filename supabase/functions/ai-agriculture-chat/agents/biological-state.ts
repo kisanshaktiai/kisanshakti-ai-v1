@@ -178,6 +178,11 @@ export function buildBiologicalState(
     ),
   );
 
+  const stageSource = String(phenology.source ?? 'phenology_ssot');
+  const cultivationMethod = phenology.cultivation_method
+    ? String(phenology.cultivation_method).toLowerCase()
+    : null;
+
   const state: BiologicalState = {
     is_locked: true,
     version: 'v1',
@@ -186,10 +191,13 @@ export function buildBiologicalState(
     land_id: landId,
     crop_code:    phenology.crop_code    ?? null,
     crop_variety: phenology.crop_variety ?? null,
+    cultivation_method: cultivationMethod,
 
-    growth_stage: phenology.growth_stage ?? null,
-    stage_code:   phenology.stage_code   ?? null,
-    stage_uuid:   phenology.stage_uuid   ?? null,
+    growth_stage:  phenology.growth_stage ?? null,
+    stage_code:    phenology.stage_code   ?? null,
+    stage_uuid:    phenology.stage_uuid   ?? null,
+    resolved_stage: phenology.growth_stage ?? null,
+    stage_source:  stageSource,
 
     das: typeof phenology.current_das === 'number' ? phenology.current_das : null,
     gdd_accumulated:
@@ -197,7 +205,7 @@ export function buildBiologicalState(
     sowing_date: phenology.sowing_date ?? null,
 
     confidence: baseConfidence,
-    source: phenology.source ?? 'phenology_ssot',
+    source: stageSource,
     resolver_version: phenology.resolver_version ?? null,
 
     predicted_stage_confidence: decayConfidence(baseConfidence, constraints),
@@ -214,10 +222,14 @@ export function buildBiologicalState(
         JSON.stringify({
           crop: state.crop_code,
           variety: state.crop_variety,
+          cultivation_method: state.cultivation_method,
           das: state.das,
           gdd: state.gdd_accumulated,
           biological_stage: state.growth_stage,
+          resolved_stage: state.resolved_stage,
+          stage_code: state.stage_code,
           stage_uuid: state.stage_uuid,
+          stage_source: state.stage_source,
           source: state.source,
           resolver_version: state.resolver_version,
           confidence: state.confidence,
@@ -226,6 +238,7 @@ export function buildBiologicalState(
         }),
     );
   } catch {/* trace must not throw */}
+
 
   return Object.freeze(state);
 }
