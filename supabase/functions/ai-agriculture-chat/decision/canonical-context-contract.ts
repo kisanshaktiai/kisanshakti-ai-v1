@@ -468,8 +468,14 @@ export function buildCanonicalContext(
     `[CANONICAL_CONTEXT_SRC] src.crop=crop_schedules src.stage=${sourcesBlock.stage} ` +
     `src.soil=${sourcesBlock.soil.used}(${sourcesBlock.soil.primary}|${sourcesBlock.soil.fallback}) ` +
     `src.ndvi=${sourcesBlock.ndvi.used}(${sourcesBlock.ndvi.primary}|${sourcesBlock.ndvi.fallback}) ` +
-    `bio_locked=${!!biologicalState?.is_locked} sowing=${sowingDate ?? 'null'} transplant=${transplantDate ?? 'null'}`
+    `bio_locked=${!!biologicalState?.is_locked} ` +
+    `cultivation_method=${cultivationMethod ?? 'null'} ` +
+    `resolved_stage=${biologicalState?.resolved_stage ?? biologicalState?.growth_stage ?? 'null'} ` +
+    `stage_code=${biologicalState?.stage_code ?? 'null'} ` +
+    `stage_source=${biologicalState?.stage_source ?? biologicalState?.source ?? 'null'} ` +
+    `sowing=${sowingDate ?? 'null'} transplant=${transplantDate ?? 'null'}`
   );
+
 
   return canonicalContext;
 }
