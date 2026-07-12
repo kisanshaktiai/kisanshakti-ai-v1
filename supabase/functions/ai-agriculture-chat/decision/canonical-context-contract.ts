@@ -125,6 +125,13 @@ export interface CanonicalContext {
   readonly crop_cycle?: string | null;
   readonly variety_id?: string | null;
   readonly crop_variety?: string | null;
+  /**
+   * v6 — cultivation_method (AUTHORITY: crop_schedules). Values:
+   * 'direct_seeded' | 'transplanted' | 'any' | null. Consumed by
+   * downstream logs + biological gating; never used to encode agronomy.
+   */
+  readonly cultivation_method?: string | null;
+
 
   // v2.1.0 — biological state reference (already immutable object)
   readonly biological_state?: Readonly<BiologicalState> | null;
