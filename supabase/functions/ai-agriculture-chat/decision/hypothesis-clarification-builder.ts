@@ -24,8 +24,16 @@ export interface HypothesisClarificationInput {
   language?: string | null;
   max?: number;
   confirmed_observations?: ReadonlyArray<unknown>;
+  /**
+   * FIX 3 — observation keys that are already pending farmer confirmation
+   * from a previous turn (session.pending_clarification_observation_keys).
+   * Excluded from the clarification candidate pool so we never re-ask the
+   * exact same option the farmer just tapped.
+   */
+  pending_obs_keys?: ReadonlyArray<string>;
   trace_id?: string | null;
 }
+
 
 export interface HypothesisClarificationOption {
   observation_id: string;
@@ -197,12 +205,26 @@ export async function buildHypothesisClarificationOptions(
   const optionEdges: Array<{ code: string; condition: ConditionRow }> = [];
   const confirmedSet = new Set(confirmedCodes.map((c) => c.toLowerCase()));
 
+  // FIX 3 — exclude keys already pending farmer confirmation from a prior
+  // turn so the same option is never re-offered (root cause of the two-key
+  // germination loop).
+  const pendingObs: string[] = Array.isArray(input.pending_obs_keys)
+    ? input.pending_obs_keys.map((k) => String(k || '').toLowerCase()).filter(Boolean)
+    : [];
+  for (const k of pendingObs) confirmedSet.add(k);
+
   for (const condition of observationConditions) {
     for (const code of extractObservationCodes(condition)) {
       if (!code || confirmedSet.has(code.toLowerCase())) continue;
       optionEdges.push({ code, condition });
     }
   }
+
+  console.log(
+    `[HYP_CLARIFICATION][FILTER] trace=${trace} removed_confirmed=${confirmedCodes.length} ` +
+    `removed_pending=${pendingObs.length} eligible_edges=${optionEdges.length}`,
+  );
+
 
   // Patch A — preserve hypothesis lineage: group edges per code, keep ALL
   // contributing hypotheses, compute an aggregate information-gain score.

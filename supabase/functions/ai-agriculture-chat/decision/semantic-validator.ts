@@ -24,7 +24,17 @@ export interface ObservationCandidate {
   semantic_class?: string | null;
   confidence?: number;
   source?: string;
+  /**
+   * Canonical observation_code(s) extracted from the surface annotation
+   * `[obs_keys:code1,code2]`. When present and `semantic_class` is missing,
+   * the semantic gate resolves the class from `observation_master` by these
+   * canonical codes instead of by the surface label. This is the fix for
+   * SEMANTIC_GATE IGNORE ... missing semantic_class metadata caused by using
+   * the raw Marathi/Hindi surface string as the lookup key.
+   */
+  obs_keys?: string[];
 }
+
 
 export interface SemanticGateInput {
   intent: string;
@@ -78,6 +88,47 @@ async function loadAllowlist(supabase: any): Promise<Map<string, Set<string>>> {
 }
 
 
+/**
+ * Resolve a canonical `observation_master.semantic_class` for a candidate.
+ * Preference order:
+ *   1. explicit `obs.semantic_class`
+ *   2. `obs.obs_keys[]` (canonical codes extracted from `[obs_keys:...]`)
+ *   3. `obs.code` treated as a canonical code (best-effort)
+ * Only queries the DB when needed. Missing lookups return null; caller keeps
+ * the existing "missing semantic_class metadata" behavior for those.
+ */
+async function resolveSemanticClass(
+  supabase: any,
+  obs: ObservationCandidate,
+): Promise<{ semanticClass: string | null; source: 'candidate' | 'obs_keys' | 'label' | 'none'; key: string | null }> {
+  const preset = (obs.semantic_class || '').toLowerCase();
+  if (preset) return { semanticClass: preset, source: 'candidate', key: obs.code };
+  const keys = Array.isArray(obs.obs_keys)
+    ? obs.obs_keys.map((k) => String(k || '').trim()).filter(Boolean)
+    : [];
+  const codeAsKey = String(obs.code || '').trim();
+  const lookup = Array.from(new Set([...keys, codeAsKey].filter(Boolean)));
+  if (lookup.length === 0 || !supabase) return { semanticClass: null, source: 'none', key: null };
+  try {
+    const { data, error } = await supabase
+      .from('observation_master')
+      .select('observation_code, semantic_class')
+      .in('observation_code', lookup);
+    if (error) return { semanticClass: null, source: 'none', key: null };
+    // Preserve requested order (obs_keys first)
+    for (const k of lookup) {
+      const row = (data ?? []).find((r: any) => String(r.observation_code) === k);
+      if (row && row.semantic_class) {
+        const src = keys.includes(k) ? 'obs_keys' : 'label';
+        console.log(`[SEMANTIC_GATE][RESOLVE] key=${k} class=${String(row.semantic_class).toLowerCase()} source=${src}`);
+        return { semanticClass: String(row.semantic_class).toLowerCase(), source: src, key: k };
+      }
+    }
+  } catch { /* non-fatal */ }
+  return { semanticClass: null, source: 'none', key: null };
+}
+
+
 export async function evaluateSemanticGate(
   input: SemanticGateInput
 ): Promise<SemanticGateResult> {
@@ -85,6 +136,22 @@ export async function evaluateSemanticGate(
   const intentKey = (intent || '').toLowerCase();
   const byIntent = await loadAllowlist(supabase);
   const allowed = byIntent.get(intentKey);
+
+  // Hydrate missing semantic_class from observation_master using obs_keys
+  // (or the code itself). This runs BEFORE the allowlist / fail-closed
+  // paths so both branches use the resolved class.
+  for (const obs of observations) {
+    if (!obs.semantic_class) {
+      const r = await resolveSemanticClass(supabase, obs);
+      if (r.semanticClass) {
+        obs.semantic_class = r.semanticClass;
+        // Prefer the canonical code that resolved successfully as the
+        // display code (keeps ledger keys consistent across gates).
+        if (r.key && r.source === 'obs_keys') obs.code = r.key;
+      }
+    }
+  }
+
 
   // FAIL-CLOSED (Phase X.4 hardening). A previously fail-open empty/error
   // allowlist let pest- and disease-class observations through for advisory

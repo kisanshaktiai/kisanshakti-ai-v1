@@ -48,7 +48,15 @@ export interface ClarificationCandidateInput {
    * something the farmer has already stated.
    */
   confirmed?: ReadonlyArray<string>;
+  /**
+   * FIX 3 — observation keys still pending farmer confirmation from a
+   * previous turn (session.pending_clarification_observation_keys). Excluded
+   * from the candidate pool so the same option is never re-offered.
+   */
+  pending?: ReadonlyArray<string>;
 }
+
+
 
 // ─── Canonical key helper ──────────────────────────────────────────────────
 export function canonicalizeObservationKey(s: string | null | undefined): string {
@@ -86,7 +94,7 @@ export async function loadClarificationCandidates(
   input: ClarificationCandidateInput,
 ): Promise<ClarificationOption[]> {
   const {
-    supabase, intent_code, crop_code, growth_stage, das, language, max = 4, confirmed = [],
+    supabase, intent_code, crop_code, growth_stage, das, language, max = 4, confirmed = [], pending = [],
   } = input;
 
   try {
@@ -99,7 +107,9 @@ export async function loadClarificationCandidates(
       language,
       max,
       confirmed_observations: confirmed,
+      pending_obs_keys: pending,
     });
+
     return graph.options.map((o, idx) => ({
       observation_key: o.observation_key,
       label: o.label,

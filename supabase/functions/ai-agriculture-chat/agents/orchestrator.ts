@@ -4208,11 +4208,30 @@ export class AIAgentOrchestrator {
       requestCtx.chain.set('observation',
         observationExtraction.raw_symptom_text.length > 0 ? 0.9 : 0.5);
       try {
-        const semObs = (observationExtraction.raw_symptom_text || []).map((t: string) => ({
-          code: String(t).toLowerCase().replace(/\s+/g, '_'),
-          semantic_class: null,
-          source: 'observation-extractor',
-        }));
+        // FIX 1 — parse the `[obs_keys:code1,code2]` annotation attached by
+        // the UI/normalizer. Without this, the semantic gate was looking up
+        // the raw Marathi/Hindi surface string in observation_master and
+        // dropping every observation as "missing semantic_class metadata".
+        const OBS_KEYS_RE = /\[obs_keys:([^\]]+)\]/i;
+        const semObs = (observationExtraction.raw_symptom_text || []).map((t: string) => {
+          const raw = String(t);
+          const m = raw.match(OBS_KEYS_RE);
+          const obsKeys = m
+            ? m[1].split(',').map((k) => k.trim()).filter(Boolean)
+            : [];
+          const stripped = raw.replace(OBS_KEYS_RE, '').trim();
+          // Prefer the first canonical code as `code`; fall back to the
+          // normalized surface label when no annotation is present.
+          const code = obsKeys[0]
+            ? obsKeys[0]
+            : stripped.toLowerCase().replace(/\s+/g, '_');
+          return {
+            code,
+            semantic_class: null,
+            source: 'observation-extractor',
+            obs_keys: obsKeys,
+          };
+        });
         const semResult = await evaluateSemanticGate({
           intent: (typeof intentCode !== 'undefined' ? String(intentCode) : 'GENERAL_QUERY'),
           observations: semObs,
@@ -4220,6 +4239,7 @@ export class AIAgentOrchestrator {
           ledger: requestCtx.ledger,
           chain: requestCtx.chain,
         });
+
         if (semResult.dropped.length > 0) {
           console.log(`      🚦 [SEMANTIC_GATE] dropped ${semResult.dropped.length} cross-class observations`);
         }
@@ -4866,6 +4886,87 @@ export class AIAgentOrchestrator {
                 `obs=[${contradicting.join(',')}] prev_conf=${prevConf.toFixed(2)} ` +
                 `new_conf=${adjustedConf.toFixed(2)} action=sidecar_confidence_downgrade`,
               );
+
+              // FIX 2 — hard re-route: when bio-state proves the crop is past
+              // emergence, the germination-family intent cannot survive the
+              // stage gate. Confidence downgrade alone leaves intentCode
+              // frozen at EMERGENCE_FAILURE and every hypothesis STAGE-BLOCKS.
+              // Replace intent with a stage-appropriate diagnostic intent.
+              // Lists come from system_config with hardcoded defaults.
+              try {
+                const readConfig = async (
+                  key: string,
+                  fallback: string[] | string,
+                ): Promise<string[] | string> => {
+                  try {
+                    const { data } = await this.supabase
+                      .from('system_config')
+                      .select('value')
+                      .eq('key', key)
+                      .maybeSingle();
+                    const raw = data && (typeof data.value === 'object' && data.value !== null
+                      ? (data.value as any).value ?? data.value
+                      : data.value);
+                    if (Array.isArray(fallback)) {
+                      if (Array.isArray(raw)) return raw.map((x) => String(x));
+                      return fallback;
+                    }
+                    if (typeof raw === 'string' && raw) return raw;
+                    return fallback;
+                  } catch { return fallback; }
+                };
+                const germinationIntents = (await readConfig(
+                  'bio_contradiction_germination_intents',
+                  ['EMERGENCE_FAILURE', 'POOR_GERMINATION', 'GERMINATION_CONCERN', 'GERMINATION_FAILURE'],
+                )) as string[];
+                const postEmergenceStages = (await readConfig(
+                  'bio_contradiction_post_emergence_stages',
+                  ['transplanting', 'tillering', 'vegetative', 'grand_growth', 'panicle_initiation',
+                   'booting', 'heading', 'flowering', 'reproductive', 'grain_filling',
+                   'maturity', 'ripening', 'maturation', 'harvest'],
+                )) as string[];
+                const rerouteTarget = (await readConfig(
+                  'bio_contradiction_reroute_target',
+                  'POST_TRANSPLANT_ESTABLISHMENT_FAILURE',
+                )) as string;
+
+                const currentIntentUpper = String(intentCode || '').toUpperCase();
+                if (
+                  germinationIntents.map((s) => s.toUpperCase()).includes(currentIntentUpper) &&
+                  postEmergenceStages.map((s) => s.toLowerCase()).includes(stageKey)
+                ) {
+                  // Guard: only re-route if the target intent exists in DB.
+                  let targetExists = false;
+                  try {
+                    const { data: t } = await this.supabase
+                      .from('observation_intent_master')
+                      .select('intent_code')
+                      .eq('intent_code', rerouteTarget)
+                      .maybeSingle();
+                    targetExists = !!t;
+                  } catch { /* treat as absent */ }
+                  if (targetExists) {
+                    console.warn(
+                      `[BIO_STATE_CONTRADICTION][REROUTE] from=${currentIntentUpper} ` +
+                      `to=${rerouteTarget} stage=${bio.growth_stage} das=${bio.das ?? '?'}`,
+                    );
+                    intentCode = rerouteTarget as any;
+                    try {
+                      (this as any).__conversationState && ((this as any).__conversationState.intent_rerouted = true);
+                    } catch { /* non-fatal */ }
+                  } else {
+                    console.warn(
+                      `[BIO_STATE_CONTRADICTION][REROUTE_SKIPPED] target_intent_not_found=${rerouteTarget} ` +
+                      `from=${currentIntentUpper} stage=${bio.growth_stage}`,
+                    );
+                  }
+                }
+              } catch (rerouteErr) {
+                console.warn(
+                  `[BIO_STATE_CONTRADICTION][REROUTE_ERROR] ${rerouteErr instanceof Error ? rerouteErr.message : String(rerouteErr)}`,
+                );
+              }
+
             }
           }
         } catch { /* non-fatal */ }
@@ -6983,7 +7084,11 @@ export class AIAgentOrchestrator {
               language: options.language || 'mr',
               max: 3,
               confirmed: (this as any).__conversationState?.confirmed ?? [],
+              // FIX 3 — carry forward pending keys from the previous turn
+              // so we never re-offer the exact option the farmer just tapped.
+              pending: (options.sessionState as any)?.pendingClarificationObservationKeys ?? [],
             }).catch((e: unknown) => {
+
               console.warn(`[OBS_GATE] candidate load failed: ${e instanceof Error ? e.message : String(e)}`);
               return [] as any[];
             })
