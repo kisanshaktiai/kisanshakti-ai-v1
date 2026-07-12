@@ -134,6 +134,8 @@ function decayConfidence(base: number, cs: ReadonlyArray<BiologicalConstraint>):
 export interface RawPhenologyRow {
   crop_code?: string | null;
   crop_variety?: string | null;
+  /** v6 — cultivation_method from resolve_crop_phenology (crop_schedules). */
+  cultivation_method?: string | null;
   growth_stage?: string | null;
   stage_code?: string | null;
   stage_uuid?: string | null;
@@ -145,6 +147,7 @@ export interface RawPhenologyRow {
   resolver_version?: string | null;
   [k: string]: unknown;
 }
+
 
 /**
  * Build an immutable BiologicalState from the phenology resolver row.
