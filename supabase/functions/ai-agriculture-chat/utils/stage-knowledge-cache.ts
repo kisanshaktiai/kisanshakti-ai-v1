@@ -189,13 +189,13 @@ export function getStageCategoryFromDB(
 /**
  * DB-first DAS → stage lookup.
  *
- * v6 — accepts an optional `cultivationMethod` filter. When provided, a row
- * matches only if its own `cultivation_method` is NULL, equal to 'any', or
- * equal to the requested method (all case-insensitive). Exact method match
- * is preferred over 'any' / NULL when multiple rows satisfy the DAS window.
+ * v7 — NULL cultivation_method is treated as a data-quality issue and is
+ * NEVER matched at runtime (mirrors the SQL resolver). A row qualifies iff
+ * its own `cultivation_method` is 'any' OR equals the requested method
+ * (case-insensitive). Exact match is preferred over 'any'.
  *
  * When `cultivationMethod` is undefined the legacy first-hit behaviour is
- * preserved so existing callers stay green.
+ * preserved so pre-v6 callers stay green.
  */
 export function getStageByDAS(
   crop: string,
@@ -208,7 +208,6 @@ export function getStageByDAS(
 
   let exact: StageMasterRow | null = null;
   let anyRow: StageMasterRow | null = null;
-  let nullRow: StageMasterRow | null = null;
 
   for (const r of cache.master) {
     if (r.crop_code?.toLowerCase() !== cropKey) continue;
@@ -216,15 +215,16 @@ export function getStageByDAS(
     const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
 
     if (method) {
+      // NULL rows are excluded — treated as data-quality issue.
+      if (rowMethod === null) continue;
       if (rowMethod === method && !exact) exact = r;
       else if (rowMethod === 'any' && !anyRow) anyRow = r;
-      else if (rowMethod === null && !nullRow) nullRow = r;
     } else {
       // Legacy path — return first hit as before.
       return r;
     }
   }
-  return exact ?? anyRow ?? nullRow;
+  return exact ?? anyRow;
 }
 
 

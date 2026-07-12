@@ -154,7 +154,9 @@ async function fetchLandChatContext(
       .limit(1)
       .maybeSingle(),
     // Phenology SSOT: variety-aware growth-stage resolver (DB function).
-    client.rpc('resolve_crop_phenology', { p_land_id: landId }),
+    // v7: call the composed wrapper — resolve_biological_profile → pure
+    // resolve_crop_phenology. Pure resolver no longer reads lands/schedules.
+    client.rpc('resolve_crop_phenology_for_land', { p_land_id: landId }),
     client
       .from('soil_health')
       .select('ph_level, soil_type, texture, nitrogen_level, phosphorus_level, potassium_level, organic_carbon, soil_moisture_surface_percent, agro_climatic_zone, test_date, source')

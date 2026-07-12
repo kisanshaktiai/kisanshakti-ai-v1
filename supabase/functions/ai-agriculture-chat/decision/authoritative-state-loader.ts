@@ -438,12 +438,11 @@ export async function loadAuthoritativeLandState(
         .maybeSingle(),
 
       // 6. PR-1 · Crop-stage SSOT — variety-aware phenology resolver.
-      // resolve_crop_phenology(land_id) is the DB-side SSOT joining
-      // crop_schedules + crop_stage_master + variety_phenology_profile.
-      // Frontend already uses it (see useLandChatContext); backend MUST
-      // consume the same row so LLM narration and rule scoping see the
-      // exact same growth_stage the farmer sees on their land card.
-      supabase.rpc('resolve_crop_phenology', { p_land_id: landId })
+      // v7 — composed wrapper: resolve_biological_profile assembles the
+      // authoritative biological context from lands + crop_schedules and
+      // hands it to the pure resolve_crop_phenology, which no longer
+      // reads any lands/schedule tables. Frontend uses the same wrapper.
+      supabase.rpc('resolve_crop_phenology_for_land', { p_land_id: landId })
     ]);
     
     // ═══════════════════════════════════════════════════════════════════════════

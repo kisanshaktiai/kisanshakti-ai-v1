@@ -20,6 +20,11 @@
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ * 2026-07-12 — v2.2.0 biological_profile authority. cultivation_method is now
+ *   sourced from the biological_state produced by resolve_crop_phenology_for_land
+ *   (which composes resolve_biological_profile → pure resolve_crop_phenology).
+ *   Falls back through crop_schedules → landContext.cultivation_method for
+ *   pre-v7 call paths. Contract shape unchanged (still optional/nullable).
  * 2026-07-11 — v2.1.0 context-preservation extension. Added additive optional
  *   field-twin fields (crop lifecycle dates from crop_schedules, biological_state
  *   ref, soil extras, water/irrigation, weather forecast + rainfall_after_sowing,
