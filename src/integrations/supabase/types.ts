@@ -33345,46 +33345,77 @@ export type Database = {
           variety_id: string
         }[]
       }
-      resolve_crop_phenology: {
-        Args: {
-          p_as_of?: string
-          p_crop_code: string
-          p_crop_cycle: string
-          p_cultivation_method: string
-          p_current_gdd: number
-          p_land_id?: string
-          p_sow_date: string
-          p_transplant_date: string
-          p_variety_id: string
-        }
-        Returns: {
-          confidence: number
-          crop_code: string
-          crop_cycle: string
-          cultivation_method: string
-          current_das: number
-          current_dat: number
-          current_gdd: number
-          evidence_sources: string[]
-          expected_height_cm_max: number
-          expected_height_cm_min: number
-          expected_leaf_count_max: number
-          expected_leaf_count_min: number
-          expected_ndvi_max: number
-          expected_ndvi_min: number
-          expected_transition_date: string
-          growth_stage: string
-          next_stage_uuid: string
-          phenology_index: number
-          phenology_model: string
-          previous_stage_uuid: string
-          reference_system: string
-          resolver_version: number
-          source: string
-          stage_code: string
-          stage_uuid: string
-        }[]
-      }
+      resolve_crop_phenology:
+        | {
+            Args: {
+              p_as_of?: string
+              p_crop_code: string
+              p_crop_cycle: string
+              p_cultivation_method: string
+              p_current_gdd: number
+              p_land_id?: string
+              p_sow_date: string
+              p_transplant_date: string
+              p_variety_id: string
+            }
+            Returns: {
+              confidence: number
+              crop_code: string
+              crop_cycle: string
+              cultivation_method: string
+              current_das: number
+              current_dat: number
+              current_gdd: number
+              evidence_sources: string[]
+              expected_height_cm_max: number
+              expected_height_cm_min: number
+              expected_leaf_count_max: number
+              expected_leaf_count_min: number
+              expected_ndvi_max: number
+              expected_ndvi_min: number
+              expected_transition_date: string
+              growth_stage: string
+              next_stage_uuid: string
+              phenology_index: number
+              phenology_model: string
+              previous_stage_uuid: string
+              reference_system: string
+              resolver_version: number
+              source: string
+              stage_code: string
+              stage_uuid: string
+            }[]
+          }
+        | {
+            Args: { p_land_id: string }
+            Returns: {
+              confidence: number
+              crop_code: string
+              crop_cycle: string
+              cultivation_method: string
+              current_das: number
+              current_dat: number
+              current_gdd: number
+              evidence_sources: string[]
+              expected_height_cm_max: number
+              expected_height_cm_min: number
+              expected_leaf_count_max: number
+              expected_leaf_count_min: number
+              expected_ndvi_max: number
+              expected_ndvi_min: number
+              expected_transition_date: string
+              growth_stage: string
+              next_stage_uuid: string
+              phenology_index: number
+              phenology_model: string
+              previous_stage_uuid: string
+              reference_system: string
+              resolver_version: number
+              source: string
+              stage_code: string
+              stage_uuid: string
+            }[]
+          }
       resolve_crop_phenology_for_land: {
         Args: { p_as_of?: string; p_land_id: string }
         Returns: {
