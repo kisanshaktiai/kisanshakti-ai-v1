@@ -2,17 +2,21 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts
  * ROLE:      Database-first rule loader + evaluator (in-memory cache).
- * AUTHORITY: SSOT for rule loading / evaluation. The 3 remaining wrappers
- *            (agents/rule-engine-executor.ts, agents/layered-rule-evaluator.ts,
- *            agents/decision-graph-bridge.ts) are legacy shims scheduled to
- *            collapse into this file — see PR-3 Full plan.
+ * AUTHORITY: SSOT for rule loading / evaluation.
  * STATUS:    ACTIVE
- * VERSION:   v1.0.0 (database-first strategy)
- * LAST_PR:   PR-6 (header stamping, 2026-07-06)
- * STAMPED:   2026-07-06
- * NOTES:     Loads rules from DB at runtime to prevent bundle timeout.
+ *
+ * CHANGE LOG (newest first):
+ *   2026-07-17 08:55 UTC — filterRulesByIntent: forensic fix. `rule_intent`
+ *       (action type: recommendation/command/block/education/warning) was
+ *       being compared to farmer diagnostic intent codes, guaranteeing
+ *       kept=0 and collapsing the rule graph. Gate now applies
+ *       INTENT_INCOMPATIBLE against `category`, preserves _genericPenalty
+ *       for rule_intent=null, and no longer drops rules on intent mismatch.
+ *       LEAKAGE_GUARD block removed (premise no longer represented).
+ *   2026-07-06 — PR-6 header stamping.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
