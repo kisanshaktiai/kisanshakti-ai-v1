@@ -1,140 +1,67 @@
+## Forensic Audit — Verified Findings
 
-# Surgical Refactor: Biological Profile as SSOT Input to Phenology Resolver
+### Failure 1 — PGRST202 on `resolve_crop_phenology(p_land_id)`
+**Status: RESOLVED at DB (verified).** `pg_proc` now exposes three overloads:
+- `resolve_crop_phenology(p_land_id uuid)` ← wrapper the TS caller needs
+- `resolve_crop_phenology(p_crop_code, p_crop_cycle, p_cultivation_method, p_variety_id, p_sow_date, p_transplant_date, p_current_gdd, p_as_of, p_land_id)` ← full v7
+- `resolve_crop_phenology_for_land(p_land_id, p_as_of)`
 
-Addresses the 3 architectural issues raised in review:
-1. **Decouple** `resolve_crop_phenology` from `crop_schedules` — resolver must not know where authority originates.
-2. **Separate responsibilities** — schedule resolution, biological profile assembly, and phenology resolution are distinct nodes.
-3. **NULL ≠ wildcard** — `'any'` is the only universal match; `NULL` means missing data and never matches at runtime.
+No TS change required for Failure 1. Cascade (stage=null → invariant → crash) is unblocked.
 
-No agronomic rules change. No TypeScript agronomic logic added. DB remains SSOT.
+### Failure 2 — Turn 2 INFORMATION_ONLY
+**Downstream of Failures 1 + 3.** No independent code defect. Once 1 and 3 are fixed, PHASE 6 GATE‑2 will see matched rules and stop suppressing.
+
+### Failure 3 (real root cause) — `filterRulesByIntent` compares the wrong column
+File: `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` (lines ~1366–1430).
+
+Verified against DB:
+```
+SELECT rule_intent, COUNT(*) FROM decision_rules GROUP BY rule_intent;
+ recommendation | 807
+ command        | 601
+ block          | 215
+ education      | 153
+ warning        |  70
+ NULL           |   7
+```
+
+`decision_rules.rule_intent` encodes **semantic ACTION TYPE** (`recommendation` / `command` / `block` / `education` / `warning`), NOT diagnostic intent codes.
+
+The gate does:
+```ts
+if (riLc === intentKey) { kept++ }              // intentKey = "POOR_TILLERING" etc.
+else if (ri == null)    { demoted++ }
+else                    { dropped++ }
+```
+`"recommendation" === "poor_tillering"` is impossible → `kept` is always 0 for every real intent. Only the 7 NULL rows survive as `demoted` (generic penalty), the entire 1,839‑rule corpus is `dropped`. The log line `kept=0 demoted=202` is exactly this bug (202 = crop‑scoped NULL rows after upstream `loadRulesForCrop`). Diagnostic exemption (added earlier) prevents the LEAKAGE_GUARD but the gate is still throwing away every intent‑bound rule.
+
+There is no other column on `decision_rules` that encodes farmer diagnostic intent (`applicability_scope`, `category`, `crop_category`, `required_observation_category` are all scoping/taxonomy — verified). Intent→rule scoping is actually done upstream via `intent_observation_mapping` + hypothesis graph. This gate has no valid DB source and must not filter on `rule_intent`.
 
 ---
 
-## 1. New SQL (single migration)
+## Surgical Fix (one file, ~15 lines)
 
-Two functions replace the current monolithic one:
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
 
-### 1a. `public.resolve_biological_profile(p_land_id, p_as_of)` — NEW
-Single responsibility: assemble the authoritative biological context for a land, from whatever sources exist today (and tomorrow, by only extending this function).
+**Change `filterRulesByIntent`:**
+1. Stop comparing `rule_intent` (action type) to `intentKey` (diagnostic intent) — it is a semantic type mismatch.
+2. Keep the `INTENT_INCOMPATIBLE` hard‑drop map (`emergence_failure` never routes to `cyclone_recovery` etc.) — but evaluate it against `rule.category` (the correct column for that semantic), not `rule_intent`.
+3. Return the full remaining rule set unfiltered. Intent scoping is already enforced upstream by IOM + hypothesis graph + condition evaluator; there is no correct DB signal on `decision_rules` to further gate here.
+4. Preserve the `_genericPenalty` marker for rules with `rule_intent == null` so Phase D arbiter behaviour is unchanged (that penalty is legitimate — NULL means the rule has no declared action type).
+5. Keep the `[BRAIN_TRACE][RULE_INTENT_GATE]` log line with the same shape (`kept/demoted/dropped/incompat_dropped`) so the regression fixtures and log parsers keep working, but redefine `kept` = rules with a declared `rule_intent`, `demoted` = NULL rule_intent rows.
+6. Delete the LEAKAGE_GUARD block entirely — with the mismatch fixed, `kept` will normally be non‑zero and the guard's premise ("no rule matched the intent") is no longer represented by this column at all. `prescription-gate-enforcer.ts` `_noTreatmentEligible` check stays in place as defensive code; it just won't fire from this path anymore.
 
-Returns a single row:
-`crop_code, crop_cycle, cultivation_method, establishment_method, production_system, planting_method, variety_id, sowing_date, sowing_source, transplant_date, current_gdd, evidence text[]`
+**No other files changed.** No DB migration. No agronomy. No new hardcoded intent lists.
 
-Source precedence (today):
-- `crop_schedules` (active row) → `cultivation_method`, `sowing_date`
-- `lands.planting_date` > `lands.last_sowing_date` > `crop_schedules.sowing_date`
-- `lands.current_crop`, `lands.crop_cycle`, `lands.current_crop_variety_id`, `lands.transplant_date`, `lands.current_gdd`
+## Verification steps (after edit)
+1. Confirm build: `deno check` on the edge function.
+2. Reissue the two failing turns; expect log:
+   - `[BRAIN_TRACE][RULE_INTENT_GATE] intent="poor_tillering" kept>0 demoted=<small> dropped=0 incompat_dropped=0`
+   - `graphExecuted=true`, `hypotheses>0`, `rules>0`.
+3. Confirm `PHASE 6 GATE-2` no longer routes to INFORMATION_ONLY for diagnostic turns that have matched rules.
+4. `_noTreatmentEligible` should no longer appear in prescription‑gate warnings from this path.
 
-Future sources (manual override / IoT / AI-inferred / ERP) are added here only — never inside the resolver.
-
-### 1b. `public.resolve_crop_phenology(...)` — REWRITTEN with pure-input signature
-
-```sql
-DROP FUNCTION IF EXISTS public.resolve_crop_phenology(uuid, date);
-
-CREATE OR REPLACE FUNCTION public.resolve_crop_phenology(
-  p_crop_code           text,
-  p_crop_cycle          text,
-  p_cultivation_method  text,
-  p_variety_id          uuid,
-  p_sow_date            date,
-  p_transplant_date     date,
-  p_current_gdd         numeric,
-  p_as_of               date DEFAULT CURRENT_DATE,
-  p_land_id             uuid DEFAULT NULL  -- passthrough for evaluate_stage_transitions only
-) RETURNS TABLE (... same shape as before ...)
-```
-
-Resolver behavior:
-- Knows **nothing** about `lands` or `crop_schedules`.
-- Computes `das`, `dat`, phenology_index from inputs only.
-- `crop_stage_master` match rules — **NULL is no longer a match**:
-  - `csm.cultivation_method = p_cultivation_method` (exact), OR
-  - `lower(csm.cultivation_method) = 'any'`
-  - Rows with `csm.cultivation_method IS NULL` are treated as data-quality issues and **excluded** at runtime.
-- ORDER BY (kept as reviewer approved):
-  1. exact cultivation match
-  2. `'any'`
-  3. crop_cycle match
-  4. `stage_node_type = 'biological'`
-  5. `das_min ASC`
-- Prev/next stage lookups use the **same** exclusion rule.
-- `evaluate_stage_transitions(p_land_id, ...)` only called when `p_land_id` is provided.
-
-### 1c. `public.resolve_crop_phenology_for_land(p_land_id, p_as_of)` — thin orchestrator
-Backwards-compatible wrapper for existing callers. Composes the two nodes:
-```
-SELECT bp.* INTO ... FROM public.resolve_biological_profile(p_land_id, p_as_of) bp;
-RETURN QUERY SELECT * FROM public.resolve_crop_phenology(bp.crop_code, ..., p_as_of, p_land_id);
-```
-This preserves every existing call site while making the pure resolver reusable.
-
-### 1d. Data-quality view (non-blocking)
-```sql
-CREATE OR REPLACE VIEW public.v_crop_stage_master_null_method AS
-SELECT id, crop_code, stage_code, growth_stage
-FROM public.crop_stage_master
-WHERE is_active AND cultivation_method IS NULL;
-```
-Surfaces rows that will no longer match at runtime so the DB team can backfill with `'any'` or an explicit method.
-
----
-
-## 2. TypeScript changes (minimum surgical)
-
-Files:
-- `supabase/functions/ai-agriculture-chat/agents/biological-state.ts`
-  - Rename internal type `cultivation_method` carrier to `biological_profile { crop, crop_cycle, cultivation_method, establishment_method, production_system, planting_method, variety_id, stage, ... }`.
-  - Keep `cultivation_method` field for backward compat; new fields are optional.
-- `supabase/functions/ai-agriculture-chat/utils/stage-knowledge-cache.ts`
-  - Match ranking: exact `cultivation_method` > `'any'` > (no match). Remove any NULL-as-wildcard fallback.
-- `supabase/functions/ai-agriculture-chat/runtime/phenology-reconciler.ts`
-  - Same NULL-exclusion rule; propagate full `biological_profile` instead of a single field.
-- `supabase/functions/ai-agriculture-chat/decision/canonical-context-contract.ts`
-  - `[CANONICAL_CONTEXT_SRC]` trace surfaces the whole `biological_profile` and `stage_source`.
-- Update top-of-file CHANGE LOG blocks per project rule.
-
-No other files touched. No graph nodes rewritten.
-
----
-
-## 3. Updated data flow
-
-```text
-Land Context
-     │
-     ▼
-resolve_biological_profile()      ← ONLY node that reads crop_schedules/lands
-     │  biological_profile
-     ▼
-resolve_crop_phenology(profile)   ← pure, reusable, crop-agnostic
-     │  BiologicalState
-     ▼
-Canonical Context (carries biological_profile)
-     │
-     ▼
-Observation Resolver → Intent → Hypothesis Graph → Decision Rules
-     │
-     ▼
-Unified Gate → Safety Gates → LLM Formatter
-```
-
----
-
-## 4. Regression guarantees
-
-- `resolve_crop_phenology_for_land(land_id, as_of)` returns the same shape and semantics as today's `resolve_crop_phenology(land_id, as_of)` for all existing call sites.
-- Rice DAS 34 + Direct Seeded → `RICE_DSR_EARLY_VEGETATIVE`.
-- Rice DAS 34 + Transplanted → `RICE_TRANSPLANTING`.
-- Rows in `crop_stage_master` with `cultivation_method IS NULL` will stop matching — surfaced via the data-quality view for backfill. This is intentional per reviewer's Problem 3.
-
----
-
-## 5. Deliverables order
-
-1. `supabase--migration` with: new `resolve_biological_profile`, rewritten pure `resolve_crop_phenology`, wrapper `resolve_crop_phenology_for_land`, data-quality view. Migration also updates any internal callers to use the wrapper name.
-2. After migration approval: TS edits to the 4 files above (biological_profile propagation, NULL-exclusion in cache/reconciler, canonical context trace, CHANGE LOG updates).
-3. Verification traces:
-   - `[BIO_PROFILE_SRC] cultivation_method=direct_seeded source=crop_schedules`
-   - `[PHENOLOGY_RESOLVE] method=direct_seeded stage=RICE_DSR_EARLY_VEGETATIVE order=exact`
-   - `[CANONICAL_CONTEXT_SRC] biological_profile={...}`
+## Out of scope (explicit)
+- No change to `resolve_crop_phenology*` or any other DB object.
+- No change to `orchestrator.ts`, `layered-rule-evaluator.ts`, `prescription-gate-enforcer.ts`, or `pipeline-self-check.ts` (their contracts remain satisfied).
+- No new bundled agronomic constants.

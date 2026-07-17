@@ -1342,18 +1342,38 @@ export function findRulesForCause(cause: string): ExecutableRule[] {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE C, gate #2 — INTENT GATING ON RULES
-// Filters candidate rules by the active intent using `decision_rules.rule_intent`.
-// Rules whose rule_intent is NULL (generic) are KEPT but flagged via a
-// `_genericPenalty` marker so the weighted arbiter (Phase D) can demote them.
-// Backward-compatible: when no intent is supplied, behaves exactly like
-// the legacy filter.
+// PHASE C, gate #2 — INTENT GATING ON RULES  (2026-07-17 CORRECTED)
+//
+// FORENSIC FIX (2026-07-17):
+// The previous implementation compared `decision_rules.rule_intent`
+// (which encodes SEMANTIC ACTION TYPE — 'recommendation' | 'command' |
+// 'block' | 'education' | 'warning') against the farmer's diagnostic
+// intent code (e.g. 'POOR_TILLERING', 'emergence_failure'). These are
+// two disjoint symbol spaces — the comparison could never match, so
+// `kept` was always 0 and the entire intent-bound rule corpus was
+// silently `dropped`. Only the ~7 rows with rule_intent=NULL survived
+// as "generic penalty" rules, which then collapsed the graph.
+//
+// There is NO column on `decision_rules` that encodes farmer diagnostic
+// intent (verified: applicability_scope / category / crop_category /
+// required_observation_category are all scoping/taxonomy). Intent →
+// rule scoping is enforced upstream via `intent_observation_mapping`,
+// the hypothesis graph, and the condition evaluator.
+//
+// Therefore this gate now:
+//   1. Applies the INTENT_INCOMPATIBLE hard-drop map against
+//      `rule.category` (the correct semantic column for that check).
+//   2. Preserves the `_genericPenalty` marker on rules with
+//      rule_intent == null so the Phase-D arbiter continues to demote
+//      undeclared-action rules (unchanged behaviour).
+//   3. Does NOT filter on rule_intent as a diagnostic-intent match.
+//   4. Emits the same [BRAIN_TRACE][RULE_INTENT_GATE] log shape so
+//      regression fixtures and log parsers remain valid.
 // ═══════════════════════════════════════════════════════════════════════════
-// Intent-incompatibility list. Some intents are agronomically exclusive:
-// a farmer reporting "seed never emerged" can never be served by a
-// "cyclone recovery" or "stress recovery" rule, even if every other
-// condition technically matches. Listed at the intent ID layer only — no
-// per-crop agronomic constants.
+// Intent-incompatibility list keyed by farmer diagnostic intent →
+// forbidden rule `category` values. E.g. an "emergence_failure" turn
+// can never be served by a "cyclone_recovery" or "post_harvest"
+// category rule. No per-crop agronomic constants live here.
 const INTENT_INCOMPATIBLE: Record<string, ReadonlySet<string>> = {
   emergence_failure: new Set([
     'cyclone_recovery',
@@ -1371,63 +1391,32 @@ export function filterRulesByIntent(
   const intentKey = intent.toLowerCase();
   const incompat = INTENT_INCOMPATIBLE[intentKey] ?? new Set<string>();
   const out: ExecutableRule[] = [];
-  let kept = 0, demoted = 0, dropped = 0, incompatDropped = 0;
+  let kept = 0, demoted = 0, incompatDropped = 0;
   for (const r of rules) {
-    const ri = ((r as any).rule_intent ?? null);
-    const riLc = ri == null ? null : String(ri).toLowerCase();
-    if (riLc && incompat.has(riLc)) {
+    // (1) Intent-incompatibility hard drop, evaluated on `category`.
+    const cat = String((r as any).category ?? '').toLowerCase();
+    if (cat && incompat.has(cat)) {
       incompatDropped++;
       continue;
     }
+    // (2) Generic-penalty marker (unchanged Phase-D contract).
+    const ri = ((r as any).rule_intent ?? null);
     if (ri == null) {
-      // Generic rule — keep but mark for arbiter penalty.
       (r as any)._genericPenalty = true;
-      out.push(r);
       demoted++;
-    } else if (riLc === intentKey) {
-      out.push(r);
-      kept++;
     } else {
-      dropped++;
+      kept++;
     }
+    out.push(r);
   }
-  // FIX 4: intent-gate leakage guard. If NO rule matched the current intent
-  // (kept=0) but generic rules were demoted through, none of those may be
-  // promoted to a treatment/prescription decision — they must be flagged so
-  // the arbiter and prescription gate can route to clarification /
-  // information response instead of ever winning a treatment action.
-  //
-  // FORENSIC FIX (2026-07): Exempt diagnostic / observation intents from the
-  // leakage guard. In a diagnostic turn the farmer has reported a symptom;
-  // the correct symbolic path is condition-driven matching over the whole
-  // rule set (generic diagnostic rules have rule_intent=null in DB). Flagging
-  // them all _noTreatmentEligible collapses the graph and hands the win to
-  // an unrelated proactive rule (e.g. PROACTIVE_FLOOD_PREPAREDNESS_001).
-  const DIAGNOSTIC_INTENT_KEYS = new Set<string>([
-    'diagnostic_inquiry','diagnosis','report_symptom','pest_observation','disease_observation',
-    'stem_damage','leaf_damage','root_damage','fruit_damage','borer_identification','borer_damage',
-    'dead_heart','insect_damage','fungal_infection','growth_anomaly','wilting_drying','yellowing',
-    'nutrient_deficiency','unknown_observation','emergence_failure','germination_failure',
-  ]);
-  if (kept === 0 && demoted > 0 && !DIAGNOSTIC_INTENT_KEYS.has(intentKey)) {
-    for (const r of out) {
-      (r as any)._intentGateLeakage = true;
-      (r as any)._noTreatmentEligible = true;
-    }
-    console.warn(
-      `[BRAIN_TRACE][RULE_INTENT_GATE][LEAKAGE_GUARD] intent="${intentKey}" kept=0 demoted=${demoted} ` +
-      `→ all remaining rules marked _noTreatmentEligible (route to clarification or info response)`
-    );
-  } else if (kept === 0 && demoted > 0) {
-    console.log(
-      `[BRAIN_TRACE][RULE_INTENT_GATE][DIAGNOSTIC_EXEMPT] intent="${intentKey}" kept=0 demoted=${demoted} ` +
-      `→ leakage guard skipped; diagnostic condition matching may proceed`
-    );
-  }
+  // NOTE: `dropped` remains in the log for shape compatibility; with
+  // the semantic mismatch fixed there is no longer a bucket that drops
+  // rules for intent-mismatch reasons, so it is always 0.
   console.log(
-    `[BRAIN_TRACE][RULE_INTENT_GATE] intent="${intentKey}" kept=${kept} demoted=${demoted} dropped=${dropped} incompat_dropped=${incompatDropped}`
+    `[BRAIN_TRACE][RULE_INTENT_GATE] intent="${intentKey}" kept=${kept} demoted=${demoted} dropped=0 incompat_dropped=${incompatDropped}`
   );
   return out;
+
 }
 
 export function evaluateRulesWithIntent(
