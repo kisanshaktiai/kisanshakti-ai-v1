@@ -4,9 +4,19 @@
  * Authority lives in public.observation_aliases and public.observation_master.
  * This module performs identity resolution only; it contains no agronomic
  * mappings, crop branches, pest rules, or text-derived diagnosis logic.
+ *
+ * CHANGE LOG (newest first)
+ *   2026-07-22 — Phase 2: added shadow dual-read against the shared
+ *     observation-index (see utils/db-ssot/observation-index.ts). Legacy
+ *     query result is still returned verbatim; a `[OBS_INDEX_DIFF]` line is
+ *     logged if the index disagrees. No routing change.
  */
 
 import { SymbolContract } from '../runtime/symbol-contract.ts';
+import {
+  resolveAliasCanonical as _idxResolveAliasCanonical,
+  observationIndexDiff as _idxDiff,
+} from '../utils/db-ssot/observation-index.ts';
 
 export interface ResolvedObservationSymbol {
   raw_symbol: string;
@@ -94,6 +104,14 @@ export async function resolveObservationSymbol(
     if (Array.isArray(aliasRows) && aliasRows.length > 0) {
       const canonical = String(aliasRows[0]?.canonical_code || '').trim();
       if (canonical) {
+        // Phase 2 shadow dual-read — index is not authoritative.
+        for (const v of variants) {
+          const idxCanonical = _idxResolveAliasCanonical(v);
+          if (idxCanonical) {
+            _idxDiff('symbol-resolver.alias', v, canonical, idxCanonical);
+            break;
+          }
+        }
         const master = await resolveMasterRow(supabase, canonical);
         return {
           raw_symbol: raw,
@@ -103,6 +121,15 @@ export async function resolveObservationSymbol(
           resolved: true,
           source: 'observation_aliases',
         };
+      }
+    } else {
+      // Shadow: legacy found nothing — did the index find a canonical?
+      for (const v of variants) {
+        const idxCanonical = _idxResolveAliasCanonical(v);
+        if (idxCanonical) {
+          _idxDiff('symbol-resolver.alias', v, null, idxCanonical, { note: 'legacy_miss_index_hit' });
+          break;
+        }
       }
     }
   } catch (e) {

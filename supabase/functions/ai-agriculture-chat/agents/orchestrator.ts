@@ -114,6 +114,7 @@ import {
   getEmergencyObsCodes as _getEmergencyObsCodesDb,
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
+import { preloadObservationIndex as _preloadObservationIndex } from '../utils/db-ssot/observation-index.ts';
 
 const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
   'EMERGENCE_FAILURE',
@@ -1279,6 +1280,10 @@ export class AIAgentOrchestrator {
     // Phase 1 DB-SSOT: preload (TTL-gated, single-flight; ~0ms warm, ~50-150ms cold)
     try { await _preloadPhase1Caches(this.supabase); } catch (e) {
       console.warn(`[DB_SSOT_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
+    }
+    // Phase 2 DB-SSOT: shadow observation-index preload (non-authoritative, dual-read window).
+    try { await _preloadObservationIndex(this.supabase); } catch (e) {
+      console.warn(`[OBS_INDEX] preload_failed trace=${traceId} err=${(e as Error).message}`);
     }
     let response: OrchestratorResponse;
     try {
