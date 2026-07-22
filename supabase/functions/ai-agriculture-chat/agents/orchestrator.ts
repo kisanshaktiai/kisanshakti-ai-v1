@@ -114,6 +114,7 @@ import {
   getEmergencyObsCodes as _getEmergencyObsCodesDb,
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
+import { preloadObservationIndex as _preloadObservationIndex } from '../utils/db-ssot/observation-index.ts';
 
 const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
   'EMERGENCE_FAILURE',
