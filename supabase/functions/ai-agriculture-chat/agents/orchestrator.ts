@@ -1281,6 +1281,10 @@ export class AIAgentOrchestrator {
     try { await _preloadPhase1Caches(this.supabase); } catch (e) {
       console.warn(`[DB_SSOT_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
     }
+    // Phase 2 DB-SSOT: shadow observation-index preload (non-authoritative, dual-read window).
+    try { await _preloadObservationIndex(this.supabase); } catch (e) {
+      console.warn(`[OBS_INDEX] preload_failed trace=${traceId} err=${(e as Error).message}`);
+    }
     let response: OrchestratorResponse;
     try {
       response = await this._orchestrateImpl(farmerMessage, sessionId, farmerId, tenantId, options);
