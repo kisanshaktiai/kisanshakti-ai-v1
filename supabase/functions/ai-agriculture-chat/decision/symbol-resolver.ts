@@ -104,6 +104,14 @@ export async function resolveObservationSymbol(
     if (Array.isArray(aliasRows) && aliasRows.length > 0) {
       const canonical = String(aliasRows[0]?.canonical_code || '').trim();
       if (canonical) {
+        // Phase 2 shadow dual-read — index is not authoritative.
+        for (const v of variants) {
+          const idxCanonical = _idxResolveAliasCanonical(v);
+          if (idxCanonical) {
+            _idxDiff('symbol-resolver.alias', v, canonical, idxCanonical);
+            break;
+          }
+        }
         const master = await resolveMasterRow(supabase, canonical);
         return {
           raw_symbol: raw,
@@ -113,6 +121,15 @@ export async function resolveObservationSymbol(
           resolved: true,
           source: 'observation_aliases',
         };
+      }
+    } else {
+      // Shadow: legacy found nothing — did the index find a canonical?
+      for (const v of variants) {
+        const idxCanonical = _idxResolveAliasCanonical(v);
+        if (idxCanonical) {
+          _idxDiff('symbol-resolver.alias', v, null, idxCanonical, { note: 'legacy_miss_index_hit' });
+          break;
+        }
       }
     }
   } catch (e) {
