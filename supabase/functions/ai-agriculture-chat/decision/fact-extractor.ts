@@ -21,16 +21,28 @@ import type { SymbolicFact } from './symbolic-reasoner.ts';
 export const FACT_EXTRACTOR_VERSION = '3.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PEST INDICATORS - Known pest observation codes
+// PEST INDICATORS - Phase 1 DB-SSOT
+// ───────────────────────────────────────────────────────────────────────────
+// Source: observation_master WHERE semantic_class='pest' AND is_diagnostic=true
+// (248 rows verified 2026-07-22). The tiny legacy set below is retained ONLY
+// as cold-boot fallback used while the DB cache preloads.
 // ═══════════════════════════════════════════════════════════════════════════
-const PEST_INDICATORS = new Set([
+import { isPestIndicator as _isPestIndicatorDb, phase1CacheReady as _phase1CacheReady } from '../utils/db-ssot/phase1-caches.ts';
+
+const _LEGACY_PEST_INDICATORS: ReadonlySet<string> = new Set([
   'DEAD_HEART_PRESENT', 'DEAD_HEART', 'STEM_BORING_MARKS', 'BORE_HOLES_AT_BASE',
   'BORE_HOLES_VISIBLE', 'FRASS_VISIBLE', 'FRASS_IN_TUNNEL', 'LARVAE_PRESENT',
   'INSECTS_VISIBLE', 'HONEYDEW_PRESENT', 'SMALL_INSECTS_VISIBLE',
   'SHOOT_BORER', 'STEM_BORER', 'BOLLWORM', 'APHID_INFESTATION',
   'WHITEFLY_INFESTATION', 'MEALYBUG_INFESTATION', 'THRIPS_DAMAGE',
-  'LEAF_MINER_TRAILS', 'WEBBING_VISIBLE', 'CATERPILLAR_PRESENT'
+  'LEAF_MINER_TRAILS', 'WEBBING_VISIBLE', 'CATERPILLAR_PRESENT',
 ]);
+
+function isPestIndicator(code: string): boolean {
+  const key = code.toUpperCase().replace(/[\s-]/g, '_');
+  if (_phase1CacheReady()) return _isPestIndicatorDb(key);
+  return _LEGACY_PEST_INDICATORS.has(key);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FACT EXTRACTOR CLASS
@@ -71,7 +83,7 @@ export class FactExtractor {
     if (symptomFacts.primary_symptom && symptomFacts.primary_symptom !== 'UNKNOWN' && !obsArray.includes(symptomFacts.primary_symptom)) {
       obsArray.push(symptomFacts.primary_symptom);
     }
-    const hasPestEvidence = obsArray.some(obs => PEST_INDICATORS.has(obs.toUpperCase().replace(/[\s-]/g, '_')));
+    const hasPestEvidence = obsArray.some(obs => isPestIndicator(obs));
     
     console.log(`   Core: crop=${coreFacts.crop}, stage=${coreFacts.growth_stage}, DOS=${coreFacts.dos}`);
     console.log(`   Symptom: ${symptomFacts.primary_symptom}, severity=${symptomFacts.severity}`);

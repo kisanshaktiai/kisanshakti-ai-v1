@@ -149,15 +149,11 @@ export interface HypothesisEvaluationOutput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CANONICAL GROUPS FOR RULE FILTERING
+// (Phase 1 DB-SSOT) HYPOTHESIS_CANONICAL_GROUPS removed — the hardcoded list
+// was declared but never referenced in this file. Canonical groups now flow
+// from hypothesis_master.canonical_group (13 active groups) via the shared
+// utils/db-ssot/phase1-caches.getHypothesisCanonicalGroups() accessor.
 // ═══════════════════════════════════════════════════════════════════════════
-
-const HYPOTHESIS_CANONICAL_GROUPS = [
-  'pest', 'disease', 'stress', 'germination', 'irrigation',
-  'nutrition', 'deficiency', 'insect', 'fungal', 'bacterial',
-  'viral', 'establishment', 'soil_borne', 'borer', 'mite',
-  'weed', '06_weed', 'harvest', '11_harvest', 'economics'
-];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE F — VARIETY RESISTANCE MODULATION

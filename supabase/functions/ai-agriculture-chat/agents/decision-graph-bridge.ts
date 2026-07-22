@@ -68,25 +68,35 @@ export interface EvaluatedRule {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// BANNED CHEMICALS (Code-level failsafe)
+// SAFETY CHEMICAL AUTHORITY (Phase 1 DB-SSOT)
+// ───────────────────────────────────────────────────────────────────────────
+// Banned + restricted + watch_list live in public.chemical_regulatory_status
+// (44 banned, 12 restricted, 3 watch_list rows verified 2026-07-22).
+// The two legacy arrays below are retained ONLY as cold-boot fallback used
+// while the DB cache preloads. Do NOT add rows here — insert into DB.
+// NEONICOTINOIDS stays hardcoded for now (deferred to Phase 4: needs
+// chemical_regulatory_status.chemical_class column).
+// watch_list behavior change (new in Phase 1): matched watch_list chemicals
+// surface an informational WARN rule, never a BLOCK — surfaces regulatory
+// attention without denying access to still-legal inputs.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const BANNED_CHEMICALS = [
+import {
+  isBannedChemical as _isBannedChemicalDb,
+  isWatchListChemical as _isWatchListChemicalDb,
+} from '../utils/db-ssot/phase1-caches.ts';
+
+const _LEGACY_BANNED_CHEMICALS: readonly string[] = [
   'monocrotophos', 'endosulfan', 'carbofuran', 'phorate', 'triazophos',
   'methomyl', 'methyl parathion', 'phosphamidon', 'ethyl parathion',
   'dieldrin', 'aldrin', 'chlordane', 'heptachlor', 'bhc', 'ddt',
   'aldicarb', 'captafol', 'nicotine sulfate', 'sodium cyanide',
-  'lindane', 'alachlor'
-];
-
-const RESTRICTED_CHEMICALS = [
-  'chlorpyrifos', 'profenofos', 'aluminum phosphide', 'aluminium phosphide',
-  'ethion', 'dicofol', '2,4-d', 'paraquat'
+  'lindane', 'alachlor',
 ];
 
 const NEONICOTINOIDS = [
   'imidacloprid', 'thiamethoxam', 'clothianidin', 'acetamiprid',
-  'thiacloprid', 'dinotefuran', 'nitenpyram'
+  'thiacloprid', 'dinotefuran', 'nitenpyram',
 ];
 
 
@@ -107,15 +117,21 @@ export async function evaluateDecisionGraph(
   
   const chemicalMentioned = context.last_chemical_used?.toLowerCase() || '';
   
-  // 1. Safety Checks (Banned Chemicals)
-  for (const banned of BANNED_CHEMICALS) {
-    if (chemicalMentioned.includes(banned)) {
+  // 1. Safety Checks — Banned chemicals (DB SSOT via phase1-caches; cold-boot
+  //    fallback to _LEGACY_BANNED_CHEMICALS if the cache has not yet loaded).
+  if (chemicalMentioned) {
+    const hitBanned = _LEGACY_BANNED_CHEMICALS.find((b) => chemicalMentioned.includes(b))
+      || (_isBannedChemicalDb(chemicalMentioned) ? chemicalMentioned : undefined);
+    // The two-step above is defensive: substring match against the fallback
+    // preserves the original ‘includes’ semantics, while _isBannedChemicalDb
+    // catches DB-only entries once the cache is warm.
+    if (hitBanned) {
       isBlocked = true;
       blockingRule = {
         rule_id: 'SAFETY_001_BANNED',
         priority: 'P0_EMERGENCY',
-        reason: `${banned.toUpperCase()} is banned. Usage is illegal.`,
-        alternatives: ['Contact KVK for safe alternatives']
+        reason: `${hitBanned.toUpperCase()} is banned. Usage is illegal.`,
+        alternatives: ['Contact KVK for safe alternatives'],
       };
       evaluatedRules.push({
         rule_id: 'SAFETY_001_BANNED',
@@ -125,10 +141,23 @@ export async function evaluateDecisionGraph(
         action: 'BLOCK',
         confidence: 1.0,
         scientific_basis: 'CIB&RC Banned Pesticide List',
-        recommendation_en: `⛔ ${banned} is completely banned in India. Do not use.`,
-        recommendation_mr: `⛔ ${banned} हे रसायन भारतात पूर्णपणे बंद आहे.`
+        recommendation_en: `⛔ ${hitBanned} is completely banned in India. Do not use.`,
+        recommendation_mr: `⛔ ${hitBanned} हे रसायन भारतात पूर्णपणे बंद आहे.`,
       });
-      break;
+    } else if (_isWatchListChemicalDb(chemicalMentioned)) {
+      // Phase 1 behavior change: watch_list chemicals are NOT blocked — they
+      // surface an informational WARN so the farmer is aware of pending
+      // regulatory review without denying access to still-legal inputs.
+      evaluatedRules.push({
+        rule_id: 'SAFETY_WATCHLIST_INFO',
+        category: 'safety',
+        priority: 'P3_ADVISORY',
+        fired: true,
+        action: 'WARN',
+        confidence: 0.8,
+        scientific_basis: 'chemical_regulatory_status.status = watch_list',
+        recommendation_en: `⚠️ ${chemicalMentioned} is under regulatory review. Use only if necessary and prefer alternatives.`,
+      });
     }
   }
 

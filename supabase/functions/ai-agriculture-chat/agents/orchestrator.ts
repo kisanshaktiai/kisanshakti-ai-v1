@@ -100,7 +100,22 @@ const DECISION_GRAPH_STAGE_SEQUENCE: Record<DecisionGraphStage, number> = {
   BRAIN_TRACE: 5,
 };
 
-const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1 DB-SSOT: diagnostic-intent authority lives in
+// observation_intent_master.routing_target='SYMBOLIC_BRAIN' (85 rows).
+// The legacy hardcoded set below is retained ONLY as a cold-boot fallback
+// used while the DB cache is loading; once phase1CacheReady() is true, DB is
+// the single source of truth. Do NOT add rows to this list — add them to
+// observation_intent_master and let the cache pick them up.
+// ─────────────────────────────────────────────────────────────────────────────
+import {
+  preloadPhase1Caches as _preloadPhase1Caches,
+  isDiagnosticIntent as _isDiagnosticIntentDb,
+  getEmergencyObsCodes as _getEmergencyObsCodesDb,
+  phase1CacheReady as _phase1CacheReady,
+} from '../utils/db-ssot/phase1-caches.ts';
+
+const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
   'EMERGENCE_FAILURE',
   'GERMINATION_FAILURE',
   'PEST',
@@ -113,10 +128,10 @@ const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
   'WILTING',
   'YELLOWING',
   'REPORT_SYMPTOM',
-]);
+];
 
 export function requiresAgronomicReasoningIntent(intent: unknown): boolean {
-  return DIAGNOSTIC_INTENTS_AUTHORITY.has(String(intent || '').trim().toUpperCase());
+  return _isDiagnosticIntentDb(intent, _LEGACY_DIAGNOSTIC_INTENTS);
 }
 
 function assertDecisionGraphOrder(owner: any, traceId: string, stage: DecisionGraphStage): void {
@@ -503,11 +518,19 @@ interface BiologicalStateContradictionAudit {
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANT: Emergency observation codes (used in both return paths)
 // ═══════════════════════════════════════════════════════════════════════════
-const EMERGENCY_OBS_CODES = new Set([
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1 DB-SSOT: emergency observation authority is public.emergency_observation_codes
+// (38 rows). Legacy hardcoded set retained ONLY as cold-boot fallback until
+// the DB cache preloads. Use getEmergencyObsSet() at call sites.
+// ─────────────────────────────────────────────────────────────────────────────
+const _LEGACY_EMERGENCY_OBS_CODES: readonly string[] = [
   'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
   'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-]);
+  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH',
+];
+function getEmergencyObsSet(): Set<string> {
+  return _getEmergencyObsCodesDb(_LEGACY_EMERGENCY_OBS_CODES);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
@@ -1253,6 +1276,10 @@ export class AIAgentOrchestrator {
     options: any = {},
   ): Promise<OrchestratorResponse> {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    // Phase 1 DB-SSOT: preload (TTL-gated, single-flight; ~0ms warm, ~50-150ms cold)
+    try { await _preloadPhase1Caches(this.supabase); } catch (e) {
+      console.warn(`[DB_SSOT_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
+    }
     let response: OrchestratorResponse;
     try {
       response = await this._orchestrateImpl(farmerMessage, sessionId, farmerId, tenantId, options);
@@ -9471,7 +9498,7 @@ export class AIAgentOrchestrator {
         
         // Wire symptomKeys + isEmergency into IMMEDIATE return path
         const obsArray = Array.from(allObservationsForPreAuth || []);
-        const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
+        const isEmergencyImmediate = obsArray.some(code => getEmergencyObsSet().has(code));
         
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         decisionOutput.symptom_keys = obsArray;
@@ -10151,9 +10178,10 @@ export class AIAgentOrchestrator {
       }
       
       // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
+      // DB SSOT: emergency codes come from public.emergency_observation_codes
+      // via getEmergencyObsSet() (cold-boot fallback to _LEGACY_EMERGENCY_OBS_CODES)
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
-      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
+      const isEmergencyMain = obsArrayMain.some(code => getEmergencyObsSet().has(code));
 
       // ═══════════════════════════════════════════════════════════════════════
       // GRAPH CONTRACT — FINAL_RESPONSE + invariant assertions
