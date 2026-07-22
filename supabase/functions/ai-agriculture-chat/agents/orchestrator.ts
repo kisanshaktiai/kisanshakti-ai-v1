@@ -518,11 +518,19 @@ interface BiologicalStateContradictionAudit {
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANT: Emergency observation codes (used in both return paths)
 // ═══════════════════════════════════════════════════════════════════════════
-const EMERGENCY_OBS_CODES = new Set([
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1 DB-SSOT: emergency observation authority is public.emergency_observation_codes
+// (38 rows). Legacy hardcoded set retained ONLY as cold-boot fallback until
+// the DB cache preloads. Use getEmergencyObsSet() at call sites.
+// ─────────────────────────────────────────────────────────────────────────────
+const _LEGACY_EMERGENCY_OBS_CODES: readonly string[] = [
   'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
   'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-]);
+  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH',
+];
+function getEmergencyObsSet(): Set<string> {
+  return _getEmergencyObsCodesDb(_LEGACY_EMERGENCY_OBS_CODES);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
@@ -1268,6 +1276,10 @@ export class AIAgentOrchestrator {
     options: any = {},
   ): Promise<OrchestratorResponse> {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    // Phase 1 DB-SSOT: preload (TTL-gated, single-flight; ~0ms warm, ~50-150ms cold)
+    try { await _preloadPhase1Caches(this.supabase); } catch (e) {
+      console.warn(`[DB_SSOT_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
+    }
     let response: OrchestratorResponse;
     try {
       response = await this._orchestrateImpl(farmerMessage, sessionId, farmerId, tenantId, options);
@@ -9486,7 +9498,7 @@ export class AIAgentOrchestrator {
         
         // Wire symptomKeys + isEmergency into IMMEDIATE return path
         const obsArray = Array.from(allObservationsForPreAuth || []);
-        const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
+        const isEmergencyImmediate = obsArray.some(code => getEmergencyObsSet().has(code));
         
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         decisionOutput.symptom_keys = obsArray;

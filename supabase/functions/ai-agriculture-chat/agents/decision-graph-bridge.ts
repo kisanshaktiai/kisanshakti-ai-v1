@@ -68,25 +68,35 @@ export interface EvaluatedRule {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// BANNED CHEMICALS (Code-level failsafe)
+// SAFETY CHEMICAL AUTHORITY (Phase 1 DB-SSOT)
+// ───────────────────────────────────────────────────────────────────────────
+// Banned + restricted + watch_list live in public.chemical_regulatory_status
+// (44 banned, 12 restricted, 3 watch_list rows verified 2026-07-22).
+// The two legacy arrays below are retained ONLY as cold-boot fallback used
+// while the DB cache preloads. Do NOT add rows here — insert into DB.
+// NEONICOTINOIDS stays hardcoded for now (deferred to Phase 4: needs
+// chemical_regulatory_status.chemical_class column).
+// watch_list behavior change (new in Phase 1): matched watch_list chemicals
+// surface an informational WARN rule, never a BLOCK — surfaces regulatory
+// attention without denying access to still-legal inputs.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const BANNED_CHEMICALS = [
+import {
+  isBannedChemical as _isBannedChemicalDb,
+  isWatchListChemical as _isWatchListChemicalDb,
+} from '../utils/db-ssot/phase1-caches.ts';
+
+const _LEGACY_BANNED_CHEMICALS: readonly string[] = [
   'monocrotophos', 'endosulfan', 'carbofuran', 'phorate', 'triazophos',
   'methomyl', 'methyl parathion', 'phosphamidon', 'ethyl parathion',
   'dieldrin', 'aldrin', 'chlordane', 'heptachlor', 'bhc', 'ddt',
   'aldicarb', 'captafol', 'nicotine sulfate', 'sodium cyanide',
-  'lindane', 'alachlor'
-];
-
-const RESTRICTED_CHEMICALS = [
-  'chlorpyrifos', 'profenofos', 'aluminum phosphide', 'aluminium phosphide',
-  'ethion', 'dicofol', '2,4-d', 'paraquat'
+  'lindane', 'alachlor',
 ];
 
 const NEONICOTINOIDS = [
   'imidacloprid', 'thiamethoxam', 'clothianidin', 'acetamiprid',
-  'thiacloprid', 'dinotefuran', 'nitenpyram'
+  'thiacloprid', 'dinotefuran', 'nitenpyram',
 ];
 
 
