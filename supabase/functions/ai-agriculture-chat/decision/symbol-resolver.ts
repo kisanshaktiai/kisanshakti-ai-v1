@@ -69,6 +69,56 @@ export async function resolveObservationSymbol(
 
   try {
     let aliasRows: any[] = [];
+  const variants = formatVariants(raw);
+
+  // Phase 3b: index-first alias resolution. Only fall through to per-request
+  // DB queries when the index is not warm (cold boot / preload failure).
+  if (_idxReady()) {
+    for (const v of variants) {
+      const canonical = _idxResolveAliasCanonical(v);
+      if (canonical) {
+        const masterRow = _idxGetMaster(canonical);
+        const canonicalCode = masterRow?.observation_code ?? canonical;
+        return {
+          raw_symbol: raw,
+          graph_symbol: SymbolContract.normalize(canonicalCode),
+          canonical_observation_id: canonicalCode,
+          canonical_observation_code: canonicalCode,
+          resolved: true,
+          source: 'observation_aliases',
+        };
+      }
+    }
+    // Alias miss — try master directly via index.
+    for (const v of variants) {
+      const masterRow = _idxGetMaster(v);
+      if (masterRow?.observation_code) {
+        return {
+          raw_symbol: raw,
+          graph_symbol: SymbolContract.normalize(masterRow.observation_code),
+          canonical_observation_id: masterRow.observation_code,
+          canonical_observation_code: masterRow.observation_code,
+          resolved: true,
+          source: 'observation_master',
+        };
+      }
+    }
+    console.warn(`[SYMBOL_RESOLVER] unresolved symbol=${graph} (index-authoritative)`);
+    return {
+      raw_symbol: raw,
+      graph_symbol: graph,
+      canonical_observation_id: null,
+      canonical_observation_code: null,
+      resolved: false,
+      source: 'unresolved',
+      reason: 'no_observation_master_or_alias_node',
+    };
+  }
+
+  // Cold-boot fallback: index not warm — original DB path (unchanged).
+  console.warn(`[SYMBOL_RESOLVER][COLD_BOOT] index not ready symbol=${graph} — using legacy DB path`);
+  try {
+    let aliasRows: any[] = [];
     const aliasByCode = await supabase
       .from('observation_aliases')
       .select('alias_code, alias_normalized, alias_text, canonical_code, active')
@@ -110,14 +160,6 @@ export async function resolveObservationSymbol(
     if (Array.isArray(aliasRows) && aliasRows.length > 0) {
       const canonical = String(aliasRows[0]?.canonical_code || '').trim();
       if (canonical) {
-        // Phase 2 shadow dual-read — index is not authoritative.
-        for (const v of variants) {
-          const idxCanonical = _idxResolveAliasCanonical(v);
-          if (idxCanonical) {
-            _idxDiff('symbol-resolver.alias', v, canonical, idxCanonical);
-            break;
-          }
-        }
         const master = await resolveMasterRow(supabase, canonical);
         return {
           raw_symbol: raw,
@@ -127,15 +169,6 @@ export async function resolveObservationSymbol(
           resolved: true,
           source: 'observation_aliases',
         };
-      }
-    } else {
-      // Shadow: legacy found nothing — did the index find a canonical?
-      for (const v of variants) {
-        const idxCanonical = _idxResolveAliasCanonical(v);
-        if (idxCanonical) {
-          _idxDiff('symbol-resolver.alias', v, null, idxCanonical, { note: 'legacy_miss_index_hit' });
-          break;
-        }
       }
     }
   } catch (e) {
