@@ -16,7 +16,7 @@ import { SymbolContract } from '../runtime/symbol-contract.ts';
 import {
   resolveAliasCanonical as _idxResolveAliasCanonical,
   observationIndexDiff as _idxDiff,
-} from '../../utils/db-ssot/observation-index.ts';
+} from '../utils/db-ssot/observation-index.ts';
 
 export interface ResolvedObservationSymbol {
   raw_symbol: string;
