@@ -65,29 +65,9 @@ async function loadCanonicalIntentCodes(): Promise<Set<string>> {
       }
       const set = new Set<string>(data.map((r: any) => r.intent_code));
       _validIntentCodes = set;
-      // Phase 2 dual-read (SHADOW): compare legacy per-site load against the
-      // shared observation-index. Non-authoritative — never branches on diff.
-      try {
-        const { observationIndexReady, observationIndexDiff } =
-          await import('../utils/db-ssot/observation-index.ts');
-        if (observationIndexReady()) {
-          // Compare set sizes and a bounded sample of missing codes.
-          const legacy = Array.from(set).map((c) => String(c).toUpperCase()).sort();
-          // Pull intents from the shared index snapshot indirectly by re-checking
-          // each legacy code — a miss means the index doesn't know that intent.
-          const { getObservationIntent } = await import('../utils/db-ssot/observation-index.ts');
-          const missing = legacy.filter((code) => !getObservationIntent(code));
-          if (missing.length > 0) {
-            observationIndexDiff(
-              'intent-classifier.canonical_intents',
-              'ALL_ACTIVE',
-              { count: legacy.length },
-              { count: legacy.length - missing.length, missing_sample: missing.slice(0, 5) },
-              { missing_count: missing.length },
-            );
-          }
-        }
-      } catch (_e) { /* diff must never break loader */ }
+      // Phase 3b: shadow dual-read removed. `observation-index` already
+      // mirrors this table on boot; the intent-set here is the canonical
+      // authority consumed by `registerIntentCodeSet()` below.
       try { registerIntentCodeSet(set); } catch (_e) { /* non-fatal */ }
       console.log(`[IntentValidator] Loaded ${set.size} canonical intent codes from DB`);
       return set;

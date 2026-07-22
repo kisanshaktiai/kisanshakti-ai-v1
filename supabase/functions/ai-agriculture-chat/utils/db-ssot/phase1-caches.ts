@@ -2,16 +2,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-22 — Phase 3b cutover: safety accessors (`isBannedChemical`,
+ *   `isRestrictedChemical`) now HARD-FAIL via `SafetyCacheUnavailableError`
+ *   when the preload has completed but the cache is empty. Legacy fallback
+ *   is retained ONLY for the cold-boot window (phase1CacheReady()===false).
+ *   Callers MUST catch this error and refuse to emit a chemical
+ *   recommendation for the turn rather than silently under-blocking.
  * 2026-07-22 — Phase 1 initial: four DB-SSOT caches replacing hardcoded
  *   TS arrays across decision-graph-bridge, orchestrator, hypothesis-evaluator,
  *   fact-extractor. Boot-time preload with single-flight promise; sync
- *   accessors used by hot-path callers. Safety-critical caches (banned /
- *   restricted / watch_list chemicals) fall back to caller-supplied legacy
- *   arrays with loud [DB_SSOT_CACHE_MISS] discipline=safety warnings.
- *   Enrichment caches (emergency obs, diagnostic intents, canonical groups,
- *   pest indicators) fail open with discipline=enrichment warnings.
- *   Phase 3b will convert safety warnings to hard-fail once boot-assertion +
- *   multilingual refusal rows are in place.
+ *   accessors used by hot-path callers.
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * PHASE 1 DB-SSOT CACHES
@@ -175,13 +175,24 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SAFETY-CRITICAL ACCESSORS (Phase 1: warn+fallback → Phase 3b: hard-fail)
+// SAFETY-CRITICAL ACCESSORS (Phase 3b: hard-fail when cache ready but empty)
 // ─────────────────────────────────────────────────────────────────────────────
+
+class SafetyCacheUnavailableError extends Error {
+  constructor(table: string) {
+    super(
+      `[SAFETY_HARD_FAIL] ${table} cache is empty after preload — refusing to ` +
+        `evaluate chemical safety without DB truth. Reasoner MUST NOT emit a ` +
+        `recommendation this turn.`,
+    );
+    this.name = 'SafetyCacheUnavailableError';
+  }
+}
 
 function safetyMissWarn(table: string): void {
   console.warn(
     `[DB_SSOT_CACHE_MISS] discipline=safety table=${table} loaded=${state.loadedAt ? 'stale' : 'never'} ` +
-      `action=phase1_legacy_fallback note=hard_fail_pending_phase3b`,
+      `action=phase3b_cold_boot_legacy_fallback`,
   );
 }
 
@@ -191,6 +202,11 @@ export function isBannedChemical(name: string, legacyFallback: readonly string[]
   if (state.bannedChemicals.size > 0) {
     for (const b of state.bannedChemicals) if (q.includes(b)) return true;
     return false;
+  }
+  // Phase 3b: once the cache preload has completed, an empty banned set is a
+  // safety-critical failure — hard-fail rather than silently under-blocking.
+  if (phase1CacheReady()) {
+    throw new SafetyCacheUnavailableError('chemical_regulatory_status.banned');
   }
   safetyMissWarn('chemical_regulatory_status.banned');
   return legacyFallback.some((b) => q.includes(b.toLowerCase()));
@@ -202,6 +218,9 @@ export function isRestrictedChemical(name: string, legacyFallback: readonly stri
   if (state.restrictedChemicals.size > 0) {
     for (const b of state.restrictedChemicals) if (q.includes(b)) return true;
     return false;
+  }
+  if (phase1CacheReady()) {
+    throw new SafetyCacheUnavailableError('chemical_regulatory_status.restricted');
   }
   safetyMissWarn('chemical_regulatory_status.restricted');
   return legacyFallback.some((b) => q.includes(b.toLowerCase()));
