@@ -226,19 +226,31 @@ function enrichmentMissWarnOnce(table: string): void {
   }
 }
 
-export function getEmergencyObsCodes(): Set<string> {
-  if (state.emergencyObsCodes.size === 0) enrichmentMissWarnOnce('emergency_observation_codes');
+/**
+ * True once the boot-time preload has populated caches at least once (and did
+ * not fail leaving loadedAt=null). Used by callers with a legacy hardcoded
+ * fallback so they only degrade during the pre-load window, never permanently.
+ */
+export function phase1CacheReady(): boolean {
+  return state.loadedAt !== null;
+}
+
+export function getEmergencyObsCodes(legacyFallback?: readonly string[]): Set<string> {
+  if (state.emergencyObsCodes.size > 0) return state.emergencyObsCodes;
+  enrichmentMissWarnOnce('emergency_observation_codes');
+  if (legacyFallback && !phase1CacheReady()) return new Set(legacyFallback.map(normUpper));
   return state.emergencyObsCodes;
 }
 
-export function isDiagnosticIntent(intent: unknown): boolean {
+export function isDiagnosticIntent(intent: unknown, legacyFallback?: readonly string[]): boolean {
   const k = normUpper(intent);
   if (!k) return false;
-  if (state.diagnosticIntents.size === 0) {
-    enrichmentMissWarnOnce('observation_intent_master.SYMBOLIC_BRAIN');
-    return false;
+  if (state.diagnosticIntents.size > 0) return state.diagnosticIntents.has(k);
+  enrichmentMissWarnOnce('observation_intent_master.SYMBOLIC_BRAIN');
+  if (legacyFallback && !phase1CacheReady()) {
+    return legacyFallback.some((v) => normUpper(v) === k);
   }
-  return state.diagnosticIntents.has(k);
+  return false;
 }
 
 export function getHypothesisCanonicalGroups(): string[] {
