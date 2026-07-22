@@ -42,7 +42,24 @@ export async function bridgeToCropVocab(
   const raw = String(code ?? '').trim();
   if (!raw) return { raw_code: raw, canonical_code: raw, source: 'identity' };
 
+  // Phase 3b cutover (2026-07-22): shared observation-index is authoritative
+  // when warm. Legacy per-request `observation_aliases` query is only used
+  // as a cold-boot fallback.
   try {
+    const { observationIndexReady, resolveAliasCanonical } =
+      await import('../utils/db-ssot/observation-index.ts');
+
+    if (observationIndexReady()) {
+      const canonical = resolveAliasCanonical(raw);
+      if (canonical && canonical !== raw) {
+        console.log(`[OBSERVATION_BRIDGE] crop=${cropCode ?? 'UNKNOWN'} input=${raw} output=${canonical} source=observation_aliases_index`);
+        return { raw_code: raw, canonical_code: canonical, source: 'observation_aliases' };
+      }
+      return { raw_code: raw, canonical_code: raw, source: 'identity' };
+    }
+
+    // Cold-boot fallback path — index not warm yet.
+    console.warn(`[OBSERVATION_BRIDGE][COLD_BOOT] index not ready — using legacy DB path input=${raw}`);
     const { data, error } = await supabase
       .from('observation_aliases')
       .select('alias_code, canonical_code, active')
@@ -56,29 +73,9 @@ export async function bridgeToCropVocab(
       return { raw_code: raw, canonical_code: raw, source: 'identity' };
     }
 
-    const legacyCanonical = data?.canonical_code ?? null;
-
-    // Phase 2 dual-read (SHADOW): compare legacy alias resolution against the
-    // shared observation-index. Non-authoritative — legacy result is returned
-    // unchanged. `[OBS_INDEX_DIFF]` findings drive the Phase 3b cutover.
-    try {
-      const { observationIndexReady, resolveAliasCanonical, observationIndexDiff } =
-        await import('../utils/db-ssot/observation-index.ts');
-      if (observationIndexReady()) {
-        const shared = resolveAliasCanonical(raw);
-        observationIndexDiff(
-          'concept-bridge.bridgeToCropVocab',
-          raw,
-          legacyCanonical,
-          shared,
-          { crop: cropCode ?? null },
-        );
-      }
-    } catch (_e) { /* diff must never break bridge */ }
-
-    if (legacyCanonical && legacyCanonical !== raw) {
-      console.log(`[OBSERVATION_BRIDGE] crop=${cropCode ?? 'UNKNOWN'} input=${raw} output=${legacyCanonical} source=observation_aliases`);
-      return { raw_code: raw, canonical_code: legacyCanonical, source: 'observation_aliases' };
+    if (data?.canonical_code && data.canonical_code !== raw) {
+      console.log(`[OBSERVATION_BRIDGE] crop=${cropCode ?? 'UNKNOWN'} input=${raw} output=${data.canonical_code} source=observation_aliases`);
+      return { raw_code: raw, canonical_code: data.canonical_code, source: 'observation_aliases' };
     }
 
     return { raw_code: raw, canonical_code: raw, source: 'identity' };
