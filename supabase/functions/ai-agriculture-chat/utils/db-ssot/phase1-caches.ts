@@ -2,16 +2,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-22 — Phase 3b cutover: safety accessors (`isBannedChemical`,
+ *   `isRestrictedChemical`) now HARD-FAIL via `SafetyCacheUnavailableError`
+ *   when the preload has completed but the cache is empty. Legacy fallback
+ *   is retained ONLY for the cold-boot window (phase1CacheReady()===false).
+ *   Callers MUST catch this error and refuse to emit a chemical
+ *   recommendation for the turn rather than silently under-blocking.
  * 2026-07-22 — Phase 1 initial: four DB-SSOT caches replacing hardcoded
  *   TS arrays across decision-graph-bridge, orchestrator, hypothesis-evaluator,
  *   fact-extractor. Boot-time preload with single-flight promise; sync
- *   accessors used by hot-path callers. Safety-critical caches (banned /
- *   restricted / watch_list chemicals) fall back to caller-supplied legacy
- *   arrays with loud [DB_SSOT_CACHE_MISS] discipline=safety warnings.
- *   Enrichment caches (emergency obs, diagnostic intents, canonical groups,
- *   pest indicators) fail open with discipline=enrichment warnings.
- *   Phase 3b will convert safety warnings to hard-fail once boot-assertion +
- *   multilingual refusal rows are in place.
+ *   accessors used by hot-path callers.
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * PHASE 1 DB-SSOT CACHES
