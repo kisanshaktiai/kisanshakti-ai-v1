@@ -4,9 +4,19 @@
  * Authority lives in public.observation_aliases and public.observation_master.
  * This module performs identity resolution only; it contains no agronomic
  * mappings, crop branches, pest rules, or text-derived diagnosis logic.
+ *
+ * CHANGE LOG (newest first)
+ *   2026-07-22 — Phase 2: added shadow dual-read against the shared
+ *     observation-index (see utils/db-ssot/observation-index.ts). Legacy
+ *     query result is still returned verbatim; a `[OBS_INDEX_DIFF]` line is
+ *     logged if the index disagrees. No routing change.
  */
 
 import { SymbolContract } from '../runtime/symbol-contract.ts';
+import {
+  resolveAliasCanonical as _idxResolveAliasCanonical,
+  observationIndexDiff as _idxDiff,
+} from '../../utils/db-ssot/observation-index.ts';
 
 export interface ResolvedObservationSymbol {
   raw_symbol: string;
