@@ -100,7 +100,22 @@ const DECISION_GRAPH_STAGE_SEQUENCE: Record<DecisionGraphStage, number> = {
   BRAIN_TRACE: 5,
 };
 
-const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1 DB-SSOT: diagnostic-intent authority lives in
+// observation_intent_master.routing_target='SYMBOLIC_BRAIN' (85 rows).
+// The legacy hardcoded set below is retained ONLY as a cold-boot fallback
+// used while the DB cache is loading; once phase1CacheReady() is true, DB is
+// the single source of truth. Do NOT add rows to this list — add them to
+// observation_intent_master and let the cache pick them up.
+// ─────────────────────────────────────────────────────────────────────────────
+import {
+  preloadPhase1Caches as _preloadPhase1Caches,
+  isDiagnosticIntent as _isDiagnosticIntentDb,
+  getEmergencyObsCodes as _getEmergencyObsCodesDb,
+  phase1CacheReady as _phase1CacheReady,
+} from '../utils/db-ssot/phase1-caches.ts';
+
+const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
   'EMERGENCE_FAILURE',
   'GERMINATION_FAILURE',
   'PEST',
@@ -113,10 +128,10 @@ const DIAGNOSTIC_INTENTS_AUTHORITY = new Set<string>([
   'WILTING',
   'YELLOWING',
   'REPORT_SYMPTOM',
-]);
+];
 
 export function requiresAgronomicReasoningIntent(intent: unknown): boolean {
-  return DIAGNOSTIC_INTENTS_AUTHORITY.has(String(intent || '').trim().toUpperCase());
+  return _isDiagnosticIntentDb(intent, _LEGACY_DIAGNOSTIC_INTENTS);
 }
 
 function assertDecisionGraphOrder(owner: any, traceId: string, stage: DecisionGraphStage): void {
