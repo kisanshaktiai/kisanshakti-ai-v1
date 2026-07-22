@@ -185,7 +185,7 @@ function safetyMissWarn(table: string): void {
   );
 }
 
-export function isBannedChemical(name: string, legacyFallback: readonly string[]): boolean {
+export function isBannedChemical(name: string, legacyFallback: readonly string[] = []): boolean {
   const q = norm(name);
   if (!q) return false;
   if (state.bannedChemicals.size > 0) {
@@ -196,7 +196,7 @@ export function isBannedChemical(name: string, legacyFallback: readonly string[]
   return legacyFallback.some((b) => q.includes(b.toLowerCase()));
 }
 
-export function isRestrictedChemical(name: string, legacyFallback: readonly string[]): boolean {
+export function isRestrictedChemical(name: string, legacyFallback: readonly string[] = []): boolean {
   const q = norm(name);
   if (!q) return false;
   if (state.restrictedChemicals.size > 0) {
