@@ -1292,7 +1292,31 @@ export class AIAgentOrchestrator {
     let response: OrchestratorResponse;
     try {
       response = await this._orchestrateImpl(farmerMessage, sessionId, farmerId, tenantId, options);
+    } catch (implErr) {
+      // Phase 3b safety hard-fail: if the DB safety cache is empty after preload
+      // completed, refuse rather than under-blocking. Any other error re-throws.
+      if ((implErr as Error)?.name === 'SafetyCacheUnavailableError') {
+        console.error(`[SAFETY_HARD_FAIL] trace=${traceId} ${(implErr as Error).message}`);
+        return {
+          type: 'SAFETY_BLOCKED',
+          session_id: sessionId,
+          blocked_reason: {
+            reason_en: 'Chemical safety database unavailable — cannot verify recommendation safety this turn.',
+          },
+          alternatives: ['Please retry shortly, or contact KVK for immediate guidance.'],
+          metadata: {
+            confidence: 0,
+            safety_status: 'BLOCKED',
+            rules_applied: 0,
+            processing_time_ms: 0,
+            agents_used: [],
+            safety_hard_fail: true,
+          },
+        } as unknown as OrchestratorResponse;
+      }
+      throw implErr;
     } finally {
+
       // Emit handoff check even when the impl throws so we can attribute
       // GraphRuntime ownership violations from partial failures too.
       try {
