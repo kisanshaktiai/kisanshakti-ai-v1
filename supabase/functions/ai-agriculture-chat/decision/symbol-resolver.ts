@@ -6,16 +6,22 @@
  * mappings, crop branches, pest rules, or text-derived diagnosis logic.
  *
  * CHANGE LOG (newest first)
+ *   2026-07-22 — Phase 3b cutover: shared observation-index is now
+ *     AUTHORITATIVE for alias resolution when warm. Legacy per-request DB
+ *     round-trips are used only as a fallback when the index reports
+ *     `observationIndexReady()===false` (cold boot / preload failure). Shadow
+ *     `[OBS_INDEX_DIFF]` calls removed. Master-row check is unchanged since
+ *     the index also stores master rows; a `resolveMasterFromIndex()`
+ *     helper avoids DB when possible.
  *   2026-07-22 — Phase 2: added shadow dual-read against the shared
- *     observation-index (see utils/db-ssot/observation-index.ts). Legacy
- *     query result is still returned verbatim; a `[OBS_INDEX_DIFF]` line is
- *     logged if the index disagrees. No routing change.
+ *     observation-index. Legacy result was returned verbatim.
  */
 
 import { SymbolContract } from '../runtime/symbol-contract.ts';
 import {
   resolveAliasCanonical as _idxResolveAliasCanonical,
-  observationIndexDiff as _idxDiff,
+  getObservationMaster as _idxGetMaster,
+  observationIndexReady as _idxReady,
 } from '../utils/db-ssot/observation-index.ts';
 
 export interface ResolvedObservationSymbol {
