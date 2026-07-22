@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-22 — Phase 3a hotfix: bio-contradiction reroute config reader now
+ *   uses `config_key`/`config_value` columns. Previously the `key`/`value`
+ *   query silently returned null so germination-intent reroute lists
+ *   always fell back to hardcoded defaults; seeded rows are now honoured.
  * 2026-07-11 — Context preservation: pass frozen CanonicalContext v2.1.0
  *   into runGraphRuntime alongside the existing primitives. Enables DB
  *   predicates referencing soil.moisture, weather.forecast_7d,
@@ -4931,14 +4935,18 @@ export class AIAgentOrchestrator {
                   fallback: string[] | string,
                 ): Promise<string[] | string> => {
                   try {
+                    // P3a hotfix (2026-07-22): system_config columns are
+                    // `config_key` / `config_value`. Legacy `key`/`value`
+                    // query silently returned null → every reroute tunable
+                    // fell back to the TS default. Fix restores DB authority.
                     const { data } = await this.supabase
                       .from('system_config')
-                      .select('value')
-                      .eq('key', key)
+                      .select('config_value')
+                      .eq('config_key', key)
                       .maybeSingle();
-                    const raw = data && (typeof data.value === 'object' && data.value !== null
-                      ? (data.value as any).value ?? data.value
-                      : data.value);
+                    const raw = data && (typeof data.config_value === 'object' && data.config_value !== null
+                      ? (data.config_value as any).value ?? data.config_value
+                      : data.config_value);
                     if (Array.isArray(fallback)) {
                       if (Array.isArray(raw)) return raw.map((x) => String(x));
                       return fallback;

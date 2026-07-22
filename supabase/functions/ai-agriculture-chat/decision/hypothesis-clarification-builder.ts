@@ -1,4 +1,14 @@
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (newest first)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-22 — Phase 3a hotfix: system_config tunable loader now queries
+ *   `config_key` / `config_value` (the real column names). Previously the
+ *   `key`/`value` query silently returned zero rows, so every seeded
+ *   `clarification_*` tunable fell back to the TS default. With this fix the
+ *   Phase 3a rows land in the reasoner as intended.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  * Hypothesis-first clarification builder.
  *
  * IOM is used only as a discovery seed. Farmer UI options are emitted only
@@ -94,10 +104,13 @@ async function readTunables(supabase: any, renderMaxFromCaller: number): Promise
     render_max: renderMaxFromCaller,
   };
   try {
+    // P3a hotfix (2026-07-22): system_config columns are `config_key`/`config_value`,
+    // not `key`/`value`. Prior code silently returned zero rows and every tunable fell
+    // back to the TS default, defeating Phase 3a seed rollout.
     const { data } = await supabase
       .from('system_config')
-      .select('key, value')
-      .in('key', [
+      .select('config_key, config_value')
+      .in('config_key', [
         'clarification_discriminator_bonus',
         'clarification_required_bonus',
         'clarification_nearest_expansion',
@@ -105,14 +118,16 @@ async function readTunables(supabase: any, renderMaxFromCaller: number): Promise
         'clarification_render_max',
       ]);
     for (const row of data ?? []) {
-      const raw = typeof row.value === 'object' && row.value !== null ? (row.value as any).value : row.value;
+      const raw = typeof row.config_value === 'object' && row.config_value !== null
+        ? (row.config_value as any).value ?? row.config_value
+        : row.config_value;
       const v = Number(raw);
       if (!isFinite(v)) continue;
-      if (row.key === 'clarification_discriminator_bonus') defaults.discriminator_bonus = v;
-      else if (row.key === 'clarification_required_bonus') defaults.required_bonus = v;
-      else if (row.key === 'clarification_nearest_expansion') defaults.nearest_expansion = Math.max(0, Math.floor(v));
-      else if (row.key === 'clarification_collect_max') defaults.collect_max = Math.max(1, Math.floor(v));
-      else if (row.key === 'clarification_render_max') defaults.render_max = Math.max(1, Math.floor(v));
+      if (row.config_key === 'clarification_discriminator_bonus') defaults.discriminator_bonus = v;
+      else if (row.config_key === 'clarification_required_bonus') defaults.required_bonus = v;
+      else if (row.config_key === 'clarification_nearest_expansion') defaults.nearest_expansion = Math.max(0, Math.floor(v));
+      else if (row.config_key === 'clarification_collect_max') defaults.collect_max = Math.max(1, Math.floor(v));
+      else if (row.config_key === 'clarification_render_max') defaults.render_max = Math.max(1, Math.floor(v));
     }
   } catch (e) {
     console.warn(`[HYP_CLARIFICATION] tunable load failed, using defaults: ${e instanceof Error ? e.message : String(e)}`);
