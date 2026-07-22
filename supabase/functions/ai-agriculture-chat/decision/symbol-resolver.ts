@@ -67,9 +67,6 @@ export async function resolveObservationSymbol(
 
   const variants = formatVariants(raw);
 
-  try {
-    let aliasRows: any[] = [];
-  const variants = formatVariants(raw);
 
   // Phase 3b: index-first alias resolution. Only fall through to per-request
   // DB queries when the index is not warm (cold boot / preload failure).
