@@ -83,7 +83,7 @@ export class FactExtractor {
     if (symptomFacts.primary_symptom && symptomFacts.primary_symptom !== 'UNKNOWN' && !obsArray.includes(symptomFacts.primary_symptom)) {
       obsArray.push(symptomFacts.primary_symptom);
     }
-    const hasPestEvidence = obsArray.some(obs => PEST_INDICATORS.has(obs.toUpperCase().replace(/[\s-]/g, '_')));
+    const hasPestEvidence = obsArray.some(obs => isPestIndicator(obs));
     
     console.log(`   Core: crop=${coreFacts.crop}, stage=${coreFacts.growth_stage}, DOS=${coreFacts.dos}`);
     console.log(`   Symptom: ${symptomFacts.primary_symptom}, severity=${symptomFacts.severity}`);
