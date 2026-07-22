@@ -51,9 +51,29 @@ export async function bridgeToCropVocab(
       return { raw_code: raw, canonical_code: raw, source: 'identity' };
     }
 
-    if (data?.canonical_code && data.canonical_code !== raw) {
-      console.log(`[OBSERVATION_BRIDGE] crop=${cropCode ?? 'UNKNOWN'} input=${raw} output=${data.canonical_code} source=observation_aliases`);
-      return { raw_code: raw, canonical_code: data.canonical_code, source: 'observation_aliases' };
+    const legacyCanonical = data?.canonical_code ?? null;
+
+    // Phase 2 dual-read (SHADOW): compare legacy alias resolution against the
+    // shared observation-index. Non-authoritative — legacy result is returned
+    // unchanged. `[OBS_INDEX_DIFF]` findings drive the Phase 3b cutover.
+    try {
+      const { observationIndexReady, resolveAliasCanonical, observationIndexDiff } =
+        await import('../utils/db-ssot/observation-index.ts');
+      if (observationIndexReady()) {
+        const shared = resolveAliasCanonical(raw);
+        observationIndexDiff(
+          'concept-bridge.bridgeToCropVocab',
+          raw,
+          legacyCanonical,
+          shared,
+          { crop: cropCode ?? null },
+        );
+      }
+    } catch (_e) { /* diff must never break bridge */ }
+
+    if (legacyCanonical && legacyCanonical !== raw) {
+      console.log(`[OBSERVATION_BRIDGE] crop=${cropCode ?? 'UNKNOWN'} input=${raw} output=${legacyCanonical} source=observation_aliases`);
+      return { raw_code: raw, canonical_code: legacyCanonical, source: 'observation_aliases' };
     }
 
     return { raw_code: raw, canonical_code: raw, source: 'identity' };
