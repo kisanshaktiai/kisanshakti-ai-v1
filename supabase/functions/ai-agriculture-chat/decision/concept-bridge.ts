@@ -4,6 +4,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * CHANGE LOG (newest first):
+ *   2026-07-22 — Phase 2 expansion: `bridgeToCropVocab` now performs SHADOW
+ *     dual-read against the shared observation-index and emits
+ *     `[OBS_INDEX_DIFF]` when the legacy alias lookup disagrees with
+ *     `resolveAliasCanonical()`. Legacy result is still returned unchanged;
+ *     this is instrumentation-only for the 7-day Phase 2 watch window.
  *   2026-07-09 04:12 UTC — Wired BIOLOGICAL_SCOPE_CONTRACT (P1). New optional
  *     `cropContext` on `bridgeCodesDb` triggers a post-bridge scope filter
  *     via `runtime/graph-contracts.ts::filterByBiologicalScope`. Cross-crop

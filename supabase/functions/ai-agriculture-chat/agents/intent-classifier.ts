@@ -1,4 +1,15 @@
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (newest first)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-22 — Phase 2 expansion: added SHADOW dual-read against the shared
+ *   observation-index (utils/db-ssot/observation-index.ts). Compares the
+ *   legacy `observation_intent_master` load against `getObservationIntent()`
+ *   and emits `[OBS_INDEX_DIFF]` on any missing intent. Non-authoritative;
+ *   legacy set is still returned unchanged. Extends the 7-day watch beyond
+ *   symbol-resolver so Phase 3b cutover has coverage on intent lookups.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  * ARCHITECTURAL CONTRACT — INTENT CLASSIFIER v4.0.0
  *
  * Role: language → canonical intent_code. Nothing else.

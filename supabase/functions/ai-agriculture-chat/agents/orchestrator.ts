@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-22 — Phase 3a hotfix: bio-contradiction reroute config reader now
+ *   uses `config_key`/`config_value` columns. Previously the `key`/`value`
+ *   query silently returned null so germination-intent reroute lists
+ *   always fell back to hardcoded defaults; seeded rows are now honoured.
  * 2026-07-11 — Context preservation: pass frozen CanonicalContext v2.1.0
  *   into runGraphRuntime alongside the existing primitives. Enables DB
  *   predicates referencing soil.moisture, weather.forecast_7d,

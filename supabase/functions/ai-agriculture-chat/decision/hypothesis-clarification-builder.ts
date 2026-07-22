@@ -1,4 +1,14 @@
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (newest first)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-22 — Phase 3a hotfix: system_config tunable loader now queries
+ *   `config_key` / `config_value` (the real column names). Previously the
+ *   `key`/`value` query silently returned zero rows, so every seeded
+ *   `clarification_*` tunable fell back to the TS default. With this fix the
+ *   Phase 3a rows land in the reasoner as intended.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  * Hypothesis-first clarification builder.
  *
  * IOM is used only as a discovery seed. Farmer UI options are emitted only
