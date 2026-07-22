@@ -10178,9 +10178,10 @@ export class AIAgentOrchestrator {
       }
       
       // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
+      // DB SSOT: emergency codes come from public.emergency_observation_codes
+      // via getEmergencyObsSet() (cold-boot fallback to _LEGACY_EMERGENCY_OBS_CODES)
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
-      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
+      const isEmergencyMain = obsArrayMain.some(code => getEmergencyObsSet().has(code));
 
       // ═══════════════════════════════════════════════════════════════════════
       // GRAPH CONTRACT — FINAL_RESPONSE + invariant assertions
