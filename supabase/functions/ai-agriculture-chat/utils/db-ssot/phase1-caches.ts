@@ -254,11 +254,21 @@ export function phase1CacheReady(): boolean {
   return state.loadedAt !== null;
 }
 
-export function getEmergencyObsCodes(legacyFallback?: readonly string[]): Set<string> {
+/**
+ * Phase 3b promotion (2026-07-24): emergency observation codes are SAFETY
+ * critical (they gate P0 emergency treatment pathways). Once the preload has
+ * completed, an empty set is a hard-fail — the reasoner MUST refuse to emit a
+ * decision this turn rather than silently downgrading a life-critical field
+ * signal to a routine observation. Legacy fallback retained ONLY for the
+ * cold-boot window (phase1CacheReady()===false).
+ */
+export function getEmergencyObsCodes(legacyFallback: readonly string[] = []): Set<string> {
   if (state.emergencyObsCodes.size > 0) return state.emergencyObsCodes;
-  enrichmentMissWarnOnce('emergency_observation_codes');
-  if (legacyFallback && !phase1CacheReady()) return new Set(legacyFallback.map(normUpper));
-  return state.emergencyObsCodes;
+  if (phase1CacheReady()) {
+    throw new SafetyCacheUnavailableError('emergency_observation_codes');
+  }
+  safetyMissWarn('emergency_observation_codes');
+  return new Set(legacyFallback.map(normUpper));
 }
 
 export function isDiagnosticIntent(intent: unknown, legacyFallback?: readonly string[]): boolean {
