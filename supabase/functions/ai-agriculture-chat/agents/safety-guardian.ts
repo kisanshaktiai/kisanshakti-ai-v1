@@ -171,36 +171,68 @@ export class SafetyGuardian {
   }
   
   /**
-   * Gate 1: Check for banned substances
+   * Gate 1: Check for banned substances.
+   * P4a (2026-07-24): DB SSOT via phase1-caches. `isBannedChemical` /
+   * `isRestrictedChemical` throw `SafetyCacheUnavailableError` when the cache
+   * is warm but empty — we catch and hard-fail BLOCK. During cold-boot both
+   * accessors fall back to the legacy hardcoded map internally.
    */
   private checkBannedSubstances(decision: DecisionOutput): BannedSubstanceCheck {
     const violations: BannedSubstanceViolation[] = [];
     const productName = decision.primary_decision?.application_details?.product_name?.toUpperCase() || '';
-    
-    for (const [substance, details] of Object.entries(BANNED_SUBSTANCES_INDIA)) {
-      if (productName.includes(substance.replace('_', ' ')) || 
-          productName.includes(substance)) {
-        
-        if (details.status === 'BANNED') {
+
+    // Tokenize product name so multi-word banned names (e.g. "METHYL PARATHION")
+    // still match. Keep the whole string too for substring hits.
+    const candidates = new Set<string>([productName, ...productName.split(/[^A-Z0-9]+/).filter(Boolean)]);
+
+    try {
+      for (const token of candidates) {
+        if (!token) continue;
+        // Case-insensitive: accessors normalise internally.
+        if (_isBannedChemicalDb(token)) {
           violations.push({
-            substance: substance,
-            ban_reason: details.reason,
-            banned_since: details.banned_since || 'Unknown',
-            legal_consequence: details.penalty || 'Legal action under Insecticides Act 1968',
-            severity: 'CRITICAL'
+            substance: token,
+            ban_reason: 'Banned for agricultural use in India (chemical_regulatory_status)',
+            banned_since: 'See chemical_regulatory_status.banned_since',
+            legal_consequence: 'Legal action under Insecticides Act 1968',
+            severity: 'CRITICAL',
           });
-        } else if (details.status === 'RESTRICTED' || details.status === 'HIGHLY_RESTRICTED') {
+        } else if (_isRestrictedChemicalDb(token)) {
           violations.push({
-            substance: substance,
-            ban_reason: details.reason,
+            substance: token,
+            ban_reason: 'Restricted use (chemical_regulatory_status)',
             banned_since: 'Restricted use',
-            legal_consequence: `Requires: ${details.restrictions?.join(', ')}`,
-            severity: details.status === 'HIGHLY_RESTRICTED' ? 'HIGH' : 'MEDIUM'
+            legal_consequence: 'Licensed applicator / PPE / permit required',
+            severity: 'HIGH',
+          });
+        } else if (_isWatchListChemicalDb(token)) {
+          violations.push({
+            substance: token,
+            ban_reason: 'Watch-list substance (chemical_regulatory_status)',
+            banned_since: 'Under review',
+            legal_consequence: 'Prefer alternative; monitor for regulatory change',
+            severity: 'MEDIUM',
           });
         }
       }
+    } catch (e) {
+      // Safety hard-fail: refuse to advise when DB truth is unavailable.
+      console.error(
+        `[SAFETY_HARD_FAIL] gate=banned_substances reason=${(e as Error).message} action=BLOCK`,
+      );
+      return {
+        passed: false,
+        violations: [{
+          substance: productName || 'UNKNOWN',
+          ban_reason: 'Safety cache unavailable — regulatory table unreachable',
+          banned_since: 'N/A',
+          legal_consequence: 'Cannot verify legality; advice blocked pending DB',
+          severity: 'CRITICAL',
+        }],
+        action: 'BLOCK',
+      };
     }
-    
+
     return {
       passed: violations.filter(v => v.severity === 'CRITICAL').length === 0,
       violations,
