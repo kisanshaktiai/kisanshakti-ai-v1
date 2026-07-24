@@ -67,6 +67,10 @@ interface Phase1CacheState {
   hypothesisCanonicalGroups: Set<string>;// enrichment
   pestIndicators: Set<string>;           // enrichment
   advisoryDirectIntents: Set<string>;    // enrichment (P6)
+  // Audit-plan v1 (Tier 1) additions:
+  chemicalClasses: Map<string, string>;                // chemical_name (lower) → class
+  rotationFamilies: Map<string, string>;               // `${moa_system}::${chemical_name(lower)}` → rotation_family
+  maxSafeDoses: Map<string, { max_g_per_ha: number; unit: string }>; // chemical (lower) → cap
 }
 
 const TTL_MS = 10 * 60 * 1000; // 10 min
@@ -82,6 +86,9 @@ const state: Phase1CacheState = {
   hypothesisCanonicalGroups: new Set(),
   pestIndicators: new Set(),
   advisoryDirectIntents: new Set(),
+  chemicalClasses: new Map(),
+  rotationFamilies: new Map(),
+  maxSafeDoses: new Map(),
 };
 
 function isFresh(): boolean {
