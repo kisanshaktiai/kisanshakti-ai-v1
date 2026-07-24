@@ -293,12 +293,15 @@ export interface StructuredFarmerResponse {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAX SAFE DOSES — Active ingredient regulatory caps (per hectare)
-// Source: CIB&RC India + WHO guidelines
-// Used to prevent overdose recommendations
+// MAX SAFE DOSES — DB-SSOT (Tier 1 V1 cutover, 2026-07-24)
+// Authoritative source: system_config.max_safe_doses (seeded from CIB&RC + WHO).
+// The map below is a COLD-BOOT ONLY fallback consulted while the phase1 cache
+// is warming (loadedAt === null); once loaded, DB rows are authoritative.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MAX_SAFE_DOSES: Record<string, { max_g_per_ha: number; unit: string }> = {
+import { getMaxDosePerHa as _getMaxDosePerHaDb } from '../utils/db-ssot/phase1-caches.ts';
+
+const _LEGACY_MAX_SAFE_DOSES: Record<string, { max_g_per_ha: number; unit: string }> = {
   'chlorpyrifos': { max_g_per_ha: 500, unit: 'g' },
   'imidacloprid': { max_g_per_ha: 100, unit: 'g' },
   'thiamethoxam': { max_g_per_ha: 100, unit: 'g' },
