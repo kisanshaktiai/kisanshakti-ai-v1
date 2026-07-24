@@ -156,12 +156,15 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
       const banned = new Set<string>();
       const restricted = new Set<string>();
       const watch = new Set<string>();
+      const classes = new Map<string, string>();
       for (const row of chemRes.data ?? []) {
         const name = norm(row.chemical_name);
         if (!name) continue;
         if (row.status === 'banned') banned.add(name);
         else if (row.status === 'restricted') restricted.add(name);
         else if (row.status === 'watch_list') watch.add(name);
+        const cls = norm(row.chemical_class);
+        if (cls) classes.set(name, cls);
       }
 
       const emerg = new Set<string>();
