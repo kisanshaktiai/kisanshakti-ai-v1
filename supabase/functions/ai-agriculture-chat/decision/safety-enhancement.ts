@@ -160,10 +160,13 @@ export function checkResistanceRotation(
 function getAlternativeGroups(currentGroup: string): string[] {
   const isInsecticide = currentGroup.startsWith('IRAC');
   const isFungicide = currentGroup.startsWith('FRAC');
-  
-  const groups = isInsecticide ? Object.keys(INSECTICIDE_GROUPS) :
-                 isFungicide ? Object.keys(FUNGICIDE_GROUPS) : [];
-  
+
+  const groups = isInsecticide
+    ? _listRotationFamiliesDb('IRAC', Object.keys(_LEGACY_INSECTICIDE_GROUPS))
+    : isFungicide
+      ? _listRotationFamiliesDb('FRAC', Object.keys(_LEGACY_FUNGICIDE_GROUPS))
+      : [];
+
   return groups.filter(g => g !== currentGroup).slice(0, 3);
 }
 
