@@ -1,6 +1,28 @@
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
  * Safety Guardian & Escalation Manager
- * Final safety checkpoint before agricultural advice reaches farmers
+ * Final safety checkpoint before agricultural advice reaches farmers.
+ * ───────────────────────────────────────────────────────────────────────────
+ * CHANGE LOG (newest first)
+ *   2026-07-24 — P4: DB-SSOT migration.
+ *     • P4a `checkBannedSubstances`: replaced `Object.entries(BANNED_SUBSTANCES_INDIA)`
+ *       loop with `isBannedChemical` / `isRestrictedChemical` / `isWatchListChemical`
+ *       from phase1-caches. On `SafetyCacheUnavailableError` the gate hard-fails
+ *       BLOCK to refuse to advise without DB truth.
+ *     • P4b Emergency `banned_used` branch: replaced hardcoded
+ *       `EMERGENCY_KEYWORDS.banned_used` scan with `findBannedChemicalMention`
+ *       (DB SSOT). Human-distress branches (`poisoning`, `mass_death`) are
+ *       preserved — they are medical, not agronomic.
+ *     • P4c `SAFETY_THRESHOLDS` runtime reads replaced with `getConfigNumber`
+ *       against `system_config` (safety_phi_min_days, safety_high_value_crop_inr,
+ *       safety_max_failed_treatments, safety_large_area_acres,
+ *       confidence_threshold_min). The type-file export is preserved for
+ *       Phase-4 back-compat (P4d gated on schema-column work).
+ *     • P4d Deferred: `BANNED_SUBSTANCES_INDIA` map shape, `PHI_DATABASE`,
+ *       `WHO_TOXICITY_CLASSES`, `getWHOToxicityClass()` — need per-substance
+ *       agronomist columns before cutover. Retained via type-file import only.
+ *   1.0.0 — Initial 5-gate safety architecture.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -25,16 +47,32 @@ import type {
   BlockedDecisionMessage
 } from './safety-guardian-types.ts';
 import {
-  BANNED_SUBSTANCES_INDIA,
-  PHI_DATABASE,
-  EMERGENCY_KEYWORDS,
-  WHO_TOXICITY_CLASSES,
-  SAFETY_THRESHOLDS,
-  ESCALATION_SLA_HOURS
+  BANNED_SUBSTANCES_INDIA,  // P4d retained for RegulatoryCheck licence-lookup only
+  PHI_DATABASE,               // P4d retained (schema columns pending)
+  EMERGENCY_KEYWORDS,         // human-distress branches (poisoning / mass_death)
+  ESCALATION_SLA_HOURS,
 } from './safety-guardian-types.ts';
+import {
+  isBannedChemical as _isBannedChemicalDb,
+  isRestrictedChemical as _isRestrictedChemicalDb,
+  isWatchListChemical as _isWatchListChemicalDb,
+  findBannedChemicalMention as _findBannedChemicalMentionDb,
+} from '../utils/db-ssot/phase1-caches.ts';
+import { getConfigNumber as _getConfigNumber } from '../utils/db-ssot/system-config-cache.ts';
 import type { DecisionOutput } from './rule-engine-types.ts';
 
-export const SAFETY_GUARDIAN_VERSION = '1.0.0';
+// P4c: SAFETY_THRESHOLDS is now DB-driven. These constants are LEGACY DEFAULTS
+// used only as fallback when system_config has not yet loaded a given key.
+const _LEGACY_SAFETY = {
+  MIN_CONFIDENCE_FOR_CHEMICAL: 0.75,
+  MIN_CONFIDENCE_FOR_BIOLOGICAL: 0.60,
+  MAX_FAILED_TREATMENTS_BEFORE_ESCALATION: 2,
+  HIGH_VALUE_CROP_THRESHOLD_INR: 200000,
+  LARGE_AREA_THRESHOLD_ACRES: 10,
+  PHI_BUFFER_DAYS: 2,
+} as const;
+
+export const SAFETY_GUARDIAN_VERSION = '1.1.0';
 
 export class SafetyGuardian {
   private supabase: ReturnType<typeof createClient>;
