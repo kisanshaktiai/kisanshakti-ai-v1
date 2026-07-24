@@ -11,10 +11,17 @@
  * 
  * CRITICAL: Prevents farmer from wasting money on washed-away pesticides
  * 
- * VERSION: 2.0.0 - Enhanced with disease risk calculations
+ * VERSION: 2.1.0 - Thresholds sourced from system_config (M2 DB-SSOT).
+ *
+ * CHANGE LOG (newest first)
+ *   2026-07-24 — P3: SPRAY_THRESHOLDS moved to system_config. Legacy TS map
+ *     retained ONLY as cold-boot fallback for cases where the cache has not
+ *     yet preloaded (systemConfigReady()===false). Values in the DB were
+ *     seeded identical to the legacy map, so behavior is preserved.
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
+import { getConfigJson } from '../../utils/db-ssot/system-config-cache.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -90,41 +97,42 @@ export interface WeatherSafetyInput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SAFETY THRESHOLDS
+// SAFETY THRESHOLDS — DB-SSOT (system_config), cold-boot legacy fallback
+// ───────────────────────────────────────────────────────────────────────────
+// Do NOT edit the numbers below. They are cold-boot fallbacks only; the
+// authoritative values live in public.system_config rows:
+//   spray_max_rain_probability_pct, spray_max_wind_kmh,
+//   spray_min_temperature_c,       spray_max_temperature_c.
+// Legacy values are byte-identical to the seeded DB rows.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const SPRAY_THRESHOLDS = {
-  PESTICIDE: {
-    max_rain_probability: 40,
-    max_wind_speed: 12,
-    min_temperature: 15,
-    max_temperature: 35
-  },
-  FUNGICIDE: {
-    max_rain_probability: 30, // Fungicides more sensitive to wash-off
-    max_wind_speed: 10,
-    min_temperature: 12,
-    max_temperature: 32
-  },
-  HERBICIDE: {
-    max_rain_probability: 50, // More rain tolerant
-    max_wind_speed: 8, // But very drift sensitive
-    min_temperature: 10,
-    max_temperature: 30
-  },
-  FOLIAR_FERTILIZER: {
-    max_rain_probability: 60,
-    max_wind_speed: 15,
-    min_temperature: 15,
-    max_temperature: 38
-  },
-  BIOLOGICAL: {
-    max_rain_probability: 50,
-    max_wind_speed: 15,
-    min_temperature: 18, // Biological agents need warmth
-    max_temperature: 35
-  }
+type SprayType = 'PESTICIDE' | 'FUNGICIDE' | 'HERBICIDE' | 'FOLIAR_FERTILIZER' | 'BIOLOGICAL';
+
+const _LEGACY_MAX_RAIN: Record<SprayType, number> = {
+  PESTICIDE: 40, FUNGICIDE: 30, HERBICIDE: 50, FOLIAR_FERTILIZER: 60, BIOLOGICAL: 50,
 };
+const _LEGACY_MAX_WIND: Record<SprayType, number> = {
+  PESTICIDE: 12, FUNGICIDE: 10, HERBICIDE: 8,  FOLIAR_FERTILIZER: 15, BIOLOGICAL: 15,
+};
+const _LEGACY_MIN_TEMP: Record<SprayType, number> = {
+  PESTICIDE: 15, FUNGICIDE: 12, HERBICIDE: 10, FOLIAR_FERTILIZER: 15, BIOLOGICAL: 18,
+};
+const _LEGACY_MAX_TEMP: Record<SprayType, number> = {
+  PESTICIDE: 35, FUNGICIDE: 32, HERBICIDE: 30, FOLIAR_FERTILIZER: 38, BIOLOGICAL: 35,
+};
+
+function resolveSprayThresholds(sprayType: SprayType) {
+  const maxRain = getConfigJson('spray_max_rain_probability_pct', _LEGACY_MAX_RAIN);
+  const maxWind = getConfigJson('spray_max_wind_kmh',            _LEGACY_MAX_WIND);
+  const minTemp = getConfigJson('spray_min_temperature_c',       _LEGACY_MIN_TEMP);
+  const maxTemp = getConfigJson('spray_max_temperature_c',       _LEGACY_MAX_TEMP);
+  return {
+    max_rain_probability: Number((maxRain as any)[sprayType] ?? _LEGACY_MAX_RAIN[sprayType]),
+    max_wind_speed:       Number((maxWind as any)[sprayType] ?? _LEGACY_MAX_WIND[sprayType]),
+    min_temperature:      Number((minTemp as any)[sprayType] ?? _LEGACY_MIN_TEMP[sprayType]),
+    max_temperature:      Number((maxTemp as any)[sprayType] ?? _LEGACY_MAX_TEMP[sprayType]),
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DISEASE RISK CALCULATION (for preventive spray recommendations)
@@ -230,7 +238,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   console.log('🌦️ [WeatherSafetyGate] Checking spray safety...');
   
   const sprayType = input.spray_type || 'PESTICIDE';
-  const thresholds = SPRAY_THRESHOLDS[sprayType];
+  const thresholds = resolveSprayThresholds(sprayType);
   
   // Extract weather data from land state or direct input
   const weatherData = input.weather_data || {

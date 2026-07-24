@@ -119,6 +119,7 @@ import {
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
 import { preloadObservationIndex as _preloadObservationIndex } from '../utils/db-ssot/observation-index.ts';
+import { preloadSystemConfig as _preloadSystemConfig } from '../utils/db-ssot/system-config-cache.ts';
 
 const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
   'EMERGENCE_FAILURE',
@@ -1288,6 +1289,10 @@ export class AIAgentOrchestrator {
     // Phase 2 DB-SSOT: shadow observation-index preload (non-authoritative, dual-read window).
     try { await _preloadObservationIndex(this.supabase); } catch (e) {
       console.warn(`[OBS_INDEX] preload_failed trace=${traceId} err=${(e as Error).message}`);
+    }
+    // M2 DB-SSOT: system_config tunables (spray thresholds, NDVI/soil bands, freshness windows).
+    try { await _preloadSystemConfig(this.supabase); } catch (e) {
+      console.warn(`[SYSCFG_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
     }
     let response: OrchestratorResponse;
     try {

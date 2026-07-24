@@ -28,8 +28,17 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { getConfigJson, getConfigNumber } from '../utils/db-ssot/system-config-cache.ts';
 
-export const AUTHORITATIVE_STATE_LOADER_VERSION = '2.0.0';
+export const AUTHORITATIVE_STATE_LOADER_VERSION = '2.1.0';
+
+// CHANGE LOG (newest first)
+//   2026-07-24 — P7: NDVI status bands, soil nutrient bands, and freshness
+//     windows now resolve through system_config (M2 cache). Legacy TS
+//     constants remain as cold-boot fallbacks and are byte-identical to the
+//     seeded rows (ndvi_status_thresholds, soil_nutrient_thresholds,
+//     soil_data_freshness_days, ndvi_staleness_days_kharif). No interpretation
+//     logic changed.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL INTERPRETATION ENUMS - SINGLE SOURCE OF TRUTH
@@ -87,39 +96,42 @@ export enum NDVITrend {
 // These are the ONLY thresholds used for interpretation
 // ═══════════════════════════════════════════════════════════════════════════
 
-const NDVI_THRESHOLDS = {
+// Cold-boot legacy fallbacks. Values are byte-identical to seeded DB rows.
+// Do NOT tune here — edit system_config rows instead.
+const _LEGACY_NDVI_THRESHOLDS = {
   EXCELLENT: 0.7,
   GOOD: 0.55,
   MODERATE: 0.4,
-  POOR: 0.25
-  // Below POOR = CRITICAL
+  POOR: 0.25,
 } as const;
 
-const SOIL_THRESHOLDS = {
-  NITROGEN: {
-    HIGH: 350,      // kg/ha
-    ADEQUATE: 250,
-    LOW: 150
-    // Below LOW = CRITICAL
-  },
-  PHOSPHORUS: {
-    HIGH: 25,       // kg/ha
-    ADEQUATE: 15,
-    LOW: 8
-  },
-  POTASSIUM: {
-    HIGH: 200,      // kg/ha
-    ADEQUATE: 130,
-    LOW: 80
-  }
+const _LEGACY_SOIL_THRESHOLDS = {
+  NITROGEN:   { HIGH: 350, ADEQUATE: 250, LOW: 150 },
+  PHOSPHORUS: { HIGH: 25,  ADEQUATE: 15,  LOW: 8  },
+  POTASSIUM:  { HIGH: 200, ADEQUATE: 130, LOW: 80 },
 } as const;
 
+// Legacy freshness. WEATHER_HOURS and SCHEDULE_DAYS stay in-code (no seeded
+// system_config keys yet); soil/NDVI resolve via system_config every call.
 const FRESHNESS_THRESHOLDS = {
-  SOIL_TEST_DAYS: 90,      // Soil test valid for 90 days
-  NDVI_DAYS: 7,            // NDVI should be <7 days old
-  WEATHER_HOURS: 6,        // Weather should be <6 hours old
-  SCHEDULE_DAYS: 365       // Schedule valid for current season
+  WEATHER_HOURS: 6,
+  SCHEDULE_DAYS: 365,
 } as const;
+
+function ndviThresholds() {
+  return getConfigJson('ndvi_status_thresholds', _LEGACY_NDVI_THRESHOLDS);
+}
+function soilThresholds() {
+  return getConfigJson('soil_nutrient_thresholds', _LEGACY_SOIL_THRESHOLDS);
+}
+function soilFreshnessDays() {
+  return getConfigNumber('soil_data_freshness_days', 90);
+}
+function ndviFreshnessDays() {
+  // Kharif window is the tighter and current default; a per-season selector
+  // can be layered on top later without touching this loader.
+  return getConfigNumber('ndvi_staleness_days_kharif', 7);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SSOT INTERPRETATION FUNCTIONS
@@ -134,11 +146,11 @@ export function interpretNDVI(value: number | null | undefined): NDVIStatus {
   if (value === null || value === undefined || isNaN(value)) {
     return NDVIStatus.UNKNOWN;
   }
-  
-  if (value >= NDVI_THRESHOLDS.EXCELLENT) return NDVIStatus.EXCELLENT;
-  if (value >= NDVI_THRESHOLDS.GOOD) return NDVIStatus.GOOD;
-  if (value >= NDVI_THRESHOLDS.MODERATE) return NDVIStatus.MODERATE;
-  if (value >= NDVI_THRESHOLDS.POOR) return NDVIStatus.POOR;
+  const t = ndviThresholds() as typeof _LEGACY_NDVI_THRESHOLDS;
+  if (value >= t.EXCELLENT) return NDVIStatus.EXCELLENT;
+  if (value >= t.GOOD) return NDVIStatus.GOOD;
+  if (value >= t.MODERATE) return NDVIStatus.MODERATE;
+  if (value >= t.POOR) return NDVIStatus.POOR;
   return NDVIStatus.CRITICAL;
 }
 
@@ -150,10 +162,10 @@ export function interpretNitrogen(value: number | null | undefined): SoilNutrien
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
   }
-  
-  if (value >= SOIL_THRESHOLDS.NITROGEN.HIGH) return SoilNutrientLevel.HIGH;
-  if (value >= SOIL_THRESHOLDS.NITROGEN.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
-  if (value >= SOIL_THRESHOLDS.NITROGEN.LOW) return SoilNutrientLevel.LOW;
+  const t = (soilThresholds() as typeof _LEGACY_SOIL_THRESHOLDS).NITROGEN;
+  if (value >= t.HIGH) return SoilNutrientLevel.HIGH;
+  if (value >= t.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
+  if (value >= t.LOW) return SoilNutrientLevel.LOW;
   return SoilNutrientLevel.CRITICAL;
 }
 
@@ -165,10 +177,10 @@ export function interpretPhosphorus(value: number | null | undefined): SoilNutri
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
   }
-  
-  if (value >= SOIL_THRESHOLDS.PHOSPHORUS.HIGH) return SoilNutrientLevel.HIGH;
-  if (value >= SOIL_THRESHOLDS.PHOSPHORUS.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
-  if (value >= SOIL_THRESHOLDS.PHOSPHORUS.LOW) return SoilNutrientLevel.LOW;
+  const t = (soilThresholds() as typeof _LEGACY_SOIL_THRESHOLDS).PHOSPHORUS;
+  if (value >= t.HIGH) return SoilNutrientLevel.HIGH;
+  if (value >= t.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
+  if (value >= t.LOW) return SoilNutrientLevel.LOW;
   return SoilNutrientLevel.CRITICAL;
 }
 
@@ -180,10 +192,10 @@ export function interpretPotassium(value: number | null | undefined): SoilNutrie
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
   }
-  
-  if (value >= SOIL_THRESHOLDS.POTASSIUM.HIGH) return SoilNutrientLevel.HIGH;
-  if (value >= SOIL_THRESHOLDS.POTASSIUM.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
-  if (value >= SOIL_THRESHOLDS.POTASSIUM.LOW) return SoilNutrientLevel.LOW;
+  const t = (soilThresholds() as typeof _LEGACY_SOIL_THRESHOLDS).POTASSIUM;
+  if (value >= t.HIGH) return SoilNutrientLevel.HIGH;
+  if (value >= t.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
+  if (value >= t.LOW) return SoilNutrientLevel.LOW;
   return SoilNutrientLevel.CRITICAL;
 }
 
@@ -500,7 +512,7 @@ export async function loadAuthoritativeLandState(
     if (soilHealth?.test_date) {
       const testDate = new Date(soilHealth.test_date);
       soilTestAgeDays = Math.floor((now.getTime() - testDate.getTime()) / (1000 * 60 * 60 * 24));
-      soilDataFresh = soilTestAgeDays <= FRESHNESS_THRESHOLDS.SOIL_TEST_DAYS;
+      soilDataFresh = soilTestAgeDays <= soilFreshnessDays();
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -519,7 +531,7 @@ export async function loadAuthoritativeLandState(
       if (ndviLatestDate) {
         const latestDate = new Date(ndviLatestDate);
         ndviAgeDays = Math.floor((now.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24));
-        ndviDataFresh = ndviAgeDays <= FRESHNESS_THRESHOLDS.NDVI_DAYS;
+        ndviDataFresh = ndviAgeDays <= ndviFreshnessDays();
       }
     }
     
