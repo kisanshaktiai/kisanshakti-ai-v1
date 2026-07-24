@@ -519,6 +519,26 @@ async function loadObservationAliases(supabaseClient?: any): Promise<Observation
     canonical_code: normalizeObsCode(r.canonical_code),
   }));
 
+  // P8 (2026-07-24): SHADOW-DIFF observation_aliases against shared index.
+  // The DB read above is still authoritative. We only LOG divergence: any
+  // alias whose canonical resolution disagrees with the shared observation
+  // index. Non-fatal, sampled to keep logs bounded.
+  if (_observationIndexReady()) {
+    let checked = 0;
+    for (const r of rows) {
+      if (checked >= 25) break; // cap per refresh
+      const indexCanonical = _resolveAliasCanonical(r.alias_code);
+      if (indexCanonical == null) continue; // index doesn't know this alias
+      _observationIndexDiff(
+        'observation-code-mapper.loadObservationAliases',
+        r.alias_code,
+        r.canonical_code,
+        indexCanonical,
+      );
+      checked++;
+    }
+  }
+
   OBS_ALIAS_CACHE = { fetched_at_ms: now, rows };
   return rows;
 }
