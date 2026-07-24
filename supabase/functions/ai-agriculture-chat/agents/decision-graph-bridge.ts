@@ -117,14 +117,16 @@ export async function evaluateDecisionGraph(
   
   const chemicalMentioned = context.last_chemical_used?.toLowerCase() || '';
   
-  // 1. Safety Checks — Banned chemicals (DB SSOT via phase1-caches; cold-boot
-  //    fallback to _LEGACY_BANNED_CHEMICALS if the cache has not yet loaded).
+  // 1. Safety Checks — Banned chemicals.
+  //    Order (Phase 3b, 2026-07-24): DB SSOT is the AUTHORITY.
+  //    `_isBannedChemicalDb` internally uses `chemical_regulatory_status` and
+  //    only touches `_LEGACY_BANNED_CHEMICALS` during the cold-boot window
+  //    (phase1CacheReady()===false). Once the cache is warm and empty it
+  //    throws SafetyCacheUnavailableError, which the orchestrator maps to a
+  //    SAFETY_BLOCKED response — we deliberately do NOT swallow it here.
   if (chemicalMentioned) {
-    const hitBanned = _LEGACY_BANNED_CHEMICALS.find((b) => chemicalMentioned.includes(b))
-      || (_isBannedChemicalDb(chemicalMentioned) ? chemicalMentioned : undefined);
-    // The two-step above is defensive: substring match against the fallback
-    // preserves the original ‘includes’ semantics, while _isBannedChemicalDb
-    // catches DB-only entries once the cache is warm.
+    const bannedByDb = _isBannedChemicalDb(chemicalMentioned, _LEGACY_BANNED_CHEMICALS);
+    const hitBanned = bannedByDb ? chemicalMentioned : undefined;
     if (hitBanned) {
       isBlocked = true;
       blockingRule = {
@@ -140,7 +142,7 @@ export async function evaluateDecisionGraph(
         fired: true,
         action: 'BLOCK',
         confidence: 1.0,
-        scientific_basis: 'CIB&RC Banned Pesticide List',
+        scientific_basis: 'CIB&RC Banned Pesticide List (chemical_regulatory_status.banned)',
         recommendation_en: `⛔ ${hitBanned} is completely banned in India. Do not use.`,
         recommendation_mr: `⛔ ${hitBanned} हे रसायन भारतात पूर्णपणे बंद आहे.`,
       });
