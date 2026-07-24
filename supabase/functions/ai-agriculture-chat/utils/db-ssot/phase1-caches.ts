@@ -52,10 +52,11 @@ interface Phase1CacheState {
   bannedChemicals: Set<string>;          // safety
   restrictedChemicals: Set<string>;      // safety
   watchListChemicals: Set<string>;       // safety (informational)
-  emergencyObsCodes: Set<string>;        // enrichment
+  emergencyObsCodes: Set<string>;        // safety (P3b)
   diagnosticIntents: Set<string>;        // enrichment
   hypothesisCanonicalGroups: Set<string>;// enrichment
   pestIndicators: Set<string>;           // enrichment
+  advisoryDirectIntents: Set<string>;    // enrichment (P6)
 }
 
 const TTL_MS = 10 * 60 * 1000; // 10 min
@@ -70,6 +71,7 @@ const state: Phase1CacheState = {
   diagnosticIntents: new Set(),
   hypothesisCanonicalGroups: new Set(),
   pestIndicators: new Set(),
+  advisoryDirectIntents: new Set(),
 };
 
 function isFresh(): boolean {
