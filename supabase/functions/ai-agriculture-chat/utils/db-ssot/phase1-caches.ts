@@ -533,6 +533,28 @@ export function getMaxDosePerHa(
   return null;
 }
 
+/**
+ * V3 companion: enumerate distinct rotation families for a MoA system
+ * ('IRAC' or 'FRAC'). Used by resistance-management alternatives selection.
+ * Returns the caller-supplied legacy list only during cold-boot.
+ */
+export function listRotationFamilies(
+  moaSystem: 'IRAC' | 'FRAC',
+  legacyFallback: readonly string[] = [],
+): string[] {
+  const sys = normUpper(moaSystem);
+  if (sys !== 'IRAC' && sys !== 'FRAC') return [];
+  if (state.rotationFamilies.size > 0) {
+    const out = new Set<string>();
+    for (const [k, v] of state.rotationFamilies) {
+      if (k.startsWith(`${sys}::`)) out.add(v);
+    }
+    return Array.from(out);
+  }
+  enrichmentMissWarnOnce('chemical_rotation_group.families');
+  return phase1CacheReady() ? [] : [...legacyFallback];
+}
+
 /** For diagnostics / tests. */
 export function _phase1CacheSnapshot() {
   return {
