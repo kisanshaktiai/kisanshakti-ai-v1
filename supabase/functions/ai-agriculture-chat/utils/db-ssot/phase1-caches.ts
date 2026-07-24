@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-24 — Phase 3b promotion: `getEmergencyObsCodes` reclassified from
+ *   `enrichment` to `safety_hard_fail_on_miss`. Throws
+ *   `SafetyCacheUnavailableError` when preload has completed but the set is
+ *   empty, matching the discipline of `isBannedChemical` /
+ *   `isRestrictedChemical`. Orchestrator emergency detection is P0 critical
+ *   and must not silently fail open.
  * 2026-07-22 — Phase 3b cutover: safety accessors (`isBannedChemical`,
  *   `isRestrictedChemical`) now HARD-FAIL via `SafetyCacheUnavailableError`
  *   when the preload has completed but the cache is empty. Legacy fallback
