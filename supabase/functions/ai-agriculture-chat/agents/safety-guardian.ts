@@ -410,19 +410,37 @@ export class SafetyGuardian {
     const issues: RegulatoryCheck['compliance_issues'] = [];
     const productName = decision.primary_decision?.application_details?.product_name || '';
     
-    // Check if product requires license
-    const restrictedProducts = Object.entries(BANNED_SUBSTANCES_INDIA)
-      .filter(([_, v]) => v.status === 'RESTRICTED' || v.status === 'HIGHLY_RESTRICTED')
-      .map(([k, _]) => k);
-    
-    for (const restricted of restrictedProducts) {
-      if (productName.toUpperCase().includes(restricted.replace('_', ' '))) {
+    // P4a: RESTRICTED lookup via DB SSOT. Tokenize product name so multi-word
+    // restricted names still match. Legacy BANNED_SUBSTANCES_INDIA is kept for
+    // the "Section 9(3)" reference metadata (P4d schema work outstanding) but
+    // the *decision* to flag is made by the DB accessor.
+    const tokens = new Set<string>([
+      productName.toUpperCase(),
+      ...productName.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean),
+    ]);
+    for (const token of tokens) {
+      if (!token) continue;
+      try {
+        if (_isRestrictedChemicalDb(token)) {
+          issues.push({
+            regulation: 'Insecticides Act 1968',
+            requirement: 'Licensed applicator required',
+            current_status: 'REQUIRES_VERIFICATION',
+            reference: 'Section 9(3)',
+          });
+          break;
+        }
+      } catch (e) {
+        console.error(
+          `[SAFETY_HARD_FAIL] gate=regulatory reason=${(e as Error).message} action=NON_COMPLIANT`,
+        );
         issues.push({
           regulation: 'Insecticides Act 1968',
-          requirement: 'Licensed applicator required',
-          current_status: 'REQUIRES_VERIFICATION',
-          reference: 'Section 9(3)'
+          requirement: 'Regulatory table unreachable',
+          current_status: 'NON_COMPLIANT',
+          reference: 'chemical_regulatory_status',
         });
+        break;
       }
     }
     
