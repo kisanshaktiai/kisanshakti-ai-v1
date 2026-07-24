@@ -240,6 +240,35 @@ export function isWatchListChemical(name: string): boolean {
   return false;
 }
 
+/**
+ * P4b (2026-07-24): safety-guardian emergency-branch helper. Scans a free-text
+ * farmer input for any banned-chemical mention using the DB SSOT set. Returns
+ * the matched canonical name (lower-case, as stored in DB) or null. Follows
+ * the same hard-fail discipline as `isBannedChemical` — throws
+ * `SafetyCacheUnavailableError` when the preload has completed but the banned
+ * set is empty, so the reasoner refuses to declare "no banned mention" from
+ * a stale/empty safety cache. During the cold-boot window we fall back to
+ * `legacyMentionList` (typically the caller's built-in EMERGENCY_KEYWORDS
+ * banned-name list) to avoid false negatives.
+ */
+export function findBannedChemicalMention(
+  text: string,
+  legacyMentionList: readonly string[] = [],
+): string | null {
+  const q = norm(text);
+  if (!q) return null;
+  if (state.bannedChemicals.size > 0) {
+    for (const b of state.bannedChemicals) if (q.includes(b)) return b;
+    return null;
+  }
+  if (phase1CacheReady()) {
+    throw new SafetyCacheUnavailableError('chemical_regulatory_status.banned');
+  }
+  safetyMissWarn('chemical_regulatory_status.banned');
+  for (const b of legacyMentionList) if (q.includes(b.toLowerCase())) return b.toLowerCase();
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ENRICHMENT ACCESSORS (fail open: return empty Set on miss)
 // ─────────────────────────────────────────────────────────────────────────────
