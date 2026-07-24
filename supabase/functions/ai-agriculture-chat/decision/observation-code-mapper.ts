@@ -27,8 +27,13 @@ import { ObservationKey } from './observation-ontology.ts';
 import type { SemanticExtraction } from '../agents/semantic-extractor.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { getObservationsForIntent, isObservationMappingLoaded } from '../utils/observation-mapping-cache.ts';
+import {
+  observationIndexDiff as _observationIndexDiff,
+  resolveAliasCanonical as _resolveAliasCanonical,
+  observationIndexReady as _observationIndexReady,
+} from '../utils/db-ssot/observation-index.ts';
 
-export const OBSERVATION_CODE_MAPPER_VERSION = '3.0.0'; // PR-1: intent map is DB-driven
+export const OBSERVATION_CODE_MAPPER_VERSION = '3.1.0'; // P8: shadow-diff observation_aliases against shared index
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE
@@ -513,6 +518,26 @@ async function loadObservationAliases(supabaseClient?: any): Promise<Observation
     alias_code: normalizeObsCode(r.alias_code),
     canonical_code: normalizeObsCode(r.canonical_code),
   }));
+
+  // P8 (2026-07-24): SHADOW-DIFF observation_aliases against shared index.
+  // The DB read above is still authoritative. We only LOG divergence: any
+  // alias whose canonical resolution disagrees with the shared observation
+  // index. Non-fatal, sampled to keep logs bounded.
+  if (_observationIndexReady()) {
+    let checked = 0;
+    for (const r of rows) {
+      if (checked >= 25) break; // cap per refresh
+      const indexCanonical = _resolveAliasCanonical(r.alias_code);
+      if (indexCanonical == null) continue; // index doesn't know this alias
+      _observationIndexDiff(
+        'observation-code-mapper.loadObservationAliases',
+        r.alias_code,
+        r.canonical_code,
+        indexCanonical,
+      );
+      checked++;
+    }
+  }
 
   OBS_ALIAS_CACHE = { fetched_at_ms: now, rows };
   return rows;

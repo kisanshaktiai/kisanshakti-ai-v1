@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-24 — P4b: added `findBannedChemicalMention(text, legacyMentionList)`
+ *   for the safety-guardian emergency branch. Same hard-fail discipline as
+ *   `isBannedChemical` — throws `SafetyCacheUnavailableError` when the
+ *   cache is warm but the banned set is empty. Enables removal of the
+ *   hardcoded `EMERGENCY_KEYWORDS.banned_used` array in safety-guardian.
+ * 2026-07-24 — P6: added `advisoryDirectIntents` DB set (loaded from
+ *   observation_intent_master where clarification_mode='DIRECT' and
+ *   is_active=true) and `isAdvisoryDirectIntent(intent, legacyFallback)`
+ *   enrichment accessor. Cold-boot / miss falls back to caller's legacy set.
  * 2026-07-24 — Phase 3b promotion: `getEmergencyObsCodes` reclassified from
  *   `enrichment` to `safety_hard_fail_on_miss`. Throws
  *   `SafetyCacheUnavailableError` when preload has completed but the set is
@@ -43,10 +52,11 @@ interface Phase1CacheState {
   bannedChemicals: Set<string>;          // safety
   restrictedChemicals: Set<string>;      // safety
   watchListChemicals: Set<string>;       // safety (informational)
-  emergencyObsCodes: Set<string>;        // enrichment
+  emergencyObsCodes: Set<string>;        // safety (P3b)
   diagnosticIntents: Set<string>;        // enrichment
   hypothesisCanonicalGroups: Set<string>;// enrichment
   pestIndicators: Set<string>;           // enrichment
+  advisoryDirectIntents: Set<string>;    // enrichment (P6)
 }
 
 const TTL_MS = 10 * 60 * 1000; // 10 min
@@ -61,6 +71,7 @@ const state: Phase1CacheState = {
   diagnosticIntents: new Set(),
   hypothesisCanonicalGroups: new Set(),
   pestIndicators: new Set(),
+  advisoryDirectIntents: new Set(),
 };
 
 function isFresh(): boolean {
@@ -86,7 +97,7 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
   state.loading = (async () => {
     const started = Date.now();
     try {
-      const [chemRes, emergRes, iomRes, hypRes, pestRes] = await Promise.all([
+      const [chemRes, emergRes, iomRes, hypRes, pestRes, advRes] = await Promise.all([
         supabase
           .from('chemical_regulatory_status')
           .select('chemical_name, status')
@@ -108,6 +119,12 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
           .eq('semantic_class', 'pest')
           .eq('is_diagnostic', true)
           .limit(2000), // PostgREST cap safety
+        // P6: advisory DIRECT-mode intents — bypass symptom-clarification gates
+        supabase
+          .from('observation_intent_master')
+          .select('intent_code')
+          .eq('clarification_mode', 'DIRECT')
+          .eq('is_active', true),
       ]);
 
       // chemicals
@@ -146,6 +163,12 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
         if (c) pests.add(c);
       }
 
+      const advisoryDirect = new Set<string>();
+      for (const r of advRes.data ?? []) {
+        const c = normUpper(r.intent_code);
+        if (c) advisoryDirect.add(c);
+      }
+
       // Atomic swap only if we got non-empty safety data (banned MUST be non-empty).
       if (banned.size === 0) {
         console.warn(
@@ -161,13 +184,15 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
       state.diagnosticIntents = intents;
       state.hypothesisCanonicalGroups = groups;
       state.pestIndicators = pests;
+      state.advisoryDirectIntents = advisoryDirect;
       state.loadedAt = Date.now();
 
       console.log(
         `[DB_SSOT_CACHE] phase1_loaded_ms=${Date.now() - started} ` +
           `banned=${banned.size} restricted=${restricted.size} watch=${watch.size} ` +
           `emerg=${emerg.size} diag_intents=${intents.size} ` +
-          `hyp_groups=${groups.size} pest_indicators=${pests.size}`,
+          `hyp_groups=${groups.size} pest_indicators=${pests.size} ` +
+          `advisory_direct=${advisoryDirect.size}`,
       );
     } catch (e) {
       console.error('[DB_SSOT_CACHE_MISS] discipline=mixed action=preload_failed err=' + (e as Error).message);
@@ -240,6 +265,35 @@ export function isWatchListChemical(name: string): boolean {
   return false;
 }
 
+/**
+ * P4b (2026-07-24): safety-guardian emergency-branch helper. Scans a free-text
+ * farmer input for any banned-chemical mention using the DB SSOT set. Returns
+ * the matched canonical name (lower-case, as stored in DB) or null. Follows
+ * the same hard-fail discipline as `isBannedChemical` — throws
+ * `SafetyCacheUnavailableError` when the preload has completed but the banned
+ * set is empty, so the reasoner refuses to declare "no banned mention" from
+ * a stale/empty safety cache. During the cold-boot window we fall back to
+ * `legacyMentionList` (typically the caller's built-in EMERGENCY_KEYWORDS
+ * banned-name list) to avoid false negatives.
+ */
+export function findBannedChemicalMention(
+  text: string,
+  legacyMentionList: readonly string[] = [],
+): string | null {
+  const q = norm(text);
+  if (!q) return null;
+  if (state.bannedChemicals.size > 0) {
+    for (const b of state.bannedChemicals) if (q.includes(b)) return b;
+    return null;
+  }
+  if (phase1CacheReady()) {
+    throw new SafetyCacheUnavailableError('chemical_regulatory_status.banned');
+  }
+  safetyMissWarn('chemical_regulatory_status.banned');
+  for (const b of legacyMentionList) if (q.includes(b.toLowerCase())) return b.toLowerCase();
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ENRICHMENT ACCESSORS (fail open: return empty Set on miss)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,6 +360,28 @@ export function isPestIndicator(code: string): boolean {
   return state.pestIndicators.has(k);
 }
 
+/**
+ * P6 (2026-07-24): advisory DIRECT-mode intents from observation_intent_master.
+ * Enrichment discipline. When the cache is warm the DB set is authoritative;
+ * the caller-supplied `legacyFallback` is unioned in for safety-net coverage
+ * so a DB row-removal cannot silently strip an intent from the direct route
+ * before an agronomist has reconciled it. Cold-boot returns legacy only.
+ */
+export function isAdvisoryDirectIntent(
+  intent: unknown,
+  legacyFallback: readonly string[] = [],
+): boolean {
+  const k = normUpper(intent);
+  if (!k) return false;
+  if (state.advisoryDirectIntents.size > 0) {
+    if (state.advisoryDirectIntents.has(k)) return true;
+    // Safety-net union with legacy until DB rows fully reconciled.
+    return legacyFallback.some((v) => normUpper(v) === k);
+  }
+  enrichmentMissWarnOnce('observation_intent_master.DIRECT');
+  return legacyFallback.some((v) => normUpper(v) === k);
+}
+
 /** For diagnostics / tests. */
 export function _phase1CacheSnapshot() {
   return {
@@ -317,5 +393,6 @@ export function _phase1CacheSnapshot() {
     diagnostic_intents: state.diagnosticIntents.size,
     hypothesis_groups: state.hypothesisCanonicalGroups.size,
     pest_indicators: state.pestIndicators.size,
+    advisory_direct: state.advisoryDirectIntents.size,
   };
 }

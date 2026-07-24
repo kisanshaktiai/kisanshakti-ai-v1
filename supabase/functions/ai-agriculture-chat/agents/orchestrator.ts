@@ -116,6 +116,7 @@ import {
   preloadPhase1Caches as _preloadPhase1Caches,
   isDiagnosticIntent as _isDiagnosticIntentDb,
   getEmergencyObsCodes as _getEmergencyObsCodesDb,
+  isAdvisoryDirectIntent as _isAdvisoryDirectIntentDb,
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
 import { preloadObservationIndex as _preloadObservationIndex } from '../utils/db-ssot/observation-index.ts';
@@ -205,7 +206,17 @@ import {
 // where clarification_mode='DIRECT'. These intents MUST bypass symptom
 // clarification gates and go straight to the symbolic rule engine.
 // ═══════════════════════════════════════════════════════════════════════════
-export const ADVISORY_DIRECT_INTENTS = new Set<string>([
+/**
+ * P6 (2026-07-24): DIRECT-mode intents are DB-authoritative via
+ * `observation_intent_master.clarification_mode='DIRECT'`. This const remains
+ * as a cold-boot fallback ONLY — the runtime lookup goes through
+ * `isAdvisoryDirectIntent(intent, _LEGACY_ADVISORY_DIRECT_INTENTS)` in
+ * phase1-caches which prefers the DB set and unions the legacy as a safety
+ * net until agronomist reconciles the two rows currently missing in DB
+ * (WEATHER_ADVISORY, CROP_HEALTH_DASHBOARD). Do NOT add new intents here;
+ * insert them into `observation_intent_master` with clarification_mode='DIRECT'.
+ */
+const _LEGACY_ADVISORY_DIRECT_INTENTS: readonly string[] = [
   'FERTILIZER_SCHEDULE',
   'IRRIGATION_QUERY',
   'IRRIGATION_METHOD_SELECTION',
@@ -236,10 +247,11 @@ export const ADVISORY_DIRECT_INTENTS = new Set<string>([
   'VARIETY_SELECTION_QUERY',
   'SEASONAL_TRANSITION_ALERT',
   'WEATHER_ADVISORY',
-]);
+];
 
 export function isAdvisoryRoute(intentCode: string | null | undefined): boolean {
-  return !!intentCode && ADVISORY_DIRECT_INTENTS.has(intentCode);
+  if (!intentCode) return false;
+  return _isAdvisoryDirectIntentDb(intentCode, _LEGACY_ADVISORY_DIRECT_INTENTS);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

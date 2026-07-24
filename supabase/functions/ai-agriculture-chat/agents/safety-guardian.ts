@@ -1,6 +1,28 @@
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
  * Safety Guardian & Escalation Manager
- * Final safety checkpoint before agricultural advice reaches farmers
+ * Final safety checkpoint before agricultural advice reaches farmers.
+ * ───────────────────────────────────────────────────────────────────────────
+ * CHANGE LOG (newest first)
+ *   2026-07-24 — P4: DB-SSOT migration.
+ *     • P4a `checkBannedSubstances`: replaced `Object.entries(BANNED_SUBSTANCES_INDIA)`
+ *       loop with `isBannedChemical` / `isRestrictedChemical` / `isWatchListChemical`
+ *       from phase1-caches. On `SafetyCacheUnavailableError` the gate hard-fails
+ *       BLOCK to refuse to advise without DB truth.
+ *     • P4b Emergency `banned_used` branch: replaced hardcoded
+ *       `EMERGENCY_KEYWORDS.banned_used` scan with `findBannedChemicalMention`
+ *       (DB SSOT). Human-distress branches (`poisoning`, `mass_death`) are
+ *       preserved — they are medical, not agronomic.
+ *     • P4c `SAFETY_THRESHOLDS` runtime reads replaced with `getConfigNumber`
+ *       against `system_config` (safety_phi_min_days, safety_high_value_crop_inr,
+ *       safety_max_failed_treatments, safety_large_area_acres,
+ *       confidence_threshold_min). The type-file export is preserved for
+ *       Phase-4 back-compat (P4d gated on schema-column work).
+ *     • P4d Deferred: `BANNED_SUBSTANCES_INDIA` map shape, `PHI_DATABASE`,
+ *       `WHO_TOXICITY_CLASSES`, `getWHOToxicityClass()` — need per-substance
+ *       agronomist columns before cutover. Retained via type-file import only.
+ *   1.0.0 — Initial 5-gate safety architecture.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -25,16 +47,32 @@ import type {
   BlockedDecisionMessage
 } from './safety-guardian-types.ts';
 import {
-  BANNED_SUBSTANCES_INDIA,
-  PHI_DATABASE,
-  EMERGENCY_KEYWORDS,
-  WHO_TOXICITY_CLASSES,
-  SAFETY_THRESHOLDS,
-  ESCALATION_SLA_HOURS
+  BANNED_SUBSTANCES_INDIA,  // P4d retained for RegulatoryCheck licence-lookup only
+  PHI_DATABASE,               // P4d retained (schema columns pending)
+  EMERGENCY_KEYWORDS,         // human-distress branches (poisoning / mass_death)
+  ESCALATION_SLA_HOURS,
 } from './safety-guardian-types.ts';
+import {
+  isBannedChemical as _isBannedChemicalDb,
+  isRestrictedChemical as _isRestrictedChemicalDb,
+  isWatchListChemical as _isWatchListChemicalDb,
+  findBannedChemicalMention as _findBannedChemicalMentionDb,
+} from '../utils/db-ssot/phase1-caches.ts';
+import { getConfigNumber as _getConfigNumber } from '../utils/db-ssot/system-config-cache.ts';
 import type { DecisionOutput } from './rule-engine-types.ts';
 
-export const SAFETY_GUARDIAN_VERSION = '1.0.0';
+// P4c: SAFETY_THRESHOLDS is now DB-driven. These constants are LEGACY DEFAULTS
+// used only as fallback when system_config has not yet loaded a given key.
+const _LEGACY_SAFETY = {
+  MIN_CONFIDENCE_FOR_CHEMICAL: 0.75,
+  MIN_CONFIDENCE_FOR_BIOLOGICAL: 0.60,
+  MAX_FAILED_TREATMENTS_BEFORE_ESCALATION: 2,
+  HIGH_VALUE_CROP_THRESHOLD_INR: 200000,
+  LARGE_AREA_THRESHOLD_ACRES: 10,
+  PHI_BUFFER_DAYS: 2,
+} as const;
+
+export const SAFETY_GUARDIAN_VERSION = '1.1.0';
 
 export class SafetyGuardian {
   private supabase: ReturnType<typeof createClient>;
@@ -133,36 +171,68 @@ export class SafetyGuardian {
   }
   
   /**
-   * Gate 1: Check for banned substances
+   * Gate 1: Check for banned substances.
+   * P4a (2026-07-24): DB SSOT via phase1-caches. `isBannedChemical` /
+   * `isRestrictedChemical` throw `SafetyCacheUnavailableError` when the cache
+   * is warm but empty — we catch and hard-fail BLOCK. During cold-boot both
+   * accessors fall back to the legacy hardcoded map internally.
    */
   private checkBannedSubstances(decision: DecisionOutput): BannedSubstanceCheck {
     const violations: BannedSubstanceViolation[] = [];
     const productName = decision.primary_decision?.application_details?.product_name?.toUpperCase() || '';
-    
-    for (const [substance, details] of Object.entries(BANNED_SUBSTANCES_INDIA)) {
-      if (productName.includes(substance.replace('_', ' ')) || 
-          productName.includes(substance)) {
-        
-        if (details.status === 'BANNED') {
+
+    // Tokenize product name so multi-word banned names (e.g. "METHYL PARATHION")
+    // still match. Keep the whole string too for substring hits.
+    const candidates = new Set<string>([productName, ...productName.split(/[^A-Z0-9]+/).filter(Boolean)]);
+
+    try {
+      for (const token of candidates) {
+        if (!token) continue;
+        // Case-insensitive: accessors normalise internally.
+        if (_isBannedChemicalDb(token)) {
           violations.push({
-            substance: substance,
-            ban_reason: details.reason,
-            banned_since: details.banned_since || 'Unknown',
-            legal_consequence: details.penalty || 'Legal action under Insecticides Act 1968',
-            severity: 'CRITICAL'
+            substance: token,
+            ban_reason: 'Banned for agricultural use in India (chemical_regulatory_status)',
+            banned_since: 'See chemical_regulatory_status.banned_since',
+            legal_consequence: 'Legal action under Insecticides Act 1968',
+            severity: 'CRITICAL',
           });
-        } else if (details.status === 'RESTRICTED' || details.status === 'HIGHLY_RESTRICTED') {
+        } else if (_isRestrictedChemicalDb(token)) {
           violations.push({
-            substance: substance,
-            ban_reason: details.reason,
+            substance: token,
+            ban_reason: 'Restricted use (chemical_regulatory_status)',
             banned_since: 'Restricted use',
-            legal_consequence: `Requires: ${details.restrictions?.join(', ')}`,
-            severity: details.status === 'HIGHLY_RESTRICTED' ? 'HIGH' : 'MEDIUM'
+            legal_consequence: 'Licensed applicator / PPE / permit required',
+            severity: 'HIGH',
+          });
+        } else if (_isWatchListChemicalDb(token)) {
+          violations.push({
+            substance: token,
+            ban_reason: 'Watch-list substance (chemical_regulatory_status)',
+            banned_since: 'Under review',
+            legal_consequence: 'Prefer alternative; monitor for regulatory change',
+            severity: 'MEDIUM',
           });
         }
       }
+    } catch (e) {
+      // Safety hard-fail: refuse to advise when DB truth is unavailable.
+      console.error(
+        `[SAFETY_HARD_FAIL] gate=banned_substances reason=${(e as Error).message} action=BLOCK`,
+      );
+      return {
+        passed: false,
+        violations: [{
+          substance: productName || 'UNKNOWN',
+          ban_reason: 'Safety cache unavailable — regulatory table unreachable',
+          banned_since: 'N/A',
+          legal_consequence: 'Cannot verify legality; advice blocked pending DB',
+          severity: 'CRITICAL',
+        }],
+        action: 'BLOCK',
+      };
     }
-    
+
     return {
       passed: violations.filter(v => v.severity === 'CRITICAL').length === 0,
       violations,
@@ -251,7 +321,7 @@ export class SafetyGuardian {
     const harvestDate = new Date(context.expected_harvest_date);
     const today = new Date();
     const daysToHarvest = Math.floor((harvestDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const requiredPHI = phiEntry.phi_days + SAFETY_THRESHOLDS.PHI_BUFFER_DAYS;
+    const requiredPHI = phiEntry.phi_days + _getConfigNumber('safety_phi_buffer_days', _LEGACY_SAFETY.PHI_BUFFER_DAYS);
     const gapDays = daysToHarvest - requiredPHI;
     
     if (gapDays < 0) {
@@ -340,19 +410,37 @@ export class SafetyGuardian {
     const issues: RegulatoryCheck['compliance_issues'] = [];
     const productName = decision.primary_decision?.application_details?.product_name || '';
     
-    // Check if product requires license
-    const restrictedProducts = Object.entries(BANNED_SUBSTANCES_INDIA)
-      .filter(([_, v]) => v.status === 'RESTRICTED' || v.status === 'HIGHLY_RESTRICTED')
-      .map(([k, _]) => k);
-    
-    for (const restricted of restrictedProducts) {
-      if (productName.toUpperCase().includes(restricted.replace('_', ' '))) {
+    // P4a: RESTRICTED lookup via DB SSOT. Tokenize product name so multi-word
+    // restricted names still match. Legacy BANNED_SUBSTANCES_INDIA is kept for
+    // the "Section 9(3)" reference metadata (P4d schema work outstanding) but
+    // the *decision* to flag is made by the DB accessor.
+    const tokens = new Set<string>([
+      productName.toUpperCase(),
+      ...productName.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean),
+    ]);
+    for (const token of tokens) {
+      if (!token) continue;
+      try {
+        if (_isRestrictedChemicalDb(token)) {
+          issues.push({
+            regulation: 'Insecticides Act 1968',
+            requirement: 'Licensed applicator required',
+            current_status: 'REQUIRES_VERIFICATION',
+            reference: 'Section 9(3)',
+          });
+          break;
+        }
+      } catch (e) {
+        console.error(
+          `[SAFETY_HARD_FAIL] gate=regulatory reason=${(e as Error).message} action=NON_COMPLIANT`,
+        );
         issues.push({
           regulation: 'Insecticides Act 1968',
-          requirement: 'Licensed applicator required',
-          current_status: 'REQUIRES_VERIFICATION',
-          reference: 'Section 9(3)'
+          requirement: 'Regulatory table unreachable',
+          current_status: 'NON_COMPLIANT',
+          reference: 'chemical_regulatory_status',
         });
+        break;
       }
     }
     
@@ -419,8 +507,23 @@ export class SafetyGuardian {
       };
     }
     
-    // Check for banned substance use
-    if (EMERGENCY_KEYWORDS.banned_used.some(kw => inputLower.includes(kw.toLowerCase()))) {
+    // Check for banned substance use.
+    // P4b (2026-07-24): DB SSOT. `findBannedChemicalMention` scans the input for
+    // any chemical marked `banned` in `chemical_regulatory_status`. Legacy
+    // `EMERGENCY_KEYWORDS.banned_used` is passed as cold-boot fallback ONLY;
+    // once the cache is warm the accessor ignores it. Throws
+    // `SafetyCacheUnavailableError` if cache is warm-but-empty — we treat that
+    // as a hard emergency (fail-closed) so we do NOT silently downgrade.
+    let bannedMention: string | null = null;
+    try {
+      bannedMention = _findBannedChemicalMentionDb(inputLower, EMERGENCY_KEYWORDS.banned_used);
+    } catch (e) {
+      console.error(
+        `[SAFETY_HARD_FAIL] gate=emergency.banned reason=${(e as Error).message} action=treat_as_emergency`,
+      );
+      bannedMention = 'UNVERIFIABLE_CHEMICAL';
+    }
+    if (bannedMention) {
       return {
         emergency_detected: true,
         emergency_type: 'BANNED_SUBSTANCE_USED',
@@ -482,20 +585,20 @@ export class SafetyGuardian {
     }
     
     // Trigger 3: High-value crop at significant risk
-    if ((context.crop_value_inr || 0) > SAFETY_THRESHOLDS.HIGH_VALUE_CROP_THRESHOLD_INR && 
+    if ((context.crop_value_inr || 0) > _getConfigNumber('safety_high_value_crop_inr', _LEGACY_SAFETY.HIGH_VALUE_CROP_THRESHOLD_INR) &&
         context.severity === 'CRITICAL') {
       reasons.push('High-value crop with critical risk - expert consultation recommended');
       escalationLevel = escalationLevel === 'REQUIRED' ? 'REQUIRED' : 'ADVISORY';
     }
     
     // Trigger 4: Multiple failed treatments
-    if ((context.previous_failed_treatments || 0) >= SAFETY_THRESHOLDS.MAX_FAILED_TREATMENTS_BEFORE_ESCALATION) {
+    if ((context.previous_failed_treatments || 0) >= _getConfigNumber('safety_max_failed_treatments', _LEGACY_SAFETY.MAX_FAILED_TREATMENTS_BEFORE_ESCALATION)) {
       reasons.push('Multiple previous treatments failed - expert diagnosis needed');
       escalationLevel = 'REQUIRED';
     }
     
     // Trigger 5: Large-scale outbreak
-    if ((context.affected_area_acres || 0) > SAFETY_THRESHOLDS.LARGE_AREA_THRESHOLD_ACRES && 
+    if ((context.affected_area_acres || 0) > _getConfigNumber('safety_large_area_acres', _LEGACY_SAFETY.LARGE_AREA_THRESHOLD_ACRES) &&
         context.severity === 'CRITICAL') {
       reasons.push('Large-scale outbreak - regional expert should be informed');
       escalationLevel = escalationLevel === 'EMERGENCY' ? 'EMERGENCY' : 'REQUIRED';
