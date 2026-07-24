@@ -116,6 +116,7 @@ import {
   preloadPhase1Caches as _preloadPhase1Caches,
   isDiagnosticIntent as _isDiagnosticIntentDb,
   getEmergencyObsCodes as _getEmergencyObsCodesDb,
+  isAdvisoryDirectIntent as _isAdvisoryDirectIntentDb,
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
 import { preloadObservationIndex as _preloadObservationIndex } from '../utils/db-ssot/observation-index.ts';
