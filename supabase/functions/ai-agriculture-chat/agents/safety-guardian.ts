@@ -507,8 +507,23 @@ export class SafetyGuardian {
       };
     }
     
-    // Check for banned substance use
-    if (EMERGENCY_KEYWORDS.banned_used.some(kw => inputLower.includes(kw.toLowerCase()))) {
+    // Check for banned substance use.
+    // P4b (2026-07-24): DB SSOT. `findBannedChemicalMention` scans the input for
+    // any chemical marked `banned` in `chemical_regulatory_status`. Legacy
+    // `EMERGENCY_KEYWORDS.banned_used` is passed as cold-boot fallback ONLY;
+    // once the cache is warm the accessor ignores it. Throws
+    // `SafetyCacheUnavailableError` if cache is warm-but-empty — we treat that
+    // as a hard emergency (fail-closed) so we do NOT silently downgrade.
+    let bannedMention: string | null = null;
+    try {
+      bannedMention = _findBannedChemicalMentionDb(inputLower, EMERGENCY_KEYWORDS.banned_used);
+    } catch (e) {
+      console.error(
+        `[SAFETY_HARD_FAIL] gate=emergency.banned reason=${(e as Error).message} action=treat_as_emergency`,
+      );
+      bannedMention = 'UNVERIFIABLE_CHEMICAL';
+    }
+    if (bannedMention) {
       return {
         emergency_detected: true,
         emergency_type: 'BANNED_SUBSTANCE_USED',
