@@ -74,10 +74,15 @@ const SAFETY_WARNINGS: Record<SafetyLevel, SafetyWarning> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// COMMON IRAC/FRAC GROUPS FOR ROTATION
+// IRAC/FRAC ROTATION FAMILIES — DB-SSOT (Tier 1 V3 cutover, 2026-07-24)
+// Authoritative source: public.chemical_rotation_group (moa_system, family).
+// The maps below are COLD-BOOT ONLY fallbacks used until the phase1 cache
+// warms; the family-keys are enumerated via listRotationFamilies() below.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const INSECTICIDE_GROUPS: Record<string, string[]> = {
+import { listRotationFamilies as _listRotationFamiliesDb } from '../utils/db-ssot/phase1-caches.ts';
+
+const _LEGACY_INSECTICIDE_GROUPS: Record<string, string[]> = {
   'IRAC_1A': ['Carbaryl', 'Methomyl'],
   'IRAC_1B': ['Chlorpyrifos', 'Quinalphos', 'Monocrotophos', 'Phorate', 'Carbofuran'],
   'IRAC_3A': ['Cypermethrin', 'Deltamethrin', 'Lambda-cyhalothrin', 'Bifenthrin'],
@@ -89,7 +94,7 @@ const INSECTICIDE_GROUPS: Record<string, string[]> = {
   'IRAC_28': ['Chlorantraniliprole', 'Flubendiamide', 'Cyantraniliprole']
 };
 
-const FUNGICIDE_GROUPS: Record<string, string[]> = {
+const _LEGACY_FUNGICIDE_GROUPS: Record<string, string[]> = {
   'FRAC_1': ['Carbendazim', 'Thiophanate-methyl', 'Benomyl'],
   'FRAC_3': ['Propiconazole', 'Tebuconazole', 'Hexaconazole', 'Difenconazole'],
   'FRAC_7': ['Carboxin', 'Thiram'],
@@ -155,10 +160,13 @@ export function checkResistanceRotation(
 function getAlternativeGroups(currentGroup: string): string[] {
   const isInsecticide = currentGroup.startsWith('IRAC');
   const isFungicide = currentGroup.startsWith('FRAC');
-  
-  const groups = isInsecticide ? Object.keys(INSECTICIDE_GROUPS) :
-                 isFungicide ? Object.keys(FUNGICIDE_GROUPS) : [];
-  
+
+  const groups = isInsecticide
+    ? _listRotationFamiliesDb('IRAC', Object.keys(_LEGACY_INSECTICIDE_GROUPS))
+    : isFungicide
+      ? _listRotationFamiliesDb('FRAC', Object.keys(_LEGACY_FUNGICIDE_GROUPS))
+      : [];
+
   return groups.filter(g => g !== currentGroup).slice(0, 3);
 }
 

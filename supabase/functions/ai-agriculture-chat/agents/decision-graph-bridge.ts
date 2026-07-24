@@ -74,8 +74,9 @@ export interface EvaluatedRule {
 // (44 banned, 12 restricted, 3 watch_list rows verified 2026-07-22).
 // The two legacy arrays below are retained ONLY as cold-boot fallback used
 // while the DB cache preloads. Do NOT add rows here — insert into DB.
-// NEONICOTINOIDS stays hardcoded for now (deferred to Phase 4: needs
-// chemical_regulatory_status.chemical_class column).
+// NEONICOTINOIDS is now DB-driven via chemical_regulatory_status.chemical_class
+// = 'neonicotinoid' (Tier 1 V2 cutover, 2026-07-24). The array below is a
+// COLD-BOOT ONLY fallback consulted while the phase1 cache is warming.
 // watch_list behavior change (new in Phase 1): matched watch_list chemicals
 // surface an informational WARN rule, never a BLOCK — surfaces regulatory
 // attention without denying access to still-legal inputs.
@@ -84,6 +85,7 @@ export interface EvaluatedRule {
 import {
   isBannedChemical as _isBannedChemicalDb,
   isWatchListChemical as _isWatchListChemicalDb,
+  isChemicalClass as _isChemicalClassDb,
 } from '../utils/db-ssot/phase1-caches.ts';
 
 const _LEGACY_BANNED_CHEMICALS: readonly string[] = [
@@ -94,7 +96,7 @@ const _LEGACY_BANNED_CHEMICALS: readonly string[] = [
   'lindane', 'alachlor',
 ];
 
-const NEONICOTINOIDS = [
+const _LEGACY_NEONICOTINOIDS: readonly string[] = [
   'imidacloprid', 'thiamethoxam', 'clothianidin', 'acetamiprid',
   'thiacloprid', 'dinotefuran', 'nitenpyram',
 ];
@@ -183,23 +185,20 @@ export async function evaluateDecisionGraph(
     } catch (e) { console.error('Chemical status check failed', e); }
   }
 
-  // 2. Weather & Stage Safety
+  // 2. Weather & Stage Safety (Tier 1 V2: DB-driven neonicotinoid class)
   if (!isBlocked && context.crop_stage === 'FLOWERING') {
-    for (const neonic of NEONICOTINOIDS) {
-      if (chemicalMentioned.includes(neonic)) {
-        isBlocked = true;
-        blockingRule = {
-          rule_id: 'SAFETY_006_POLLINATOR',
-          priority: 'P2_WEATHER_SAFETY',
-          reason: `${neonic} is toxic to pollinators during flowering`
-        };
-        evaluatedRules.push({
-          rule_id: 'SAFETY_006_POLLINATOR', category: 'safety', priority: 'P2_WEATHER_SAFETY', fired: true, action: 'BLOCK', confidence: 0.95,
-          scientific_basis: 'ICAR-NBAIR Bee Protection Guidelines',
-          recommendation_en: `🐝 Do not use ${neonic} during flowering. Bees will be harmed.`
-        });
-        break;
-      }
+    if (_isChemicalClassDb(chemicalMentioned, 'neonicotinoid', _LEGACY_NEONICOTINOIDS)) {
+      isBlocked = true;
+      blockingRule = {
+        rule_id: 'SAFETY_006_POLLINATOR',
+        priority: 'P2_WEATHER_SAFETY',
+        reason: `${chemicalMentioned} (neonicotinoid) is toxic to pollinators during flowering`
+      };
+      evaluatedRules.push({
+        rule_id: 'SAFETY_006_POLLINATOR', category: 'safety', priority: 'P2_WEATHER_SAFETY', fired: true, action: 'BLOCK', confidence: 0.95,
+        scientific_basis: 'ICAR-NBAIR Bee Protection Guidelines',
+        recommendation_en: `🐝 Do not use ${chemicalMentioned} during flowering. Bees will be harmed.`
+      });
     }
   }
 
