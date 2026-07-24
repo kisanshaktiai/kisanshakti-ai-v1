@@ -97,7 +97,7 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
   state.loading = (async () => {
     const started = Date.now();
     try {
-      const [chemRes, emergRes, iomRes, hypRes, pestRes] = await Promise.all([
+      const [chemRes, emergRes, iomRes, hypRes, pestRes, advRes] = await Promise.all([
         supabase
           .from('chemical_regulatory_status')
           .select('chemical_name, status')
@@ -119,6 +119,12 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
           .eq('semantic_class', 'pest')
           .eq('is_diagnostic', true)
           .limit(2000), // PostgREST cap safety
+        // P6: advisory DIRECT-mode intents — bypass symptom-clarification gates
+        supabase
+          .from('observation_intent_master')
+          .select('intent_code')
+          .eq('clarification_mode', 'DIRECT')
+          .eq('is_active', true),
       ]);
 
       // chemicals
