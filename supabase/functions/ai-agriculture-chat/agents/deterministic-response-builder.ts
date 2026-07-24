@@ -405,7 +405,7 @@ export function validateDosageSafety(
   }
   
   const aiKey = ruleData.active_ingredient.toLowerCase().trim();
-  const safeLimit = MAX_SAFE_DOSES[aiKey];
+  const safeLimit = _getMaxDosePerHaDb(aiKey, _LEGACY_MAX_SAFE_DOSES);
   if (!safeLimit) return { blocked: false }; // no limit data — allow
   
   const parsed = parseDosage(ruleData.dosage_per_acre);
