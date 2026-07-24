@@ -114,11 +114,10 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
   state.loading = (async () => {
     const started = Date.now();
     try {
-      const [chemRes, emergRes, iomRes, hypRes, pestRes, advRes] = await Promise.all([
+      const [chemRes, emergRes, iomRes, hypRes, pestRes, advRes, rotRes, doseCfgRes] = await Promise.all([
         supabase
           .from('chemical_regulatory_status')
-          .select('chemical_name, status')
-          .in('status', ['banned', 'restricted', 'watch_list']),
+          .select('chemical_name, status, chemical_class'),
         supabase
           .from('emergency_observation_codes')
           .select('observation_code'),
@@ -135,13 +134,22 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
           .select('observation_code')
           .eq('semantic_class', 'pest')
           .eq('is_diagnostic', true)
-          .limit(2000), // PostgREST cap safety
-        // P6: advisory DIRECT-mode intents — bypass symptom-clarification gates
+          .limit(2000),
         supabase
           .from('observation_intent_master')
           .select('intent_code')
           .eq('clarification_mode', 'DIRECT')
           .eq('is_active', true),
+        // Tier 1 V3: IRAC/FRAC rotation family map
+        supabase
+          .from('chemical_rotation_group')
+          .select('chemical_name, rotation_family, moa_system'),
+        // Tier 1 V1: max_safe_doses JSON blob (single row)
+        supabase
+          .from('system_config')
+          .select('config_value')
+          .eq('config_key', 'max_safe_doses')
+          .maybeSingle(),
       ]);
 
       // chemicals
