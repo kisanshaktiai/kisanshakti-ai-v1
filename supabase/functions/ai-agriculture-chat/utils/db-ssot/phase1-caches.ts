@@ -436,6 +436,103 @@ export function isAdvisoryDirectIntent(
   return legacyFallback.some((v) => normUpper(v) === k);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TIER 1 CUTOVER ACCESSORS (audit plan v1) — enrichment discipline
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * V2: True when the chemical belongs to the queried class per
+ * `chemical_regulatory_status.chemical_class`. During cold-boot (cache not yet
+ * loaded) callers may pass `legacyFallback` — the union of hardcoded class
+ * members preserved as a `_LEGACY_` array in the call site — so the pipeline
+ * does not silently open a hole for a still-uncatalogued neonicotinoid.
+ */
+export function isChemicalClass(
+  name: string,
+  chemicalClass: string,
+  legacyFallback: readonly string[] = [],
+): boolean {
+  const q = norm(name);
+  const cls = norm(chemicalClass);
+  if (!q || !cls) return false;
+  if (state.chemicalClasses.size > 0) {
+    for (const [k, v] of state.chemicalClasses) {
+      if (v === cls && q.includes(k)) return true;
+    }
+    return false;
+  }
+  enrichmentMissWarnOnce('chemical_regulatory_status.chemical_class');
+  if (!phase1CacheReady()) {
+    return legacyFallback.some((v) => q.includes(v.toLowerCase()));
+  }
+  return false;
+}
+
+/**
+ * V3: IRAC/FRAC rotation family lookup from `public.chemical_rotation_group`.
+ * `moaSystem` MUST be either 'IRAC' or 'FRAC'. Returns the family label
+ * (e.g. 'IRAC_1B', 'FRAC_M') or null if unknown. Cold-boot legacy fallback
+ * accepts a `{chemical → family}` map to match the pre-cutover behaviour.
+ */
+export function getRotationFamily(
+  chemical: string,
+  moaSystem: 'IRAC' | 'FRAC',
+  legacyFallback?: Record<string, string>,
+): string | null {
+  const q = norm(chemical);
+  const sys = normUpper(moaSystem);
+  if (!q || (sys !== 'IRAC' && sys !== 'FRAC')) return null;
+  if (state.rotationFamilies.size > 0) {
+    // Prefer exact match, then substring
+    const exact = state.rotationFamilies.get(`${sys}::${q}`);
+    if (exact) return exact;
+    for (const [k, v] of state.rotationFamilies) {
+      if (!k.startsWith(`${sys}::`)) continue;
+      const name = k.substring(sys.length + 2);
+      if (q.includes(name) || name.includes(q)) return v;
+    }
+    return null;
+  }
+  enrichmentMissWarnOnce('chemical_rotation_group');
+  if (!phase1CacheReady() && legacyFallback) {
+    for (const [k, v] of Object.entries(legacyFallback)) {
+      if (q.includes(k.toLowerCase())) return v;
+    }
+  }
+  return null;
+}
+
+/**
+ * V1: Regulatory maximum-safe dose per hectare, keyed by active ingredient,
+ * from `system_config.max_safe_doses`. Returns null when unknown. Legacy
+ * fallback accepts the caller's pre-cutover `MAX_SAFE_DOSES` map (kept as
+ * `_LEGACY_MAX_SAFE_DOSES`) used only during the cold-boot window.
+ */
+export function getMaxDosePerHa(
+  chemical: string,
+  legacyFallback?: Record<string, { max_g_per_ha: number; unit: string }>,
+): { max_g_per_ha: number; unit: string } | null {
+  const q = norm(chemical);
+  if (!q) return null;
+  if (state.maxSafeDoses.size > 0) {
+    const exact = state.maxSafeDoses.get(q);
+    if (exact) return exact;
+    for (const [k, v] of state.maxSafeDoses) {
+      if (q.includes(k) || k.includes(q)) return v;
+    }
+    return null;
+  }
+  enrichmentMissWarnOnce('system_config.max_safe_doses');
+  if (!phase1CacheReady() && legacyFallback) {
+    const lc = legacyFallback[q];
+    if (lc) return lc;
+    for (const [k, v] of Object.entries(legacyFallback)) {
+      if (q.includes(k.toLowerCase())) return v;
+    }
+  }
+  return null;
+}
+
 /** For diagnostics / tests. */
 export function _phase1CacheSnapshot() {
   return {
@@ -448,5 +545,8 @@ export function _phase1CacheSnapshot() {
     hypothesis_groups: state.hypothesisCanonicalGroups.size,
     pest_indicators: state.pestIndicators.size,
     advisory_direct: state.advisoryDirectIntents.size,
+    chemical_classes: state.chemicalClasses.size,
+    rotation_families: state.rotationFamilies.size,
+    max_safe_doses: state.maxSafeDoses.size,
   };
 }
