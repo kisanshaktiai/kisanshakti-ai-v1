@@ -2,6 +2,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-24 — Tier 1 audit cutovers: added three DB-SSOT accessors backing
+ *   previously hardcoded agri constants:
+ *     • `isChemicalClass(name, class)` over chemical_regulatory_status.chemical_class
+ *       (replaces NEONICOTINOIDS hardcode in decision-graph-bridge.ts).
+ *     • `getRotationFamily(chemical, moa_system)` over chemical_rotation_group
+ *       (replaces IRAC/FRAC maps in safety-enhancement.ts).
+ *     • `getMaxDosePerHa(chemical)` over system_config.max_safe_doses (JSON map
+ *       keyed by active ingredient — replaces MAX_SAFE_DOSES in
+ *       deterministic-response-builder.ts).
+ *   Enrichment discipline (skip on miss / legacy fallback during cold-boot).
  * 2026-07-24 — P4b: added `findBannedChemicalMention(text, legacyMentionList)`
  *   for the safety-guardian emergency branch. Same hard-fail discipline as
  *   `isBannedChemical` — throws `SafetyCacheUnavailableError` when the
