@@ -2,6 +2,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-24 — P4b: added `findBannedChemicalMention(text, legacyMentionList)`
+ *   for the safety-guardian emergency branch. Same hard-fail discipline as
+ *   `isBannedChemical` — throws `SafetyCacheUnavailableError` when the
+ *   cache is warm but the banned set is empty. Enables removal of the
+ *   hardcoded `EMERGENCY_KEYWORDS.banned_used` array in safety-guardian.
+ * 2026-07-24 — P6: added `advisoryDirectIntents` DB set (loaded from
+ *   observation_intent_master where clarification_mode='DIRECT' and
+ *   is_active=true) and `isAdvisoryDirectIntent(intent, legacyFallback)`
+ *   enrichment accessor. Cold-boot / miss falls back to caller's legacy set.
  * 2026-07-24 — Phase 3b promotion: `getEmergencyObsCodes` reclassified from
  *   `enrichment` to `safety_hard_fail_on_miss`. Throws
  *   `SafetyCacheUnavailableError` when preload has completed but the set is
