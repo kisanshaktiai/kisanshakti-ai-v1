@@ -321,7 +321,7 @@ export class SafetyGuardian {
     const harvestDate = new Date(context.expected_harvest_date);
     const today = new Date();
     const daysToHarvest = Math.floor((harvestDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const requiredPHI = phiEntry.phi_days + SAFETY_THRESHOLDS.PHI_BUFFER_DAYS;
+    const requiredPHI = phiEntry.phi_days + _getConfigNumber('safety_phi_buffer_days', _LEGACY_SAFETY.PHI_BUFFER_DAYS);
     const gapDays = daysToHarvest - requiredPHI;
     
     if (gapDays < 0) {
