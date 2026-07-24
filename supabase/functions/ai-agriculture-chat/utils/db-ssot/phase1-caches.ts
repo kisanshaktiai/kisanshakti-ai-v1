@@ -197,6 +197,28 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
         if (c) advisoryDirect.add(c);
       }
 
+      // Tier 1 V3: rotation families
+      const rotations = new Map<string, string>();
+      for (const r of rotRes.data ?? []) {
+        const name = norm(r.chemical_name);
+        const sys = normUpper(r.moa_system);
+        const fam = String(r.rotation_family ?? '').trim();
+        if (!name || !sys || !fam) continue;
+        rotations.set(`${sys}::${name}`, fam);
+      }
+
+      // Tier 1 V1: max_safe_doses
+      const doses = new Map<string, { max_g_per_ha: number; unit: string }>();
+      const doseJson = (doseCfgRes?.data?.config_value ?? {}) as Record<
+        string,
+        { max_g_per_ha?: unknown; unit?: unknown }
+      >;
+      for (const [k, v] of Object.entries(doseJson ?? {})) {
+        const cap = Number(v?.max_g_per_ha);
+        if (!Number.isFinite(cap) || cap <= 0) continue;
+        doses.set(norm(k), { max_g_per_ha: cap, unit: String(v?.unit ?? 'g') });
+      }
+
       // Atomic swap only if we got non-empty safety data (banned MUST be non-empty).
       if (banned.size === 0) {
         console.warn(
@@ -213,6 +235,9 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
       state.hypothesisCanonicalGroups = groups;
       state.pestIndicators = pests;
       state.advisoryDirectIntents = advisoryDirect;
+      state.chemicalClasses = classes;
+      state.rotationFamilies = rotations;
+      state.maxSafeDoses = doses;
       state.loadedAt = Date.now();
 
       console.log(
@@ -220,7 +245,8 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
           `banned=${banned.size} restricted=${restricted.size} watch=${watch.size} ` +
           `emerg=${emerg.size} diag_intents=${intents.size} ` +
           `hyp_groups=${groups.size} pest_indicators=${pests.size} ` +
-          `advisory_direct=${advisoryDirect.size}`,
+          `advisory_direct=${advisoryDirect.size} ` +
+          `chem_classes=${classes.size} rotations=${rotations.size} max_doses=${doses.size}`,
       );
     } catch (e) {
       console.error('[DB_SSOT_CACHE_MISS] discipline=mixed action=preload_failed err=' + (e as Error).message);
