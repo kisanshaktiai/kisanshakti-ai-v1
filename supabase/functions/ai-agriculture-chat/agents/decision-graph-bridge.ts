@@ -185,23 +185,20 @@ export async function evaluateDecisionGraph(
     } catch (e) { console.error('Chemical status check failed', e); }
   }
 
-  // 2. Weather & Stage Safety
+  // 2. Weather & Stage Safety (Tier 1 V2: DB-driven neonicotinoid class)
   if (!isBlocked && context.crop_stage === 'FLOWERING') {
-    for (const neonic of NEONICOTINOIDS) {
-      if (chemicalMentioned.includes(neonic)) {
-        isBlocked = true;
-        blockingRule = {
-          rule_id: 'SAFETY_006_POLLINATOR',
-          priority: 'P2_WEATHER_SAFETY',
-          reason: `${neonic} is toxic to pollinators during flowering`
-        };
-        evaluatedRules.push({
-          rule_id: 'SAFETY_006_POLLINATOR', category: 'safety', priority: 'P2_WEATHER_SAFETY', fired: true, action: 'BLOCK', confidence: 0.95,
-          scientific_basis: 'ICAR-NBAIR Bee Protection Guidelines',
-          recommendation_en: `🐝 Do not use ${neonic} during flowering. Bees will be harmed.`
-        });
-        break;
-      }
+    if (_isChemicalClassDb(chemicalMentioned, 'neonicotinoid', _LEGACY_NEONICOTINOIDS)) {
+      isBlocked = true;
+      blockingRule = {
+        rule_id: 'SAFETY_006_POLLINATOR',
+        priority: 'P2_WEATHER_SAFETY',
+        reason: `${chemicalMentioned} (neonicotinoid) is toxic to pollinators during flowering`
+      };
+      evaluatedRules.push({
+        rule_id: 'SAFETY_006_POLLINATOR', category: 'safety', priority: 'P2_WEATHER_SAFETY', fired: true, action: 'BLOCK', confidence: 0.95,
+        scientific_basis: 'ICAR-NBAIR Bee Protection Guidelines',
+        recommendation_en: `🐝 Do not use ${chemicalMentioned} during flowering. Bees will be harmed.`
+      });
     }
   }
 
