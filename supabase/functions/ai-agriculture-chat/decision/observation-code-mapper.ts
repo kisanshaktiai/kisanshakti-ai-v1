@@ -27,8 +27,13 @@ import { ObservationKey } from './observation-ontology.ts';
 import type { SemanticExtraction } from '../agents/semantic-extractor.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { getObservationsForIntent, isObservationMappingLoaded } from '../utils/observation-mapping-cache.ts';
+import {
+  observationIndexDiff as _observationIndexDiff,
+  resolveAliasCanonical as _resolveAliasCanonical,
+  observationIndexReady as _observationIndexReady,
+} from '../utils/db-ssot/observation-index.ts';
 
-export const OBSERVATION_CODE_MAPPER_VERSION = '3.0.0'; // PR-1: intent map is DB-driven
+export const OBSERVATION_CODE_MAPPER_VERSION = '3.1.0'; // P8: shadow-diff observation_aliases against shared index
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE
