@@ -4193,32 +4193,71 @@ export type Database = {
         Row: {
           alternatives: Json | null
           ban_date: string | null
+          chemical_class: string | null
           chemical_name: string
           created_at: string | null
           id: string
           reason: string | null
           regulatory_body: string | null
           status: string
+          who_toxicity_class: string | null
         }
         Insert: {
           alternatives?: Json | null
           ban_date?: string | null
+          chemical_class?: string | null
           chemical_name: string
           created_at?: string | null
           id?: string
           reason?: string | null
           regulatory_body?: string | null
           status: string
+          who_toxicity_class?: string | null
         }
         Update: {
           alternatives?: Json | null
           ban_date?: string | null
+          chemical_class?: string | null
           chemical_name?: string
           created_at?: string | null
           id?: string
           reason?: string | null
           regulatory_body?: string | null
           status?: string
+          who_toxicity_class?: string | null
+        }
+        Relationships: []
+      }
+      chemical_rotation_group: {
+        Row: {
+          chemical_name: string
+          created_at: string
+          id: string
+          moa_code: string | null
+          moa_system: string
+          rotation_family: string
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          chemical_name: string
+          created_at?: string
+          id?: string
+          moa_code?: string | null
+          moa_system: string
+          rotation_family: string
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          chemical_name?: string
+          created_at?: string
+          id?: string
+          moa_code?: string | null
+          moa_system?: string
+          rotation_family?: string
+          source?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -16296,6 +16335,7 @@ export type Database = {
           distributor_id: string | null
           documents: Json | null
           dosage_instructions: string | null
+          dose_unit: string | null
           effectiveness_rating: number | null
           environmental_impact: Json | null
           expiry_date: string | null
@@ -16317,6 +16357,7 @@ export type Database = {
           market_availability: string | null
           maturity_days_max: number | null
           maturity_days_min: number | null
+          max_dose_per_ha_g: number | null
           maximum_order_quantity: number | null
           metadata: Json | null
           minimum_order_quantity: number | null
@@ -16432,6 +16473,7 @@ export type Database = {
           distributor_id?: string | null
           documents?: Json | null
           dosage_instructions?: string | null
+          dose_unit?: string | null
           effectiveness_rating?: number | null
           environmental_impact?: Json | null
           expiry_date?: string | null
@@ -16453,6 +16495,7 @@ export type Database = {
           market_availability?: string | null
           maturity_days_max?: number | null
           maturity_days_min?: number | null
+          max_dose_per_ha_g?: number | null
           maximum_order_quantity?: number | null
           metadata?: Json | null
           minimum_order_quantity?: number | null
@@ -16568,6 +16611,7 @@ export type Database = {
           distributor_id?: string | null
           documents?: Json | null
           dosage_instructions?: string | null
+          dose_unit?: string | null
           effectiveness_rating?: number | null
           environmental_impact?: Json | null
           expiry_date?: string | null
@@ -16589,6 +16633,7 @@ export type Database = {
           market_availability?: string | null
           maturity_days_max?: number | null
           maturity_days_min?: number | null
+          max_dose_per_ha_g?: number | null
           maximum_order_quantity?: number | null
           metadata?: Json | null
           minimum_order_quantity?: number | null
