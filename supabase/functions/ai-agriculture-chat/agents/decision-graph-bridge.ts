@@ -74,8 +74,9 @@ export interface EvaluatedRule {
 // (44 banned, 12 restricted, 3 watch_list rows verified 2026-07-22).
 // The two legacy arrays below are retained ONLY as cold-boot fallback used
 // while the DB cache preloads. Do NOT add rows here — insert into DB.
-// NEONICOTINOIDS stays hardcoded for now (deferred to Phase 4: needs
-// chemical_regulatory_status.chemical_class column).
+// NEONICOTINOIDS is now DB-driven via chemical_regulatory_status.chemical_class
+// = 'neonicotinoid' (Tier 1 V2 cutover, 2026-07-24). The array below is a
+// COLD-BOOT ONLY fallback consulted while the phase1 cache is warming.
 // watch_list behavior change (new in Phase 1): matched watch_list chemicals
 // surface an informational WARN rule, never a BLOCK — surfaces regulatory
 // attention without denying access to still-legal inputs.
@@ -84,6 +85,7 @@ export interface EvaluatedRule {
 import {
   isBannedChemical as _isBannedChemicalDb,
   isWatchListChemical as _isWatchListChemicalDb,
+  isChemicalClass as _isChemicalClassDb,
 } from '../utils/db-ssot/phase1-caches.ts';
 
 const _LEGACY_BANNED_CHEMICALS: readonly string[] = [
@@ -94,7 +96,7 @@ const _LEGACY_BANNED_CHEMICALS: readonly string[] = [
   'lindane', 'alachlor',
 ];
 
-const NEONICOTINOIDS = [
+const _LEGACY_NEONICOTINOIDS: readonly string[] = [
   'imidacloprid', 'thiamethoxam', 'clothianidin', 'acetamiprid',
   'thiacloprid', 'dinotefuran', 'nitenpyram',
 ];
