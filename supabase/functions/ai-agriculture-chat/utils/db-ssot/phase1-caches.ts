@@ -360,6 +360,28 @@ export function isPestIndicator(code: string): boolean {
   return state.pestIndicators.has(k);
 }
 
+/**
+ * P6 (2026-07-24): advisory DIRECT-mode intents from observation_intent_master.
+ * Enrichment discipline. When the cache is warm the DB set is authoritative;
+ * the caller-supplied `legacyFallback` is unioned in for safety-net coverage
+ * so a DB row-removal cannot silently strip an intent from the direct route
+ * before an agronomist has reconciled it. Cold-boot returns legacy only.
+ */
+export function isAdvisoryDirectIntent(
+  intent: unknown,
+  legacyFallback: readonly string[] = [],
+): boolean {
+  const k = normUpper(intent);
+  if (!k) return false;
+  if (state.advisoryDirectIntents.size > 0) {
+    if (state.advisoryDirectIntents.has(k)) return true;
+    // Safety-net union with legacy until DB rows fully reconciled.
+    return legacyFallback.some((v) => normUpper(v) === k);
+  }
+  enrichmentMissWarnOnce('observation_intent_master.DIRECT');
+  return legacyFallback.some((v) => normUpper(v) === k);
+}
+
 /** For diagnostics / tests. */
 export function _phase1CacheSnapshot() {
   return {
@@ -371,5 +393,6 @@ export function _phase1CacheSnapshot() {
     diagnostic_intents: state.diagnosticIntents.size,
     hypothesis_groups: state.hypothesisCanonicalGroups.size,
     pest_indicators: state.pestIndicators.size,
+    advisory_direct: state.advisoryDirectIntents.size,
   };
 }
