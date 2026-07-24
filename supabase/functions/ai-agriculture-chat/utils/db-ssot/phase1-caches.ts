@@ -163,6 +163,12 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
         if (c) pests.add(c);
       }
 
+      const advisoryDirect = new Set<string>();
+      for (const r of advRes.data ?? []) {
+        const c = normUpper(r.intent_code);
+        if (c) advisoryDirect.add(c);
+      }
+
       // Atomic swap only if we got non-empty safety data (banned MUST be non-empty).
       if (banned.size === 0) {
         console.warn(
@@ -178,13 +184,15 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
       state.diagnosticIntents = intents;
       state.hypothesisCanonicalGroups = groups;
       state.pestIndicators = pests;
+      state.advisoryDirectIntents = advisoryDirect;
       state.loadedAt = Date.now();
 
       console.log(
         `[DB_SSOT_CACHE] phase1_loaded_ms=${Date.now() - started} ` +
           `banned=${banned.size} restricted=${restricted.size} watch=${watch.size} ` +
           `emerg=${emerg.size} diag_intents=${intents.size} ` +
-          `hyp_groups=${groups.size} pest_indicators=${pests.size}`,
+          `hyp_groups=${groups.size} pest_indicators=${pests.size} ` +
+          `advisory_direct=${advisoryDirect.size}`,
       );
     } catch (e) {
       console.error('[DB_SSOT_CACHE_MISS] discipline=mixed action=preload_failed err=' + (e as Error).message);
