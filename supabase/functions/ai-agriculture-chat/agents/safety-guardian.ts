@@ -585,20 +585,20 @@ export class SafetyGuardian {
     }
     
     // Trigger 3: High-value crop at significant risk
-    if ((context.crop_value_inr || 0) > SAFETY_THRESHOLDS.HIGH_VALUE_CROP_THRESHOLD_INR && 
+    if ((context.crop_value_inr || 0) > _getConfigNumber('safety_high_value_crop_inr', _LEGACY_SAFETY.HIGH_VALUE_CROP_THRESHOLD_INR) &&
         context.severity === 'CRITICAL') {
       reasons.push('High-value crop with critical risk - expert consultation recommended');
       escalationLevel = escalationLevel === 'REQUIRED' ? 'REQUIRED' : 'ADVISORY';
     }
     
     // Trigger 4: Multiple failed treatments
-    if ((context.previous_failed_treatments || 0) >= SAFETY_THRESHOLDS.MAX_FAILED_TREATMENTS_BEFORE_ESCALATION) {
+    if ((context.previous_failed_treatments || 0) >= _getConfigNumber('safety_max_failed_treatments', _LEGACY_SAFETY.MAX_FAILED_TREATMENTS_BEFORE_ESCALATION)) {
       reasons.push('Multiple previous treatments failed - expert diagnosis needed');
       escalationLevel = 'REQUIRED';
     }
     
     // Trigger 5: Large-scale outbreak
-    if ((context.affected_area_acres || 0) > SAFETY_THRESHOLDS.LARGE_AREA_THRESHOLD_ACRES && 
+    if ((context.affected_area_acres || 0) > _getConfigNumber('safety_large_area_acres', _LEGACY_SAFETY.LARGE_AREA_THRESHOLD_ACRES) &&
         context.severity === 'CRITICAL') {
       reasons.push('Large-scale outbreak - regional expert should be informed');
       escalationLevel = escalationLevel === 'EMERGENCY' ? 'EMERGENCY' : 'REQUIRED';
