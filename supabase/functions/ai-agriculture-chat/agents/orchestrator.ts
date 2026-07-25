@@ -2293,7 +2293,12 @@ export class AIAgentOrchestrator {
           // EvidenceLedger already recorded the SYMBOLIC_ID_LEAK above.
           // ─────────────────────────────────────────────────────────────
           try {
-            const CANON_RE_OPT = /^[A-Z0-9_]+$/;
+            // FIX (canonical-code contract): canonical observation codes are
+            // lower_snake_case (verified: observation_master.observation_code
+            // is 100% lowercase across 2,549 rows). The prior UPPERCASE regex
+            // would reject P1/P2/P3 outputs and silently skip the ledger
+            // append + confirm — breaking downstream evidence classification.
+            const CANON_RE_OPT = /^[a-z0-9_]+$/;
             if (mappedObservationKey && CANON_RE_OPT.test(mappedObservationKey)) {
               const already = graph.observation_ledger
                 .latestByCode()
