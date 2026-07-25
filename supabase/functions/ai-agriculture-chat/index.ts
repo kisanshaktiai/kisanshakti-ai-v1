@@ -3598,9 +3598,18 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
     has_communication: !!response.communication,
     has_decision_output: !!response.decision_output,
     comm_keys: response.communication?.main_message ? Object.keys(response.communication.main_message) : [],
-    decision_status: response.decision_output?.status,
-    has_primary: !!response.decision_output?.primary_decision
+    decision_status: (response.decision_output as any)?.status,
+    has_primary: !!response.decision_output?.primary_decision,
+    // P6: graph observability at the response boundary
+    graphExecuted: (response as any)?.graph_snapshot?.graph_executed
+      ?? (response as any)?.metadata?.graph_executed
+      ?? false,
+    graph_gap: (response.decision_output as any)?.graph_gap ?? null,
+    trace_id: (response as any)?.graph_snapshot?.trace_id
+      ?? (response.decision_output as any)?.trace_id
+      ?? null,
   });
+
   
   switch (response.type) {
     case 'DECISION_PROVIDED':

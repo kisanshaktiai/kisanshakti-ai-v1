@@ -991,32 +991,69 @@ export async function evaluateCandidateHypotheses(
           
           console.log(`   🔬 [HypObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}]`);
           
-          const beforeCount = rulesToEvaluate.length;
-          rulesToEvaluate = rulesToEvaluate.filter((rule: any) => {
-            // Category filter
+          // ═══════════════════════════════════════════════════════════════
+          // P3: TIERED RULE-FILTER WIDENING — never collapse to zero.
+          // ═══════════════════════════════════════════════════════════════
+          const obsCanonicalGroups = new Set<string>(
+            obsMetaData.map((o: any) => o.canonical_group).filter(Boolean).map((g: string) => String(g).toUpperCase()),
+          );
+
+          const matchCat = (rule: any): boolean => {
             const reqCat = rule.required_observation_category;
-            if (reqCat && Array.isArray(reqCat) && reqCat.length > 0) {
-              const hasMatch = reqCat.some((cat: string) => obsCategories.has(cat));
-              if (!hasMatch) return false;
-            }
-            
-            // Plant part filter with WHOLE wildcard
+            if (!reqCat || !Array.isArray(reqCat) || reqCat.length === 0) return true;
+            return reqCat.some((cat: string) => obsCategories.has(cat));
+          };
+          const matchPart = (rule: any): boolean => {
             const reqPart = rule.required_plant_part;
-            if (reqPart && Array.isArray(reqPart) && reqPart.length > 0) {
-              const hasMatch = 
-                obsPlantParts.has('WHOLE') ||
-                reqPart.includes('WHOLE') ||
-                reqPart.some((part: string) => obsPlantParts.has(part));
-              if (!hasMatch) return false;
+            if (!reqPart || !Array.isArray(reqPart) || reqPart.length === 0) return true;
+            return (
+              obsPlantParts.has('WHOLE') ||
+              reqPart.includes('WHOLE') ||
+              reqPart.some((part: string) => obsPlantParts.has(part))
+            );
+          };
+          const matchGroup = (rule: any): boolean => {
+            const cg = rule.canonical_group;
+            if (!cg || obsCanonicalGroups.size === 0) return true;
+            return obsCanonicalGroups.has(String(cg).toUpperCase());
+          };
+
+          const beforeCount = rulesToEvaluate.length;
+          const preWidenRules = rulesToEvaluate;
+          const tiers: Array<{ tier: number; label: string; fn: (r: any) => boolean }> = [
+            { tier: 0, label: 'CATEGORY+PART', fn: (r) => matchCat(r) && matchPart(r) },
+            { tier: 1, label: 'CATEGORY_ONLY', fn: (r) => matchCat(r) },
+            { tier: 2, label: 'PART_ONLY', fn: (r) => matchPart(r) },
+            { tier: 3, label: 'CANONICAL_GROUP', fn: (r) => matchGroup(r) },
+            { tier: 4, label: 'CROP_SCOPE', fn: () => true },
+          ];
+
+          let widened: any[] = [];
+          let appliedTier = 0;
+          for (const t of tiers) {
+            widened = preWidenRules.filter(t.fn);
+            appliedTier = t.tier;
+            if (widened.length > 0) {
+              if (t.tier > 0) {
+                console.warn(`   🔓 [RULE_FILTER_WIDEN] tier=${t.tier} label=${t.label} pre=${beforeCount} post=${widened.length}`);
+              }
+              break;
             }
-            
-            return true;
-          });
+            if (beforeCount === 0) break;
+            console.warn(`   🔓 [RULE_FILTER_WIDEN] tier=${t.tier} label=${t.label} pre=${beforeCount} post=0 → widening`);
+          }
+          if (widened.length === 0 && beforeCount > 0) {
+            widened = preWidenRules;
+            appliedTier = 5;
+            console.warn(`   🔓 [RULE_FILTER_WIDEN] tier=5 label=UNIVERSAL pre=${beforeCount} post=${widened.length}`);
+          }
+          rulesToEvaluate = widened;
           
           const removedCount = beforeCount - rulesToEvaluate.length;
           if (removedCount > 0) {
-            console.log(`   🎯 [HypObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${rulesToEvaluate.length})`);
+            console.log(`   🎯 [HypObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${rulesToEvaluate.length}) tier=${appliedTier}`);
           }
+
         }
       } catch (obsErr) {
         console.warn(`   ⚠️ [HypObsFilter] Failed to load observation metadata:`, obsErr);
