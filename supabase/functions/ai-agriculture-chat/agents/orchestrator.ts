@@ -119,7 +119,11 @@ import {
   isAdvisoryDirectIntent as _isAdvisoryDirectIntentDb,
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
-import { preloadObservationIndex as _preloadObservationIndex } from '../utils/db-ssot/observation-index.ts';
+import {
+  preloadObservationIndex as _preloadObservationIndex,
+  getObservationMaster as _getObservationMaster,
+  observationIndexReady as _observationIndexReady,
+} from '../utils/db-ssot/observation-index.ts';
 import { preloadSystemConfig as _preloadSystemConfig } from '../utils/db-ssot/system-config-cache.ts';
 
 const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
