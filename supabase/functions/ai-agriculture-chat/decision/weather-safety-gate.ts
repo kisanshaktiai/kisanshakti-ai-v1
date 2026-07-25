@@ -21,7 +21,7 @@
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
-import { getConfigJson } from '../../utils/db-ssot/system-config-cache.ts';
+import { getConfigJson } from '../utils/db-ssot/system-config-cache.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
