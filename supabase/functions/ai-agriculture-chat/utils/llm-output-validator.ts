@@ -18,6 +18,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import { resolveAliasCanonical, observationIndexReady } from './db-ssot/observation-index.ts';
+
 export const LLM_OUTPUT_VALIDATOR_VERSION = '1.1.0';
 
 /**
@@ -327,10 +329,34 @@ export async function validateLLMOutputAgainstDB(params: {
 
   const tryAlias = (code: string): string | null => {
     const upper = String(code || '').toUpperCase();
+
+    // FIX (DB-SSOT alias resolution): the neuro-symbolic contract requires
+    // the DB observation_aliases table (14,063 curated entries) to be the
+    // authoritative resolver. The prior code only consulted the 5-entry
+    // CANONICAL_OBSERVATION_ALIASES in-code map, silently dropping every
+    // LLM-emitted alias the DB already knows how to canonicalize. We now
+    // try the DB path FIRST via the observation-index cache (preloaded at
+    // boot, sync, 14k+ alias keys). The in-code map remains ONLY as a
+    // cold-boot fallback while the index is still warming.
+    if (observationIndexReady()) {
+      const dbCanonical = resolveAliasCanonical(code);
+      if (dbCanonical) {
+        const dbCanonicalUpper = dbCanonical.toUpperCase();
+        // Same validity gates as before: canonical must be a real
+        // observation_master row AND applicable for the crop (when a
+        // crop-applicability set is known).
+        if (validObservations.has(dbCanonicalUpper) &&
+            (applicableObs.size === 0 || applicableObs.has(dbCanonicalUpper))) {
+          return dbCanonicalUpper;
+        }
+      }
+    }
+
+    // Cold-boot / DB-miss fallback: consult the tiny in-code map. This path
+    // stays for defense-in-depth only; production traffic should hit the
+    // DB path above once the observation-index preload is warm.
     const alias = CANONICAL_OBSERVATION_ALIASES[upper];
     if (!alias) return null;
-    // Alias must be a real observation AND (if we have a crop-applicability
-    // set) applicable for the crop. Otherwise it's not evidence, it's noise.
     if (!validObservations.has(alias)) return null;
     if (applicableObs.size > 0 && !applicableObs.has(alias)) return null;
     return alias;
