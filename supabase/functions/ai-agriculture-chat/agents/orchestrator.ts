@@ -5983,7 +5983,14 @@ export class AIAgentOrchestrator {
               graphErrMessage.includes('REQUIRED_DAS_FAILED');
 
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${graphErrMessage}`);
-            if (nonFatalNoSurvivorGraph) {
+            // P3 — if we already have valid graph output from an earlier
+            // successful pass this turn, do NOT wipe rule ids in the
+            // "non-fatal exhausted" branch. A late non-fatal throw (e.g. audit
+            // block) would otherwise erase the 13 rules Chain A produced.
+            const _priorCandidates = ((this as any)._graphHypothesisResult?.candidates ?? []) as any[];
+            const _priorRuleIds = ((this as any)._graphHypothesisRuleIds ?? []) as string[];
+            const _preserveExistingChainA = _priorCandidates.length > 0 || _priorRuleIds.length > 0;
+            if (nonFatalNoSurvivorGraph && !_preserveExistingChainA) {
               // The graph ran far enough to establish that DB-curated stage/DAS
               // constraints exhausted the candidate set. That is a valid graph
               // result, not a bypass. Mark sequence=2 so downstream invariants
@@ -6015,6 +6022,11 @@ export class AIAgentOrchestrator {
                 `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
                 `hyp=[] sequence=2 survived=0 eliminated=unknown edge_missing=0 ` +
                 `reason=GRAPH_CONTEXT_EXHAUSTED`,
+              );
+            } else if (nonFatalNoSurvivorGraph && _preserveExistingChainA) {
+              console.warn(
+                `[HYP_GRAPH_PRESERVE] trace=${traceId} non-fatal throw suppressed reset ` +
+                `(candidates=${_priorCandidates.length} rule_ids=${_priorRuleIds.length}) err="${graphErrMessage}"`,
               );
             }
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
@@ -8258,10 +8270,34 @@ export class AIAgentOrchestrator {
         // Union NOT intersection: if the graph edge set is available and non-empty,
         // it is treated as the authoritative candidate scope. Fallback path (no edges)
         // keeps the existing intent-filtered set so unrelated flows are unaffected.
-        const graphRuleIdSet = new Set<string>(
-          (((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.hypothesis_rule_ids)
-            ?? ((this as any)._graphHypothesisRuleIds ?? []) as string[],
-        );
+        // P1 — prefer non-empty source (mirror-drift safe). `??` alone made a
+        // frozen empty runtime-state getter mask a populated self field.
+        const _grsRuleIds = ((((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.hypothesis_rule_ids) ?? []) as readonly string[];
+        const _selfRuleIds = ((this as any)._graphHypothesisRuleIds ?? []) as string[];
+        const _chosenRuleIds: readonly string[] = _grsRuleIds.length > 0 ? _grsRuleIds : _selfRuleIds;
+        const graphRuleIdSet = new Set<string>(_chosenRuleIds);
+        console.log(`[HYP_RULE_SRC] trace=${traceId} grs=${_grsRuleIds.length} self=${_selfRuleIds.length} chosen=${_chosenRuleIds.length}`);
+
+        // P2 — if both mirrors are empty but the graph produced surviving
+        // candidates that carry their own candidate_rule_ids, reconstruct the
+        // set directly from graphOut. `_graphHypothesisResult.candidates` is
+        // the SSOT for hypothesis→rule edges (populated at line 5804).
+        const _graphSurvivorsForRules: any[] = ((this as any)._graphHypothesisResult?.candidates) ?? [];
+        if (graphRuleIdSet.size === 0 && _graphSurvivorsForRules.length > 0) {
+          const _recoveredRuleIds = _graphSurvivorsForRules
+            .flatMap((c: any) => Array.isArray(c?.candidate_rule_ids) ? c.candidate_rule_ids : [])
+            .filter(Boolean)
+            .map((r: any) => String(r));
+          if (_recoveredRuleIds.length > 0) {
+            for (const rid of _recoveredRuleIds) graphRuleIdSet.add(rid);
+            (this as any)._graphHypothesisRuleIds = Array.from(new Set([..._selfRuleIds, ..._recoveredRuleIds]));
+            try {
+              ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)
+                ?.setHypothesisRuleIds((this as any)._graphHypothesisRuleIds);
+            } catch {}
+            console.warn(`[HYP_RULE_RECOVERED] trace=${traceId} from=_graphHypothesisResult n=${_recoveredRuleIds.length} survivors=${_graphSurvivorsForRules.length}`);
+          }
+        }
         const graphEdgeMissing: string[] = ((this as any)._graphHypothesisEdgeMissing ?? []) as string[];
         const _graphExecutedFlag = (this as any)._graphExecuted === true;
         const _graphSurvivors: any[] = ((this as any)._graphHypothesisResult?.candidates) ?? [];
