@@ -2,6 +2,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-25 UTC — Batch A / P2: added `structured_gap_reason` to
+ *   GraphHypothesisResult (NO_OBSERVATION_EVIDENCE | NO_DISCOVERY_SEEDS |
+ *   NO_STAGE_VALID_HYPOTHESES | PARTIAL_MATCH_ONLY | ALL_ELIMINATED) plus a
+ *   `[GRAPH_STRUCTURED_GAP]` trace. Additive only — no scoring or
+ *   elimination behaviour changed.
  * 2026-07-11 UTC — v5-P8: STAGE hard-gate is now confidence-aware.
  *   `GraphHypothesisInput.predicted_stage_confidence` (0..1) is compared to
  *   a runtime graph threshold (`system_config.bio_stage_hard_gate_threshold`
