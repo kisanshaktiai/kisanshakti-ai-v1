@@ -208,25 +208,26 @@ export async function getObservationKeyLabels(key: string, language: string = 'e
 }
 
 /**
- * Get observation keys for a specific stage — async, DB-driven labels
+ * Get observation keys for a specific stage — async, DB-driven codes + labels.
+ * P7: codes come from observation_master, never from a TS literal list.
  */
 export async function getStageObservationKeys(
   stage: string,
   language: string,
   maxKeys: number = 4
 ): Promise<ClarificationOption[]> {
-  const normalizedStage = stage.toLowerCase().replace(/[\s-]/g, '_');
-  const priorityKeys = STAGE_KEY_PRIORITIES[normalizedStage] || STAGE_KEY_PRIORITIES.all;
-  const keysToLoad = priorityKeys.slice(0, maxKeys);
-  
   const client = getSupabaseClient();
   if (!client) {
-    // Offline fallback: raw codes
-    return keysToLoad.map(k => ({ key: k, label: formatCodeFallback(k, language) }));
+    console.warn('[CanonicalLoader] getStageObservationKeys: no DB client → no static fallback (by design)');
+    return [];
   }
-  
+
+  const priorityKeys = await loadStagePriorityCodesFromDB(client, stage, maxKeys);
+  const keysToLoad = priorityKeys.slice(0, maxKeys);
+  if (keysToLoad.length === 0) return [];
+
   const labels = await loadObservationLabels(client, keysToLoad, language);
-  
+
   return keysToLoad.map(key => ({
     key,
     label: labels.get(key.toUpperCase())?.display_text || formatCodeFallback(key, language)
@@ -234,7 +235,9 @@ export async function getStageObservationKeys(
 }
 
 /**
- * Get observation keys by category — async, DB-driven labels
+ * Get observation keys by category — async, DB-driven codes + labels.
+ * P7: reads observation_master.observation_category directly instead of
+ * flattening a hardcoded stage-priority map.
  */
 export async function getCategoryObservationKeys(
   category: string,
@@ -243,14 +246,34 @@ export async function getCategoryObservationKeys(
 ): Promise<ClarificationOption[]> {
   const client = getSupabaseClient();
   if (!client) return [];
-  
-  // Query observation_translations for the category
-  // Since we don't have category in translations, use stage priority keys as fallback
-  const allKeys = Object.values(STAGE_KEY_PRIORITIES).flat();
-  const uniqueKeys = [...new Set(allKeys)].slice(0, maxKeys);
-  
+
+  const cat = String(category ?? '').trim();
+  if (!cat) return [];
+
+  const { data, error } = await client
+    .from('observation_master')
+    .select('observation_code, discriminator_score, clarity_score')
+    .eq('is_active', true)
+    .eq('is_diagnostic', true)
+    .eq('is_farmer_observable', true)
+    .or(`observation_category.eq.${cat},symptom_category.eq.${cat},canonical_group.eq.${cat}`)
+    .order('discriminator_score', { ascending: false, nullsFirst: false })
+    .order('clarity_score', { ascending: false, nullsFirst: false })
+    .limit(Math.max(maxKeys, 25));
+
+  if (error) {
+    console.warn(`[CanonicalLoader] category_query_failed category=${cat} err=${error.message}`);
+    return [];
+  }
+
+  const uniqueKeys = Array.from(
+    new Set((data ?? []).map((r: any) => String(r.observation_code ?? '').trim().toUpperCase()).filter(Boolean)),
+  ).slice(0, maxKeys) as string[];
+
+  if (uniqueKeys.length === 0) return [];
+
   const labels = await loadObservationLabels(client, uniqueKeys, language);
-  
+
   return uniqueKeys.map(key => ({
     key,
     label: labels.get(key.toUpperCase())?.display_text || formatCodeFallback(key, language)
