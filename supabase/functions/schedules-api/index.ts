@@ -40,8 +40,18 @@ serve(async (req) => {
       .eq('id', farmerId)
       .maybeSingle();
 
-    if (farmerErr || !farmerRow) {
-      console.warn('🚫 [SchedulesAPI] Farmer lookup failed:', { farmerId, error: farmerErr?.message });
+    if (farmerErr) {
+      // Transient DB/network error — do NOT return 403 (that blackholes the
+      // session). Return 503 so the client retries.
+      console.warn('🚫 [SchedulesAPI] Farmer lookup transient error:', { farmerId, error: farmerErr.message, code: (farmerErr as any).code });
+      return new Response(
+        JSON.stringify({ error: 'Service unavailable', details: 'Farmer lookup temporarily unavailable, please retry', code: 'FARMER_LOOKUP_TRANSIENT' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '1' } }
+      );
+    }
+
+    if (!farmerRow) {
+      console.warn('🚫 [SchedulesAPI] Farmer not found:', { farmerId });
       return new Response(
         JSON.stringify({ error: 'Forbidden', details: 'Invalid farmer context' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
