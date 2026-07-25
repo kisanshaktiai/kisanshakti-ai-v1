@@ -5270,11 +5270,33 @@ export class AIAgentOrchestrator {
       const informativeAuthorityCodes = authorityBasedCodes.filter((c: string) => isInformativeObs(c));
       const evidenceCoverage = computeCoverage(informativeAuthorityCodes);
       console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED, informative-only): ${(evidenceCoverage * 100).toFixed(0)}% (${informativeAuthorityCodes.length}/${authorityBasedCodes.length} informative)`);
-      
+
+      // FIX G2 (symmetric with __preemptHardBlock and __confirmedCountForTrigger
+      // added in the previous commit): informativeAuthorityCodes still includes
+      // structural metadata like CROP_IDENTIFIED / AFFECTED_PART_UNKNOWN /
+      // DISTRIBUTION_UNKNOWN that inflate coverage above the 25% floor and let
+      // the pipeline skip clarification even when there is zero diagnostic
+      // biological evidence. Filter through observation_master.is_diagnostic
+      // (DB authority) before the gate. No hardcoded list. Falls back to the
+      // unfiltered value on cold boot.
+      const diagnosticInformativeCodes = _observationIndexReady()
+        ? informativeAuthorityCodes.filter(
+            (c: string) => _getObservationMaster(c)?.is_diagnostic === true,
+          )
+        : informativeAuthorityCodes;
+      const diagnosticEvidenceCoverage = computeCoverage(diagnosticInformativeCodes);
+      if (_observationIndexReady() && diagnosticInformativeCodes.length !== informativeAuthorityCodes.length) {
+        console.log(
+          `   📊 [COVERAGE_GATE_DB_FILTER] diagnostic-only coverage: ` +
+          `${(diagnosticEvidenceCoverage * 100).toFixed(0)}% ` +
+          `(${diagnosticInformativeCodes.length}/${informativeAuthorityCodes.length} pass is_diagnostic)`,
+        );
+      }
+
       // REFINEMENT 3: Functional coverage gate - blocks diagnosis if evidence too low
       let shouldBlockDiagnosis = false;
-      if (evidenceCoverage < 0.25 && !isSymptomFreeRoute && !bypassClarification) {
-        console.log(`   [COVERAGE_GATE] Evidence coverage too low (${(evidenceCoverage * 100).toFixed(0)}%) -- blocking diagnosis, forcing clarification`);
+      if (diagnosticEvidenceCoverage < 0.25 && !isSymptomFreeRoute && !bypassClarification) {
+        console.log(`   [COVERAGE_GATE] Evidence coverage too low (${(diagnosticEvidenceCoverage * 100).toFixed(0)}%) -- blocking diagnosis, forcing clarification`);
         shouldBlockDiagnosis = true;
       }
       
