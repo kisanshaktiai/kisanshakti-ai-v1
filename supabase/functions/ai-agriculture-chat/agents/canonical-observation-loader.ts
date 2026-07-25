@@ -507,6 +507,6 @@ export default {
   getCategoryObservationKeys,
   loadObservationKeysFromDB,
   getClarificationOptions,
-  STAGE_KEY_PRIORITIES,
+  // STAGE_KEY_PRIORITIES removed (P7, 2026-07-25) — DB-SSOT only.
   CANONICAL_LOADER_VERSION
 };
