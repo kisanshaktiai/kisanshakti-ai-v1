@@ -5886,9 +5886,14 @@ export class AIAgentOrchestrator {
             // at buildConversationState time.
             // ═══════════════════════════════════════════════════════════════
             try {
-              const hypIds = graphOut.candidates
+              const graphOutHypIds = graphOut.candidates
                 .map((c: any) => String(c?.hypothesis_id ?? '').trim())
                 .filter(Boolean);
+              // Union with merged snapshot IDs so Engine A survivors are not
+              // dropped when Engine B eliminated all candidates (handoff invariant).
+              const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+              const snapHypIds = snap?.hypotheses.map(h => h.id) ?? [];
+              const hypIds = Array.from(new Set([...graphOutHypIds, ...snapHypIds]));
               const cs: any = (this as any).__conversationState ?? conversationState;
               if (cs) {
                 cs.hypotheses = Object.freeze(hypIds) as ReadonlyArray<string>;
@@ -5906,6 +5911,7 @@ export class AIAgentOrchestrator {
                 _grs2?.setHypothesisIds(hypIds);
                 _grs2?.setObsToHypEdges(_obsEdges);
               } catch {}
+
 
               // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
               // a single grep on trace= reconstructs the full edge chain.
