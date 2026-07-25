@@ -835,34 +835,83 @@ export class SymbolicReasoner {
     
     console.log(`   🔬 [ObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}], EngineGroups: [${[...obsEngineGroups].join(',')}]`);
     
-    const beforeCount = rules.length;
-    const filtered = rules.filter(rule => {
-      // Category filter
+    // ═══════════════════════════════════════════════════════════════════════
+    // P3: TIERED RULE-FILTER WIDENING — never collapse candidates to zero.
+    // Tier 0 = category + plant_part (strictest)
+    // Tier 1 = drop required_plant_part
+    // Tier 2 = drop required_observation_category
+    // Tier 3 = widen by canonical_group
+    // Tier 4 = widen by crop_code
+    // Tier 5 = universal scope (all input rules)
+    // Returns the WIDEST NON-EMPTY tier. Purely structural — no agronomy.
+    // ═══════════════════════════════════════════════════════════════════════
+    const obsCanonicalGroups = new Set<string>();
+    for (const [, meta] of obsMeta) {
+      const cg = (meta as any)?.canonical_group;
+      if (cg) obsCanonicalGroups.add(String(cg).toUpperCase());
+    }
+
+    const matchCat = (rule: any): boolean => {
       const reqCat = rule.required_observation_category;
-      if (reqCat && Array.isArray(reqCat) && reqCat.length > 0) {
-        const hasMatch = reqCat.some((cat: string) => obsCategories.has(cat));
-        if (!hasMatch) return false;
-      }
-      
-      // Plant part filter with WHOLE wildcard
+      if (!reqCat || !Array.isArray(reqCat) || reqCat.length === 0) return true;
+      return reqCat.some((cat: string) => obsCategories.has(cat));
+    };
+    const matchPart = (rule: any): boolean => {
       const reqPart = rule.required_plant_part;
-      if (reqPart && Array.isArray(reqPart) && reqPart.length > 0) {
-        const hasMatch = 
-          // If observation is WHOLE → matches ANY rule
-          obsPlantParts.has('WHOLE') ||
-          // If rule allows WHOLE → matches ANY observation
-          reqPart.includes('WHOLE') ||
-          // Direct match
-          reqPart.some((part: string) => obsPlantParts.has(part));
-        if (!hasMatch) return false;
+      if (!reqPart || !Array.isArray(reqPart) || reqPart.length === 0) return true;
+      return (
+        obsPlantParts.has('WHOLE') ||
+        reqPart.includes('WHOLE') ||
+        reqPart.some((part: string) => obsPlantParts.has(part))
+      );
+    };
+    const matchGroup = (rule: any): boolean => {
+      const cg = rule.canonical_group;
+      if (!cg) return true;
+      if (obsCanonicalGroups.size === 0) return true;
+      return obsCanonicalGroups.has(String(cg).toUpperCase());
+    };
+
+    const beforeCount = rules.length;
+    const tiers: Array<{ tier: number; label: string; fn: (r: any) => boolean }> = [
+      { tier: 0, label: 'CATEGORY+PART', fn: (r) => matchCat(r) && matchPart(r) },
+      { tier: 1, label: 'CATEGORY_ONLY', fn: (r) => matchCat(r) },
+      { tier: 2, label: 'PART_ONLY', fn: (r) => matchPart(r) },
+      { tier: 3, label: 'CANONICAL_GROUP', fn: (r) => matchGroup(r) },
+      { tier: 4, label: 'CROP_SCOPE', fn: () => true },
+    ];
+
+    let filtered: any[] = [];
+    let appliedTier = 0;
+    for (const t of tiers) {
+      filtered = rules.filter(t.fn);
+      appliedTier = t.tier;
+      if (filtered.length > 0) {
+        if (t.tier > 0) {
+          console.warn(
+            `   🔓 [RULE_FILTER_WIDEN] tier=${t.tier} label=${t.label} pre=${beforeCount} post=${filtered.length}`,
+          );
+        }
+        break;
       }
-      
-      return true;
-    });
-    
+      if (beforeCount > 0) {
+        console.warn(`   🔓 [RULE_FILTER_WIDEN] tier=${t.tier} label=${t.label} pre=${beforeCount} post=0 → widening`);
+      } else {
+        break;
+      }
+    }
+    // Tier 5: universal scope — never return empty when candidates existed.
+    if (filtered.length === 0 && beforeCount > 0) {
+      filtered = rules;
+      appliedTier = 5;
+      console.warn(`   🔓 [RULE_FILTER_WIDEN] tier=5 label=UNIVERSAL pre=${beforeCount} post=${filtered.length}`);
+    }
+
     const removedCount = beforeCount - filtered.length;
     if (removedCount > 0) {
-      console.log(`   🎯 [ObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${filtered.length})`);
+      console.log(
+        `   🎯 [ObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${filtered.length}) tier=${appliedTier}`,
+      );
     }
     
     // Candidate explosion warning
@@ -872,6 +921,7 @@ export class SymbolicReasoner {
     
     return filtered;
   }
+
   
   /**
    * Filter rules by growth stage
