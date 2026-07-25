@@ -163,7 +163,22 @@ export interface GraphHypothesisResult {
   timings_ms: number;
   /** Map<hypothesis_id, rule_id[]> — orchestrator inverts to ruleToHypothesis. */
   rule_edges?: Map<string, string[]> | Record<string, string[]>;
+  /**
+   * P2 (Batch A) — machine-readable reason the graph produced no surviving
+   * candidate. `null` when at least one candidate survived. Consumers MUST
+   * branch on this instead of inferring intent from empty arrays.
+   */
+  structured_gap_reason?: GraphStructuredGapReason | null;
 }
+
+/** P2 (Batch A) — exhaustive set of graph no-survivor causes. */
+export type GraphStructuredGapReason =
+  | 'NO_OBSERVATION_EVIDENCE'    // nothing resolvable arrived at the graph
+  | 'NO_DISCOVERY_SEEDS'         // codes resolved, zero hypothesis_conditions anchors
+  | 'NO_STAGE_VALID_HYPOTHESES'  // anchors found, all killed by DB-required STAGE/DAS gates
+  | 'PARTIAL_MATCH_ONLY'         // anchors found and partially matched, none survived
+  | 'ALL_ELIMINATED';            // anchors found, eliminated by agronomic contradiction
+
 
 export interface NormalizedObservationCode {
   canonicalCode: string;
