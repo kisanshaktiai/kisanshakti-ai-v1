@@ -412,14 +412,30 @@ export async function validateTenantFarmerAssociation(
       .select('id, tenant_id, farmer_name')
       .eq('id', farmerId)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
-    if (error || !farmer) {
+    // Distinguish transient DB/network errors from a genuine "no matching row".
+    // PGRST116 = "Results contain 0 rows" (only surfaces with .single()); with
+    // .maybeSingle() a missing row returns data=null and error=null. Any other
+    // error is transient (proxy/network/DB) — return 503 so the client retries
+    // instead of blackholing the session with a spurious 403.
+    if (error && error.code !== 'PGRST116') {
+      console.error('🚨 [validateTenantFarmerAssociation] Transient lookup error:', {
+        tenantId, farmerId, error: error.message, code: error.code,
+      });
+      return new Response(
+        JSON.stringify({
+          error: 'Service unavailable',
+          details: 'Auth validation temporarily unavailable, please retry',
+          code: 'AUTH_VALIDATION_TRANSIENT',
+        }),
+        { status: 503, headers: { ...corsHeaders, 'Retry-After': '1' } }
+      );
+    }
+
+    if (!farmer) {
       console.error('🚨 [validateTenantFarmerAssociation] Invalid association:', {
-        tenantId,
-        farmerId,
-        error: error?.message,
-        code: error?.code
+        tenantId, farmerId,
       });
 
       return new Response(
