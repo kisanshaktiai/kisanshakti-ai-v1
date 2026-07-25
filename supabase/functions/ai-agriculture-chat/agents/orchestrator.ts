@@ -2459,8 +2459,17 @@ export class AIAgentOrchestrator {
           
           // The selected observation key is CONFIRMED (farmer explicitly chose it)
           if (mappedObservationKey) {
-            allObservations.push(mappedObservationKey);
-            console.log(`   ✅ [ObservationAuthority] ${mappedObservationKey} tagged as CONFIRMED (clarification selection)`);
+            // FIX (canonical-code contract): defensive re-canonicalize before
+            // pushing to allObservations, which is passed to
+            // expandObservationVocabularyViaAliases (DB alias expansion).
+            // P2/P3 above already canonicalize, but this guarantees the
+            // invariant at the boundary between local variables and the
+            // downstream reasoning array.
+            const _canonKey = canonicalizeObservationKey(mappedObservationKey);
+            if (_canonKey) {
+              allObservations.push(_canonKey);
+              console.log(`   ✅ [ObservationAuthority] ${_canonKey} tagged as CONFIRMED (clarification selection)`);
+            }
           }
           if (visualSymptom && visualSymptom !== 'UNKNOWN' && visualSymptom !== mappedObservationKey) {
             allObservations.push(visualSymptom);
