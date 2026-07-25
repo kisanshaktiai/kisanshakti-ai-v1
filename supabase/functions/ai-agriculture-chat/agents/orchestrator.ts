@@ -5983,7 +5983,14 @@ export class AIAgentOrchestrator {
               graphErrMessage.includes('REQUIRED_DAS_FAILED');
 
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${graphErrMessage}`);
-            if (nonFatalNoSurvivorGraph) {
+            // P3 — if we already have valid graph output from an earlier
+            // successful pass this turn, do NOT wipe rule ids in the
+            // "non-fatal exhausted" branch. A late non-fatal throw (e.g. audit
+            // block) would otherwise erase the 13 rules Chain A produced.
+            const _priorCandidates = ((this as any)._graphHypothesisResult?.candidates ?? []) as any[];
+            const _priorRuleIds = ((this as any)._graphHypothesisRuleIds ?? []) as string[];
+            const _preserveExistingChainA = _priorCandidates.length > 0 || _priorRuleIds.length > 0;
+            if (nonFatalNoSurvivorGraph && !_preserveExistingChainA) {
               // The graph ran far enough to establish that DB-curated stage/DAS
               // constraints exhausted the candidate set. That is a valid graph
               // result, not a bypass. Mark sequence=2 so downstream invariants
@@ -6015,6 +6022,11 @@ export class AIAgentOrchestrator {
                 `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
                 `hyp=[] sequence=2 survived=0 eliminated=unknown edge_missing=0 ` +
                 `reason=GRAPH_CONTEXT_EXHAUSTED`,
+              );
+            } else if (nonFatalNoSurvivorGraph && _preserveExistingChainA) {
+              console.warn(
+                `[HYP_GRAPH_PRESERVE] trace=${traceId} non-fatal throw suppressed reset ` +
+                `(candidates=${_priorCandidates.length} rule_ids=${_priorRuleIds.length}) err="${graphErrMessage}"`,
               );
             }
             // TASK 1 — GRAPH INVARIANT: diagnostic intents cannot silently
