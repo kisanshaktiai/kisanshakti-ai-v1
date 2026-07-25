@@ -1458,6 +1458,11 @@ export class AIAgentOrchestrator {
     // constructed fresh a few lines below; nothing to mirror yet.
     (this as any)._graphHypothesisEdgeMissing = [];
     (this as any)._graphSnapshot = null;
+    // RC-1 FIX: orchestrator is a module-level singleton (see bottom of file);
+    // _graphTruth MUST be cleared per turn or the next turn's projection can
+    // consume a stale graph_truth with canonical_observations=[] (log:
+    // PRE_CANONICAL_STATE obs=0 while EVIDENCE_CLASSIFICATION real=3).
+    (this as any)._graphTruth = null;
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -5988,7 +5993,16 @@ export class AIAgentOrchestrator {
             // Attach to closure state for downstream stages
             (this as any)._graphTruth = graphTruth;
           } catch (e) {
-            console.warn(`[GRAPH_TRUTH_BUILD] skipped: ${(e as Error).message}`);
+            // RC-1 FIX: do NOT let a stale prior-turn _graphTruth survive when
+            // this turn's build fails. Null it out so PRE_CANONICAL_STATE and
+            // projectCanonicalStateFromGraphTruth cannot silently reuse it.
+            (this as any)._graphTruth = null;
+            console.error(
+              `[GRAPH_TRUTH_BUILD_FAILED] trace=${traceId} intent=${intentCode} obs_in=${canonical_observation_codes.length} err=${(e as Error).message}`,
+            );
+            if (isDiagnosticIntent) {
+              throw new Error(`GRAPH_TRUTH_BUILD_FAILED: diagnostic intent=${intentCode} obs=${canonical_observation_codes.length}: ${(e as Error).message}`);
+            }
           }
 
 
