@@ -1451,6 +1451,8 @@ export class AIAgentOrchestrator {
     (this as any).__decisionGraphSequence = 0;
     (this as any)._evidenceFrozen = false;
     (this as any)._graphExecuted = false;
+    (this as any)._graphExecutionStarted = false;
+
     (this as any)._ruleResultExists = false;
     (this as any)._graphHypothesisIds = [];
     (this as any)._graphHypothesisRuleIds = [];
