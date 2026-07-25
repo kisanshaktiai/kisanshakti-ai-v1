@@ -2258,7 +2258,9 @@ export class AIAgentOrchestrator {
               `(label="${selectedStructuredOption?.label}", source=${selectedStructuredOption?.source ?? 'legacy'})`
             );
           } else if (matchResult.option_index != null && persistedObsKeys[matchResult.option_index]) {
-            mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
+            // FIX (canonical-code contract): persistedObsKeys were saved from
+            // DB-sourced options in canonical lowercase. Do not uppercase.
+            mappedObservationKey = canonicalizeObservationKey(persistedObsKeys[matchResult.option_index]);
             console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
           } else {
             // Phase I-6: Heuristic label→code mapping is a SYMBOLIC_ID_LEAK.
