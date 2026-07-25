@@ -6984,7 +6984,21 @@ export class AIAgentOrchestrator {
       // authority set — no route labels, no crop-specific gates.
       // ═══════════════════════════════════════════════════════════════════════
       const __convState = (this as any).__conversationState;
-      const __confirmedCountForTrigger = __convState?.informative_count ?? 0;
+
+      // FIX (symmetric with __preemptHardBlock above): count only observations
+      // flagged is_diagnostic=true in observation_master. Prevents structural
+      // metadata from tricking SUFFICIENT_SYMPTOM_COVERAGE into skipping the
+      // consultant-model clarification round.
+      let __confirmedCountForTrigger: number = __convState?.informative_count ?? 0;
+      if (_observationIndexReady()) {
+        const confirmedArr: unknown[] = Array.isArray(__convState?.confirmed)
+          ? __convState.confirmed
+          : [];
+        __confirmedCountForTrigger = confirmedArr.reduce<number>((acc, code) => {
+          const row = _getObservationMaster(String(code ?? ''));
+          return acc + (row?.is_diagnostic === true ? 1 : 0);
+        }, 0);
+      }
       const __isDiagnosticForTrigger =
         requiresAgronomicReasoningIntent(intentCode) ||
         __convState?.mode === 'DIAGNOSIS' ||
