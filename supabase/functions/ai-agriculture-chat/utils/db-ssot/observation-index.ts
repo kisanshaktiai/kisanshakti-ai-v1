@@ -156,17 +156,18 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
           'alias_code, alias_normalized, alias_text, canonical_code, active',
           (q) => q.eq('active', true),
         ),
-        pagedLoad<ObservationTranslationRow>(
+        pagedLoad<any>(
           supabase,
           'observation_translations',
-          // FIX (DB schema mismatch): observation_translations has columns
-          // display_text and description_text, not label / description.
-          // The PostgREST alias syntax outputName:dbColumn returns
-          // { label: <display_text_value>, description: <description_text_value> }
-          // so the ObservationTranslationRow interface and all sync accessors
-          // (getObservationTranslation, getObservationTranslations) keep
-          // working without a rename ripple.
-          'observation_code, language_code, label:display_text, description:description_text',
+          // FIX G1 (DB schema mismatch): observation_translations has columns
+          // display_text and description_text, not label / description. The
+          // prior PostgREST alias syntax "label:display_text" was NOT applied
+          // by this stack — Postgres received a bare `label` column reference
+          // and rejected the query. Query with real column names; map to the
+          // ObservationTranslationRow interface in the row-insertion loop
+          // below so all downstream accessors (getObservationTranslation,
+          // getObservationTranslations) keep working without any rename ripple.
+          'observation_code, language_code, display_text, description_text',
         ),
         pagedLoad<ObservationIntentRow>(
           supabase,
