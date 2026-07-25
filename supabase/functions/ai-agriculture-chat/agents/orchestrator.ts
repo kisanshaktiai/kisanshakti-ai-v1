@@ -8762,12 +8762,18 @@ export class AIAgentOrchestrator {
             `hyp=${_hypIds.length} obs_to_hyp=${_obsToHyp} hyp_to_rule=${_hypToRule}`
           );
 
-          // PATCH 2 (BUG 2) — late invariant. Even if the projection at graph
-          // exit passed, catch any late reset that would silently drop the
-          // hypotheses before decision assembly.
-          if (_hypIds.length > 0 && (_cs?.hypotheses?.length ?? 0) === 0) {
+          // FIX J1b (PATCH 2 late-invariant revision): same reasoning as J1a.
+          // ConversationState.hypotheses is frozen and never updates after the
+          // I1 reorder. Use the authoritative _graphHypothesisIds store which
+          // is the same source GRAPH_HANDOFF_CHECK uses in orchestrate()'s
+          // finally block. If _hypIds itself was already sourced from
+          // _graphHypothesisIds, this comparison is trivially safe; if it was
+          // sourced from an alternate path (e.g. GraphRuntimeState), we still
+          // cross-check against the authoritative store.
+          const _authHypCountLate = ((this as any)._graphHypothesisIds ?? []).length;
+          if (_hypIds.length > 0 && _authHypCountLate === 0) {
             throw new Error(
-              `GRAPH_RESULT_DROPPED: late reset graph=${_hypIds.length} state=0 trace=${traceId}`,
+              `GRAPH_RESULT_DROPPED: late reset graph=${_hypIds.length} auth=0 trace=${traceId}`,
             );
           }
         } catch (e) {
