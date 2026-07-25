@@ -5894,10 +5894,20 @@ export class AIAgentOrchestrator {
               const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
               const snapHypIds = snap?.hypotheses.map(h => h.id) ?? [];
               const hypIds = Array.from(new Set([...graphOutHypIds, ...snapHypIds]));
-              const cs: any = (this as any).__conversationState ?? conversationState;
-              if (cs) {
-                cs.hypotheses = Object.freeze(hypIds) as ReadonlyArray<string>;
-              }
+              // FIX I1 (crash root cause): the critical exit-hyp state writes below
+              // MUST run before the ConversationState mutation. ConversationState is
+              // frozen by runtime/conversation-state.ts (buildConversationState
+              // returns an immutable). The `cs.hypotheses = ...` assignment throws
+              // TypeError "Cannot assign to read only property 'hypotheses'" in
+              // strict mode. When this throw jumped to the outer catch, ALL sibling
+              // writes below (setHypothesisIds, _graphHypothesisIds, etc.) were
+              // skipped — causing GRAPH_HANDOFF_CHECK in orchestrate()'s finally
+              // block to read exit_hyp=0 while snapshot_hyp=1, throwing
+              // GRAPH_CONTRACT_VIOLATION and killing the response.
+              //
+              // Reorder: authoritative exit-hyp tracking first, then the audit-side
+              // ConversationState attachment in its own inner try/catch that cannot
+              // affect the outer flow.
               (this as any)._graphHypothesisIds = hypIds;
               const _obsEdges = graphOut.candidates.reduce(
                 (n: number, c: any) => n + (Array.isArray(c?.matched_observations)
@@ -5911,6 +5921,21 @@ export class AIAgentOrchestrator {
                 _grs2?.setHypothesisIds(hypIds);
                 _grs2?.setObsToHypEdges(_obsEdges);
               } catch {}
+
+              // Audit-side ConversationState attachment. Isolated so a frozen-state
+              // TypeError does NOT skip the critical writes above.
+              const cs: any = (this as any).__conversationState ?? conversationState;
+              if (cs) {
+                try {
+                  cs.hypotheses = Object.freeze(hypIds) as ReadonlyArray<string>;
+                } catch (frozenErr) {
+                  console.warn(
+                    `[GRAPH_PROJECTION] ConversationState is frozen; hypotheses tracked ` +
+                    `via GraphRuntimeState + _graphHypothesisIds (authority). ` +
+                    `err=${(frozenErr as Error).message}`,
+                  );
+                }
+              }
 
 
               // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
