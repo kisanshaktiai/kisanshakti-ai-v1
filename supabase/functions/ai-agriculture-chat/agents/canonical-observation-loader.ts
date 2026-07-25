@@ -61,59 +61,75 @@ export interface ClarificationOption {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STAGE-WISE KEY PRIORITIES (language-neutral code lists — NOT labels)
-// Which keys to show first based on growth stage
+// STAGE-WISE KEY PRIORITIES — DB-SSOT (P7, 2026-07-25)
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// The previous hardcoded STAGE_KEY_PRIORITIES map (germination/tillering/
+// grand_growth/... → literal symptom codes) has been REMOVED. It was authored
+// agronomy living in TypeScript and it drifted from observation_master.
+//
+// Priorities are now derived entirely from public.observation_master:
+//   is_active = true            → not retired
+//   is_diagnostic = true        → carries diagnostic signal (not metadata)
+//   is_farmer_observable = true → a farmer can actually answer it
+//   applies_to_stages && [...]  → curated stage applicability
+//   ORDER BY discriminator_score DESC, clarity_score DESC
+//
+// If the DB returns nothing for a stage, the result is EMPTY. Unknown stage
+// MUST NOT fall back to a static list — the hypothesis graph is the only
+// allowed source of stage-agnostic candidates.
 
-const STAGE_KEY_PRIORITIES: Record<string, string[]> = {
-  germination: [
-    'GAPS_IN_FIELD', 'SEEDLING_DIED', 'SETT_EASILY_PULLED_OUT', 'POOR_GERMINATION_PERCENT',
-    'SEEDLING_WILTED', 'MUD_TUBES_PRESENT', 'ROOTS_ROTTED', 'SOIL_TOO_DRY',
-    'WATER_LOGGING_AT_BASE', 'SEEDLING_YELLOW', 'TUNNELS_IN_SOIL'
-  ],
-  
-  tillering: [
-    'DEAD_HEART_PRESENT', 'CENTRAL_SHOOT_DRY', 'POOR_TILLERING', 'LEAF_YELLOWING',
-    'STEM_BORING_MARKS', 'INSECTS_VISIBLE', 'LARVAE_PRESENT', 'STUNTED_PLANTS',
-    'LEAF_REDDENING', 'WEAK_SHOOTS'
-  ],
-  
-  grand_growth: [
-    'STEM_HOLES_VISIBLE', 'STEM_BORING_MARKS', 'WHITE_INSECTS', 'HONEYDEW_PRESENT',
-    'LEAF_YELLOWING', 'INTERVEINAL_CHLOROSIS', 'WHITE_POWDERY_GROWTH',
-    'PLANTS_LODGING', 'SHORT_INTERNODES', 'LUSH_VEGETATIVE_GROWTH'
-  ],
-  
-  maturity: [
-    'STEM_ROT_PRESENT', 'FOUL_SMELL_PRESENT', 'STEM_SOFTENING', 'PLANTS_LODGING',
-    'STEM_HOLES_VISIBLE', 'LEAF_DRYING', 'FRUIT_ROT', 'FRUIT_DEFORMED'
-  ],
-  
-  vegetative: [
-    'LEAF_YELLOWING', 'LEAF_CURLING', 'INSECTS_VISIBLE', 'LEAF_SPOTS_PRESENT',
-    'LEAF_CHEWING', 'STUNTED_PLANTS', 'SLOW_GROWTH', 'SMALL_INSECTS'
-  ],
-  
-  flowering: [
-    'FLOWER_DROP', 'BUD_DROP', 'POOR_FLOWERING', 'INSECTS_VISIBLE',
-    'DELAYED_FLOWERING', 'LEAF_YELLOWING'
-  ],
-  
-  boll_development: [
-    'FRUIT_DROP', 'FRUIT_ROT', 'FRUIT_DEFORMED', 'POOR_FRUIT_SET',
-    'INSECTS_VISIBLE', 'LARVAE_PRESENT'
-  ],
-  
-  // 'all' bucket intentionally EMPTY (2026-07-09 21:15 UTC).
-  //   Previously seeded [INSECTS_VISIBLE, LEAF_YELLOWING, LEAF_WILTING,
-  //   LEAF_SPOTS_PRESENT, ...] — this was the source of the
-  //   "same 3 pest/leaf options for every clarification" bug when the
-  //   real stage (e.g. `transplanting`) was not present in this map and
-  //   fell through to `all`. Neuro-symbolic invariant: unknown stage MUST
-  //   return no static suggestions; the hypothesis graph is the only
-  //   allowed source of stage-agnostic candidates.
-  all: []
-};
+const STAGE_PRIORITY_CACHE_TTL_MS = 5 * 60 * 1000;
+const _stagePriorityCache = new Map<string, { at: number; codes: string[] }>();
+
+async function loadStagePriorityCodesFromDB(
+  client: any,
+  stage: string,
+  limit: number,
+): Promise<string[]> {
+  const stages = expandStageSynonyms(stage).filter((s) => s && s !== 'all');
+  const cacheKey = `${stages.join('|')}::${limit}`;
+  const hit = _stagePriorityCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < STAGE_PRIORITY_CACHE_TTL_MS) return hit.codes;
+
+  if (!client || stages.length === 0) return [];
+
+  try {
+    const { data, error } = await client
+      .from('observation_master')
+      .select('observation_code, discriminator_score, clarity_score')
+      .eq('is_active', true)
+      .eq('is_diagnostic', true)
+      .eq('is_farmer_observable', true)
+      .overlaps('applies_to_stages', stages)
+      .order('discriminator_score', { ascending: false, nullsFirst: false })
+      .order('clarity_score', { ascending: false, nullsFirst: false })
+      .limit(Math.max(limit, 50));
+
+    if (error) {
+      console.warn(`[CanonicalLoader] stage_priority_query_failed stage=${stage} err=${error.message}`);
+      return [];
+    }
+
+    const codes = Array.from(
+      new Set(
+        (data ?? [])
+          .map((r: any) => String(r.observation_code ?? '').trim().toUpperCase())
+          .filter(Boolean),
+      ),
+    ) as string[];
+
+    console.log(
+      `[CanonicalLoader] stage_priority_db stage=${stage} synonyms=[${stages.join(',')}] codes=${codes.length}`,
+    );
+    _stagePriorityCache.set(cacheKey, { at: Date.now(), codes });
+    return codes;
+  } catch (e) {
+    console.warn(`[CanonicalLoader] stage_priority_exception stage=${stage} err=${(e as Error).message}`);
+    return [];
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Get Supabase client for DB queries
