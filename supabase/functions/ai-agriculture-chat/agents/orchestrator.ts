@@ -1458,6 +1458,11 @@ export class AIAgentOrchestrator {
     // constructed fresh a few lines below; nothing to mirror yet.
     (this as any)._graphHypothesisEdgeMissing = [];
     (this as any)._graphSnapshot = null;
+    // RC-1 FIX: orchestrator is a module-level singleton (see bottom of file);
+    // _graphTruth MUST be cleared per turn or the next turn's projection can
+    // consume a stale graph_truth with canonical_observations=[] (log:
+    // PRE_CANONICAL_STATE obs=0 while EVIDENCE_CLASSIFICATION real=3).
+    (this as any)._graphTruth = null;
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
 
     // ═══════════════════════════════════════════════════════════════════════════
