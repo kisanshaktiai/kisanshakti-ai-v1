@@ -814,7 +814,11 @@ function mapDistributionToSymptom(optionText: string, _scope: ClarificationScope
   // ═══════════════════════════════════════════════════════════════════════════
   const obsKeyMatch = optionText.match(/\[obs_keys?:([^\]]+)\]/i);
   if (obsKeyMatch) {
-    const embeddedKey = obsKeyMatch[1].split(',')[0].trim().toUpperCase();
+    // FIX (canonical-code contract): observation codes are lower_snake_case
+    // across the platform (runtime/clarification-contract.ts:15-20). Prior
+    // .toUpperCase() broke every downstream DB lookup against
+    // observation_master.observation_code (100% lowercase, verified in DB).
+    const embeddedKey = canonicalizeObservationKey(obsKeyMatch[1].split(',')[0]);
     console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key: ${embeddedKey}`);
     return embeddedKey;
   }
