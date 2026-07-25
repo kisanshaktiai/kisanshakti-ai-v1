@@ -7742,20 +7742,62 @@ export class AIAgentOrchestrator {
             | null;
           const projectedCrop = canonicalState.crop_type as unknown as string | null;
           const projectedStage = canonicalState.growth_stage as unknown as string | null;
+
+          // FIX H1 (DB-SSOT backfill for stage): the prior refusal blocked BOTH
+          // the unsafe inductionCrop leak AND the safe crop_schedules DB SSOT.
+          // When cropContextAuthority.source === 'crop_schedules', the stage
+          // value ultimately came from crop_stage_ssot v7 via BIO_STATE_LOCKED
+          // — this is DB-authoritative and MUST be honored. Language-inference
+          // fallback (source='farmer_message') is still rejected. This is not
+          // a hardcoded agri map; it is DB-SSOT continuity across projection.
+          const _cropAuthorityIsSSOT =
+            cropContextAuthority?.source === 'crop_schedules';
+
           if (!projectedCrop || projectedCrop === 'UNKNOWN') {
-            console.warn(
-              `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION crop is UNKNOWN after GraphTruth projection ` +
-                `— refusing to overwrite from induction (${inductionCrop}) or cropContextAuthority ` +
-                `(${cropContextAuthority?.crop_name ?? 'null'}). graph_hash=${_gtForAudit?.hash ?? 'null'} ` +
-                `— downstream must emit GRAPH_NEEDS_MORE_EVIDENCE.`,
-            );
+            if (
+              _cropAuthorityIsSSOT &&
+              cropContextAuthority?.crop_name &&
+              cropContextAuthority.crop_name !== 'UNKNOWN'
+            ) {
+              (canonicalState as any).crop_type = cropContextAuthority.crop_name;
+              console.log(
+                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION crop was UNKNOWN — ` +
+                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
+                  `crop=${cropContextAuthority.crop_name}). ` +
+                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
+              );
+            } else {
+              console.warn(
+                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION crop is UNKNOWN after GraphTruth projection ` +
+                  `— refusing to overwrite from induction (${inductionCrop}) or cropContextAuthority ` +
+                  `(${cropContextAuthority?.crop_name ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
+                  `graph_hash=${_gtForAudit?.hash ?? 'null'} — downstream must emit GRAPH_NEEDS_MORE_EVIDENCE.`,
+              );
+            }
           }
           if (!projectedStage || projectedStage === 'UNKNOWN') {
-            console.warn(
-              `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION stage is UNKNOWN after GraphTruth projection ` +
-                `— refusing to overwrite from cropContextAuthority ` +
-                `(${cropContextAuthority?.growth_stage ?? 'null'}). graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-            );
+            if (
+              _cropAuthorityIsSSOT &&
+              cropContextAuthority?.growth_stage &&
+              cropContextAuthority.growth_stage !== 'UNKNOWN'
+            ) {
+              (canonicalState as any).growth_stage = cropContextAuthority.growth_stage;
+              // Some downstream call sites read `.crop_stage`; keep parity.
+              (canonicalState as any).crop_stage = cropContextAuthority.growth_stage;
+              console.log(
+                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION stage was UNKNOWN — ` +
+                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
+                  `stage=${cropContextAuthority.growth_stage}). ` +
+                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
+              );
+            } else {
+              console.warn(
+                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION stage is UNKNOWN after GraphTruth projection ` +
+                  `— refusing to overwrite from cropContextAuthority ` +
+                  `(${cropContextAuthority?.growth_stage ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
+                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
+              );
+            }
           }
         }
 
