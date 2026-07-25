@@ -601,6 +601,139 @@ export async function expandObservationVocabularyViaAliases(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// P1 (Batch A) — INTENT-PEER SEED EXPANSION (DB-SSOT, zero hardcoded agronomy)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// When a farmer-confirmed observation code produces no hypothesis anchor, the
+// graph is NOT allowed to die. `public.intent_observation_mapping` is the only
+// curated table that relates observation codes to each other through a shared
+// diagnostic intent. We use it as a pure identity/adjacency lookup:
+//
+//   seed_codes → intent_code(s) that reference them
+//              → sibling observation_code(s) under those intents
+//                (scoped by crop_code / growth_stage / DAS when known)
+//
+// No agronomy is authored here. If the DB has no curated peers the function
+// returns an empty expansion and the caller reports a structured gap.
+
+export interface IntentPeerContext {
+  crop_code?: string | null;
+  growth_stage?: string | null;
+  das?: number | null;
+}
+
+export interface IntentPeerExpansion {
+  peer_codes: string[];
+  via_intents: string[];
+  trace: string[];
+}
+
+/** Lowercase DB-canonical form used by observation_master.observation_code. */
+function dbCanonicalCode(code: string): string {
+  return (code || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+export async function expandSeedsViaIntentPeers(
+  seedCodes: string[],
+  ctx: IntentPeerContext,
+  supabaseClient?: any,
+): Promise<IntentPeerExpansion> {
+  const seeds = Array.from(new Set(seedCodes.map(dbCanonicalCode).filter(Boolean)));
+  if (seeds.length === 0) return { peer_codes: [], via_intents: [], trace: [] };
+
+  let supabase: any;
+  try {
+    supabase = getSupabaseClient(supabaseClient);
+  } catch (e) {
+    console.warn(`[OBS_CANONICAL_EXPAND] no_supabase err=${(e as Error).message}`);
+    return { peer_codes: [], via_intents: [], trace: [] };
+  }
+
+  // Step 1 — which curated intents reference any of the seed codes?
+  const { data: intentRows, error: intentErr } = await supabase
+    .from('intent_observation_mapping')
+    .select('intent_code')
+    .in('observation_code', seeds)
+    .eq('is_active', true);
+
+  if (intentErr) {
+    console.warn(`[OBS_CANONICAL_EXPAND] intent_lookup_failed err=${intentErr.message}`);
+    return { peer_codes: [], via_intents: [], trace: [] };
+  }
+
+  const intents = Array.from(
+    new Set(((intentRows ?? []) as any[]).map((r) => String(r.intent_code || '')).filter(Boolean)),
+  );
+  if (intents.length === 0) {
+    console.log(`[OBS_CANONICAL_EXPAND] seeds=[${seeds.join(',')}] via_intents=0 peers=0`);
+    return { peer_codes: [], via_intents: [], trace: [] };
+  }
+
+  // Step 2 — sibling observation codes under those intents, scoped by context.
+  const crop = ctx.crop_code ? dbCanonicalCode(ctx.crop_code) : null;
+  let q = supabase
+    .from('intent_observation_mapping')
+    .select('intent_code, observation_code, crop_code, growth_stage, das_min, das_max, confidence_rank')
+    .in('intent_code', intents)
+    .eq('is_active', true);
+  if (crop) q = q.in('crop_code', [crop, 'all']);
+
+  const { data: peerRows, error: peerErr } = await q;
+  if (peerErr) {
+    console.warn(`[OBS_CANONICAL_EXPAND] peer_lookup_failed err=${peerErr.message}`);
+    return { peer_codes: [], via_intents: intents, trace: [] };
+  }
+
+  const stage = ctx.growth_stage ? dbCanonicalCode(ctx.growth_stage) : null;
+  const das = typeof ctx.das === 'number' && Number.isFinite(ctx.das) ? ctx.das : null;
+
+  const scored: Array<{ code: string; rank: number; via: string }> = [];
+  for (const r of (peerRows ?? []) as any[]) {
+    const code = dbCanonicalCode(String(r.observation_code || ''));
+    if (!code || seeds.includes(code)) continue;
+
+    const rowStage = r.growth_stage ? dbCanonicalCode(String(r.growth_stage)) : null;
+    // Stage scope: null/'all' rows are stage-agnostic and always eligible.
+    if (stage && rowStage && rowStage !== 'all' && rowStage !== stage) continue;
+
+    // DAS scope: only reject when the row declares a window the context misses.
+    if (das !== null) {
+      const lo = r.das_min == null ? null : Number(r.das_min);
+      const hi = r.das_max == null ? null : Number(r.das_max);
+      if (lo !== null && Number.isFinite(lo) && das < lo) continue;
+      if (hi !== null && Number.isFinite(hi) && das > hi) continue;
+    }
+
+    scored.push({
+      code,
+      rank: Number.isFinite(Number(r.confidence_rank)) ? Number(r.confidence_rank) : 999,
+      via: String(r.intent_code || ''),
+    });
+  }
+
+  scored.sort((a, b) => a.rank - b.rank);
+  const seen = new Set<string>();
+  const peer_codes: string[] = [];
+  const trace: string[] = [];
+  for (const s of scored) {
+    if (seen.has(s.code)) continue;
+    seen.add(s.code);
+    peer_codes.push(s.code);
+    trace.push(`intent:${s.via}→${s.code}`);
+  }
+
+  console.log(
+    `[OBS_CANONICAL_EXPAND] seeds=[${seeds.join(',')}] crop=${crop ?? 'unknown'} stage=${stage ?? 'unknown'} ` +
+      `das=${das ?? 'null'} via_intents=[${intents.slice(0, 12).join(',')}] peers=${peer_codes.length} ` +
+      `peer_codes=[${peer_codes.slice(0, 20).join(',')}]`,
+  );
+
+  return { peer_codes, via_intents: intents, trace };
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
