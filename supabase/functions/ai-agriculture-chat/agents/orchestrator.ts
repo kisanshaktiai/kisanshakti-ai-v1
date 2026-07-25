@@ -5734,11 +5734,23 @@ export class AIAgentOrchestrator {
           }));
           assertDecisionGraphOrder(this as any, traceId, 'POST_EVIDENCE_FREEZE');
           (this as any)._evidenceFrozen = true;
+          // P4: from here on, the turn is committed to producing a populated
+          // decision_output (real decision OR structured no-decision).
+          (this as any)._graphExecutionStarted = true;
+          // P1: the frozen canonical set is the SSOT every downstream stage
+          // boundary must see. Persist it so obs→hyp, rule load and the exit
+          // invariant all read identical codes.
+          (this as any)._lastRealObservations = [...canonical_observation_codes];
           (this as any)._lastIntentCode = intentCode;
           console.log(
             `[POST_EVIDENCE_FREEZE] trace=${traceId} sequence=1 observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
               `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
           );
+          console.log(
+            `[STAGE_BOUNDARY] stage=evidence_freeze trace=${traceId} confirmed=${canonical_observation_codes.length} ` +
+              `hyp=0 rules_pre=0 rules_post=0 winner=none`,
+          );
+
 
           const currentObservations = canonical_observation_codes;
           if (real_codes.length !== currentObservations.length ||
