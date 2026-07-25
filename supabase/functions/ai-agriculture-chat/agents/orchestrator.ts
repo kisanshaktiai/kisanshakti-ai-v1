@@ -5656,21 +5656,30 @@ export class AIAgentOrchestrator {
             metadata: ignoredRawCodes,
           };
           // P5 SYMBOL_IDENTITY_CONTRACT + P1 BIOLOGICAL_SCOPE_CONTRACT
-          // Identity check runs first (unknown obs never enter graph); scope
-          // filter then drops cross-crop/foreign-organ codes. All wiring is
-          // DB-driven (observation_master); no hardcoded agronomy.
+          // RC-1 FIX (2026-07-25): bridge BEFORE identity. Extractor emits
+          // UPPERCASE codes (e.g. RICE_LODGING); observation_master stores
+          // lowercase canonical codes (rice_lodging). Running identity on
+          // raw uppercase would drop every real observation as UNKNOWN and
+          // starve the graph (obs=0 at PRE_CANONICAL_STATE). observation_
+          // aliases already carries the UPPERCASE→lowercase mapping, so
+          // bridging first canonicalizes, then identity validates the
+          // canonical form. All wiring is DB-driven; no hardcoded agronomy.
           const { assertObservationsExist } = await import('../runtime/graph-contracts.ts');
-          const _identity = await assertObservationsExist(this.supabase, real_codes);
-          if (_identity.unknown.length) {
-            console.warn(`[UNKNOWN_OBSERVATION_SYMBOL] dropped_before_graph=[${_identity.unknown.join(',')}]`);
-          }
-          const bridged = await bridgeCodesDb(
+          const preBridged = await bridgeCodesDb(
             this.supabase,
             cropCode,
-            _identity.known,
+            real_codes,
             { crop_code: cropCode ?? null, crop_group: null },
           );
+          const preBridgedCanonical: string[] = preBridged.map((b) => b.canonical_code);
+          const _identity = await assertObservationsExist(this.supabase, preBridgedCanonical);
+          if (_identity.unknown.length) {
+            console.warn(`[UNKNOWN_OBSERVATION_SYMBOL] dropped_before_graph=[${_identity.unknown.join(',')}] (post-bridge)`);
+          }
+          const knownSet = new Set(_identity.known.map((c) => String(c).toLowerCase()));
+          const bridged = preBridged.filter((b) => knownSet.has(String(b.canonical_code).toLowerCase()));
           const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
+          console.log(`[OBSERVATION_BRIDGE_FIRST] raw=${real_codes.length} bridged=${preBridgedCanonical.length} known=${_identity.known.length} final=${bridgedCanonical.length}`);
 
           // TURN_EVIDENCE_LOCK — ledger: INFERRED entries for any DB-bridged code
           for (const b of bridged) {
