@@ -5853,6 +5853,28 @@ export class AIAgentOrchestrator {
                 `rules=${merged.rules.length} orphans=${merged.orphan_rule_ids.length} state=${merged.graph_state} merge=engineB`,
               );
 
+              // HANDOFF INVARIANT FIX (2026-07-25): the merged snapshot is the
+              // SSOT for hypotheses after Engine A+B merge. If Engine B
+              // eliminated all candidates but Engine A survivors are in the
+              // snapshot, project those into exit state so the handoff
+              // check (snapshot_hyp vs exit_hyp) does not falsely fire.
+              try {
+                if (merged.hypotheses.length > 0) {
+                  const mergedHypIds = merged.hypotheses.map(h => h.id);
+                  (this as any)._graphHypothesisIds = mergedHypIds;
+                  const _grsMerge = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+                  _grsMerge?.setHypothesisIds(mergedHypIds);
+                  if (merged.rules.length > 0) {
+                    const mergedRuleIds = merged.rules.map(r => r.rule_id);
+                    (this as any)._graphHypothesisRuleIds = mergedRuleIds;
+                    _grsMerge?.setHypothesisRuleIds(mergedRuleIds);
+                  }
+                }
+              } catch (projMergeErr) {
+                console.warn(`[GRAPH_SNAPSHOT] merged-projection non-fatal: ${(projMergeErr as Error).message}`);
+              }
+
+
             } catch (snapErr) {
               console.warn(`[GRAPH_SNAPSHOT] engineB merge non-fatal: ${(snapErr as Error).message}`);
             }
