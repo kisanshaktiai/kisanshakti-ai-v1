@@ -3988,7 +3988,24 @@ export class AIAgentOrchestrator {
         requiresAgronomicReasoningIntent(intentCode) ||
         __preemptConvState?.mode === 'DIAGNOSIS' ||
         __preemptConvState?.mode === 'MIXED';
-      const __preemptHardBlock = __preemptIsDiagnostic && __preemptConfirmed === 0;
+
+      // FIX (consultant model): informative_count is inflated by structural
+      // metadata like CROP_IDENTIFIED / STAGE_IDENTIFIED / LAND_KNOWN that
+      // provide zero symptom evidence. Count only observations flagged
+      // is_diagnostic=true in observation_master (DB authority). No hardcoded
+      // list. Fall back to informative_count only when the index is not warm.
+      let __diagnosticConfirmed = __preemptConfirmed;
+      if (_observationIndexReady()) {
+        const confirmedArr: unknown[] = Array.isArray(__preemptConvState?.confirmed)
+          ? __preemptConvState.confirmed
+          : [];
+        __diagnosticConfirmed = confirmedArr.reduce<number>((acc, code) => {
+          const row = _getObservationMaster(String(code ?? ''));
+          return acc + (row?.is_diagnostic === true ? 1 : 0);
+        }, 0);
+      }
+
+      const __preemptHardBlock = __preemptIsDiagnostic && __diagnosticConfirmed === 0;
 
       if (__preemptHardBlock) {
         console.log(
