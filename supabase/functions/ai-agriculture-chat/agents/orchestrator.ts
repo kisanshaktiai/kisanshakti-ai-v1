@@ -5993,7 +5993,16 @@ export class AIAgentOrchestrator {
             // Attach to closure state for downstream stages
             (this as any)._graphTruth = graphTruth;
           } catch (e) {
-            console.warn(`[GRAPH_TRUTH_BUILD] skipped: ${(e as Error).message}`);
+            // RC-1 FIX: do NOT let a stale prior-turn _graphTruth survive when
+            // this turn's build fails. Null it out so PRE_CANONICAL_STATE and
+            // projectCanonicalStateFromGraphTruth cannot silently reuse it.
+            (this as any)._graphTruth = null;
+            console.error(
+              `[GRAPH_TRUTH_BUILD_FAILED] trace=${traceId} intent=${intentCode} obs_in=${canonical_observation_codes.length} err=${(e as Error).message}`,
+            );
+            if (isDiagnosticIntent) {
+              throw new Error(`GRAPH_TRUTH_BUILD_FAILED: diagnostic intent=${intentCode} obs=${canonical_observation_codes.length}: ${(e as Error).message}`);
+            }
           }
 
 
