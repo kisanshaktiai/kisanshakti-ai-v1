@@ -6019,6 +6019,17 @@ export class AIAgentOrchestrator {
                 0,
               );
               (this as any)._graphObsToHypEdges = _obsEdges;
+              // P2/P6: carry the graph's machine-readable gap classification to
+              // the exit invariant so no-decision responses are explainable.
+              (this as any)._lastStructuredGapReason =
+                (graphOut as any)?.structured_gap_reason
+                ?? (hypIds.length > 0 ? null : 'NO_STAGE_VALID_HYPOTHESES');
+              console.log(
+                `[STAGE_BOUNDARY] stage=obs_to_hyp trace=${traceId} ` +
+                  `confirmed=${(Array.isArray((this as any)._lastRealObservations) ? (this as any)._lastRealObservations.length : 0)} ` +
+                  `hyp=${hypIds.length} rules_pre=0 rules_post=0 winner=none`,
+              );
+
               try {
                 const _grs2 = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
                 _grs2?.setHypothesisIds(hypIds);
