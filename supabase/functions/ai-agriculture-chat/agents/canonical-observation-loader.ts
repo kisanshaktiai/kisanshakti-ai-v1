@@ -127,11 +127,31 @@ async function loadStagePriorityCodesFromDB(
       ),
     ) as string[];
 
+    // P7 cold-boot seed: the loader must never fall back to a hardcoded list.
+    // When no stage-scoped row exists, seed from diagnostic observations only.
+    if (codes.length === 0) {
+      const { data: seedRows } = await client
+        .from('observation_master')
+        .select('observation_code, discriminator_score, clarity_score')
+        .eq('is_active', true)
+        .eq('is_diagnostic', true)
+        .order('discriminator_score', { ascending: false, nullsFirst: false })
+        .order('clarity_score', { ascending: false, nullsFirst: false })
+        .limit(Math.max(limit, 50));
+      const seedCodes = Array.from(
+        new Set((seedRows ?? []).map((r: any) => String(r.observation_code ?? '').trim().toUpperCase()).filter(Boolean)),
+      ) as string[];
+      console.log(`[CanonicalLoader] stage_priority_cold_boot_seed stage=${stage} codes=${seedCodes.length}`);
+      _stagePriorityCache.set(cacheKey, { at: Date.now(), codes: seedCodes });
+      return seedCodes;
+    }
+
     console.log(
       `[CanonicalLoader] stage_priority_db stage=${stage} synonyms=[${stages.join(',')}] codes=${codes.length}`,
     );
     _stagePriorityCache.set(cacheKey, { at: Date.now(), codes });
     return codes;
+
   } catch (e) {
     console.warn(`[CanonicalLoader] stage_priority_exception stage=${stage} err=${(e as Error).message}`);
     return [];
