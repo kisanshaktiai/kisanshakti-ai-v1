@@ -1,5 +1,13 @@
 // CHANGE LOG
+// 2026-07-25 UTC — Batch A / P7: DELETED the hardcoded STAGE_KEY_PRIORITIES
+//   symptom-code map (germination/tillering/grand_growth/maturity/vegetative/
+//   flowering/boll_development). Stage and category priorities are now read
+//   from public.observation_master (is_active ∧ is_diagnostic ∧
+//   is_farmer_observable, applies_to_stages overlap, ordered by
+//   discriminator_score/clarity_score) with a 5-minute cache. No DB rows →
+//   empty result; there is no static fallback by design.
 // 2026-07-09 21:15 UTC — Emptied STAGE_KEY_PRIORITIES.all bucket. The
+
 //   INSECTS/YELLOW/WILT/SPOTS static list was firing as a universal
 //   fallback whenever the caller passed a stage not present in the map
 //   (e.g. `transplanting`), producing the "same options for every
