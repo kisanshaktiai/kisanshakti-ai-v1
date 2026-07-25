@@ -18,6 +18,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import { resolveAliasCanonical, observationIndexReady } from './db-ssot/observation-index.ts';
+
 export const LLM_OUTPUT_VALIDATOR_VERSION = '1.1.0';
 
 /**
