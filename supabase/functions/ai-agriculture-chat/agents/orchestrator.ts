@@ -1463,6 +1463,7 @@ export class AIAgentOrchestrator {
     // consume a stale graph_truth with canonical_observations=[] (log:
     // PRE_CANONICAL_STATE obs=0 while EVIDENCE_CLASSIFICATION real=3).
     (this as any)._graphTruth = null;
+    console.log(`[RC1_BUILD_MARKER] v=rc1-2026-07-25T11:42 trace=${traceId} _graphTruth cleared per turn`);
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
 
     // ═══════════════════════════════════════════════════════════════════════════
