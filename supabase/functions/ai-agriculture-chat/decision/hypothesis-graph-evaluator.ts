@@ -506,6 +506,29 @@ export async function evaluateHypothesisGraph(
     emitEmptyHypToRule(trace, anchorHypIds.length > 0 ? 'NO_SURVIVING_HYPOTHESIS' : 'NO_HYPOTHESIS_EDGE');
   }
 
+  // ── P2 (Batch A) — structured gap classification ───────────────────────
+  // Downstream consumers must never guess why the graph is empty. Order
+  // matters: DB-required stage/DAS gates are the most specific cause,
+  // partial evidence next, agronomic contradiction last.
+  let structured_gap_reason: GraphStructuredGapReason | null = null;
+  if (candidates.length === 0) {
+    const hasPartialEvidence = eliminated.some((e) => (e.positive_matches ?? []).length > 0);
+    if (allEliminatedByDbRequiredGate) {
+      structured_gap_reason = 'NO_STAGE_VALID_HYPOTHESES';
+    } else if (hasPartialEvidence) {
+      structured_gap_reason = 'PARTIAL_MATCH_ONLY';
+    } else if (eliminated.length > 0) {
+      structured_gap_reason = 'ALL_ELIMINATED';
+    } else {
+      structured_gap_reason = 'NO_DISCOVERY_SEEDS';
+    }
+    console.warn(
+      `[GRAPH_STRUCTURED_GAP] trace=${trace} reason=${structured_gap_reason} ` +
+        `anchors=${anchorHypIds.length} eliminated=${eliminated.length} ` +
+        `partial=[${cap(eliminated.filter((e) => (e.positive_matches ?? []).length > 0).map((e) => e.hypothesis_id)).join(',')}]`,
+    );
+  }
+
   return {
     candidates,
     eliminated,
@@ -516,6 +539,7 @@ export async function evaluateHypothesisGraph(
      *  it into the pure `edges.ruleToHypothesis` map required by
      *  buildGraphRuntimeSnapshot. Never mutated by the caller. */
     rule_edges: ruleEdges,
+    structured_gap_reason,
   };
 }
 
