@@ -1,86 +1,146 @@
-# Neuro-Symbolic Decision Brain — Forensic Audit & Surgical Fix Plan
 
-## 1. Pipeline audit (LIVE call graph confirmed)
+# Forensic Root Cause Report — Trace `trace_ms09b10x_4c6y7c`
 
-| Stage | Live entry | DB source | Status |
+Investigation only. **No code changes proposed.** Every conclusion is anchored to a specific log line from `supabase-logs…_85.csv` and a specific line of live runtime code.
+
+---
+
+## PRIMARY ROOT CAUSE (RC-1)
+
+**`_graphTruth.canonical_observations` is empty (0) at the moment the CanonicalState is projected, even though 3 real farmer observations were extracted upstream. The projection then overwrites `state.observation_codes` from 3 → 0. From that instant, every downstream graph stage runs on an empty observation set.**
+
+### Evidence (log)
+Ordered by timestamp for this turn:
+
+1. `[EVIDENCE_CLASSIFICATION] raw_count=3 real_symptom_count=3 ignored_metadata_count=0 real=[RICE_LODGING,STUNTED_GROWTH,AFFECTED_PART_WHOLE] ignored=[]`
+2. `[OBSERVATION_CODES_PASSTHROUGH] count=3 codes=[RICE_LODGING,STUNTED_GROWTH,AFFECTED_PART_WHOLE]`
+3. `[GRAPH_VALIDATED] site=PRE_CANONICAL_STATE hash_match=true hash=ef623259 crop=RICE stage=tillering das=47 **obs=0**`
+4. `[CANONICAL_PROJECTION_ONLY] hash=ef623259 crop:RICE->RICE stage:TILLERING->tillering **obs:3->0** real=[] ignored=[]`
+5. `[GRAPH_VALIDATED] site=PRE_LAYERED_RULE_EVALUATOR hash_match=true hash=ef623259 … **obs=0**`
+
+Note there is **no `[GRAPH_TRUTH_BUILT]` line** for this turn even though the only writer of `_graphTruth` (`orchestrator.ts:5989`) always emits it inside `buildGraphTruth`. Combined with the fact that `PRE_CANONICAL_STATE` still validates with hash `ef623259` and `obs=0`, the `_graphTruth` object that the projection consumed **was built in an earlier turn of the same session** (session `bb9c239e-068d-402e-9cb6-5fb94ac2cbdf`, `turn: 400`) when observations were empty, and was reused instead of being rebuilt on this diagnostic turn.
+
+### Runtime code path
+
+| Site | File | Line | Behavior |
 |---|---|---|---|
-| Request/preload | `index.ts:377` → `orchestrator.orchestrate:1289` → `preloadPhase1Caches` `preloadObservationIndex` `preloadSystemConfig` (`:1298-1306`) | phase1-caches, observation-index, system-config | ✅ single-flight, TTL, safety hard-fail wired at `:1315` |
-| Canonical context | `decision/authoritative-state-loader.ts` composed via RPC `resolve_biological_profile` | `lands`, `crop_schedules`, `soil_health`, `ndvi_data`, `weather_*` | ✅ SSOT split honored (crop/dates←crop_schedules, stage←biological_state, soil/NDVI/weather primary + lands cache) |
-| Biological state + constraints | `agents/biological-state.ts` + `evaluateBiologicalConstraints` | `decision_rules`, `biological_state` write-lock | ✅ lock invariant enforced |
-| Intent classification | `agents/intent-classifier.ts::classifyFarmerIntent` (NOT `decision/intent-classifier.ts` — that path does not exist) | `observation_intent_master` via downstream mappers | ✅ live |
-| Intent→observation routing | `decision/observation-code-mapper.ts`, `concept-bridge.ts`, `iom-gate.ts` | `intent_observation_mapping`, `intent_assertion_pattern` | ✅ |
-| Observation resolution | `decision/symbol-resolver.ts` (SHADOW dual-read), `concept-bridge.ts`, `observation-code-mapper.ts` | `observation_master/alias/translations/intent` via `observation-index.ts` | ⚠️ Still Phase-2 shadow-only; not yet SSOT-authoritative for reads |
-| Clarification | `agents/clarification-strategy.ts`, `decision/hypothesis-clarification-builder.ts`, `runtime/navigator-adapter.ts` | `decision_rules`, hypothesis + observation tables | ✅ |
-| Hypothesis evaluation | `decision/hypothesis-evaluator.ts`, `hypothesis-graph-evaluator.ts` | `decision_rules`, `system_config.bio_stage_hard_gate_threshold`, `variety_resistance` | ✅ hard-gate DB-driven (0.6 numeric fallback only if row missing) |
-| Decision rule selection | `agents/decision-graph-bridge.ts` via `diagnostic-flow-controller.ts` + `rule-engine-executor.ts` | `decision_rules`, `master_products`, `chemical_regulatory_status` | ⚠️ DB-first but 2 hardcode leaks (see §2) |
-| Safety guardian | `agents/safety-guardian.ts::verifySafety` | `chemical_regulatory_status`, `system_config` safety keys | ✅ fail-closed with `SafetyCacheUnavailableError` → `SAFETY_BLOCKED` |
-| Narration | `agents/deterministic-response-builder.ts`, `llm-response-formatter.ts` | `decision_rules` fields | ⚠️ LLM narration-only, but dosage caps in builder are hardcoded (see §2 P0) |
+| Truth builder (only writer) | `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` | 5964–5989 | `buildGraphTruth({ canonical_observations: canonical_observation_codes, … })` and assigns `(this as any)._graphTruth = graphTruth`. Emits `[GRAPH_TRUTH_BUILT]`. |
+| Projector | `agents/canonical-state-builder.ts` | 1434–1479 | `projectCanonicalStateFromGraphTruth` runs `classifyEvidence(graphTruth.canonical_observations)` and does `state.observation_codes = [...classified.real_codes]`. When the input array is empty the state's obs is overwritten to `[]`. |
+| Validator | `runtime/graph-truth.ts` | 229–260 | Hashes {crop, stage_uuid, stage, DAS, obs}. Hash `ef623259` reproduces on 0 obs — so integrity passes even though observations are missing. |
 
-## 2. Hardcoded-agri findings (excluding correctly `_LEGACY_`-prefixed cold-boot fallbacks)
+### Why this prevents the final response
+`state.observation_codes = []` forces:
+- `[OBS_TO_HYP] hyp=[] hypotheses=0 state=GRAPH_EXHAUSTED`
+- `[HYP_TO_RULE] hyp=[] candidate_rules=[] missing_edges=[] reason=NO_HYPOTHESIS_EDGE`
+- `[GRAPH_SCOPE_BLOCKED] hypothesisCount=0 graphRuleEdges=0 blockedRuleCount=202 reason=NO_HYPOTHESIS_SURVIVED_DB_GATES`
+- `[RULE_EVALUATOR_INPUT] count=0` → `[LayeredRuleEvaluator] No rules to evaluate - returning empty result`
+- `[POST_RULE_TRACE] winner=none action_text=EMPTY final_diagnosis=none`
 
-### VIOLATIONS in the live decision path
+No winner rule ⇒ no `decision_output` ⇒ response cannot be built.
 
-| # | File:line | Constant | Why it's a violation |
-|---|---|---|---|
-| V1 | `agents/deterministic-response-builder.ts:302-320` | `MAX_SAFE_DOSES` (glyphosate 2160 g/ha, monocrotophos 500 g/ha, …) | Gates overdose logic; no DB-first path; not `_LEGACY_`-named |
-| V2 | `agents/decision-graph-bridge.ts:96-99` | `NEONICOTINOIDS` list | Chemical-class detection with no DB path (deferred to Phase 4) |
-| V3 | `decision/safety-enhancement.ts:80-97` | `INSECTICIDE_GROUPS`, `FUNGICIDE_GROUPS` (IRAC/FRAC) | Agronomic resistance-rotation authored in TS |
-| V4 | `decision/iom-gate.ts:52-71` | `STAGE_SYNONYMS` | Duplicate of the map already removed from `runtime/clarification-contract.ts`; regression test doesn't cover this copy |
-| V5 | `agents/orchestrator.ts:10990,12506`, `decision/fact-extractor.ts:180`, `decision/symbolic-reasoner.ts:1568`, `layers/rule-evaluation-layer.ts:453` | NDVI `>= 0.6` (5 duplicated literals) | Same magic threshold in 5 files; no `system_config` key |
-| V6 | `decision/symbolic-reasoner.ts:1240` | Rule-match `score >= 0.6` | Governs rule-fire decision; no config key |
-| V7 | `agents/safety-guardian.ts:858-861` | WHO toxicity class map (monocrotophos:Ib, phorate:Ia, …) | No `_LEGACY_` guard; call-site gating unverified |
-| V8 | `agents/clarification-renderer.ts:489` | `/imidacloprid|chlorpyrifos|monocrotophos/i` regex | No DB counterpart |
-| V9 | `agents/delivery-validator.ts:78` | `carbofuran → [furadan, फुराडान, कार्बोफुरान]` alias | No DB alias source |
+---
 
-### Acceptable (documented cold-boot legacy fallbacks — no change needed)
-`_LEGACY_SAFETY`, `_LEGACY_BANNED_CHEMICALS`, `_LEGACY_PEST_INDICATORS`, `_LEGACY_ADVISORY_DIRECT_INTENTS`, `EMERGENCY_KEYWORDS.banned_used`, `BANNED_SUBSTANCES_INDIA` (licence-lookup only), `CAUSE_NAMES` (narration/i18n), narration output-guard chemical lists in `llm-response-formatter.ts:208,850`, `decision-representation.ts:379`, `llm-response-generator.ts:287`, `deterministic-response-builder.ts:1178` (`KNOWN_ACTIVE_INGREDIENTS` — QA cross-check only).
+## SECONDARY CONSEQUENCE (SC-1) — Contract degrader forces `DIAGNOSTIC_ESCALATION`
 
-### Dead-ish
-`runtime/stage-family-shim.ts:102` — `STAGE_FAMILIES = Object.freeze({})` intentional empty stub.
+### Evidence (log)
+- `[OBS_TO_HYP_GAP] intent=GROWTH_ANOMALY confirmed_obs=3 real_obs=3 hypotheses=0 reason=no_hypothesis_edge_for_confirmed_observations action=route_to_observation_cards`
+- `[GRAPH_ZERO_RULE_MATCH] … obs=[] — refusing keyword fallback. Downstream must emit GRAPH_NEEDS_MORE_EVIDENCE with pending observation codes.`
 
-## 3. Surgical fix plan (phased, no schema churn beyond what's listed)
+### Code
+`runtime/observation-selector-contract.ts:164–195` (Case B): when the response is `CLARIFICATION_QUESTION` with 0 options and `loadObservationSelectorOptions` returns 0, but `realObservationCount > 0`, the response is force-mutated:
 
-### Tier 0 — DB prep (one migration, seed + additive columns only)
+```
+response.type = 'DIAGNOSTIC_ESCALATION';
+response.metadata.graph_reason = 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS';
+```
 
-Migration `seed_agri_ssot_gaps`:
-1. Insert `system_config` rows: `ndvi_healthy_threshold=0.6`, `rule_match_min_score=0.6`.
-2. Add nullable columns (idempotent) to `chemical_regulatory_status`: `chemical_class text`, `who_toxicity_class text`, and to `master_products`: `max_dose_per_ha_g numeric`, `dose_unit text`.
-3. Create `public.chemical_rotation_group` reference table (`chemical_name`, `rotation_family`, `moa_code`, `moa_system` in {IRAC,FRAC}, `source`, `updated_at`) with GRANTs (SELECT to anon+authenticated, ALL to service_role), RLS enabled, read-only policy.
-4. Seed the 3 tables from the current TS constants verbatim so behavior stays byte-identical on cutover.
+This is a direct downstream effect of RC-1 (obs=0 → no IOM options loadable). The contract layer degrades to escalation instead of throwing.
 
-### Tier 1 — P0 safety cutovers (fail-closed, DB-first)
+---
 
-- **V1 `MAX_SAFE_DOSES`**: add `getMaxDosePerHa(chemical)` in `utils/db-ssot/phase1-caches.ts` backed by `master_products.max_dose_per_ha_g`; hard-fail with `SafetyCacheUnavailableError` when cache warm-but-empty. Refactor `deterministic-response-builder.ts:302-320` call site; keep the current constant as `_LEGACY_MAX_SAFE_DOSES` cold-boot fallback (parity with `phase1-caches` pattern).
-- **V2 `NEONICOTINOIDS`**: add `isChemicalClass(name, class)` accessor over `chemical_regulatory_status.chemical_class`; rewrite `decision-graph-bridge.ts:96-99`. Legacy list becomes `_LEGACY_NEONICOTINOIDS`.
-- **V3 IRAC/FRAC**: add `getRotationGroup(chemical)` accessor over `chemical_rotation_group`; refactor `decision/safety-enhancement.ts:80-97` and its caller `agents/layered-rule-evaluator.ts`. Keep TS map as `_LEGACY_` cold-boot fallback.
-- **V7 WHO class**: verify call sites of `safety-guardian.ts:858-861`; if any feed a decision (block/warn), migrate to `chemical_regulatory_status.who_toxicity_class` via a new `getWhoClass()` accessor; otherwise re-classify as narration-only and rename `_LEGACY_WHO_CLASS_MAP`.
+## SECONDARY CONSEQUENCE (SC-2) — Formatter has no `DIAGNOSTIC_ESCALATION` branch
 
-### Tier 2 — P1 decision-graph integrity
+### Evidence (log)
+- `📝 [PostProcessor] Converting response type: DIAGNOSTIC_ESCALATION to language: mr`
+- `⚠️ Unknown response type: DIAGNOSTIC_ESCALATION - generating helpful fallback`
+- `⚠️ No decision_output present in orchestrator response`
+- `📋 Returning clarification with 0 options`
+- `Actions Returned Count: 0`
+- `[RUNTIME_TRACE] winner_rule=- winner_hyp=- clarification_owner=- candidates=- matched=- decision=- confidence=- latency_ms=39839`
 
-- **V4 `STAGE_SYNONYMS` in `iom-gate.ts`**: delete the local map and route through the existing `stage-knowledge-cache.ts` DB-driven family resolver already used elsewhere. Extend `scripts/regression-diagnostic-options.test.ts` to also assert absence in `iom-gate.ts`.
-- **V5/V6 NDVI + rule-match thresholds**: replace all 6 inline `>= 0.6` literals with a single `getConfigNumber('ndvi_healthy_threshold', 0.6)` / `getConfigNumber('rule_match_min_score', 0.6)` call from `system-config-cache.ts`. Add a lint-style regression grep script to prevent reintroduction.
+### Code
+`supabase/functions/ai-agriculture-chat/index.ts:3670-3673` — the `switch(response.type)` in the formatter has **no case** for `'DIAGNOSTIC_ESCALATION'`; it falls through to `default` and calls `generateHelpfulErrorResponse(lang, '')`. That is the actual bytes returned to the farmer.
 
-### Tier 3 — P2/P3 hygiene
+Session-persistence log confirms the terminal state:
+- `persisted_decision_state: no_action_needed`
+- `persisted_pending_structured: 0 records`
+- `persisted_pending_options: 0`
+- `persisted_pending_obs_keys: []`
 
-- **V8/V9**: fold `clarification-renderer.ts:489` regex and `delivery-validator.ts:78` alias map into the existing `chemical_regulatory_status` + alias-lookup accessors used by safety-guardian.
-- Cutover Phase-2 observation-index from SHADOW dual-read to authoritative (only after the standing 7-day diff window shows zero divergence — verify via `[OBS_INDEX_DIFF]` logs before flipping).
-- Delete `runtime/stage-family-shim.ts` once grep confirms no import needs the empty stub.
-- Migrate `CAUSE_NAMES` (`diagnostic-escalation-generator.ts:95-340`) into `observation_translations`.
+---
 
-## 4. Sequencing
+## OBSERVED SYMPTOMS (not causes)
+- Empty options card in UI.
+- Marathi generic fallback text instead of a graph-driven answer.
+- 39.8 s edge latency with `winner_rule=-`.
+- Session decision state stuck at `no_action_needed` across turns.
 
-1. Approve plan → build mode.
-2. Tier 0 migration first (blocks nothing at runtime; adds columns/rows only).
-3. Tier 1 cutovers, one file per commit, with `_LEGACY_` fallback preserved for cold-boot; verify no `[SAFETY_HARD_FAIL]` on happy path in edge logs after each.
-4. Tier 2 stage-synonym + threshold consolidation.
-5. Tier 3 hygiene, observation-index authoritative flip last (requires ≥7-day clean shadow window).
+---
 
-## 5. Contract preservation (unchanged)
+## Dependency Tree
 
-- GraphRuntime contract, CanonicalContext SSOT split, safety fail-closed semantics, hybrid symbolic+navigator+TS clarification authority (per `mem://constraints/no-ts-clarification-removal`), and DB-only agronomic authority (LLM = narration only) are all retained.
-- No new hardcoded agri logic introduced; every new TS constant is either `_LEGACY_`-prefixed cold-boot fallback or a numeric default parity-seeded into `system_config` / `chemical_rotation_group`.
+```text
+RC-1  _graphTruth.canonical_observations = []
+      (stale/never-rebuilt graph_truth reused on this turn — no
+       [GRAPH_TRUTH_BUILT] in log, hash ef623259 present at
+       PRE_CANONICAL_STATE with obs=0)
+        │
+        ▼
+projectCanonicalStateFromGraphTruth overwrites
+canonicalState.observation_codes 3 → 0
+        │
+        ▼
+Hypothesis engine: 0 candidates → GRAPH_EXHAUSTED
+        │
+        ▼
+Rule engine: 202 crop rules loaded, 0 evaluated,
+winner=none, action_text=EMPTY, decision_output=null
+        │
+        ├──► SC-1  observation-selector-contract Case B degrades
+        │         CLARIFICATION_QUESTION → DIAGNOSTIC_ESCALATION
+        │         (loadObservationSelectorOptions returned 0)
+        │
+        ▼
+SC-2  index.ts formatter switch has no DIAGNOSTIC_ESCALATION case
+      → falls through to default → generateHelpfulErrorResponse('')
+        │
+        ▼
+Final farmer response = generic Marathi fallback string
+(no decision, no options, no reasoning)
+```
 
-## 6. Open items to confirm before build
+---
 
-- Is the referenced `_deadcode/` snapshot from the prior audit still needed? It does not exist in this branch; earlier dead-file list can't be diffed until restored.
-- V7 WHO-class map — confirm whether any current call site uses it for a decision vs pure narration; that determines P0 vs P2.
+## Answer to the Primary Question
+
+> **Which exact runtime condition prevents the response object from reaching the formatter?**
+
+The formatter **is** reached — with `response.type = 'DIAGNOSTIC_ESCALATION'` and `decision_output = null`. The condition that prevents a *valid* farmer response from being produced is:
+
+> `_graphTruth.canonical_observations.length === 0` at `PRE_CANONICAL_STATE`, which is then propagated by `projectCanonicalStateFromGraphTruth` (`agents/canonical-state-builder.ts:1466`) into `canonicalState.observation_codes = []`. Because the graph_truth object was built (or persisted) with zero observations and reused this turn — the only writer at `agents/orchestrator.ts:5964–5989` never re-executed on this turn (no `[GRAPH_TRUTH_BUILT]` log) — every subsequent gate (`OBS_TO_HYP`, `HYP_TO_RULE`, `LayeredRuleEvaluator`, `unified-decision-gate`) evaluates on an empty observation set, produces no winner rule, and the response is mutated to `DIAGNOSTIC_ESCALATION` at `runtime/observation-selector-contract.ts:176`. The `switch` at `index.ts:3670` has no branch for that type and returns a generic fallback string.
+
+---
+
+## Files & Functions Implicated (read-only reference)
+
+| Concern | File : Function : Line |
+|---|---|
+| Graph-truth writer (only) | `agents/orchestrator.ts` : `buildGraphTruth` call : 5964–5989 |
+| Graph-truth reader / overwriter | `agents/canonical-state-builder.ts` : `projectCanonicalStateFromGraphTruth` : 1434–1479 |
+| Hash/validator (accepts obs=0) | `runtime/graph-truth.ts` : `assertGraphTruthIntegrity`, `computeGraphHash` : 116–260 |
+| Evidence classifier (metadata strip) | `runtime/evidence-classifier.ts` : `classifyEvidence` : 15, 34–58 |
+| Contract degrader (CLAR → ESCAL) | `runtime/observation-selector-contract.ts` : 164–195 (Case B), 238–260 (Case D) |
+| Formatter missing case | `supabase/functions/ai-agriculture-chat/index.ts` : `switch(response.type)` default : 3670–3673 |
+| Symptom of missing decision | `index.ts` : "No decision_output present" : 1561 |
+
+No fixes proposed. Awaiting direction on which root cause (RC-1 stale/empty graph_truth reuse, SC-1 contract degrader, or SC-2 formatter switch gap) to address first.
