@@ -5949,11 +5949,22 @@ export class AIAgentOrchestrator {
                 `edge_missing=${graphHypothesisEdgeMissing.length}`,
               );
 
-              // PATCH 2 (BUG 2) — Graph handoff invariant. If the graph produced
-              // hypotheses but ConversationState is empty, the handoff is broken.
-              if (graphOut.candidates.length > 0 && cs && cs.hypotheses.length === 0) {
+              // FIX J1a (PATCH 2 revision): the original invariant checked
+              // `cs.hypotheses.length` — but ConversationState is frozen by
+              // runtime/conversation-state.ts (buildConversationState returns
+              // an immutable). After the I1 reorder, cs.hypotheses is never
+              // updated (assignment throws inside an isolated try/catch). The
+              // authoritative exit-hyp store is `(this as any)._graphHypothesisIds`
+              // (set unconditionally BEFORE the frozen assignment attempt).
+              // Reading cs.hypotheses.length would spuriously fire this
+              // invariant every time the graph finds a hypothesis, causing
+              // GRAPH_RESULT_DROPPED → diagnosis-first fallback → keyword-match
+              // fabrication path picking wrong rules (e.g. PROACTIVE_FLOOD_
+              // PREPAREDNESS_001 for a "growth is low" query).
+              const _authHypCount = ((this as any)._graphHypothesisIds ?? []).length;
+              if (graphOut.candidates.length > 0 && _authHypCount === 0) {
                 throw new Error(
-                  `GRAPH_RESULT_DROPPED: graph=${graphOut.candidates.length} state=0 trace=${traceId}`,
+                  `GRAPH_RESULT_DROPPED: graph=${graphOut.candidates.length} auth=0 trace=${traceId}`,
                 );
               }
             } catch (projErr) {
