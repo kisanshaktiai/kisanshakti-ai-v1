@@ -196,12 +196,20 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
       }
 
       const translationsByCode = new Map<string, ObservationTranslationRow[]>();
-      for (const r of transR.rows) {
+      for (const r of transR.rows as any[]) {
         if (!r?.observation_code) continue;
         const k = nLower(r.observation_code);
         let bucket = translationsByCode.get(k);
         if (!bucket) { bucket = []; translationsByCode.set(k, bucket); }
-        bucket.push(r);
+        // FIX G1: map DB columns display_text/description_text into the
+        // ObservationTranslationRow interface fields label/description so
+        // getObservationTranslation callers stay unchanged.
+        bucket.push({
+          observation_code: r.observation_code,
+          language_code: r.language_code,
+          label: r.display_text ?? null,
+          description: r.description_text ?? null,
+        });
       }
 
       const intentByCode = new Map<string, ObservationIntentRow>();
