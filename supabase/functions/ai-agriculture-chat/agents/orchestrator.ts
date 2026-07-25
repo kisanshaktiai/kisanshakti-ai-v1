@@ -2247,9 +2247,12 @@ export class AIAgentOrchestrator {
             matchResult.option_index != null &&
             (selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key)
           ) {
-            mappedObservationKey = String(
+            // FIX (canonical-code contract): selectedStructuredOption came
+            // from buildHypothesisClarificationOptions → observation_master
+            // in canonical lowercase. Do not re-cast.
+            mappedObservationKey = canonicalizeObservationKey(
               selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key
-            ).toUpperCase();
+            );
             console.log(
               `   📋 Using STRUCTURED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}" ` +
               `(label="${selectedStructuredOption?.label}", source=${selectedStructuredOption?.source ?? 'legacy'})`
