@@ -28,7 +28,7 @@
  * - Removed OBSERVATION_KEY_LABELS hardcoded dictionary (~200 entries)
  * - All label resolution via observation_translations table
  * - Functions that need labels are now async (DB query)
- * - STAGE_KEY_PRIORITIES retained (language-neutral code lists)
+ * - STAGE_KEY_PRIORITIES removed (P7) — codes now from observation_master
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
