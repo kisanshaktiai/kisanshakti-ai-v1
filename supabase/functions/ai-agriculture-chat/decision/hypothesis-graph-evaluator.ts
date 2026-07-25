@@ -213,6 +213,7 @@ export async function evaluateHypothesisGraph(
       input_observations: [],
       trace_id: trace,
       timings_ms: Date.now() - started,
+      structured_gap_reason: 'NO_OBSERVATION_EVIDENCE',
     };
   }
 
@@ -228,6 +229,7 @@ export async function evaluateHypothesisGraph(
       input_observations: observed.observations,
       trace_id: trace,
       timings_ms: Date.now() - started,
+      structured_gap_reason: 'NO_DISCOVERY_SEEDS',
     };
   }
 
