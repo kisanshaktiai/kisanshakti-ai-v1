@@ -1402,8 +1402,97 @@ export class AIAgentOrchestrator {
       }
     } catch { /* stamping is additive; never fatal */ }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // P5 + P6 — MANDATORY DECISION_OUTPUT INVARIANT
+    // Once graph execution has started for the turn, the response MUST carry a
+    // populated decision_output: either a real decision, or the structured
+    // no-decision object with graph_gap + trace. Never a silent abort.
+    // Existing populated decision_output is NEVER overwritten.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const started = (this as any)._graphExecutionStarted === true;
+      const graphRan = (this as any)._graphExecuted === true;
+      const existing = (response as any)?.decision_output;
+      const hasReal = !!existing && Object.keys(existing).length > 0;
+
+      const snapExit = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
+      const hypIds: string[] = (this as any)._graphHypothesisIds ?? [];
+      const ruleIds: string[] = (this as any)._graphHypothesisRuleIds ?? [];
+      const confirmedExit: string[] = Array.isArray((this as any)._lastRealObservations)
+        ? [...(this as any)._lastRealObservations]
+        : [];
+
+      console.log(
+        `[STAGE_BOUNDARY] stage=final_exit trace=${traceId} confirmed=${confirmedExit.length} ` +
+          `hyp=${hypIds.length} rules_pre=${ruleIds.length} rules_post=${ruleIds.length} ` +
+          `winner=${(existing as any)?.primary_decision?.rule_id ?? snapExit?.hypotheses?.[0]?.id ?? 'none'}`,
+      );
+
+      // Soft-fail assertions — structured error lines, never thrown.
+      if (started && !graphRan) {
+        console.error(`[INVARIANT_SOFT_FAIL] site=orchestrate_exit trace=${traceId} rule=graph_executed_before_assembly`);
+      }
+      if (graphRan && hypIds.length === 0 && !(this as any)._lastStructuredGapReason) {
+        console.error(`[INVARIANT_SOFT_FAIL] site=orchestrate_exit trace=${traceId} rule=hypothesis_or_gap_reason_required`);
+      }
+
+      if (started && !hasReal) {
+        (response as any).decision_output = this.buildStructuredNoDecision({
+          trace_id: traceId,
+          graph_gap: (this as any)._lastStructuredGapReason
+            ?? (confirmedExit.length === 0 ? 'NO_DISCOVERY_SEEDS' : (hypIds.length > 0 ? 'PARTIAL_MATCH_ONLY' : 'NO_STAGE_VALID_HYPOTHESES')),
+          confirmed: confirmedExit,
+          hypotheses_partial: hypIds,
+          attempted_edges: (this as any)._graphObsToHypEdges ?? [],
+          candidate_rules: ruleIds,
+          follow_up: Array.isArray((response as any)?.clarification_options) && (response as any).clarification_options.length > 0
+            ? { clarification_options: (response as any).clarification_options }
+            : ((response as any)?.type === 'DIAGNOSTIC_ESCALATION'
+              ? { escalation_hint: 'EXPERT_REVIEW_REQUIRED' }
+              : null),
+        });
+        console.error(
+          `[INVARIANT_VIOLATION_RECOVERED] site=orchestrate_exit trace=${traceId} ` +
+            `type=${(response as any)?.type} graph_gap=${(response as any).decision_output.graph_gap}`,
+        );
+      }
+    } catch (invErr) {
+      console.warn(`[INVARIANT_RECOVERY_FAILED] trace=${traceId} err=${(invErr as Error).message}`);
+    }
+
     return response;
   }
+
+  /**
+   * P5 — Canonical structured no-decision object.
+   *
+   * Emitted whenever graph execution started but no real decision could be
+   * assembled. Carries the full graph trace so the caller (index.ts) and the
+   * farmer-facing layer can explain the gap instead of silently aborting.
+   * Contains NO agronomy — it is pure runtime trace state.
+   */
+  buildStructuredNoDecision(args: {
+    trace_id: string;
+    graph_gap: string | null;
+    confirmed?: string[];
+    hypotheses_partial?: any[];
+    attempted_edges?: any[];
+    candidate_rules?: any[];
+    follow_up?: { clarification_options?: any[]; escalation_hint?: string } | null;
+  }): Record<string, any> {
+    return {
+      status: 'NO_DECISION',
+      graph_gap: args.graph_gap ?? null,
+      confirmed_observations: args.confirmed ?? [],
+      hypotheses_partial: args.hypotheses_partial ?? [],
+      attempted_edges: args.attempted_edges ?? [],
+      candidate_rules: args.candidate_rules ?? [],
+      trace_id: args.trace_id,
+      follow_up: args.follow_up ?? null,
+    };
+  }
+
+
 
   private async _orchestrateImpl(
     farmerMessage: string,
