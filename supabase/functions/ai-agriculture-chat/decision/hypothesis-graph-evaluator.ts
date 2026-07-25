@@ -2,6 +2,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-25 UTC — Batch A / P2: added `structured_gap_reason` to
+ *   GraphHypothesisResult (NO_OBSERVATION_EVIDENCE | NO_DISCOVERY_SEEDS |
+ *   NO_STAGE_VALID_HYPOTHESES | PARTIAL_MATCH_ONLY | ALL_ELIMINATED) plus a
+ *   `[GRAPH_STRUCTURED_GAP]` trace. Additive only — no scoring or
+ *   elimination behaviour changed.
  * 2026-07-11 UTC — v5-P8: STAGE hard-gate is now confidence-aware.
  *   `GraphHypothesisInput.predicted_stage_confidence` (0..1) is compared to
  *   a runtime graph threshold (`system_config.bio_stage_hard_gate_threshold`
@@ -163,7 +168,22 @@ export interface GraphHypothesisResult {
   timings_ms: number;
   /** Map<hypothesis_id, rule_id[]> — orchestrator inverts to ruleToHypothesis. */
   rule_edges?: Map<string, string[]> | Record<string, string[]>;
+  /**
+   * P2 (Batch A) — machine-readable reason the graph produced no surviving
+   * candidate. `null` when at least one candidate survived. Consumers MUST
+   * branch on this instead of inferring intent from empty arrays.
+   */
+  structured_gap_reason?: GraphStructuredGapReason | null;
 }
+
+/** P2 (Batch A) — exhaustive set of graph no-survivor causes. */
+export type GraphStructuredGapReason =
+  | 'NO_OBSERVATION_EVIDENCE'    // nothing resolvable arrived at the graph
+  | 'NO_DISCOVERY_SEEDS'         // codes resolved, zero hypothesis_conditions anchors
+  | 'NO_STAGE_VALID_HYPOTHESES'  // anchors found, all killed by DB-required STAGE/DAS gates
+  | 'PARTIAL_MATCH_ONLY'         // anchors found and partially matched, none survived
+  | 'ALL_ELIMINATED';            // anchors found, eliminated by agronomic contradiction
+
 
 export interface NormalizedObservationCode {
   canonicalCode: string;
@@ -198,6 +218,7 @@ export async function evaluateHypothesisGraph(
       input_observations: [],
       trace_id: trace,
       timings_ms: Date.now() - started,
+      structured_gap_reason: 'NO_OBSERVATION_EVIDENCE',
     };
   }
 
@@ -213,6 +234,7 @@ export async function evaluateHypothesisGraph(
       input_observations: observed.observations,
       trace_id: trace,
       timings_ms: Date.now() - started,
+      structured_gap_reason: 'NO_DISCOVERY_SEEDS',
     };
   }
 
@@ -489,6 +511,29 @@ export async function evaluateHypothesisGraph(
     emitEmptyHypToRule(trace, anchorHypIds.length > 0 ? 'NO_SURVIVING_HYPOTHESIS' : 'NO_HYPOTHESIS_EDGE');
   }
 
+  // ── P2 (Batch A) — structured gap classification ───────────────────────
+  // Downstream consumers must never guess why the graph is empty. Order
+  // matters: DB-required stage/DAS gates are the most specific cause,
+  // partial evidence next, agronomic contradiction last.
+  let structured_gap_reason: GraphStructuredGapReason | null = null;
+  if (candidates.length === 0) {
+    const hasPartialEvidence = eliminated.some((e) => (e.positive_matches ?? []).length > 0);
+    if (allEliminatedByDbRequiredGate) {
+      structured_gap_reason = 'NO_STAGE_VALID_HYPOTHESES';
+    } else if (hasPartialEvidence) {
+      structured_gap_reason = 'PARTIAL_MATCH_ONLY';
+    } else if (eliminated.length > 0) {
+      structured_gap_reason = 'ALL_ELIMINATED';
+    } else {
+      structured_gap_reason = 'NO_DISCOVERY_SEEDS';
+    }
+    console.warn(
+      `[GRAPH_STRUCTURED_GAP] trace=${trace} reason=${structured_gap_reason} ` +
+        `anchors=${anchorHypIds.length} eliminated=${eliminated.length} ` +
+        `partial=[${cap(eliminated.filter((e) => (e.positive_matches ?? []).length > 0).map((e) => e.hypothesis_id)).join(',')}]`,
+    );
+  }
+
   return {
     candidates,
     eliminated,
@@ -499,6 +544,7 @@ export async function evaluateHypothesisGraph(
      *  it into the pure `edges.ruleToHypothesis` map required by
      *  buildGraphRuntimeSnapshot. Never mutated by the caller. */
     rule_edges: ruleEdges,
+    structured_gap_reason,
   };
 }
 
