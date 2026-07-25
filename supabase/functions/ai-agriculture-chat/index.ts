@@ -3666,7 +3666,27 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
       console.log(`   ⚠️ SYSTEM_ERROR response - generating helpful fallback`);
       const fallbackAdvice = response.error?.fallback_advice || '';
       return generateHelpfulErrorResponse(lang, fallbackAdvice);
-      
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SC-2 FIX (2026-07-25): DIAGNOSTIC_ESCALATION — emitted by
+    // runtime/observation-selector-contract.ts Case B when the farmer has
+    // confirmed observations but the graph has no downstream hypothesis edge.
+    // Instead of falling to the generic error path, surface the confirmed
+    // context back to the farmer with an explicit "no matching decision yet,
+    // sharing details helps" prompt. Uses main_message.full_text if the
+    // upstream layers populated it; otherwise assembles a neutral prompt.
+    // ═══════════════════════════════════════════════════════════════════════════
+    case 'DIAGNOSTIC_ESCALATION': {
+      const commFull = response.communication?.main_message?.full_text as any;
+      const commText = commFull?.[lang] || commFull?.en || '';
+      if (commText) return commText;
+      if (response.communication?.farmer_message) return response.communication.farmer_message;
+      const escText = (response.escalation as any)?.[`message_${lang}`] || response.escalation?.message_en || '';
+      if (escText) return escText;
+      console.warn(`   ⚠️ DIAGNOSTIC_ESCALATION with no communication payload — using generic escalation prompt`);
+      return generateNoRecommendationsFallback(response, lang);
+    }
+
     default:
       // NEVER silent - even for unknown types, provide helpful response
       console.log(`   ⚠️ Unknown response type: ${response.type} - generating helpful fallback`);
