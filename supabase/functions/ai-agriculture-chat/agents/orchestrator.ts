@@ -814,7 +814,11 @@ function mapDistributionToSymptom(optionText: string, _scope: ClarificationScope
   // ═══════════════════════════════════════════════════════════════════════════
   const obsKeyMatch = optionText.match(/\[obs_keys?:([^\]]+)\]/i);
   if (obsKeyMatch) {
-    const embeddedKey = obsKeyMatch[1].split(',')[0].trim().toUpperCase();
+    // FIX (canonical-code contract): observation codes are lower_snake_case
+    // across the platform (runtime/clarification-contract.ts:15-20). Prior
+    // .toUpperCase() broke every downstream DB lookup against
+    // observation_master.observation_code (100% lowercase, verified in DB).
+    const embeddedKey = canonicalizeObservationKey(obsKeyMatch[1].split(',')[0]);
     console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key: ${embeddedKey}`);
     return embeddedKey;
   }
@@ -2243,15 +2247,20 @@ export class AIAgentOrchestrator {
             matchResult.option_index != null &&
             (selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key)
           ) {
-            mappedObservationKey = String(
+            // FIX (canonical-code contract): selectedStructuredOption came
+            // from buildHypothesisClarificationOptions → observation_master
+            // in canonical lowercase. Do not re-cast.
+            mappedObservationKey = canonicalizeObservationKey(
               selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key
-            ).toUpperCase();
+            );
             console.log(
               `   📋 Using STRUCTURED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}" ` +
               `(label="${selectedStructuredOption?.label}", source=${selectedStructuredOption?.source ?? 'legacy'})`
             );
           } else if (matchResult.option_index != null && persistedObsKeys[matchResult.option_index]) {
-            mappedObservationKey = String(persistedObsKeys[matchResult.option_index]).toUpperCase();
+            // FIX (canonical-code contract): persistedObsKeys were saved from
+            // DB-sourced options in canonical lowercase. Do not uppercase.
+            mappedObservationKey = canonicalizeObservationKey(persistedObsKeys[matchResult.option_index]);
             console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
           } else {
             // Phase I-6: Heuristic label→code mapping is a SYMBOLIC_ID_LEAK.
@@ -2284,7 +2293,12 @@ export class AIAgentOrchestrator {
           // EvidenceLedger already recorded the SYMBOLIC_ID_LEAK above.
           // ─────────────────────────────────────────────────────────────
           try {
-            const CANON_RE_OPT = /^[A-Z0-9_]+$/;
+            // FIX (canonical-code contract): canonical observation codes are
+            // lower_snake_case (verified: observation_master.observation_code
+            // is 100% lowercase across 2,549 rows). The prior UPPERCASE regex
+            // would reject P1/P2/P3 outputs and silently skip the ledger
+            // append + confirm — breaking downstream evidence classification.
+            const CANON_RE_OPT = /^[a-z0-9_]+$/;
             if (mappedObservationKey && CANON_RE_OPT.test(mappedObservationKey)) {
               const already = graph.observation_ledger
                 .latestByCode()
@@ -2445,8 +2459,17 @@ export class AIAgentOrchestrator {
           
           // The selected observation key is CONFIRMED (farmer explicitly chose it)
           if (mappedObservationKey) {
-            allObservations.push(mappedObservationKey);
-            console.log(`   ✅ [ObservationAuthority] ${mappedObservationKey} tagged as CONFIRMED (clarification selection)`);
+            // FIX (canonical-code contract): defensive re-canonicalize before
+            // pushing to allObservations, which is passed to
+            // expandObservationVocabularyViaAliases (DB alias expansion).
+            // P2/P3 above already canonicalize, but this guarantees the
+            // invariant at the boundary between local variables and the
+            // downstream reasoning array.
+            const _canonKey = canonicalizeObservationKey(mappedObservationKey);
+            if (_canonKey) {
+              allObservations.push(_canonKey);
+              console.log(`   ✅ [ObservationAuthority] ${_canonKey} tagged as CONFIRMED (clarification selection)`);
+            }
           }
           if (visualSymptom && visualSymptom !== 'UNKNOWN' && visualSymptom !== mappedObservationKey) {
             allObservations.push(visualSymptom);

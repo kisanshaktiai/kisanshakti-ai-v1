@@ -2475,6 +2475,18 @@ serve(async (req) => {
       console.error(`   Forcing transition to 'decision_in_progress'`);
       computedDecisionState = 'decision_in_progress';
     }
+
+    // FIX (repeated-option loop invariant): if the OUTGOING response is a
+    // CLARIFICATION_QUESTION with pending options, decision_state MUST be
+    // 'awaiting_clarification'. This handles OBSERVATION_CONTRACT_POSTGATE
+    // promotion of an empty DECISION_PROVIDED, where the orchestrator's
+    // stale session_state_update would otherwise leave
+    // decision_state='decision_in_progress' and the next turn would not
+    // recognise the farmer's tap as a clarification reply.
+    if (isClarificationResponse && clarificationOptions.length > 0 && computedDecisionState !== 'awaiting_clarification') {
+      console.error(`🚨 [INVARIANT VIOLATION] Outgoing CLARIFICATION_QUESTION with ${clarificationOptions.length} options but decision_state=${computedDecisionState}. Forcing to 'awaiting_clarification'.`);
+      computedDecisionState = 'awaiting_clarification';
+    }
     
     // MANDATORY LOGGING: Decision state tracking
     console.log(`\n📊 [Session] ═══ DECISION STATE TRACKING ═══`);
@@ -2564,9 +2576,16 @@ serve(async (req) => {
       last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
       timestamp: now,
       // CRITICAL FIX: Clear pending options when clarification is answered
-      pending_clarification_options: (isClarificationResponse && !clarificationAnswered) ? clarificationOptions : [],
-      pending_clarification_observation_keys: (isClarificationResponse && !clarificationAnswered) ? clarificationObservationKeys : [],
-      pending_clarification_options_structured: (isClarificationResponse && !clarificationAnswered) ? clarificationOptionsStructured : [],
+      // FIX (repeated-option loop root cause): persist whatever the OUTGOING
+      // response actually carries. clarificationAnswered describes the
+      // INCOMING farmer message; it must not gate what we save for the next
+      // turn. When rules return empty and OBSERVATION_CONTRACT_POSTGATE
+      // promotes the response to a NEW CLARIFICATION_QUESTION, the previous
+      // condition saved [] and the next turn treated the farmer's chip tap
+      // as a fresh query — producing an identical-option loop.
+      pending_clarification_options: (isClarificationResponse && clarificationOptions.length > 0) ? clarificationOptions : [],
+      pending_clarification_observation_keys: (isClarificationResponse && clarificationObservationKeys.length > 0) ? clarificationObservationKeys : [],
+      pending_clarification_options_structured: (isClarificationResponse && clarificationOptionsStructured.length > 0) ? clarificationOptionsStructured : [],
       // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
       lockedCropContext: lockedCropContextForSession,
       // Track clarification resolution
