@@ -473,11 +473,26 @@ export async function buildHypothesisClarificationOptions(
   const emittedHypotheses = new Set<string>();
   const options: HypothesisClarificationOption[] = [];
   const optionsByHypothesis: Record<string, number> = {};
+  const labelSources: string[] = [];
 
   const emitBucket = (b: CodeBucket, primary: string) => {
     const master = masterRows.get(b.code.toLowerCase());
     if (!master) return false;
-    const label = labels.get(master.observation_code.toLowerCase()) || master.description || master.observation_code;
+    // Farmer-visible label MUST come from a DB text source. Order:
+    //   observation_translations[lang] → observation_translations[en]
+    //   → observation_master.description.
+    // A raw observation_code is NEVER shown to the farmer — the option is
+    // dropped instead (and logged) so the UI can never leak a symbolic code.
+    const tr = labels.get(master.observation_code.toLowerCase());
+    const label = (tr?.text || master.description || '').trim();
+    if (!label) {
+      console.warn(
+        `[OBS_LABEL_MISSING] trace=${trace} code=${master.observation_code} lang=${lang} ` +
+        `reason=no_translation_no_description → option dropped`,
+      );
+      return false;
+    }
+    labelSources.push(`${master.observation_code}:${tr?.source ?? 'description'}`);
     options.push({
       observation_id: master.observation_code,
       observation_code: master.observation_code,
@@ -497,6 +512,7 @@ export async function buildHypothesisClarificationOptions(
     optionsByHypothesis[primary] = (optionsByHypothesis[primary] ?? 0) + 1;
     return true;
   };
+
 
   // Pass 1: one per uncovered hypothesis, in rank order.
   for (let i = 0; i < remaining.length && options.length < Math.max(renderMax, hypothesisIds.length); ) {
