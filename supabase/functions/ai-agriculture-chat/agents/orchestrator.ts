@@ -132,7 +132,7 @@ import {
   getObservationMaster as _getObservationMaster,
   observationIndexReady as _observationIndexReady,
 } from '../utils/db-ssot/observation-index.ts';
-import { preloadSystemConfig as _preloadSystemConfig } from '../utils/db-ssot/system-config-cache.ts';
+import { preloadSystemConfig as _preloadSystemConfig, getConfigRaw } from '../utils/db-ssot/system-config-cache.ts';
 
 const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
   'EMERGENCE_FAILURE',
@@ -794,7 +794,7 @@ import {
 } from '../runtime/clarification-contract.ts';
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
-import { canonicalObsCode, canonicalIntentCode, canonicalCropCode } from '../utils/canonical-code.ts';
+import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
 import { scoreEvidenceSet, getEvidenceWeights } from '../decision/evidence-confidence.ts';
 
 
@@ -1200,18 +1200,31 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Generate default clarification - returns i18n_key for narration layer
-   * @deprecated Use narration layer for text generation
+   * Default clarification intro.
+   * CHANGE LOG 2026-07-26 — this used to return the raw i18n key
+   * `clarification.default.<lang>`, which leaked verbatim into the farmer's
+   * clarification card header when no narration layer overwrote it. Text now
+   * comes from `system_config.clarification_intro_<lang>` (DB SSOT, already
+   * seeded for en/hi/mr) with an en fallback. No hardcoded agronomy.
    */
   private generateDefaultClarification(
     language: string,
     farmerMessage: string,
     cropName?: string
   ): string {
-    // Return i18n key - narration layer handles actual text
-    console.log('[Orchestrator] generateDefaultClarification - delegating to narration layer');
-    return `clarification.default.${language}`;
+    const lang = String(language || 'en').toLowerCase().split('-')[0];
+    const pick = (l: string): string => {
+      const v = getConfigRaw<string>(`clarification_intro_${l}`, '');
+      return typeof v === 'string' ? v.trim() : '';
+    };
+    const text = pick(lang) || pick('en');
+    if (!text) {
+      console.warn(`[CLARIFICATION_INTRO_MISSING] lang=${lang} key=clarification_intro_${lang}`);
+      return '';
+    }
+    return text;
   }
+
   
   /**
    * Generate clarification structure with i18n keys
@@ -2968,14 +2981,41 @@ export class AIAgentOrchestrator {
           const cropCodeForRules = unifiedNormalizeCropCode(cropName).toLowerCase();
           let allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
           if (optionGraphRuleIds.length > 0) {
+            // ═══════════════════════════════════════════════════════════════
+            // CHANGE LOG 2026-07-26 — HYPOTHESIS→RULE SCOPE COLLAPSE FIX.
+            // `getAllRulesWithBundled()` returns `Rule` objects whose identity
+            // field is `id` (see layered-rule-evaluator.convertBundledToRule),
+            // NOT `rule_id`. The old filter read `r.rule_id` → always
+            // `undefined` → EVERY rule was dropped even when the graph had
+            // mapped 25 valid rules ([OPTION_GRAPH_SCOPE] rules 202 → 0).
+            // That silently converted a confirmed BPH diagnosis into a 1%
+            // STAGE_FALLBACK "tell me what you see" reply.
+            // Identity is now read from `id ?? rule_id` and compared
+            // case-insensitively via the canonical symbol normalizer.
+            // ═══════════════════════════════════════════════════════════════
             const beforeGraphScope = allRulesForOption.length;
-            const graphRuleIdSet = new Set(optionGraphRuleIds.map(String));
-            allRulesForOption = allRulesForOption.filter((r: any) => graphRuleIdSet.has(String(r.rule_id)));
+            const ruleIdentity = (r: any): string =>
+              canonicalSymbolCode(r?.id ?? r?.rule_id ?? '');
+            const graphRuleIdSet = new Set(
+              optionGraphRuleIds.map((rid) => canonicalSymbolCode(rid)).filter(Boolean),
+            );
+            const scopedRules = allRulesForOption.filter((r: any) => graphRuleIdSet.has(ruleIdentity(r)));
+            if (scopedRules.length === 0) {
+              console.error(
+                `[GRAPH_RULE_SCOPE_EMPTY] trace=${traceId} mapped=${optionGraphRuleIds.length} ` +
+                `loaded=${beforeGraphScope} action=retain_crop_scoped_rules ` +
+                `sample_mapped=${optionGraphRuleIds.slice(0, 3).join(',')} ` +
+                `sample_loaded=${allRulesForOption.slice(0, 3).map(ruleIdentity).join(',')}`,
+              );
+            } else {
+              allRulesForOption = scopedRules;
+            }
             console.log(
               `   🧭 [OPTION_GRAPH_SCOPE] rules ${beforeGraphScope} → ${allRulesForOption.length} ` +
               `from hypothesis_rule_mapping=${optionGraphRuleIds.length}`,
             );
           }
+
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length} (crop=${cropCodeForRules})`);
           
           // Pass user_query AND visual_symptoms for rule matching
@@ -8566,7 +8606,14 @@ export class AIAgentOrchestrator {
         
         // If hypothesis narrowed scope, filter rules (only if pre-filter didn't already apply)
         if (!diagnosticPreFilterApplied && hypothesisRuleScope && hypothesisRuleScope.length > 0) {
-          const scopedRules = allRulesWithBundled.filter((r: any) => hypothesisRuleScope!.includes(r.id || r.rule_id));
+          // CANONICAL-CODE CONTRACT (2026-07-26): rule identity is `id` on
+          // converted bundled rules and `rule_id` on raw DB rows — compare both
+          // through the canonical normalizer so casing never silently empties
+          // the graph scope (see [GRAPH_RULE_SCOPE_EMPTY]).
+          const _scopeSet = new Set(hypothesisRuleScope!.map((rid) => canonicalSymbolCode(rid)).filter(Boolean));
+          const scopedRules = allRulesWithBundled.filter((r: any) =>
+            _scopeSet.has(canonicalSymbolCode(r?.id ?? r?.rule_id ?? '')));
+
           if (scopedRules.length > 0) {
             rulesToEvaluate = scopedRules;
             console.log(`   🎯 [HypothesisScope] Narrowed from ${allRulesWithBundled.length} to ${scopedRules.length} rules`);
