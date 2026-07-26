@@ -235,8 +235,9 @@ export function filterHypothesesByIOM<
   const outside: Array<{ cause: string; keys: string[] }> = [];
   for (const h of hypotheses) {
     const keys = (h.observable_characteristics || [])
-      .map((o) => String(o?.observation_key || '').trim().toLowerCase().replace(/[\s-]+/g, '_'))
+      .map((o) => canonicalObsCode(o?.observation_key))
       .filter(Boolean);
+
     const hit = keys.some((k) => allowedSet.has(k));
     if (!hit) outside.push({ cause: String(h.cause || h.canonical_group || 'unknown'), keys });
   }
