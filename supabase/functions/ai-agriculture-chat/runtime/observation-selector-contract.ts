@@ -113,9 +113,181 @@ export async function loadObservationSelectorOptions(
   }
 }
 
+// ─── Q1/Q2 — SSOT lock + DB rescue before any escalation degrade ───────────
 
 /**
- * Single enforcement point invoked immediately after the orchestrator returns.
+ * SSOT lock invariant. crop_code + growth_stage + DAS + intent_code are
+ * established at Land Context SSOT (step 3) and MUST be present on every
+ * downstream clarification call. Returns the missing field name, or null.
+ */
+function missingSsotField(ctx: ObservationContractContext): string | null {
+  if (!ctx.cropCode) return 'crop_code';
+  if (!ctx.growthStage) return 'growth_stage';
+  if (typeof ctx.daysSinceSowing !== 'number') return 'days_since_sowing';
+  if (!ctx.intentCode) return 'intent_code';
+  return null;
+}
+
+/**
+ * DB-driven intent → fallback family resolution. NO hardcoded intent lists:
+ *  1. exact `clarification_fallback_questions.intent_family = intent_code`
+ *  2. else, if `observation_intent_master.is_biological` (diagnostic family)
+ *     → 'DIAGNOSIS_GENERIC'
+ *  3. else null (logged as [CONTRACT_FALLBACK_NO_MAP])
+ */
+async function mapIntentToFamily(
+  supabase: any,
+  intentCode: string | null | undefined,
+): Promise<string | null> {
+  const code = String(intentCode ?? '').trim();
+  if (!supabase || !code) return null;
+
+  try {
+    const { data: exact } = await supabase
+      .from('clarification_fallback_questions')
+      .select('intent_family')
+      .eq('is_active', true)
+      .eq('intent_family', code)
+      .limit(1);
+    if (Array.isArray(exact) && exact.length > 0) return code;
+
+    const { data: intentRow } = await supabase
+      .from('observation_intent_master')
+      .select('intent_code, intent_category, is_biological, clarification_mode')
+      .eq('intent_code', code)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    const isDiagnostic = !!(intentRow?.is_biological)
+      || !!(intentRow?.clarification_mode && String(intentRow.clarification_mode).trim());
+    if (isDiagnostic) return 'DIAGNOSIS_GENERIC';
+
+    console.warn(
+      `[CONTRACT_FALLBACK_NO_MAP] intent=${code} category=${intentRow?.intent_category ?? 'n/a'}`,
+    );
+    return null;
+  } catch (err) {
+    console.warn(`[CONTRACT_FALLBACK_NO_MAP] intent=${code} error=${(err as Error).message}`);
+    return null;
+  }
+}
+
+/**
+ * DB fallback clarification questions. Labels are pre-translated in the DB;
+ * no TS constants, no LLM generation.
+ */
+async function loadFallbackQuestionOptions(
+  ctx: ObservationContractContext,
+): Promise<ObservationOption[]> {
+  const family = await mapIntentToFamily(ctx.supabase, ctx.intentCode);
+  if (!family) return [];
+  const lang = String(ctx.language || 'mr').trim().toLowerCase();
+
+  try {
+    const { data: rows, error } = await ctx.supabase
+      .from('clarification_fallback_questions')
+      .select('question_code, label_en, label_hi, label_mr, priority')
+      .eq('is_active', true)
+      .eq('intent_family', family)
+      .order('priority', { ascending: true })
+      .limit(4);
+    if (error) {
+      console.warn(`[CONTRACT_FALLBACK_DB] family=${family} error=${error.message}`);
+      return [];
+    }
+    const out: ObservationOption[] = [];
+    for (const r of rows || []) {
+      const key = String(r?.question_code ?? '').trim();
+      if (!key) continue;
+      const label = String(
+        (lang === 'hi' && r.label_hi) || (lang === 'mr' && r.label_mr) || r.label_en || key,
+      );
+      out.push({
+        value: key,
+        label,
+        observation_key: key,
+        i18n_key: `observation.${key.toLowerCase()}`,
+        observation_code: key,
+      });
+    }
+    return out;
+  } catch (err) {
+    console.warn(`[CONTRACT_FALLBACK_DB] family=${family} exception=${(err as Error).message}`);
+    return [];
+  }
+}
+
+export interface RescueResult {
+  rescued: boolean;
+  site: 'hyp_graph_options' | 'fallback_questions' | null;
+  option_count: number;
+}
+
+/**
+ * Q2 — DB rescue: hypothesis-graph options first, then the DB fallback
+ * question table. Mutates the response into a CLARIFICATION_QUESTION when any
+ * DB-sourced options exist. Never synthesises options in TypeScript.
+ */
+export async function attemptDbClarificationRescue(
+  response: any,
+  ctx: ObservationContractContext,
+): Promise<RescueResult> {
+  if (!response || typeof response !== 'object') {
+    return { rescued: false, site: null, option_count: 0 };
+  }
+
+  const graphOptions = await loadObservationSelectorOptions(ctx);
+  if (graphOptions.length > 0) {
+    promoteToClarification(response, graphOptions, ctx);
+    stampMetadata(response, graphOptions.length);
+    response.metadata.graph_reason = ctx.graphReason || 'INSUFFICIENT_EVIDENCE';
+    console.log(
+      `[OBSERVATION_CONTRACT_RESCUE] site=hyp_graph_options options=${graphOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
+    );
+    return { rescued: true, site: 'hyp_graph_options', option_count: graphOptions.length };
+  }
+
+  const fallbackOptions = await loadFallbackQuestionOptions(ctx);
+  if (fallbackOptions.length > 0) {
+    promoteToClarification(response, fallbackOptions, ctx);
+    stampMetadata(response, fallbackOptions.length);
+    response.metadata.observation_source = 'clarification_fallback_questions';
+    response.metadata.graph_reason = ctx.graphReason || 'NO_STAGE_VALID_HYPOTHESES';
+    console.log(
+      `[OBSERVATION_CONTRACT_RESCUE] site=fallback_questions options=${fallbackOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
+    );
+    return { rescued: true, site: 'fallback_questions', option_count: fallbackOptions.length };
+  }
+
+  return { rescued: false, site: null, option_count: 0 };
+}
+
+/**
+ * Absolute last-resort escalation. Only reachable when BOTH DB rescue paths
+ * returned zero options.
+ */
+function applyTrueEscalation(
+  response: any,
+  ctx: ObservationContractContext,
+  graphReasonFallback: string,
+): void {
+  console.warn(
+    `[OBSERVATION_CONTRACT_TRUE_ESCALATION] trace=${ctx.traceId ?? 'n/a'} reason=no_db_clarification_available intent=${ctx.intentCode} crop=${ctx.cropCode} stage=${ctx.growthStage}`,
+  );
+  response.type = 'DIAGNOSTIC_ESCALATION';
+  response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+  response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
+  response.metadata.graph_reason = ctx.graphReason || graphReasonFallback;
+  response.metadata.observation_required = false;
+  response.metadata.confirmed_observation_count = ctx.realObservationCount ?? 0;
+  response.metadata.escalation_payload = {
+    confirmed: ctx.confirmedObservationCodes ?? [],
+    graph_gap: ctx.graphReason || graphReasonFallback,
+    trace_id: ctx.traceId ?? null,
+  };
+}
+
+
  * Mutates the response in place to guarantee the OBSERVATION_REQUIRED contract.
  *
  * Returns metadata about what happened for the [BRAIN_TRACE] emitter.
