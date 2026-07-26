@@ -36,6 +36,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { ObservationKey } from '../decision/observation-ontology.ts';
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
+import { canonicalStageKey, canonicalCropCode } from '../utils/canonical-code.ts';
+import { getStageFamilyFromDB } from '../utils/stage-knowledge-cache.ts';
 
 export const CANONICAL_LOADER_VERSION = '3.0.0'; // v3: ZERO hardcoded labels
 
