@@ -1918,7 +1918,7 @@ serve(async (req) => {
               }
             } else if (!_ssotLockValid) {
               console.error(
-                `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${!finalCropName ? 'crop_code' : !finalGrowthStage ? 'growth_stage' : typeof finalDaysSinceSowing !== 'number' ? 'days_since_sowing' : 'intent_code'} trace=${traceId}`,
+                `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${!_q3Crop ? 'crop_code' : !_q3Stage ? 'growth_stage' : typeof _q3Das !== 'number' ? 'days_since_sowing' : 'intent_code'} trace=${traceId}`,
               );
             }
 
