@@ -2350,7 +2350,48 @@ serve(async (req) => {
     console.log(`   Response Content Length: ${responseContent?.length || 0}`);
     console.log(`   LLM Model Used: ${aiModelUsed || 'template'}`);
     console.log(`   Validation Passed: ${validationResult.passed}`);
-    
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // T2 — CHEMICAL / DOSAGE PROVENANCE GATE (SAFETY CRITICAL)
+    // Every dosage token rendered to the farmer MUST appear verbatim in a
+    // DB-sourced action string. Any dosage that exists only in the narration
+    // is an LLM fabrication (root cause of the 23× Chlorantraniliprole
+    // overdose) and forces the response back to the DB-built template.
+    // No agronomy literals here — pure numeric-token provenance matching.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const _dbCorpus = JSON.stringify(actions_returned ?? [])
+        .concat(JSON.stringify(orchestratorResponse.decision_output ?? {}))
+        .toLowerCase()
+        .replace(/\s+/g, '');
+      const _doseRe = /(\d+(?:[.,]\d+)?)\s*(ml|l|litre|liter|g|kg|gm|gram)\b/gi;
+      const _rendered = String(responseContent ?? '');
+      const _unbacked: string[] = [];
+      for (const m of _rendered.matchAll(_doseRe)) {
+        const num = m[1].replace(',', '.');
+        const unit = m[2].toLowerCase();
+        const compact = `${num}${unit}`;
+        const alt = `${parseFloat(num)}${unit}`;
+        if (!_dbCorpus.includes(compact) && !_dbCorpus.includes(alt)) _unbacked.push(m[0].trim());
+      }
+      if (_unbacked.length > 0) {
+        console.error(
+          `[DOSAGE_PROVENANCE_VIOLATION][${traceId}] unbacked=[${_unbacked.join(' | ')}] ` +
+            `db_actions=${actions_returned?.length ?? 0} model=${aiModelUsed ?? 'template'} ` +
+            `action=fallback_to_db_template`,
+        );
+        validationResult = {
+          passed: false,
+          errors: [...validationResult.errors, `DOSAGE_NOT_DB_BACKED:${_unbacked.join(',')}`],
+        };
+      } else {
+        console.log(`[DOSAGE_PROVENANCE_OK][${traceId}] all_rendered_doses_db_backed=true`);
+      }
+    } catch (provErr) {
+      console.warn(`[DOSAGE_PROVENANCE_SKIP][${traceId}] err=${(provErr as Error).message}`);
+    }
+
+
     if (!validationResult.passed) {
       console.error(`❌ [${traceId}] VALIDATION FAILED:`, validationResult.errors);
       console.error(`   Full Context Dump:`, JSON.stringify({
