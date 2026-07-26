@@ -794,7 +794,7 @@ import {
 } from '../runtime/clarification-contract.ts';
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
-import { canonicalObsCode, canonicalIntentCode, canonicalCropCode } from '../utils/canonical-code.ts';
+import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
 import { scoreEvidenceSet, getEvidenceWeights } from '../decision/evidence-confidence.ts';
 
 
