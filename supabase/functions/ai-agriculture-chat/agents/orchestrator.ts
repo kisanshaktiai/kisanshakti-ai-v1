@@ -788,6 +788,9 @@ import {
 } from '../runtime/clarification-contract.ts';
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
+import { canonicalObsCode, canonicalIntentCode, canonicalCropCode } from '../utils/canonical-code.ts';
+import { scoreEvidenceSet, getEvidenceWeights } from '../decision/evidence-confidence.ts';
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
