@@ -360,7 +360,7 @@ import {
 } from './type-mappers.ts';
 
 // UNIFIED: Import canonical crop code normalizer
-import { normalizeCropCode as unifiedNormalizeCropCode } from '../utils/crop-code-normalizer.ts';
+import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STABILIZATION v4.0: LLM Output Validator + Crop Vocabulary Cache
