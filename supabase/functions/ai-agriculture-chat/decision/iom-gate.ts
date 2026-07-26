@@ -2,6 +2,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * IOM GATE — Intent×Observation×Stage×DAS allowlist filter
  * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (newest first)
+ *   2026-07-26 — F2/F3 audit: deleted the hardcoded `STAGE_SYNONYMS` agronomy
+ *     map; stage families now come exclusively from `public.crop_stage_graph`
+ *     via `utils/stage-knowledge-cache.ts::getStageFamilyFromDB`. All code
+ *     normalization routed through `utils/canonical-code.ts`.
+ *
+
  *
  * PURPOSE
  *   `intent_observation_mapping` (IOM) is the curated, agronomically valid
