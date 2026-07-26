@@ -343,22 +343,32 @@ export async function ensureObservationSelectorContract(
   if (type === 'CLARIFICATION_QUESTION' && existingOptions.length === 0) {
     const options = await loadObservationSelectorOptions(effectiveCtx);
     if (options.length === 0) {
-      // Graph genuinely exhausted: farmer already confirmed observations but
-      // no downstream hypothesis edge exists for this (crop,stage,DAS,obs) cell.
-      // Degrade to DIAGNOSTIC_ESCALATION instead of a 500 — the greppable
-      // curator-triage warning below preserves the data-gap signal.
+      // Q1/Q2 — never degrade before the DB rescue. SSOT lock must be intact.
       if (realObservationCount > 0) {
+        const missing = missingSsotField(effectiveCtx);
+        if (missing) {
+          console.error(
+            `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${missing} trace=${effectiveCtx.traceId ?? 'n/a'}`,
+          );
+          return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'ssot_lock_lost_degrade_skipped' };
+        }
         console.warn(
-          `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=CLARIFICATION_QUESTION to=DIAGNOSTIC_ESCALATION reason=graph_exhausted_after_confirmed_observations crop=${effectiveCtx.cropCode ?? '?'} stage=${effectiveCtx.growthStage ?? '?'} intent=${effectiveCtx.intentCode ?? '?'} real_observations=${realObservationCount}`,
+          `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=CLARIFICATION_QUESTION reason=graph_exhausted_after_confirmed_observations crop=${effectiveCtx.cropCode} stage=${effectiveCtx.growthStage} das=${effectiveCtx.daysSinceSowing} intent=${effectiveCtx.intentCode} real_observations=${realObservationCount}`,
         );
-        response.type = 'DIAGNOSTIC_ESCALATION';
-        response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
-        response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
-        response.metadata.graph_reason = effectiveCtx.graphReason || 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS';
-        response.metadata.observation_required = false;
-        response.metadata.confirmed_observation_count = realObservationCount;
-        return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_downstream' };
+        const rescue = await attemptDbClarificationRescue(response, effectiveCtx);
+        if (rescue.rescued) {
+          return {
+            promoted: true,
+            hydrated: true,
+            option_count: rescue.option_count,
+            observation_required: true,
+            reason: `rescued_${rescue.site}`,
+          };
+        }
+        applyTrueEscalation(response, effectiveCtx, 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS');
+        return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'true_escalation_no_db_clarification' };
       }
+
       // No confirmed observations AND no options loadable — fatal contract leak.
       throw new Error(
         `OBSERVATION_CONTRACT_VIOLATION: empty_options type=CLARIFICATION_QUESTION crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
