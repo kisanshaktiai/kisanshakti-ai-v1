@@ -5895,9 +5895,9 @@ export class AIAgentOrchestrator {
         try {
           const bioForGraph: BiologicalState | null = (landContext as any)?.biological_state ?? null;
           const cropCode =
-            bioForGraph?.crop_code?.toUpperCase?.() ||
-            canonicalContext?.crop_code ||
-            landContext?.current_crop?.toUpperCase() ||
+            canonicalCropCode(bioForGraph?.crop_code) ||
+            canonicalCropCode(canonicalContext?.crop_code) ||
+            canonicalCropCode(landContext?.current_crop) ||
             'UNKNOWN';
           const growthStage =
             bioForGraph?.growth_stage ||
