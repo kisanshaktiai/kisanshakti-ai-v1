@@ -2273,6 +2273,31 @@ export class AIAgentOrchestrator {
       // ========================================
       if (pendingOptionsCount > 0) {
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
+
+        // ═══════════════════════════════════════════════════════════════════
+        // T6 — SSOT REUSE ON THE UI-TAP PATH
+        // The option-selected branch short-circuits before Layer 3, so the
+        // SessionSSOT built on the question turn must be re-hydrated here
+        // instead of being silently absent. Never rebuilt from heuristics.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          const _persistedSsot = (options.sessionState as any)?.session_ssot;
+          if (_persistedSsot && typeof _persistedSsot === 'object' && _persistedSsot.crop_code) {
+            (this as any)._sessionSSOT = Object.freeze({ ..._persistedSsot, trace_id: traceId });
+            console.log(
+              `[SSOT_REUSED_FROM_SESSION] trace=${traceId} crop=${_persistedSsot.crop_code} ` +
+              `stage=${_persistedSsot.growth_stage} das=${_persistedSsot.days_since_sowing} ` +
+              `intent=${_persistedSsot.intent_code} established_at=${_persistedSsot.established_at}`,
+            );
+          } else {
+            console.warn(
+              `[SSOT_MISSING_ON_TAP_PATH] trace=${traceId} reason=no_session_ssot_persisted ` +
+              `action=downstream_layers_fail_closed`,
+            );
+          }
+        } catch (e) {
+          console.warn(`[SSOT_REUSE_FAILED] trace=${traceId} err=${(e as Error).message}`);
+        }
         
         // ========================================
         // STEP 1: Try to match response to pending options (using improved matcher)
