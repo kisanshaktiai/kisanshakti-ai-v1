@@ -5100,6 +5100,16 @@ export class AIAgentOrchestrator {
           if (forbiddenAdvisory.has(intentCode)) {
             const from = intentCode;
             intentCode = 'DIAGNOSTIC_INQUIRY';
+            try {
+              const _dSsot = (this as any)._sessionSSOT as SessionSSOT | undefined;
+              if (_dSsot && _dSsot.intent_code !== intentCode) {
+                console.warn(
+                  `[INTENT_DRIFT] site=post_recovery_evidence_override trace=${traceId} ` +
+                  `ssot_intent=${_dSsot.intent_code} attempted=${intentCode}`,
+                );
+              }
+            } catch { /* drift detection is additive */ }
+
             console.log(
               `[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${from} → ${intentCode} ` +
               `reason=real_symptoms_present codes=[${postRecoveryEvidence.real_codes.slice(0, 6).join(',')}]`,
