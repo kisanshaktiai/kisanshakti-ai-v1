@@ -3336,6 +3336,50 @@ export class AIAgentOrchestrator {
             days_since_sowing: landContextForOptionSelection?.days_since_sowing
           };
           
+          // ── S1 (downstream) — biological compatibility of STAGE_FALLBACK ────
+          // If widening produced advice for a stage the SessionSSOT does NOT
+          // confirm, we must NOT generate stage-inappropriate advice. Demote to
+          // a structured NO_DECISION instead.
+          {
+            const _ssotAsm = (this as any)._sessionSSOT as SessionSSOT | undefined;
+            const _norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+            const _ruleStage = _norm(
+              (ruleResult as any)?.rules_applied?.[0]?.growth_stage
+                ?? (ruleResult as any)?.rules_applied?.[0]?.stage
+                ?? growthStage,
+            );
+            if (_ssotAsm && _ruleStage && _norm(_ssotAsm.growth_stage) !== _ruleStage) {
+              console.warn(
+                `[DECISION_ASSEMBLY_BLOCKED] reason=stage_fallback_biologically_incompatible ` +
+                `ssot_stage=${_ssotAsm.growth_stage} rule_stage=${_ruleStage} ` +
+                `rule_id=${(ruleResult as any)?.rules_applied?.[0]?.rule_id ?? 'n/a'}`,
+              );
+              return {
+                type: 'DECISION_PROVIDED',
+                session_id: sessionId,
+                session_state_update: sessionStateUpdateNoRules,
+                decision_output: this.buildStructuredNoDecision({
+                  trace_id: traceId,
+                  graph_gap: 'STAGE_FALLBACK_BIOLOGICALLY_INCOMPATIBLE',
+                  confirmed: mappedObservationKey ? [mappedObservationKey] : [],
+                }) as any,
+                dataAudit: dataAuditNoRules,
+                metadata: {
+                  confidence: 0,
+                  safety_status: 'SAFE',
+                  rules_applied: 0,
+                  processing_time_ms: Date.now() - startTime,
+                  agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'BIOLOGICAL_ASSEMBLY_GATE'],
+                  trace_id: traceId,
+                  pendingClarificationOptions: undefined,
+                  pendingClarificationScope: undefined,
+                  lockedCropContext: finalLockedCropContextNoRules,
+                  session_state_update: sessionStateUpdateNoRules,
+                },
+              };
+            }
+          }
+
           // PHASE-14: Generate stage-aware fallback response
           const stageFallback = this.generateStageAwareFallback(
             cropName || 'UNKNOWN',
@@ -3344,6 +3388,7 @@ export class AIAgentOrchestrator {
             landContextForOptionSelection?.days_since_sowing || 0,
             options.language || 'mr'
           );
+
           
           // SESSION STATE: Stage fallback still transitions decision state
           const sessionStateUpdateNoRules = {
