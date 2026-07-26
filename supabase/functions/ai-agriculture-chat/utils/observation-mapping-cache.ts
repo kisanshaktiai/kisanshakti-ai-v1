@@ -41,6 +41,7 @@
  */
 
 import { normalizeStageForDB } from './stage-normalizer.ts';
+import { canonicalObsCode, canonicalCropCode } from './canonical-code.ts';
 
 interface IOMRow {
   intent_code: string;
@@ -194,7 +195,7 @@ export function getObservationsForIntent(
   const rows = cache.rowsByIntent.get(key);
   if (!rows || rows.length === 0) return EMPTY_ENTRY;
 
-  const cropRaw = scope?.crop_code == null ? '' : String(scope.crop_code).trim().toLowerCase();
+  const cropRaw = canonicalCropCode(scope?.crop_code);
   const cropAllowed = new Set<string>();
   if (cropRaw) cropAllowed.add(cropRaw);
   cropAllowed.add('all');
@@ -212,7 +213,7 @@ export function getObservationsForIntent(
   // lowest confidence_rank).
   const bestByCode = new Map<string, IOMRow>();
   for (const r of rows) {
-    const rowCrop = String(r.crop_code || '').trim().toLowerCase();
+    const rowCrop = canonicalCropCode(r.crop_code);
     if (rowCrop && !cropAllowed.has(rowCrop)) continue;
 
     const rowStage = String(r.growth_stage || 'all').trim().toLowerCase();
@@ -224,7 +225,7 @@ export function getObservationsForIntent(
       if (das < lo || das > hi) continue;
     }
 
-    const code = String(r.observation_code || '').trim();
+    const code = canonicalObsCode(r.observation_code);
     if (!code) continue;
 
     const strength = String(r.assertion_strength || 'DIFFERENTIAL').toUpperCase();

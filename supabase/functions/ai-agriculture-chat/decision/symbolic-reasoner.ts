@@ -18,6 +18,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
+import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NUTRITION CONFLICT ARBITRATION
@@ -1006,12 +1008,15 @@ export class SymbolicReasoner {
     let totalConditions = 0;
     let metConditions = 0;
     
-    // Build a combined symptom/observation set for matching
-    const factSymptom = (facts.primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
-    const factQuery = (facts.user_query || '').toUpperCase();
-    const factStageUpper = (facts.growth_stage || '').toUpperCase();
-    // Bug 2 Fix: Use all_observations for comprehensive matching
-    const allObsUpper = (facts.all_observations || []).map(o => o.toUpperCase().replace(/[\s-]/g, '_'));
+    // Build a combined symptom/observation set for matching.
+    // 2026-07-26 (audit F3): every side of an observation comparison is folded
+    // through the canonical-code SSOT (`utils/canonical-code.ts`) so DB
+    // lower_snake_case codes and runtime-uppercased symbols cannot mismatch.
+    const factSymptom = canonicalObsCode(facts.primary_symptom);
+    const factQuery = canonicalObsCode(facts.user_query);
+    const factStageCanon = canonicalStageKey(facts.growth_stage);
+    const allObsCanon = (facts.all_observations || []).map(o => canonicalObsCode(o)).filter(Boolean);
+
     
     // ═══════════════════════════════════════════════════════════════════════
     // STAGE KEYS: crop_stage, stage, growth_stage (aliases)
@@ -1021,8 +1026,8 @@ export class SymbolicReasoner {
       totalConditions++;
       const stages = Array.isArray(stageValue) ? stageValue : [stageValue];
       const stageMatch = stages.some((s: string) => {
-        const upper = String(s).toUpperCase();
-        return upper === factStageUpper || upper === '*' || upper === 'ALL';
+        const canon = canonicalStageKey(s);
+        return canon === factStageCanon || canon === '*' || canon === 'all';
       });
       if (stageMatch) {
         metConditions++;
@@ -1040,15 +1045,15 @@ export class SymbolicReasoner {
       if (obsList.length > 0) {
         // P1-3 Fix: Exact token match instead of substring containment
         const obsMatch = obsList.some((obs: string) => {
-          const upperObs = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+          const canonObs = canonicalObsCode(obs);
           // Exact match OR token-boundary match (not substring containment)
-          const exactMatch = (s: string) => s === upperObs;
+          const exactMatch = (s: string) => !!s && s === canonObs;
           const tokenMatch = (s: string) => {
             // P3 Fix: Require ALL tokens of the shorter code to match
-            // Prevents YELLOWING_OLDER_LEAVES matching YELLOWING_YOUNG_LEAVES
-            const obsTokens = upperObs.split('_').filter(t => t.length > 1);
+            // Prevents yellowing_older_leaves matching yellowing_young_leaves
+            const obsTokens = canonObs.split('_').filter(t => t.length > 1);
             const sTokens = s.split('_').filter(t => t.length > 1);
-            if (obsTokens.length === 0 || sTokens.length === 0) return s === upperObs;
+            if (obsTokens.length === 0 || sTokens.length === 0) return s === canonObs;
             const shorter = obsTokens.length <= sTokens.length ? obsTokens : sTokens;
             const longer = obsTokens.length <= sTokens.length ? sTokens : obsTokens;
             const allShorterMatch = shorter.every(t => longer.includes(t));
@@ -1056,8 +1061,9 @@ export class SymbolicReasoner {
           };
           return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
                  exactMatch(factQuery) || tokenMatch(factQuery) ||
-                 allObsUpper.some(ao => exactMatch(ao) || tokenMatch(ao));
+                 allObsCanon.some(ao => exactMatch(ao) || tokenMatch(ao));
         });
+
         if (obsMatch) {
           metConditions++;
           matchedConditions.push('observations');
@@ -1162,8 +1168,8 @@ export class SymbolicReasoner {
           }
           // Positive assertions - check against observations
           totalConditions++;
-          const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
-          if (factSymptom === keySymbol || allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol))) {
+          const keySymbol = canonicalObsCode(key);
+          if (factSymptom === keySymbol || allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol))) {
             metConditions++;
             matchedConditions.push(key);
           }
@@ -1176,8 +1182,8 @@ export class SymbolicReasoner {
             continue; // Soft - don't penalize without context data
           }
           totalConditions++;
-          const valUpper = ctxVal.toUpperCase().replace(/[\s-]/g, '_');
-          if (factQuery.includes(valUpper) || allObsUpper.some(ao => ao.includes(valUpper))) {
+          const valUpper = canonicalObsCode(ctxVal);
+          if (factQuery.includes(valUpper) || allObsCanon.some(ao => ao.includes(valUpper))) {
             metConditions++;
             matchedConditions.push(key);
           }
@@ -1205,10 +1211,10 @@ export class SymbolicReasoner {
       // Match if the key (as uppercase symbol) matches the primary symptom OR any observation
       if (val === true || val === 'true') {
         totalConditions++;
-        const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+        const keySymbol = canonicalObsCode(key);
         if (factSymptom === keySymbol || factSymptom.includes(keySymbol) || 
             keySymbol.includes(factSymptom) || factQuery.includes(keySymbol) ||
-            allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol) || keySymbol.includes(ao))) {
+            allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol) || keySymbol.includes(ao))) {
           metConditions++;
           matchedConditions.push(key);
         }
@@ -1238,10 +1244,10 @@ export class SymbolicReasoner {
         
         // Regular string matching
         totalConditions++;
-        const valUpper = val.toUpperCase().replace(/[\s-]/g, '_');
+        const valUpper = canonicalObsCode(val);
         if (factSymptom.includes(valUpper) || valUpper.includes(factSymptom) ||
             factQuery.includes(valUpper) ||
-            allObsUpper.some(ao => ao.includes(valUpper) || valUpper.includes(ao))) {
+            allObsCanon.some(ao => ao.includes(valUpper) || valUpper.includes(ao))) {
           metConditions++;
           matchedConditions.push(key);
         }
@@ -1252,8 +1258,8 @@ export class SymbolicReasoner {
       if (val === false || val === 'false') {
         // Negative assertion: count and verify not contradicted
         totalConditions++;
-        const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
-        const contradicted = allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol));
+        const keySymbol = canonicalObsCode(key);
+        const contradicted = allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol));
         if (!contradicted) metConditions++;
         continue;
       }

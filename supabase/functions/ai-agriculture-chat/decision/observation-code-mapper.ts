@@ -61,8 +61,13 @@ export interface MappedObservationCodes {
 // `agents/orchestrator.ts`.
 //
 // The DB carries 78–406 curated observations per intent — 30–100× the old
-// hardcoded coverage — filtered to assertion_strength IN ('LITERAL','STRONG')
-// to mirror the strictness of the prior tuple set. The `default_part` field
+// hardcoded coverage. 2026-07-26 (forensic audit F1): this comment previously
+// claimed a filter of assertion_strength IN ('LITERAL','STRONG'). That was
+// both stale and wrong — 'STRONG' is not a value in the enum (the real values
+// are LITERAL / STRONG_HYPOTHESIS / DIFFERENTIAL) and no such filter exists in
+// the cache. `assertion_strength` is an ORDERING weight, never an exclusion
+// gate; see `decision/evidence-confidence.ts`. The `default_part` field
+
 // is now derived from the modal `observation_master.affected_plant_part`
 // across matched observations; `default_severity` remains a runtime neutral
 // (SEVERITY_MEDIUM) because severity is not an intent-level property in the

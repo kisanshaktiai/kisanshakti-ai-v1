@@ -17,6 +17,7 @@
 // and navigator-adapter). Replaces the empty local STAGE_FAMILIES stub so
 // the stage gate stops soft-bypassing every rule.
 import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
+import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
 
 
 import { 
@@ -975,7 +976,7 @@ export function evaluateRulesLayered(
     const primarySymptomSource = (confirmedObs && confirmedObs.length > 0) 
       ? confirmedObs 
       : (state.visual_symptoms || []);
-    const currentSymptoms = primarySymptomSource.map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
+    const currentSymptoms = primarySymptomSource.map((s: string) => canonicalObsCode(s)).filter(Boolean);
     
     const scored = candidatesForPrimary.map(r => {
       // ═══════════════════════════════════════════════════════════════════
@@ -1005,7 +1006,7 @@ export function evaluateRulesLayered(
       let matchedConditions = 0;
       if (ruleObs.length > 0 && currentSymptoms.length > 0) {
         for (const o of ruleObs) {
-          const oNorm = String(o).toUpperCase().replace(/[\s-]/g, '_');
+          const oNorm = canonicalObsCode(o);
           if (currentSymptoms.some((sym: string) => sym.includes(oNorm) || oNorm.includes(sym))) {
             matchedConditions++;
           }
@@ -1339,21 +1340,21 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           // evaluator has softer stage handling that properly skips when data is missing.
           // ═══════════════════════════════════════════════════════════════════════════
           const stageApplicable = bundled.stage_applicable || [];
-          const currentStage = state.crop_stage?.toUpperCase()?.replace(/[\s-]/g, '_') || '';
+          const currentStage = canonicalStageKey(state.crop_stage);
           
           // v7.8: Default/generic stages should NOT block rules
-          const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
+          const DEFAULT_STAGES = new Set(['vegetative', 'unknown', 'default', '']);
           const isAuthoritativeStage = currentStage && !DEFAULT_STAGES.has(currentStage);
           
           if (stageApplicable.length > 0 && isAuthoritativeStage) {
             // Normalize all stage values for comparison
             const normalizedApplicableStages = stageApplicable.map((s: string) => 
-              s.toUpperCase().replace(/[\s-]/g, '_')
+              canonicalStageKey(s)
             );
             
             // Check for wildcard matches
             const hasWildcard = normalizedApplicableStages.some((s: string) => 
-              s === '*' || s === 'ALL' || s === 'UNIVERSAL' || s === 'ANY'
+              s === '*' || s === 'all' || s === 'universal' || s === 'any'
             );
             
             if (!hasWildcard) {
@@ -1468,7 +1469,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           const evidenceCodesUpper: string[] = [...new Set(
             [..._obsCodes, ..._confirmed, ..._synthetic, ..._secondary, ..._legacy]
               .filter(Boolean)
-              .map((s: string) => String(s).toUpperCase().replace(/[\s-]/g, '_'))
+              .map((s: string) => canonicalObsCode(s))
           )];
           const visualSymptoms = evidenceCodesUpper;
           
@@ -1887,8 +1888,8 @@ export async function evaluateBundledKeywordRules(
 // This should be called with canonical observation codes, NOT raw user text
 export function hasStrongAgriObservations(observations: string[]): boolean {
   if (!observations || observations.length === 0) return false;
-  const obsUpper = observations.map(o => o.toUpperCase().replace(/[\s-]/g, '_'));
-  return STRONG_AGRI_OBSERVATION_CODES.some(code => 
+  const obsUpper = observations.map(o => canonicalObsCode(o)).filter(Boolean);
+  return STRONG_AGRI_OBSERVATION_CODES.map(c => canonicalObsCode(c)).some(code =>
     obsUpper.some(obs => obs.includes(code) || code.includes(obs))
   );
 }
