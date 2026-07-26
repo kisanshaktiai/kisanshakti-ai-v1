@@ -2968,14 +2968,41 @@ export class AIAgentOrchestrator {
           const cropCodeForRules = unifiedNormalizeCropCode(cropName).toLowerCase();
           let allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
           if (optionGraphRuleIds.length > 0) {
+            // ═══════════════════════════════════════════════════════════════
+            // CHANGE LOG 2026-07-26 — HYPOTHESIS→RULE SCOPE COLLAPSE FIX.
+            // `getAllRulesWithBundled()` returns `Rule` objects whose identity
+            // field is `id` (see layered-rule-evaluator.convertBundledToRule),
+            // NOT `rule_id`. The old filter read `r.rule_id` → always
+            // `undefined` → EVERY rule was dropped even when the graph had
+            // mapped 25 valid rules ([OPTION_GRAPH_SCOPE] rules 202 → 0).
+            // That silently converted a confirmed BPH diagnosis into a 1%
+            // STAGE_FALLBACK "tell me what you see" reply.
+            // Identity is now read from `id ?? rule_id` and compared
+            // case-insensitively via the canonical symbol normalizer.
+            // ═══════════════════════════════════════════════════════════════
             const beforeGraphScope = allRulesForOption.length;
-            const graphRuleIdSet = new Set(optionGraphRuleIds.map(String));
-            allRulesForOption = allRulesForOption.filter((r: any) => graphRuleIdSet.has(String(r.rule_id)));
+            const ruleIdentity = (r: any): string =>
+              canonicalSymbolCode(r?.id ?? r?.rule_id ?? '');
+            const graphRuleIdSet = new Set(
+              optionGraphRuleIds.map((rid) => canonicalSymbolCode(rid)).filter(Boolean),
+            );
+            const scopedRules = allRulesForOption.filter((r: any) => graphRuleIdSet.has(ruleIdentity(r)));
+            if (scopedRules.length === 0) {
+              console.error(
+                `[GRAPH_RULE_SCOPE_EMPTY] trace=${traceId} mapped=${optionGraphRuleIds.length} ` +
+                `loaded=${beforeGraphScope} action=retain_crop_scoped_rules ` +
+                `sample_mapped=${optionGraphRuleIds.slice(0, 3).join(',')} ` +
+                `sample_loaded=${allRulesForOption.slice(0, 3).map(ruleIdentity).join(',')}`,
+              );
+            } else {
+              allRulesForOption = scopedRules;
+            }
             console.log(
               `   🧭 [OPTION_GRAPH_SCOPE] rules ${beforeGraphScope} → ${allRulesForOption.length} ` +
               `from hypothesis_rule_mapping=${optionGraphRuleIds.length}`,
             );
           }
+
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length} (crop=${cropCodeForRules})`);
           
           // Pass user_query AND visual_symptoms for rule matching
