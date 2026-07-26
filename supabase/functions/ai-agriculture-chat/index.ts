@@ -1873,30 +1873,41 @@ serve(async (req) => {
             // graph → clarification_fallback_questions) with the full Land
             // SSOT lock. Escalation is last resort only.
             // ─────────────────────────────────────────────────────────────
+            // R4a — SessionSSOT is the authoritative source for the rescue
+            // context; the loose per-field locals are only fallbacks now.
+            const _q3Ssot = getSessionSSOT(orchestratorResponse, orch);
             const _intentCodeResolved =
+              _q3Ssot?.intent_code ??
               (orchestratorResponse as any)?.metadata?.intent_code ??
               (orchestratorResponse as any)?.intent ??
               (orch as any)?._lastIntentCode ??
               null;
+            const _q3Crop = _q3Ssot?.crop_code ?? finalCropName;
+            const _q3Stage = _q3Ssot?.growth_stage ?? finalGrowthStage;
+            const _q3Das = typeof _q3Ssot?.days_since_sowing === 'number'
+              ? _q3Ssot.days_since_sowing
+              : finalDaysSinceSowing;
             const _ssotLockValid = !!(
-              finalCropName && finalGrowthStage &&
-              typeof finalDaysSinceSowing === 'number' && _intentCodeResolved
+              _q3Crop && _q3Stage &&
+              typeof _q3Das === 'number' && _intentCodeResolved
             );
             if (_ssotLockValid && orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
               try {
                 const _rescue = await attemptDbClarificationRescue(orchestratorResponse, {
                   supabase,
-                  cropCode: finalCropName,
-                  growthStage: finalGrowthStage,
-                  language: detectedLanguage,
+                  cropCode: _q3Crop,
+                  growthStage: _q3Stage,
+                  language: _q3Ssot?.language ?? detectedLanguage,
                   traceId,
                   intentCode: _intentCodeResolved,
-                  daysSinceSowing: finalDaysSinceSowing,
+                  daysSinceSowing: _q3Das,
                   realObservationCount: Array.isArray((orch as any)?._lastRealObservations)
                     ? (orch as any)._lastRealObservations.length
                     : 0,
                   graphReason: (orch as any)?._graphScopeBlocked?.reason ?? null,
-                });
+                  session_ssot: _q3Ssot,
+                } as any);
+
                 if (_rescue.rescued) {
                   console.log(
                     `   ✅ [Q3] DB clarification rescue before escalation site=${_rescue.site} options=${_rescue.option_count}`,
