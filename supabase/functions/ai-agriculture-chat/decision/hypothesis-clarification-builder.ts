@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 17:05 UTC — RC-1: IOM demoted from exclusive allowlist to weight.
+ *   Seed is now UNION(confirmed, perceived, IOM-ranked); added [IOM_WEIGHT]
+ *   trace and the [IOM_OBS_SUPPRESSION] invariant. Fixes the log-99
+ *   rice/tillering/DAS-48 collapse to `rice_lodging`.
  * 2026-07-26 14:10 UTC — S3: added CLARIFICATION_DIVERSITY_VIOLATION invariant +
  *   diversity=<emitted>/<candidates> in the structured trace.
  * 2026-07-26 12:00 UTC — R3b: accept optional `session_ssot` and use it as the
@@ -22,6 +26,7 @@
  */
 
 import { loadIOMAllowed } from './iom-gate.ts';
+import { canonicalObsCode } from '../utils/canonical-code.ts';
 import { resolveHypothesesFromObservations } from './observation-hypothesis-resolver.ts';
 import { evaluateHypothesisGraph } from './hypothesis-graph-evaluator.ts';
 import { resolveObservationSymbols } from './symbol-resolver.ts';
@@ -41,6 +46,13 @@ export interface HypothesisClarificationInput {
   language?: string | null;
   max?: number;
   confirmed_observations?: ReadonlyArray<unknown>;
+  /**
+   * RC-1 (2026-07-26) — observations the perception layer grounded THIS turn
+   * but which the farmer has not explicitly confirmed. They are unioned with
+   * `confirmed_observations` and with the IOM-ranked codes; IOM never removes
+   * them.
+   */
+  perceived_observations?: ReadonlyArray<unknown>;
   /**
    * FIX 3 — observation keys that are already pending farmer confirmation
    * from a previous turn (session.pending_clarification_observation_keys).
@@ -168,9 +180,31 @@ export async function buildHypothesisClarificationOptions(
     .map((r) => r.canonical_observation_code)
     .filter((x): x is string => !!x);
 
-  let seedCodes = confirmedCodes;
+  // ═════════════════════════════════════════════════════════════════════
+  // RC-1 (2026-07-26) — IOM IS A WEIGHT, NEVER A FILTER.
+  //
+  // Previously: `seedCodes = confirmed; if (empty) seedCodes = IOM`.
+  // That made the curated IOM cell an EXCLUSIVE allowlist whenever the
+  // farmer's perceived observations had not yet been "confirmed". Log-99
+  // (rice / tillering / DAS 48, intent=GROWTH_ANOMALY) collapsed 5 perceived
+  // codes — including `stunted_plants` — down to the single IOM survivor
+  // `rice_lodging`, which is stage-impossible at tillering, producing
+  // NO_STAGE_VALID_HYPOTHESES and an infinite clarification loop.
+  //
+  // Now: the seed is the UNION of every grounded observation (confirmed +
+  // perceived) with the IOM-ranked codes. IOM membership becomes a ranking
+  // signal downstream, never an elimination.
+  // ═════════════════════════════════════════════════════════════════════
+  const perceivedIn = Array.isArray((input as any).perceived_observations)
+    ? ((input as any).perceived_observations as unknown[])
+    : [];
+  const groundedCodes = Array.from(
+    new Set([...confirmedCodes, ...perceivedIn.map((c) => canonicalObsCode(c))].filter(Boolean)),
+  );
+
   let iomSeedCount = 0;
-  if (seedCodes.length === 0 && input.intent_code) {
+  let iomCodes: string[] = [];
+  if (input.intent_code) {
     const iom = await loadIOMAllowed(
       input.supabase,
       input.intent_code,
@@ -178,9 +212,23 @@ export async function buildHypothesisClarificationOptions(
       stage,
       typeof das === 'number' ? das : null,
     );
-    seedCodes = iom.allowedRanked.map((r) => r.observation_code).filter(Boolean);
-    iomSeedCount = seedCodes.length;
+    iomCodes = iom.allowedRanked.map((r) => canonicalObsCode(r.observation_code)).filter(Boolean);
+    iomSeedCount = iomCodes.length;
   }
+
+  const seedCodes = Array.from(new Set([...groundedCodes, ...iomCodes]));
+
+  console.log(
+    `[IOM_WEIGHT] trace=${trace} grounded=${groundedCodes.length} iom=${iomSeedCount} ` +
+      `union=${seedCodes.length} dropped=0`,
+  );
+  if (seedCodes.length < groundedCodes.length) {
+    console.error(
+      `[IOM_OBS_SUPPRESSION] trace=${trace} grounded=${groundedCodes.length} ` +
+        `post_gate=${seedCodes.length} — grounded observations must never be removed`,
+    );
+  }
+
 
   const seedResolved = await resolveObservationSymbols(input.supabase, seedCodes);
   const graphSeeds = seedResolved
@@ -220,6 +268,60 @@ export async function buildHypothesisClarificationOptions(
     });
     hypothesisIds = Array.from(new Set(graphOut.candidates.map((c) => c.hypothesis_id)));
   }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Step 4 (2026-07-26) — STAGE-SCOPED DIFFERENTIAL RECOVERY.
+  //
+  // When every candidate was eliminated by the biological stage gate, the
+  // previous code returned NO_STAGE_VALID_HYPOTHESES with zero options, so
+  // the runtime re-asked the identical question forever. Instead we ask the
+  // DB directly: which hypotheses for this crop_group ARE valid at the
+  // current stage? Those become the differential pool. 100% DB-sourced —
+  // no agronomy is synthesised here.
+  // ═════════════════════════════════════════════════════════════════════
+  if (hypothesisIds.length === 0 && crop && stage) {
+    try {
+      const stageKey = canonicalObsCode(normalizeStageForDB(stage) || stage);
+      const { data: stageRows } = await input.supabase
+        .from('hypothesis_conditions')
+        .select('hypothesis_id, condition_type, value_json')
+        .eq('condition_type', 'STAGE')
+        .limit(4000);
+      const validAtStage = new Set<string>();
+      for (const r of stageRows ?? []) {
+        const raw = (r as any).value_json;
+        const list = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : [raw?.value ?? raw];
+        const hit = list.some((v: unknown) => {
+          const k = canonicalObsCode(v);
+          return !!k && (k === stageKey || stagesEquivalent(k, stageKey));
+        });
+        if (hit) validAtStage.add(String((r as any).hypothesis_id));
+      }
+      if (validAtStage.size > 0) {
+        const { data: masters } = await input.supabase
+          .from('hypothesis_master')
+          .select('hypothesis_id, crop_group')
+          .eq('is_active', true)
+          .in('hypothesis_id', Array.from(validAtStage).slice(0, 500));
+        const cropKey = canonicalObsCode(crop);
+        hypothesisIds = (masters ?? [])
+          .filter((m: any) => {
+            const g = canonicalObsCode(m.crop_group);
+            return !g || g === cropKey || g === 'all';
+          })
+          .map((m: any) => String(m.hypothesis_id));
+      }
+      console.log(
+        `[STAGE_DIFFERENTIAL_RECOVERY] trace=${trace} crop=${crop} stage=${stageKey} ` +
+          `stage_valid=${validAtStage.size} recovered=${hypothesisIds.length}`,
+      );
+    } catch (e) {
+      console.warn(
+        `[STAGE_DIFFERENTIAL_RECOVERY] trace=${trace} failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
 
   if (hypothesisIds.length === 0) {
     console.warn(

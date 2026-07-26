@@ -41,6 +41,7 @@
 
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { getSessionSSOT, type SessionSSOT } from './session-ssot.ts';
+import { canonicalObsCode } from '../utils/canonical-code.ts';
 
 
 export interface ObservationOption {
@@ -70,6 +71,12 @@ export interface ObservationContractContext {
   realObservationCount?: number | null;
   /** Confirmed farmer-visible observation codes already selected/extracted. */
   confirmedObservationCodes?: ReadonlyArray<string> | null;
+  /**
+   * RC-1 (2026-07-26) — codes the perception layer grounded this turn but the
+   * farmer has not confirmed. Unioned with the IOM cell inside the builder so
+   * a sparse IOM row set can never delete real field evidence.
+   */
+  perceivedObservationCodes?: ReadonlyArray<string> | null;
   /**
    * Reason surfaced with the clarification so operators can debug graph
    * exhaustion vs empty-decision promotion vs plain hydration.
@@ -105,6 +112,7 @@ export async function loadObservationSelectorOptions(
       language: lang,
       max: 6,
       confirmed_observations: ctx.confirmedObservationCodes ?? [],
+      perceived_observations: ctx.perceivedObservationCodes ?? [],
       trace_id: ctx.traceId,
       session_ssot: ctx.session_ssot ?? null,
 
@@ -266,7 +274,20 @@ export async function attemptDbClarificationRescue(
         traceId: ctx.traceId || _ssot.trace_id,
       };
     }
+    // RC-1 — hydrate perceived (grounded, unconfirmed) observations from the
+    // frozen GraphTruth so the builder unions them with the IOM cell.
+    if (!ctx.perceivedObservationCodes || ctx.perceivedObservationCodes.length === 0) {
+      const gt = ((ctx as any).orchestratorState ?? {})._graphTruth;
+      const gtObs = Array.isArray(gt?.canonical_observations) ? gt.canonical_observations : [];
+      if (gtObs.length > 0) {
+        ctx = { ...ctx, perceivedObservationCodes: gtObs.map((c: unknown) => canonicalObsCode(c)).filter(Boolean) };
+        console.log(
+          `[OBS_PERCEIVED_HYDRATE] source=graph_truth count=${ctx.perceivedObservationCodes!.length} trace=${ctx.traceId ?? 'n/a'}`,
+        );
+      }
+    }
   }
+
 
 
 
