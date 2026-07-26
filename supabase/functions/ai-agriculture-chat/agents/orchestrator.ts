@@ -2906,7 +2906,10 @@ export class AIAgentOrchestrator {
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
               confirmed_observations: optionEvidence.real_codes,
+              pending_obs_keys:
+                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
               trace_id: traceId,
+
               max: 5,
             });
             const clarificationOptions = graphClarification.options.map((o) => ({
