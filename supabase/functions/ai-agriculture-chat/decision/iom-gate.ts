@@ -142,10 +142,10 @@ export async function loadIOMAllowed(
       return das >= lo && das <= hi;
     });
 
-    // Dedupe by observation_code, keep lowest (best) confidence_rank
+    // Dedupe by canonical observation_code, keep lowest (best) confidence_rank
     const byCode = new Map<string, IOMAllowedRow>();
     for (const r of dasFiltered) {
-      const code = String(r.observation_code || '').trim();
+      const code = canonicalObsCode(r.observation_code);
       if (!code) continue;
       const prev = byCode.get(code);
       const rank = typeof r.confidence_rank === 'number' ? r.confidence_rank : 99;
@@ -161,12 +161,9 @@ export async function loadIOMAllowed(
     const allowedRanked = Array.from(byCode.values()).sort(
       (a, b) => a.confidence_rank - b.confidence_rank,
     );
-    // Canonical lower_snake_case to match observation_master.observation_code.
-    const allowedSet = new Set(
-      allowedRanked.map((r) =>
-        String(r.observation_code || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
-      ),
-    );
+    // Canonical lower_snake_case (SSOT: utils/canonical-code.ts).
+    const allowedSet = new Set(allowedRanked.map((r) => r.observation_code));
+
 
     meta.rows = allowedRanked.length;
 
