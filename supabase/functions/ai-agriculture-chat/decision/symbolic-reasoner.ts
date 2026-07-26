@@ -1166,8 +1166,8 @@ export class SymbolicReasoner {
           }
           // Positive assertions - check against observations
           totalConditions++;
-          const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
-          if (factSymptom === keySymbol || allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol))) {
+          const keySymbol = canonicalObsCode(key);
+          if (factSymptom === keySymbol || allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol))) {
             metConditions++;
             matchedConditions.push(key);
           }
@@ -1180,8 +1180,8 @@ export class SymbolicReasoner {
             continue; // Soft - don't penalize without context data
           }
           totalConditions++;
-          const valUpper = ctxVal.toUpperCase().replace(/[\s-]/g, '_');
-          if (factQuery.includes(valUpper) || allObsUpper.some(ao => ao.includes(valUpper))) {
+          const valUpper = canonicalObsCode(ctxVal);
+          if (factQuery.includes(valUpper) || allObsCanon.some(ao => ao.includes(valUpper))) {
             metConditions++;
             matchedConditions.push(key);
           }
@@ -1209,10 +1209,10 @@ export class SymbolicReasoner {
       // Match if the key (as uppercase symbol) matches the primary symptom OR any observation
       if (val === true || val === 'true') {
         totalConditions++;
-        const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+        const keySymbol = canonicalObsCode(key);
         if (factSymptom === keySymbol || factSymptom.includes(keySymbol) || 
             keySymbol.includes(factSymptom) || factQuery.includes(keySymbol) ||
-            allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol) || keySymbol.includes(ao))) {
+            allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol) || keySymbol.includes(ao))) {
           metConditions++;
           matchedConditions.push(key);
         }
@@ -1242,10 +1242,10 @@ export class SymbolicReasoner {
         
         // Regular string matching
         totalConditions++;
-        const valUpper = val.toUpperCase().replace(/[\s-]/g, '_');
+        const valUpper = canonicalObsCode(val);
         if (factSymptom.includes(valUpper) || valUpper.includes(factSymptom) ||
             factQuery.includes(valUpper) ||
-            allObsUpper.some(ao => ao.includes(valUpper) || valUpper.includes(ao))) {
+            allObsCanon.some(ao => ao.includes(valUpper) || valUpper.includes(ao))) {
           metConditions++;
           matchedConditions.push(key);
         }
@@ -1256,8 +1256,8 @@ export class SymbolicReasoner {
       if (val === false || val === 'false') {
         // Negative assertion: count and verify not contradicted
         totalConditions++;
-        const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
-        const contradicted = allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol));
+        const keySymbol = canonicalObsCode(key);
+        const contradicted = allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol));
         if (!contradicted) metConditions++;
         continue;
       }
