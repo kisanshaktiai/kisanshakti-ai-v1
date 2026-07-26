@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-26 18:20 UTC — Fallback questions never fall back to the raw code as
+ *   a farmer label (dropped + [OBS_LABEL_MISSING]); DB-sourced photo option is
+ *   appended to rescued option lists.
  * 2026-07-26 12:00 UTC — R3a: hydrate crop/stage/DAS/intent/language from the
  *   canonical SessionSSOT (response.metadata.session_ssot or orchestrator
  *   state) before any contract check; SSOT_LOCK_LOST now only fires on a real
@@ -39,7 +42,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
+import { buildHypothesisClarificationOptions, withPhotoOption } from '../decision/hypothesis-clarification-builder.ts';
 import { getSessionSSOT, type SessionSSOT } from './session-ssot.ts';
 import { canonicalObsCode } from '../utils/canonical-code.ts';
 
@@ -223,9 +226,16 @@ async function loadFallbackQuestionOptions(
     for (const r of rows || []) {
       const key = String(r?.question_code ?? '').trim();
       if (!key) continue;
+      // Farmer-visible text MUST be a DB label. Never fall back to the code.
       const label = String(
-        (lang === 'hi' && r.label_hi) || (lang === 'mr' && r.label_mr) || r.label_en || key,
-      );
+        (lang === 'hi' && r.label_hi) || (lang === 'mr' && r.label_mr) || r.label_en || '',
+      ).trim();
+      if (!label) {
+        console.warn(
+          `[OBS_LABEL_MISSING] source=clarification_fallback_questions code=${key} lang=${lang} → option dropped`,
+        );
+        continue;
+      }
       out.push({
         value: key,
         label,
@@ -234,7 +244,8 @@ async function loadFallbackQuestionOptions(
         observation_code: key,
       });
     }
-    return out;
+    return out.length > 0 ? await withPhotoOption(ctx.supabase, lang, out) : out;
+
   } catch (err) {
     console.warn(`[CONTRACT_FALLBACK_DB] family=${family} exception=${(err as Error).message}`);
     return [];

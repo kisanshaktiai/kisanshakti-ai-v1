@@ -2,7 +2,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 18:20 UTC — Clarification UX batch: (a) farmer labels are now
+ *   strictly DB-sourced (translation[lang] → translation[en] → description);
+ *   an option with no text is DROPPED and logged [OBS_LABEL_MISSING] instead of
+ *   rendering a raw observation_code. (b) Added [OBS_LABEL_SOURCE] trace.
+ *   (c) Added DB-sourced photo option (`photo_upload`, text from
+ *   system_config.clarification_photo_option_<lang>) appended last on every
+ *   clarification card. (d) Added [CLARIFICATION_REPEAT_VIOLATION] invariant.
+ *   (e) Translation lookup is now case-insensitive.
  * 2026-07-26 17:05 UTC — RC-1: IOM demoted from exclusive allowlist to weight.
+
  *   Seed is now UNION(confirmed, perceived, IOM-ranked); added [IOM_WEIGHT]
  *   trace and the [IOM_OBS_SUPPRESSION] invariant. Fixes the log-99
  *   rice/tillering/DAS-48 collapse to `rice_lodging`.
@@ -473,11 +482,26 @@ export async function buildHypothesisClarificationOptions(
   const emittedHypotheses = new Set<string>();
   const options: HypothesisClarificationOption[] = [];
   const optionsByHypothesis: Record<string, number> = {};
+  const labelSources: string[] = [];
 
   const emitBucket = (b: CodeBucket, primary: string) => {
     const master = masterRows.get(b.code.toLowerCase());
     if (!master) return false;
-    const label = labels.get(master.observation_code.toLowerCase()) || master.description || master.observation_code;
+    // Farmer-visible label MUST come from a DB text source. Order:
+    //   observation_translations[lang] → observation_translations[en]
+    //   → observation_master.description.
+    // A raw observation_code is NEVER shown to the farmer — the option is
+    // dropped instead (and logged) so the UI can never leak a symbolic code.
+    const tr = labels.get(master.observation_code.toLowerCase());
+    const label = (tr?.text || master.description || '').trim();
+    if (!label) {
+      console.warn(
+        `[OBS_LABEL_MISSING] trace=${trace} code=${master.observation_code} lang=${lang} ` +
+        `reason=no_translation_no_description → option dropped`,
+      );
+      return false;
+    }
+    labelSources.push(`${master.observation_code}:${tr?.source ?? 'description'}`);
     options.push({
       observation_id: master.observation_code,
       observation_code: master.observation_code,
@@ -497,6 +521,7 @@ export async function buildHypothesisClarificationOptions(
     optionsByHypothesis[primary] = (optionsByHypothesis[primary] ?? 0) + 1;
     return true;
   };
+
 
   // Pass 1: one per uncovered hypothesis, in rank order.
   for (let i = 0; i < remaining.length && options.length < Math.max(renderMax, hypothesisIds.length); ) {
@@ -544,9 +569,33 @@ export async function buildHypothesisClarificationOptions(
     `keys=[${options.map((o) => o.observation_code).join(',')}]`,
   );
 
+  console.log(`[OBS_LABEL_SOURCE] trace=${trace} lang=${lang} [${labelSources.join(',')}]`);
 
-  return { options, source: 'hypothesis_graph', candidate_hypotheses: hypothesisIds.length };
+  // Repeat-loop invariant: the option set MUST NOT be a subset of the keys the
+  // farmer was already asked about last turn — that is the classic
+  // "same card forever" loop.
+  if (pendingObs.length > 0 && options.length > 0) {
+    const pendingSet = new Set(pendingObs);
+    const allRepeat = options.every((o) => pendingSet.has(o.observation_code.toLowerCase()));
+    if (allRepeat) {
+      console.error(
+        `[CLARIFICATION_REPEAT_VIOLATION] trace=${trace} pending=${pendingObs.length} ` +
+        `emitted=${options.length} keys=[${options.map((o) => o.observation_code).join(',')}] ` +
+        `reason=option_set_identical_to_previous_turn`,
+      );
+    }
+  }
+
+  // Photo option is appended last on every clarification card (DB-sourced text).
+  const optionsWithPhoto = await withPhotoOption(input.supabase, lang, options);
+
+  return {
+    options: optionsWithPhoto as HypothesisClarificationOption[],
+    source: 'hypothesis_graph',
+    candidate_hypotheses: hypothesisIds.length,
+  };
 }
+
 
 async function loadConditions(supabase: any, hypIds: string[]): Promise<ConditionRow[]> {
   if (hypIds.length === 0) return [];
@@ -593,29 +642,103 @@ async function loadTranslations(
   supabase: any,
   codes: string[],
   lang: string,
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+): Promise<Map<string, { text: string; source: string }>> {
+  const out = new Map<string, { text: string; source: string }>();
   if (codes.length === 0) return out;
+  // Case-insensitive lookup: observation_translations may store either casing.
+  const variants = Array.from(
+    new Set(codes.flatMap((c) => [c, c.toLowerCase(), c.toUpperCase()]).filter(Boolean)),
+  );
   const { data, error } = await supabase
     .from('observation_translations')
     .select('observation_code, display_text, description_text, language_code')
-    .in('observation_code', codes)
+    .in('observation_code', variants)
     .in('language_code', Array.from(new Set([lang, 'en'])));
   if (error) {
     console.warn(`[HYP_CLARIFICATION] translation load failed: ${error.message}`);
     return out;
   }
-  const fallback = new Map<string, string>();
+  const fallback = new Map<string, { text: string; source: string }>();
   for (const row of data ?? []) {
     const key = String(row.observation_code).toLowerCase();
     const text = String(row.display_text || row.description_text || '').trim();
     if (!text) continue;
-    if (row.language_code === lang) out.set(key, text);
-    else if (row.language_code === 'en') fallback.set(key, text);
+    if (row.language_code === lang) out.set(key, { text, source: `translation_${lang}` });
+    else if (row.language_code === 'en') fallback.set(key, { text, source: 'translation_en' });
   }
   for (const [k, v] of fallback) if (!out.has(k)) out.set(k, v);
   return out;
 }
+
+/**
+ * PHOTO OPTION (DB-sourced).
+ * Appends the terminal "send a photo" option to any clarification option list.
+ * The label text lives in `system_config` (`clarification_photo_option_<lang>`
+ * with an `_en` fallback) — no farmer-visible string is hardcoded here.
+ * The option carries `observation_key = 'photo_upload'`, which the frontend
+ * (`ClarificationOptionsUI`) already routes to the camera instead of sending a
+ * chat message. It is never diagnostic evidence.
+ */
+export const PHOTO_OPTION_KEY = 'photo_upload';
+
+export async function buildPhotoOption(
+  supabase: any,
+  lang: string,
+): Promise<HypothesisClarificationOption | null> {
+  try {
+    const { data } = await supabase
+      .from('system_config')
+      .select('config_key, config_value')
+      .in('config_key', [`clarification_photo_option_${lang}`, 'clarification_photo_option_en']);
+    const byKey = new Map<string, any>();
+    for (const r of data ?? []) byKey.set(String(r.config_key), r.config_value);
+    const raw =
+      byKey.get(`clarification_photo_option_${lang}`) ??
+      byKey.get('clarification_photo_option_en') ??
+      null;
+    const label = typeof raw === 'object' && raw !== null ? String(raw.value ?? '') : String(raw ?? '');
+    if (!label.trim()) {
+      console.warn(
+        `[PHOTO_OPTION_MISSING] system_config clarification_photo_option_${lang} / _en not seeded — photo option skipped`,
+      );
+      return null;
+    }
+    return {
+      observation_id: PHOTO_OPTION_KEY,
+      observation_code: PHOTO_OPTION_KEY,
+      observation_key: PHOTO_OPTION_KEY,
+      hypothesis_id: 'N/A',
+      hypothesis_condition_id: 'N/A',
+      display_text: label.trim(),
+      label: label.trim(),
+      value: PHOTO_OPTION_KEY,
+      confidence_weight: 0,
+      source: 'hypothesis_graph',
+      hypothesis_ids: [],
+      is_discriminator: false,
+      is_required: false,
+      aggregate_score: 0,
+    };
+  } catch (e) {
+    console.warn(`[PHOTO_OPTION_SKIP] ${(e as Error).message}`);
+    return null;
+  }
+}
+
+/** Appends the photo option to a list (idempotent, always last). */
+export async function withPhotoOption<T extends { observation_key?: string }>(
+  supabase: any,
+  lang: string,
+  options: T[],
+): Promise<T[]> {
+  if (!Array.isArray(options) || options.length === 0) return options;
+  if (options.some((o) => String(o?.observation_key || '').toLowerCase() === PHOTO_OPTION_KEY)) {
+    return options;
+  }
+  const photo = await buildPhotoOption(supabase, lang);
+  return photo ? [...options, photo as unknown as T] : options;
+}
+
 
 function extractObservationCodes(condition: ConditionRow): string[] {
   const out: string[] = [];

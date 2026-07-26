@@ -2833,9 +2833,13 @@ export class AIAgentOrchestrator {
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
               confirmed_observations: optionEvidence.real_codes,
+              // Never re-offer what the farmer was already asked last turn.
+              pending_obs_keys:
+                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
               trace_id: traceId,
               max: 5,
             });
+
             const clarificationOptions = graphClarification.options.map((o) => ({
               label: o.label,
               value: o.value,
@@ -2902,7 +2906,10 @@ export class AIAgentOrchestrator {
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
               confirmed_observations: optionEvidence.real_codes,
+              pending_obs_keys:
+                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
               trace_id: traceId,
+
               max: 5,
             });
             const clarificationOptions = graphClarification.options.map((o) => ({
@@ -6713,7 +6720,15 @@ export class AIAgentOrchestrator {
                 crop_stage: growthStage,
                 DAS: (landContext as any)?.days_since_sowing ?? (landContext as any)?.das ?? null,
                 language: options.language || 'mr',
+                // Current-turn grounded evidence + last turn's asked keys, so
+                // the diagnosis-first card advances instead of repeating.
+                perceived_observations: Array.isArray((this as any)._lastRealObservations)
+                  ? (this as any)._lastRealObservations
+                  : [],
+                pending_obs_keys:
+                  ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
                 max: 5,
+
               });
               const contractOptions = graphClarification.options;
               if (contractOptions.length > 0) {
