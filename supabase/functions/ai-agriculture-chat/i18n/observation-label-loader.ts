@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-07-26 17:10 UTC — RC-2/RC-3: label map is now keyed by canonicalObsCode
+//   (lower_snake, the DB truth) with an UPPERCASE alias for legacy callers,
+//   queries observation_translations with canonical codes only, and selects
+//   crop-specific rows over crop-agnostic ones. Fixes raw-code / i18n-key leak
+//   in mr/hi clarification cards.
 // 2026-07-09 21:15 UTC — DEFAULT_CLARIFICATION_CODES neutralized to [].
 //   Removes the universal INSECTS/YELLOW/SPOTS/STUNTED trio that the
 //   clarification renderer and multi-match detector were injecting for
@@ -19,6 +24,8 @@
  */
 
 export const OBSERVATION_LOADER_VERSION = '1.0.0';
+
+import { canonicalObsCode, canonicalCropCode } from '../utils/canonical-code.ts';
 
 // Icon mapping (visual symbols are language-neutral)
 const OBSERVATION_ICONS: Record<string, string> = {
@@ -101,97 +108,112 @@ export function stripTechnicalArtifacts(text: string): string {
 export async function loadObservationLabels(
   supabaseClient: any,
   observationCodes: string[],
-  language: string
+  language: string,
+  cropCode?: string | null,
 ): Promise<Map<string, ObservationLabel>> {
   console.log(`📖 [ObservationLoader v${OBSERVATION_LOADER_VERSION}] Loading ${observationCodes.length} labels in ${language}`);
-  
+
   const labelMap = new Map<string, ObservationLabel>();
-  
+
   if (!observationCodes || observationCodes.length === 0) {
     return labelMap;
   }
-  
-  try {
-    // CANONICAL-CONTEXT FIX: observation_translations.observation_code is stored
-    // LOWERCASE in the DB (verified: 5145/5145 rows lowercase, 0 uppercase).
-    // Runtime carries codes in UPPERCASE, so an `.in(upperCodes)` filter returned
-    // zero rows and every label fell back to the raw "TUNGRO YELLOW STUNT" form
-    // — the single source of English leakage to mr/hi users. Query both cases
-    // and match case-insensitively so the loader is canonical-case-agnostic.
-    const upperCodes = observationCodes.map(c => c.toUpperCase());
-    const lowerCodes = observationCodes.map(c => c.toLowerCase());
-    const queryCodes = Array.from(new Set([...upperCodes, ...lowerCodes]));
-    const normalizedLanguage = (language || 'en').toLowerCase();
 
+  // RC-2 (2026-07-26) — canonical-code SSOT. `observation_translations`
+  // .observation_code is lower_snake in 5172/5172 rows. The map is now keyed
+  // by `canonicalObsCode`; an UPPERCASE alias key is also written so legacy
+  // callers that still look up uppercase keys keep resolving. Previously the
+  // map was keyed ONLY by uppercase, so every lower_snake lookup missed and
+  // the UI rendered raw codes / i18n keys.
+  const setBoth = (canon: string, value: ObservationLabel) => {
+    labelMap.set(canon, value);
+    const upper = canon.toUpperCase();
+    if (upper !== canon) labelMap.set(upper, value);
+  };
+
+  try {
+    const canonCodes = Array.from(new Set(observationCodes.map((c) => canonicalObsCode(c)).filter(Boolean)));
+    const normalizedLanguage = (language || 'en').toLowerCase();
+    const crop = canonicalCropCode(cropCode);
+
+    // Query canonical (lower_snake) codes only — that is the DB truth.
     const { data: translations, error } = await supabaseClient
       .from('observation_translations')
-      .select('observation_code, display_text, description_text')
-      .in('observation_code', queryCodes)
+      .select('observation_code, display_text, description_text, crop_code')
+      .in('observation_code', canonCodes)
       .eq('language_code', normalizedLanguage);
 
     if (error) {
       console.error(`   ❌ DB error: ${error.message}`);
     }
 
-    // Build map from database results.
-    // FIX (BUG A): `display_text` is the short, farmer-friendly chip label
-    // (e.g. "भात कोलमडले"). `description_text` is an agronomic note that
-    // frequently contains Latin pathogen names / virus IDs / pesticide hints
-    // and is appropriate only as a tooltip. The previous heuristic that
-    // promoted the longer field made chips render as full sentences with
-    // Latin names. Priority is now strictly: display_text → description_text
-    // → language-aware code fallback. description_text is preserved as the
-    // secondary field for tooltips.
-    for (const code of observationCodes) {
-      const upperCode = code.toUpperCase();
-      const translation = translations?.find(
-        (t: any) => (t.observation_code || '').toUpperCase() === upperCode
+    // RC-3 — crop-aware selection: a crop-specific row wins over a
+    // crop-agnostic one; rows for a DIFFERENT crop are ignored entirely.
+    const pickTranslation = (canon: string) => {
+      const rows = (translations ?? []).filter(
+        (t: any) => canonicalObsCode(t.observation_code) === canon,
       );
-      const icon = OBSERVATION_ICONS[upperCode] || '❓';
+      if (rows.length === 0) return null;
+      const own = crop ? rows.find((t: any) => canonicalCropCode(t.crop_code) === crop) : null;
+      if (own) return own;
+      const agnostic = rows.find((t: any) => !t.crop_code);
+      if (agnostic) return agnostic;
+      return crop ? null : rows[0];
+    };
+
+    // `display_text` is the short farmer-facing chip label; `description_text`
+    // is an agronomic note kept for tooltips only. Priority is strictly:
+    // display_text → description_text → language-aware code fallback.
+    for (const code of observationCodes) {
+      const canon = canonicalObsCode(code);
+      if (!canon) continue;
+      const translation = pickTranslation(canon);
+      const icon = OBSERVATION_ICONS[canon.toUpperCase()] || '❓';
 
       if (translation) {
         const display = (translation.display_text || '').trim();
         const desc = (translation.description_text || '').trim();
         const chip = stripTechnicalArtifacts(display || desc) ||
-                     formatCodeAsLabel(upperCode, normalizedLanguage);
+                     formatCodeAsLabel(canon, normalizedLanguage);
 
-        labelMap.set(upperCode, {
-          observation_code: upperCode,
+        setBoth(canon, {
+          observation_code: canon,
           display_text: chip,
           description_text: desc,
-          icon
+          icon,
         });
       } else {
-        labelMap.set(upperCode, {
-          observation_code: upperCode,
-          display_text: formatCodeAsLabel(upperCode, normalizedLanguage),
+        setBoth(canon, {
+          observation_code: canon,
+          display_text: formatCodeAsLabel(canon, normalizedLanguage),
           description_text: '',
-          icon
+          icon,
         });
-        console.warn(`   ⚠️ [OBS_LABEL_GAP] No ${normalizedLanguage} translation for ${upperCode} — using code fallback (seed observation_translations)`);
+        console.warn(`   ⚠️ [OBS_LABEL_GAP] No ${normalizedLanguage} translation for ${canon} (crop=${crop || 'any'}) — using code fallback (seed observation_translations)`);
       }
     }
 
-
-    console.log(`   ✅ Loaded ${labelMap.size} labels from database`);
+    console.log(`   ✅ Loaded ${labelMap.size} label keys from database`);
 
   } catch (err) {
     console.error(`   ❌ Exception in loadObservationLabels: ${err}`);
 
     // On error, still return a safe fallback so UI doesn't break
     for (const code of observationCodes) {
-      const upperCode = code.toUpperCase();
-      labelMap.set(upperCode, {
-        observation_code: upperCode,
-        display_text: formatCodeAsLabel(upperCode, (language || 'en').toLowerCase()),
+      const canon = canonicalObsCode(code);
+      if (!canon) continue;
+      setBoth(canon, {
+        observation_code: canon,
+        display_text: formatCodeAsLabel(canon, (language || 'en').toLowerCase()),
         description_text: '',
-        icon: OBSERVATION_ICONS[upperCode] || '❓'
+        icon: OBSERVATION_ICONS[canon.toUpperCase()] || '❓',
       });
     }
   }
 
   return labelMap;
 }
+
 
 /**
  * Format observation code as human-readable label

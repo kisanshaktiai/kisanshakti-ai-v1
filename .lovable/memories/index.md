@@ -1,0 +1,108 @@
+# Project Memory
+
+## Core
+- 100% of agronomic advice MUST originate from database; LLM is restricted exclusively to translation/narration.
+- Apply 8-section '2030-Ready' structure; strictly calculate total quantity (dosage_per_acre * land_area).
+- For high-urgency pests (e.g., Shoot Borer), NEVER recommend "Continue Monitoring"—prioritize treatment.
+- Enforce canonical language (e.g., Devanagari) as SSOT; strip technical `ALL_CAPS` codes from LLM output.
+- Mobile UI: opaque backgrounds (no backdrop-blur) for FPS, `e.stopPropagation()` for touch, max-scale=5.0.
+- Vite: Use `@vitejs/plugin-react` (NOT SWC) and a `ui-vendor` manual chunk to prevent Radix UI runtime crashes.
+- Use explicit string checks (`!== 'SAFE'`) for safety logic, and explicit numeric casting for JSONB `ipm_level`.
+- Use a singleton Supabase Realtime subscription in AppLayout; pass `skipRealtime: true` to prevent channel conflict.
+- NDVI: Reliability gate <40% cloud, >15% coverage; use CSS clip-path for field-shaped map thumbnails.
+- Subscription: Default-deny/fail-closed model; auto-downgrade expired users to Free plan via cron job.
+- AI chat loaders that read observation_master MUST paginate (PostgREST 1000-row cap); single `.select()` truncates ~982 valid codes.
+- Every decision_rules.category MUST be registered in mapBundledCategory; unknown categories now log SYMBOLIC_CONTRACT_VIOLATION (see mem://logic/rule-category-mapping-completeness).
+- Observation aliases must NEVER encode a cause (no *_DEFICIENCY_*, *_TOXICITY_*); loader rejects them and safety-gates run after every unified gate (see mem://safety/sugarcane-k-deficiency-hotfix-and-safety-gates).
+- Snapshot triggers on text-PK tables MUST reference NEW.rule_id / NEW.hypothesis_id / NEW.observation_code (NEVER NEW.id) and write to *_versions tables whose FK column is text — see public.snapshot_decision_rule / snapshot_hypothesis / snapshot_observation.
+- Hypothesis loader MUST .in('canonical_group', HYPOTHESIS_CANONICAL_GROUPS) and treat GERMINATION/NURSERY/SEEDLING/EMERGENCE/ESTABLISHMENT as one stage family (see mem://logic/hypothesis-canonical-group-and-stage-equivalence).
+- Cross-crop symbolic brain: never add per-crop intent guards or hardcoded observation lists. Curate `public.intent_assertion_pattern` rows; the orchestrator routes by `intent_observation_mapping.assertion_strength`; evaluator enforces empty-confirmed gate, post-selection stage gate, and `decision_rules.min_data_completeness` (see mem://logic/cross-crop-assertion-strength-and-gates).
+- Orchestrator evidenceInsufficient MUST union INFERRED damage corroborators from allObservationsForPreAuth (not only post-strip damage_observations) and MUST bypass when damage_type∈{TERMINAL,SIGNIFICANT} ∧ severity∈{HIGH,CRITICAL} ∧ hasLandContext (see mem://logic/wave-o-evidence-insufficiency-bypass).
+- hypothesis_conditions.is_required=true STAGE/DAS_RANGE are HARD eliminations in hypothesis-graph-evaluator (never soft penalties); transplanting is VEGETATIVE (post-germination), never SEEDLING (see mem://logic/hypothesis-required-condition-hard-gate).
+- Stage families/adjacency come EXCLUSIVELY from public.crop_stage_graph via stage-knowledge-cache; stage-family-shim has NO hardcoded STAGE_FAMILIES map (see mem://architecture/stage-family-db-ssot).
+- Every file under supabase/functions/ai-agriculture-chat/** (neuro-symbolic decision brain) MUST carry a top-of-file CHANGE LOG block: newest-first entries with `YYYY-MM-DD HH:MM UTC — short summary`. Update it on every edit. Applies to orchestrator, decision/, runtime/, agents/, tests/, and any new file in the chat pipeline.
+- LLM must NEVER emit dosage: DECISION_PROVIDED requires a DB rule (else formatter suppressed), and every rendered dose token must match a DB action (see mem://safety/dosage-provenance-and-decision-backing).
+- `assertion_strength` is an evidence WEIGHT scored by decision/evidence-confidence.ts, NEVER a SQL exclusion filter; all symbolic codes fold through utils/canonical-code.ts; stage families only from crop_stage_graph (see mem://architecture/assertion-strength-weight-not-filter).
+- intent_observation_mapping must NEVER delete grounded observations (clarification seed = UNION(confirmed, perceived, IOM-ranked)); rule/hypothesis ids are UPPER_SNAKE while observation/crop/stage codes are lower_snake (see mem://architecture/iom-weight-not-filter-and-id-casing).
+
+## Memories
+- [IOM Weight & ID Casing](mem://architecture/iom-weight-not-filter-and-id-casing) — RC-1 clarification-seed union, stage-differential recovery, DB-verified identifier casing table.
+- [Assertion Strength = Weight](mem://architecture/assertion-strength-weight-not-filter) — Removes LITERAL-only IOM gates, adds evidence-confidence stage, one canonical normalizer, DB-only stage families.
+- [Dosage Provenance & Decision Backing](mem://safety/dosage-provenance-and-decision-backing) — DECISION_WITHOUT_DB_BACKING + DOSAGE_PROVENANCE_VIOLATION safety gates.
+- [Hypothesis Required-Condition Hard Gate](mem://logic/hypothesis-required-condition-hard-gate) — is_required=true STAGE/DAS eliminate; stage-normalizer transplanting fix.
+- [Wave-O Evidence Bypass](mem://logic/wave-o-evidence-insufficiency-bypass) — Pre-strip union counter + structured-verdict bypass to stop tautological clarifications on terminal damage.
+- [Cross-crop Assertion Strength & Gates](mem://logic/cross-crop-assertion-strength-and-gates) — DB-driven lane routing + three crop-agnostic invariants replacing rice-only patches.
+- [Sugarcane K-Deficiency Hotfix](mem://safety/sugarcane-k-deficiency-hotfix-and-safety-gates) — Quarantined SC_NUTRITION_NITROGEN_025; 5 safety gates; cause-named alias guard.
+- [Mode Driven UI](mem://architecture/mode-driven-ui-interaction-contract) — UI blocks free-text when confidence <50%.
+- [Deterministic Response Return](mem://architecture/deterministic-response-return-invariant) — Orchestrator bypass path for primary decisions.
+- [Farmer Centric Rules](mem://ui/farmer-centric-content-rules) — Conversational rural languages and content sanitization.
+- [Observation Centric Design](mem://ui/observation-centric-interaction-design) — Prioritize description over display text for visual UI.
+- [Multi Modal Diagnostic Engine](mem://features/multi-modal-diagnostic-engine) — Unifying Vision AI and manual clarification inputs.
+- [Orchestrator Routing](mem://architecture/orchestrator-and-routing-strategy) — Core intent routing logic and crop normalization.
+- [Multilingual Perception Bridge](mem://intelligence/multilingual-perception-and-symbolic-bridge) — Romanized script semantic extraction.
+- [Context Aware Intent](mem://intelligence/context-aware-intent-classification) — Enriches prompt with authoritative land/crop context.
+- [Romanized App Enforcement](mem://intelligence/romanized-language-and-app-enforcement) — Force canonical script for romanized inputs.
+- [Symbolic Confidence SSOT](mem://architecture/symbolic-confidence-ssot-authority) — Weighted symbolic confidence gates responses.
+- [Symbolic Engine Strict Invariants](mem://architecture/symbolic-engine-strict-invariants) — DB-driven advice, no LLM agronomic generation.
+- [Vernacular Routing Hardening](mem://logic/routing-regional-vernacular-hardening) — Regex mappings for regional farming terms to intents.
+- [Master Products Integration](mem://database/master-products-and-regulatory-schema-integration) — DB schema for inputs and regulations.
+- [Product Selection Logic](mem://logic/product-repository-selection-logic) — JSONB matching and in-memory numeric casting for IPM levels.
+- [Rule Engine Integrity](mem://logic/rule-engine-integrity-and-integration-hardening) — Data contract enforcement for rule execution outputs.
+- [Land Context Resolution](mem://logic/land-context-resolution-chain) — Fallback chain for determining the authoritative crop context.
+- [Canonical Language Governance](mem://architecture/canonical-language-governance) — Immutable language instruction prompt injection.
+- [Prescription Gate Override](mem://safety/prescription-gate-evidence-override) — Override missing environment data if biotic evidence is strong.
+- [Symbolic Pipeline Redundancy](mem://architecture/symbolic-pipeline-redundancy-guards) — Diagnostic drift prevention guards.
+- [Narration Nomenclature](mem://logic/narration-nomenclature-and-instruction) — Trade name prioritization and calendar PHI translations.
+- [Farmer Response JSON Contract](mem://ui/farmer-response-json-contract) — v3.0 JSON schema rules for structured agronomic advice.
+- [Calibrated Confidence Thresholds](mem://intelligence/calibrated-confidence-thresholds) — Stage-specific confidence threshold calibration.
+- [Deterministic Response Builder](mem://architecture/deterministic-response-builder) — Constructs structured 10-section response from rules.
+- [Emergency Diagnostic Registry](mem://logic/emergency-diagnostic-registry) — Bypasses logic for severe emergency symptoms.
+- [Layer Responsibility Model](mem://architecture/layer-responsibility-model) — Architectural separation between reasoning and narration.
+- [Agronomic Safety Negligence](mem://policy/agronomic-safety-and-negligence) — Prohibits monitoring advice for emergency pests.
+- [Diagnostic Priority Selection](mem://logic/diagnostic-priority-selection) — Prioritizes pathognomonic evidence over generic symptoms.
+- [Crop Context Authoritative Lock](mem://intelligence/crop-context-authoritative-lock) — Reject unauthorized crop entities in LLM outputs.
+- [Multilingual Crop Synonym Detection](mem://logic/multilingual-crop-synonym-detection) — Regional crop aliases mapping across 8 languages.
+- [Semantic Agronomic Narration Rules](mem://intelligence/semantic-agronomic-narration-rules) — Tone mandates, vernacular term prioritization.
+- [Multilingual Symbolic Governance](mem://architecture/multilingual-symbolic-governance-v3) — Script-ratio translation layer, deduplication.
+- [DB Driven Vocabulary Override](mem://logic/db-driven-vocabulary-routing-override) — Intent routing overrides for romanized nomenclature.
+- [Observation Routing Integrity](mem://safety/observation-routing-integrity) — Symptom deduplication and DB-first translation lookup.
+- [Live Weather Context](mem://weather/live-weather-context-resolution) — Proximity lookup fallback (55km) for weather data.
+- [Soil Health Context](mem://soil/soil-health-context-integration) — Base soil attributes fallback for missing context.
+- [Confidence Scoring Migrations](mem://logic/confidence-scoring-and-migration-standard) — Standardized 0-1 float scale for confidence values.
+- [Sugarcane Agronomic Rules](mem://logic/sugarcane-agronomic-rules-and-diagnostics-governance) — Taxonomy partitioning, nutrient vs disease.
+- [LLM Output Validation Gate](mem://logic/llm-output-validation-gate) — Output sanitization, transliteration tolerance, numeral normalization.
+- [Hypothesis Evaluator Retrieval](mem://logic/hypothesis-evaluator-retrieval-strategy) — DB limit extensions and graduated stage matching.
+- [Intent Scope Authority](mem://architecture/intent-propagation-and-scope-authority) — Scoping constraints for diagnostic intent propagation.
+- [Intent Observation Mapping](mem://database/intent-observation-mapping-integrity) — Unique intent-observation DB constraint defaults.
+- [Proactive Feedback Learning Loop](mem://intelligence/proactive-feedback-learning-loop) — Adjusts score via acted vs dismissed signals.
+- [Proactive Irrigation Logic](mem://logic/proactive-irrigation-quantification-logic) — Calculates exact total liters and irrigation time.
+- [Proactive Schema Mapping](mem://technical/proactive-evaluator-schema-mapping-v3) — Schema logic for batch cron jobs.
+- [Schedule Proactive Alignment](mem://architecture/schedule-proactive-symbolic-alignment) — Rule evaluation replacing LLM health schedules.
+- [Proactive Symbolic Enrichment](mem://architecture/proactive-deterministic-symbolic-enrichment) — Context enrichment for high-risk rules.
+- [Weather Intelligence Hardened](mem://architecture/weather-intelligence-system-hardened) — Area-level cache and forecast aggregation logic.
+- [Proactive Multi-Tenant Isolation](mem://architecture/proactive-multi-tenant-isolation) — Auto-discovery multi-tenant execution loops.
+- [Chemical Safety Logic Fix](mem://safety/chemical-safety-warning-logic-fix) — Explicit string evaluation logic for PPE enforcement.
+- [Batch Resilience Evaluator](mem://stability/proactive-evaluator-batch-resilience) — UPSERT behavior mapping using explicit unique keys.
+- [Frontend Runtime Integrity](mem://architecture/frontend-build-and-runtime-integrity) — Build tool locks and explicit import invariants.
+- [Proactive Notification Hierarchy](mem://architecture/proactive-notification-hierarchy) — Notification structure prioritization mappings.
+- [Proactive Disease Risk Modeling](mem://logic/proactive-disease-risk-modeling) — Environmental bounds processing for predictive diseases.
+- [Vite Manual Chunk Strategy](mem://architecture/vite-manual-chunk-strategy) — Forces `@radix-ui/*` into `ui-vendor` chunk to prevent crashes.
+- [Hostinger Apache Invariant](mem://deployment/hostinger-apache-invariant) — HTACCESS routing settings for client side history.
+- [Mobile Scroll Restoration](mem://ui/mobile-scroll-restoration-and-gesture-invariants) — Scroll behavior control, DOM hierarchy fixes.
+- [PWA Update Strategy](mem://architecture/pwa-update-and-caching-strategy) — Workbox skip waiting settings to enforce version updates.
+- [Proactive Alerts Singleton Contract](mem://architecture/proactive-alerts-realtime-singleton-contract) — Prevents competing Supabase channels.
+- [Proactive Intelligence Core](mem://logic/proactive-intelligence-reasoning-core) — Job frequency, limits, throttling config setup.
+- [Proactive Alerts Inbox Governance](mem://ui/proactive-alerts-inbox-and-governance) — Message localization, WA links, fallback text.
+- [Mobile Viewport Standard](mem://ui/mobile-viewport-and-touch-safety-standard) — Maximum zoom control, edge propagation stops.
+- [Symbolic Reasoning Engine](mem://logic/symbolic-reasoning-engine-and-confidence-model) — Metadata-driven confidence evaluation models.
+- [Diagnostic Hypothesis Arbitration](mem://logic/diagnostic-gating-and-hypothesis-arbitration) — Arbitration thresholds, clock priorities, overrides.
+- [System Optimization](mem://performance/mobile-and-backend-system-optimization) — UI element styling (no blur), parallel loops, caching.
+- [Access Control Auth Architecture](mem://security/access-control-and-auth-architecture) — Edge authorization token checks and RLS structures.
+- [Agronomic Safety Regulatory](mem://safety/agronomic-safety-and-regulatory-gating) — Chemical evaluation guardrails for response generation.
+- [Proactive Rules Transitional Status](mem://architecture/proactive-rules-transitional-status) — Phasing out proactive table toward consolidated logic.
+- [Compact Mobile UX](mem://ui/compact-mobile-design-and-ux-standards) — 2030-Ready mobile-first design system direction.
+- [NDVI Reliability](mem://ndvi/scientific-reliability-and-map-architecture) — MapLibre architecture and scientific gating thresholds.
+- [Subscription Downgrade](mem://features/subscription-downgrade-and-enforcement) — Automated expiry and entitlement baseline logic.
+- [Theming Engine](mem://ui/white-label-theme-merging-and-sync) — Theme normalization and real-time synchronization.
+- [Runtime Recovery](mem://performance/runtime-recovery-and-ios-hardening) — Chunk load failure resilience and iOS GPS hardening.
+- [Permission Hub](mem://ui/unified-permission-center) — Centralized Capacitor-based permission management.

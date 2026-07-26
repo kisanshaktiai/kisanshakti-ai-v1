@@ -3,6 +3,10 @@
  * CANONICAL CODE SSOT — the ONLY normalizer for symbolic identifiers
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ *   2026-07-26 (RC-2) — Added `canonicalRuleId` / `canonicalHypothesisId`
+ *     (UPPER_SNAKE) after DB verification proved rule/hypothesis identifiers
+ *     are uppercase, contradicting this file's original header. Deprecated
+ *     `canonicalSymbolCode`.
  *   2026-07-26 — CREATED. Forensic audit F3: `canonicalizeObservationKey`
  *     existed in `runtime/clarification-contract.ts` but was imported by only
  *     4 files. Every other matching layer re-implemented its own normalizer
@@ -11,12 +15,16 @@
  *     and the other was DB-lowercase silently returned no match — the
  *     "rules blocked by normalization" defect.
  *
- * DB-VERIFIED CANONICAL FORMS (queried 2026-07-26):
- *   observation_master.observation_code   2549 rows / 0 uppercase → lower_snake
- *   hypothesis_conditions                  736 rows / 0 uppercase → lower_snake
- *   intent_observation_mapping.intent_code  all uppercase          → UPPER_SNAKE
- *   intent_observation_mapping.crop_code    all lowercase          → lower_snake
- *   intent_observation_mapping.growth_stage all lowercase          → lower_snake
+ * DB-VERIFIED CANONICAL FORMS (re-queried 2026-07-26):
+ *   observation_master.observation_code     2549 rows / 0 upper → lower_snake
+ *   observation_translations.observation_code 5172 rows / 0 upper → lower_snake
+ *   hypothesis_conditions.condition_key      736 rows / 0 upper → lower_snake
+ *   decision_rules.rule_id                  1853 rows / all upper → UPPER_SNAKE
+ *   hypothesis_rule_mapping.rule_id         1820 rows / all upper → UPPER_SNAKE
+ *   intent_observation_mapping.intent_code   all uppercase        → UPPER_SNAKE
+ *   intent_observation_mapping.crop_code     all lowercase        → lower_snake
+ *   intent_observation_mapping.growth_stage  all lowercase        → lower_snake
+
  *
  * This file contains ZERO agronomy. It is pure string framework.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -51,10 +59,35 @@ export function canonicalStageKey(s: unknown): string {
   return foldSnake(s).toLowerCase();
 }
 
-/** Canonical rule / hypothesis identifier → lower_snake_case. */
+/**
+ * Canonical rule / hypothesis identifier.
+ *
+ * 2026-07-26 (RC-2): DB-VERIFIED — `decision_rules.rule_id` (1853/1853) and
+ * `hypothesis_rule_mapping.rule_id` (1820/1820) are **UPPER_SNAKE**, as are
+ * `hypothesis_master.hypothesis_id`. The original lower_snake spec below was
+ * factually wrong. `canonicalSymbolCode` is retained (still lower_snake) only
+ * so legacy both-sides-lowered comparisons keep working; ANY comparison that
+ * touches a raw DB identifier MUST use `canonicalRuleId` /
+ * `canonicalHypothesisId`.
+ */
+export function canonicalRuleId(s: unknown): string {
+  return foldSnake(s).toUpperCase();
+}
+
+/** Canonical hypothesis identifier → UPPER_SNAKE_CASE (DB truth). */
+export function canonicalHypothesisId(s: unknown): string {
+  return foldSnake(s).toUpperCase();
+}
+
+/**
+ * @deprecated Use `canonicalRuleId` / `canonicalHypothesisId` for DB
+ * identifiers. Safe ONLY when both operands are folded through this same
+ * function.
+ */
 export function canonicalSymbolCode(s: unknown): string {
   return foldSnake(s).toLowerCase();
 }
+
 
 /** True when two observation codes are the same symbol under canonical form. */
 export function sameObsCode(a: unknown, b: unknown): boolean {

@@ -243,9 +243,15 @@ export async function initializeTranslationCache(
       }
       
       // Merge into main translations map
+      // RC-2 (2026-07-26): observation_translations.observation_code is
+      // lower_snake in the DB. Register BOTH the canonical lower_snake key and
+      // the legacy UPPERCASE key so lookups from either convention resolve.
       for (const [code, translation] of grouped) {
         translations.set(code, translation);
+        const lower = code.toLowerCase();
+        if (lower !== code) translations.set(lower, { ...translation, key: lower });
       }
+
       console.log(`   ✅ [I18N] Loaded ${grouped.size} observation translations from DB`);
     }
     
