@@ -1024,8 +1024,8 @@ export class SymbolicReasoner {
       totalConditions++;
       const stages = Array.isArray(stageValue) ? stageValue : [stageValue];
       const stageMatch = stages.some((s: string) => {
-        const upper = String(s).toUpperCase();
-        return upper === factStageUpper || upper === '*' || upper === 'ALL';
+        const canon = canonicalStageKey(s);
+        return canon === factStageCanon || canon === '*' || canon === 'all';
       });
       if (stageMatch) {
         metConditions++;
@@ -1043,15 +1043,15 @@ export class SymbolicReasoner {
       if (obsList.length > 0) {
         // P1-3 Fix: Exact token match instead of substring containment
         const obsMatch = obsList.some((obs: string) => {
-          const upperObs = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+          const canonObs = canonicalObsCode(obs);
           // Exact match OR token-boundary match (not substring containment)
-          const exactMatch = (s: string) => s === upperObs;
+          const exactMatch = (s: string) => !!s && s === canonObs;
           const tokenMatch = (s: string) => {
             // P3 Fix: Require ALL tokens of the shorter code to match
-            // Prevents YELLOWING_OLDER_LEAVES matching YELLOWING_YOUNG_LEAVES
-            const obsTokens = upperObs.split('_').filter(t => t.length > 1);
+            // Prevents yellowing_older_leaves matching yellowing_young_leaves
+            const obsTokens = canonObs.split('_').filter(t => t.length > 1);
             const sTokens = s.split('_').filter(t => t.length > 1);
-            if (obsTokens.length === 0 || sTokens.length === 0) return s === upperObs;
+            if (obsTokens.length === 0 || sTokens.length === 0) return s === canonObs;
             const shorter = obsTokens.length <= sTokens.length ? obsTokens : sTokens;
             const longer = obsTokens.length <= sTokens.length ? sTokens : obsTokens;
             const allShorterMatch = shorter.every(t => longer.includes(t));
@@ -1059,8 +1059,9 @@ export class SymbolicReasoner {
           };
           return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
                  exactMatch(factQuery) || tokenMatch(factQuery) ||
-                 allObsUpper.some(ao => exactMatch(ao) || tokenMatch(ao));
+                 allObsCanon.some(ao => exactMatch(ao) || tokenMatch(ao));
         });
+
         if (obsMatch) {
           metConditions++;
           matchedConditions.push('observations');
