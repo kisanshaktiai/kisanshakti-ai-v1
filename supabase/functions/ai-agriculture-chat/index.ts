@@ -1669,7 +1669,33 @@ serve(async (req) => {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
       responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage);
-    } else if (orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output) {
+    } else if (
+      orchestratorResponse.type === 'DECISION_PROVIDED' &&
+      orchestratorResponse.decision_output &&
+      // ═══════════════════════════════════════════════════════════════════
+      // T1 — DECISION_PROVIDED HARD INVARIANT (SAFETY CRITICAL)
+      // A DECISION_PROVIDED response MUST be backed by at least one DB rule
+      // (winner rule id, applied rules, or surviving DB actions). If it is
+      // not, the LLM formatter is NEVER invoked — an unbacked decision is
+      // exactly how a fabricated dosage reaches the farmer.
+      // ═══════════════════════════════════════════════════════════════════
+      !(() => {
+        const _do: any = orchestratorResponse.decision_output;
+        const backed =
+          (Array.isArray(actions_returned) && actions_returned.length > 0) ||
+          !!_do?.metadata?.winner_rule_id ||
+          !!_do?.winner_rule?.rule_id ||
+          (Array.isArray(orchestratorResponse.metadata?.rules_applied) &&
+            orchestratorResponse.metadata!.rules_applied.length > 0);
+        if (!backed) {
+          console.error(
+            `[DECISION_WITHOUT_DB_BACKING][${traceId}] type=DECISION_PROVIDED actions=0 ` +
+              `winner_rule=NONE rules_applied=0 action=llm_formatter_suppressed`,
+          );
+        }
+        return !backed;
+      })()
+    ) {
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-14: Check for Stage Fallback Response first
       // If orchestrator returned a stage-aware fallback, use it directly
@@ -2324,7 +2350,48 @@ serve(async (req) => {
     console.log(`   Response Content Length: ${responseContent?.length || 0}`);
     console.log(`   LLM Model Used: ${aiModelUsed || 'template'}`);
     console.log(`   Validation Passed: ${validationResult.passed}`);
-    
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // T2 — CHEMICAL / DOSAGE PROVENANCE GATE (SAFETY CRITICAL)
+    // Every dosage token rendered to the farmer MUST appear verbatim in a
+    // DB-sourced action string. Any dosage that exists only in the narration
+    // is an LLM fabrication (root cause of the 23× Chlorantraniliprole
+    // overdose) and forces the response back to the DB-built template.
+    // No agronomy literals here — pure numeric-token provenance matching.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const _dbCorpus = JSON.stringify(actions_returned ?? [])
+        .concat(JSON.stringify(orchestratorResponse.decision_output ?? {}))
+        .toLowerCase()
+        .replace(/\s+/g, '');
+      const _doseRe = /(\d+(?:[.,]\d+)?)\s*(ml|l|litre|liter|g|kg|gm|gram)\b/gi;
+      const _rendered = String(responseContent ?? '');
+      const _unbacked: string[] = [];
+      for (const m of _rendered.matchAll(_doseRe)) {
+        const num = m[1].replace(',', '.');
+        const unit = m[2].toLowerCase();
+        const compact = `${num}${unit}`;
+        const alt = `${parseFloat(num)}${unit}`;
+        if (!_dbCorpus.includes(compact) && !_dbCorpus.includes(alt)) _unbacked.push(m[0].trim());
+      }
+      if (_unbacked.length > 0) {
+        console.error(
+          `[DOSAGE_PROVENANCE_VIOLATION][${traceId}] unbacked=[${_unbacked.join(' | ')}] ` +
+            `db_actions=${actions_returned?.length ?? 0} model=${aiModelUsed ?? 'template'} ` +
+            `action=fallback_to_db_template`,
+        );
+        validationResult = {
+          passed: false,
+          errors: [...validationResult.errors, `DOSAGE_NOT_DB_BACKED:${_unbacked.join(',')}`],
+        };
+      } else {
+        console.log(`[DOSAGE_PROVENANCE_OK][${traceId}] all_rendered_doses_db_backed=true`);
+      }
+    } catch (provErr) {
+      console.warn(`[DOSAGE_PROVENANCE_SKIP][${traceId}] err=${(provErr as Error).message}`);
+    }
+
+
     if (!validationResult.passed) {
       console.error(`❌ [${traceId}] VALIDATION FAILED:`, validationResult.errors);
       console.error(`   Full Context Dump:`, JSON.stringify({

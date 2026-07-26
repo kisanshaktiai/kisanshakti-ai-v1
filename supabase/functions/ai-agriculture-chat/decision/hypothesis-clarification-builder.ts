@@ -323,7 +323,51 @@ export async function buildHypothesisClarificationOptions(
     return b.top_condition.hypothesis_id;
   };
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // T5 — NON-PEST-FIRST ORDERING ON A FRESH QUERY (DB-CONFIG DRIVEN)
+  // When no evidence is confirmed yet, the option set must not be dominated
+  // by one biological family. Ordering priority comes ONLY from
+  // system_config.clarification_group_priority (list of canonical_group
+  // values) joined against hypothesis_master.canonical_group. No agronomy
+  // literal lives in TS — empty config ⇒ pure score order (previous behavior).
+  // ═══════════════════════════════════════════════════════════════════════
+  let groupRankByHypothesis = new Map<string, number>();
+  try {
+    const { getConfigJson } = await import('../utils/db-ssot/system-config-cache.ts');
+    const priority = getConfigJson<{ order?: string[] }>('clarification_group_priority', {}).order ?? [];
+    if (confirmedCodes.length === 0 && priority.length > 0 && hypothesisIds.length > 1) {
+      const { data: hmRows } = await input.supabase
+        .from('hypothesis_master')
+        .select('hypothesis_id, canonical_group')
+        .in('hypothesis_id', hypothesisIds);
+      const rankOf = (g: string | null) => {
+        const idx = priority.findIndex((p) => String(p).toLowerCase() === String(g ?? '').toLowerCase());
+        return idx === -1 ? priority.length : idx;
+      };
+      groupRankByHypothesis = new Map(
+        (hmRows ?? []).map((r: any) => [String(r.hypothesis_id), rankOf(r.canonical_group)]),
+      );
+      console.log(
+        `[CLARIFICATION_GROUP_PRIORITY] trace=${trace} source=system_config groups=${priority.length} ` +
+        `ranked_hypotheses=${groupRankByHypothesis.size}`,
+      );
+    }
+  } catch (e) {
+    console.warn(`[CLARIFICATION_GROUP_PRIORITY_SKIP] trace=${trace} err=${(e as Error).message}`);
+  }
+
   const remaining = rankedBuckets.slice();
+  if (groupRankByHypothesis.size > 0) {
+    const rankFor = (b: CodeBucket) => {
+      let best = Number.MAX_SAFE_INTEGER;
+      for (const hid of b.hypothesis_ids) {
+        const r = groupRankByHypothesis.get(hid);
+        if (typeof r === 'number' && r < best) best = r;
+      }
+      return best;
+    };
+    remaining.sort((a, b) => (rankFor(a) - rankFor(b)) || (b.aggregate_score - a.aggregate_score));
+  }
   const emittedHypotheses = new Set<string>();
   const options: HypothesisClarificationOption[] = [];
   const optionsByHypothesis: Record<string, number> = {};

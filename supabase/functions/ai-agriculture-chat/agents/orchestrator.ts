@@ -2273,6 +2273,31 @@ export class AIAgentOrchestrator {
       // ========================================
       if (pendingOptionsCount > 0) {
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
+
+        // ═══════════════════════════════════════════════════════════════════
+        // T6 — SSOT REUSE ON THE UI-TAP PATH
+        // The option-selected branch short-circuits before Layer 3, so the
+        // SessionSSOT built on the question turn must be re-hydrated here
+        // instead of being silently absent. Never rebuilt from heuristics.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          const _persistedSsot = (options.sessionState as any)?.session_ssot;
+          if (_persistedSsot && typeof _persistedSsot === 'object' && _persistedSsot.crop_code) {
+            (this as any)._sessionSSOT = Object.freeze({ ..._persistedSsot, trace_id: traceId });
+            console.log(
+              `[SSOT_REUSED_FROM_SESSION] trace=${traceId} crop=${_persistedSsot.crop_code} ` +
+              `stage=${_persistedSsot.growth_stage} das=${_persistedSsot.days_since_sowing} ` +
+              `intent=${_persistedSsot.intent_code} established_at=${_persistedSsot.established_at}`,
+            );
+          } else {
+            console.warn(
+              `[SSOT_MISSING_ON_TAP_PATH] trace=${traceId} reason=no_session_ssot_persisted ` +
+              `action=downstream_layers_fail_closed`,
+            );
+          }
+        } catch (e) {
+          console.warn(`[SSOT_REUSE_FAILED] trace=${traceId} err=${(e as Error).message}`);
+        }
         
         // ========================================
         // STEP 1: Try to match response to pending options (using improved matcher)
@@ -5902,9 +5927,19 @@ export class AIAgentOrchestrator {
           if (real_codes.length !== real_codes_pre.length) {
             const purged = real_codes_pre.filter((c) => !real_codes.includes(c));
             console.warn(
-              `[TURN_OBS_PURGE] trace=${traceId} purged=[${purged.join(',')}] ` +
+              `[OBS_STALE_PURGE] trace=${traceId} purged=[${purged.join(',')}] ` +
                 `reason=prior_turn_clarification_candidate_not_reasserted ` +
                 `kept=${real_codes.length}/${real_codes_pre.length}`,
+            );
+          }
+          // T3 — UI_TAP_OBS_LOCK: on a tap turn the confirmed evidence set MUST
+          // be exactly the codes the farmer tapped (EXTRACTED authority). Any
+          // extra code surviving into the frozen set is an identity leak.
+          if (_staleKeys.size > 0 && _turnAsserted.size > 0) {
+            const _leaked = real_codes.filter((c) => !_turnAsserted.has(String(c).trim().toLowerCase()));
+            console.log(
+              `[UI_TAP_OBS_LOCK] trace=${traceId} tapped=${_turnAsserted.size} ` +
+                `frozen=${real_codes.length} leaked=[${_leaked.join(',')}]`,
             );
           }
           const ignoredRawCodes: string[] = raw_evidence_codes.filter((code) => !isRealObservation(code));
