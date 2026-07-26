@@ -223,9 +223,16 @@ async function loadFallbackQuestionOptions(
     for (const r of rows || []) {
       const key = String(r?.question_code ?? '').trim();
       if (!key) continue;
+      // Farmer-visible text MUST be a DB label. Never fall back to the code.
       const label = String(
-        (lang === 'hi' && r.label_hi) || (lang === 'mr' && r.label_mr) || r.label_en || key,
-      );
+        (lang === 'hi' && r.label_hi) || (lang === 'mr' && r.label_mr) || r.label_en || '',
+      ).trim();
+      if (!label) {
+        console.warn(
+          `[OBS_LABEL_MISSING] source=clarification_fallback_questions code=${key} lang=${lang} → option dropped`,
+        );
+        continue;
+      }
       out.push({
         value: key,
         label,
@@ -234,7 +241,8 @@ async function loadFallbackQuestionOptions(
         observation_code: key,
       });
     }
-    return out;
+    return out.length > 0 ? await withPhotoOption(ctx.supabase, lang, out) : out;
+
   } catch (err) {
     console.warn(`[CONTRACT_FALLBACK_DB] family=${family} exception=${(err as Error).message}`);
     return [];
