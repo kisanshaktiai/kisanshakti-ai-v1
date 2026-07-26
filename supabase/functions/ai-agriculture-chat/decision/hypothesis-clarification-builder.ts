@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 12:00 UTC — R3b: accept optional `session_ssot` and use it as the
+ *   primary crop/stage/DAS/language source (explicit args first, land_context
+ *   last), so the builder can never silently reason on a partial context.
  * 2026-07-22 — Phase 3a hotfix: system_config tunable loader now queries
  *   `config_key` / `config_value` (the real column names). Previously the
  *   `key`/`value` query silently returned zero rows, so every seeded
