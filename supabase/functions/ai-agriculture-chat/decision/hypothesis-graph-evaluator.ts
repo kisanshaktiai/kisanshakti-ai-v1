@@ -309,7 +309,59 @@ export async function evaluateHypothesisGraph(
         })()
       : stagePassRaw;
 
+    // ── S1 — HARD biological stage gate ───────────────────────────────────
+    // Biological invariant: a hypothesis whose DB-authored STAGE condition
+    // does NOT include the current (known) stage is biologically impossible
+    // for this turn. Elimination is a HARD gate, not a soft penalty. This is
+    // the symbolic half of "neuro-symbolic": physically impossible hypotheses
+    // cannot survive regardless of neural evidence strength.
+    // Stage expectations come exclusively from hypothesis_conditions (DB).
+    const expectedStages = collectExpectedStages(conds);
+    const currentStage = input.growth_stage
+      ? normalizeStageForDB(String(input.growth_stage)).toLowerCase()
+      : null;
+    const _biologicallyImpossible =
+      expectedStages.length > 0 &&
+      !!currentStage &&
+      !stagePassRaw.pass &&
+      stagePassRaw.reason.startsWith('expected=');
+    if (_biologicallyImpossible) {
+      const reason = `REQUIRED_STAGE_FAILED(BIOLOGICALLY_IMPOSSIBLE:${stagePassRaw.reason})`;
+      console.warn(
+        `[HYP_BIOLOGICAL_GATE] eliminated hypothesis=${hid} ` +
+          `reason=stage_impossible expected=[${expectedStages.join('|')}] got=${currentStage} ` +
+          `trace=${trace}`,
+      );
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: buckets.positive_matches,
+        negative_matches: buckets.negative_matches,
+        missing_required: buckets.missing_required,
+        blocking_conditions: buckets.blocking_conditions,
+        required_total: requiredTotal,
+        required_matched: requiredMatched,
+        required_match_pct: requiredPct,
+        supporting_score: supportingScore,
+        confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:${reason}`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: reason,
+      } as GraphHypothesisCandidate);
+      continue;
+    }
+
     if ((stagePass.required_fail || dasPass.required_fail) && !hasObservationEvidence) {
+
       const reason = stagePass.required_fail
         ? `REQUIRED_STAGE_FAILED(${stagePass.reason})`
         : `REQUIRED_DAS_FAILED(${dasPass.reason})`;
@@ -555,7 +607,18 @@ function normalizeCropGroup(v: unknown): string | null {
   return s;
 }
 
+/** S1 — union of DB-authored allowed stages across all STAGE conditions. */
+function collectExpectedStages(conds: ConditionRow[]): string[] {
+  const out = new Set<string>();
+  for (const c of conds) {
+    if (c.condition_type !== 'STAGE') continue;
+    for (const s of extractStages(c.value_json)) out.add(String(s).toLowerCase());
+  }
+  return [...out];
+}
+
 function hasStageCondition(conds: ConditionRow[]): boolean {
+
   return conds.some((c) => c.condition_type === 'STAGE');
 }
 function hasDasCondition(conds: ConditionRow[]): boolean {

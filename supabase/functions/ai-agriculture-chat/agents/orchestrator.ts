@@ -3336,6 +3336,58 @@ export class AIAgentOrchestrator {
             days_since_sowing: landContextForOptionSelection?.days_since_sowing
           };
           
+          // ── S1 (downstream) — biological compatibility of STAGE_FALLBACK ────
+          // If widening produced advice for a stage the SessionSSOT does NOT
+          // confirm, we must NOT generate stage-inappropriate advice. Demote to
+          // a structured NO_DECISION instead.
+          {
+            const _blockedStateUpdate = {
+              decision_state: 'decision_in_progress',
+              pending_options: 0,
+              pending_action: false,
+              last_action_source: 'BIOLOGICAL_ASSEMBLY_GATE',
+              clarification_answered: true,
+              clarification_resolved_at: new Date().toISOString(),
+            };
+            const _ssotAsm = (this as any)._sessionSSOT as SessionSSOT | undefined;
+            const _norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+            const _ruleStage = _norm(
+              (ruleResult as any)?.rules_applied?.[0]?.growth_stage
+                ?? (ruleResult as any)?.rules_applied?.[0]?.stage
+                ?? growthStage,
+            );
+            if (_ssotAsm && _ruleStage && _norm(_ssotAsm.growth_stage) !== _ruleStage) {
+              console.warn(
+                `[DECISION_ASSEMBLY_BLOCKED] reason=stage_fallback_biologically_incompatible ` +
+                `ssot_stage=${_ssotAsm.growth_stage} rule_stage=${_ruleStage} ` +
+                `rule_id=${(ruleResult as any)?.rules_applied?.[0]?.rule_id ?? 'n/a'}`,
+              );
+              return {
+                type: 'DECISION_PROVIDED',
+                session_id: sessionId,
+                session_state_update: _blockedStateUpdate,
+                decision_output: this.buildStructuredNoDecision({
+                  trace_id: traceId,
+                  graph_gap: 'STAGE_FALLBACK_BIOLOGICALLY_INCOMPATIBLE',
+                  confirmed: mappedObservationKey ? [mappedObservationKey] : [],
+                }) as any,
+                dataAudit: dataAuditNoRules,
+                metadata: {
+                  confidence: 0,
+                  safety_status: 'SAFE',
+                  rules_applied: 0,
+                  processing_time_ms: Date.now() - startTime,
+                  agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'BIOLOGICAL_ASSEMBLY_GATE'],
+                  trace_id: traceId,
+                  pendingClarificationOptions: undefined,
+                  pendingClarificationScope: undefined,
+                  lockedCropContext: finalLockedCropContextNoRules,
+                  session_state_update: _blockedStateUpdate,
+                },
+              };
+            }
+          }
+
           // PHASE-14: Generate stage-aware fallback response
           const stageFallback = this.generateStageAwareFallback(
             cropName || 'UNKNOWN',
@@ -3344,6 +3396,7 @@ export class AIAgentOrchestrator {
             landContextForOptionSelection?.days_since_sowing || 0,
             options.language || 'mr'
           );
+
           
           // SESSION STATE: Stage fallback still transitions decision state
           const sessionStateUpdateNoRules = {
@@ -5803,7 +5856,36 @@ export class AIAgentOrchestrator {
           // ═══════════════════════════════════════════════════════════════════
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
           const raw_evidence_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
-          const real_codes: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+          // ── S2 — CURRENT-TURN OBSERVATION PURGE ────────────────────────────
+          // Prior-turn clarification candidates must NOT be treated as
+          // confirmed evidence in this turn unless the farmer re-asserted
+          // them. Stale carryover is the source of "phantom evidence" that
+          // lets the graph skip clarification with observations nobody
+          // confirmed. Purge is identity-only (no agronomy in TS).
+          const _staleKeys = new Set(
+            ((options as any)?.sessionState?.pendingClarificationObservationKeys ?? [])
+              .map((k: unknown) => String(k).trim().toLowerCase())
+              .filter(Boolean),
+          );
+          const _turnAsserted = new Set(
+            [...(authoredObservations?.listByAuthority?.(ObservationAuthority.EXTRACTED) ?? [])]
+              .map((c: unknown) => String(c).trim().toLowerCase()),
+          );
+          const real_codes_pre: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+          const real_codes: string[] = real_codes_pre.filter((code) => {
+            const k = String(code).trim().toLowerCase();
+            if (!_staleKeys.has(k)) return true;              // not a carryover
+            if (_turnAsserted.size === 0) return true;        // no ledger signal — keep
+            return _turnAsserted.has(k);                      // re-asserted this turn
+          });
+          if (real_codes.length !== real_codes_pre.length) {
+            const purged = real_codes_pre.filter((c) => !real_codes.includes(c));
+            console.warn(
+              `[TURN_OBS_PURGE] trace=${traceId} purged=[${purged.join(',')}] ` +
+                `reason=prior_turn_clarification_candidate_not_reasserted ` +
+                `kept=${real_codes.length}/${real_codes_pre.length}`,
+            );
+          }
           const ignoredRawCodes: string[] = raw_evidence_codes.filter((code) => !isRealObservation(code));
           const evidenceContext = {
             action_taken: !ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'ACTION_NONE'),
