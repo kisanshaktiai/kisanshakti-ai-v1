@@ -71,6 +71,14 @@ export interface ObservationContractContext {
    * exhaustion vs empty-decision promotion vs plain hydration.
    */
   graphReason?: string | null;
+  /**
+   * R3a — canonical SessionSSOT built at Layer 3. When present it is the
+   * authoritative source of crop/stage/DAS/intent/language.
+   */
+  session_ssot?: SessionSSOT | null;
+  /** Optional orchestrator instance/state used to resolve the SSOT lazily. */
+  orchestratorState?: any;
+
 }
 
 /**
