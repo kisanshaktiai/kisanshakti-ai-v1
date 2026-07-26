@@ -8593,7 +8593,14 @@ export class AIAgentOrchestrator {
         
         // If hypothesis narrowed scope, filter rules (only if pre-filter didn't already apply)
         if (!diagnosticPreFilterApplied && hypothesisRuleScope && hypothesisRuleScope.length > 0) {
-          const scopedRules = allRulesWithBundled.filter((r: any) => hypothesisRuleScope!.includes(r.id || r.rule_id));
+          // CANONICAL-CODE CONTRACT (2026-07-26): rule identity is `id` on
+          // converted bundled rules and `rule_id` on raw DB rows — compare both
+          // through the canonical normalizer so casing never silently empties
+          // the graph scope (see [GRAPH_RULE_SCOPE_EMPTY]).
+          const _scopeSet = new Set(hypothesisRuleScope!.map((rid) => canonicalSymbolCode(rid)).filter(Boolean));
+          const scopedRules = allRulesWithBundled.filter((r: any) =>
+            _scopeSet.has(canonicalSymbolCode(r?.id ?? r?.rule_id ?? '')));
+
           if (scopedRules.length > 0) {
             rulesToEvaluate = scopedRules;
             console.log(`   🎯 [HypothesisScope] Narrowed from ${allRulesWithBundled.length} to ${scopedRules.length} rules`);
