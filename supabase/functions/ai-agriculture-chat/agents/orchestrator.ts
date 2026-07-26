@@ -5856,7 +5856,36 @@ export class AIAgentOrchestrator {
           // ═══════════════════════════════════════════════════════════════════
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
           const raw_evidence_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
-          const real_codes: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+          // ── S2 — CURRENT-TURN OBSERVATION PURGE ────────────────────────────
+          // Prior-turn clarification candidates must NOT be treated as
+          // confirmed evidence in this turn unless the farmer re-asserted
+          // them. Stale carryover is the source of "phantom evidence" that
+          // lets the graph skip clarification with observations nobody
+          // confirmed. Purge is identity-only (no agronomy in TS).
+          const _staleKeys = new Set(
+            ((options as any)?.sessionState?.pendingClarificationObservationKeys ?? [])
+              .map((k: unknown) => String(k).trim().toLowerCase())
+              .filter(Boolean),
+          );
+          const _turnAsserted = new Set(
+            [...(authoredObservations?.listByAuthority?.(ObservationAuthority.EXTRACTED) ?? [])]
+              .map((c: unknown) => String(c).trim().toLowerCase()),
+          );
+          const real_codes_pre: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+          const real_codes: string[] = real_codes_pre.filter((code) => {
+            const k = String(code).trim().toLowerCase();
+            if (!_staleKeys.has(k)) return true;              // not a carryover
+            if (_turnAsserted.size === 0) return true;        // no ledger signal — keep
+            return _turnAsserted.has(k);                      // re-asserted this turn
+          });
+          if (real_codes.length !== real_codes_pre.length) {
+            const purged = real_codes_pre.filter((c) => !real_codes.includes(c));
+            console.warn(
+              `[TURN_OBS_PURGE] trace=${traceId} purged=[${purged.join(',')}] ` +
+                `reason=prior_turn_clarification_candidate_not_reasserted ` +
+                `kept=${real_codes.length}/${real_codes_pre.length}`,
+            );
+          }
           const ignoredRawCodes: string[] = raw_evidence_codes.filter((code) => !isRealObservation(code));
           const evidenceContext = {
             action_taken: !ignoredRawCodes.some((c) => String(c).trim().toUpperCase() === 'ACTION_NONE'),
