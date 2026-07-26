@@ -2583,8 +2583,25 @@ serve(async (req) => {
     // SYMBOLIC IDENTITY: persist observation_key per option index so the next
     // turn's OPTION_SELECTED can use the canonical code directly without
     // heuristic label-to-code reconstruction.
+    // `photo_upload` is a UI affordance, never diagnostic evidence — it must
+    // not enter the pending-observation set (otherwise it gets treated as an
+    // asked symptom and skews the next turn's filtering).
     const clarificationObservationKeys: string[] =
-      rawOptions.map((o: any) => (o?.observation_key || ''));
+      rawOptions
+        .map((o: any) => (o?.observation_key || ''))
+        .filter((k: string) => k.toLowerCase() !== 'photo_upload');
+
+    // Contract invariant: a clarification turn without any option is a dead-end
+    // card for the farmer — surface it loudly instead of silently shipping it.
+    if (isClarificationResponse && rawOptions.length === 0) {
+      console.error(
+        `[CLARIFICATION_OPTIONS_LOST] type=${orchestratorResponse.type} ` +
+        `question=${!!orchestratorResponse.question} ` +
+        `metadata_options=${(orchestratorResponse.metadata?.options || []).length} ` +
+        `reason=clarification_emitted_with_zero_options`,
+      );
+    }
+
     // STRUCTURED SSOT — full per-option record. This is what the next turn's
     // option-selection resolver MUST consult; the parallel arrays above are
     // kept only for backwards compatibility.
