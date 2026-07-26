@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 14:10 UTC — Crop-code casing contract. MANDATORY_FALLBACK queried
+ *   decision_rules with an uppercased crop (`RICE`) / `'SC'` default while the
+ *   DB stores lower_snake full names ('rice','sugarcane','all') — only the 64
+ *   `all` rows could ever match. Now canonicalCropCode + short-code expansion,
+ *   `[FALLBACK_CROP_UNRESOLVED]` / `[FALLBACK_RULE_SCOPE]` probes, canonical
+ *   observation codes, and all 6 crop-code propagation sites canonicalized.
  * 2026-07-22 — Phase 3a hotfix: bio-contradiction reroute config reader now
  *   uses `config_key`/`config_value` columns. Previously the `key`/`value`
  *   query silently returned null so germination-intent reroute lists
