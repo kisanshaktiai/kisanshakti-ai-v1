@@ -23,6 +23,8 @@ import { resolveObservationSymbols } from './symbol-resolver.ts';
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { stagesEquivalent } from '../runtime/stage-family-shim.ts';
 import { classifyEvidence } from '../runtime/evidence-classifier.ts';
+import type { SessionSSOT } from '../runtime/session-ssot.ts';
+
 
 export interface HypothesisClarificationInput {
   supabase: any;
