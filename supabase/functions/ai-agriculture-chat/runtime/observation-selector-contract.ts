@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-26 18:20 UTC — Fallback questions never fall back to the raw code as
+ *   a farmer label (dropped + [OBS_LABEL_MISSING]); DB-sourced photo option is
+ *   appended to rescued option lists.
  * 2026-07-26 12:00 UTC — R3a: hydrate crop/stage/DAS/intent/language from the
  *   canonical SessionSSOT (response.metadata.session_ssot or orchestrator
  *   state) before any contract check; SSOT_LOCK_LOST now only fires on a real
