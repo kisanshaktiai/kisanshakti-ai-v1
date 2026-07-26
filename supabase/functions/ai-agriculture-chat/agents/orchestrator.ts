@@ -3341,6 +3341,14 @@ export class AIAgentOrchestrator {
           // confirm, we must NOT generate stage-inappropriate advice. Demote to
           // a structured NO_DECISION instead.
           {
+            const _blockedStateUpdate = {
+              decision_state: 'decision_in_progress',
+              pending_options: 0,
+              pending_action: false,
+              last_action_source: 'BIOLOGICAL_ASSEMBLY_GATE',
+              clarification_answered: true,
+              clarification_resolved_at: new Date().toISOString(),
+            };
             const _ssotAsm = (this as any)._sessionSSOT as SessionSSOT | undefined;
             const _norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
             const _ruleStage = _norm(
@@ -3357,7 +3365,7 @@ export class AIAgentOrchestrator {
               return {
                 type: 'DECISION_PROVIDED',
                 session_id: sessionId,
-                session_state_update: sessionStateUpdateNoRules,
+                session_state_update: _blockedStateUpdate,
                 decision_output: this.buildStructuredNoDecision({
                   trace_id: traceId,
                   graph_gap: 'STAGE_FALLBACK_BIOLOGICALLY_INCOMPATIBLE',
@@ -3374,7 +3382,7 @@ export class AIAgentOrchestrator {
                   pendingClarificationOptions: undefined,
                   pendingClarificationScope: undefined,
                   lockedCropContext: finalLockedCropContextNoRules,
-                  session_state_update: sessionStateUpdateNoRules,
+                  session_state_update: _blockedStateUpdate,
                 },
               };
             }
