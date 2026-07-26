@@ -5044,47 +5044,61 @@ export class AIAgentOrchestrator {
         } else
         if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
           try {
-            const cropScopes = Array.from(new Set([
-              String(landContext.current_crop).toLowerCase(),
-              'universal',
-            ]));
+            const cropCodeLower = canonicalCropCode(landContext.current_crop);
+            const cropScopes = Array.from(new Set([cropCodeLower, 'all', 'universal'].filter(Boolean)));
 
             const { data: iomRows, error: iomErr } = await this.supabase
               .from('intent_observation_mapping')
-              .select('observation_code, crop_code, assertion_strength, is_active')
-              .eq('intent_code', intentCode)
+              .select('observation_code, crop_code, assertion_strength, confidence_rank, is_active')
+              .eq('intent_code', canonicalIntentCode(intentCode))
               .in('crop_code', cropScopes)
-              .eq('assertion_strength', 'LITERAL')
-              .eq('is_active', true);
+              .eq('is_active', true)
+              .order('confidence_rank', { ascending: true, nullsFirst: false });
 
             if (iomErr) {
               console.warn(`⚠️ [INTENT_IOM_FALLBACK] db_error intent=${intentCode} error=${iomErr.message}`);
             } else if (Array.isArray(iomRows) && iomRows.length > 0) {
-              // Prefer crop-scoped rows; fall back to universal
-              const cropCodeLower = String(landContext.current_crop).toLowerCase();
-              const cropScoped = iomRows.filter((r: any) => String(r.crop_code).toLowerCase() === cropCodeLower);
+              // Prefer crop-scoped rows; fall back to universal/all
+              const cropScoped = iomRows.filter((r: any) => canonicalCropCode(r.crop_code) === cropCodeLower);
               const chosen = cropScoped.length > 0 ? cropScoped : iomRows;
+
+              // Evidence confidence ORDERS the candidates (assertion_strength is a
+              // weight, never a filter). The bounded cap prevents a zero-observation
+              // turn from manufacturing hundreds of INFERRED differentials.
+              const weights = getEvidenceWeights();
+              const scored = scoreEvidenceSet(
+                (chosen as any[]).map((r) => ({
+                  observation_code: r.observation_code,
+                  assertion_strength: r.assertion_strength ?? null,
+                  confidence_rank: typeof r.confidence_rank === 'number' ? r.confidence_rank : null,
+                  source: 'INFERRED_PEER' as const,
+                })),
+                weights,
+              );
+              const cap = Math.max(1, Math.floor(weights.fallbackMaxInject));
               const injected: string[] = [];
-              for (const r of chosen as any[]) {
-                const obs = String(r.observation_code || '').trim();
+              for (const s of scored) {
+                if (injected.length >= cap) break;
+                const obs = s.observation_code;
                 if (!obs) continue;
                 if (allObservationsForPreAuth.has(obs)) continue;
                 allObservationsForPreAuth.add(obs);
                 authoredObservations.add(obs, ObservationAuthority.INFERRED, 'IOM_INTENT_TO_OBSERVATION');
-                injected.push(obs);
+                injected.push(`${obs}@${s.evidence_confidence.toFixed(2)}`);
               }
               if (injected.length > 0) {
                 agentsUsed.push('IOM_INTENT_TO_OBSERVATION');
                 console.log(
                   `🔗 [INTENT_IOM_FALLBACK] intent=${intentCode} crop=${cropCodeLower} ` +
-                  `scope=${cropScoped.length > 0 ? 'CROP' : 'UNIVERSAL'} injected=[${injected.join(',')}] ` +
-                  `source=intent_observation_mapping`,
+                  `scope=${cropScoped.length > 0 ? 'CROP' : 'UNIVERSAL'} candidates=${scored.length} cap=${cap} ` +
+                  `injected=[${injected.join(',')}] source=intent_observation_mapping`,
                 );
               } else {
                 console.log(`ℹ️ [INTENT_IOM_FALLBACK] intent=${intentCode} rows=${iomRows.length} injected=0 (dedup)`);
               }
             } else {
-              console.log(`ℹ️ [INTENT_IOM_FALLBACK] intent=${intentCode} crop=${landContext.current_crop} no_literal_peers_in_iom`);
+              console.log(`ℹ️ [INTENT_IOM_FALLBACK] intent=${intentCode} crop=${landContext.current_crop} no_iom_peers_for_cell`);
+
               // Advisory-direct: if intent itself is a valid observation code (e.g. FERTILIZER_SCHEDULE),
               // inject it so the rule engine can match. Otherwise leave the observation set empty and
               // let clarification take over.
