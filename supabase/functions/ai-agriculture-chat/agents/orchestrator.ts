@@ -5229,6 +5229,16 @@ export class AIAgentOrchestrator {
                     );
                     intentCode = rerouteTarget as any;
                     try {
+                      const _dSsot2 = (this as any)._sessionSSOT as SessionSSOT | undefined;
+                      if (_dSsot2 && _dSsot2.intent_code !== String(intentCode).toUpperCase()) {
+                        console.warn(
+                          `[INTENT_DRIFT] site=bio_state_contradiction_reroute trace=${traceId} ` +
+                          `ssot_intent=${_dSsot2.intent_code} attempted=${intentCode}`,
+                        );
+                      }
+                    } catch { /* drift detection is additive */ }
+
+                    try {
                       (this as any).__conversationState && ((this as any).__conversationState.intent_rerouted = true);
                     } catch { /* non-fatal */ }
                   } else {
