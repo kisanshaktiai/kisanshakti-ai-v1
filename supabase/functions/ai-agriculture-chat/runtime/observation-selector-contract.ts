@@ -395,21 +395,32 @@ export async function ensureObservationSelectorContract(
     if (!hasPrimary && !hasSecondary && !hasCommText) {
       const options = await loadObservationSelectorOptions(effectiveCtx);
       if (options.length === 0) {
-        // Curator gap: farmer already confirmed observations upstream but the
-        // downstream graph has no rules/hypothesis edge for this cell.
-        // Degrade to DIAGNOSTIC_ESCALATION (symmetric to Case B) instead of 500.
+        // Q1/Q2 — DB rescue first, escalation only as absolute last resort.
         if (realObservationCount > 0) {
+          const missing = missingSsotField(effectiveCtx);
+          if (missing) {
+            console.error(
+              `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${missing} trace=${effectiveCtx.traceId ?? 'n/a'}`,
+            );
+            return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'ssot_lock_lost_degrade_skipped' };
+          }
           console.warn(
-            `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=DECISION_PROVIDED to=DIAGNOSTIC_ESCALATION reason=stage_fallback_no_rules_after_confirmed_observations crop=${effectiveCtx.cropCode ?? '?'} stage=${effectiveCtx.growthStage ?? '?'} intent=${effectiveCtx.intentCode ?? '?'} real_observations=${realObservationCount}`,
+            `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=DECISION_PROVIDED reason=stage_fallback_no_rules_after_confirmed_observations crop=${effectiveCtx.cropCode} stage=${effectiveCtx.growthStage} das=${effectiveCtx.daysSinceSowing} intent=${effectiveCtx.intentCode} real_observations=${realObservationCount}`,
           );
-          response.type = 'DIAGNOSTIC_ESCALATION';
-          response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
-          response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
-          response.metadata.graph_reason = effectiveCtx.graphReason || 'NO_RULES_MATCHED_AFTER_OBSERVATION';
-          response.metadata.observation_required = false;
-          response.metadata.confirmed_observation_count = realObservationCount;
-          return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_rules_after_observation' };
+          const rescue = await attemptDbClarificationRescue(response, effectiveCtx);
+          if (rescue.rescued) {
+            return {
+              promoted: true,
+              hydrated: true,
+              option_count: rescue.option_count,
+              observation_required: true,
+              reason: `rescued_${rescue.site}`,
+            };
+          }
+          applyTrueEscalation(response, effectiveCtx, 'NO_RULES_MATCHED_AFTER_OBSERVATION');
+          return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'true_escalation_no_db_clarification' };
         }
+
         throw new Error(
           `OBSERVATION_CONTRACT_VIOLATION: empty_options type=DECISION_PROVIDED reason=no_recommendations crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
         );
