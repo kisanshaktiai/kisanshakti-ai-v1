@@ -1,9 +1,13 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-26 00:00 UTC — Q1/Q2: SSOT-lock invariant on the degrade path plus a
+ *   two-stage DB rescue (hypothesis-graph options → clarification_fallback_questions)
+ *   before any DIAGNOSTIC_ESCALATION degrade. Escalation is now last resort only.
  * 2026-07-09 13:58 UTC — Derive confirmed observations from response metadata
  *   before enforcing empty DECISION_PROVIDED/CLARIFICATION contracts, and pass
  *   those confirmed codes into the hypothesis clarification builder.
  */
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * OBSERVATION SELECTOR CONTRACT
