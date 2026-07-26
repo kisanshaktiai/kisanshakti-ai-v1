@@ -2,6 +2,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 14:10 UTC — S3: added CLARIFICATION_DIVERSITY_VIOLATION invariant +
+ *   diversity=<emitted>/<candidates> in the structured trace.
  * 2026-07-26 12:00 UTC — R3b: accept optional `session_ssot` and use it as the
  *   primary crop/stage/DAS/language source (explicit args first, land_context
  *   last), so the builder can never silently reason on a partial context.
@@ -370,6 +372,18 @@ export async function buildHypothesisClarificationOptions(
     emitBucket(b, primary);
   }
 
+  // S3 — diversification invariant: when >1 candidate hypothesis survives the
+  // graph, the emitted option set MUST discriminate between at least two of
+  // them. A single-hypothesis option set cannot reduce diagnostic entropy.
+  const distinctEmitted = Object.keys(optionsByHypothesis).length;
+  if (hypothesisIds.length > 1 && options.length > 1 && distinctEmitted < 2) {
+    console.warn(
+      `[CLARIFICATION_DIVERSITY_VIOLATION] trace=${trace} candidate_hypotheses=${hypothesisIds.length} ` +
+      `emitted_hypotheses=${distinctEmitted} options=${options.length} ` +
+      `reason=options_do_not_discriminate keys=[${options.map((o) => o.observation_code).join(',')}]`,
+    );
+  }
+
   // Patch E — structured trace.
   console.log(
     `[HYP_CLARIFICATION] trace=${trace} source=hypothesis_graph intent=${input.intent_code ?? '?'} ` +
@@ -379,9 +393,11 @@ export async function buildHypothesisClarificationOptions(
     `hypotheses_matched=${matchedIds.length} hypotheses_nearest=${nearestIds.length} hypotheses_used=${hypothesisIds.length} ` +
     `edges_pre_dedup=${edgesPreDedup} edges_post_dedup=${edgesPostDedup} codes_ranked=${rankedBuckets.length} ` +
     `collect_max=${collectMax} render_max=${renderMax} options=${options.length} ` +
+    `diversity=${distinctEmitted}/${hypothesisIds.length} ` +
     `options_by_hypothesis=${JSON.stringify(optionsByHypothesis)} ` +
     `keys=[${options.map((o) => o.observation_code).join(',')}]`,
   );
+
 
   return { options, source: 'hypothesis_graph', candidate_hypotheses: hypothesisIds.length };
 }
