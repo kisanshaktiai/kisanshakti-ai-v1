@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 18:40 UTC — option_selected=true may no longer coexist with
+ *   awaiting_clarification when the outgoing card repeats the option set the
+ *   farmer just answered; that turn is forced to decision_in_progress.
  * 2026-07-26 12:00 UTC — R4/R6: Q3 rescue now reads the canonical SessionSSOT;
  *   Layer 14 DB-first fallback hydrates empty CLARIFICATION_QUESTION responses
  *   from clarification_fallback_questions + system_config intro text (no raw

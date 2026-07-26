@@ -2,6 +2,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 18:40 UTC — Clarification selection is now a TERMINAL transition:
+ *   on a valid option tap we persist the canonical observation, clear the
+ *   clarification lock, zero pending_options, flip decision_state to
+ *   decision_in_progress and re-enter GraphRuntime in the same turn.
+ *   Added [CLARIFICATION_STATE_TRANSITION] / [CLARIFICATION_FAIL_CLOSED] /
+ *   [CLARIFICATION_REPEAT_BLOCKED] logs and a repeat-option guard on both
+ *   graph-gap re-ask branches.
  * 2026-07-26 14:10 UTC — Crop-code casing contract. MANDATORY_FALLBACK queried
  *   decision_rules with an uppercased crop (`RICE`) / `'SC'` default while the
  *   DB stores lower_snake full names ('rice','sugarcane','all') — only the 64
