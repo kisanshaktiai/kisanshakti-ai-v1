@@ -4,7 +4,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * CHANGE LOG (newest first):
+ *   2026-07-26 — F1/F3 audit: removed the `assertion_strength='LITERAL'`
+ *     exclusion from `resolveCropCanonicalObservations` (it hid 98.5% of the
+ *     curated IOM evidence). Peer injection is now ordered by
+ *     `decision/evidence-confidence.ts`. All code comparisons routed through
+ *     `utils/canonical-code.ts` (lower_snake SSOT).
  *   2026-07-22 — Phase 3b cutover: `bridgeToCropVocab` now uses the shared
+
  *     observation-index as the authoritative alias resolver when warm.
  *     Legacy per-request `observation_aliases` query is retained ONLY as a
  *     cold-boot fallback (index not yet preloaded). Shadow `[OBS_INDEX_DIFF]`
