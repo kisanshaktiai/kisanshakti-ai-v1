@@ -88,6 +88,8 @@ import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
 import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
 import { SymbolContract } from '../runtime/symbol-contract.ts';
+import { buildSessionSSOT, type SessionSSOT } from '../runtime/session-ssot.ts';
+
 
 type DecisionGraphStage =
   | 'POST_EVIDENCE_FREEZE'
