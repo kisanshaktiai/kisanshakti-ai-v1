@@ -560,9 +560,33 @@ export async function buildHypothesisClarificationOptions(
     `keys=[${options.map((o) => o.observation_code).join(',')}]`,
   );
 
+  console.log(`[OBS_LABEL_SOURCE] trace=${trace} lang=${lang} [${labelSources.join(',')}]`);
 
-  return { options, source: 'hypothesis_graph', candidate_hypotheses: hypothesisIds.length };
+  // Repeat-loop invariant: the option set MUST NOT be a subset of the keys the
+  // farmer was already asked about last turn — that is the classic
+  // "same card forever" loop.
+  if (pendingObs.length > 0 && options.length > 0) {
+    const pendingSet = new Set(pendingObs);
+    const allRepeat = options.every((o) => pendingSet.has(o.observation_code.toLowerCase()));
+    if (allRepeat) {
+      console.error(
+        `[CLARIFICATION_REPEAT_VIOLATION] trace=${trace} pending=${pendingObs.length} ` +
+        `emitted=${options.length} keys=[${options.map((o) => o.observation_code).join(',')}] ` +
+        `reason=option_set_identical_to_previous_turn`,
+      );
+    }
+  }
+
+  // Photo option is appended last on every clarification card (DB-sourced text).
+  const optionsWithPhoto = await withPhotoOption(input.supabase, lang, options);
+
+  return {
+    options: optionsWithPhoto as HypothesisClarificationOption[],
+    source: 'hypothesis_graph',
+    candidate_hypotheses: hypothesisIds.length,
+  };
 }
+
 
 async function loadConditions(supabase: any, hypIds: string[]): Promise<ConditionRow[]> {
   if (hypIds.length === 0) return [];
