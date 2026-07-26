@@ -442,9 +442,20 @@ export async function ensureObservationSelectorContract(
   if (type === 'DIAGNOSTIC_ESCALATION' && existingOptions.length === 0) {
     const options = await loadObservationSelectorOptions(effectiveCtx);
     if (options.length === 0) {
+      // Q2 — DB fallback questions before conceding an empty escalation card.
+      const fallbackRescue = await attemptDbClarificationRescue(response, effectiveCtx);
+      if (fallbackRescue.rescued) {
+        return {
+          promoted: true,
+          hydrated: true,
+          option_count: fallbackRescue.option_count,
+          observation_required: true,
+          reason: `rescued_${fallbackRescue.site}`,
+        };
+      }
       if (realObservationCount > 0) {
-        throw new Error(
-          `OBSERVATION_CONTRACT_VIOLATION: illegal_graph_exit real_observations=${realObservationCount} observation_required=false crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
+        console.warn(
+          `[OBSERVATION_CONTRACT_TRUE_ESCALATION] trace=${effectiveCtx.traceId ?? 'n/a'} reason=no_db_clarification_available intent=${effectiveCtx.intentCode} crop=${effectiveCtx.cropCode} stage=${effectiveCtx.growthStage}`,
         );
       }
       // No DB evidence surface at all — leave escalation as-is (better than
@@ -454,6 +465,7 @@ export async function ensureObservationSelectorContract(
       );
       return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'diagnostic_escalation_no_options_available' };
     }
+
     promoteToClarification(response, options, effectiveCtx);
     stampMetadata(response, options.length);
     response.metadata.graph_reason = ctx.graphReason || 'INSUFFICIENT_EVIDENCE';
