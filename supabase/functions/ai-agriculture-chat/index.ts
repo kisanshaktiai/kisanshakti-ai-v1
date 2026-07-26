@@ -2695,12 +2695,26 @@ serve(async (req) => {
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT CHECK: Clarification answered but still awaiting_clarification = BUG
+    // `option_selected=true` may only coexist with `awaiting_clarification` when
+    // the outgoing turn asks a genuinely NEW question (different option set).
     // ═══════════════════════════════════════════════════════════════════════════
     if (clarificationAnswered && computedDecisionState === 'awaiting_clarification') {
-      console.error(`🚨 [INVARIANT VIOLATION] Clarification answered but decision_state is still awaiting_clarification!`);
-      console.error(`   Forcing transition to 'decision_in_progress'`);
-      computedDecisionState = 'decision_in_progress';
+      const priorAskedKeys = new Set<string>(
+        ((sessionState?.pending_clarification_observation_keys || []) as string[])
+          .map((k) => String(k).trim().toLowerCase()),
+      );
+      const outgoingKeys = clarificationObservationKeys.map((k) => String(k).trim().toLowerCase());
+      const isRepeat =
+        outgoingKeys.length > 0 && outgoingKeys.every((k) => priorAskedKeys.has(k));
+      if (!isClarificationResponse || outgoingKeys.length === 0 || isRepeat) {
+        console.error(
+          `🚨 [INVARIANT VIOLATION] option_selected=true with decision_state=awaiting_clarification ` +
+          `(repeat_options=${isRepeat} outgoing=${outgoingKeys.length}) → forcing 'decision_in_progress'`,
+        );
+        computedDecisionState = 'decision_in_progress';
+      }
     }
+
 
     // FIX (repeated-option loop invariant): if the OUTGOING response is a
     // CLARIFICATION_QUESTION with pending options, decision_state MUST be
