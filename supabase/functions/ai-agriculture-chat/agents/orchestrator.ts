@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 14:10 UTC — Crop-code casing contract. MANDATORY_FALLBACK queried
+ *   decision_rules with an uppercased crop (`RICE`) / `'SC'` default while the
+ *   DB stores lower_snake full names ('rice','sugarcane','all') — only the 64
+ *   `all` rows could ever match. Now canonicalCropCode + short-code expansion,
+ *   `[FALLBACK_CROP_UNRESOLVED]` / `[FALLBACK_RULE_SCOPE]` probes, canonical
+ *   observation codes, and all 6 crop-code propagation sites canonicalized.
  * 2026-07-22 — Phase 3a hotfix: bio-contradiction reroute config reader now
  *   uses `config_key`/`config_value` columns. Previously the `key`/`value`
  *   query silently returned null so germination-intent reroute lists
@@ -360,7 +366,7 @@ import {
 } from './type-mappers.ts';
 
 // UNIFIED: Import canonical crop code normalizer
-import { normalizeCropCode as unifiedNormalizeCropCode } from '../utils/crop-code-normalizer.ts';
+import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STABILIZATION v4.0: LLM Output Validator + Crop Vocabulary Cache
@@ -5895,9 +5901,9 @@ export class AIAgentOrchestrator {
         try {
           const bioForGraph: BiologicalState | null = (landContext as any)?.biological_state ?? null;
           const cropCode =
-            bioForGraph?.crop_code?.toUpperCase?.() ||
-            canonicalContext?.crop_code ||
-            landContext?.current_crop?.toUpperCase() ||
+            canonicalCropCode(bioForGraph?.crop_code) ||
+            canonicalCropCode(canonicalContext?.crop_code) ||
+            canonicalCropCode(landContext?.current_crop) ||
             'UNKNOWN';
           const growthStage =
             bioForGraph?.growth_stage ||
@@ -6824,9 +6830,8 @@ export class AIAgentOrchestrator {
       // OUT OF SCOPE here — referencing it caused
       // "ReferenceError: cropCode is not defined" in the UNDERSTANDING_GATE.
       const _logCropCode =
-        (canonicalContext as any)?.crop_code ||
-        (landContext as any)?.current_crop?.toUpperCase?.() ||
-        (landContext as any)?.current_crop ||
+        canonicalCropCode((canonicalContext as any)?.crop_code) ||
+        canonicalCropCode((landContext as any)?.current_crop) ||
         'UNKNOWN';
       const _logGrowthStage =
         (canonicalContext as any)?.growth_stage ||
@@ -7381,7 +7386,7 @@ export class AIAgentOrchestrator {
       // Log crop context
       if (landContext) {
         auditLogger.logCropContext({
-          crop_code: landContext.current_crop?.toUpperCase(),
+          crop_code: canonicalCropCode(landContext.current_crop),
           growth_stage: landContext.growth_stage
         });
       }
@@ -7754,7 +7759,7 @@ export class AIAgentOrchestrator {
           language: options.language || 'mr',
           farmer_message: farmerMessage,
           observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
-          crop_code: inductionResult.crop?.symbol || landContext?.current_crop?.toUpperCase(),
+          crop_code: canonicalCropCode(inductionResult.crop?.symbol) || canonicalCropCode(landContext?.current_crop),
           clarification_type: nluClarificationType as any,
           clarification_options: finalClarificationOptions
         };
@@ -9247,7 +9252,7 @@ export class AIAgentOrchestrator {
               // CRITICAL: Nested crop object matching AuthoritativeLandState interface
               crop: {
                 current_crop: landContext.current_crop || null,
-                crop_code: landContext.current_crop?.toUpperCase() || null,
+                crop_code: canonicalCropCode(landContext.current_crop) || null,
                 growth_stage: landContext.growth_stage || null,
                 days_since_sowing: landContext.days_since_sowing || null,
                 sowing_date: landContext.sowing_date || null,
@@ -10399,29 +10404,56 @@ export class AIAgentOrchestrator {
       if (hasNoRecommendations && !hasNoPhoto) {
         console.warn(`\n⚠️ [MANDATORY_FALLBACK] No rules matched with photo present - generating SSOT clarification`);
         
-        const cropCode = landContext?.current_crop?.toUpperCase() || landContext?.crop_code?.toUpperCase() || 'SC';
+        // CANONICAL-CODE CONTRACT (2026-07-26): decision_rules.crop_code is stored
+        // lower_snake_case FULL NAME ('rice', 'sugarcane', 'all') — never uppercase,
+        // never a short code. The previous `.toUpperCase() || 'SC'` guaranteed zero
+        // crop-scoped rows (only the 64 `all` rows could ever match).
+        const rawCropForFallback =
+          (canonicalContext as any)?.crop_code ??
+          landContext?.current_crop ??
+          (landContext as any)?.crop_code ??
+          null;
+        let cropCode = canonicalCropCode(rawCropForFallback);
+        // Short codes ('sc', 'ctn'...) must be expanded to the DB's full name form.
+        if (cropCode && cropCode.length <= 5) {
+          const expanded = canonicalCropCode(getFullCropName(cropCode));
+          if (expanded && expanded !== cropCode) cropCode = expanded;
+        }
+        if (!cropCode || cropCode === 'all' || cropCode === 'unknown') {
+          console.warn(`[FALLBACK_CROP_UNRESOLVED] raw=${String(rawCropForFallback)} action=universal_rules_only`);
+          cropCode = '';
+        }
         const growthStage = (landContext?.growth_stage || 'TILLERING').toUpperCase();
         const userLanguage = options.language || 'mr';
         
         // SSOT: Load top observable_characteristics for this crop/stage from decision_rules
-        const { data: topRules } = await this.supabase
+        let rulesQuery = this.supabase
           .from('decision_rules')
           .select('observable_characteristics')
           .eq('is_active', true)
-          .or(`crop_code.eq.${cropCode},crop_code.eq.all`)
           .not('observable_characteristics', 'is', null)
           .limit(10);
+        rulesQuery = cropCode
+          ? rulesQuery.or(`crop_code.eq.${cropCode},crop_code.eq.all`)
+          : rulesQuery.eq('crop_code', 'all');
+        const { data: topRules } = await rulesQuery;
+
+        console.log(`[FALLBACK_RULE_SCOPE] crop=${cropCode || 'ALL_ONLY'} rows=${(topRules || []).length}`);
         
-        // Extract unique observation codes
+        // Extract unique observation codes (lower_snake_case canonical form)
         const obsCodesSet = new Set<string>();
         for (const rule of topRules || []) {
           const chars = rule.observable_characteristics;
           if (Array.isArray(chars)) {
             chars.slice(0, 3).forEach((c: string) => {
-              if (typeof c === 'string') obsCodesSet.add(c.toUpperCase());
+              if (typeof c === 'string') {
+                const canon = canonicalObsCode(c);
+                if (canon) obsCodesSet.add(canon);
+              }
             });
           }
         }
+        
         
         // Limit to top 4 + photo
         const obsCodes = Array.from(obsCodesSet).slice(0, 4);
