@@ -403,6 +403,9 @@ serve(async (req) => {
   
   console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
   console.log(`🔍 [${traceId}] REQUEST START`);
+  // R6 — turn boundary marker (paired with [TURN_END]) for log-replay audits.
+  console.log(`[TURN_START] trace=${traceId} at=${new Date().toISOString()}`);
+
 
   try {
     // Parse request body
