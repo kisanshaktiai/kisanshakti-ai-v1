@@ -6720,7 +6720,15 @@ export class AIAgentOrchestrator {
                 crop_stage: growthStage,
                 DAS: (landContext as any)?.days_since_sowing ?? (landContext as any)?.das ?? null,
                 language: options.language || 'mr',
+                // Current-turn grounded evidence + last turn's asked keys, so
+                // the diagnosis-first card advances instead of repeating.
+                perceived_observations: Array.isArray((this as any)._lastRealObservations)
+                  ? (this as any)._lastRealObservations
+                  : [],
+                pending_obs_keys:
+                  ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
                 max: 5,
+
               });
               const contractOptions = graphClarification.options;
               if (contractOptions.length > 0) {
