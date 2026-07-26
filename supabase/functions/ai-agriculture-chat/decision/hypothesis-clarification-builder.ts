@@ -609,29 +609,103 @@ async function loadTranslations(
   supabase: any,
   codes: string[],
   lang: string,
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+): Promise<Map<string, { text: string; source: string }>> {
+  const out = new Map<string, { text: string; source: string }>();
   if (codes.length === 0) return out;
+  // Case-insensitive lookup: observation_translations may store either casing.
+  const variants = Array.from(
+    new Set(codes.flatMap((c) => [c, c.toLowerCase(), c.toUpperCase()]).filter(Boolean)),
+  );
   const { data, error } = await supabase
     .from('observation_translations')
     .select('observation_code, display_text, description_text, language_code')
-    .in('observation_code', codes)
+    .in('observation_code', variants)
     .in('language_code', Array.from(new Set([lang, 'en'])));
   if (error) {
     console.warn(`[HYP_CLARIFICATION] translation load failed: ${error.message}`);
     return out;
   }
-  const fallback = new Map<string, string>();
+  const fallback = new Map<string, { text: string; source: string }>();
   for (const row of data ?? []) {
     const key = String(row.observation_code).toLowerCase();
     const text = String(row.display_text || row.description_text || '').trim();
     if (!text) continue;
-    if (row.language_code === lang) out.set(key, text);
-    else if (row.language_code === 'en') fallback.set(key, text);
+    if (row.language_code === lang) out.set(key, { text, source: `translation_${lang}` });
+    else if (row.language_code === 'en') fallback.set(key, { text, source: 'translation_en' });
   }
   for (const [k, v] of fallback) if (!out.has(k)) out.set(k, v);
   return out;
 }
+
+/**
+ * PHOTO OPTION (DB-sourced).
+ * Appends the terminal "send a photo" option to any clarification option list.
+ * The label text lives in `system_config` (`clarification_photo_option_<lang>`
+ * with an `_en` fallback) — no farmer-visible string is hardcoded here.
+ * The option carries `observation_key = 'photo_upload'`, which the frontend
+ * (`ClarificationOptionsUI`) already routes to the camera instead of sending a
+ * chat message. It is never diagnostic evidence.
+ */
+export const PHOTO_OPTION_KEY = 'photo_upload';
+
+export async function buildPhotoOption(
+  supabase: any,
+  lang: string,
+): Promise<HypothesisClarificationOption | null> {
+  try {
+    const { data } = await supabase
+      .from('system_config')
+      .select('config_key, config_value')
+      .in('config_key', [`clarification_photo_option_${lang}`, 'clarification_photo_option_en']);
+    const byKey = new Map<string, any>();
+    for (const r of data ?? []) byKey.set(String(r.config_key), r.config_value);
+    const raw =
+      byKey.get(`clarification_photo_option_${lang}`) ??
+      byKey.get('clarification_photo_option_en') ??
+      null;
+    const label = typeof raw === 'object' && raw !== null ? String(raw.value ?? '') : String(raw ?? '');
+    if (!label.trim()) {
+      console.warn(
+        `[PHOTO_OPTION_MISSING] system_config clarification_photo_option_${lang} / _en not seeded — photo option skipped`,
+      );
+      return null;
+    }
+    return {
+      observation_id: PHOTO_OPTION_KEY,
+      observation_code: PHOTO_OPTION_KEY,
+      observation_key: PHOTO_OPTION_KEY,
+      hypothesis_id: 'N/A',
+      hypothesis_condition_id: 'N/A',
+      display_text: label.trim(),
+      label: label.trim(),
+      value: PHOTO_OPTION_KEY,
+      confidence_weight: 0,
+      source: 'hypothesis_graph',
+      hypothesis_ids: [],
+      is_discriminator: false,
+      is_required: false,
+      aggregate_score: 0,
+    };
+  } catch (e) {
+    console.warn(`[PHOTO_OPTION_SKIP] ${(e as Error).message}`);
+    return null;
+  }
+}
+
+/** Appends the photo option to a list (idempotent, always last). */
+export async function withPhotoOption<T extends { observation_key?: string }>(
+  supabase: any,
+  lang: string,
+  options: T[],
+): Promise<T[]> {
+  if (!Array.isArray(options) || options.length === 0) return options;
+  if (options.some((o) => String(o?.observation_key || '').toLowerCase() === PHOTO_OPTION_KEY)) {
+    return options;
+  }
+  const photo = await buildPhotoOption(supabase, lang);
+  return photo ? [...options, photo as unknown as T] : options;
+}
+
 
 function extractObservationCodes(condition: ConditionRow): string[] {
   const out: string[] = [];
