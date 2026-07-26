@@ -44,7 +44,10 @@ export interface HypothesisClarificationInput {
    */
   pending_obs_keys?: ReadonlyArray<string>;
   trace_id?: string | null;
+  /** R3b — canonical SessionSSOT (Layer 3 lock) as primary context source. */
+  session_ssot?: SessionSSOT | null;
 }
+
 
 
 export interface HypothesisClarificationOption {
