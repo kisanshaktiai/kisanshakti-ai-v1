@@ -7,7 +7,7 @@
  */
 
 import { assertEquals, assertRejects } from 'https://deno.land/std@0.208.0/assert/mod.ts';
-import { ensureObservationSelectorContract } from '../runtime/observation-selector-contract.ts';
+import { ensureObservationSelectorContract } from '../../../../supabase/functions/ai-agriculture-chat/runtime/observation-selector-contract.ts';
 
 function emptyStageFallback(mappedObservation?: string) {
   return {

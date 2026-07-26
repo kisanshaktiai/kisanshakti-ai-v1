@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 12:00 UTC — R4/R6: Q3 rescue now reads the canonical SessionSSOT;
+ *   Layer 14 DB-first fallback hydrates empty CLARIFICATION_QUESTION responses
+ *   from clarification_fallback_questions + system_config intro text (no raw
+ *   i18n keys, no LLM); added [TURN_START]/[TURN_END] boundary logs.
  * 2026-07-09 03:15 UTC — FIX 2 (GRAPH_HANDOFF_CHECK). New audit log in
  *   [ORCHESTRATOR_EXIT] compares snapshot vs canonical-state vs exit
  *   counters and emits [GRAPH_CONTRACT_VIOLATION] on drift (no throw;

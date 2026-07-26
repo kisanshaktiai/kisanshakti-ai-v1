@@ -15,17 +15,17 @@ import { assertEquals, assertThrows } from 'https://deno.land/std@0.208.0/assert
 import {
   buildObservationState,
   evaluateObservationGate,
-} from '../runtime/observation-state.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/runtime/observation-state.ts';
 import {
   AuthoredObservationSet,
   ObservationAuthority,
-} from '../utils/observation-authority.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/utils/observation-authority.ts';
 import {
   assertObservationRequiredWhenNoHypothesis,
   GraphContractViolation,
-} from '../runtime/graph-contracts.ts';
-import { shouldTriggerClarificationFirst } from '../agents/clarification-strategy.ts';
-import { runGraphRuntime } from '../runtime/graph-runtime.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/runtime/graph-contracts.ts';
+import { shouldTriggerClarificationFirst } from '../../../../supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts';
+import { runGraphRuntime } from '../../../../supabase/functions/ai-agriculture-chat/runtime/graph-runtime.ts';
 
 Deno.test('T1 — 0 confirmed + N inferred → WAITING_FOR_OBSERVATION', () => {
   const set = new AuthoredObservationSet();

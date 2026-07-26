@@ -25,7 +25,7 @@ import {
   buildGraphRuntimeSnapshot,
   assertSnapshotNotCorrupt,
   invertRuleMapping,
-} from '../runtime/graph-snapshot.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/runtime/graph-snapshot.ts';
 
 Deno.test('Test 1 — Engine A rule promotes to hypothesis via ruleToHypothesis map', () => {
   const snap = buildGraphRuntimeSnapshot({

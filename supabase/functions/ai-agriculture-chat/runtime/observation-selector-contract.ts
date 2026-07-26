@@ -1,5 +1,9 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-26 12:00 UTC — R3a: hydrate crop/stage/DAS/intent/language from the
+ *   canonical SessionSSOT (response.metadata.session_ssot or orchestrator
+ *   state) before any contract check; SSOT_LOCK_LOST now only fires on a real
+ *   upstream lock loss. SessionSSOT is forwarded to the clarification builder.
  * 2026-07-26 00:00 UTC — Q1/Q2: SSOT-lock invariant on the degrade path plus a
  *   two-stage DB rescue (hypothesis-graph options → clarification_fallback_questions)
  *   before any DIAGNOSTIC_ESCALATION degrade. Escalation is now last resort only.
