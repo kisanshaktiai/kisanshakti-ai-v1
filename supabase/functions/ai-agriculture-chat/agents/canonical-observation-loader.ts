@@ -36,6 +36,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { ObservationKey } from '../decision/observation-ontology.ts';
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
+import { canonicalStageKey, canonicalCropCode } from '../utils/canonical-code.ts';
+import { getStageFamilyFromDB } from '../utils/stage-knowledge-cache.ts';
 
 export const CANONICAL_LOADER_VERSION = '3.0.0'; // v3: ZERO hardcoded labels
 
@@ -94,9 +96,10 @@ async function loadStagePriorityCodesFromDB(
   client: any,
   stage: string,
   limit: number,
+  crop?: string | null,
 ): Promise<string[]> {
-  const stages = expandStageSynonyms(stage).filter((s) => s && s !== 'all');
-  const cacheKey = `${stages.join('|')}::${limit}`;
+  const stages = expandStageSynonyms(stage, crop).filter((s) => s && s !== 'all');
+  const cacheKey = `${canonicalCropCode(crop)}::${stages.join('|')}::${limit}`;
   const hit = _stagePriorityCache.get(cacheKey);
   if (hit && Date.now() - hit.at < STAGE_PRIORITY_CACHE_TTL_MS) return hit.codes;
 
@@ -242,7 +245,8 @@ export async function getObservationKeyLabels(key: string, language: string = 'e
 export async function getStageObservationKeys(
   stage: string,
   language: string,
-  maxKeys: number = 4
+  maxKeys: number = 4,
+  crop?: string | null,
 ): Promise<ClarificationOption[]> {
   const client = getSupabaseClient();
   if (!client) {
@@ -250,7 +254,7 @@ export async function getStageObservationKeys(
     return [];
   }
 
-  const priorityKeys = await loadStagePriorityCodesFromDB(client, stage, maxKeys);
+  const priorityKeys = await loadStagePriorityCodesFromDB(client, stage, maxKeys, crop);
   const keysToLoad = priorityKeys.slice(0, maxKeys);
   if (keysToLoad.length === 0) return [];
 
@@ -329,28 +333,26 @@ const STAGE_NORMALIZATION_MAP: Record<string, string> = {
   'post_harvest': 'post_harvest',
 };
 
-// R3 FIX: expose ALL biologically equivalent stages so DB queries don't drop rows
-// curated against synonymous names (e.g. SEEDLING ↔ nursery ↔ germination).
-const STAGE_SYNONYM_GROUPS: Record<string, string[]> = {
-  seedling:     ['seedling', 'nursery', 'germination', 'emergence'],
-  germination:  ['germination', 'nursery', 'seedling', 'emergence'],
-  nursery:      ['nursery', 'seedling', 'germination'],
-  emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
-  vegetative:   ['vegetative', 'tillering'],
-  tillering:    ['tillering', 'vegetative'],
-  flowering:    ['flowering', 'reproductive', 'grand_growth'],
-  reproductive: ['reproductive', 'flowering', 'grand_growth'],
-  grand_growth: ['grand_growth', 'flowering', 'reproductive'],
-  maturity:     ['maturity', 'ripening', 'maturation'],
-  ripening:     ['ripening', 'maturity', 'maturation'],
-  maturation:   ['maturation', 'maturity', 'ripening'],
-  harvest:      ['harvest', 'harvesting'],
-};
-
-function expandStageSynonyms(stage: string): string[] {
-  const key = (stage || '').toLowerCase().trim().replace(/[\s-]/g, '_');
-  const syn = STAGE_SYNONYM_GROUPS[key] || [key];
-  return Array.from(new Set([...syn, 'all'].filter(Boolean)));
+// 2026-07-26 (forensic audit F2): the hardcoded `STAGE_SYNONYM_GROUPS` map was
+// DELETED. Stage families are agronomy and their SSOT is `public.crop_stage_graph`,
+// surfaced by `utils/stage-knowledge-cache.ts::getStageFamilyFromDB`.
+//
+// Cache miss (unloaded cache, or no curated row for this crop×stage) degrades to
+// the singleton `[stage, 'all']` and logs `[CANON_LOADER_STAGE_MISS]`. We NEVER
+// substitute a static family.
+function expandStageSynonyms(stage: string, crop?: string | null): string[] {
+  const key = canonicalStageKey(stage);
+  if (!key) return ['all'];
+  const cropKey = canonicalCropCode(crop);
+  const fam = cropKey ? getStageFamilyFromDB(cropKey, key) : null;
+  if (!fam || fam.length === 0) {
+    console.log(
+      `[CANON_LOADER_STAGE_MISS] crop=${cropKey || 'none'} stage=${key} ` +
+      `source=crop_stage_graph action=singleton_plus_all`
+    );
+    return Array.from(new Set([key, 'all']));
+  }
+  return Array.from(new Set([...fam.map((x) => canonicalStageKey(x)).filter(Boolean), key, 'all']));
 }
 
 function normalizeStageForDB(stage: string): string {
@@ -381,7 +383,7 @@ export async function loadObservationKeysFromDB(
     const crop = cropCode.toLowerCase();
     // R3 FIX: pass ALL synonymous stages (e.g. seedling, nursery, germination) so
     // curated rows under any alias survive the filter.
-    const stageVariants = expandStageSynonyms(stage).concat(expandStageSynonyms(dbStage));
+    const stageVariants = expandStageSynonyms(stage, crop).concat(expandStageSynonyms(dbStage, crop));
     const uniqueStageVariants = Array.from(new Set(stageVariants.filter(Boolean)));
 
     console.log(`[CanonicalLoader] Querying for crop=${crop}, stages=${uniqueStageVariants.join(',')}`);
