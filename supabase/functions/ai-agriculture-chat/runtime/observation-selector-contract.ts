@@ -102,6 +102,8 @@ export async function loadObservationSelectorOptions(
       max: 6,
       confirmed_observations: ctx.confirmedObservationCodes ?? [],
       trace_id: ctx.traceId,
+      session_ssot: ctx.session_ssot ?? null,
+
     });
     return graph.options.map((o) => ({
       value: o.value,
