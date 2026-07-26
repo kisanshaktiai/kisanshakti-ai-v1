@@ -2982,7 +2982,7 @@ export class AIAgentOrchestrator {
 
               max: 5,
             });
-            const clarificationOptions = graphClarification.options.map((o) => ({
+            const clarificationOptions = _dropRepeatOptions(graphClarification.options.map((o) => ({
               label: o.label,
               value: o.value,
               observation_key: o.observation_key,
@@ -2992,7 +2992,8 @@ export class AIAgentOrchestrator {
               hypothesis_condition_id: o.hypothesis_condition_id,
               graph_version: 'hypothesis_graph_v1',
               source: 'hypothesis_graph',
-            }));
+            })), optionEvidence.real_codes);
+            if (clarificationOptions.length > 0) {
             console.error(
               `[GRAPH_CONTRACT_ERROR] trace=${traceId} candidate_hypotheses=${optionGraphResolution.hypotheses.length} ` +
               `matched_rules=0 reason=NO_HYPOTHESIS_RULE_EDGE options=${clarificationOptions.length}`,
