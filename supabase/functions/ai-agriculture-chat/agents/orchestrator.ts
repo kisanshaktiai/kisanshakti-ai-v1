@@ -4999,16 +4999,23 @@ export class AIAgentOrchestrator {
       // T3 · DB-DRIVEN INTENT→OBSERVATION FALLBACK (no hardcoded agronomy)
       //
       // If the extractor produced no observations but the LLM identified an
-      // intent, look up LITERAL observation peers for that (intent, crop) in
+      // intent, look up observation peers for that (intent, crop) in
       // `intent_observation_mapping`. The DB is the ONLY source of truth for
       // this mapping — no hardcoded `intentToSymptom` / `advisoryIntents` lists.
       //
+      // 2026-07-26 (forensic audit F1) — the `assertion_strength='LITERAL'`
+      // exclusion was DELETED here too. Strength is now a WEIGHT scored by
+      // `decision/evidence-confidence.ts`; injection is bounded by the
+      // DB-configured `evidence_iom_fallback_max_inject` cap rather than by
+      // an agronomically arbitrary strength filter.
+      //
       // Fallback ordering:
-      //   1) rows scoped to landContext.current_crop with assertion_strength=LITERAL
-      //   2) rows scoped to crop_code='universal' (advisory intents like
-      //      FERTILIZER_SCHEDULE, HARVEST_TIMING) with LITERAL strength
+      //   1) rows scoped to landContext.current_crop, evidence-ranked
+      //   2) rows scoped to crop_code='universal'/'all' (advisory intents like
+      //      FERTILIZER_SCHEDULE, HARVEST_TIMING), evidence-ranked
       //   3) intent_code injected as observation only if it appears in
       //      observation_master (kept for advisory-direct rule matching)
+
       // ═══════════════════════════════════════════════════════════════════════════
       if (allObservationsForPreAuth.size === 0 && landContext && landContext.current_crop) {
         const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
