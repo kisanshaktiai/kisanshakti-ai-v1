@@ -23,6 +23,8 @@ import { resolveObservationSymbols } from './symbol-resolver.ts';
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { stagesEquivalent } from '../runtime/stage-family-shim.ts';
 import { classifyEvidence } from '../runtime/evidence-classifier.ts';
+import type { SessionSSOT } from '../runtime/session-ssot.ts';
+
 
 export interface HypothesisClarificationInput {
   supabase: any;
@@ -42,7 +44,10 @@ export interface HypothesisClarificationInput {
    */
   pending_obs_keys?: ReadonlyArray<string>;
   trace_id?: string | null;
+  /** R3b — canonical SessionSSOT (Layer 3 lock) as primary context source. */
+  session_ssot?: SessionSSOT | null;
 }
+
 
 
 export interface HypothesisClarificationOption {
@@ -139,10 +144,14 @@ export async function buildHypothesisClarificationOptions(
   input: HypothesisClarificationInput,
 ): Promise<HypothesisClarificationResult> {
   const trace = input.trace_id ?? `hyp_clar_${Date.now()}`;
-  const crop = String(input.crop_code || input.land_context?.current_crop || '').trim();
-  const stage = input.crop_stage ?? input.land_context?.growth_stage ?? null;
-  const das = input.DAS ?? input.land_context?.days_since_sowing ?? null;
-  const lang = String(input.language || 'en').toLowerCase();
+  // R3b — SessionSSOT is the primary context source; explicit fields win only
+  // when the caller passed them; land_context remains the last fallback.
+  const _ssot = (input as any).session_ssot ?? null;
+  const crop = String(input.crop_code || _ssot?.crop_code || input.land_context?.current_crop || '').trim();
+  const stage = input.crop_stage ?? _ssot?.growth_stage ?? input.land_context?.growth_stage ?? null;
+  const das = input.DAS ?? _ssot?.days_since_sowing ?? input.land_context?.days_since_sowing ?? null;
+  const lang = String(input.language || _ssot?.language || 'en').toLowerCase();
+
   const renderMaxIn = input.max ?? 4;
   const tun = await readTunables(input.supabase, renderMaxIn);
   const renderMax = tun.render_max;

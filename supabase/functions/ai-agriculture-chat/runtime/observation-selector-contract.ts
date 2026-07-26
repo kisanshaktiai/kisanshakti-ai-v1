@@ -36,6 +36,8 @@
  */
 
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
+import { getSessionSSOT, type SessionSSOT } from './session-ssot.ts';
+
 
 export interface ObservationOption {
   value: string;
@@ -69,6 +71,14 @@ export interface ObservationContractContext {
    * exhaustion vs empty-decision promotion vs plain hydration.
    */
   graphReason?: string | null;
+  /**
+   * R3a — canonical SessionSSOT built at Layer 3. When present it is the
+   * authoritative source of crop/stage/DAS/intent/language.
+   */
+  session_ssot?: SessionSSOT | null;
+  /** Optional orchestrator instance/state used to resolve the SSOT lazily. */
+  orchestratorState?: any;
+
 }
 
 /**
@@ -92,6 +102,8 @@ export async function loadObservationSelectorOptions(
       max: 6,
       confirmed_observations: ctx.confirmedObservationCodes ?? [],
       trace_id: ctx.traceId,
+      session_ssot: ctx.session_ssot ?? null,
+
     });
     return graph.options.map((o) => ({
       value: o.value,
@@ -236,6 +248,24 @@ export async function attemptDbClarificationRescue(
     return { rescued: false, site: null, option_count: 0 };
   }
 
+  // R3a — SSOT hydration (see ensureObservationSelectorContract for rationale).
+  {
+    const _ssot = (ctx as any).session_ssot ?? getSessionSSOT(response, (ctx as any).orchestratorState ?? null);
+    if (_ssot) {
+      ctx = {
+        ...ctx,
+        cropCode: ctx.cropCode || _ssot.crop_code,
+        growthStage: ctx.growthStage || _ssot.growth_stage,
+        daysSinceSowing: typeof ctx.daysSinceSowing === 'number' ? ctx.daysSinceSowing : _ssot.days_since_sowing,
+        intentCode: ctx.intentCode || _ssot.intent_code,
+        language: ctx.language || _ssot.language,
+        traceId: ctx.traceId || _ssot.trace_id,
+      };
+    }
+  }
+
+
+
   const graphOptions = await loadObservationSelectorOptions(ctx);
   if (graphOptions.length > 0) {
     promoteToClarification(response, graphOptions, ctx);
@@ -309,6 +339,28 @@ export async function ensureObservationSelectorContract(
   if (!response || typeof response !== 'object') {
     return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: null };
   }
+
+  // ── R3a — SSOT hydration: if the caller supplied session_ssot OR the
+  // response metadata carries it, it is the authoritative source of
+  // crop/stage/DAS/intent/language before the individually-passed fields.
+  // The existing SSOT_LOCK_LOST invariant then acts as a REAL safety net —
+  // it only fires if SSOT hydration itself failed (upstream bug).
+  {
+    const _ssot = (ctx as any).session_ssot ?? getSessionSSOT(response, (ctx as any).orchestratorState ?? null);
+    if (_ssot) {
+      ctx = {
+        ...ctx,
+        cropCode: ctx.cropCode || _ssot.crop_code,
+        growthStage: ctx.growthStage || _ssot.growth_stage,
+        daysSinceSowing: typeof ctx.daysSinceSowing === 'number' ? ctx.daysSinceSowing : _ssot.days_since_sowing,
+        intentCode: ctx.intentCode || _ssot.intent_code,
+        language: ctx.language || _ssot.language,
+        traceId: ctx.traceId || _ssot.trace_id,
+      };
+    }
+  }
+
+
 
   const responseObservationCodes = extractConfirmedObservationCodes(response);
   const explicitObservationCodes = (ctx.confirmedObservationCodes ?? [])

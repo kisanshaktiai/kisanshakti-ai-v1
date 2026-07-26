@@ -47,6 +47,8 @@ import type { OrchestratorResponse } from './agents/orchestrator.ts';
 import { blockStageWriteIfLocked, isBiologicalStateLocked } from './agents/biological-state.ts';
 import { getRuntimeTraceCollector, resetRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
 import { ensureObservationSelectorContract, attemptDbClarificationRescue } from './runtime/observation-selector-contract.ts';
+import { getSessionSSOT } from './runtime/session-ssot.ts';
+
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
@@ -401,6 +403,9 @@ serve(async (req) => {
   
   console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
   console.log(`🔍 [${traceId}] REQUEST START`);
+  // R6 — turn boundary marker (paired with [TURN_END]) for log-replay audits.
+  console.log(`[TURN_START] trace=${traceId} at=${new Date().toISOString()}`);
+
 
   try {
     // Parse request body
@@ -1871,30 +1876,41 @@ serve(async (req) => {
             // graph → clarification_fallback_questions) with the full Land
             // SSOT lock. Escalation is last resort only.
             // ─────────────────────────────────────────────────────────────
+            // R4a — SessionSSOT is the authoritative source for the rescue
+            // context; the loose per-field locals are only fallbacks now.
+            const _q3Ssot = getSessionSSOT(orchestratorResponse, orch);
             const _intentCodeResolved =
+              _q3Ssot?.intent_code ??
               (orchestratorResponse as any)?.metadata?.intent_code ??
               (orchestratorResponse as any)?.intent ??
               (orch as any)?._lastIntentCode ??
               null;
+            const _q3Crop = _q3Ssot?.crop_code ?? finalCropName;
+            const _q3Stage = _q3Ssot?.growth_stage ?? finalGrowthStage;
+            const _q3Das = typeof _q3Ssot?.days_since_sowing === 'number'
+              ? _q3Ssot.days_since_sowing
+              : finalDaysSinceSowing;
             const _ssotLockValid = !!(
-              finalCropName && finalGrowthStage &&
-              typeof finalDaysSinceSowing === 'number' && _intentCodeResolved
+              _q3Crop && _q3Stage &&
+              typeof _q3Das === 'number' && _intentCodeResolved
             );
             if (_ssotLockValid && orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
               try {
                 const _rescue = await attemptDbClarificationRescue(orchestratorResponse, {
                   supabase,
-                  cropCode: finalCropName,
-                  growthStage: finalGrowthStage,
-                  language: detectedLanguage,
+                  cropCode: _q3Crop,
+                  growthStage: _q3Stage,
+                  language: _q3Ssot?.language ?? detectedLanguage,
                   traceId,
                   intentCode: _intentCodeResolved,
-                  daysSinceSowing: finalDaysSinceSowing,
+                  daysSinceSowing: _q3Das,
                   realObservationCount: Array.isArray((orch as any)?._lastRealObservations)
                     ? (orch as any)._lastRealObservations.length
                     : 0,
                   graphReason: (orch as any)?._graphScopeBlocked?.reason ?? null,
-                });
+                  session_ssot: _q3Ssot,
+                } as any);
+
                 if (_rescue.rescued) {
                   console.log(
                     `   ✅ [Q3] DB clarification rescue before escalation site=${_rescue.site} options=${_rescue.option_count}`,
@@ -1905,7 +1921,7 @@ serve(async (req) => {
               }
             } else if (!_ssotLockValid) {
               console.error(
-                `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${!finalCropName ? 'crop_code' : !finalGrowthStage ? 'growth_stage' : typeof finalDaysSinceSowing !== 'number' ? 'days_since_sowing' : 'intent_code'} trace=${traceId}`,
+                `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${!_q3Crop ? 'crop_code' : !_q3Stage ? 'growth_stage' : typeof _q3Das !== 'number' ? 'days_since_sowing' : 'intent_code'} trace=${traceId}`,
               );
             }
 
@@ -2151,8 +2167,85 @@ serve(async (req) => {
       }
       } // End of STAGE_FALLBACK else block
     } else {
+      // ═══════════════════════════════════════════════════════════════════════
+      // R4b · Layer 14 — DB-first fallback for empty CLARIFICATION_QUESTION.
+      // Contract: no raw i18n keys ever reach the frontend. If the pipeline
+      // finished with CLARIFICATION_QUESTION but zero comm_keys / zero options,
+      // query DB directly for fallback questions + intro text, populate the
+      // response, and log the recovery. LLM is NOT invoked here; all text is
+      // DB-sourced pre-translated content.
+      // ═══════════════════════════════════════════════════════════════════════
+      try {
+        const response: any = orchestratorResponse as any;
+        const _l14Ssot = getSessionSSOT(response, orch);
+        const _isClarification = response?.type === 'CLARIFICATION_QUESTION';
+        const _hasComm = !!response?.communication?.main_message
+          && Object.keys(response.communication.main_message).length > 0;
+        const _hasOptions = (Array.isArray(response?.options) && response.options.length > 0)
+          || (Array.isArray(response?.question?.options) && response.question.options.length > 0);
+
+        if (_isClarification && !_hasComm && !_hasOptions && _l14Ssot) {
+          const _lang = _l14Ssot.language || 'en';
+
+          // 1. Load fallback questions using the same DB-driven mapper as R3.
+          const _rescueResult = await attemptDbClarificationRescue(response, {
+            supabase,
+            cropCode: _l14Ssot.crop_code,
+            growthStage: _l14Ssot.growth_stage,
+            language: _lang,
+            traceId: _l14Ssot.trace_id,
+            intentCode: _l14Ssot.intent_code,
+            daysSinceSowing: _l14Ssot.days_since_sowing,
+            realObservationCount: Array.isArray((orch as any)?._lastRealObservations)
+              ? (orch as any)._lastRealObservations.length
+              : 0,
+            graphReason: (response?.decision_output as any)?.graph_gap ?? null,
+            session_ssot: _l14Ssot,
+          } as any);
+
+          // 2. Load intro sentence template from system_config (DB, pre-translated).
+          let _introText: string | null = null;
+          try {
+            const { data: _introRow } = await supabase
+              .from('system_config')
+              .select('config_key, config_value')
+              .in('config_key', [`clarification_intro_${_lang}`, 'clarification_intro_en']);
+            const _byKey = new Map<string, any>();
+            for (const r of _introRow ?? []) _byKey.set(String(r.config_key), r.config_value);
+            const _pick = _byKey.get(`clarification_intro_${_lang}`) ?? _byKey.get('clarification_intro_en') ?? null;
+            _introText = typeof _pick === 'object' && _pick !== null ? (_pick.value ?? null) : (_pick ?? null);
+          } catch (introErr) {
+            console.warn(`[POSTPROC_DB_FALLBACK] intro load failed: ${(introErr as Error).message}`);
+          }
+
+          // 3. Populate response.communication with DB intro text (never a raw i18n key).
+          if (_introText) {
+            response.communication = response.communication && typeof response.communication === 'object'
+              ? response.communication
+              : {};
+            response.communication.main_message = {
+              text: String(_introText),
+              language: _lang,
+              source: 'system_config',
+            };
+            console.log(
+              `[POSTPROC_DB_FALLBACK] site=intro_from_system_config intent=${_l14Ssot.intent_code} ` +
+              `language=${_lang} rescue_options=${_rescueResult?.option_count ?? 0} trace=${_l14Ssot.trace_id}`,
+            );
+          } else {
+            console.error(
+              `[POSTPROC_DB_FALLBACK] MISSING SYSTEM_CONFIG intro clarification_intro_${_lang} / clarification_intro_en — ` +
+              `frontend may render raw key. Seed system_config with R5.`,
+            );
+          }
+        }
+      } catch (l14Err) {
+        console.warn(`[POSTPROC_DB_FALLBACK] non-fatal: ${(l14Err as Error).message}`);
+      }
+
       // Non-decision responses (clarification, photo request, etc.)
       responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+
     }
     
     // Verify language consistency
@@ -2695,8 +2788,25 @@ serve(async (req) => {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
     }
 
+    // R6 — turn boundary marker: final farmer-visible outcome of this turn.
+    {
+      const _rp: any = responsePayload as any;
+      const _endSsot = getSessionSSOT(orchestratorResponse, orch);
+      console.log(
+        `[TURN_END] trace=${traceId} type=${(orchestratorResponse as any)?.type ?? 'n/a'} ` +
+        `decision_status=${(orchestratorResponse as any)?.decision_output?.status ?? 'none'} ` +
+        `graph_gap=${(orchestratorResponse as any)?.decision_output?.graph_gap ?? 'none'} ` +
+        `options=${Array.isArray(_rp?.metadata?.clarification_options) ? _rp.metadata.clarification_options.length : 0} ` +
+        `crop=${_endSsot?.crop_code ?? 'n/a'} stage=${_endSsot?.growth_stage ?? 'n/a'} ` +
+        `das=${_endSsot?.days_since_sowing ?? 'n/a'} intent=${_endSsot?.intent_code ?? 'n/a'} ` +
+        `content_len=${typeof responseContent === 'string' ? responseContent.length : 0} ` +
+        `ms=${Date.now() - startTime}`,
+      );
+    }
+
     return new Response(
       JSON.stringify(responsePayload),
+
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

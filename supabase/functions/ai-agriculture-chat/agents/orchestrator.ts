@@ -88,6 +88,8 @@ import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
 import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
 import { SymbolContract } from '../runtime/symbol-contract.ts';
+import { buildSessionSSOT, type SessionSSOT } from '../runtime/session-ssot.ts';
+
 
 type DecisionGraphStage =
   | 'POST_EVIDENCE_FREEZE'
@@ -1460,7 +1462,21 @@ export class AIAgentOrchestrator {
       console.warn(`[INVARIANT_RECOVERY_FAILED] trace=${traceId} err=${(invErr as Error).message}`);
     }
 
+    // R2 — attach the immutable SessionSSOT to the response so every layer
+    // downstream of the orchestrator (Q3 rescue, L14 PostProcessor) reads the
+    // SAME canonical crop/stage/DAS/intent/language.
+    try {
+      const _ssot = (this as any)._sessionSSOT as SessionSSOT | undefined;
+      if (_ssot && response) {
+        (response as any).metadata = (response as any).metadata && typeof (response as any).metadata === 'object'
+          ? (response as any).metadata
+          : {};
+        (response as any).metadata.session_ssot = _ssot;
+      }
+    } catch { /* attach is additive; never fatal */ }
+
     return response;
+
   }
 
   /**
@@ -3721,6 +3737,35 @@ export class AIAgentOrchestrator {
         });
       } catch {/* trace must not throw */}
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // R2 — SessionSSOT establishment (Layer 3 lock).
+      // Built ONCE per turn from the frozen CanonicalContext (crop/stage/DAS,
+      // itself sourced from BIO_STATE_LOCKED) + the locked intent + language.
+      // Immutable; every downstream layer reads it via getSessionSSOT().
+      // ═══════════════════════════════════════════════════════════════════════
+      try {
+        const _ssot = buildSessionSSOT({
+          crop_code: (canonicalContext as any)?.crop_code ?? (landContext as any)?.current_crop ?? null,
+          growth_stage: (canonicalContext as any)?.growth_stage
+            ?? (landContext as any)?.current_crop_stage
+            ?? (landContext as any)?.growth_stage ?? null,
+          days_since_sowing: typeof (canonicalContext as any)?.days_since_sowing === 'number'
+            ? (canonicalContext as any).days_since_sowing
+            : (typeof (landContext as any)?.days_since_sowing === 'number' ? (landContext as any).days_since_sowing : null),
+          intent_code: intentCode ?? null,
+          language: (options as any)?.language ?? (normalizedInput as any)?.detected_language ?? 'en',
+          trace_id: traceId,
+          land_id: options.landId ?? (landContext as any)?.id ?? (landContext as any)?.land_id ?? '',
+          session_id: sessionId ?? '',
+        });
+        (this as any)._sessionSSOT = _ssot;
+      } catch (ssotErr) {
+        console.error(`[SSOT_BUILD_FAILED] trace=${traceId} err=${(ssotErr as Error).message}`);
+        // Continue — downstream layers fail closed via assertSessionSSOT when
+        // they need SSOT, rather than propagating null everywhere.
+      }
+
+
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 4: Intent Confidence Tiering with Hard Override Guard
       // ═══════════════════════════════════════════════════════════════════════════
@@ -5055,6 +5100,16 @@ export class AIAgentOrchestrator {
           if (forbiddenAdvisory.has(intentCode)) {
             const from = intentCode;
             intentCode = 'DIAGNOSTIC_INQUIRY';
+            try {
+              const _dSsot = (this as any)._sessionSSOT as SessionSSOT | undefined;
+              if (_dSsot && _dSsot.intent_code !== intentCode) {
+                console.warn(
+                  `[INTENT_DRIFT] site=post_recovery_evidence_override trace=${traceId} ` +
+                  `ssot_intent=${_dSsot.intent_code} attempted=${intentCode}`,
+                );
+              }
+            } catch { /* drift detection is additive */ }
+
             console.log(
               `[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${from} → ${intentCode} ` +
               `reason=real_symptoms_present codes=[${postRecoveryEvidence.real_codes.slice(0, 6).join(',')}]`,
@@ -5173,6 +5228,16 @@ export class AIAgentOrchestrator {
                       `to=${rerouteTarget} stage=${bio.growth_stage} das=${bio.das ?? '?'}`,
                     );
                     intentCode = rerouteTarget as any;
+                    try {
+                      const _dSsot2 = (this as any)._sessionSSOT as SessionSSOT | undefined;
+                      if (_dSsot2 && _dSsot2.intent_code !== String(intentCode).toUpperCase()) {
+                        console.warn(
+                          `[INTENT_DRIFT] site=bio_state_contradiction_reroute trace=${traceId} ` +
+                          `ssot_intent=${_dSsot2.intent_code} attempted=${intentCode}`,
+                        );
+                      }
+                    } catch { /* drift detection is additive */ }
+
                     try {
                       (this as any).__conversationState && ((this as any).__conversationState.intent_rerouted = true);
                     } catch { /* non-fatal */ }
