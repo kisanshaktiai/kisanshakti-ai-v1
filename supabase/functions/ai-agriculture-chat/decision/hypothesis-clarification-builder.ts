@@ -2,6 +2,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 14:10 UTC — S3: added CLARIFICATION_DIVERSITY_VIOLATION invariant +
+ *   diversity=<emitted>/<candidates> in the structured trace.
  * 2026-07-26 12:00 UTC — R3b: accept optional `session_ssot` and use it as the
  *   primary crop/stage/DAS/language source (explicit args first, land_context
  *   last), so the builder can never silently reason on a partial context.
