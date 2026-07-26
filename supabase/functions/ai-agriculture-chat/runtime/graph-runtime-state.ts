@@ -73,10 +73,17 @@ export class GraphStateDriftError extends Error {
 }
 
 function assertCanonicalCode(slot: string, code: unknown): asserts code is string {
-  if (typeof code !== 'string' || !CANONICAL_ID_RE.test(code)) {
+  // Observation-family slots carry DB lower_snake codes; every other slot
+  // (rule_id / hypothesis_id / intent_code / winner_rule_id) is UPPER_SNAKE.
+  const isObservationSlot =
+    slot.startsWith('observation_ledger.') ||
+    slot === 'evidence_round.selected_observations';
+  const re = isObservationSlot ? CANONICAL_OBS_ID_RE : CANONICAL_ID_RE;
+  if (typeof code !== 'string' || !re.test(code)) {
     throw new SymbolicIdLeakError(slot, code);
   }
 }
+
 
 // ──────────────────────────────────────────────────────────────────────────
 // OBSERVATION LEDGER (append-only)
