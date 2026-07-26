@@ -1006,12 +1006,15 @@ export class SymbolicReasoner {
     let totalConditions = 0;
     let metConditions = 0;
     
-    // Build a combined symptom/observation set for matching
-    const factSymptom = (facts.primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
-    const factQuery = (facts.user_query || '').toUpperCase();
-    const factStageUpper = (facts.growth_stage || '').toUpperCase();
-    // Bug 2 Fix: Use all_observations for comprehensive matching
-    const allObsUpper = (facts.all_observations || []).map(o => o.toUpperCase().replace(/[\s-]/g, '_'));
+    // Build a combined symptom/observation set for matching.
+    // 2026-07-26 (audit F3): every side of an observation comparison is folded
+    // through the canonical-code SSOT (`utils/canonical-code.ts`) so DB
+    // lower_snake_case codes and runtime-uppercased symbols cannot mismatch.
+    const factSymptom = canonicalObsCode(facts.primary_symptom);
+    const factQuery = canonicalObsCode(facts.user_query);
+    const factStageCanon = canonicalStageKey(facts.growth_stage);
+    const allObsCanon = (facts.all_observations || []).map(o => canonicalObsCode(o)).filter(Boolean);
+
     
     // ═══════════════════════════════════════════════════════════════════════
     // STAGE KEYS: crop_stage, stage, growth_stage (aliases)
