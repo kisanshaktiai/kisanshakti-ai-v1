@@ -1366,17 +1366,38 @@ export class AIAgentOrchestrator {
             `Graph hypothesis lost after runtime execution ` +
             `(snapshot_hyp=${snapHyp} exit_hyp=${exitHyp})`,
           );
-          // eslint-disable-next-line no-unsafe-finally
-          throw new Error(
-            `GRAPH_CONTRACT_VIOLATION: Graph hypothesis lost after runtime execution ` +
-            `trace=${traceId} snapshot_hyp=${snapHyp} exit_hyp=${exitHyp} ` +
-            `snapshot_rules=${snapRules} exit_rules=${exitRules}`,
+          // The frozen snapshot is the SSOT: repair the exit mirrors from it
+          // rather than destroying a valid farmer response. A lost mirror is an
+          // internal bookkeeping defect (e.g. clarification/no-decision exits
+          // that never re-stamp GraphRuntimeState), NOT a reason to 500.
+          const snapHypIds = (snap?.hypotheses ?? [])
+            .map((h: any) => h?.hypothesis_id ?? h?.id ?? h?.code)
+            .filter(Boolean);
+          const snapRuleIds = (snap?.rules ?? [])
+            .map((r: any) => r?.rule_id ?? r?.id)
+            .filter(Boolean);
+          try {
+            (this as any)._graphHypothesisIds = snapHypIds;
+            if (snapRuleIds.length && !(((this as any)._graphHypothesisRuleIds ?? []).length)) {
+              (this as any)._graphHypothesisRuleIds = snapRuleIds;
+            }
+            if (_grs) {
+              (_grs as any).hypothesis_ids = snapHypIds;
+              if (snapRuleIds.length && !(_grs.hypothesis_rule_ids?.length)) {
+                (_grs as any).hypothesis_rule_ids = snapRuleIds;
+              }
+            }
+          } catch { /* frozen state — trace only */ }
+          console.log(
+            `[GRAPH_HANDOFF_REPAIR] trace=${traceId} restored_hyp=${snapHypIds.length} ` +
+            `restored_rules=${snapRuleIds.length} source=GRAPH_SNAPSHOT`,
           );
         }
       } catch (chkErr) {
-        if ((chkErr as Error).message?.startsWith('GRAPH_CONTRACT_VIOLATION')) throw chkErr;
         /* trace-only; never mask underlying impl error */
+        console.warn(`[GRAPH_HANDOFF_CHECK] trace=${traceId} check_failed err=${(chkErr as Error)?.message}`);
       }
+
     }
 
     // Stamp frozen graph lineage onto the response so CLARIFICATION_QUESTION
