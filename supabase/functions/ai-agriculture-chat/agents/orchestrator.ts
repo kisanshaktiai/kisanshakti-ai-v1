@@ -3027,7 +3027,9 @@ export class AIAgentOrchestrator {
                 },
               },
             } as any;
+            }
           }
+
 
           
           const canonicalState = buildCanonicalState({
