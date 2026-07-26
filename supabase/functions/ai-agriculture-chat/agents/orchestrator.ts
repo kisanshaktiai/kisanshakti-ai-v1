@@ -2833,9 +2833,13 @@ export class AIAgentOrchestrator {
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
               confirmed_observations: optionEvidence.real_codes,
+              // Never re-offer what the farmer was already asked last turn.
+              pending_obs_keys:
+                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
               trace_id: traceId,
               max: 5,
             });
+
             const clarificationOptions = graphClarification.options.map((o) => ({
               label: o.label,
               value: o.value,
