@@ -288,6 +288,8 @@ function applyTrueEscalation(
 }
 
 
+/**
+ * Single enforcement point invoked immediately after the orchestrator returns.
  * Mutates the response in place to guarantee the OBSERVATION_REQUIRED contract.
  *
  * Returns metadata about what happened for the [BRAIN_TRACE] emitter.
