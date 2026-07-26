@@ -1,96 +1,42 @@
-## Forensic audit — verified findings (every claim below was read from code or queried from the DB)
+## Verification result: your Bug #2 is REAL but the counts differ
 
-### F1 — `assertion_strength` is used as a hard SQL exclusion gate (kills 98.5% of the evidence set)
+Confirmed against the live DB and current code (not yet fixed).
 
-DB fact (queried `intent_observation_mapping where is_active`):
+**DB truth (`decision_rules`, is_active):** `crop_code` values are lowercase full names — `sugarcane` (523), `rice` (138), `brinjal`, `potato`, `tomato`, `onion`, `cotton`, `maize`, `soybean`, `chilli`, `wheat`, and `all` (64). No uppercase, no short codes like `SC`.
+
+**`decision_rules` query sites in `agents/orchestrator.ts`: 2 — same as you said, but the line numbers moved.**
+
+| Site | Line (current) | Status |
+|---|---|---|
+| by `rule_id` | 2654 | No casing issue — confirmed |
+| by crop | **10408** (was 6620 in your copy) | **BUG CONFIRMED, NOT FIXED** |
+
+The broken query, inside the `MANDATORY_FALLBACK` block:
 
 ```text
-DIFFERENTIAL        13,245 rows
-LITERAL                208 rows
-STRONG_HYPOTHESIS      141 rows
-total               13,594 rows
+const cropCode = landContext?.current_crop?.toUpperCase() || landContext?.crop_code?.toUpperCase() || 'SC';
+...
+.or(`crop_code.eq.${cropCode},crop_code.eq.all`)
 ```
 
-Code that excludes:
-- `decision/concept-bridge.ts:267` — `.eq('assertion_strength', 'LITERAL')` inside `resolveCropCanonicalObservations`. Only 208 of 13,594 rows can ever be seen. If the farmer's observation is DIFFERENTIAL-mapped, `anchor=NONE` and zero peers are injected — the hypothesis graph then never receives the crop-specific canonical codes that `hypothesis_conditions` are authored against.
-- `agents/orchestrator.ts:5047-5050` — a second, duplicated copy of the same `LITERAL`-only query.
-- `decision/observation-code-mapper.ts:64` — documents the contract as `assertion_strength IN ('LITERAL','STRONG')`. **`STRONG` does not exist in the table** (the real value is `STRONG_HYPOTHESIS`), so that documented contract is unsatisfiable.
+Two independent defects here: `RICE` never matches `rice`, **and** the `'SC'` default never matches anything at all (DB has `sugarcane`, not the short code). Result: only the 64 `all` rows can ever return, so the mandatory fallback is effectively crop-blind.
 
-Non-exclusionary (correct, keep): `utils/observation-mapping-cache.ts` uses `ASSERTION_PRIORITY` only for dedup/ordering, and `decision/iom-gate.ts` selects the column without filtering on it.
+**`toUpperCase()` on a crop code: 7 sites, not 11** (5898, 5900, 6828, 7384, 7757, 9250, 10402). Only 10402 feeds a DB filter directly. The others propagate an uppercase crop symbol into the graph input (5898/5900), the authoritative land state (9250), the clarification input (7757), and audit/log payloads (6828, 7384) — no immediate zero-row failure, but they are the same latent contract break, since `canonicalCropCode` (already imported at line 791) is not applied to any of them.
 
-### F2 — Hardcoded agronomy still present: stage-family map in the IOM gate
+Also note `canonicalCropCode` lower-snakes but does not expand short codes; `utils/crop-code-normalizer.ts` maps the other direction (name → `SC`), so it must not be used on this path.
 
-`decision/iom-gate.ts:52-72` contains a 13-entry `STAGE_SYNONYMS` table (seedling↔nursery↔germination↔emergence, flowering↔reproductive↔grand_growth, …). This is agronomy in TypeScript and it directly contradicts the project rule that stage families come exclusively from `public.crop_stage_graph`. The identical map was already deleted from `runtime/clarification-contract.ts:66-78` and from `runtime/stage-family-shim.ts:102` (now `Object.freeze({})`), and the DB-backed replacements already exist: `utils/stage-knowledge-cache.ts` exports `getStageFamilyFromDB` and `stagesEquivalentFromDB`.
+## Fix plan (single file: `agents/orchestrator.ts`)
 
-Worse, the expanded list feeds a hard SQL gate: `.in('growth_stage', stageVariants)`. `intent_observation_mapping` has 16 distinct stage values (`all, boll_development, boll_opening, early_vegetative, flowering, germination, grand_growth, maturity, nursery, planting, ratoon_init, seedling, squaring, tillering, transplanting, vegetative`) — any stage absent from the hardcoded map collapses the allowlist to `[stage, 'all']` and drops curated rows.
+1. **Fix the query at 10402–10411.** Derive the crop from `canonicalContext?.crop_code ?? landContext?.current_crop ?? landContext?.crop_code`, pass it through `canonicalCropCode(...)`, and drop the `'SC'` literal default. When no crop resolves, query with `crop_code.eq.all` only and log `[FALLBACK_CROP_UNRESOLVED]` instead of silently guessing sugarcane.
+2. **Guard against short codes.** If the resolved value is a short code (length ≤ 5 and not present in the DB's crop set), expand it to the full lowercase name via the existing reverse map in `utils/crop-code-normalizer.ts` (`getFullCropName`) then re-canonicalize, so `sc` → `sugarcane`.
+3. **Stop uppercasing observation codes** at 10421 and 10436 in the same block — use `canonicalObsCode` so the codes handed to the label loader match `observation_master` lower_snake_case (the loader tolerates case today, but the block should not create new drift).
+4. **Canonicalize the 6 propagation sites** (5898, 5900, 6828, 7384, 7757, 9250): replace `.toUpperCase()` with `canonicalCropCode(...)` so graph input, authoritative land state, clarification input, and audit logs all carry one canonical crop form.
+5. **Add a drift probe.** After the fallback query, log `[FALLBACK_RULE_SCOPE] crop=<x> rows=<n>`; `rows=0` with a resolved crop now indicates a real data gap rather than a casing bug.
 
-### F3 — Canonical code normalization exists but is applied in only 4 of ~12 matching sites
+No DB migration, no agronomy logic change, no new files, no behavior change for crops that already resolve.
 
-Canonical casing verified from the DB: `observation_master` = 2,549 rows, **0 with uppercase**; `hypothesis_conditions` = 736 rows, all lower_snake. So `lower_snake_case` is the true canonical form.
+## Verification after implementation
 
-The single normalizer `canonicalizeObservationKey` (`trim → lowercase → [\s-]+ → _`) lives in `runtime/clarification-contract.ts:62` and is imported by only `runtime/navigator-adapter.ts`, `agents/clarification-generator.ts`, and `agents/orchestrator.ts`.
-
-Every other matching layer re-implements its own, with a different regex (`[\s-]` without `+`, and uppercase instead of lowercase):
-- `decision/symbolic-reasoner.ts:1010,1014` — `.toUpperCase().replace(/[\s-]/g,'_')`
-- `agents/layered-rule-evaluator.ts:1890` — same
-- `utils/llm-output-validator.ts:161,247,331` — `.toUpperCase()` only, no separator folding
-- `agents/understanding-completeness-checker.ts:179,305` — `code.toUpperCase()`
-- `agents/entity-code-mapper.ts:234,272,308,356` — `.toUpperCase().replace(/[\s-]+/g,'_')`
-- `decision/iom-gate.ts:151-160` — builds `allowedSet` lower_snake but the interface comment says UPPERCASE; `filterHypothesesByIOM` compares against hypothesis keys normalized elsewhere as UPPERCASE
-
-Any comparison where one side is uppercased and the other is DB-lowercase silently returns no match, which is exactly the "rules blocked by normalization" symptom.
-
-### F4 — There is no Evidence Confidence stage (matches your analysis)
-
-`decision/confidence-calculator.ts` consumes `diagnosis`, `firedRules`, `facts`, `landState` — it runs **after** a diagnosis is selected. Nothing in the pipeline scores observation evidence *before* hypothesis competition, so `assertion_strength` and `confidence_rank` currently have nowhere to act except as the illegal exclusion filter in F1.
-
----
-
-## Fix plan
-
-### Step 1 — Canonical code SSOT (new file, framework only, no agronomy)
-Create `supabase/functions/ai-agriculture-chat/utils/canonical-code.ts` exporting:
-- `canonicalObsCode(s)` — `trim → toLowerCase → collapse [\s-]+ to _ → strip repeated _`
-- `canonicalIntentCode(s)` — trim/upper (DB verified: all intent codes uppercase)
-- `canonicalCropCode(s)`, `canonicalStageKey(s)` — trim/lower_snake
-- `sameObsCode(a,b)`, `obsCodeSet(list)`
-
-`runtime/clarification-contract.ts` keeps `canonicalizeObservationKey` as a thin re-export so existing imports do not break.
-
-### Step 2 — Apply the SSOT at every matching site
-Replace the ad-hoc normalizers in: `decision/symbolic-reasoner.ts`, `agents/layered-rule-evaluator.ts`, `utils/llm-output-validator.ts`, `agents/understanding-completeness-checker.ts`, `agents/entity-code-mapper.ts`, `decision/iom-gate.ts`, `decision/concept-bridge.ts`, `utils/observation-mapping-cache.ts`, `utils/db-ssot/observation-index.ts`. All observation-code comparisons become lower_snake on both sides. Add a `[CODE_NORM_MISMATCH]` warn log whenever a comparison would have matched under the old uppercase form but not the new one (and vice versa), so any residual drift is visible in production logs for one release.
-
-### Step 3 — Delete the exclusion filters, keep the signal as a weight
-- `decision/concept-bridge.ts`: drop `.eq('assertion_strength','LITERAL')`; select all active rows for the (intent, crop) cell and return each peer with its `assertion_strength` + `confidence_rank` attached. Anchor detection stays, but peer injection is now weighted, not gated. Log `[IOM_EVIDENCE] literal=N strong=N differential=N`.
-- `agents/orchestrator.ts:5047`: delete the duplicated query and call `resolveCropCanonicalObservations` instead — one code path, one contract.
-- `decision/observation-code-mapper.ts`: correct the stale `('LITERAL','STRONG')` contract comment to reflect that no strength-based exclusion exists.
-
-### Step 4 — Remove the hardcoded stage map from the IOM gate
-`decision/iom-gate.ts`: delete `STAGE_SYNONYMS`; `expandStageSynonyms` becomes `await` on `getStageFamilyFromDB(crop, stage)` from `utils/stage-knowledge-cache.ts`, always unioned with `'all'`. On cache miss, log `[IOM_GATE_STAGE_MISS]` and fall back to `[normalizedStage, 'all']` — never to a hardcoded family.
-
-### Step 5 — New Evidence Confidence stage (the missing layer)
-New `decision/evidence-confidence.ts`, called after intent→observation resolution and **before** hypothesis competition. For each candidate observation node it computes a weight from DB fields only:
-- `intent_observation_mapping.assertion_strength` and `confidence_rank`
-- `observation_master.is_diagnostic`, `clarity_score`, `discriminator_score`, `frequency_score`
-- evidence source (farmer-confirmed / inferred peer / vision / sensor)
-
-Weights themselves are read from `system_config` (seeded keys, e.g. `evidence_weight_assertion_literal`, `..._strong_hypothesis`, `..._differential`, `evidence_weight_source_*`) — no numeric agronomy constants in TS. Output is a `Map<obs_code, evidence_confidence>` consumed by `decision/hypothesis-graph-evaluator.ts` to score competing hypotheses instead of eliminating them by strength.
-
-`decision/confidence-calculator.ts` is **not modified** — it stays the post-decision calibrator, per your architectural conclusion.
-
-### Step 6 — SQL (seed only, no schema change)
-One migration inserting the `system_config` evidence-weight keys with defaults that reproduce today's ordering (LITERAL > STRONG_HYPOTHESIS > DIFFERENTIAL) so behavior is tunable by curators, not by code. No new tables.
-
-### Step 7 — Regression tests
-Added under `tests/edge/ai-agriculture-chat/tests/`:
-1. `canonical-code-ssot_test.ts` — the normalizer is idempotent and every DB-sourced observation code round-trips unchanged.
-2. `iom-assertion-no-exclusion_test.ts` — a DIFFERENTIAL-only observation still reaches the hypothesis graph.
-3. `iom-stage-db-family_test.ts` — the IOM gate produces identical stage variants to `crop_stage_graph`, with no TS map present (grep assertion for `STAGE_SYNONYMS`).
-4. `evidence-confidence_test.ts` — hypothesis ranking changes with assertion strength but no hypothesis is eliminated by it.
-5. Grep guard: no `.eq('assertion_strength'` and no `.toUpperCase()` on an observation code anywhere on the live path.
-
-### Files touched
-`utils/canonical-code.ts` (new), `decision/evidence-confidence.ts` (new), `decision/concept-bridge.ts`, `decision/iom-gate.ts`, `decision/symbolic-reasoner.ts`, `decision/hypothesis-graph-evaluator.ts`, `decision/observation-code-mapper.ts`, `agents/orchestrator.ts`, `agents/layered-rule-evaluator.ts`, `agents/understanding-completeness-checker.ts`, `agents/entity-code-mapper.ts`, `utils/llm-output-validator.ts`, `utils/observation-mapping-cache.ts`, `utils/db-ssot/observation-index.ts`, `runtime/clarification-contract.ts`, plus one `system_config` seed migration. Each edited file gets its mandatory CHANGE LOG entry.
-
-### Risk
-Step 3 widens the evidence set from 208 to 13,594 reachable IOM rows. Step 5 lands in the same batch precisely so the widening is absorbed by confidence competition rather than producing noisy differentials. Steps 3 and 5 must not be split.
+- `rg -n "crop_code\.eq\.\$\{" agents/orchestrator.ts` returns only canonicalized call sites.
+- `rg -n "current_crop\?\.toUpperCase" agents/orchestrator.ts` returns nothing.
+- Trace a Rice DAS-33 turn that lands in `MANDATORY_FALLBACK` and confirm `[FALLBACK_RULE_SCOPE] crop=rice rows>0`.
