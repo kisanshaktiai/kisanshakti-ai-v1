@@ -2514,6 +2514,73 @@ export class AIAgentOrchestrator {
               );
             }
           }
+
+          // ═══════════════════════════════════════════════════════════════════
+          // TERMINAL CLARIFICATION TRANSITION (2026-07-26)
+          // A valid selection ENDS the clarification branch. Persist first,
+          // then clear the lock, zero pending options and hand control to the
+          // graph/rule pipeline in the SAME turn. `option_selected=true` must
+          // never coexist with `awaiting_clarification` after this point.
+          // Fail closed ONLY when no canonical observation could be resolved.
+          // ═══════════════════════════════════════════════════════════════════
+          const _askedObsKeysPrevTurn: string[] = (
+            ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]
+          ).map((k) => canonicalizeObservationKey(k)).filter(Boolean);
+          const _prevPendingCount = pendingOptionsCount;
+          if (mappedObservationKey) {
+            pendingOptionsCount = 0;
+            if (options.sessionState) {
+              (options.sessionState as any).pendingClarificationOptions = undefined;
+              (options.sessionState as any).pendingClarificationOptionsStructured = undefined;
+              (options.sessionState as any).pendingClarificationScope = undefined;
+              (options.sessionState as any).option_selected = true;
+              (options.sessionState as any).decision_state = 'decision_in_progress';
+            }
+            console.log(
+              `[CLARIFICATION_STATE_TRANSITION][${traceId}] option_selected=true ` +
+              `observation=${mappedObservationKey} ` +
+              `state=awaiting_clarification→decision_in_progress ` +
+              `pending_options=${_prevPendingCount}→0 ` +
+              `branch=OPTION_SELECTED→GraphRuntime(resolveHypothesesFromObservations)`,
+            );
+          } else {
+            console.error(
+              `[CLARIFICATION_FAIL_CLOSED][${traceId}] no canonical observation resolved from ` +
+              `selection "${matchResult.matched_option}" — staying in clarification branch`,
+            );
+          }
+
+          /**
+           * Repeat guard — an option already asked last turn, or already
+           * confirmed, must never be re-rendered after a valid selection.
+           */
+          const _dropRepeatOptions = <T extends { observation_key?: string }>(
+            opts: T[],
+            confirmed: ReadonlyArray<string>,
+          ): T[] => {
+            const seen = new Set<string>([
+              ..._askedObsKeysPrevTurn,
+              ...confirmed.map((c) => canonicalizeObservationKey(c)).filter(Boolean),
+            ]);
+            const kept = opts.filter((o) => {
+              const k = canonicalizeObservationKey(o?.observation_key || '');
+              if (!k) return false;
+              if (k === 'photo_upload') return true;
+              return !seen.has(k);
+            });
+            const diagnostic = kept.filter(
+              (o) => canonicalizeObservationKey(o?.observation_key || '') !== 'photo_upload',
+            );
+            if (diagnostic.length === 0) {
+              console.warn(
+                `[CLARIFICATION_REPEAT_BLOCKED][${traceId}] all ${opts.length} candidate options ` +
+                `were already asked/confirmed → refusing to re-render, routing to decision path`,
+              );
+              return [];
+            }
+            return kept;
+          };
+
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
           // Log pre-clarification state and rebuild with new symbols
