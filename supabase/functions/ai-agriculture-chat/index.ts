@@ -2788,8 +2788,25 @@ serve(async (req) => {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
     }
 
+    // R6 — turn boundary marker: final farmer-visible outcome of this turn.
+    {
+      const _rp: any = responsePayload as any;
+      const _endSsot = getSessionSSOT(orchestratorResponse, orch);
+      console.log(
+        `[TURN_END] trace=${traceId} type=${(orchestratorResponse as any)?.type ?? 'n/a'} ` +
+        `decision_status=${(orchestratorResponse as any)?.decision_output?.status ?? 'none'} ` +
+        `graph_gap=${(orchestratorResponse as any)?.decision_output?.graph_gap ?? 'none'} ` +
+        `options=${Array.isArray(_rp?.metadata?.clarification_options) ? _rp.metadata.clarification_options.length : 0} ` +
+        `crop=${_endSsot?.crop_code ?? 'n/a'} stage=${_endSsot?.growth_stage ?? 'n/a'} ` +
+        `das=${_endSsot?.days_since_sowing ?? 'n/a'} intent=${_endSsot?.intent_code ?? 'n/a'} ` +
+        `content_len=${typeof responseContent === 'string' ? responseContent.length : 0} ` +
+        `ms=${Date.now() - startTime}`,
+      );
+    }
+
     return new Response(
       JSON.stringify(responsePayload),
+
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
