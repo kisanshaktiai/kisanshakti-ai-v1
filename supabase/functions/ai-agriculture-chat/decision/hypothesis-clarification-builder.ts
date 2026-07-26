@@ -2,7 +2,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 18:20 UTC — Clarification UX batch: (a) farmer labels are now
+ *   strictly DB-sourced (translation[lang] → translation[en] → description);
+ *   an option with no text is DROPPED and logged [OBS_LABEL_MISSING] instead of
+ *   rendering a raw observation_code. (b) Added [OBS_LABEL_SOURCE] trace.
+ *   (c) Added DB-sourced photo option (`photo_upload`, text from
+ *   system_config.clarification_photo_option_<lang>) appended last on every
+ *   clarification card. (d) Added [CLARIFICATION_REPEAT_VIOLATION] invariant.
+ *   (e) Translation lookup is now case-insensitive.
  * 2026-07-26 17:05 UTC — RC-1: IOM demoted from exclusive allowlist to weight.
+
  *   Seed is now UNION(confirmed, perceived, IOM-ranked); added [IOM_WEIGHT]
  *   trace and the [IOM_OBS_SUPPRESSION] invariant. Fixes the log-99
  *   rice/tillering/DAS-48 collapse to `rice_lodging`.
