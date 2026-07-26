@@ -3721,6 +3721,35 @@ export class AIAgentOrchestrator {
         });
       } catch {/* trace must not throw */}
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // R2 — SessionSSOT establishment (Layer 3 lock).
+      // Built ONCE per turn from the frozen CanonicalContext (crop/stage/DAS,
+      // itself sourced from BIO_STATE_LOCKED) + the locked intent + language.
+      // Immutable; every downstream layer reads it via getSessionSSOT().
+      // ═══════════════════════════════════════════════════════════════════════
+      try {
+        const _ssot = buildSessionSSOT({
+          crop_code: (canonicalContext as any)?.crop_code ?? (landContext as any)?.current_crop ?? null,
+          growth_stage: (canonicalContext as any)?.growth_stage
+            ?? (landContext as any)?.current_crop_stage
+            ?? (landContext as any)?.growth_stage ?? null,
+          days_since_sowing: typeof (canonicalContext as any)?.days_since_sowing === 'number'
+            ? (canonicalContext as any).days_since_sowing
+            : (typeof (landContext as any)?.days_since_sowing === 'number' ? (landContext as any).days_since_sowing : null),
+          intent_code: intentCode ?? null,
+          language: (options as any)?.language ?? (normalizedInput as any)?.detected_language ?? 'en',
+          trace_id: traceId,
+          land_id: options.landId ?? (landContext as any)?.id ?? (landContext as any)?.land_id ?? '',
+          session_id: sessionId ?? '',
+        });
+        (this as any)._sessionSSOT = _ssot;
+      } catch (ssotErr) {
+        console.error(`[SSOT_BUILD_FAILED] trace=${traceId} err=${(ssotErr as Error).message}`);
+        // Continue — downstream layers fail closed via assertSessionSSOT when
+        // they need SSOT, rather than propagating null everywhere.
+      }
+
+
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 4: Intent Confidence Tiering with Hard Override Guard
       // ═══════════════════════════════════════════════════════════════════════════
