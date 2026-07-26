@@ -2151,8 +2151,85 @@ serve(async (req) => {
       }
       } // End of STAGE_FALLBACK else block
     } else {
+      // ═══════════════════════════════════════════════════════════════════════
+      // R4b · Layer 14 — DB-first fallback for empty CLARIFICATION_QUESTION.
+      // Contract: no raw i18n keys ever reach the frontend. If the pipeline
+      // finished with CLARIFICATION_QUESTION but zero comm_keys / zero options,
+      // query DB directly for fallback questions + intro text, populate the
+      // response, and log the recovery. LLM is NOT invoked here; all text is
+      // DB-sourced pre-translated content.
+      // ═══════════════════════════════════════════════════════════════════════
+      try {
+        const response: any = orchestratorResponse as any;
+        const _l14Ssot = getSessionSSOT(response, orch);
+        const _isClarification = response?.type === 'CLARIFICATION_QUESTION';
+        const _hasComm = !!response?.communication?.main_message
+          && Object.keys(response.communication.main_message).length > 0;
+        const _hasOptions = (Array.isArray(response?.options) && response.options.length > 0)
+          || (Array.isArray(response?.question?.options) && response.question.options.length > 0);
+
+        if (_isClarification && !_hasComm && !_hasOptions && _l14Ssot) {
+          const _lang = _l14Ssot.language || 'en';
+
+          // 1. Load fallback questions using the same DB-driven mapper as R3.
+          const _rescueResult = await attemptDbClarificationRescue(response, {
+            supabase,
+            cropCode: _l14Ssot.crop_code,
+            growthStage: _l14Ssot.growth_stage,
+            language: _lang,
+            traceId: _l14Ssot.trace_id,
+            intentCode: _l14Ssot.intent_code,
+            daysSinceSowing: _l14Ssot.days_since_sowing,
+            realObservationCount: Array.isArray((orch as any)?._lastRealObservations)
+              ? (orch as any)._lastRealObservations.length
+              : 0,
+            graphReason: (response?.decision_output as any)?.graph_gap ?? null,
+            session_ssot: _l14Ssot,
+          } as any);
+
+          // 2. Load intro sentence template from system_config (DB, pre-translated).
+          let _introText: string | null = null;
+          try {
+            const { data: _introRow } = await supabase
+              .from('system_config')
+              .select('config_key, config_value')
+              .in('config_key', [`clarification_intro_${_lang}`, 'clarification_intro_en']);
+            const _byKey = new Map<string, any>();
+            for (const r of _introRow ?? []) _byKey.set(String(r.config_key), r.config_value);
+            const _pick = _byKey.get(`clarification_intro_${_lang}`) ?? _byKey.get('clarification_intro_en') ?? null;
+            _introText = typeof _pick === 'object' && _pick !== null ? (_pick.value ?? null) : (_pick ?? null);
+          } catch (introErr) {
+            console.warn(`[POSTPROC_DB_FALLBACK] intro load failed: ${(introErr as Error).message}`);
+          }
+
+          // 3. Populate response.communication with DB intro text (never a raw i18n key).
+          if (_introText) {
+            response.communication = response.communication && typeof response.communication === 'object'
+              ? response.communication
+              : {};
+            response.communication.main_message = {
+              text: String(_introText),
+              language: _lang,
+              source: 'system_config',
+            };
+            console.log(
+              `[POSTPROC_DB_FALLBACK] site=intro_from_system_config intent=${_l14Ssot.intent_code} ` +
+              `language=${_lang} rescue_options=${_rescueResult?.option_count ?? 0} trace=${_l14Ssot.trace_id}`,
+            );
+          } else {
+            console.error(
+              `[POSTPROC_DB_FALLBACK] MISSING SYSTEM_CONFIG intro clarification_intro_${_lang} / clarification_intro_en — ` +
+              `frontend may render raw key. Seed system_config with R5.`,
+            );
+          }
+        }
+      } catch (l14Err) {
+        console.warn(`[POSTPROC_DB_FALLBACK] non-fatal: ${(l14Err as Error).message}`);
+      }
+
       // Non-decision responses (clarification, photo request, etc.)
       responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+
     }
     
     // Verify language consistency
