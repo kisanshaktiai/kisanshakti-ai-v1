@@ -46,7 +46,7 @@ import { AIAgentOrchestrator, requiresAgronomicReasoningIntent } from './agents/
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 import { blockStageWriteIfLocked, isBiologicalStateLocked } from './agents/biological-state.ts';
 import { getRuntimeTraceCollector, resetRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
-import { ensureObservationSelectorContract } from './runtime/observation-selector-contract.ts';
+import { ensureObservationSelectorContract, attemptDbClarificationRescue } from './runtime/observation-selector-contract.ts';
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
@@ -1865,8 +1865,53 @@ serve(async (req) => {
           console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
           
           if (unifiedGateResult.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION) {
+            // ─────────────────────────────────────────────────────────────
+            // Q3 — SSOT propagation invariant. Before committing to an
+            // escalation, attempt the DB clarification rescue (hypothesis
+            // graph → clarification_fallback_questions) with the full Land
+            // SSOT lock. Escalation is last resort only.
+            // ─────────────────────────────────────────────────────────────
+            const _intentCodeResolved =
+              (orchestratorResponse as any)?.metadata?.intent_code ??
+              (orchestratorResponse as any)?.intent ??
+              (orch as any)?._lastIntentCode ??
+              null;
+            const _ssotLockValid = !!(
+              finalCropName && finalGrowthStage &&
+              typeof finalDaysSinceSowing === 'number' && _intentCodeResolved
+            );
+            if (_ssotLockValid && orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+              try {
+                const _rescue = await attemptDbClarificationRescue(orchestratorResponse, {
+                  supabase,
+                  cropCode: finalCropName,
+                  growthStage: finalGrowthStage,
+                  language: detectedLanguage,
+                  traceId,
+                  intentCode: _intentCodeResolved,
+                  daysSinceSowing: finalDaysSinceSowing,
+                  realObservationCount: Array.isArray((orch as any)?._lastRealObservations)
+                    ? (orch as any)._lastRealObservations.length
+                    : 0,
+                  graphReason: (orch as any)?._graphScopeBlocked?.reason ?? null,
+                });
+                if (_rescue.rescued) {
+                  console.log(
+                    `   ✅ [Q3] DB clarification rescue before escalation site=${_rescue.site} options=${_rescue.option_count}`,
+                  );
+                }
+              } catch (e) {
+                console.warn(`   ⚠️ [Q3] rescue attempt failed: ${(e as Error).message}`);
+              }
+            } else if (!_ssotLockValid) {
+              console.error(
+                `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${!finalCropName ? 'crop_code' : !finalGrowthStage ? 'growth_stage' : typeof finalDaysSinceSowing !== 'number' ? 'days_since_sowing' : 'intent_code'} trace=${traceId}`,
+              );
+            }
+
             // NEW: Expert-quality diagnostic escalation response
             console.log(`   🔬 DIAGNOSTIC_ESCALATION - generating expert response with hypotheses`);
+
             
             const escalationInput: DiagnosticEscalationInput = {
               language: detectedLanguage,

@@ -1,9 +1,13 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-26 00:00 UTC — Q1/Q2: SSOT-lock invariant on the degrade path plus a
+ *   two-stage DB rescue (hypothesis-graph options → clarification_fallback_questions)
+ *   before any DIAGNOSTIC_ESCALATION degrade. Escalation is now last resort only.
  * 2026-07-09 13:58 UTC — Derive confirmed observations from response metadata
  *   before enforcing empty DECISION_PROVIDED/CLARIFICATION contracts, and pass
  *   those confirmed codes into the hypothesis clarification builder.
  */
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * OBSERVATION SELECTOR CONTRACT
@@ -109,6 +113,180 @@ export async function loadObservationSelectorOptions(
   }
 }
 
+// ─── Q1/Q2 — SSOT lock + DB rescue before any escalation degrade ───────────
+
+/**
+ * SSOT lock invariant. crop_code + growth_stage + DAS + intent_code are
+ * established at Land Context SSOT (step 3) and MUST be present on every
+ * downstream clarification call. Returns the missing field name, or null.
+ */
+function missingSsotField(ctx: ObservationContractContext): string | null {
+  if (!ctx.cropCode) return 'crop_code';
+  if (!ctx.growthStage) return 'growth_stage';
+  if (typeof ctx.daysSinceSowing !== 'number') return 'days_since_sowing';
+  if (!ctx.intentCode) return 'intent_code';
+  return null;
+}
+
+/**
+ * DB-driven intent → fallback family resolution. NO hardcoded intent lists:
+ *  1. exact `clarification_fallback_questions.intent_family = intent_code`
+ *  2. else, if `observation_intent_master.is_biological` (diagnostic family)
+ *     → 'DIAGNOSIS_GENERIC'
+ *  3. else null (logged as [CONTRACT_FALLBACK_NO_MAP])
+ */
+async function mapIntentToFamily(
+  supabase: any,
+  intentCode: string | null | undefined,
+): Promise<string | null> {
+  const code = String(intentCode ?? '').trim();
+  if (!supabase || !code) return null;
+
+  try {
+    const { data: exact } = await supabase
+      .from('clarification_fallback_questions')
+      .select('intent_family')
+      .eq('is_active', true)
+      .eq('intent_family', code)
+      .limit(1);
+    if (Array.isArray(exact) && exact.length > 0) return code;
+
+    const { data: intentRow } = await supabase
+      .from('observation_intent_master')
+      .select('intent_code, intent_category, is_biological, clarification_mode')
+      .eq('intent_code', code)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    const isDiagnostic = !!(intentRow?.is_biological)
+      || !!(intentRow?.clarification_mode && String(intentRow.clarification_mode).trim());
+    if (isDiagnostic) return 'DIAGNOSIS_GENERIC';
+
+    console.warn(
+      `[CONTRACT_FALLBACK_NO_MAP] intent=${code} category=${intentRow?.intent_category ?? 'n/a'}`,
+    );
+    return null;
+  } catch (err) {
+    console.warn(`[CONTRACT_FALLBACK_NO_MAP] intent=${code} error=${(err as Error).message}`);
+    return null;
+  }
+}
+
+/**
+ * DB fallback clarification questions. Labels are pre-translated in the DB;
+ * no TS constants, no LLM generation.
+ */
+async function loadFallbackQuestionOptions(
+  ctx: ObservationContractContext,
+): Promise<ObservationOption[]> {
+  const family = await mapIntentToFamily(ctx.supabase, ctx.intentCode);
+  if (!family) return [];
+  const lang = String(ctx.language || 'mr').trim().toLowerCase();
+
+  try {
+    const { data: rows, error } = await ctx.supabase
+      .from('clarification_fallback_questions')
+      .select('question_code, label_en, label_hi, label_mr, priority')
+      .eq('is_active', true)
+      .eq('intent_family', family)
+      .order('priority', { ascending: true })
+      .limit(4);
+    if (error) {
+      console.warn(`[CONTRACT_FALLBACK_DB] family=${family} error=${error.message}`);
+      return [];
+    }
+    const out: ObservationOption[] = [];
+    for (const r of rows || []) {
+      const key = String(r?.question_code ?? '').trim();
+      if (!key) continue;
+      const label = String(
+        (lang === 'hi' && r.label_hi) || (lang === 'mr' && r.label_mr) || r.label_en || key,
+      );
+      out.push({
+        value: key,
+        label,
+        observation_key: key,
+        i18n_key: `observation.${key.toLowerCase()}`,
+        observation_code: key,
+      });
+    }
+    return out;
+  } catch (err) {
+    console.warn(`[CONTRACT_FALLBACK_DB] family=${family} exception=${(err as Error).message}`);
+    return [];
+  }
+}
+
+export interface RescueResult {
+  rescued: boolean;
+  site: 'hyp_graph_options' | 'fallback_questions' | null;
+  option_count: number;
+}
+
+/**
+ * Q2 — DB rescue: hypothesis-graph options first, then the DB fallback
+ * question table. Mutates the response into a CLARIFICATION_QUESTION when any
+ * DB-sourced options exist. Never synthesises options in TypeScript.
+ */
+export async function attemptDbClarificationRescue(
+  response: any,
+  ctx: ObservationContractContext,
+): Promise<RescueResult> {
+  if (!response || typeof response !== 'object') {
+    return { rescued: false, site: null, option_count: 0 };
+  }
+
+  const graphOptions = await loadObservationSelectorOptions(ctx);
+  if (graphOptions.length > 0) {
+    promoteToClarification(response, graphOptions, ctx);
+    stampMetadata(response, graphOptions.length);
+    response.metadata.graph_reason = ctx.graphReason || 'INSUFFICIENT_EVIDENCE';
+    console.log(
+      `[OBSERVATION_CONTRACT_RESCUE] site=hyp_graph_options options=${graphOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
+    );
+    return { rescued: true, site: 'hyp_graph_options', option_count: graphOptions.length };
+  }
+
+  const fallbackOptions = await loadFallbackQuestionOptions(ctx);
+  if (fallbackOptions.length > 0) {
+    promoteToClarification(response, fallbackOptions, ctx);
+    stampMetadata(response, fallbackOptions.length);
+    response.metadata.observation_source = 'clarification_fallback_questions';
+    response.metadata.graph_reason = ctx.graphReason || 'NO_STAGE_VALID_HYPOTHESES';
+    console.log(
+      `[OBSERVATION_CONTRACT_RESCUE] site=fallback_questions options=${fallbackOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
+    );
+    return { rescued: true, site: 'fallback_questions', option_count: fallbackOptions.length };
+  }
+
+  return { rescued: false, site: null, option_count: 0 };
+}
+
+/**
+ * Absolute last-resort escalation. Only reachable when BOTH DB rescue paths
+ * returned zero options.
+ */
+function applyTrueEscalation(
+  response: any,
+  ctx: ObservationContractContext,
+  graphReasonFallback: string,
+): void {
+  console.warn(
+    `[OBSERVATION_CONTRACT_TRUE_ESCALATION] trace=${ctx.traceId ?? 'n/a'} reason=no_db_clarification_available intent=${ctx.intentCode} crop=${ctx.cropCode} stage=${ctx.growthStage}`,
+  );
+  response.type = 'DIAGNOSTIC_ESCALATION';
+  response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+  response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
+  response.metadata.graph_reason = ctx.graphReason || graphReasonFallback;
+  response.metadata.observation_required = false;
+  response.metadata.confirmed_observation_count = ctx.realObservationCount ?? 0;
+  response.metadata.escalation_payload = {
+    confirmed: ctx.confirmedObservationCodes ?? [],
+    graph_gap: ctx.graphReason || graphReasonFallback,
+    trace_id: ctx.traceId ?? null,
+  };
+}
+
 
 /**
  * Single enforcement point invoked immediately after the orchestrator returns.
@@ -165,22 +343,32 @@ export async function ensureObservationSelectorContract(
   if (type === 'CLARIFICATION_QUESTION' && existingOptions.length === 0) {
     const options = await loadObservationSelectorOptions(effectiveCtx);
     if (options.length === 0) {
-      // Graph genuinely exhausted: farmer already confirmed observations but
-      // no downstream hypothesis edge exists for this (crop,stage,DAS,obs) cell.
-      // Degrade to DIAGNOSTIC_ESCALATION instead of a 500 — the greppable
-      // curator-triage warning below preserves the data-gap signal.
+      // Q1/Q2 — never degrade before the DB rescue. SSOT lock must be intact.
       if (realObservationCount > 0) {
+        const missing = missingSsotField(effectiveCtx);
+        if (missing) {
+          console.error(
+            `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${missing} trace=${effectiveCtx.traceId ?? 'n/a'}`,
+          );
+          return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'ssot_lock_lost_degrade_skipped' };
+        }
         console.warn(
-          `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=CLARIFICATION_QUESTION to=DIAGNOSTIC_ESCALATION reason=graph_exhausted_after_confirmed_observations crop=${effectiveCtx.cropCode ?? '?'} stage=${effectiveCtx.growthStage ?? '?'} intent=${effectiveCtx.intentCode ?? '?'} real_observations=${realObservationCount}`,
+          `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=CLARIFICATION_QUESTION reason=graph_exhausted_after_confirmed_observations crop=${effectiveCtx.cropCode} stage=${effectiveCtx.growthStage} das=${effectiveCtx.daysSinceSowing} intent=${effectiveCtx.intentCode} real_observations=${realObservationCount}`,
         );
-        response.type = 'DIAGNOSTIC_ESCALATION';
-        response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
-        response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
-        response.metadata.graph_reason = effectiveCtx.graphReason || 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS';
-        response.metadata.observation_required = false;
-        response.metadata.confirmed_observation_count = realObservationCount;
-        return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_downstream' };
+        const rescue = await attemptDbClarificationRescue(response, effectiveCtx);
+        if (rescue.rescued) {
+          return {
+            promoted: true,
+            hydrated: true,
+            option_count: rescue.option_count,
+            observation_required: true,
+            reason: `rescued_${rescue.site}`,
+          };
+        }
+        applyTrueEscalation(response, effectiveCtx, 'NO_HYPOTHESIS_EDGE_FOR_CONFIRMED_OBSERVATIONS');
+        return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'true_escalation_no_db_clarification' };
       }
+
       // No confirmed observations AND no options loadable — fatal contract leak.
       throw new Error(
         `OBSERVATION_CONTRACT_VIOLATION: empty_options type=CLARIFICATION_QUESTION crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
@@ -207,21 +395,32 @@ export async function ensureObservationSelectorContract(
     if (!hasPrimary && !hasSecondary && !hasCommText) {
       const options = await loadObservationSelectorOptions(effectiveCtx);
       if (options.length === 0) {
-        // Curator gap: farmer already confirmed observations upstream but the
-        // downstream graph has no rules/hypothesis edge for this cell.
-        // Degrade to DIAGNOSTIC_ESCALATION (symmetric to Case B) instead of 500.
+        // Q1/Q2 — DB rescue first, escalation only as absolute last resort.
         if (realObservationCount > 0) {
+          const missing = missingSsotField(effectiveCtx);
+          if (missing) {
+            console.error(
+              `[INVARIANT_VIOLATION] site=OBSERVATION_CONTRACT_DEGRADE reason=SSOT_LOCK_LOST field=${missing} trace=${effectiveCtx.traceId ?? 'n/a'}`,
+            );
+            return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'ssot_lock_lost_degrade_skipped' };
+          }
           console.warn(
-            `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=DECISION_PROVIDED to=DIAGNOSTIC_ESCALATION reason=stage_fallback_no_rules_after_confirmed_observations crop=${effectiveCtx.cropCode ?? '?'} stage=${effectiveCtx.growthStage ?? '?'} intent=${effectiveCtx.intentCode ?? '?'} real_observations=${realObservationCount}`,
+            `[OBSERVATION_CONTRACT_DEGRADE] trace=${effectiveCtx.traceId ?? 'n/a'} from=DECISION_PROVIDED reason=stage_fallback_no_rules_after_confirmed_observations crop=${effectiveCtx.cropCode} stage=${effectiveCtx.growthStage} das=${effectiveCtx.daysSinceSowing} intent=${effectiveCtx.intentCode} real_observations=${realObservationCount}`,
           );
-          response.type = 'DIAGNOSTIC_ESCALATION';
-          response.metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
-          response.metadata.orchestrator_type = 'DIAGNOSTIC_ESCALATION';
-          response.metadata.graph_reason = effectiveCtx.graphReason || 'NO_RULES_MATCHED_AFTER_OBSERVATION';
-          response.metadata.observation_required = false;
-          response.metadata.confirmed_observation_count = realObservationCount;
-          return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'degraded_to_escalation_no_rules_after_observation' };
+          const rescue = await attemptDbClarificationRescue(response, effectiveCtx);
+          if (rescue.rescued) {
+            return {
+              promoted: true,
+              hydrated: true,
+              option_count: rescue.option_count,
+              observation_required: true,
+              reason: `rescued_${rescue.site}`,
+            };
+          }
+          applyTrueEscalation(response, effectiveCtx, 'NO_RULES_MATCHED_AFTER_OBSERVATION');
+          return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'true_escalation_no_db_clarification' };
         }
+
         throw new Error(
           `OBSERVATION_CONTRACT_VIOLATION: empty_options type=DECISION_PROVIDED reason=no_recommendations crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
         );
@@ -243,9 +442,20 @@ export async function ensureObservationSelectorContract(
   if (type === 'DIAGNOSTIC_ESCALATION' && existingOptions.length === 0) {
     const options = await loadObservationSelectorOptions(effectiveCtx);
     if (options.length === 0) {
+      // Q2 — DB fallback questions before conceding an empty escalation card.
+      const fallbackRescue = await attemptDbClarificationRescue(response, effectiveCtx);
+      if (fallbackRescue.rescued) {
+        return {
+          promoted: true,
+          hydrated: true,
+          option_count: fallbackRescue.option_count,
+          observation_required: true,
+          reason: `rescued_${fallbackRescue.site}`,
+        };
+      }
       if (realObservationCount > 0) {
-        throw new Error(
-          `OBSERVATION_CONTRACT_VIOLATION: illegal_graph_exit real_observations=${realObservationCount} observation_required=false crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
+        console.warn(
+          `[OBSERVATION_CONTRACT_TRUE_ESCALATION] trace=${effectiveCtx.traceId ?? 'n/a'} reason=no_db_clarification_available intent=${effectiveCtx.intentCode} crop=${effectiveCtx.cropCode} stage=${effectiveCtx.growthStage}`,
         );
       }
       // No DB evidence surface at all — leave escalation as-is (better than
@@ -255,6 +465,7 @@ export async function ensureObservationSelectorContract(
       );
       return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'diagnostic_escalation_no_options_available' };
     }
+
     promoteToClarification(response, options, effectiveCtx);
     stampMetadata(response, options.length);
     response.metadata.graph_reason = ctx.graphReason || 'INSUFFICIENT_EVIDENCE';
