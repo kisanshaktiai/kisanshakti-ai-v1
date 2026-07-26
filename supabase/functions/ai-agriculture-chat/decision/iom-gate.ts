@@ -28,6 +28,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalStageKey } from '../utils/canonical-code.ts';
+import { getStageFamilyFromDB } from '../utils/stage-knowledge-cache.ts';
+
 export interface IOMAllowedRow {
   observation_code: string;
   confidence_rank: number;
@@ -35,7 +38,8 @@ export interface IOMAllowedRow {
 }
 
 export interface IOMAllowedResult {
-  allowedSet: Set<string>;          // UPPERCASE codes for case-insensitive lookup
+  /** Canonical lower_snake_case codes (matches observation_master). */
+  allowedSet: Set<string>;
   allowedRanked: IOMAllowedRow[];   // rank-ordered, dedup'd
   traceMeta: {
     intent: string;
@@ -47,29 +51,29 @@ export interface IOMAllowedResult {
   };
 }
 
-// Stage synonyms — pass biologically equivalent stages so we don't drop
-// curated rows (e.g. SEEDLING matches nursery / germination / emergence).
-const STAGE_SYNONYMS: Record<string, string[]> = {
-  seedling:     ['seedling', 'nursery', 'germination', 'emergence'],
-  nursery:      ['nursery', 'seedling', 'germination'],
-  germination:  ['germination', 'nursery', 'seedling', 'emergence'],
-  emergence:    ['emergence', 'germination', 'seedling', 'nursery'],
-  vegetative:   ['vegetative', 'tillering'],
-  tillering:    ['tillering', 'vegetative'],
-  flowering:    ['flowering', 'reproductive', 'grand_growth'],
-  reproductive: ['reproductive', 'flowering', 'grand_growth'],
-  grand_growth: ['grand_growth', 'flowering', 'reproductive'],
-  maturity:     ['maturity', 'ripening', 'maturation'],
-  ripening:     ['ripening', 'maturity', 'maturation'],
-  maturation:   ['maturation', 'maturity', 'ripening'],
-  harvest:      ['harvest', 'harvesting'],
-};
-
-function expandStageSynonyms(stage?: string | null): string[] {
-  if (!stage) return ['all'];
-  const key = String(stage).toLowerCase().trim().replace(/[\s-]/g, '_');
-  const syn = STAGE_SYNONYMS[key] || [key];
-  return Array.from(new Set([...syn, 'all']));
+/**
+ * Stage family expansion — SSOT is `public.crop_stage_graph` via
+ * `utils/stage-knowledge-cache.ts`.
+ *
+ * 2026-07-26 (forensic audit F2): the 13-entry hardcoded `STAGE_SYNONYMS`
+ * map that lived here was DELETED. It was agronomy-in-TypeScript, it had
+ * already been removed from `runtime/clarification-contract.ts` and
+ * `runtime/stage-family-shim.ts`, and it fed a HARD SQL gate
+ * (`.in('growth_stage', …)`) — any of the 16 curated IOM stage values that
+ * were absent from the map collapsed the allowlist and dropped valid rows.
+ *
+ * On cache miss we degrade to `[stage, 'all']` and log
+ * `[IOM_GATE_STAGE_MISS]`. We NEVER substitute a hardcoded family.
+ */
+function expandStageFamily(crop: string, stage?: string | null): string[] {
+  const key = canonicalStageKey(stage);
+  if (!key) return ['all'];
+  const fam = getStageFamilyFromDB(crop, key);
+  if (!fam || fam.length === 0) {
+    console.log(`[IOM_GATE_STAGE_MISS] crop=${crop} stage=${key} source=crop_stage_graph action=singleton_plus_all`);
+    return Array.from(new Set([key, 'all']));
+  }
+  return Array.from(new Set([...fam.map((s) => canonicalStageKey(s)).filter(Boolean), key, 'all']));
 }
 
 /**
@@ -84,10 +88,11 @@ export async function loadIOMAllowed(
   growthStage: string | null,
   das: number | null,
 ): Promise<IOMAllowedResult> {
-  const intentUpper = String(intentCode || '').trim().toUpperCase();
-  const cropLower = String(cropCode || '').toLowerCase();
+  const intentUpper = canonicalIntentCode(intentCode);
+  const cropLower = canonicalCropCode(cropCode);
   const cropVariants = Array.from(new Set([cropLower, 'all', 'universal'].filter(Boolean)));
-  const stageVariants = expandStageSynonyms(growthStage);
+  const stageVariants = expandStageFamily(cropLower, growthStage);
+
 
   const meta: IOMAllowedResult['traceMeta'] = {
     intent: intentUpper,
