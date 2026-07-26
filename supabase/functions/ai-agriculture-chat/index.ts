@@ -1669,7 +1669,33 @@ serve(async (req) => {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
       responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage);
-    } else if (orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output) {
+    } else if (
+      orchestratorResponse.type === 'DECISION_PROVIDED' &&
+      orchestratorResponse.decision_output &&
+      // ═══════════════════════════════════════════════════════════════════
+      // T1 — DECISION_PROVIDED HARD INVARIANT (SAFETY CRITICAL)
+      // A DECISION_PROVIDED response MUST be backed by at least one DB rule
+      // (winner rule id, applied rules, or surviving DB actions). If it is
+      // not, the LLM formatter is NEVER invoked — an unbacked decision is
+      // exactly how a fabricated dosage reaches the farmer.
+      // ═══════════════════════════════════════════════════════════════════
+      !(() => {
+        const _do: any = orchestratorResponse.decision_output;
+        const backed =
+          (Array.isArray(actions_returned) && actions_returned.length > 0) ||
+          !!_do?.metadata?.winner_rule_id ||
+          !!_do?.winner_rule?.rule_id ||
+          (Array.isArray(orchestratorResponse.metadata?.rules_applied) &&
+            orchestratorResponse.metadata!.rules_applied.length > 0);
+        if (!backed) {
+          console.error(
+            `[DECISION_WITHOUT_DB_BACKING][${traceId}] type=DECISION_PROVIDED actions=0 ` +
+              `winner_rule=NONE rules_applied=0 action=llm_formatter_suppressed`,
+          );
+        }
+        return !backed;
+      })()
+    ) {
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-14: Check for Stage Fallback Response first
       // If orchestrator returned a stage-aware fallback, use it directly
