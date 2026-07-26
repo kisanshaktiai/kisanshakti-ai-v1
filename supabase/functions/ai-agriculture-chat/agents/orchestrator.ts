@@ -1200,18 +1200,31 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Generate default clarification - returns i18n_key for narration layer
-   * @deprecated Use narration layer for text generation
+   * Default clarification intro.
+   * CHANGE LOG 2026-07-26 — this used to return the raw i18n key
+   * `clarification.default.<lang>`, which leaked verbatim into the farmer's
+   * clarification card header when no narration layer overwrote it. Text now
+   * comes from `system_config.clarification_intro_<lang>` (DB SSOT, already
+   * seeded for en/hi/mr) with an en fallback. No hardcoded agronomy.
    */
   private generateDefaultClarification(
     language: string,
     farmerMessage: string,
     cropName?: string
   ): string {
-    // Return i18n key - narration layer handles actual text
-    console.log('[Orchestrator] generateDefaultClarification - delegating to narration layer');
-    return `clarification.default.${language}`;
+    const lang = String(language || 'en').toLowerCase().split('-')[0];
+    const pick = (l: string): string => {
+      const v = getConfigRaw<string>(`clarification_intro_${l}`, '');
+      return typeof v === 'string' ? v.trim() : '';
+    };
+    const text = pick(lang) || pick('en');
+    if (!text) {
+      console.warn(`[CLARIFICATION_INTRO_MISSING] lang=${lang} key=clarification_intro_${lang}`);
+      return '';
+    }
+    return text;
   }
+
   
   /**
    * Generate clarification structure with i18n keys
