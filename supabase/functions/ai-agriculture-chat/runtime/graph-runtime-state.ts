@@ -32,6 +32,17 @@ export type CanonicalContextContract = CanonicalContext;
 // ──────────────────────────────────────────────────────────────────────────
 const CANONICAL_ID_RE = /^[A-Z0-9_]+$/;
 
+/**
+ * 2026-07-26 (clarification state-machine repair) — OBSERVATION codes are
+ * DB-canonical **lower_snake_case** (`observation_master.observation_code`
+ * 2549/2549 lowercase). The UPPER_SNAKE-only invariant above applies to
+ * rule / hypothesis / intent identifiers ONLY. Enforcing UPPER on observation
+ * slots made every `observation_ledger.append/confirm` throw
+ * SYMBOLIC_ID_LEAK, so a farmer's clarification selection was never persisted
+ * on the graph and the same clarification card was re-rendered forever.
+ */
+const CANONICAL_OBS_ID_RE = /^[a-z0-9_]+$/;
+
 export class SymbolicIdLeakError extends Error {
   constructor(slot: string, value: unknown) {
     super(
