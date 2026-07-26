@@ -222,22 +222,29 @@ export function bridgeCodes(_cropCode: string | null | undefined, codes: string[
 // Extractor + observation_aliases yield generic observation codes.
 // Hypothesis conditions are authored against crop-specific canonical
 // codes. The equivalence class between the two is curated in
-// `intent_observation_mapping`: every LITERAL row for a given
-// (intent_code, crop_code) is a semantically equivalent piece of
-// evidence for that intent.
+// `intent_observation_mapping`: rows for a given (intent_code, crop_code)
+// form the curated evidence class for that intent.
 //
-// This resolver takes the current canonical evidence set and — if any
-// member belongs to the LITERAL class for (intent, crop) — unions the
-// whole LITERAL class as INFERRED evidence, so hypothesis conditions
-// written against any LITERAL peer can match.
+// 2026-07-26 (forensic audit F1) — the `.eq('assertion_strength','LITERAL')`
+// exclusion was DELETED. It made 13,245 of 13,594 active IOM rows invisible
+// to the graph, so any farmer observation curated as DIFFERENTIAL produced
+// `anchor=NONE` and zero peers, and the hypothesis conditions (authored
+// against crop-specific codes) could never fire. `assertion_strength` is now
+// a WEIGHT supplied to `decision/evidence-confidence.ts`, never a filter.
 //
 // NO hardcoded crop / stage / symptom / pest / disease is added here. The
 // ontology stays in the database.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { canonicalObsCode, canonicalIntentCode, canonicalCropCode } from '../utils/canonical-code.ts';
+import { scoreEvidenceSet, type EvidenceCandidate } from './evidence-confidence.ts';
+
 export interface CanonicalResolved {
   code: string;
   source: 'input' | 'iom_literal_peer';
+  assertion_strength?: string | null;
+  confidence_rank?: number | null;
+  evidence_confidence?: number;
 }
 
 export async function resolveCropCanonicalObservations(
@@ -247,25 +254,25 @@ export async function resolveCropCanonicalObservations(
   canonicalCodes: ReadonlyArray<string>,
 ): Promise<CanonicalResolved[]> {
   const inputs: string[] = Array.from(
-    new Set((canonicalCodes ?? []).filter(Boolean).map((c) => String(c))),
+    new Set((canonicalCodes ?? []).map((c) => canonicalObsCode(c)).filter(Boolean)),
   );
   const out: CanonicalResolved[] = inputs.map((c) => ({ code: c, source: 'input' }));
 
-  const intent = String(intentCode ?? '').trim();
-  const crop = String(cropCode ?? '').trim().toLowerCase();
+  const intent = canonicalIntentCode(intentCode);
+  const crop = canonicalCropCode(cropCode);
   if (!intent || !crop || crop === 'unknown' || inputs.length === 0) {
     return out;
   }
 
   try {
-    const cropScopes = Array.from(new Set([crop, 'universal']));
+    const cropScopes = Array.from(new Set([crop, 'all', 'universal']));
     const { data, error } = await supabase
       .from('intent_observation_mapping')
-      .select('observation_code, crop_code, assertion_strength, is_active')
+      .select('observation_code, crop_code, assertion_strength, confidence_rank, is_active')
       .eq('intent_code', intent)
       .in('crop_code', cropScopes)
-      .eq('assertion_strength', 'LITERAL')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .order('confidence_rank', { ascending: true, nullsFirst: false });
 
     if (error) {
       console.warn(
@@ -274,38 +281,68 @@ export async function resolveCropCanonicalObservations(
       return out;
     }
 
-    const literalPeers = new Set<string>();
-    for (const row of (data ?? []) as Array<{ observation_code: string }>) {
-      if (row?.observation_code) literalPeers.add(String(row.observation_code));
-    }
-    if (literalPeers.size === 0) {
-      console.log(
-        `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} literal_peers=0 source=intent_observation_mapping`,
-      );
-      return out;
-    }
-
-    const inputLower = new Set(inputs.map((c) => c.toLowerCase()));
-    const peerLower = new Map<string, string>();
-    for (const p of literalPeers) peerLower.set(p.toLowerCase(), p);
-
-    const anchor = [...inputLower].some((c) => peerLower.has(c));
-    if (!anchor) {
-      console.log(
-        `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} anchor=NONE inputs=[${inputs.join(',')}] literal_peers=${literalPeers.size} source=intent_observation_mapping`,
-      );
-      return out;
-    }
-
-    const injected: string[] = [];
-    for (const [lower, original] of peerLower) {
-      if (inputLower.has(lower)) continue;
-      out.push({ code: original, source: 'iom_literal_peer' });
-      injected.push(original);
+    // Peer class = ALL active rows for the cell, regardless of strength.
+    const peerRows = new Map<string, EvidenceCandidate>();
+    const strengthCount: Record<string, number> = {};
+    for (const row of (data ?? []) as Array<any>) {
+      const code = canonicalObsCode(row?.observation_code);
+      if (!code) continue;
+      const strength = String(row?.assertion_strength ?? 'NONE').toUpperCase();
+      strengthCount[strength] = (strengthCount[strength] ?? 0) + 1;
+      const prev = peerRows.get(code);
+      const rank = typeof row?.confidence_rank === 'number' ? row.confidence_rank : null;
+      if (!prev || (rank !== null && (prev.confidence_rank ?? 999) > rank)) {
+        peerRows.set(code, {
+          observation_code: code,
+          assertion_strength: row?.assertion_strength ?? null,
+          confidence_rank: rank,
+          source: 'INFERRED_PEER',
+        });
+      }
     }
 
     console.log(
-      `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} inputs=[${inputs.join(',')}] injected=[${injected.join(',')}] source=intent_observation_mapping`,
+      `[IOM_EVIDENCE] intent=${intent} crop=${crop} rows=${(data ?? []).length} ` +
+      `peers=${peerRows.size} ` +
+      Object.entries(strengthCount).map(([k, v]) => `${k.toLowerCase()}=${v}`).join(' ') +
+      ' source=intent_observation_mapping',
+    );
+
+    if (peerRows.size === 0) {
+      console.log(
+        `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} peers=0 source=intent_observation_mapping`,
+      );
+      return out;
+    }
+
+    const inputSet = new Set(inputs);
+    const anchor = inputs.some((c) => peerRows.has(c));
+    if (!anchor) {
+      console.log(
+        `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} anchor=NONE ` +
+        `inputs=[${inputs.join(',')}] peers=${peerRows.size} source=intent_observation_mapping`,
+      );
+      return out;
+    }
+
+    // Evidence confidence orders the peer injection; it never excludes.
+    const scored = scoreEvidenceSet(Array.from(peerRows.values()));
+    const injected: string[] = [];
+    for (const s of scored) {
+      if (inputSet.has(s.observation_code)) continue;
+      out.push({
+        code: s.observation_code,
+        source: 'iom_literal_peer',
+        assertion_strength: s.assertion_strength ?? null,
+        confidence_rank: s.confidence_rank ?? null,
+        evidence_confidence: s.evidence_confidence,
+      });
+      injected.push(`${s.observation_code}@${s.evidence_confidence.toFixed(2)}`);
+    }
+
+    console.log(
+      `[OBSERVATION_CANONICAL_RESOLVE] intent=${intent} crop=${crop} inputs=[${inputs.join(',')}] ` +
+      `injected=${injected.length} top=[${injected.slice(0, 8).join(',')}] source=intent_observation_mapping`,
     );
     return out;
   } catch (e) {
@@ -315,4 +352,5 @@ export async function resolveCropCanonicalObservations(
     return out;
   }
 }
+
 
