@@ -132,7 +132,7 @@ import {
   getObservationMaster as _getObservationMaster,
   observationIndexReady as _observationIndexReady,
 } from '../utils/db-ssot/observation-index.ts';
-import { preloadSystemConfig as _preloadSystemConfig } from '../utils/db-ssot/system-config-cache.ts';
+import { preloadSystemConfig as _preloadSystemConfig, getConfigRaw } from '../utils/db-ssot/system-config-cache.ts';
 
 const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
   'EMERGENCE_FAILURE',
