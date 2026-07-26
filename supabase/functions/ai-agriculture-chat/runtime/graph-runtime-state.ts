@@ -32,6 +32,17 @@ export type CanonicalContextContract = CanonicalContext;
 // ──────────────────────────────────────────────────────────────────────────
 const CANONICAL_ID_RE = /^[A-Z0-9_]+$/;
 
+/**
+ * 2026-07-26 (clarification state-machine repair) — OBSERVATION codes are
+ * DB-canonical **lower_snake_case** (`observation_master.observation_code`
+ * 2549/2549 lowercase). The UPPER_SNAKE-only invariant above applies to
+ * rule / hypothesis / intent identifiers ONLY. Enforcing UPPER on observation
+ * slots made every `observation_ledger.append/confirm` throw
+ * SYMBOLIC_ID_LEAK, so a farmer's clarification selection was never persisted
+ * on the graph and the same clarification card was re-rendered forever.
+ */
+const CANONICAL_OBS_ID_RE = /^[a-z0-9_]+$/;
+
 export class SymbolicIdLeakError extends Error {
   constructor(slot: string, value: unknown) {
     super(
@@ -62,10 +73,17 @@ export class GraphStateDriftError extends Error {
 }
 
 function assertCanonicalCode(slot: string, code: unknown): asserts code is string {
-  if (typeof code !== 'string' || !CANONICAL_ID_RE.test(code)) {
+  // Observation-family slots carry DB lower_snake codes; every other slot
+  // (rule_id / hypothesis_id / intent_code / winner_rule_id) is UPPER_SNAKE.
+  const isObservationSlot =
+    slot.startsWith('observation_ledger.') ||
+    slot === 'evidence_round.selected_observations';
+  const re = isObservationSlot ? CANONICAL_OBS_ID_RE : CANONICAL_ID_RE;
+  if (typeof code !== 'string' || !re.test(code)) {
     throw new SymbolicIdLeakError(slot, code);
   }
 }
+
 
 // ──────────────────────────────────────────────────────────────────────────
 // OBSERVATION LEDGER (append-only)

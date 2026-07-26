@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-26 18:40 UTC — option_selected=true may no longer coexist with
+ *   awaiting_clarification when the outgoing card repeats the option set the
+ *   farmer just answered; that turn is forced to decision_in_progress.
  * 2026-07-26 12:00 UTC — R4/R6: Q3 rescue now reads the canonical SessionSSOT;
  *   Layer 14 DB-first fallback hydrates empty CLARIFICATION_QUESTION responses
  *   from clarification_fallback_questions + system_config intro text (no raw
@@ -2695,12 +2698,28 @@ serve(async (req) => {
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT CHECK: Clarification answered but still awaiting_clarification = BUG
+    // `option_selected=true` may only coexist with `awaiting_clarification` when
+    // the outgoing turn asks a genuinely NEW question (different option set).
     // ═══════════════════════════════════════════════════════════════════════════
+    let repeatClarificationBlocked = false;
     if (clarificationAnswered && computedDecisionState === 'awaiting_clarification') {
-      console.error(`🚨 [INVARIANT VIOLATION] Clarification answered but decision_state is still awaiting_clarification!`);
-      console.error(`   Forcing transition to 'decision_in_progress'`);
-      computedDecisionState = 'decision_in_progress';
+      const priorAskedKeys = new Set<string>(
+        ((sessionState?.pending_clarification_observation_keys || []) as string[])
+          .map((k) => String(k).trim().toLowerCase()),
+      );
+      const outgoingKeys = clarificationObservationKeys.map((k) => String(k).trim().toLowerCase());
+      const isRepeat =
+        outgoingKeys.length > 0 && outgoingKeys.every((k) => priorAskedKeys.has(k));
+      if (!isClarificationResponse || outgoingKeys.length === 0 || isRepeat) {
+        console.error(
+          `🚨 [INVARIANT VIOLATION] option_selected=true with decision_state=awaiting_clarification ` +
+          `(repeat_options=${isRepeat} outgoing=${outgoingKeys.length}) → forcing 'decision_in_progress'`,
+        );
+        computedDecisionState = 'decision_in_progress';
+        repeatClarificationBlocked = isRepeat || outgoingKeys.length === 0;
+      }
     }
+
 
     // FIX (repeated-option loop invariant): if the OUTGOING response is a
     // CLARIFICATION_QUESTION with pending options, decision_state MUST be
@@ -2709,7 +2728,14 @@ serve(async (req) => {
     // stale session_state_update would otherwise leave
     // decision_state='decision_in_progress' and the next turn would not
     // recognise the farmer's tap as a clarification reply.
-    if (isClarificationResponse && clarificationOptions.length > 0 && computedDecisionState !== 'awaiting_clarification') {
+    // Skipped when the outgoing card is a verbatim repeat of the card the
+    // farmer just answered — that is the loop we are closing.
+    if (
+      isClarificationResponse &&
+      clarificationOptions.length > 0 &&
+      !repeatClarificationBlocked &&
+      computedDecisionState !== 'awaiting_clarification'
+    ) {
       console.error(`🚨 [INVARIANT VIOLATION] Outgoing CLARIFICATION_QUESTION with ${clarificationOptions.length} options but decision_state=${computedDecisionState}. Forcing to 'awaiting_clarification'.`);
       computedDecisionState = 'awaiting_clarification';
     }
