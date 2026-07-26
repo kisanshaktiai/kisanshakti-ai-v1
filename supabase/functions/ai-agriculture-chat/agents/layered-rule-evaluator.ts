@@ -17,6 +17,7 @@
 // and navigator-adapter). Replaces the empty local STAGE_FAMILIES stub so
 // the stage gate stops soft-bypassing every rule.
 import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
+import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
 
 
 import { 
@@ -1888,7 +1889,7 @@ export async function evaluateBundledKeywordRules(
 export function hasStrongAgriObservations(observations: string[]): boolean {
   if (!observations || observations.length === 0) return false;
   const obsUpper = observations.map(o => canonicalObsCode(o)).filter(Boolean);
-  return STRONG_AGRI_OBSERVATION_CODES.some(code => 
+  return STRONG_AGRI_OBSERVATION_CODES.map(c => canonicalObsCode(c)).some(code =>
     obsUpper.some(obs => obs.includes(code) || code.includes(obs))
   );
 }
