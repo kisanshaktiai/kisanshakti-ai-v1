@@ -6824,9 +6824,8 @@ export class AIAgentOrchestrator {
       // OUT OF SCOPE here — referencing it caused
       // "ReferenceError: cropCode is not defined" in the UNDERSTANDING_GATE.
       const _logCropCode =
-        (canonicalContext as any)?.crop_code ||
-        (landContext as any)?.current_crop?.toUpperCase?.() ||
-        (landContext as any)?.current_crop ||
+        canonicalCropCode((canonicalContext as any)?.crop_code) ||
+        canonicalCropCode((landContext as any)?.current_crop) ||
         'UNKNOWN';
       const _logGrowthStage =
         (canonicalContext as any)?.growth_stage ||
