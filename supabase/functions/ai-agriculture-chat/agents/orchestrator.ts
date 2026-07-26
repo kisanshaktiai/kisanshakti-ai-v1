@@ -7380,7 +7380,7 @@ export class AIAgentOrchestrator {
       // Log crop context
       if (landContext) {
         auditLogger.logCropContext({
-          crop_code: landContext.current_crop?.toUpperCase(),
+          crop_code: canonicalCropCode(landContext.current_crop),
           growth_stage: landContext.growth_stage
         });
       }
@@ -7753,7 +7753,7 @@ export class AIAgentOrchestrator {
           language: options.language || 'mr',
           farmer_message: farmerMessage,
           observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
-          crop_code: inductionResult.crop?.symbol || landContext?.current_crop?.toUpperCase(),
+          crop_code: canonicalCropCode(inductionResult.crop?.symbol) || canonicalCropCode(landContext?.current_crop),
           clarification_type: nluClarificationType as any,
           clarification_options: finalClarificationOptions
         };
@@ -9246,7 +9246,7 @@ export class AIAgentOrchestrator {
               // CRITICAL: Nested crop object matching AuthoritativeLandState interface
               crop: {
                 current_crop: landContext.current_crop || null,
-                crop_code: landContext.current_crop?.toUpperCase() || null,
+                crop_code: canonicalCropCode(landContext.current_crop) || null,
                 growth_stage: landContext.growth_stage || null,
                 days_since_sowing: landContext.days_since_sowing || null,
                 sowing_date: landContext.sowing_date || null,
