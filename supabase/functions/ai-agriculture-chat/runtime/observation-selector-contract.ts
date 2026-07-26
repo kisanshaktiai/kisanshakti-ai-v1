@@ -36,6 +36,8 @@
  */
 
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
+import { getSessionSSOT, type SessionSSOT } from './session-ssot.ts';
+
 
 export interface ObservationOption {
   value: string;
