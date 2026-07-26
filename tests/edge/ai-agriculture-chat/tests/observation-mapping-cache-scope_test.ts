@@ -17,7 +17,7 @@ import {
   getObservationsForIntent,
   isObservationMappingLoaded,
   __resetObservationMappingCache,
-} from '../utils/observation-mapping-cache.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/utils/observation-mapping-cache.ts';
 
 // ─── Fake supabase client returning curated IOM rows ────────────────────────
 interface FakeRow {

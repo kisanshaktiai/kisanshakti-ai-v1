@@ -22,7 +22,7 @@ import {
   GraphRuntimeState,
   GraphStateDriftError,
   SymbolicIdLeakError,
-} from '../runtime/graph-runtime-state.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/runtime/graph-runtime-state.ts';
 
 Deno.test('EvidenceRoundSnapshot: freeze-once — second freeze throws GraphStateDriftError', () => {
   const g = new GraphRuntimeState('trace_freeze_once');

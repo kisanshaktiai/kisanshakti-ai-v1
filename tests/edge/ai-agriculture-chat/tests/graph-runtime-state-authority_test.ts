@@ -14,8 +14,8 @@ import { assert, assertEquals, assertThrows } from 'https://deno.land/std@0.208.
 import {
   GraphRuntimeState,
   SymbolicIdLeakError,
-} from '../runtime/graph-runtime-state.ts';
-import { resolveNavigatorFlag } from '../runtime/navigator-flag.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/runtime/graph-runtime-state.ts';
+import { resolveNavigatorFlag } from '../../../../supabase/functions/ai-agriculture-chat/runtime/navigator-flag.ts';
 
 // ── Phase C — GraphRuntimeState authority ────────────────────────────────
 Deno.test('GraphRuntimeState: hypothesis_ids setter dedupes + enforces canonical', () => {

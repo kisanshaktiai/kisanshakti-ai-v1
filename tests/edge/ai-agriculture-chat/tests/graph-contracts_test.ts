@@ -26,7 +26,7 @@ import {
   graphAuthorityGate,
   enforceGraphOnlyRules,
   validateDecisionOutput,
-} from '../runtime/graph-contracts.ts';
+} from '../../../../supabase/functions/ai-agriculture-chat/runtime/graph-contracts.ts';
 
 // ───────────────────────── in-memory supabase mock ────────────────────────
 

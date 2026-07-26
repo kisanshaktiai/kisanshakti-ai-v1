@@ -8,13 +8,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 import { assert, assertEquals, assertExists } from 'https://deno.land/std@0.220.0/assert/mod.ts';
-import { lockIntent } from '../agents/intent-lock.ts';
-import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
-import { evaluateHypothesisGraph } from '../decision/hypothesis-graph-evaluator.ts';
-import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
-import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
-import { resolveObservationSymbol, sameNode } from '../decision/symbol-resolver.ts';
-import { classifyEvidence } from '../runtime/evidence-classifier.ts';
+import { lockIntent } from '../../../../supabase/functions/ai-agriculture-chat/agents/intent-lock.ts';
+import { stagesEquivalent, stageFamily } from '../../../../supabase/functions/ai-agriculture-chat/runtime/stage-family-shim.ts';
+import { evaluateHypothesisGraph } from '../../../../supabase/functions/ai-agriculture-chat/decision/hypothesis-graph-evaluator.ts';
+import { buildHypothesisClarificationOptions } from '../../../../supabase/functions/ai-agriculture-chat/decision/hypothesis-clarification-builder.ts';
+import { resolveHypothesesFromObservations } from '../../../../supabase/functions/ai-agriculture-chat/decision/observation-hypothesis-resolver.ts';
+import { resolveObservationSymbol, sameNode } from '../../../../supabase/functions/ai-agriculture-chat/decision/symbol-resolver.ts';
+import { classifyEvidence } from '../../../../supabase/functions/ai-agriculture-chat/runtime/evidence-classifier.ts';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test 1 (F6) — Rice weed query must never accept a COTTON_* intent lock.
