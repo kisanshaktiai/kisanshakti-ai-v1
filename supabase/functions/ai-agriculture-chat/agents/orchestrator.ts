@@ -5927,9 +5927,19 @@ export class AIAgentOrchestrator {
           if (real_codes.length !== real_codes_pre.length) {
             const purged = real_codes_pre.filter((c) => !real_codes.includes(c));
             console.warn(
-              `[TURN_OBS_PURGE] trace=${traceId} purged=[${purged.join(',')}] ` +
+              `[OBS_STALE_PURGE] trace=${traceId} purged=[${purged.join(',')}] ` +
                 `reason=prior_turn_clarification_candidate_not_reasserted ` +
                 `kept=${real_codes.length}/${real_codes_pre.length}`,
+            );
+          }
+          // T3 — UI_TAP_OBS_LOCK: on a tap turn the confirmed evidence set MUST
+          // be exactly the codes the farmer tapped (EXTRACTED authority). Any
+          // extra code surviving into the frozen set is an identity leak.
+          if (_staleKeys.size > 0 && _turnAsserted.size > 0) {
+            const _leaked = real_codes.filter((c) => !_turnAsserted.has(String(c).trim().toLowerCase()));
+            console.log(
+              `[UI_TAP_OBS_LOCK] trace=${traceId} tapped=${_turnAsserted.size} ` +
+                `frozen=${real_codes.length} leaked=[${_leaked.join(',')}]`,
             );
           }
           const ignoredRawCodes: string[] = raw_evidence_codes.filter((code) => !isRealObservation(code));
