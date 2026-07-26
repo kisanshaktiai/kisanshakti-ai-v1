@@ -607,7 +607,18 @@ function normalizeCropGroup(v: unknown): string | null {
   return s;
 }
 
+/** S1 — union of DB-authored allowed stages across all STAGE conditions. */
+function collectExpectedStages(conds: ConditionRow[]): string[] {
+  const out = new Set<string>();
+  for (const c of conds) {
+    if (c.condition_type !== 'STAGE') continue;
+    for (const s of extractStages(c.value_json)) out.add(String(s).toLowerCase());
+  }
+  return [...out];
+}
+
 function hasStageCondition(conds: ConditionRow[]): boolean {
+
   return conds.some((c) => c.condition_type === 'STAGE');
 }
 function hasDasCondition(conds: ConditionRow[]): boolean {
