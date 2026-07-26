@@ -39,7 +39,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
+import { buildHypothesisClarificationOptions, withPhotoOption } from '../decision/hypothesis-clarification-builder.ts';
 import { getSessionSSOT, type SessionSSOT } from './session-ssot.ts';
 import { canonicalObsCode } from '../utils/canonical-code.ts';
 
