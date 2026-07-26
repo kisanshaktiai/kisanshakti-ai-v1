@@ -1462,7 +1462,21 @@ export class AIAgentOrchestrator {
       console.warn(`[INVARIANT_RECOVERY_FAILED] trace=${traceId} err=${(invErr as Error).message}`);
     }
 
+    // R2 — attach the immutable SessionSSOT to the response so every layer
+    // downstream of the orchestrator (Q3 rescue, L14 PostProcessor) reads the
+    // SAME canonical crop/stage/DAS/intent/language.
+    try {
+      const _ssot = (this as any)._sessionSSOT as SessionSSOT | undefined;
+      if (_ssot && response) {
+        (response as any).metadata = (response as any).metadata && typeof (response as any).metadata === 'object'
+          ? (response as any).metadata
+          : {};
+        (response as any).metadata.session_ssot = _ssot;
+      }
+    } catch { /* attach is additive; never fatal */ }
+
     return response;
+
   }
 
   /**
