@@ -697,7 +697,20 @@ export class SymbolicReasoner {
       return new Map();
     }
     
-    const cacheKey = `obs_meta_${observationCodes.sort().join(',')}`;
+    // FIX F4-A (2026-07-26): observation_master.observation_code is 100%
+    // lower_snake in the DB. Upstream may pass UPPER_SNAKE codes from
+    // extractor/ledger. Normalize at the boundary so the .in() lookup
+    // actually matches. Deduplicate after normalization.
+    const normalizedCodes = Array.from(
+      new Set(
+        (observationCodes || [])
+          .map((c) => canonicalObsCode(c))
+          .filter((c): c is string => !!c && c.length > 0),
+      ),
+    );
+    if (normalizedCodes.length === 0) return new Map();
+    
+    const cacheKey = `obs_meta_${normalizedCodes.sort().join(',')}`;
     const cached = getCachedObsMetadata(cacheKey);
     if (cached) {
       console.log(`   ♻️ [ObsMeta Cache HIT] ${cached.size} observations`);
