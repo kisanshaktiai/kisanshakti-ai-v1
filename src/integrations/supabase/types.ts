@@ -7020,6 +7020,7 @@ export type Database = {
           created_at: string | null
           crop_code: string
           crop_cycle: string | null
+          cultivation_method: string | null
           edge_type: string
           from_stage_id: string
           id: string
@@ -7033,6 +7034,7 @@ export type Database = {
           created_at?: string | null
           crop_code: string
           crop_cycle?: string | null
+          cultivation_method?: string | null
           edge_type: string
           from_stage_id: string
           id?: string
@@ -7046,6 +7048,7 @@ export type Database = {
           created_at?: string | null
           crop_code?: string
           crop_cycle?: string | null
+          cultivation_method?: string | null
           edge_type?: string
           from_stage_id?: string
           id?: string
