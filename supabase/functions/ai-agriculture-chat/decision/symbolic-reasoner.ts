@@ -826,39 +826,71 @@ export class SymbolicReasoner {
 
     // ─── OBSERVATION BRIDGE ───────────────────────────────────────────────
     // Generic extractor codes (POOR_GERMINATION) must be bridged to the
-    // crop's canonical observation_master vocabulary (obs_rice_no_emergence)
-    // before metadata lookup. Without this, obsMeta comes back empty and the
-    // pre-filter no-ops, so 201 rules stay and none match. Bridge via the
-    // curated concept-bridge, then fall back to observation_aliases when the
-    // bridge has no entry.
+    // crop's canonical observation_master vocabulary before metadata lookup.
+    //
+    // 2026-07-27 GUARD: the alias pass previously rewrote EVERY code, so a
+    // code that already exists in `observation_master` could be replaced by an
+    // unrelated alias target (`STUNTED_GROWTH → obs_rice_patchy_emergence` in
+    // production). Now that this filter receives the unified graph observation
+    // stream, those codes are already canonical and MUST pass through
+    // untouched. Alias resolution applies ONLY to codes absent from
+    // observation_master.
     const cropForBridge = String(facts.crop_code || facts.crop || '').toLowerCase().trim();
     let observations: string[] = [...rawObservations];
     try {
       const { bridgeCodes } = await import('./concept-bridge.ts');
       const bridged = bridgeCodes(cropForBridge, rawObservations as string[]);
       if (bridged && bridged.length > 0) observations = bridged;
-      // Second pass: alias table for codes still not in observation_master
-      const lowerBridged = observations.map(o => String(o).toLowerCase());
-      const { data: aliasRows } = await this.supabase
-        .from('observation_aliases')
-        .select('alias_code, canonical_code')
-        .in('alias_code', lowerBridged);
-      if (Array.isArray(aliasRows) && aliasRows.length > 0) {
-        const aliasMap = new Map<string, string>();
-        for (const row of aliasRows as any[]) {
-          if (row?.alias_code && row?.canonical_code) {
-            aliasMap.set(String(row.alias_code).toLowerCase(), String(row.canonical_code));
+
+      const canonCodes = Array.from(
+        new Set(observations.map((o) => canonicalObsCode(o)).filter(Boolean)),
+      );
+
+      // Which of these already exist in observation_master? Those are frozen.
+      const { data: masterRows } = await this.supabase
+        .from('observation_master')
+        .select('observation_code')
+        .in('observation_code', canonCodes);
+      const inMaster = new Set(
+        (Array.isArray(masterRows) ? masterRows : []).map((r: any) =>
+          canonicalObsCode(r?.observation_code),
+        ),
+      );
+
+      const unresolved = canonCodes.filter((c) => !inMaster.has(c));
+      if (unresolved.length > 0) {
+        const { data: aliasRows } = await this.supabase
+          .from('observation_aliases')
+          .select('alias_code, canonical_code')
+          .in('alias_code', unresolved);
+        if (Array.isArray(aliasRows) && aliasRows.length > 0) {
+          const aliasMap = new Map<string, string>();
+          for (const row of aliasRows as any[]) {
+            if (row?.alias_code && row?.canonical_code) {
+              aliasMap.set(canonicalObsCode(row.alias_code), String(row.canonical_code));
+            }
           }
+          observations = observations.map((o) => {
+            const c = canonicalObsCode(o);
+            if (inMaster.has(c)) return o; // already canonical — never rewrite
+            return aliasMap.get(c) ?? o;
+          });
         }
-        observations = observations.map(o => aliasMap.get(String(o).toLowerCase()) ?? o);
       }
-      const changed = observations.some((v, i) => v !== rawObservations[i]);
+
+      const changed =
+        observations.length !== rawObservations.length ||
+        observations.some((v, i) => v !== rawObservations[i]);
       if (changed) {
-        console.log(`   🧩 [OBSERVATION_BRIDGE] crop=${cropForBridge} raw=[${rawObservations.join(',')}] → bridged=[${observations.join(',')}]`);
+        console.log(
+          `   🧩 [OBSERVATION_BRIDGE] crop=${cropForBridge} raw=[${rawObservations.join(',')}] → bridged=[${observations.join(',')}] ` +
+            `(master_frozen=${inMaster.size} alias_resolved=${unresolved.length})`,
+        );
       }
     } catch (e) {
       console.warn(`   ⚠️ [OBSERVATION_BRIDGE] Bridge failed, using raw codes: ${(e as Error).message}`);
     }
+
 
     const obsMeta = await this.loadObservationMetadata(observations);
     if (obsMeta.size === 0) {
