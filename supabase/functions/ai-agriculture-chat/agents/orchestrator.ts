@@ -9490,7 +9490,7 @@ export class AIAgentOrchestrator {
             `[GRAPH_ZERO_RULE_MATCH] trace=${traceId} ` +
               `crop=${canonicalState.crop_type} stage=${canonicalState.crop_stage} ` +
               `symptom=${canonicalState.visual_symptom} ` +
-              `obs=[${(canonicalState.visual_symptoms || []).join(',')}] ` +
+              `obs=[${unifiedObservationStream.join(',')}] ` +
               `— refusing keyword fallback. Downstream must emit ` +
               `GRAPH_NEEDS_MORE_EVIDENCE with pending observation codes.`,
           );
