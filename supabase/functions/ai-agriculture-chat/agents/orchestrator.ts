@@ -1153,6 +1153,10 @@ export interface OrchestratorResponse {
     // PHASE-9.1: Clarification state passthrough
     pendingClarificationOptions?: string[];
     pendingClarificationObservationKeys?: string[];
+    /** Cumulative evidence ledgers (2026-07-27) — survive across turns. */
+    confirmedObservationKeys?: string[];
+    askedObservationKeys?: string[];
+    clarificationRoundCounter?: number;
     lockedCropContext?: {
       crop_name: string;
       growth_stage: string;
@@ -1582,6 +1586,9 @@ export class AIAgentOrchestrator {
         // PHASE-9.1: Clarification state fields
         pendingClarificationOptions?: string[];
         pendingClarificationObservationKeys?: string[];
+        confirmedObservationKeys?: string[];
+        askedObservationKeys?: string[];
+        clarificationRoundCounter?: number;
         // STRUCTURED SSOT — preferred. Per-option records with canonical
         // observation_key preserved alongside label/value, so OPTION_SELECTED
         // can resolve symbolic identity directly without label mapping.
