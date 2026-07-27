@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 — Track B/D invariants: [CLARIFICATION_LABEL_COLLISION] drops a
+ *   second option whose farmer label is textually identical to one already on
+ *   the card; [HYPOTHESIS_UNDISCRIMINABLE] logs candidate hypotheses that
+ *   contributed no UI-eligible discriminator.
  * 2026-07-26 18:20 UTC — Clarification UX batch: (a) farmer labels are now
  *   strictly DB-sourced (translation[lang] → translation[en] → description);
  *   an option with no text is DROPPED and logged [OBS_LABEL_MISSING] instead of
