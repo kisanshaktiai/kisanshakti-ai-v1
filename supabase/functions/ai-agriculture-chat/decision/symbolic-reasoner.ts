@@ -12,6 +12,12 @@
  * - All decisions come from deterministic rule evaluation
  * - LLM is strictly prohibited from inventing treatments
  * 
+ * CHANGE LOG (newest first)
+ *   2026-07-27 00:00 UTC — FIX F1: corrected inverted canonical_group_mapping
+ *     join (engine_group, not biological_group) + [ONTOLOGY_JOIN_ZERO] drift
+ *     probe. FIX F4-A: normalize observation codes via canonicalObsCode before
+ *     the observation_master .in() lookup.
+ *
  * VERSION: 1.0.0 - Initial Production Release
  */
 
