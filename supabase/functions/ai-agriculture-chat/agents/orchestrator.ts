@@ -5066,6 +5066,50 @@ export class AIAgentOrchestrator {
       const authoredObservations = new AuthoredObservationSet();
       const allObservationsForPreAuth = new Set<string>(); // backward-compat flat set
       
+      // FIX B1 (2026-07-27): the previous gate was purely SYNTACTIC — it
+      // accepted any well-formed symbol, including canonical-state METADATA
+      // tokens (CROP_IDENTIFIED, AFFECTED_PART_*, DISTRIBUTION_*, SEVERITY_*,
+      // TIMING_*, ACTION_*, PHOTO_*) emitted by the canonical-state builder.
+      // Those polluted allObservationsForPreAuth → facts.all_observations →
+      // SymbolicReasoner rule matching, producing "Rules Evaluated: 0" while
+      // real observations were present. The gate is now an ALLOWLIST driven
+      // by the warm observation-index (DB SSOT): a token is admitted iff
+      // observation_master contains it, or observation_aliases resolves it to
+      // a code observation_master contains. NO hardcoded metadata denylist.
+      // Cold boot fails OPEN (legacy syntactic behavior) with
+      // [OBS_SEMANTIC_FILTER_COLD] as the drift probe.
+      const _obsIndexWarm = (() => {
+        try { return !!_observationIndexReady(); } catch { return false; }
+      })();
+      if (!_obsIndexWarm) {
+        console.warn(
+          `[OBS_SEMANTIC_FILTER_COLD] observation-index not warm — falling back to ` +
+          `syntactic filter. Metadata leakage possible for this turn.`,
+        );
+      }
+      const _obsSemanticFilterStats = { admitted: 0, dropped_metadata: 0 };
+      function isCanonicalCode(s: string): boolean {
+        const raw = String(s ?? '').trim();
+        if (raw.length === 0) return false;
+        if (!/^[A-Za-z][A-Za-z0-9_]+$/.test(raw)) return false;
+        // Cold-boot: preserve legacy syntactic behavior so nothing blocks.
+        if (!_obsIndexWarm) return /^[A-Z][A-Z0-9_]+$/.test(raw) || /^[a-z][a-z0-9_]+$/.test(raw);
+        const key = canonicalObsCode(raw);
+        let inMaster = false;
+        try { inMaster = !!_getObservationMaster(key); } catch { inMaster = false; }
+        let resolvedInMaster = false;
+        if (!inMaster) {
+          try {
+            const resolved = _resolveAliasCanonical(key) ?? _resolveAliasCanonical(raw);
+            resolvedInMaster = !!resolved && !!_getObservationMaster(canonicalObsCode(resolved));
+          } catch { resolvedInMaster = false; }
+        }
+        const admitted = inMaster || resolvedInMaster;
+        if (admitted) _obsSemanticFilterStats.admitted++;
+        else _obsSemanticFilterStats.dropped_metadata++;
+        return admitted;
+      }
+
       // SYMBOL CONTRACT — runtime accepts any well-formed symbol regardless of
       // casing / separators. Agricultural authority (whether a code exists in
       // observation_master / IOM / hypothesis_conditions) is DB-owned; the
@@ -5073,7 +5117,11 @@ export class AIAgentOrchestrator {
       // DB codes (e.g. `obs_rice_no_emergence`, `poor_germination`) MUST
       // survive this gate.
       function acceptSymbol(s: unknown): string | null {
-        return SymbolContract.normalize(s as any);
+        const norm = SymbolContract.normalize(s as any);
+        if (!norm) return null;
+        // FIX B1: semantic allowlist gate (DB SSOT).
+        if (!isCanonicalCode(norm)) return null;
+        return norm;
       }
       
       let filteredOutCount = 0;
