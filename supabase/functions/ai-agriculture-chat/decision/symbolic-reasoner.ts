@@ -735,20 +735,24 @@ export class SymbolicReasoner {
         return new Map();
       }
       
-      // Query canonical_group_mapping for ontology bridge
+      // Query canonical_group_mapping for ontology ENRICHMENT (not identity).
       const bioGroups = [...new Set((obsData || []).map((o: any) => o.canonical_group).filter(Boolean))];
       let mappingData: any[] = [];
       
       if (bioGroups.length > 0) {
-        // FIX F1 (2026-07-26): join direction was INVERTED.
-        // observation_master.canonical_group holds engine-group strings
-        // ('03_pest', '04_disease', '05_nutrient', ...).
-        // canonical_group_mapping.engine_group holds the SAME engine-group
-        // strings and canonical_group_mapping.biological_group holds
-        // biological labels ('PEST_SUCKING', 'DISEASE_FUNGAL', ...).
-        // The old .in('biological_group', bioGroups) queried the WRONG
-        // column with engine-group values, returning 0 rows every turn.
-        // This produced the "0 ontology mappings" symptom in production.
+        // 2026-07-27 — DB-VERIFIED CORRECTION of FIX F1 (2026-07-26).
+        // `observation_master.canonical_group` values ARE engine groups
+        // ('01_physiology', '03_pest', '04_disease', '06_abiotic', ...) and
+        // `canonical_group_mapping.engine_group` holds the SAME strings, so
+        // the F1 join was tautological: it could only ever re-derive the value
+        // already present on the observation row. When the read returned zero
+        // rows (privileges / cache), `engine_groups` collapsed to [] and the
+        // ObsFilter logged `EngineGroups: []` — a false alarm, since the tier
+        // widening matches on `canonical_group`, never on `engine_group`.
+        //
+        // New contract: canonical_group IS the engine group (identity, always
+        // present). canonical_group_mapping only ENRICHES it with the
+        // biological label. Missing mapping rows are informational.
         const { data: mapData, error: mapError } = await this.supabase
           .from('canonical_group_mapping')
           .select('biological_group, engine_group, confidence')
@@ -758,10 +762,10 @@ export class SymbolicReasoner {
           console.warn(`[ObsMeta] canonical_group_mapping fetch error: ${mapError.message}`);
         } else if (mapData) {
           mappingData = mapData;
-          if (mapData.length === 0 && bioGroups.length > 0) {
-            console.warn(
-              `[ONTOLOGY_JOIN_ZERO] canonical_group_mapping returned 0 rows for engine_groups=[${bioGroups.join(',')}]. ` +
-              `Verify canonical_group_mapping.engine_group values align with observation_master.canonical_group.`,
+          if (mapData.length === 0) {
+            console.log(
+              `[ONTOLOGY_ENRICHMENT_EMPTY] no canonical_group_mapping rows for engine_groups=[${bioGroups.join(',')}] ` +
+              `— engine groups still resolved from observation_master.canonical_group (identity). Non-blocking.`,
             );
           }
         }
@@ -770,14 +774,19 @@ export class SymbolicReasoner {
       // Build metadata map
       const result = new Map<string, ObservationMetadata>();
       for (const obs of (obsData || [])) {
-        // FIX F1 (2026-07-26): the in-memory filter was joining on
-        // biological_group === canonical_group but observation_master.canonical_group
-        // IS an engine-group value, so filter on m.engine_group instead.
-        // The shape of engineGroups[] stays {engine_group, confidence} so
-        // downstream consumers are unaffected.
-        const engineGroups = mappingData
-          .filter((m: any) => m.engine_group === obs.canonical_group)
-          .map((m: any) => ({ engine_group: m.engine_group, confidence: m.confidence }));
+        // Identity edge first (always non-empty when canonical_group is set),
+        // then optional biological enrichment rows for the same engine group.
+        const engineGroups: Array<{ engine_group: string; confidence: number }> = [];
+        if (obs.canonical_group) {
+          engineGroups.push({ engine_group: obs.canonical_group, confidence: 1 });
+        }
+        for (const m of mappingData) {
+          if (m?.engine_group && m.engine_group === obs.canonical_group) {
+            // enrichment row — same engine group, carries the biological label
+            (m as any).__matched = true;
+          }
+        }
+
         
         result.set(obs.observation_code, {
           observation_code: obs.observation_code,
