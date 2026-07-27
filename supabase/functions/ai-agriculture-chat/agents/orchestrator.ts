@@ -2909,7 +2909,10 @@ export class AIAgentOrchestrator {
               confirmed_observations: optionEvidence.real_codes,
               // Never re-offer what the farmer was already asked last turn.
               pending_obs_keys:
-                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
+                Array.from(new Set([
+                  ...(((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]),
+                  ...(((options.sessionState as any)?.askedObservationKeys ?? []) as string[]),
+                ])) as string[],
               trace_id: traceId,
               max: 5,
             });
@@ -2984,7 +2987,10 @@ export class AIAgentOrchestrator {
               language: options.language || 'mr',
               confirmed_observations: optionEvidence.real_codes,
               pending_obs_keys:
-                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
+                Array.from(new Set([
+                  ...(((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]),
+                  ...(((options.sessionState as any)?.askedObservationKeys ?? []) as string[]),
+                ])) as string[],
               trace_id: traceId,
 
               max: 5,
@@ -6806,7 +6812,10 @@ export class AIAgentOrchestrator {
                   ? (this as any)._lastRealObservations
                   : [],
                 pending_obs_keys:
-                  ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
+                  Array.from(new Set([
+                  ...(((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]),
+                  ...(((options.sessionState as any)?.askedObservationKeys ?? []) as string[]),
+                ])) as string[],
                 max: 5,
 
               });
