@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 UTC — Loop fix: (a) is_required=true STAGE conditions now demand
+ *   an EXACT stage match; `crop_stage_graph` adjacency no longer satisfies
+ *   them (transplanting-only hypotheses were surviving at tillering).
+ *   (b) New rule/stage coherence invariant `[HYP_RULE_STAGE_INCOHERENT]`
+ *   drops survivors whose every mapped rule is scoped out of the current
+ *   stage / crop-age, via DB-only `queryRuleStageScope`.
  * 2026-07-25 UTC — Batch A / P2: added `structured_gap_reason` to
  *   GraphHypothesisResult (NO_OBSERVATION_EVIDENCE | NO_DISCOVERY_SEEDS |
  *   NO_STAGE_VALID_HYPOTHESES | PARTIAL_MATCH_ONLY | ALL_ELIMINATED) plus a
