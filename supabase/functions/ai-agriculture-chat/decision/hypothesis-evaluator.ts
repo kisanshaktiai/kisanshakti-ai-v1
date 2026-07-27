@@ -1127,7 +1127,7 @@ export async function evaluateCandidateHypotheses(
     
     for (const rule of finalRulesToEvaluate) {
       // Calculate stage relevance
-      let stageRelevance = calculateStageRelevance(rule.stage_applicable, growth_stage);
+      let stageRelevance = calculateStageRelevance(rule.stage_applicable, growth_stage, crop_code);
       
       // GAP #3: Allow cross-stage evaluation if strong signal present
       const shouldSkipByStage = stageRelevance < 0.2;
