@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 09:00 UTC — Clarification builder now excludes the session-wide
+ *   asked_observation_keys and unions prior confirmed_observation_keys, so
+ *   farmer selections accumulate across turns (no re-offering loop).
  * 2026-07-26 18:40 UTC — Clarification selection is now a TERMINAL transition:
  *   on a valid option tap we persist the canonical observation, clear the
  *   clarification lock, zero pending_options, flip decision_state to

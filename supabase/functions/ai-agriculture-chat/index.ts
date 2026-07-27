@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 09:00 UTC — Track 2/3: cumulative evidence ledgers
+ *   (confirmed_observation_keys / asked_observation_keys / round counter)
+ *   persisted in decision_tracking + CLARIFICATION_ROUND_EXHAUSTED loop guard
+ *   that escalates instead of re-rendering an already-asked option set.
  * 2026-07-26 18:40 UTC — option_selected=true may no longer coexist with
  *   awaiting_clarification when the outgoing card repeats the option set the
  *   farmer just answered; that turn is forced to decision_in_progress.
