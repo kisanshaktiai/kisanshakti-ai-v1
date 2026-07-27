@@ -141,6 +141,7 @@ import {
   preloadObservationIndex as _preloadObservationIndex,
   getObservationMaster as _getObservationMaster,
   observationIndexReady as _observationIndexReady,
+  resolveAliasCanonical as _resolveAliasCanonical,
 } from '../utils/db-ssot/observation-index.ts';
 import { preloadSystemConfig as _preloadSystemConfig, getConfigRaw } from '../utils/db-ssot/system-config-cache.ts';
 
