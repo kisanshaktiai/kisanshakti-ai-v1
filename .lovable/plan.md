@@ -1,47 +1,51 @@
-## Verified current state
+## Forensic findings (verified against code + DB + the uploaded log)
 
-Confirmed by reads/queries this turn:
+**The two streams**
 
-- `crop_stage_master` for rice holds **two distinct lanes**: `direct_seeded` (10 stages, seedling → early_vegetative → tillering …) and `transplanted` (11 stages, nursery → transplanting → transplant_establishment → tillering …), plus one shared `any` row (germination).
-- `crop_stage_graph` **has a `cultivation_method` column** and all 21 rice edges are lane-tagged (10 direct_seeded, 11 transplanted).
-- `utils/stage-knowledge-cache.ts` builds its adjacency map keyed only by `crop|stage` and **ignores `cultivation_method` entirely** (it doesn't even select the column). So DSR and transplanted timelines are merged into one family — `transplanting` becomes a neighbour of stages that only exist on the DSR path, and vice-versa.
-- `utils/stage-normalizer.ts` still contains hardcoded agronomy: `SEEDLING_STAGES`, `PRE_SOWING_STAGES`, `VEGETATIVE_STAGES`, `REPRODUCTIVE_STAGES`, `MATURITY_STAGES`, plus `getStageQueryVariants()` which hand-expands categories into stage lists, `areStagesCompatible()` and `calculateStageRelevanceScore()` which score via those lists. These duplicate `crop_stage_graph`.
-- `getStageRow(crop, stage)` returns a single row per `crop|stage`, so for rice `tillering` it silently returns whichever lane loaded last.
-- `runtime/stage-family-shim.ts` is already DB-only (hardcoded families removed) but has no method dimension.
-- `decision/hypothesis-evaluator.ts` consumes `getStageQueryVariants` and `calculateStageRelevanceScore` without passing crop, so it never reaches the DB path.
-- `runtime/phenology-reconciler.ts` and `agents/biological-state.ts` already handle `cultivation_method` correctly — they're the source of the active lane.
+| | Stream A (authoritative) | Stream B (the failing one) |
+|---|---|---|
+| Built at | `agents/orchestrator.ts:6297` `currentObservations = canonical_observation_codes`, frozen into `_graphSnapshot` (`:6396-6405`, `:6746-6755`) | `allObservationsForPreAuth` Set, assembled at `agents/orchestrator.ts:5072-5900` (pre-graph) |
+| Log evidence | `[GRAPH_RUNTIME] snapshot … observations=5 hypotheses=1 winner=HYP_RICE_POST_TRANSPLANT_ESTABLISHMENT_FAILURE_001 state=READY_FOR_DECISION` | `[OBS_SEMANTIC_FILTER] admitted=3 … preAuthSize=2`, then `[OBSERVATION_BRIDGE] raw=[RICE_LODGING,STUNTED_GROWTH]` |
+| Consumer | graph runtime → hypothesis → rules | `factExtractor.extractFacts(..., [...allObservationsForPreAuth])` at `:9557`, → `SymbolicReasoner.executeRules` → `applyObservationLayerFilter` (`decision/symbolic-reasoner.ts:815`) |
 
-## Changes (minimal, no new tables, no crop-specific conditions)
+Stream B is a genuinely separate, earlier, smaller list. It never reads `_graphSnapshot.observations`. That is why `[ObsMeta] Loaded 1–2 observation metadata entries` while the graph holds 5, and why the reasoner path produces zero rule matches.
 
-### 1. `utils/stage-knowledge-cache.ts` — lane-aware SSOT
-- Select `cultivation_method` from `crop_stage_graph`; key adjacency as `crop|method|stage`.
-- Add a per-request `activeCultivationMethod` (`setActiveCultivationMethod` / `getActiveCultivationMethod`) so call sites don't need signature changes.
-- Lane matching rule (same as the existing SQL resolver): a row qualifies iff its method equals the active lane or is `any`; `NULL` never matches.
-- `getStageFamilyFromDB(crop, stage, method?)` and `stagesEquivalentFromDB(crop, a, b, method?)` filter by lane, defaulting to the active lane.
-- `getStageRow(crop, stage, method?)` prefers the exact-lane row, then `any`, then null.
-- `getStageByDAS` defaults its method argument to the active lane instead of legacy first-hit.
+**`obs=[]` in the zero-rule log** — `agents/orchestrator.ts:9443` prints `canonicalState.visual_symptoms`, a third (empty) container. The same block at `:9409` uses `confirmed_observations` and printed `despite 8 symptoms`. So `obs=[]` is a reporting defect on top of the real divergence, not the evidence set actually used.
 
-### 2. `agents/biological-state.ts` — publish the lane
-At lock time (where `cultivationMethod` is already computed) call `setActiveCultivationMethod(...)` so every downstream stage read resolves on the correct timeline. One line, no logic change.
+**Ontology join** — `decision/symbolic-reasoner.ts:737-780`. DB check: `observation_master.canonical_group` values are engine-group shaped (`01_physiology`, `06_abiotic`, `03_pest`, …) and `canonical_group_mapping.engine_group` holds the *same* strings (rows for `01_physiology` and `06_abiotic` do exist: `PHYSIOLOGY_LODGING`, `PHYSIOLOGY_STUNTING`, `STRESS_WATER`, `STRESS_TEMPERATURE`). So the current `.in('engine_group', bioGroups)` + in-memory `m.engine_group === obs.canonical_group` join is **tautological** — at best it re-derives the value it already had. The runtime nevertheless got 0 rows back, which the SQL contradicts; the most likely cause is table privileges (`information_schema.table_privileges` returns no rows for this table, though that view is role-filtered, so this is *unconfirmed*). Either way `engine_groups` is decorative: the tier widening in `applyObservationLayerFilter` matches on `canonical_group`, not on `engine_group`. It is not the cause of the empty decision, and I will not present it as one.
 
-### 3. `runtime/stage-family-shim.ts` — pass the method through
-`stageFamily(stage, crop, method?)` and `stagesEquivalent(a, b, crop, method?)` forward the optional method to the cache; omitted → active lane. Existing 2-arg callers keep working.
+## Plan (read-path only, no agronomy, no new tables)
 
-### 4. `utils/stage-normalizer.ts` — delete duplicated agronomy
-- Remove `SEEDLING_STAGES`, `PRE_SOWING_STAGES`, `VEGETATIVE_STAGES`, `REPRODUCTIVE_STAGES`, `MATURITY_STAGES`.
-- `getStageCategory(stage, crop?)` → DB only; `UNKNOWN` on miss (log `[STAGE_SSOT] result=MISS`), no static-list fallback.
-- `getStageQueryVariants(stage, crop?)` → normalized stage + DB family from `crop_stage_graph` + `all`/`*`; no category expansion.
-- `areStagesCompatible(a, b, crop?)` → delegates to `stagesEquivalent`.
-- `calculateStageRelevanceScore(stages, current, crop?)` → 1.0 exact, 0.8 DB-family, 0.5 wildcard, 0.1 otherwise; substring guessing removed.
-- `normalizeStageForDB` / `STAGE_DB_MAP` stay (string canonicalization, not agronomy).
+**1. Single authoritative observation source at the reasoner call site** — `agents/orchestrator.ts` (~`:9546-9562`)
 
-### 5. `decision/hypothesis-evaluator.ts` — feed crop context in
-Pass `crop_code` into `getStageQueryVariants` and `calculateStageRelevance` so the DB path is actually reachable.
+Add a small local resolver used only for reads:
+- prefer `(this as any)._graphSnapshot?.observations` when non-empty;
+- else `canonical_observation_codes` if still in scope;
+- else the existing `allObservationsForPreAuth` (cold/no-graph turns only);
+- normalize every code through `canonicalObsCode` from `utils/canonical-code.ts` and de-duplicate.
+
+Pass that array to `factExtractor.extractFacts(...)` instead of `[...allObservationsForPreAuth]`. Log `[OBS_STREAM_UNIFIED] source=graph_snapshot|preauth count=N codes=[…]`, and log `[OBS_STREAM_DIVERGENCE]` when the graph set and the pre-auth set differ, so any remaining second stream is visible instead of silent.
+
+**2. Do not let Stream B re-pollute the evidence** — `decision/symbolic-reasoner.ts:820-855`
+
+`applyObservationLayerFilter` re-bridges incoming codes through `observation_aliases` (this is what turned `STUNTED_GROWTH` into `obs_rice_patchy_emergence`). Change it to alias-resolve **only codes that are not already present in `observation_master`**, after `canonicalObsCode` normalization. Codes arriving from the graph are already canonical and must pass through untouched. Purely a read-path guard; the alias table stays the authority for unresolved codes.
+
+**3. Correct the reporting defect** — `agents/orchestrator.ts:9443`
+
+Print the unified list from step 1 in `[GRAPH_ZERO_RULE_MATCH]` (and the same for `[PIPELINE_HEALTH]`), so `obs=[]` can never again mask a populated evidence set.
+
+**4. Ontology join: make it honest, not louder** — `decision/symbolic-reasoner.ts:737-780`
+
+Keep the DB read, but treat `observation_master.canonical_group` as itself an engine group (seed `engine_groups` with it directly), and use `canonical_group_mapping` rows purely as optional enrichment (`biological_group` labels). Downgrade `[ONTOLOGY_JOIN_ZERO]` from a warning implying breakage to an informational `[ONTOLOGY_ENRICHMENT_EMPTY]`. Result: `EngineGroups: []` disappears without pretending the mapping table was the blocker.
+
+**5. Explicitly out of scope** — no change to the GraphProjection frozen-state guard, no change to the graph→clarification collapse logic beyond what step 1 implies, no rule/hypothesis seeding, no new files.
 
 ## Verification
-- Redeploy `ai-agriculture-chat`; confirm boot log shows `crop_stage_graph edges=…` and per-turn `[STAGE_LANE] active_cultivation_method=…`.
-- Run a transplanted-rice turn: `stageFamily('tillering','rice')` must return only transplanted neighbours (`transplant_establishment`, `panicle_initiation`) and must **not** include `early_vegetative`; a DSR turn must return `early_vegetative`/`panicle_initiation` and never `transplanting`.
-- Grep to confirm zero remaining hardcoded stage lists outside the DB readers.
 
-## Not in scope
-No new tables, no crop-specific branches, no changes to `phenology-reconciler.ts` or the SQL resolver (already lane-correct), no changes to decision/rule semantics beyond removing the duplicated stage scoring.
+- Re-run the same Marathi rice/lodging turn and confirm: `[OBS_STREAM_UNIFIED] source=graph_snapshot count=5`, `[ObsMeta] Loaded 5 …`, non-empty `EngineGroups`, and `rules_matched > 0` (or a structured no-decision that cites the graph's 5 observations rather than `obs=[]`).
+- Confirm `[GRAPH_RUNTIME] snapshot … READY_FOR_DECISION` is still produced and is no longer followed by a clarification fallback triggered by the reasoner path.
+- Add a CHANGE LOG entry to both touched files per the project rule.
+
+## Open item for you
+
+If, after step 1, `canonical_group_mapping` still returns 0 rows in the edge runtime while SQL shows rows, the cause is table privileges and the fix is a one-line `GRANT SELECT … TO service_role` migration. I would confirm from the redeployed log first rather than issue a migration on a guess.
