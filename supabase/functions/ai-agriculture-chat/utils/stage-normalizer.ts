@@ -17,7 +17,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const STAGE_NORMALIZER_VERSION = '1.0.0';
+import { stageFamily, stagesEquivalent } from '../runtime/stage-family-shim.ts';
+
+export const STAGE_NORMALIZER_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE CATEGORY DEFINITIONS
@@ -25,37 +27,11 @@ export const STAGE_NORMALIZER_VERSION = '1.0.0';
 
 export type StageCategory = 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURITY' | 'UNKNOWN';
 
-// FIX (2026-07-08): Removed agronomically wrong lumping of transplanting/
-// planting/sowing/post_planting/pre_sowing into SEEDLING_STAGES. Transplanting
-// means seedlings ALREADY germinated and were moved to field — biologically
-// post-germination, adjacent to VEGETATIVE. Previous mapping caused
-// RICE_GERMINATION_FAILURE to score stage_relevance=0.7 at stage=transplanting
-// DAS=29 and win as INVARIANT_FALLBACK with "monitor only" advice.
-const SEEDLING_STAGES = [
-  'germination', 'seedling', 'establishment', 'sprouting', 'emergence',
-  'early_growth', 'd0_7', 'd8_15', 'd16_30'
-];
-
-// Pre-establishment stages — NEITHER germination NOR vegetative.
-const PRE_SOWING_STAGES = ['pre_sowing', 'sowing', 'planting', 'post_planting'];
-
-const VEGETATIVE_STAGES = [
-  'vegetative', 'transplanting', 'tillering', 'early_tillering', 'grand_growth',
-  'cane_formation', 'rosette', 'leaf_development', 'stem_elongation', 'canopy',
-  'post_irrigation', 'd31_60', 'd61_90'
-];
-
-const REPRODUCTIVE_STAGES = [
-  'flowering', 'fruiting', 'grain_filling', 'pod_formation', 'boll_formation',
-  'boll_development', 'boll_opening', 'heading', 'booting', 'ear_emergence',
-  'squaring', 'd91_120'
-];
-
-const MATURITY_STAGES = [
-  'maturity', 'ripening', 'harvest', 'pre_harvest', 'drying', 'senescence',
-  'post_harvest', 'ratoon', 'ratoon_init', 'early_ratoon',
-  'd121_180', 'd180_plus'
-];
+// NOTE (2026-07-27): the hardcoded SEEDLING/PRE_SOWING/VEGETATIVE/REPRODUCTIVE/
+// MATURITY stage lists were DELETED. They duplicated `public.crop_stage_graph`
+// and merged direct-seeded and transplanted timelines into one path. Stage
+// category, adjacency and compatibility now come EXCLUSIVELY from the DB via
+// utils/stage-knowledge-cache.ts + runtime/stage-family-shim.ts.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE TO DB FORMAT MAPPING
@@ -158,151 +134,103 @@ export function getStageCategory(
   stage: string | undefined | null,
   crop?: string | null,
 ): StageCategory {
-  if (!stage) return 'UNKNOWN';
-
-  // 1) DB-first when both crop+stage are known. SINGLE provenance emit.
-  if (crop) {
-    try {
-      // deno-lint-ignore no-explicit-any
-      const cache = (globalThis as any).__stageKnowledgeCacheRef;
-      if (cache && typeof cache.getStageCategoryFromDB === 'function') {
-        const cat = cache.getStageCategoryFromDB(crop, stage);
-        if (cat) {
-          console.log(`[STAGE_SSOT] source=crop_stage_master result=HIT crop=${crop} stage=${stage} category=${cat}`);
-          return cat as StageCategory;
-        }
+  if (!stage || !crop) return 'UNKNOWN';
+  try {
+    // deno-lint-ignore no-explicit-any
+    const cache = (globalThis as any).__stageKnowledgeCacheRef;
+    if (cache && typeof cache.getStageCategoryFromDB === 'function') {
+      const cat = cache.getStageCategoryFromDB(crop, stage);
+      if (cat) {
+        console.log(`[STAGE_SSOT] source=crop_stage_master result=HIT crop=${crop} stage=${stage} category=${cat}`);
+        return cat as StageCategory;
       }
-    } catch { /* fall through to static map */ }
-  }
-
-  const normalizedStage = stage.toLowerCase().trim().replace(/[\s-]+/g, '_');
-
-  let resolved: StageCategory = 'UNKNOWN';
-  if (SEEDLING_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    resolved = 'SEEDLING';
-  } else if (VEGETATIVE_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    resolved = 'VEGETATIVE';
-  } else if (REPRODUCTIVE_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    resolved = 'REPRODUCTIVE';
-  } else if (MATURITY_STAGES.some(s => normalizedStage.includes(s) || s.includes(normalizedStage))) {
-    resolved = 'MATURITY';
-  }
-  console.log(`[STAGE_SSOT] source=crop_stage_master result=MISS fallback=static_lists crop=${crop ?? 'null'} stage=${stage} category=${resolved}`);
-  return resolved;
+    }
+  } catch { /* fall through */ }
+  console.log(`[STAGE_SSOT] source=crop_stage_master result=MISS crop=${crop ?? 'null'} stage=${stage} category=UNKNOWN`);
+  return 'UNKNOWN';
 }
 
 /**
- * Get all stage variants for DB query.
- * Returns array of possible stage values to match against stage_applicable column.
+ * Get all stage variants for a DB query against `stage_applicable`.
+ * SSOT: `public.crop_stage_graph` (via the stage-family shim). No hardcoded
+ * category expansion — only the canonical stage, its DB-curated family for the
+ * ACTIVE cultivation lane, and the universal wildcards.
  */
-export function getStageQueryVariants(stage: string | undefined | null): string[] {
+export function getStageQueryVariants(
+  stage: string | undefined | null,
+  crop?: string | null,
+): string[] {
   if (!stage) return ['all', '*'];
-  
+
   const dbStage = normalizeStageForDB(stage);
-  const category = getStageCategory(stage);
-  
   const variants = new Set<string>([
     dbStage,
     dbStage.toLowerCase(),
     dbStage.toUpperCase(),
     'all',
-    '*'
+    '*',
   ]);
-  
-  // Add category-based stages for broader matching
-  if (category === 'SEEDLING') {
-    variants.add('germination');
-    variants.add('seedling');
-    variants.add('establishment');
-    variants.add('planting');
-    variants.add('early_growth');
-  } else if (category === 'VEGETATIVE') {
-    variants.add('vegetative');
-    variants.add('tillering');
-    variants.add('early_tillering');
-    variants.add('grand_growth');
-    variants.add('cane_formation');
-  } else if (category === 'REPRODUCTIVE') {
-    variants.add('flowering');
-    variants.add('reproductive');
-    variants.add('squaring');
-    variants.add('boll_development');
-  } else if (category === 'MATURITY') {
-    variants.add('maturity');
-    variants.add('harvest');
-    variants.add('pre_harvest');
-    variants.add('ratoon');
-    variants.add('post_harvest');
+
+  for (const s of stageFamily(dbStage, crop ?? null)) {
+    variants.add(s);
+    variants.add(s.toUpperCase());
   }
-  
+
   return Array.from(variants);
 }
 
 /**
- * Check if two stages are compatible (same category or one is wildcard).
+ * Check if two stages are compatible. Wildcards always pass; otherwise the DB
+ * stage graph decides (exact stage or same curated family in the active lane).
  */
 export function areStagesCompatible(
   ruleStage: string | undefined | null,
-  currentStage: string | undefined | null
+  currentStage: string | undefined | null,
+  crop?: string | null,
 ): boolean {
-  if (!ruleStage || ruleStage === '*' || ruleStage.toLowerCase() === 'all') {
-    return true;
-  }
-  
+  if (!ruleStage || ruleStage === '*' || ruleStage.toLowerCase() === 'all') return true;
   if (!currentStage) return false;
-  
-  // Exact match (normalized)
-  if (normalizeStageForDB(ruleStage) === normalizeStageForDB(currentStage)) {
-    return true;
-  }
-  
-  // Same category match
-  return getStageCategory(ruleStage) === getStageCategory(currentStage);
+
+  const a = normalizeStageForDB(ruleStage);
+  const b = normalizeStageForDB(currentStage);
+  if (a === b) return true;
+  return stagesEquivalent(a, b, crop ?? null);
 }
 
 /**
- * Calculate stage relevance score (0-1).
- * Higher score = better match for rule evaluation.
- * CRITICAL FIX: Case-insensitive comparison to handle DB uppercase vs code lowercase
+ * Stage relevance score (0-1) for rule ranking.
+ *   1.0 exact stage · 0.8 DB-curated family · 0.5 wildcard/universal · 0.1 else
+ * No substring guessing, no hardcoded category buckets.
  */
 export function calculateStageRelevanceScore(
   stageApplicable: string[] | null | undefined,
-  currentStage: string
+  currentStage: string,
+  crop?: string | null,
 ): number {
   if (!stageApplicable || !Array.isArray(stageApplicable) || stageApplicable.length === 0) {
     return 0.5; // Universal rules get base score
   }
-  
-  const normalizedCurrent = normalizeStageForDB(currentStage).toLowerCase();
-  const currentCategory = getStageCategory(currentStage);
-  
-  // CRITICAL FIX: Case-insensitive exact match (highest score)
-  if (stageApplicable.some(s => normalizeStageForDB(s).toLowerCase() === normalizedCurrent)) {
+
+  const current = normalizeStageForDB(currentStage).toLowerCase();
+
+  if (stageApplicable.some((s) => normalizeStageForDB(s).toLowerCase() === current)) {
     return 1.0;
   }
-  
-  // Case-insensitive substring match
-  if (stageApplicable.some(s => {
-    const normalized = normalizeStageForDB(s).toLowerCase();
-    return normalizedCurrent.includes(normalized) || normalized.includes(normalizedCurrent);
-  })) {
-    return 0.9;
+
+  if (
+    stageApplicable.some((s) =>
+      stagesEquivalent(normalizeStageForDB(s).toLowerCase(), current, crop ?? null)
+    )
+  ) {
+    return 0.8;
   }
-  
-  // Same category match (case-insensitive)
-  if (stageApplicable.some(s => getStageCategory(s) === currentCategory)) {
-    return 0.7;
-  }
-  
-  // Wildcard match (case-insensitive)
-  if (stageApplicable.some(s => {
-    const lower = s.toLowerCase();
+
+  if (stageApplicable.some((s) => {
+    const lower = String(s || '').toLowerCase();
     return lower === '*' || lower === 'all';
   })) {
     return 0.5;
   }
-  
-  // No match - low relevance
+
   return 0.1;
 }
-
