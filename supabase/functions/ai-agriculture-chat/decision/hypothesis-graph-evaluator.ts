@@ -484,6 +484,55 @@ export async function evaluateHypothesisGraph(
     else candidates.push(candidate);
   }
 
+  // ── RULE/STAGE COHERENCE INVARIANT (2026-07-27) ─────────────────────────
+  // A hypothesis that survives the stage gate while EVERY rule it maps to is
+  // scoped out of the current stage / crop-age cannot produce a decision. It
+  // silently becomes an empty decision → re-promoted clarification → loop.
+  // Drop it here, with a curator-visible log, instead of emitting a card.
+  {
+    const allRuleIds = Array.from(
+      new Set(candidates.flatMap((c) => c.candidate_rule_ids ?? []).map(String)),
+    );
+    const scopes = await queryRuleStageScope(input.supabase, allRuleIds);
+    if (scopes.size > 0) {
+      const curStage = input.growth_stage
+        ? normalizeStageForDB(String(input.growth_stage)).toLowerCase()
+        : null;
+      const curDas = typeof input.das === 'number' && Number.isFinite(input.das) ? input.das : null;
+      const admits = (rid: string): boolean => {
+        const s = scopes.get(String(rid));
+        if (!s) return true; // unknown scope → never eliminate on missing data
+        if (curStage && s.stages.length > 0) {
+          const compat = stageCompatibility(curStage, s.stages, input.crop_code ?? input.crop_group ?? null);
+          if (!(compat.unknown || compat.exact || compat.family)) return false;
+        }
+        if (curDas != null) {
+          if (s.age_min != null && curDas < s.age_min) return false;
+          if (s.age_max != null && curDas > s.age_max) return false;
+        }
+        return true;
+      };
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const c = candidates[i];
+        const rids = (c.candidate_rule_ids ?? []).map(String);
+        if (rids.length === 0) continue;
+        if (rids.some(admits)) continue;
+        console.warn(
+          `[HYP_RULE_STAGE_INCOHERENT] trace=${trace} hypothesis=${c.hypothesis_id} ` +
+            `stage=${curStage} das=${curDas} rules=[${rids.slice(0, 5).join(',')}] ` +
+            `action=eliminated reason=no_rule_applicable_at_context`,
+        );
+        c.eliminated = true;
+        c.eliminated_reason = 'RULE_SCOPE_INCOHERENT';
+        c.confidence = 0;
+        candidates.splice(i, 1);
+        eliminated.push(c);
+      }
+    }
+  }
+
+
+
 
   // Rank surviving candidates
   candidates.sort((a, b) => {
