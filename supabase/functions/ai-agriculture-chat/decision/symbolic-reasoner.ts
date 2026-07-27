@@ -13,6 +13,15 @@
  * - LLM is strictly prohibited from inventing treatments
  * 
  * CHANGE LOG (newest first)
+ *   2026-07-27 23:45 UTC — SINGLE OBSERVATION STREAM (read-path only).
+ *     (a) Ontology join corrected: observation_master.canonical_group IS the
+ *         engine group, so engine_groups is seeded from it directly and
+ *         canonical_group_mapping is enrichment-only. [ONTOLOGY_JOIN_ZERO]
+ *         (false-alarm warning) → [ONTOLOGY_ENRICHMENT_EMPTY] (info).
+ *         Fixes `EngineGroups: []` in ObsFilter.
+ *     (b) Alias re-bridge in applyObservationLayerFilter now applies ONLY to
+ *         codes absent from observation_master; already-canonical graph codes
+ *         are never rewritten (was: STUNTED_GROWTH → obs_rice_patchy_emergence).
  *   2026-07-27 00:00 UTC — FIX F1: corrected inverted canonical_group_mapping
  *     join (engine_group, not biological_group) + [ONTOLOGY_JOIN_ZERO] drift
  *     probe. FIX F4-A: normalize observation codes via canonicalObsCode before
