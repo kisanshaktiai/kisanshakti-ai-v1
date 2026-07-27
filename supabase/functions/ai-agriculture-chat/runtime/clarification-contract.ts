@@ -154,8 +154,8 @@ export function assertClarificationContract<
   // supplied an empty allowlist it means the DB-derived candidate set was not
   // resolved for this (intent, crop, stage) cell. Fail OPEN and log once so
   // we never silently drop farmer-visible options that the DB brain already
-  // vetted (e.g. photo_upload / water_stress_check / pest_check that live in
-  // clarification_fallback_questions). Hardcoded TS allowlists are forbidden.
+  // vetted (e.g. photo_upload, or intent-group safety-net observations from
+  // observation_master). Hardcoded TS allowlists are forbidden.
   if (!allowedKeys || allowedKeys.size === 0) {
     console.warn(
       `[CLARIFICATION_CONTRACT] empty allowlist — fail-open ` +
