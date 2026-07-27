@@ -787,6 +787,40 @@ async function queryMaster(supabase: any, hypIds: string[]): Promise<Map<string,
   return out;
 }
 
+/**
+ * DB-only scope reader for the rule/stage coherence invariant.
+ * Reads `decision_rules.stage_applicable` + crop-age bounds. No agronomy in TS.
+ */
+async function queryRuleStageScope(
+  supabase: any,
+  ruleIds: string[],
+): Promise<Map<string, { stages: string[]; age_min: number | null; age_max: number | null }>> {
+  const out = new Map<string, { stages: string[]; age_min: number | null; age_max: number | null }>();
+  if (!ruleIds || ruleIds.length === 0) return out;
+  try {
+    const { data, error } = await supabase
+      .from('decision_rules')
+      .select('rule_id, stage_applicable, crop_age_days_min, crop_age_days_max')
+      .in('rule_id', ruleIds);
+    if (error) {
+      console.warn(`[HYP_RULE_SCOPE_ERR] ${error.message}`);
+      return out;
+    }
+    for (const r of (data ?? []) as any[]) {
+      out.set(String(r.rule_id), {
+        stages: Array.isArray(r.stage_applicable)
+          ? r.stage_applicable.map((s: unknown) => String(s ?? '').trim().toLowerCase()).filter(Boolean)
+          : [],
+        age_min: typeof r.crop_age_days_min === 'number' ? r.crop_age_days_min : null,
+        age_max: typeof r.crop_age_days_max === 'number' ? r.crop_age_days_max : null,
+      });
+    }
+  } catch (e) {
+    console.warn(`[HYP_RULE_SCOPE_EX] ${(e as Error).message}`);
+  }
+  return out;
+}
+
 async function queryRuleMapping(supabase: any, hypIds: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   if (hypIds.length === 0) return out;
