@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CENTRALIZED STAGE NORMALIZER (v1.0.0)
+ * CENTRALIZED STAGE NORMALIZER (v2.0.0 — DB stage graph is the only authority)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * SINGLE SOURCE OF TRUTH for growth stage normalization across:
@@ -12,7 +12,8 @@
  * INVARIANTS:
  * - All stage normalization MUST go through this module
  * - DB stage format: lowercase with underscores (e.g., 'germination', 'grand_growth')
- * - Stage categories: SEEDLING, VEGETATIVE, REPRODUCTIVE, MATURITY
+ * - Stage category / adjacency / compatibility come ONLY from
+ *   crop_stage_master + crop_stage_graph (cultivation_method aware)
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -120,15 +121,9 @@ export function normalizeStageForDB(stage: string | undefined | null): string {
 }
 
 /**
- * Get the broad category for a stage.
- * Used for cross-stage rule evaluation and fallback logic.
- */
-/**
- * DB-first stage category resolution. When `crop` is provided and
- * crop_stage_master has a row for (crop, stage), the DB stage_category wins.
- * Otherwise falls back to the static SEEDLING/VEGETATIVE/REPRODUCTIVE/MATURITY
- * lists below (kept ONLY as a last-resort fallback — see
- * utils/stage-knowledge-cache.ts for the runtime SSOT).
+ * DB-only stage category resolution (SSOT: crop_stage_master, scoped to the
+ * active cultivation lane). Returns UNKNOWN when crop is missing or the DB has
+ * no row — never synthesizes a category from stage-name heuristics.
  */
 export function getStageCategory(
   stage: string | undefined | null,

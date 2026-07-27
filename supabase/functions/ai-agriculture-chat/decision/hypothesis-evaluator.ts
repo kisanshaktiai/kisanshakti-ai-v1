@@ -527,10 +527,11 @@ function evaluatePartialConditionMatch(
 
 function calculateStageRelevance(
   stageApplicable: string[] | null,
-  currentStage: string
+  currentStage: string,
+  crop?: string | null,
 ): number {
-  // Delegate to centralized normalizer
-  return calculateStageRelevanceScore(stageApplicable, currentStage);
+  // Delegate to centralized normalizer (DB stage graph authority)
+  return calculateStageRelevanceScore(stageApplicable, currentStage, crop);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -814,7 +815,7 @@ export async function evaluateCandidateHypotheses(
     // ═══════════════════════════════════════════════════════════════════════
     
     const cropVariants = getCropCodeVariantsForDB(crop_code);
-    const stageVariants = getStageQueryVariants(growth_stage);
+    const stageVariants = getStageQueryVariants(growth_stage, crop_code);
     const dbStage = normalizeStageForDB(growth_stage);
     
     console.log(`   [HypothesisEval] Crop variants for query: [${cropVariants.join(', ')}]`);
