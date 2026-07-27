@@ -7,7 +7,7 @@
  *   farmer just answered; that turn is forced to decision_in_progress.
  * 2026-07-26 12:00 UTC — R4/R6: Q3 rescue now reads the canonical SessionSSOT;
  *   Layer 14 DB-first fallback hydrates empty CLARIFICATION_QUESTION responses
- *   from clarification_fallback_questions + system_config intro text (no raw
+ *   from DB observation tables + system_config intro text (no raw
  *   i18n keys, no LLM); added [TURN_START]/[TURN_END] boundary logs.
  * 2026-07-09 03:15 UTC — FIX 2 (GRAPH_HANDOFF_CHECK). New audit log in
  *   [ORCHESTRATOR_EXIT] compares snapshot vs canonical-state vs exit
@@ -1906,7 +1906,7 @@ serve(async (req) => {
             // ─────────────────────────────────────────────────────────────
             // Q3 — SSOT propagation invariant. Before committing to an
             // escalation, attempt the DB clarification rescue (hypothesis
-            // graph → clarification_fallback_questions) with the full Land
+            // graph → intent-group observations) with the full Land
             // SSOT lock. Escalation is last resort only.
             // ─────────────────────────────────────────────────────────────
             // R4a — SessionSSOT is the authoritative source for the rescue
