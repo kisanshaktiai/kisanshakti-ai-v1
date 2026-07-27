@@ -9606,7 +9606,10 @@ export class AIAgentOrchestrator {
               canonicalState,  // Pass actual CanonicalState, not a fragment
               authoritativeLandState,  // Now properly structured
               farmerMessage,  // Add missing 4th argument (user query)
-              [...allObservationsForPreAuth]  // Bug 2 Fix: Pass all observations as array
+              // 2026-07-27: was `[...allObservationsForPreAuth]` — the second,
+              // pre-graph observation stream. Now the unified authoritative
+              // stream (graph snapshot first).
+              [...unifiedObservationStream]
             );
             
             // Execute symbolic rules
