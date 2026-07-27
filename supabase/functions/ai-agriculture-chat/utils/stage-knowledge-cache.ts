@@ -65,6 +65,41 @@ function k(crop: string, stage: string) {
   return `${(crop || '').toLowerCase()}|${(stage || '').toLowerCase()}`;
 }
 
+/** Adjacency key — cultivation_method is part of the identity so that
+ *  direct-seeded and transplanted timelines never merge into one path. */
+function ak(crop: string, method: string, stage: string) {
+  return `${(crop || '').toLowerCase()}|${(method || 'any').toLowerCase()}|${(stage || '').toLowerCase()}`;
+}
+
+/**
+ * Active cultivation_method for the current request. AUTHORITY: crop_schedules
+ * (surfaced through BiologicalState). All stage lookups default to this lane so
+ * call sites do not have to thread the method through every signature.
+ */
+let activeCultivationMethod: string | null = null;
+
+export function setActiveCultivationMethod(method: string | null | undefined): void {
+  const raw = method ? String(method).toLowerCase().trim() : null;
+  const next = raw && raw !== 'unknown' ? raw : null;
+  if (next !== activeCultivationMethod) {
+    console.log(`[STAGE_LANE] active_cultivation_method=${next ?? 'null'}`);
+  }
+  activeCultivationMethod = next;
+}
+
+export function getActiveCultivationMethod(): string | null {
+  return activeCultivationMethod;
+}
+
+/** A stage-graph / stage-master row belongs to the requested lane when its own
+ *  method equals the lane or is the universal 'any'. Unknown lane → all rows. */
+function laneMatches(rowMethod: unknown, lane: string | null): boolean {
+  const m = rowMethod ? String(rowMethod).toLowerCase() : null;
+  if (!lane) return true;
+  if (m === null) return false; // NULL = data-quality issue, never matched
+  return m === lane || m === 'any';
+}
+
 export async function loadStageKnowledge(supabase: any): Promise<void> {
   const now = Date.now();
   if (cache && now - cache.loadedAt < TTL_MS) return;
@@ -124,7 +159,7 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
 
     const { data: edges, error: edgeErr } = await supabase
       .from('crop_stage_graph')
-      .select('crop_code, from_stage_id, to_stage_id, edge_type')
+      .select('crop_code, from_stage_id, to_stage_id, edge_type, cultivation_method')
       .limit(5000);
     if (edgeErr) {
       console.warn('[STAGE_KNOWLEDGE] crop_stage_graph select error:', edgeErr.message);
@@ -138,8 +173,11 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
         // Symmetric adjacency — all curated edge types (STAGE_PRECEDES,
         // ENABLES, CONCURRENT_WITH, TRIGGERS) mark the two stages as
         // neighbours in the same crop's phenological graph.
-        const keyF = `${crop}|${from}`;
-        const keyT = `${crop}|${to}`;
+        const edgeMethod = e.cultivation_method
+          ? String(e.cultivation_method).toLowerCase()
+          : 'any';
+        const keyF = ak(crop, edgeMethod, from);
+        const keyT = ak(crop, edgeMethod, to);
         if (!stageAdjacency.has(keyF)) stageAdjacency.set(keyF, new Set([from]));
         if (!stageAdjacency.has(keyT)) stageAdjacency.set(keyT, new Set([to]));
         stageAdjacency.get(keyF)!.add(to);
@@ -165,8 +203,27 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
 }
 
 
-export function getStageRow(crop: string, stage: string): StageMasterRow | null {
+export function getStageRow(
+  crop: string,
+  stage: string,
+  cultivationMethod?: string | null,
+): StageMasterRow | null {
   if (!cache) return null;
+  const resolved = cultivationMethod === undefined ? activeCultivationMethod : cultivationMethod;
+  const lane = resolved ? String(resolved).toLowerCase() : null;
+  const cropKey = (crop || '').toLowerCase();
+  const stageKey = (stage || '').toLowerCase();
+  if (lane) {
+    let anyRow: StageMasterRow | null = null;
+    for (const r of cache.master) {
+      if (r.crop_code?.toLowerCase() !== cropKey) continue;
+      if (r.growth_stage?.toLowerCase() !== stageKey) continue;
+      const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
+      if (m === lane) return r;
+      if (m === 'any' && !anyRow) anyRow = r;
+    }
+    return anyRow;
+  }
   return cache.byCropStage.get(k(crop, stage)) ?? null;
 }
 
@@ -204,7 +261,8 @@ export function getStageByDAS(
 ): StageMasterRow | null {
   if (!cache) return null;
   const cropKey = (crop || '').toLowerCase();
-  const method = cultivationMethod ? String(cultivationMethod).toLowerCase() : null;
+  const resolvedMethod = cultivationMethod === undefined ? activeCultivationMethod : cultivationMethod;
+  const method = resolvedMethod ? String(resolvedMethod).toLowerCase() : null;
 
   let exact: StageMasterRow | null = null;
   let anyRow: StageMasterRow | null = null;
@@ -243,12 +301,22 @@ export function isStageKnowledgeLoaded(): boolean {
 export function getStageFamilyFromDB(
   crop: string,
   stage: string,
+  cultivationMethod?: string | null,
 ): string[] | null {
   if (!cache) return null;
-  const key = k(crop, stage);
-  const set = cache.stageAdjacency.get(key);
-  if (!set || set.size === 0) return null;
-  return Array.from(set);
+  const resolved = cultivationMethod === undefined ? activeCultivationMethod : cultivationMethod;
+  const lane = resolved ? String(resolved).toLowerCase() : null;
+  const cropKey = (crop || '').toLowerCase();
+  const stageKey = (stage || '').toLowerCase();
+  const out = new Set<string>();
+  for (const [key, set] of cache.stageAdjacency) {
+    const [c, m, st] = key.split('|');
+    if (c !== cropKey || st !== stageKey) continue;
+    if (!laneMatches(m, lane)) continue;
+    for (const v of set) out.add(v);
+  }
+  if (out.size === 0) return null;
+  return Array.from(out);
 }
 
 /**
@@ -260,16 +328,17 @@ export function stagesEquivalentFromDB(
   crop: string,
   a: string,
   b: string,
+  cultivationMethod?: string | null,
 ): boolean | null {
   if (!cache) return null;
   const aNorm = String(a || '').toLowerCase();
   const bNorm = String(b || '').toLowerCase();
   if (!aNorm || !bNorm) return null;
   if (aNorm === bNorm) return true;
-  const famA = cache.stageAdjacency.get(k(crop, aNorm));
-  if (famA && famA.has(bNorm)) return true;
-  const famB = cache.stageAdjacency.get(k(crop, bNorm));
-  if (famB && famB.has(aNorm)) return true;
-  if (!famA && !famB) return null; // no DB data — signal unknown
+  const famA = getStageFamilyFromDB(crop, aNorm, cultivationMethod);
+  if (famA && famA.includes(bNorm)) return true;
+  const famB = getStageFamilyFromDB(crop, bNorm, cultivationMethod);
+  if (famB && famB.includes(aNorm)) return true;
+  if (!famA && !famB) return null; // no DB data for this lane — signal unknown
   return false;
 }
