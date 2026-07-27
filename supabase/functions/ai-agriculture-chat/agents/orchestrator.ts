@@ -2,6 +2,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 17:40 UTC — FIX B1: observation admission is now a DB allowlist
+ *   (observation_master / observation_aliases via the warm observation-index),
+ *   not a syntactic UPPER_SNAKE test. Canonical-state metadata tokens no
+ *   longer leak into allObservationsForPreAuth. Cold boot fails open with
+ *   [OBS_SEMANTIC_FILTER_COLD]; per-turn [OBS_SEMANTIC_FILTER] summary added.
  * 2026-07-27 09:00 UTC — Clarification builder now excludes the session-wide
  *   asked_observation_keys and unions prior confirmed_observation_keys, so
  *   farmer selections accumulate across turns (no re-offering loop).
