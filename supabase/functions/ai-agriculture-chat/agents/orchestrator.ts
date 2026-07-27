@@ -2906,7 +2906,10 @@ export class AIAgentOrchestrator {
               crop_stage: growthStage,
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
-              confirmed_observations: optionEvidence.real_codes,
+              confirmed_observations: Array.from(new Set([
+                ...optionEvidence.real_codes,
+                ...(((options.sessionState as any)?.confirmedObservationKeys ?? []) as string[]),
+              ])),
               // Never re-offer what the farmer was already asked last turn.
               pending_obs_keys:
                 Array.from(new Set([
@@ -2985,7 +2988,10 @@ export class AIAgentOrchestrator {
               crop_stage: growthStage,
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
-              confirmed_observations: optionEvidence.real_codes,
+              confirmed_observations: Array.from(new Set([
+                ...optionEvidence.real_codes,
+                ...(((options.sessionState as any)?.confirmedObservationKeys ?? []) as string[]),
+              ])),
               pending_obs_keys:
                 Array.from(new Set([
                   ...(((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]),
@@ -3122,7 +3128,10 @@ export class AIAgentOrchestrator {
             ...canonicalState, 
             user_query: farmerMessage,
             visual_symptoms: optionEvidence.real_codes,
-            confirmed_observations: optionEvidence.real_codes,
+            confirmed_observations: Array.from(new Set([
+                ...optionEvidence.real_codes,
+                ...(((options.sessionState as any)?.confirmedObservationKeys ?? []) as string[]),
+              ])),
             known_observations: optionEvidence.real_codes,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
