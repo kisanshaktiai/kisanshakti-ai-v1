@@ -1,4 +1,11 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-27 — Track A: removed `loadFallbackQuestions` +
+ *   `clarification_fallback_questions` reads. Single farmer-label schema is
+ *   observation_master × observation_translations.
+ */
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * CLARIFICATION CONTRACT — Single enforcement point for farmer-observation
  *                           clarification options.
