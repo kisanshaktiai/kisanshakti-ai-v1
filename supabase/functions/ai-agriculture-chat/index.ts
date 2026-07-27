@@ -2866,8 +2866,31 @@ serve(async (req) => {
         intent_code: currentIntentCode || undefined
       }] : [])
     ].slice(-10); // Keep last 10 problems
-    
+
+    // ── CUMULATIVE SYMBOLIC EVIDENCE LEDGERS (2026-07-27) ──────────────────
+    // Without these, every clarification turn loses the farmer's prior
+    // selections and the builder re-offers the same options forever.
+    const _turnConfirmedKeys: string[] = Array.isArray((orch as any)?._lastRealObservations)
+      ? ((orch as any)._lastRealObservations as any[]).map((o) => String(o ?? '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    const cumulativeConfirmedObservationKeys = Array.from(new Set([
+      ...(((sessionState as any)?.confirmed_observation_keys ?? []) as string[]).map((k) => String(k).trim().toLowerCase()),
+      ..._turnConfirmedKeys,
+    ])).filter(Boolean);
+    const cumulativeAskedObservationKeys = Array.from(new Set([
+      ..._priorAskedObservationKeys,
+      ...clarificationObservationKeys.map((k) => String(k).trim().toLowerCase()),
+    ])).filter((k) => k && k !== 'photo_upload');
+
+    console.log(
+      `[EVIDENCE_LEDGER] trace=${traceId} confirmed=${cumulativeConfirmedObservationKeys.length} ` +
+      `asked=${cumulativeAskedObservationKeys.length} round=${_clarificationRoundCounter}`,
+    );
+
     const decisionTracking = {
+      confirmed_observation_keys: cumulativeConfirmedObservationKeys,
+      asked_observation_keys: cumulativeAskedObservationKeys,
+      clarification_round_counter: _clarificationRoundCounter,
       decision_state: computedDecisionState,
       last_pest: lastPest,
       last_disease: lastDisease,
