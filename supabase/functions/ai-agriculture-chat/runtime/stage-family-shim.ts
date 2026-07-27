@@ -26,8 +26,18 @@ export function normalizeStageKey(s: unknown): string {
 }
 
 interface StageKnowledgeCacheRef {
-  getStageFamilyFromDB?: (crop: string, stage: string) => string[] | null;
-  stagesEquivalentFromDB?: (crop: string, a: string, b: string) => boolean | null;
+  getStageFamilyFromDB?: (
+    crop: string,
+    stage: string,
+    cultivationMethod?: string | null,
+  ) => string[] | null;
+  stagesEquivalentFromDB?: (
+    crop: string,
+    a: string,
+    b: string,
+    cultivationMethod?: string | null,
+  ) => boolean | null;
+  getActiveCultivationMethod?: () => string | null;
 }
 
 function getCacheRef(): StageKnowledgeCacheRef | null {
@@ -46,13 +56,17 @@ function getCacheRef(): StageKnowledgeCacheRef | null {
  * `[normalized]` and emits `[STAGE_GRAPH_MISS]` so curators can spot gaps in
  * `crop_stage_graph`. This function NEVER substitutes a hardcoded family.
  */
-export function stageFamily(stage?: string | null, crop?: string | null): readonly string[] {
+export function stageFamily(
+  stage?: string | null,
+  crop?: string | null,
+  cultivationMethod?: string | null,
+): readonly string[] {
   const k = normalizeStageKey(stage);
   if (!k) return [];
   const cropKey = normalizeStageKey(crop);
   const ref = getCacheRef();
   if (cropKey && ref?.getStageFamilyFromDB) {
-    const fam = ref.getStageFamilyFromDB(cropKey, k);
+    const fam = ref.getStageFamilyFromDB(cropKey, k, cultivationMethod);
     if (fam && fam.length > 0) {
       // Ensure the stage itself is included and de-duplicated.
       const out = Array.from(new Set([k, ...fam.map((s) => normalizeStageKey(s))]));
@@ -73,7 +87,12 @@ export function stageFamily(stage?: string | null, crop?: string | null): readon
  * - Without `crop`: strict equality only (a === b, after normalization).
  *   No hardcoded family bridging.
  */
-export function stagesEquivalent(a: unknown, b: unknown, crop?: string | null): boolean {
+export function stagesEquivalent(
+  a: unknown,
+  b: unknown,
+  crop?: string | null,
+  cultivationMethod?: string | null,
+): boolean {
   const x = normalizeStageKey(a);
   const y = normalizeStageKey(b);
   if (!x || !y) return true;
@@ -85,7 +104,7 @@ export function stagesEquivalent(a: unknown, b: unknown, crop?: string | null): 
     return false;
   }
   const ref = getCacheRef();
-  const result = ref?.stagesEquivalentFromDB?.(cropKey, x, y);
+  const result = ref?.stagesEquivalentFromDB?.(cropKey, x, y, cultivationMethod);
   if (result === true) return true;
   if (result === false) return false;
   // null → DB has no data for either side; treat as unknown-not-equivalent

@@ -51,6 +51,7 @@
  */
 
 import { resolvePath, comparePredicate } from '../decision/hypothesis-evaluator.ts';
+import { setActiveCultivationMethod } from '../utils/stage-knowledge-cache.ts';
 
 export interface BiologicalState {
   readonly is_locked: true;
@@ -188,6 +189,11 @@ export function buildBiologicalState(
   const cultivationMethod = phenology.cultivation_method
     ? String(phenology.cultivation_method).toLowerCase()
     : null;
+
+  // Publish the biological lane (crop_schedules authority) so every downstream
+  // crop_stage_master / crop_stage_graph read resolves on the correct timeline
+  // (direct_seeded vs transplanted) without threading the method everywhere.
+  setActiveCultivationMethod(cultivationMethod);
 
   const state: BiologicalState = {
     is_locked: true,
