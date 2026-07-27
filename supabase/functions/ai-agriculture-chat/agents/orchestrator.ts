@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 09:00 UTC — Clarification builder now excludes the session-wide
+ *   asked_observation_keys and unions prior confirmed_observation_keys, so
+ *   farmer selections accumulate across turns (no re-offering loop).
  * 2026-07-26 18:40 UTC — Clarification selection is now a TERMINAL transition:
  *   on a valid option tap we persist the canonical observation, clear the
  *   clarification lock, zero pending_options, flip decision_state to
@@ -1153,6 +1156,10 @@ export interface OrchestratorResponse {
     // PHASE-9.1: Clarification state passthrough
     pendingClarificationOptions?: string[];
     pendingClarificationObservationKeys?: string[];
+    /** Cumulative evidence ledgers (2026-07-27) — survive across turns. */
+    confirmedObservationKeys?: string[];
+    askedObservationKeys?: string[];
+    clarificationRoundCounter?: number;
     lockedCropContext?: {
       crop_name: string;
       growth_stage: string;
@@ -1582,6 +1589,9 @@ export class AIAgentOrchestrator {
         // PHASE-9.1: Clarification state fields
         pendingClarificationOptions?: string[];
         pendingClarificationObservationKeys?: string[];
+        confirmedObservationKeys?: string[];
+        askedObservationKeys?: string[];
+        clarificationRoundCounter?: number;
         // STRUCTURED SSOT — preferred. Per-option records with canonical
         // observation_key preserved alongside label/value, so OPTION_SELECTED
         // can resolve symbolic identity directly without label mapping.
@@ -2906,10 +2916,16 @@ export class AIAgentOrchestrator {
               crop_stage: growthStage,
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
-              confirmed_observations: optionEvidence.real_codes,
+              confirmed_observations: Array.from(new Set([
+                ...optionEvidence.real_codes,
+                ...(((options.sessionState as any)?.confirmedObservationKeys ?? []) as string[]),
+              ])),
               // Never re-offer what the farmer was already asked last turn.
               pending_obs_keys:
-                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
+                Array.from(new Set([
+                  ...(((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]),
+                  ...(((options.sessionState as any)?.askedObservationKeys ?? []) as string[]),
+                ])) as string[],
               trace_id: traceId,
               max: 5,
             });
@@ -2982,9 +2998,15 @@ export class AIAgentOrchestrator {
               crop_stage: growthStage,
               DAS: landContextForOptionSelection?.days_since_sowing ?? null,
               language: options.language || 'mr',
-              confirmed_observations: optionEvidence.real_codes,
+              confirmed_observations: Array.from(new Set([
+                ...optionEvidence.real_codes,
+                ...(((options.sessionState as any)?.confirmedObservationKeys ?? []) as string[]),
+              ])),
               pending_obs_keys:
-                ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
+                Array.from(new Set([
+                  ...(((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]),
+                  ...(((options.sessionState as any)?.askedObservationKeys ?? []) as string[]),
+                ])) as string[],
               trace_id: traceId,
 
               max: 5,
@@ -3116,7 +3138,10 @@ export class AIAgentOrchestrator {
             ...canonicalState, 
             user_query: farmerMessage,
             visual_symptoms: optionEvidence.real_codes,
-            confirmed_observations: optionEvidence.real_codes,
+            confirmed_observations: Array.from(new Set([
+                ...optionEvidence.real_codes,
+                ...(((options.sessionState as any)?.confirmedObservationKeys ?? []) as string[]),
+              ])),
             known_observations: optionEvidence.real_codes,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
@@ -6806,7 +6831,10 @@ export class AIAgentOrchestrator {
                   ? (this as any)._lastRealObservations
                   : [],
                 pending_obs_keys:
-                  ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[],
+                  Array.from(new Set([
+                  ...(((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]),
+                  ...(((options.sessionState as any)?.askedObservationKeys ?? []) as string[]),
+                ])) as string[],
                 max: 5,
 
               });

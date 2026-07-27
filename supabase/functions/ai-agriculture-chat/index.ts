@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 09:00 UTC — Track 2/3: cumulative evidence ledgers
+ *   (confirmed_observation_keys / asked_observation_keys / round counter)
+ *   persisted in decision_tracking + CLARIFICATION_ROUND_EXHAUSTED loop guard
+ *   that escalates instead of re-rendering an already-asked option set.
  * 2026-07-26 18:40 UTC — option_selected=true may no longer coexist with
  *   awaiting_clarification when the outgoing card repeats the option set the
  *   farmer just answered; that turn is forced to decision_in_progress.
@@ -1132,6 +1136,11 @@ serve(async (req) => {
           pendingClarificationOptions: sessionState.pending_clarification_options || [],
           pendingClarificationObservationKeys: sessionState.pending_clarification_observation_keys || [],
           pendingClarificationOptionsStructured: sessionState.pending_clarification_options_structured || [],
+          // CUMULATIVE EVIDENCE LEDGERS (2026-07-27) — survive across turns so
+          // prior farmer selections are never re-offered / re-asked.
+          confirmedObservationKeys: sessionState.confirmed_observation_keys || [],
+          askedObservationKeys: sessionState.asked_observation_keys || [],
+          clarificationRoundCounter: sessionState.clarification_round_counter || 0,
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
           // PART 10: Pass problems_discussed for session continuity
@@ -1199,6 +1208,56 @@ serve(async (req) => {
         throw contractErr;
       }
       console.warn(`[OBSERVATION_CONTRACT] non-fatal: ${(contractErr as Error).message}`);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CLARIFICATION LOOP GUARD (2026-07-27)
+    // A clarification whose option key set is a SUBSET of everything we have
+    // already asked in this session is a loop, not a question. Same for a
+    // session that has burned its DB-configured clarification round budget.
+    // In both cases we stop asking and escalate instead of re-rendering the
+    // identical card (the `bb9c239e` transplant-shock loop).
+    // ═══════════════════════════════════════════════════════════════════
+    let _clarificationRoundCounter = Number((sessionState as any)?.clarification_round_counter ?? 0);
+    const _priorAskedObservationKeys: string[] = Array.isArray((sessionState as any)?.asked_observation_keys)
+      ? ((sessionState as any).asked_observation_keys as string[]).map((k) => String(k).trim().toLowerCase()).filter(Boolean)
+      : [];
+    try {
+      const _isClarif = orchestratorResponse.type === 'CLARIFICATION_QUESTION' ||
+        orchestratorResponse.type === 'CLARIFICATION_NEEDED';
+      if (_isClarif) {
+        const { getConfigNumber } = await import('./utils/db-ssot/system-config-cache.ts');
+        const _maxRounds = Number(await getConfigNumber(supabase, 'max_clarification_rounds', 3)) || 3;
+        const _outKeys = ((orchestratorResponse as any)?.question?.options ?? [])
+          .map((o: any) => String(o?.observation_key ?? '').trim().toLowerCase())
+          .filter((k: string) => k && k !== 'photo_upload');
+        const _askedSet = new Set(_priorAskedObservationKeys);
+        const _isSubsetOfAsked = _outKeys.length > 0 && _outKeys.every((k: string) => _askedSet.has(k));
+        const _budgetExhausted = _clarificationRoundCounter >= _maxRounds;
+
+        if (_isSubsetOfAsked || _budgetExhausted) {
+          console.error(
+            `[CLARIFICATION_ROUND_EXHAUSTED] trace=${traceId} round=${_clarificationRoundCounter}/${_maxRounds} ` +
+            `repeat_subset=${_isSubsetOfAsked} outgoing=[${_outKeys.slice(0, 6).join(',')}] ` +
+            `asked=${_priorAskedObservationKeys.length} action=escalate_instead_of_reask`,
+          );
+          (orchestratorResponse as any).type = 'DIAGNOSTIC_ESCALATION';
+          (orchestratorResponse as any).question = undefined;
+          (orchestratorResponse as any).metadata = {
+            ...((orchestratorResponse as any).metadata ?? {}),
+            orchestrator_type: 'DIAGNOSTIC_ESCALATION',
+            clarification_options: [],
+            selectionType: undefined,
+            escalation_reason: _isSubsetOfAsked ? 'REPEATED_CLARIFICATION_BLOCKED' : 'CLARIFICATION_BUDGET_EXHAUSTED',
+          };
+        } else {
+          _clarificationRoundCounter += 1;
+        }
+      } else {
+        _clarificationRoundCounter = 0;
+      }
+    } catch (loopGuardErr) {
+      console.warn(`[CLARIFICATION_LOOP_GUARD] non-fatal: ${(loopGuardErr as Error).message}`);
     }
 
 
@@ -2816,8 +2875,31 @@ serve(async (req) => {
         intent_code: currentIntentCode || undefined
       }] : [])
     ].slice(-10); // Keep last 10 problems
-    
+
+    // ── CUMULATIVE SYMBOLIC EVIDENCE LEDGERS (2026-07-27) ──────────────────
+    // Without these, every clarification turn loses the farmer's prior
+    // selections and the builder re-offers the same options forever.
+    const _turnConfirmedKeys: string[] = Array.isArray((orch as any)?._lastRealObservations)
+      ? ((orch as any)._lastRealObservations as any[]).map((o) => String(o ?? '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    const cumulativeConfirmedObservationKeys = Array.from(new Set([
+      ...(((sessionState as any)?.confirmed_observation_keys ?? []) as string[]).map((k) => String(k).trim().toLowerCase()),
+      ..._turnConfirmedKeys,
+    ])).filter(Boolean);
+    const cumulativeAskedObservationKeys = Array.from(new Set([
+      ..._priorAskedObservationKeys,
+      ...clarificationObservationKeys.map((k) => String(k).trim().toLowerCase()),
+    ])).filter((k) => k && k !== 'photo_upload');
+
+    console.log(
+      `[EVIDENCE_LEDGER] trace=${traceId} confirmed=${cumulativeConfirmedObservationKeys.length} ` +
+      `asked=${cumulativeAskedObservationKeys.length} round=${_clarificationRoundCounter}`,
+    );
+
     const decisionTracking = {
+      confirmed_observation_keys: cumulativeConfirmedObservationKeys,
+      asked_observation_keys: cumulativeAskedObservationKeys,
+      clarification_round_counter: _clarificationRoundCounter,
       decision_state: computedDecisionState,
       last_pest: lastPest,
       last_disease: lastDisease,
