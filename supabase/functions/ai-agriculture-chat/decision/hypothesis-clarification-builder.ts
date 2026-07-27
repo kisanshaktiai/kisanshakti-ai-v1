@@ -483,6 +483,8 @@ export async function buildHypothesisClarificationOptions(
   const options: HypothesisClarificationOption[] = [];
   const optionsByHypothesis: Record<string, number> = {};
   const labelSources: string[] = [];
+  // Track D (2026-07-27) — one card must never carry two identical labels.
+  const emittedLabels = new Map<string, string>(); // normalized label → owning code
 
   const emitBucket = (b: CodeBucket, primary: string) => {
     const master = masterRows.get(b.code.toLowerCase());
@@ -501,7 +503,18 @@ export async function buildHypothesisClarificationOptions(
       );
       return false;
     }
+    const labelKey = label.replace(/\s+/g, ' ').trim().toLowerCase();
+    const owner = emittedLabels.get(labelKey);
+    if (owner) {
+      console.warn(
+        `[CLARIFICATION_LABEL_COLLISION] trace=${trace} lang=${lang} label="${label}" ` +
+        `duplicate_code=${master.observation_code} kept_code=${owner} → option dropped`,
+      );
+      return false;
+    }
+    emittedLabels.set(labelKey, master.observation_code);
     labelSources.push(`${master.observation_code}:${tr?.source ?? 'description'}`);
+
     options.push({
       observation_id: master.observation_code,
       observation_code: master.observation_code,
