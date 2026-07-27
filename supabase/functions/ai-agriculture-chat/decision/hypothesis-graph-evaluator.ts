@@ -847,12 +847,20 @@ function checkStageCondition(
     const allowed = extractStages(r.value_json);
     if (allowed.length === 0) continue;
     const compatibility = stageCompatibility(s, allowed, crop);
-    const ok = compatibility.unknown || compatibility.exact || compatibility.family;
+    // FIX (2026-07-27): `crop_stage_graph` edges are ADJACENCY, not identity.
+    // Accepting `compatibility.family` for an is_required=true STAGE condition
+    // let `transplanting`-only hypotheses survive at `tillering` (adjacent via
+    // the TRIGGERS edge) — biologically impossible. Required stages must match
+    // EXACTLY; adjacency remains acceptable for supporting (soft) conditions.
+    const ok = compatibility.unknown ||
+      compatibility.exact ||
+      (r.is_required === true ? false : compatibility.family);
     if (!ok) {
       failReason = `expected=[${allowed.join('|')}] got=${s}`;
       // FIX (2026-07-08): Honor DB SSOT — is_required=true STAGE mismatch
       // is a HARD elimination, not a soft penalty. See hypothesis_conditions.
       if (r.is_required === true) {
+        if (compatibility.family) failReason += ' match=adjacent_only';
         return { pass: false, reason: failReason, required_fail: true };
       }
       // soft fail (is_required=false) — keep prior behavior (penalty later)
