@@ -1132,6 +1132,11 @@ serve(async (req) => {
           pendingClarificationOptions: sessionState.pending_clarification_options || [],
           pendingClarificationObservationKeys: sessionState.pending_clarification_observation_keys || [],
           pendingClarificationOptionsStructured: sessionState.pending_clarification_options_structured || [],
+          // CUMULATIVE EVIDENCE LEDGERS (2026-07-27) — survive across turns so
+          // prior farmer selections are never re-offered / re-asked.
+          confirmedObservationKeys: sessionState.confirmed_observation_keys || [],
+          askedObservationKeys: sessionState.asked_observation_keys || [],
+          clarificationRoundCounter: sessionState.clarification_round_counter || 0,
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
           // PART 10: Pass problems_discussed for session continuity
