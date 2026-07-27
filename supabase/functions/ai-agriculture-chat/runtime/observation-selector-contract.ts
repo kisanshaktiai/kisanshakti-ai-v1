@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-27 — Track A: retired clarification_fallback_questions; rescue path
+ *   now reads observation_intent_master.allowed_observation_groups →
+ *   observation_master → observation_translations, with a label-collision guard.
  * 2026-07-26 18:20 UTC — Fallback questions never fall back to the raw code as
  *   a farmer label (dropped + [OBS_LABEL_MISSING]); DB-sourced photo option is
  *   appended to rescued option lists.
@@ -8,7 +11,7 @@
  *   state) before any contract check; SSOT_LOCK_LOST now only fires on a real
  *   upstream lock loss. SessionSSOT is forwarded to the clarification builder.
  * 2026-07-26 00:00 UTC — Q1/Q2: SSOT-lock invariant on the degrade path plus a
- *   two-stage DB rescue (hypothesis-graph options → clarification_fallback_questions)
+ *   two-stage DB rescue (hypothesis-graph options → intent-group observations)
  *   before any DIAGNOSTIC_ESCALATION degrade. Escalation is now last resort only.
  * 2026-07-09 13:58 UTC — Derive confirmed observations from response metadata
  *   before enforcing empty DECISION_PROVIDED/CLARIFICATION contracts, and pass
@@ -217,7 +220,7 @@ async function loadIntentGroupOptions(
   try {
     const { data: masterRows, error: masterErr } = await ctx.supabase
       .from('observation_master')
-      .select('observation_code, canonical_group, discriminator_score, clarity_score')
+      .select('observation_code, canonical_group, can_generate_question, discriminator_score, clarity_score')
       .eq('is_active', true)
       .eq('is_farmer_observable', true)
       .order('discriminator_score', { ascending: false, nullsFirst: false })
@@ -353,16 +356,16 @@ export async function attemptDbClarificationRescue(
     return { rescued: true, site: 'hyp_graph_options', option_count: graphOptions.length };
   }
 
-  const fallbackOptions = await loadFallbackQuestionOptions(ctx);
+  const fallbackOptions = await loadIntentGroupOptions(ctx);
   if (fallbackOptions.length > 0) {
     promoteToClarification(response, fallbackOptions, ctx);
     stampMetadata(response, fallbackOptions.length);
-    response.metadata.observation_source = 'clarification_fallback_questions';
+    response.metadata.observation_source = 'observation_master_intent_group';
     response.metadata.graph_reason = ctx.graphReason || 'NO_STAGE_VALID_HYPOTHESES';
     console.log(
-      `[OBSERVATION_CONTRACT_RESCUE] site=fallback_questions options=${fallbackOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
+      `[OBSERVATION_CONTRACT_RESCUE] site=intent_group_options options=${fallbackOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
     );
-    return { rescued: true, site: 'fallback_questions', option_count: fallbackOptions.length };
+    return { rescued: true, site: 'intent_group_options', option_count: fallbackOptions.length };
   }
 
   return { rescued: false, site: null, option_count: 0 };
