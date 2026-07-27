@@ -568,6 +568,19 @@ export async function buildHypothesisClarificationOptions(
     );
   }
 
+  // Track B step 4 (2026-07-27) — a candidate hypothesis that contributed no
+  // UI-eligible option can never be confirmed or ruled out in the field.
+  const undiscriminable = hypothesisIds.filter((h) => !optionsByHypothesis[h]);
+  if (undiscriminable.length > 0) {
+    console.warn(
+      `[HYPOTHESIS_UNDISCRIMINABLE] trace=${trace} crop=${crop || '?'} ` +
+      `count=${undiscriminable.length}/${hypothesisIds.length} ids=[${undiscriminable.join(',')}] ` +
+      `reason=no_farmer_observable_discriminator`,
+    );
+  }
+
+
+
   // Patch E — structured trace.
   console.log(
     `[HYP_CLARIFICATION] trace=${trace} source=hypothesis_graph intent=${input.intent_code ?? '?'} ` +
