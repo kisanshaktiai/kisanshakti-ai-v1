@@ -1201,6 +1201,56 @@ serve(async (req) => {
       console.warn(`[OBSERVATION_CONTRACT] non-fatal: ${(contractErr as Error).message}`);
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // CLARIFICATION LOOP GUARD (2026-07-27)
+    // A clarification whose option key set is a SUBSET of everything we have
+    // already asked in this session is a loop, not a question. Same for a
+    // session that has burned its DB-configured clarification round budget.
+    // In both cases we stop asking and escalate instead of re-rendering the
+    // identical card (the `bb9c239e` transplant-shock loop).
+    // ═══════════════════════════════════════════════════════════════════
+    let _clarificationRoundCounter = Number((sessionState as any)?.clarification_round_counter ?? 0);
+    const _priorAskedObservationKeys: string[] = Array.isArray((sessionState as any)?.asked_observation_keys)
+      ? ((sessionState as any).asked_observation_keys as string[]).map((k) => String(k).trim().toLowerCase()).filter(Boolean)
+      : [];
+    try {
+      const _isClarif = orchestratorResponse.type === 'CLARIFICATION_QUESTION' ||
+        orchestratorResponse.type === 'CLARIFICATION_NEEDED';
+      if (_isClarif) {
+        const { getConfigNumber } = await import('./utils/db-ssot/system-config-cache.ts');
+        const _maxRounds = Number(await getConfigNumber(supabase, 'max_clarification_rounds', 3)) || 3;
+        const _outKeys = ((orchestratorResponse as any)?.question?.options ?? [])
+          .map((o: any) => String(o?.observation_key ?? '').trim().toLowerCase())
+          .filter((k: string) => k && k !== 'photo_upload');
+        const _askedSet = new Set(_priorAskedObservationKeys);
+        const _isSubsetOfAsked = _outKeys.length > 0 && _outKeys.every((k: string) => _askedSet.has(k));
+        const _budgetExhausted = _clarificationRoundCounter >= _maxRounds;
+
+        if (_isSubsetOfAsked || _budgetExhausted) {
+          console.error(
+            `[CLARIFICATION_ROUND_EXHAUSTED] trace=${traceId} round=${_clarificationRoundCounter}/${_maxRounds} ` +
+            `repeat_subset=${_isSubsetOfAsked} outgoing=[${_outKeys.slice(0, 6).join(',')}] ` +
+            `asked=${_priorAskedObservationKeys.length} action=escalate_instead_of_reask`,
+          );
+          (orchestratorResponse as any).type = 'DIAGNOSTIC_ESCALATION';
+          (orchestratorResponse as any).question = undefined;
+          (orchestratorResponse as any).metadata = {
+            ...((orchestratorResponse as any).metadata ?? {}),
+            orchestrator_type: 'DIAGNOSTIC_ESCALATION',
+            clarification_options: [],
+            selectionType: undefined,
+            escalation_reason: _isSubsetOfAsked ? 'REPEATED_CLARIFICATION_BLOCKED' : 'CLARIFICATION_BUDGET_EXHAUSTED',
+          };
+        } else {
+          _clarificationRoundCounter += 1;
+        }
+      } else {
+        _clarificationRoundCounter = 0;
+      }
+    } catch (loopGuardErr) {
+      console.warn(`[CLARIFICATION_LOOP_GUARD] non-fatal: ${(loopGuardErr as Error).message}`);
+    }
+
 
     // ═══════════════════════════════════════════════════════════════════
     // [ORCHESTRATOR_EXIT] audit + GRAPH_PIPELINE_BYPASSED invariant.
