@@ -2,6 +2,14 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 23:45 UTC — SINGLE AUTHORITATIVE OBSERVATION STREAM. The symbolic
+ *   reasoner branch consumed the pre-graph `allObservationsForPreAuth` set
+ *   while GraphRuntime held a larger, frozen, canonical set — two divergent
+ *   evidence streams, causing zero rule matches + clarification fallback on a
+ *   READY_FOR_DECISION turn. FactExtractor, [PIPELINE_HEALTH] and
+ *   [GRAPH_ZERO_RULE_MATCH] now all read `unifiedObservationStream`
+ *   (_graphSnapshot.observations → pre-auth fallback, canonicalObsCode-folded).
+ *   New logs: [OBS_STREAM_UNIFIED], [OBS_STREAM_DIVERGENCE].
  * 2026-07-27 17:40 UTC — FIX B1: observation admission is now a DB allowlist
  *   (observation_master / observation_aliases via the warm observation-index),
  *   not a syntactic UPPER_SNAKE test. Canonical-state metadata tokens no
