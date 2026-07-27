@@ -5187,6 +5187,18 @@ export class AIAgentOrchestrator {
           }
         });
       }
+
+      // FIX B1 turn summary: report semantic-filter behavior for observability.
+      // admitted = tokens accepted as canonical observation codes
+      // dropped_metadata = tokens rejected by the DB allowlist (canonical-state
+      // metadata, extractor noise, or unknown vocabulary)
+      if (_obsIndexWarm) {
+        console.log(
+          `   🧪 [OBS_SEMANTIC_FILTER] admitted=${_obsSemanticFilterStats.admitted} ` +
+          `dropped_metadata=${_obsSemanticFilterStats.dropped_metadata} ` +
+          `preAuthSize=${allObservationsForPreAuth.size}`,
+        );
+      }
       
       
       // ═══════════════════════════════════════════════════════════════════════════
