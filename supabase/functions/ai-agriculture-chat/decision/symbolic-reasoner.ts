@@ -774,18 +774,15 @@ export class SymbolicReasoner {
       // Build metadata map
       const result = new Map<string, ObservationMetadata>();
       for (const obs of (obsData || [])) {
-        // Identity edge first (always non-empty when canonical_group is set),
-        // then optional biological enrichment rows for the same engine group.
+        // Identity edge (always non-empty when canonical_group is set). The
+        // mapping table adds no additional engine group — only the biological
+        // label — so it never widens this list.
         const engineGroups: Array<{ engine_group: string; confidence: number }> = [];
         if (obs.canonical_group) {
           engineGroups.push({ engine_group: obs.canonical_group, confidence: 1 });
         }
-        for (const m of mappingData) {
-          if (m?.engine_group && m.engine_group === obs.canonical_group) {
-            // enrichment row — same engine group, carries the biological label
-            (m as any).__matched = true;
-          }
-        }
+
+
 
         
         result.set(obs.observation_code, {
