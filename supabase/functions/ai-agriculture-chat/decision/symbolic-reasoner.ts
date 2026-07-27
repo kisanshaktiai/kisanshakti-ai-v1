@@ -722,7 +722,7 @@ export class SymbolicReasoner {
       const { data: obsData, error: obsError } = await this.supabase
         .from('observation_master')
         .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
-        .in('observation_code', observationCodes);
+        .in('observation_code', normalizedCodes);
       
       if (obsError) {
         console.error('❌ [ObsMeta] Failed to load observation metadata:', obsError.message);
@@ -734,21 +734,43 @@ export class SymbolicReasoner {
       let mappingData: any[] = [];
       
       if (bioGroups.length > 0) {
+        // FIX F1 (2026-07-26): join direction was INVERTED.
+        // observation_master.canonical_group holds engine-group strings
+        // ('03_pest', '04_disease', '05_nutrient', ...).
+        // canonical_group_mapping.engine_group holds the SAME engine-group
+        // strings and canonical_group_mapping.biological_group holds
+        // biological labels ('PEST_SUCKING', 'DISEASE_FUNGAL', ...).
+        // The old .in('biological_group', bioGroups) queried the WRONG
+        // column with engine-group values, returning 0 rows every turn.
+        // This produced the "0 ontology mappings" symptom in production.
         const { data: mapData, error: mapError } = await this.supabase
           .from('canonical_group_mapping')
           .select('biological_group, engine_group, confidence')
-          .in('biological_group', bioGroups);
+          .in('engine_group', bioGroups);
         
-        if (!mapError && mapData) {
+        if (mapError) {
+          console.warn(`[ObsMeta] canonical_group_mapping fetch error: ${mapError.message}`);
+        } else if (mapData) {
           mappingData = mapData;
+          if (mapData.length === 0 && bioGroups.length > 0) {
+            console.warn(
+              `[ONTOLOGY_JOIN_ZERO] canonical_group_mapping returned 0 rows for engine_groups=[${bioGroups.join(',')}]. ` +
+              `Verify canonical_group_mapping.engine_group values align with observation_master.canonical_group.`,
+            );
+          }
         }
       }
       
       // Build metadata map
       const result = new Map<string, ObservationMetadata>();
       for (const obs of (obsData || [])) {
+        // FIX F1 (2026-07-26): the in-memory filter was joining on
+        // biological_group === canonical_group but observation_master.canonical_group
+        // IS an engine-group value, so filter on m.engine_group instead.
+        // The shape of engineGroups[] stays {engine_group, confidence} so
+        // downstream consumers are unaffected.
         const engineGroups = mappingData
-          .filter((m: any) => m.biological_group === obs.canonical_group)
+          .filter((m: any) => m.engine_group === obs.canonical_group)
           .map((m: any) => ({ engine_group: m.engine_group, confidence: m.confidence }));
         
         result.set(obs.observation_code, {
