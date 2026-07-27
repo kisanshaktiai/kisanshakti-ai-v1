@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 — Track B/D invariants: [CLARIFICATION_LABEL_COLLISION] drops a
+ *   second option whose farmer label is textually identical to one already on
+ *   the card; [HYPOTHESIS_UNDISCRIMINABLE] logs candidate hypotheses that
+ *   contributed no UI-eligible discriminator.
  * 2026-07-26 18:20 UTC — Clarification UX batch: (a) farmer labels are now
  *   strictly DB-sourced (translation[lang] → translation[en] → description);
  *   an option with no text is DROPPED and logged [OBS_LABEL_MISSING] instead of
@@ -483,6 +487,8 @@ export async function buildHypothesisClarificationOptions(
   const options: HypothesisClarificationOption[] = [];
   const optionsByHypothesis: Record<string, number> = {};
   const labelSources: string[] = [];
+  // Track D (2026-07-27) — one card must never carry two identical labels.
+  const emittedLabels = new Map<string, string>(); // normalized label → owning code
 
   const emitBucket = (b: CodeBucket, primary: string) => {
     const master = masterRows.get(b.code.toLowerCase());
@@ -501,7 +507,18 @@ export async function buildHypothesisClarificationOptions(
       );
       return false;
     }
+    const labelKey = label.replace(/\s+/g, ' ').trim().toLowerCase();
+    const owner = emittedLabels.get(labelKey);
+    if (owner) {
+      console.warn(
+        `[CLARIFICATION_LABEL_COLLISION] trace=${trace} lang=${lang} label="${label}" ` +
+        `duplicate_code=${master.observation_code} kept_code=${owner} → option dropped`,
+      );
+      return false;
+    }
+    emittedLabels.set(labelKey, master.observation_code);
     labelSources.push(`${master.observation_code}:${tr?.source ?? 'description'}`);
+
     options.push({
       observation_id: master.observation_code,
       observation_code: master.observation_code,
@@ -554,6 +571,19 @@ export async function buildHypothesisClarificationOptions(
       `reason=options_do_not_discriminate keys=[${options.map((o) => o.observation_code).join(',')}]`,
     );
   }
+
+  // Track B step 4 (2026-07-27) — a candidate hypothesis that contributed no
+  // UI-eligible option can never be confirmed or ruled out in the field.
+  const undiscriminable = hypothesisIds.filter((h) => !optionsByHypothesis[h]);
+  if (undiscriminable.length > 0) {
+    console.warn(
+      `[HYPOTHESIS_UNDISCRIMINABLE] trace=${trace} crop=${crop || '?'} ` +
+      `count=${undiscriminable.length}/${hypothesisIds.length} ids=[${undiscriminable.join(',')}] ` +
+      `reason=no_farmer_observable_discriminator`,
+    );
+  }
+
+
 
   // Patch E — structured trace.
   console.log(
