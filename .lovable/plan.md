@@ -1,49 +1,73 @@
-# Clarification UI: stop the repeat loop, add photo option, kill raw-code labels
 
-## What I verified (evidence, not assumption)
+# Observation Knowledge Layer — Scientific Audit & Remediation
 
-1. **Repeat loop is real and has a concrete cause.** `decision/hypothesis-clarification-builder.ts` already excludes `pending_obs_keys` (line ~342) — but none of the three orchestrator call sites (`agents/orchestrator.ts` lines ~2828, ~2897, ~6709) pass `pending_obs_keys` or `perceived_observations`. Only `runtime/clarification-contract.ts` does. The uploaded log confirms it: session persists `persisted_pending_obs_keys: [8 keys]`, yet the next turn logs `[HYP_CLARIFICATION][FILTER] removed_pending=0` and re-emits the same 8 keys (`bph_hopper_burn, poor_establishment, transplant_shock, …`). Session state carries the keys (`index.ts:1130` → `pendingClarificationObservationKeys`); the builder never receives them.
+## Confirmed current state (verified by live DB reads this turn)
 
-2. **Photo option does not exist in the backend.** No `PHOTO_UPLOAD` / photo option is appended anywhere in `supabase/functions/ai-agriculture-chat`. The frontend already fully supports it: `ClarificationOptionsUI.tsx` detects `observation_key === 'photo_upload'` / label containing photo and calls `onTakePhoto()` (camera opens, no message sent), and `EnhancedAIChatInterface.tsx:2454` wires `onTakePhoto`. So the capability is there — the backend simply never emits the option.
+Farmer-visible clarification chain:
 
-3. **Labels can legitimately fall back to raw codes at two sites.**
-   - Builder: `label = translations.get(code) || master.description || master.observation_code` — last fallback renders the bare code.
-   - Rescue path `runtime/observation-selector-contract.ts:226`: `(label_mr / label_hi / label_en) || key` — same leak.
-   
-   Note: for the 8 codes in this log, `observation_translations` **does** have `mr` rows (verified by query), so those specific options should have rendered Marathi. Which of the two fallbacks fired in the observed turn is **not yet confirmed** — step 3 below starts by instrumenting/confirming it rather than blind-patching.
+```text
+hypothesis_conditions (condition_type='OBSERVATION', code in condition_key)
+        ↓
+observation_master (2549)   — gate: is_active / is_farmer_observable / can_generate_question
+        ↓  960 codes pass the gate
+observation_translations    — the only label source (display_text → description_text → en)
+        ↓
+system_config               — photo option label (observation_key = photo_upload)
+```
 
-4. **The observed turn emitted `options=0` to the client** (`[TURN_END] … options=0` while `persisted_pending_options: 8`), i.e. the outgoing payload lost the options even though the session stored them. This is a separate contract break worth fixing in the same pass.
+Measured defects:
 
-## Plan
+| Finding | Measured |
+|---|---|
+| Active hypotheses with ≥1 farmer-observable observation condition | **62 of 344** (282 can never be discriminated by a clarification card) |
+| OBSERVATION condition codes not present in `observation_master` | **33 of 274** distinct codes |
+| Duplicate labels (same text, different observation codes) among UI-eligible codes | **72 groups** (e.g. `low_tillering`/`poor_tillering`/`sparse_shoots` → all "कमी फुटवे") |
+| Label coverage of the 960 UI-eligible codes | mr 960/960, hi 960/960, **en 731/960** |
+| Labels that name a CAUSE, not a symptom (memory rule violation) | mr 54, en 15, hi 4 |
+| `observation_differential_questions` | 3 rows, 1 observation, **never read by any edge function** |
+| `clarification_fallback_questions` | 8 rows, column-per-language schema — **user decision: retire** |
 
-### 1. Close the repeat loop (backend, `agents/orchestrator.ts`)
-Pass the already-available session state into all three `buildHypothesisClarificationOptions` call sites:
-- `pending_obs_keys: options.sessionState?.pendingClarificationObservationKeys ?? []`
-- `perceived_observations` / `confirmed_observations` from the current-turn grounded codes (site 6709 currently passes neither).
-- Also pass `session_ssot` where available so crop/stage/DAS come from the Layer-3 lock, not from ad-hoc args.
+## Track A — Retire `clarification_fallback_questions`
 
-Add an invariant log `[CLARIFICATION_REPEAT_VIOLATION]` when the emitted option key set is a subset of the previous turn's pending set — so a regression is visible in logs instead of silently looping.
+1. Remove the fallback readers in `runtime/clarification-contract.ts` (`loadFallbackQuestions` + `DIAGNOSIS_GENERIC` second query) and `runtime/observation-selector-contract.ts` (`intent_family` resolution + rescue loader).
+2. Replace the rescue path with an `observation_master` + `observation_translations` query scoped by `observation_intent_master.allowed_observation_groups` / `canonical_group`, so the safety net stays DB-driven and single-schema.
+3. When no DB-backed option exists, emit `[CLARIFICATION_NO_DB_OPTIONS]` and fall through to the photo option only — never a synthesised string.
+4. Migration: drop `public.clarification_fallback_questions` only after the code no longer references it.
 
-### 2. Append the photo option (DB-sourced, backend)
-Add a single shared helper that appends a terminal photo option to every clarification option list, in the builder (so all paths inherit it):
-- `observation_key: 'photo_upload'`, `value: 'photo_upload'`, `source: 'system_config'`.
-- Label text read from `system_config` keys `clarification_photo_option_<lang>` with `_en` fallback — **no hardcoded agronomy or Marathi string in TypeScript**, consistent with the existing `clarification_intro_<lang>` pattern.
-- Seed `system_config` rows for `en / hi / mr` (and any other languages already seeded for `clarification_intro_*`).
-- Exclude `photo_upload` from graph/hypothesis scoring, from `pending_obs_keys` persistence, and from the diversity/coverage invariants so it never counts as diagnostic evidence.
+## Track B — hypothesis → observation coverage (agronomic gap closure)
 
-Frontend needs no change — the camera handler already matches on `photo_upload`.
+1. Produce a coverage report per crop group: hypothesis_id, cause name, condition codes, which are UI-eligible and why the others fail (inactive / not farmer-observable / `can_generate_question=false` / missing from master).
+2. Fix the **33 orphan codes** — each is either a typo of an existing code (repoint condition) or a genuinely missing observation (seed into `observation_master` + translations with correct `canonical_group`, `affected_plant_part`, `semantic_class`, discriminator/clarity scores).
+3. For hypotheses whose only conditions are non-observable (lab/instrument facts), add at least one pathognomonic **farmer-observable discriminator** condition, weighted, so competition can resolve them in the field.
+4. Invariant: any active hypothesis with zero UI-eligible discriminator logs `[HYPOTHESIS_UNDISCRIMINABLE]` at graph boot.
 
-### 3. Guarantee farmer-readable labels (never a raw code)
-- Builder: replace the `|| master.observation_code` terminal fallback with a strict resolution order — `observation_translations[lang] → observation_translations[en] → observation_master.description` — and if all are empty, **drop the option** and log `[OBS_LABEL_MISSING] code=… lang=…` rather than showing a code to the farmer.
-- Rescue path (`observation-selector-contract.ts:226`): same treatment — drop instead of `|| key`.
-- Add a lightweight `[OBS_LABEL_SOURCE]` trace line (per option: `translation_mr | translation_en | description`) so the next log immediately shows which source produced each visible label, confirming or refuting root cause 3.
-- Run one DB coverage query for the active differential codes to list any missing `mr`/`hi` translation rows, and report them for seeding (data seeding proposed separately, not silently invented).
+## Track C — Agronomic quality of the 960 farmer-visible labels
 
-### 4. Stop the outgoing `options=0` drop
-Trace why the payload had 8 persisted pending options but `options=0` at `[TURN_END]`, between the orchestrator return and the `CLARIFICATION_QUESTION` formatter in `index.ts:4562`. Fix the losing hop and add an invariant: a `CLARIFICATION_QUESTION` whose session state persists pending options MUST carry a non-empty `metadata.options`, else log `[CLARIFICATION_OPTIONS_LOST]`.
+Review criteria, applied per label (mr/hi/en):
+- **Symptom, not cause** — clear the 54 mr / 15 en / 4 hi cause-leaking labels (no "कमतरता", "रोग", "विषाणू", "deficiency", "blight", "borer" in a symptom label). Cause belongs to `hypothesis_master.cause_name_*`.
+- **Field-verifiable** — the farmer must be able to confirm it by looking, without instruments.
+- **Plant-part + pattern explicit** — "old lower leaves", "leaf tip", "whole field patches".
+- **Rural register** — vernacular farming terms, no ICAR jargon, no ALL_CAPS codes.
+- Corrections applied as data updates to `observation_translations` (never TS).
+
+## Track D — Language + duplication integrity
+
+1. Resolve the **72 duplicate-label groups**: either merge the codes (repoint `hypothesis_conditions`, `intent_observation_mapping`, `observation_aliases` to a survivor and deactivate the duplicate) or differentiate the labels so two options on the same card are never textually identical.
+2. Backfill the **229 missing English labels** so the en fallback tier is complete.
+3. Add a runtime invariant `[CLARIFICATION_LABEL_COLLISION]` when a single card carries two identical display texts.
+4. Add a DB-side integrity view listing: UI-eligible codes missing any of en/hi/mr, and duplicate `(language_code, display_text)` pairs — so curators can self-serve after this cycle.
+
+## Execution order
+
+1. Track A (code + drop migration) — removes the competing schema first.
+2. Track B step 2 (orphan codes) — unblocks graph resolution.
+3. Track D steps 1–2 (dedup + en backfill) — data only.
+4. Track C label rewrite pass — data only, agronomist-reviewed batches per crop group.
+5. Track B steps 3–4 + Track D step 3 invariants last.
 
 ## Technical notes
-- Files touched: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`, `decision/hypothesis-clarification-builder.ts`, `runtime/observation-selector-contract.ts`, `runtime/clarification-contract.ts`, `index.ts`, plus one `system_config` seed migration.
-- No new tables. No agronomy literals in TypeScript — all farmer-visible text stays sourced from `observation_translations`, `clarification_fallback_questions`, and `system_config`.
-- CHANGE LOG blocks at the top of each edited chat-pipeline file will be updated per the project invariant.
-- After deploy: run one end-to-end Rice/tillering/DAS-48 turn and confirm in the logs that `removed_pending=8`, the new option set differs from the previous turn, every option carries a translation source, and a `photo_upload` option is present as the last item.
+
+- No agronomy enters TypeScript at any step; all label/condition changes are `INSERT`/`UPDATE` on `observation_master`, `observation_translations`, `hypothesis_conditions`.
+- Code edits are limited to: `runtime/clarification-contract.ts`, `runtime/observation-selector-contract.ts`, `decision/hypothesis-clarification-builder.ts` (invariants only), plus one schema migration to drop the retired table.
+- Every touched file under `supabase/functions/ai-agriculture-chat/**` gets its CHANGE LOG block updated.
+- `observation_differential_questions` is left in place, unread, pending a separate decision — flagged, not touched.
