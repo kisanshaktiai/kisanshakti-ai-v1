@@ -31234,6 +31234,15 @@ export type Database = {
           },
         ]
       }
+      observation_label_integrity: {
+        Row: {
+          display_text: string | null
+          issue: string | null
+          language_code: string | null
+          observation_codes: string[] | null
+        }
+        Relationships: []
+      }
       pending_payouts: {
         Row: {
           amount: number | null
