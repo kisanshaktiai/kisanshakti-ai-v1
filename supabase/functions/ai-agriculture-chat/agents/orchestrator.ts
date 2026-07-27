@@ -2,6 +2,14 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-27 23:45 UTC — SINGLE AUTHORITATIVE OBSERVATION STREAM. The symbolic
+ *   reasoner branch consumed the pre-graph `allObservationsForPreAuth` set
+ *   while GraphRuntime held a larger, frozen, canonical set — two divergent
+ *   evidence streams, causing zero rule matches + clarification fallback on a
+ *   READY_FOR_DECISION turn. FactExtractor, [PIPELINE_HEALTH] and
+ *   [GRAPH_ZERO_RULE_MATCH] now all read `unifiedObservationStream`
+ *   (_graphSnapshot.observations → pre-auth fallback, canonicalObsCode-folded).
+ *   New logs: [OBS_STREAM_UNIFIED], [OBS_STREAM_DIVERGENCE].
  * 2026-07-27 17:40 UTC — FIX B1: observation admission is now a DB allowlist
  *   (observation_master / observation_aliases via the warm observation-index),
  *   not a syntactic UPPER_SNAKE test. Canonical-state metadata tokens no
@@ -9402,11 +9410,58 @@ export class AIAgentOrchestrator {
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
+        // 2026-07-27 — SINGLE AUTHORITATIVE OBSERVATION STREAM (read-path only)
+        //
+        // Forensic finding: the symbolic-reasoner / clarification branch consumed
+        // `allObservationsForPreAuth` (assembled BEFORE the graph ran, 2 codes in
+        // the failing trace) while GraphRuntime reached READY_FOR_DECISION with 5
+        // observations held in `_graphSnapshot.observations`. Two divergent
+        // evidence sets → `[ObsMeta] Loaded 1 …` → zero rule match → clarification
+        // fallback, even though the graph already had a winner.
+        //
+        // This resolver is the ONLY observation source the downstream read paths
+        // (PIPELINE_HEALTH log, GRAPH_ZERO_RULE_MATCH log, FactExtractor) may use.
+        // Precedence: graph snapshot → pre-auth set (cold / no-graph turns only).
+        // No agronomy, no mutation of graph state.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const unifiedObservationStream: string[] = (() => {
+          const norm = (list: readonly unknown[]): string[] =>
+            Array.from(
+              new Set(
+                (list || [])
+                  .map((c) => canonicalObsCode(c))
+                  .filter((c): c is string => !!c && c.length > 0),
+              ),
+            );
+          const snapObs = norm(((this as any)._graphSnapshot?.observations ?? []) as unknown[]);
+          const preAuthObs = norm([...(allObservationsForPreAuth ?? [])] as unknown[]);
+          const source = snapObs.length > 0 ? 'graph_snapshot' : 'preauth';
+          const chosen = snapObs.length > 0 ? snapObs : preAuthObs;
+          console.log(
+            `   🔗 [OBS_STREAM_UNIFIED] source=${source} count=${chosen.length} ` +
+              `codes=[${chosen.slice(0, 12).join(',')}]`,
+          );
+          const a = snapObs.slice().sort().join(',');
+          const b = preAuthObs.slice().sort().join(',');
+          if (snapObs.length > 0 && a !== b) {
+            console.warn(
+              `   ⚠️ [OBS_STREAM_DIVERGENCE] graph=${snapObs.length} preauth=${preAuthObs.length} ` +
+                `graph_only=[${snapObs.filter((c) => !preAuthObs.includes(c)).slice(0, 12).join(',')}] ` +
+                `preauth_only=[${preAuthObs.filter((c) => !snapObs.includes(c)).slice(0, 12).join(',')}] ` +
+                `— graph snapshot wins (authoritative)`,
+            );
+          }
+          return chosen;
+        })();
+
+        // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures
         // Logs critical warning when symptoms exist but zero rules matched,
         // enabling fast identification of condition_code/observable_characteristics gaps
         // ═══════════════════════════════════════════════════════════════════════════
-        const pipelineSymptoms = (canonicalStateWithQuery as any).confirmed_observations || (canonicalStateWithQuery as any).visual_symptoms || [];
+        const pipelineSymptoms = unifiedObservationStream.length > 0
+          ? unifiedObservationStream
+          : ((canonicalStateWithQuery as any).confirmed_observations || (canonicalStateWithQuery as any).visual_symptoms || []);
         if (layeredRuleResult.rules_matched === 0 && pipelineSymptoms.length >= 3) {
           console.error(`🚨 [PIPELINE_HEALTH] ZERO RULES MATCHED despite ${pipelineSymptoms.length} symptoms!`);
           console.error(`   Crop: ${canonicalState.crop_type}, Stage: ${canonicalState.crop_stage}`);
@@ -9443,7 +9498,7 @@ export class AIAgentOrchestrator {
             `[GRAPH_ZERO_RULE_MATCH] trace=${traceId} ` +
               `crop=${canonicalState.crop_type} stage=${canonicalState.crop_stage} ` +
               `symptom=${canonicalState.visual_symptom} ` +
-              `obs=[${(canonicalState.visual_symptoms || []).join(',')}] ` +
+              `obs=[${unifiedObservationStream.join(',')}] ` +
               `— refusing keyword fallback. Downstream must emit ` +
               `GRAPH_NEEDS_MORE_EVIDENCE with pending observation codes.`,
           );
@@ -9559,7 +9614,10 @@ export class AIAgentOrchestrator {
               canonicalState,  // Pass actual CanonicalState, not a fragment
               authoritativeLandState,  // Now properly structured
               farmerMessage,  // Add missing 4th argument (user query)
-              [...allObservationsForPreAuth]  // Bug 2 Fix: Pass all observations as array
+              // 2026-07-27: was `[...allObservationsForPreAuth]` — the second,
+              // pre-graph observation stream. Now the unified authoritative
+              // stream (graph snapshot first).
+              [...unifiedObservationStream]
             );
             
             // Execute symbolic rules

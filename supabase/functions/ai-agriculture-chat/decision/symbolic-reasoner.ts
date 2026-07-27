@@ -13,6 +13,15 @@
  * - LLM is strictly prohibited from inventing treatments
  * 
  * CHANGE LOG (newest first)
+ *   2026-07-27 23:45 UTC — SINGLE OBSERVATION STREAM (read-path only).
+ *     (a) Ontology join corrected: observation_master.canonical_group IS the
+ *         engine group, so engine_groups is seeded from it directly and
+ *         canonical_group_mapping is enrichment-only. [ONTOLOGY_JOIN_ZERO]
+ *         (false-alarm warning) → [ONTOLOGY_ENRICHMENT_EMPTY] (info).
+ *         Fixes `EngineGroups: []` in ObsFilter.
+ *     (b) Alias re-bridge in applyObservationLayerFilter now applies ONLY to
+ *         codes absent from observation_master; already-canonical graph codes
+ *         are never rewritten (was: STUNTED_GROWTH → obs_rice_patchy_emergence).
  *   2026-07-27 00:00 UTC — FIX F1: corrected inverted canonical_group_mapping
  *     join (engine_group, not biological_group) + [ONTOLOGY_JOIN_ZERO] drift
  *     probe. FIX F4-A: normalize observation codes via canonicalObsCode before
@@ -735,20 +744,24 @@ export class SymbolicReasoner {
         return new Map();
       }
       
-      // Query canonical_group_mapping for ontology bridge
+      // Query canonical_group_mapping for ontology ENRICHMENT (not identity).
       const bioGroups = [...new Set((obsData || []).map((o: any) => o.canonical_group).filter(Boolean))];
       let mappingData: any[] = [];
       
       if (bioGroups.length > 0) {
-        // FIX F1 (2026-07-26): join direction was INVERTED.
-        // observation_master.canonical_group holds engine-group strings
-        // ('03_pest', '04_disease', '05_nutrient', ...).
-        // canonical_group_mapping.engine_group holds the SAME engine-group
-        // strings and canonical_group_mapping.biological_group holds
-        // biological labels ('PEST_SUCKING', 'DISEASE_FUNGAL', ...).
-        // The old .in('biological_group', bioGroups) queried the WRONG
-        // column with engine-group values, returning 0 rows every turn.
-        // This produced the "0 ontology mappings" symptom in production.
+        // 2026-07-27 — DB-VERIFIED CORRECTION of FIX F1 (2026-07-26).
+        // `observation_master.canonical_group` values ARE engine groups
+        // ('01_physiology', '03_pest', '04_disease', '06_abiotic', ...) and
+        // `canonical_group_mapping.engine_group` holds the SAME strings, so
+        // the F1 join was tautological: it could only ever re-derive the value
+        // already present on the observation row. When the read returned zero
+        // rows (privileges / cache), `engine_groups` collapsed to [] and the
+        // ObsFilter logged `EngineGroups: []` — a false alarm, since the tier
+        // widening matches on `canonical_group`, never on `engine_group`.
+        //
+        // New contract: canonical_group IS the engine group (identity, always
+        // present). canonical_group_mapping only ENRICHES it with the
+        // biological label. Missing mapping rows are informational.
         const { data: mapData, error: mapError } = await this.supabase
           .from('canonical_group_mapping')
           .select('biological_group, engine_group, confidence')
@@ -758,10 +771,10 @@ export class SymbolicReasoner {
           console.warn(`[ObsMeta] canonical_group_mapping fetch error: ${mapError.message}`);
         } else if (mapData) {
           mappingData = mapData;
-          if (mapData.length === 0 && bioGroups.length > 0) {
-            console.warn(
-              `[ONTOLOGY_JOIN_ZERO] canonical_group_mapping returned 0 rows for engine_groups=[${bioGroups.join(',')}]. ` +
-              `Verify canonical_group_mapping.engine_group values align with observation_master.canonical_group.`,
+          if (mapData.length === 0) {
+            console.log(
+              `[ONTOLOGY_ENRICHMENT_EMPTY] no canonical_group_mapping rows for engine_groups=[${bioGroups.join(',')}] ` +
+              `— engine groups still resolved from observation_master.canonical_group (identity). Non-blocking.`,
             );
           }
         }
@@ -770,14 +783,16 @@ export class SymbolicReasoner {
       // Build metadata map
       const result = new Map<string, ObservationMetadata>();
       for (const obs of (obsData || [])) {
-        // FIX F1 (2026-07-26): the in-memory filter was joining on
-        // biological_group === canonical_group but observation_master.canonical_group
-        // IS an engine-group value, so filter on m.engine_group instead.
-        // The shape of engineGroups[] stays {engine_group, confidence} so
-        // downstream consumers are unaffected.
-        const engineGroups = mappingData
-          .filter((m: any) => m.engine_group === obs.canonical_group)
-          .map((m: any) => ({ engine_group: m.engine_group, confidence: m.confidence }));
+        // Identity edge (always non-empty when canonical_group is set). The
+        // mapping table adds no additional engine group — only the biological
+        // label — so it never widens this list.
+        const engineGroups: Array<{ engine_group: string; confidence: number }> = [];
+        if (obs.canonical_group) {
+          engineGroups.push({ engine_group: obs.canonical_group, confidence: 1 });
+        }
+
+
+
         
         result.set(obs.observation_code, {
           observation_code: obs.observation_code,
@@ -820,39 +835,71 @@ export class SymbolicReasoner {
 
     // ─── OBSERVATION BRIDGE ───────────────────────────────────────────────
     // Generic extractor codes (POOR_GERMINATION) must be bridged to the
-    // crop's canonical observation_master vocabulary (obs_rice_no_emergence)
-    // before metadata lookup. Without this, obsMeta comes back empty and the
-    // pre-filter no-ops, so 201 rules stay and none match. Bridge via the
-    // curated concept-bridge, then fall back to observation_aliases when the
-    // bridge has no entry.
+    // crop's canonical observation_master vocabulary before metadata lookup.
+    //
+    // 2026-07-27 GUARD: the alias pass previously rewrote EVERY code, so a
+    // code that already exists in `observation_master` could be replaced by an
+    // unrelated alias target (`STUNTED_GROWTH → obs_rice_patchy_emergence` in
+    // production). Now that this filter receives the unified graph observation
+    // stream, those codes are already canonical and MUST pass through
+    // untouched. Alias resolution applies ONLY to codes absent from
+    // observation_master.
     const cropForBridge = String(facts.crop_code || facts.crop || '').toLowerCase().trim();
     let observations: string[] = [...rawObservations];
     try {
       const { bridgeCodes } = await import('./concept-bridge.ts');
       const bridged = bridgeCodes(cropForBridge, rawObservations as string[]);
       if (bridged && bridged.length > 0) observations = bridged;
-      // Second pass: alias table for codes still not in observation_master
-      const lowerBridged = observations.map(o => String(o).toLowerCase());
-      const { data: aliasRows } = await this.supabase
-        .from('observation_aliases')
-        .select('alias_code, canonical_code')
-        .in('alias_code', lowerBridged);
-      if (Array.isArray(aliasRows) && aliasRows.length > 0) {
-        const aliasMap = new Map<string, string>();
-        for (const row of aliasRows as any[]) {
-          if (row?.alias_code && row?.canonical_code) {
-            aliasMap.set(String(row.alias_code).toLowerCase(), String(row.canonical_code));
+
+      const canonCodes = Array.from(
+        new Set(observations.map((o) => canonicalObsCode(o)).filter(Boolean)),
+      );
+
+      // Which of these already exist in observation_master? Those are frozen.
+      const { data: masterRows } = await this.supabase
+        .from('observation_master')
+        .select('observation_code')
+        .in('observation_code', canonCodes);
+      const inMaster = new Set(
+        (Array.isArray(masterRows) ? masterRows : []).map((r: any) =>
+          canonicalObsCode(r?.observation_code),
+        ),
+      );
+
+      const unresolved = canonCodes.filter((c) => !inMaster.has(c));
+      if (unresolved.length > 0) {
+        const { data: aliasRows } = await this.supabase
+          .from('observation_aliases')
+          .select('alias_code, canonical_code')
+          .in('alias_code', unresolved);
+        if (Array.isArray(aliasRows) && aliasRows.length > 0) {
+          const aliasMap = new Map<string, string>();
+          for (const row of aliasRows as any[]) {
+            if (row?.alias_code && row?.canonical_code) {
+              aliasMap.set(canonicalObsCode(row.alias_code), String(row.canonical_code));
+            }
           }
+          observations = observations.map((o) => {
+            const c = canonicalObsCode(o);
+            if (inMaster.has(c)) return o; // already canonical — never rewrite
+            return aliasMap.get(c) ?? o;
+          });
         }
-        observations = observations.map(o => aliasMap.get(String(o).toLowerCase()) ?? o);
       }
-      const changed = observations.some((v, i) => v !== rawObservations[i]);
+
+      const changed =
+        observations.length !== rawObservations.length ||
+        observations.some((v, i) => v !== rawObservations[i]);
       if (changed) {
-        console.log(`   🧩 [OBSERVATION_BRIDGE] crop=${cropForBridge} raw=[${rawObservations.join(',')}] → bridged=[${observations.join(',')}]`);
+        console.log(
+          `   🧩 [OBSERVATION_BRIDGE] crop=${cropForBridge} raw=[${rawObservations.join(',')}] → bridged=[${observations.join(',')}] ` +
+            `(master_frozen=${inMaster.size} alias_resolved=${unresolved.length})`,
+        );
       }
     } catch (e) {
       console.warn(`   ⚠️ [OBSERVATION_BRIDGE] Bridge failed, using raw codes: ${(e as Error).message}`);
     }
+
 
     const obsMeta = await this.loadObservationMetadata(observations);
     if (obsMeta.size === 0) {
