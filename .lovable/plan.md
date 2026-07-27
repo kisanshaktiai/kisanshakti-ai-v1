@@ -1,73 +1,75 @@
 
-# Observation Knowledge Layer — Scientific Audit & Remediation
+# Clarification Loop — Verified Root Cause & Repair Plan
 
-## Confirmed current state (verified by live DB reads this turn)
+Session audited: `bb9c239e…` (Rice, tillering, DAS 48–49, turn 438), trace `trace_ms2sopsa_8vgi87`.
 
-Farmer-visible clarification chain:
+## What the evidence actually shows
+
+Message history (`ai_chat_messages`, last 8 turns) is a closed cycle, not progress:
 
 ```text
-hypothesis_conditions (condition_type='OBSERVATION', code in condition_key)
-        ↓
-observation_master (2549)   — gate: is_active / is_farmer_observable / can_generate_question
-        ↓  960 codes pass the gate
-observation_translations    — the only label source (display_text → description_text → en)
-        ↓
-system_config               — photo option label (observation_key = photo_upload)
+poor_rooting_post_transplant
+  → stunted_after_transplant
+  → poor_establishment + poor_tillering
+  → slow_recovery_after_transplant
+  → (card re-offers transplant_shock + poor_rooting_post_transplant)
 ```
 
-Measured defects:
+Three independent defects produce this. Each is confirmed by a read, not inferred.
 
-| Finding | Measured |
-|---|---|
-| Active hypotheses with ≥1 farmer-observable observation condition | **62 of 344** (282 can never be discriminated by a clarification card) |
-| OBSERVATION condition codes not present in `observation_master` | **33 of 274** distinct codes |
-| Duplicate labels (same text, different observation codes) among UI-eligible codes | **72 groups** (e.g. `low_tillering`/`poor_tillering`/`sparse_shoots` → all "कमी फुटवे") |
-| Label coverage of the 960 UI-eligible codes | mr 960/960, hi 960/960, **en 731/960** |
-| Labels that name a CAUSE, not a symptom (memory rule violation) | mr 54, en 15, hi 4 |
-| `observation_differential_questions` | 3 rows, 1 observation, **never read by any edge function** |
-| `clarification_fallback_questions` | 8 rows, column-per-language schema — **user decision: retire** |
+### RC-A — Biologically impossible hypotheses survive the stage gate
 
-## Track A — Retire `clarification_fallback_questions`
+`hypothesis_conditions` for both surviving hypotheses carry `condition_type=STAGE`, `is_required=true`, `value_json=[transplanting]`:
 
-1. Remove the fallback readers in `runtime/clarification-contract.ts` (`loadFallbackQuestions` + `DIAGNOSIS_GENERIC` second query) and `runtime/observation-selector-contract.ts` (`intent_family` resolution + rescue loader).
-2. Replace the rescue path with an `observation_master` + `observation_translations` query scoped by `observation_intent_master.allowed_observation_groups` / `canonical_group`, so the safety net stays DB-driven and single-schema.
-3. When no DB-backed option exists, emit `[CLARIFICATION_NO_DB_OPTIONS]` and fall through to the photo option only — never a synthesised string.
-4. Migration: drop `public.clarification_fallback_questions` only after the code no longer references it.
+- `HYP_RICE_TRANSPLANT_SHOCK_001`
+- `HYP_RICE_ROOT_INJURY_PULLING_001`
 
-## Track B — hypothesis → observation coverage (agronomic gap closure)
+Context is `tillering`, DAS 49. The log shows `[HYP_VALIDATION] blocked=[] warnings=[] stage_penalty_applied=false` and **no** `[HYP_BIOLOGICAL_GATE]` line — so the required-stage gate passed. Reason: `checkStageCondition` accepts `compatibility.family`, and stage families come from `crop_stage_graph`, which stores a symmetric `TRIGGERS` edge `transplanting → tillering`. Adjacency is being read as equivalence.
 
-1. Produce a coverage report per crop group: hypothesis_id, cause name, condition codes, which are UI-eligible and why the others fail (inactive / not farmer-observable / `can_generate_question=false` / missing from master).
-2. Fix the **33 orphan codes** — each is either a typo of an existing code (repoint condition) or a genuinely missing observation (seed into `observation_master` + translations with correct `canonical_group`, `affected_plant_part`, `semantic_class`, discriminator/clarity scores).
-3. For hypotheses whose only conditions are non-observable (lab/instrument facts), add at least one pathognomonic **farmer-observable discriminator** condition, weighted, so competition can resolve them in the field.
-4. Invariant: any active hypothesis with zero UI-eligible discriminator logs `[HYPOTHESIS_UNDISCRIMINABLE]` at graph boot.
+Agronomically this is wrong. Transplant shock and root-pulling injury are bounded to roughly 0–14 days after transplanting; recovery is complete well before tiller stabilisation. At 49 DAS a "slow growth" complaint in transplanted rice belongs to a different differential entirely (N deficiency, Zn deficiency/khaira, iron toxicity or waterlogging, root grubs/BPH, weed competition). Neither hypothesis has any `DAS_RANGE` condition row, so the DAS gate has nothing to enforce.
 
-## Track C — Agronomic quality of the 960 farmer-visible labels
+### RC-B — Evidence does not accumulate; asked options are not remembered
 
-Review criteria, applied per label (mr/hi/en):
-- **Symptom, not cause** — clear the 54 mr / 15 en / 4 hi cause-leaking labels (no "कमतरता", "रोग", "विषाणू", "deficiency", "blight", "borer" in a symptom label). Cause belongs to `hypothesis_master.cause_name_*`.
-- **Field-verifiable** — the farmer must be able to confirm it by looking, without instruments.
-- **Plant-part + pattern explicit** — "old lower leaves", "leaf tip", "whole field patches".
-- **Rural register** — vernacular farming terms, no ICAR jargon, no ALL_CAPS codes.
-- Corrections applied as data updates to `observation_translations` (never TS).
+`ai_chat_sessions.conversation_state` for this session:
 
-## Track D — Language + duplication integrity
+```json
+{ "confirmed_observations": [], "ruled_out_observations": [], "round_counter": 0,
+  "max_rounds": 2, "last_updated": "2026-06-25T14:59:27Z" }
+```
 
-1. Resolve the **72 duplicate-label groups**: either merge the codes (repoint `hypothesis_conditions`, `intent_observation_mapping`, `observation_aliases` to a survivor and deactivate the duplicate) or differentiate the labels so two options on the same card are never textually identical.
-2. Backfill the **229 missing English labels** so the en fallback tier is complete.
-3. Add a runtime invariant `[CLARIFICATION_LABEL_COLLISION]` when a single card carries two identical display texts.
-4. Add a DB-side integrity view listing: UI-eligible codes missing any of en/hi/mr, and duplicate `(language_code, display_text)` pairs — so curators can self-serve after this cycle.
+Turn count is 438 and the row was updated today — the durable evidence ledger is stale and empty because nothing writes it. Only `metadata.decision_tracking.pending_clarification_observation_keys` (last turn only) is persisted. Consequently `[OBS_TO_HYP] obs=[slow_recovery_after_transplant]` carries exactly one observation: the current message. Four previously confirmed symptoms are gone.
 
-## Execution order
+`[HYP_CLARIFICATION][FILTER] removed_confirmed=1 removed_pending=0` confirms the pending exclusion list was empty at build time — the card that reached the farmer was built by the promotion path (`runtime/observation-selector-contract.ts → loadObservationSelectorOptions`), which never passes `pending_obs_keys` or an asked-history at all.
 
-1. Track A (code + drop migration) — removes the competing schema first.
-2. Track B step 2 (orphan codes) — unblocks graph resolution.
-3. Track D steps 1–2 (dedup + en backfill) — data only.
-4. Track C label rewrite pass — data only, agronomist-reviewed batches per crop group.
-5. Track B steps 3–4 + Track D step 3 invariants last.
+### RC-C — Empty decision is recycled into the same clarification, forever
 
-## Technical notes
+Survivor rules are stage-scoped correctly, so they cannot fire at DAS 49:
 
-- No agronomy enters TypeScript at any step; all label/condition changes are `INSERT`/`UPDATE` on `observation_master`, `observation_translations`, `hypothesis_conditions`.
-- Code edits are limited to: `runtime/clarification-contract.ts`, `runtime/observation-selector-contract.ts`, `decision/hypothesis-clarification-builder.ts` (invariants only), plus one schema migration to drop the retired table.
-- Every touched file under `supabase/functions/ai-agriculture-chat/**` gets its CHANGE LOG block updated.
-- `observation_differential_questions` is left in place, unread, pending a separate decision — flagged, not touched.
+| rule | stage_applicable | crop_age_days |
+|---|---|---|
+| RICE_MGT_TRANSPLANTING_001 | [transplanting] | 25–35 |
+| RICE_IRRIG_FLOOD_001 | [transplanting … grain_filling] | 25–130 |
+
+Result: `decision_provided_empty` → `[OBSERVATION_REQUIRED_PROMOTED]` → a new `CLARIFICATION_QUESTION` → `[INVARIANT VIOLATION] … forcing awaiting_clarification`. The promotion path has no round budget and no terminal exit, so the loop is unbounded. Note the contradiction the system is trapped in: hypotheses pass the stage gate while their own rules fail it. RC-A and RC-C are the same disagreement seen from two ends.
+
+## Repair plan
+
+**Track 1 — Biological plausibility (data + gate)**
+1. Seed `DAS_RANGE` conditions (`is_required=true`) on the two rice transplant hypotheses: `{max: 21}` for transplant shock, `{max: 25}` for root-pulling injury, agronomically justified as the recovery window. Audit sibling transplanting/germination hypotheses for the same missing bound.
+2. In `hypothesis-graph-evaluator.ts`, stop treating `crop_stage_graph` adjacency as satisfaction of an `is_required=true` STAGE condition. Adjacency may keep a soft candidate alive; a required stage must match exactly or via a same-family (not merely adjacent) relation. Emit `[HYP_BIOLOGICAL_GATE]` when it eliminates.
+3. Add a coherence invariant: if a surviving hypothesis has zero rules whose `stage_applicable`/`crop_age_days` admit the current context, log `[HYP_RULE_STAGE_INCOHERENT]` and drop the hypothesis instead of emitting a card.
+
+**Track 2 — Durable evidence & asked-history**
+4. Persist per-turn to `ai_chat_sessions.conversation_state`: `confirmed_observations` (union, canonical lower_snake_case), `ruled_out_observations`, `asked_observation_keys` (cumulative, not last-turn), `round_counter`.
+5. Load that state at Layer 3 and feed the union into `classifyEvidence`/`resolveHypothesesFromObservations`, so turn N sees all four prior confirmations rather than one.
+6. Pass `pending_obs_keys = asked_observation_keys` from `observation-selector-contract.ts` and `clarification-contract.ts` into `buildHypothesisClarificationOptions`, closing the promotion-path gap.
+
+**Track 3 — Terminal exit**
+7. Enforce the DB round budget on the promotion path: when `round_counter >= max_rounds`, or when the option set after exclusion is empty, return a structured no-decision / escalation response instead of a new card. Log `[CLARIFICATION_ROUND_EXHAUSTED]`.
+8. Add a guard: a clarification whose option key set is a subset of `asked_observation_keys` is a loop — refuse to emit it and fall through to escalation.
+
+**Verification**
+Replay this session's context (Rice, tillering, DAS 49, the four confirmed symptoms). Expect: transplant hypotheses eliminated with `[HYP_BIOLOGICAL_GATE]`, a stage-appropriate differential card (nutrient/root/pest) or a structured escalation, never a repeat of `transplant_shock` / `poor_rooting_post_transplant`.
+
+## Not included
+Broad re-curation of the rice tillering differential (new hypotheses for khaira, iron toxicity, root grub) is data work beyond this repair; flag it as follow-up once the gates are correct.
