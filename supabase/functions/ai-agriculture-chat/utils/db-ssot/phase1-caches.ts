@@ -50,7 +50,7 @@
  *   - safety_hard_fail_on_miss: must NOT proceed without DB truth. Phase 1
  *     temporarily degrades to caller-supplied legacy fallback with a loud
  *     warning; Phase 3b will convert to a hard refusal once multilingual
- *     safety-refusal rows land in clarification_fallback_questions.
+ *     safety-refusal rows land in system_config.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 

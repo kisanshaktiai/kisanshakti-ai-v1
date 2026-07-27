@@ -1,4 +1,11 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-27 — Track A: removed `loadFallbackQuestions` +
+ *   `clarification_fallback_questions` reads. Single farmer-label schema is
+ *   observation_master × observation_translations.
+ */
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * CLARIFICATION CONTRACT — Single enforcement point for farmer-observation
  *                           clarification options.
@@ -147,8 +154,8 @@ export function assertClarificationContract<
   // supplied an empty allowlist it means the DB-derived candidate set was not
   // resolved for this (intent, crop, stage) cell. Fail OPEN and log once so
   // we never silently drop farmer-visible options that the DB brain already
-  // vetted (e.g. photo_upload / water_stress_check / pest_check that live in
-  // clarification_fallback_questions). Hardcoded TS allowlists are forbidden.
+  // vetted (e.g. photo_upload, or intent-group safety-net observations from
+  // observation_master). Hardcoded TS allowlists are forbidden.
   if (!allowedKeys || allowedKeys.size === 0) {
     console.warn(
       `[CLARIFICATION_CONTRACT] empty allowlist — fail-open ` +
@@ -256,87 +263,10 @@ export async function buildOptions(
   }
 }
 
-// ─── DB-driven fallback prompts ──────────────────────────────────────────
-/**
- * Load the four generic clarification prompts (photo upload, water-stress,
- * pest, nutrient) — but the four codes AND their labels now live in the DB
- * (`clarification_fallback_questions`), NOT in this file. This kills the
- * previous hardcoded-agronomy leak where the same TS module both filtered
- * curated IOM options AND minted safety-net options from a bare string list.
- *
- * Contract:
- *   - Rows are keyed by `(question_code, intent_family)`.
- *   - `intent_family` should be the diagnostic family (e.g. EMERGENCE_FAILURE)
- *     — if no rows match, we widen to `DIAGNOSIS_GENERIC`.
- *   - Language labels: `label_<lang>` if present, else `label_en`, else the
- *     `question_code` itself (last-resort so we never render an empty stub).
- */
-export interface FallbackQuestionsInput {
-  supabase: any;
-  intent_family: string;
-  language: string;
-  max?: number;
-}
 
-export async function loadFallbackQuestions(
-  input: FallbackQuestionsInput,
-): Promise<ClarificationOption[]> {
-  const { supabase, intent_family, language, max = 4 } = input;
-  if (!supabase) return [];
-  const langLower = String(language || 'en').trim().toLowerCase();
-  const family = String(intent_family || '').trim().toUpperCase() || 'DIAGNOSIS_GENERIC';
-
-  try {
-    let { data: rows, error } = await supabase
-      .from('clarification_fallback_questions')
-      .select('question_code, priority, label_en, label_hi, label_mr, intent_family')
-      .eq('is_active', true)
-      .eq('intent_family', family)
-      .order('priority', { ascending: true })
-      .limit(max);
-
-    if (error) {
-      console.error(`[CONTRACT_FALLBACK_DB] error: ${error.message}`);
-      return [];
-    }
-
-    // Family widen — if the specific family has no rows, fall back to
-    // DIAGNOSIS_GENERIC so we always have safety-net options.
-    if ((!rows || rows.length === 0) && family !== 'DIAGNOSIS_GENERIC') {
-      const res = await supabase
-        .from('clarification_fallback_questions')
-        .select('question_code, priority, label_en, label_hi, label_mr, intent_family')
-        .eq('is_active', true)
-        .eq('intent_family', 'DIAGNOSIS_GENERIC')
-        .order('priority', { ascending: true })
-        .limit(max);
-      rows = res.data;
-    }
-
-    const out: ClarificationOption[] = [];
-    for (const r of rows || []) {
-      const key = String(r.question_code || '').trim();
-      if (!key) continue;
-      const label =
-        (langLower === 'hi' && r.label_hi) ||
-        (langLower === 'mr' && r.label_mr) ||
-        r.label_en ||
-        key;
-      out.push({
-        observation_key: key,
-        label: String(label),
-        confidence_rank: typeof r.priority === 'number' ? r.priority : 999,
-      });
-    }
-    console.log(
-      `[CONTRACT_FALLBACK_DB] intent_family=${family} loaded=${out.length} ` +
-      `keys=[${out.map((o) => o.observation_key).join(',')}]`,
-    );
-    return out;
-  } catch (e) {
-    console.error('[CONTRACT_FALLBACK_DB] exception:', e);
-    return [];
-  }
-}
-
-
+// ─── DB-driven fallback prompts — REMOVED 2026-07-27 ─────────────────────
+// `clarification_fallback_questions` (8 rows, column-per-language schema)
+// was retired. The single farmer-visible label schema is now
+// observation_master + observation_translations (row-per-language).
+// The intent-scoped safety net lives in
+// runtime/observation-selector-contract.ts::loadIntentGroupOptions().

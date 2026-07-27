@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-27 — Track A: retired clarification_fallback_questions; rescue path
+ *   now reads observation_intent_master.allowed_observation_groups →
+ *   observation_master → observation_translations, with a label-collision guard.
  * 2026-07-26 18:20 UTC — Fallback questions never fall back to the raw code as
  *   a farmer label (dropped + [OBS_LABEL_MISSING]); DB-sourced photo option is
  *   appended to rescued option lists.
@@ -8,7 +11,7 @@
  *   state) before any contract check; SSOT_LOCK_LOST now only fires on a real
  *   upstream lock loss. SessionSSOT is forwarded to the clarification builder.
  * 2026-07-26 00:00 UTC — Q1/Q2: SSOT-lock invariant on the degrade path plus a
- *   two-stage DB rescue (hypothesis-graph options → clarification_fallback_questions)
+ *   two-stage DB rescue (hypothesis-graph options → intent-group observations)
  *   before any DIAGNOSTIC_ESCALATION degrade. Escalation is now last resort only.
  * 2026-07-09 13:58 UTC — Derive confirmed observations from response metadata
  *   before enforcing empty DECISION_PROVIDED/CLARIFICATION contracts, and pass
@@ -156,107 +159,147 @@ function missingSsotField(ctx: ObservationContractContext): string | null {
 }
 
 /**
- * DB-driven intent → fallback family resolution. NO hardcoded intent lists:
- *  1. exact `clarification_fallback_questions.intent_family = intent_code`
- *  2. else, if `observation_intent_master.is_biological` (diagnostic family)
- *     → 'DIAGNOSIS_GENERIC'
- *  3. else null (logged as [CONTRACT_FALLBACK_NO_MAP])
+ * Track A (2026-07-27) — `clarification_fallback_questions` retired.
+ *
+ * The intent-scoped safety net is now sourced from the SAME schema as every
+ * other farmer-visible option:
+ *
+ *   observation_intent_master.allowed_observation_groups
+ *        ↓ (group suffix match, e.g. 'physiology' ↔ '01_physiology')
+ *   observation_master  (is_active ∧ is_farmer_observable ∧ can_generate_question)
+ *        ↓
+ *   observation_translations (display_text → description_text, lang → en)
+ *
+ * No column-per-language table, no TS label constants, no LLM generation.
  */
-async function mapIntentToFamily(
+async function loadIntentGroups(
   supabase: any,
   intentCode: string | null | undefined,
-): Promise<string | null> {
+): Promise<string[]> {
   const code = String(intentCode ?? '').trim();
-  if (!supabase || !code) return null;
-
+  if (!supabase || !code) return [];
   try {
-    const { data: exact } = await supabase
-      .from('clarification_fallback_questions')
-      .select('intent_family')
-      .eq('is_active', true)
-      .eq('intent_family', code)
-      .limit(1);
-    if (Array.isArray(exact) && exact.length > 0) return code;
-
     const { data: intentRow } = await supabase
       .from('observation_intent_master')
-      .select('intent_code, intent_category, is_biological, clarification_mode')
+      .select('intent_code, intent_category, is_biological, clarification_mode, allowed_observation_groups')
       .eq('intent_code', code)
       .eq('is_active', true)
       .maybeSingle();
 
-    const isDiagnostic = !!(intentRow?.is_biological)
-      || !!(intentRow?.clarification_mode && String(intentRow.clarification_mode).trim());
-    if (isDiagnostic) return 'DIAGNOSIS_GENERIC';
+    const groups = Array.isArray(intentRow?.allowed_observation_groups)
+      ? intentRow!.allowed_observation_groups.map((g: any) => String(g ?? '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    if (groups.length > 0) return groups;
 
     console.warn(
-      `[CONTRACT_FALLBACK_NO_MAP] intent=${code} category=${intentRow?.intent_category ?? 'n/a'}`,
+      `[CONTRACT_FALLBACK_NO_MAP] intent=${code} category=${intentRow?.intent_category ?? 'n/a'} ` +
+      `reason=no_allowed_observation_groups`,
     );
-    return null;
+    return [];
   } catch (err) {
     console.warn(`[CONTRACT_FALLBACK_NO_MAP] intent=${code} error=${(err as Error).message}`);
-    return null;
+    return [];
   }
 }
 
-/**
- * DB fallback clarification questions. Labels are pre-translated in the DB;
- * no TS constants, no LLM generation.
- */
-async function loadFallbackQuestionOptions(
+/** `01_physiology` → `physiology`; `physiology` → `physiology`. */
+function groupSuffix(canonicalGroup: unknown): string {
+  return String(canonicalGroup ?? '').trim().toLowerCase().replace(/^\d+_/, '');
+}
+
+async function loadIntentGroupOptions(
   ctx: ObservationContractContext,
 ): Promise<ObservationOption[]> {
-  const family = await mapIntentToFamily(ctx.supabase, ctx.intentCode);
-  if (!family) return [];
+  const groups = await loadIntentGroups(ctx.supabase, ctx.intentCode);
+  if (groups.length === 0) return [];
   const lang = String(ctx.language || 'mr').trim().toLowerCase();
+  const confirmed = new Set(
+    (ctx.confirmedObservationCodes ?? []).map((c) => canonicalObsCode(String(c ?? ''))).filter(Boolean),
+  );
 
   try {
-    const { data: rows, error } = await ctx.supabase
-      .from('clarification_fallback_questions')
-      .select('question_code, label_en, label_hi, label_mr, priority')
+    const { data: masterRows, error: masterErr } = await ctx.supabase
+      .from('observation_master')
+      .select('observation_code, canonical_group, can_generate_question, discriminator_score, clarity_score')
       .eq('is_active', true)
-      .eq('intent_family', family)
-      .order('priority', { ascending: true })
-      .limit(4);
-    if (error) {
-      console.warn(`[CONTRACT_FALLBACK_DB] family=${family} error=${error.message}`);
+      .eq('is_farmer_observable', true)
+      .order('discriminator_score', { ascending: false, nullsFirst: false })
+      .limit(400);
+    if (masterErr) {
+      console.warn(`[CONTRACT_FALLBACK_DB] groups=[${groups.join(',')}] error=${masterErr.message}`);
       return [];
     }
+
+    const wanted = new Set(groups);
+    const candidates = (masterRows ?? [])
+      .filter((r: any) => r?.can_generate_question !== false)
+      .filter((r: any) => wanted.has(groupSuffix(r?.canonical_group)))
+      .map((r: any) => canonicalObsCode(String(r?.observation_code ?? '')))
+      .filter((c: string) => !!c && !confirmed.has(c))
+      .slice(0, 12);
+
+    if (candidates.length === 0) {
+      console.warn(`[CONTRACT_FALLBACK_DB] groups=[${groups.join(',')}] no farmer-observable candidates`);
+      return [];
+    }
+
+    const { data: trRows } = await ctx.supabase
+      .from('observation_translations')
+      .select('observation_code, display_text, description_text, language_code')
+      .in('observation_code', candidates)
+      .in('language_code', Array.from(new Set([lang, 'en'])));
+
+    const primary = new Map<string, string>();
+    const fallback = new Map<string, string>();
+    for (const t of trRows ?? []) {
+      const k = canonicalObsCode(String(t?.observation_code ?? ''));
+      const text = String(t?.display_text || t?.description_text || '').trim();
+      if (!k || !text) continue;
+      if (String(t?.language_code).toLowerCase() === lang) primary.set(k, text);
+      else fallback.set(k, text);
+    }
+
     const out: ObservationOption[] = [];
-    for (const r of rows || []) {
-      const key = String(r?.question_code ?? '').trim();
-      if (!key) continue;
-      // Farmer-visible text MUST be a DB label. Never fall back to the code.
-      const label = String(
-        (lang === 'hi' && r.label_hi) || (lang === 'mr' && r.label_mr) || r.label_en || '',
-      ).trim();
+    const seenLabels = new Set<string>();
+    for (const key of candidates) {
+      const label = primary.get(key) || fallback.get(key);
       if (!label) {
-        console.warn(
-          `[OBS_LABEL_MISSING] source=clarification_fallback_questions code=${key} lang=${lang} → option dropped`,
-        );
+        console.warn(`[OBS_LABEL_MISSING] source=observation_translations code=${key} lang=${lang} → option dropped`);
         continue;
       }
+      // Track D: never render two identical texts on one card.
+      if (seenLabels.has(label)) {
+        console.warn(`[CLARIFICATION_LABEL_COLLISION] code=${key} lang=${lang} label="${label}" → dropped`);
+        continue;
+      }
+      seenLabels.add(label);
       out.push({
         value: key,
         label,
         observation_key: key,
-        i18n_key: `observation.${key.toLowerCase()}`,
+        i18n_key: `observation.${key}`,
         observation_code: key,
       });
+      if (out.length >= 4) break;
     }
-    return out.length > 0 ? await withPhotoOption(ctx.supabase, lang, out) : out;
 
+    console.log(
+      `[CONTRACT_FALLBACK_DB] groups=[${groups.join(',')}] candidates=${candidates.length} ` +
+      `returned=${out.length} keys=[${out.map((o) => o.observation_key).join(',')}]`,
+    );
+    return out.length > 0 ? await withPhotoOption(ctx.supabase, lang, out) : out;
   } catch (err) {
-    console.warn(`[CONTRACT_FALLBACK_DB] family=${family} exception=${(err as Error).message}`);
+    console.warn(`[CONTRACT_FALLBACK_DB] groups=[${groups.join(',')}] exception=${(err as Error).message}`);
     return [];
   }
 }
 
 export interface RescueResult {
   rescued: boolean;
-  site: 'hyp_graph_options' | 'fallback_questions' | null;
+  site: 'hyp_graph_options' | 'intent_group_options' | null;
   option_count: number;
 }
+
 
 /**
  * Q2 — DB rescue: hypothesis-graph options first, then the DB fallback
@@ -313,16 +356,16 @@ export async function attemptDbClarificationRescue(
     return { rescued: true, site: 'hyp_graph_options', option_count: graphOptions.length };
   }
 
-  const fallbackOptions = await loadFallbackQuestionOptions(ctx);
+  const fallbackOptions = await loadIntentGroupOptions(ctx);
   if (fallbackOptions.length > 0) {
     promoteToClarification(response, fallbackOptions, ctx);
     stampMetadata(response, fallbackOptions.length);
-    response.metadata.observation_source = 'clarification_fallback_questions';
+    response.metadata.observation_source = 'observation_master_intent_group';
     response.metadata.graph_reason = ctx.graphReason || 'NO_STAGE_VALID_HYPOTHESES';
     console.log(
-      `[OBSERVATION_CONTRACT_RESCUE] site=fallback_questions options=${fallbackOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
+      `[OBSERVATION_CONTRACT_RESCUE] site=intent_group_options options=${fallbackOptions.length} trace=${ctx.traceId ?? 'n/a'}`,
     );
-    return { rescued: true, site: 'fallback_questions', option_count: fallbackOptions.length };
+    return { rescued: true, site: 'intent_group_options', option_count: fallbackOptions.length };
   }
 
   return { rescued: false, site: null, option_count: 0 };
