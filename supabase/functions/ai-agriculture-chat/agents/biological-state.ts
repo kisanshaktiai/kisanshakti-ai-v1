@@ -190,10 +190,10 @@ export function buildBiologicalState(
     ? String(phenology.cultivation_method).toLowerCase()
     : null;
 
-  // Publish the biological lane (crop_schedules authority) so every downstream
-  // crop_stage_master / crop_stage_graph read resolves on the correct timeline
-  // (direct_seeded vs transplanted) without threading the method everywhere.
-  setActiveCultivationMethod(cultivationMethod);
+  // FIX C1 (2026-07-28): removed setActiveCultivationMethod call —
+  // module-scope state was deleted to prevent cross-request contamination.
+  // cultivationMethod is now threaded through explicit function args when
+  // downstream lookups need lane-awareness.
 
   const state: BiologicalState = {
     is_locked: true,
