@@ -1243,8 +1243,19 @@ serve(async (req) => {
         // straight to DIAGNOSTIC_ESCALATION on turn 1.
         // Budget exhaustion (round >= max) and round >= 1 repeat detection are
         // untouched. State is never mutated here — the fix is at the check site.
+        // FIX B4 (2026-07-28): Net-new emission override.
+        // "outgoing ⊆ asked" was a false positive whenever one or more outgoing
+        // codes were GENUINELY NEW. Escalating on that basis discards real
+        // discriminators the hypothesis graph produced to narrow the winner.
+        // Correct rule: escalate only when the NET-NEW set is empty.
+        // Budget exhaustion (round >= max_rounds) untouched. No state mutation.
+        const _netNew = (Array.isArray(_outKeys) ? _outKeys : [])
+          .map((k: any) => String(k ?? '').trim().toLowerCase())
+          .filter((k: string) => !!k && !_askedSet.has(k));
         const _isRound0 = _clarificationRoundCounter <= 0;
+        const _hasNetNew = _netNew.length > 0;
         const _round0Bypass = _isRound0 && !_budgetExhausted && _isSubsetOfAsked && _outKeys.length > 0;
+        const _netNewBypass = !_isRound0 && !_budgetExhausted && _hasNetNew;
         if (_round0Bypass) {
           console.log(
             `[CLARIFICATION_LOOP_OVERRIDE] trace=${traceId} round=${_clarificationRoundCounter} ` +
@@ -1252,7 +1263,16 @@ serve(async (req) => {
             `reason=round0_bypass_persisted_asked action=emit_options_anyway`,
           );
           _clarificationRoundCounter += 1;
+        } else if (_netNewBypass) {
+          console.log(
+            `[CLARIFICATION_LOOP_OVERRIDE] trace=${traceId} round=${_clarificationRoundCounter} ` +
+            `outgoing_count=${_outKeys.length} net_new_count=${_netNew.length} ` +
+            `net_new_keys=[${_netNew.join(',')}] asked_persisted=${_priorAskedObservationKeys.length} ` +
+            `reason=net_new_options_available_round${_clarificationRoundCounter} action=emit_options_anyway`,
+          );
+          _clarificationRoundCounter += 1;
         } else if (_isSubsetOfAsked || _budgetExhausted) {
+
           console.error(
             `[CLARIFICATION_ROUND_EXHAUSTED] trace=${traceId} round=${_clarificationRoundCounter}/${_maxRounds} ` +
             `repeat_subset=${_isSubsetOfAsked} outgoing=[${_outKeys.slice(0, 6).join(',')}] ` +
