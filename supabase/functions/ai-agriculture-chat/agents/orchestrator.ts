@@ -1,6 +1,8 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-28 05:00 UTC — FIX D1: resolve cultivation_method per turn into
+ *   SessionSSOT and pass it to all buildHypothesisClarificationOptions sites.
  * ───────────────────────────────────────────────────────────────────────────
  * 2026-07-27 23:45 UTC — SINGLE AUTHORITATIVE OBSERVATION STREAM. The symbolic
  *   reasoner branch consumed the pre-graph `allObservationsForPreAuth` set
@@ -2924,6 +2926,8 @@ export class AIAgentOrchestrator {
             optionGraphResolution.hypotheses.length === 0
           ) {
             const graphClarification = await buildHypothesisClarificationOptions({
+              // FIX D1 (2026-07-28): lane from SessionSSOT — never a module global
+              cultivation_method: (this as any)._sessionSSOT?.cultivation_method ?? null,
               supabase: this.supabase,
               intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
               crop_code: cropName,
@@ -3006,6 +3010,8 @@ export class AIAgentOrchestrator {
             optionGraphRuleIds.length === 0
           ) {
             const graphClarification = await buildHypothesisClarificationOptions({
+              // FIX D1 (2026-07-28): lane from SessionSSOT — never a module global
+              cultivation_method: (this as any)._sessionSSOT?.cultivation_method ?? null,
               supabase: this.supabase,
               intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
               crop_code: cropName,
@@ -4018,6 +4024,12 @@ export class AIAgentOrchestrator {
       // Immutable; every downstream layer reads it via getSessionSSOT().
       // ═══════════════════════════════════════════════════════════════════════
       try {
+        // FIX D1 (2026-07-28): cultivation lane threaded per request (no globals)
+        const _cultivationMethodForSsot =
+          ((landContext as any)?.biological_state as any)?.cultivation_method
+          ?? (canonicalContext as any)?.cultivation_method
+          ?? (landContext as any)?.cultivation_method
+          ?? null;
         const _ssot = buildSessionSSOT({
           crop_code: (canonicalContext as any)?.crop_code ?? (landContext as any)?.current_crop ?? null,
           growth_stage: (canonicalContext as any)?.growth_stage
@@ -4031,6 +4043,7 @@ export class AIAgentOrchestrator {
           trace_id: traceId,
           land_id: options.landId ?? (landContext as any)?.id ?? (landContext as any)?.land_id ?? '',
           session_id: sessionId ?? '',
+          cultivation_method: _cultivationMethodForSsot,
         });
         (this as any)._sessionSSOT = _ssot;
       } catch (ssotErr) {
@@ -6893,6 +6906,8 @@ export class AIAgentOrchestrator {
             // ═══════════════════════════════════════════════════════════════════
             try {
               const graphClarification = await buildHypothesisClarificationOptions({
+              // FIX D1 (2026-07-28): lane from SessionSSOT — never a module global
+              cultivation_method: (this as any)._sessionSSOT?.cultivation_method ?? null,
                 supabase: this.supabase,
                 intent_code: intentCode,
                 crop_code: cropCode,

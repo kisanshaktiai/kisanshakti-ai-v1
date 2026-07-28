@@ -3,6 +3,9 @@
  * SessionSSOT — Single Source of Truth for the current turn
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+ *   2026-07-28 05:00 UTC — FIX D1: added nullable `cultivation_method` to
+ *     SessionSSOT (+input, freeze block, SSOT_ESTABLISHED log). Per-request
+ *     lane from crop_schedules → BiologicalState; no module-scope state.
  *   2026-07-26 — Initial (R1). Built ONCE at Layer 3 (BIO_STATE_LOCKED /
  *     canonical-context + intent lock). Immutable (Object.frozen). Attached to
  *     the orchestrator instance (`_sessionSSOT`) and to
@@ -21,6 +24,11 @@ export type SessionSSOT = Readonly<{
   land_id: string;
   session_id: string;
   established_at: string;    // ISO timestamp for audit
+  // FIX D1 (2026-07-28): cultivation lane threaded per request from
+  // crop_schedules → BiologicalState. Nullable when unknown (universal lane).
+  // NO module-scope fallback — every downstream stage lookup that cares about
+  // lane MUST read it from this field, never from any shared global.
+  cultivation_method: string | null;
 }>;
 
 export interface SessionSSOTInput {
@@ -32,6 +40,8 @@ export interface SessionSSOTInput {
   trace_id: string;
   land_id: string;
   session_id: string;
+  // FIX D1 (2026-07-28): per-request cultivation lane
+  cultivation_method?: string | null;
 }
 
 /**
@@ -64,11 +74,15 @@ export function buildSessionSSOT(input: SessionSSOTInput): SessionSSOT {
     land_id: input.land_id,
     session_id: input.session_id,
     established_at: new Date().toISOString(),
+    // FIX D1 (2026-07-28): per-request cultivation lane (nullable = universal)
+    cultivation_method: input.cultivation_method
+      ? String(input.cultivation_method).trim().toLowerCase()
+      : null,
   });
 
   console.log(
     `[SSOT_ESTABLISHED] trace=${ssot.trace_id} crop=${ssot.crop_code} stage=${ssot.growth_stage} ` +
-    `das=${ssot.days_since_sowing} intent=${ssot.intent_code} language=${ssot.language} land_id=${ssot.land_id}`,
+    `das=${ssot.days_since_sowing} intent=${ssot.intent_code} language=${ssot.language} land_id=${ssot.land_id} cultivation=${ssot.cultivation_method ?? 'null'}`,
   );
 
   return ssot;
