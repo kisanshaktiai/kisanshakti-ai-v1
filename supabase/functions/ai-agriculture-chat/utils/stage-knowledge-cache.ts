@@ -227,7 +227,10 @@ export function getStageRow(
   cultivationMethod?: string | null,
 ): StageMasterRow | null {
   if (!cache) return null;
-  const resolved = cultivationMethod === undefined ? activeCultivationMethod : cultivationMethod;
+  // FIX C1 (2026-07-28): no module-scope fallback. When the caller omits
+  // cultivationMethod (undefined) OR passes null, use lane-agnostic matching
+  // — safe default, no cross-request contamination.
+  const resolved = cultivationMethod === undefined ? null : cultivationMethod;
   const lane = resolved ? String(resolved).toLowerCase() : null;
   const cropKey = (crop || '').toLowerCase();
   const stageKey = (stage || '').toLowerCase();
