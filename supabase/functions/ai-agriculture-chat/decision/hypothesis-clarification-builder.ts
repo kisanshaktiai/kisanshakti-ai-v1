@@ -827,6 +827,6 @@ export function stageAllowedByGraphCondition(
   const s = normalizeStageForDB(stage).toLowerCase();
   return allowed.some((x: any) => {
     const a = normalizeStageForDB(String(x)).toLowerCase();
-    return a === s || stagesEquivalent(a, s, crop ?? null, cultivationMethod);
+    return a === s || stagesEquivalent(a, s, crop ?? null);
   });
 }
