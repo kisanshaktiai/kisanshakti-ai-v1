@@ -1235,7 +1235,24 @@ serve(async (req) => {
         const _isSubsetOfAsked = _outKeys.length > 0 && _outKeys.every((k: string) => _askedSet.has(k));
         const _budgetExhausted = _clarificationRoundCounter >= _maxRounds;
 
-        if (_isSubsetOfAsked || _budgetExhausted) {
+        // FIX B3 (2026-07-28): Round-0 override for repeat_subset false-positive.
+        // `_priorAskedObservationKeys` is session-persisted and can carry keys
+        // across dialogs. At round=0 (fresh dialog) those keys are NOT
+        // "already asked in this dialog" — treating them as repeats discards
+        // the very first option set the graph produces and sends the farmer
+        // straight to DIAGNOSTIC_ESCALATION on turn 1.
+        // Budget exhaustion (round >= max) and round >= 1 repeat detection are
+        // untouched. State is never mutated here — the fix is at the check site.
+        const _isRound0 = _clarificationRoundCounter <= 0;
+        const _round0Bypass = _isRound0 && !_budgetExhausted && _isSubsetOfAsked && _outKeys.length > 0;
+        if (_round0Bypass) {
+          console.log(
+            `[CLARIFICATION_LOOP_OVERRIDE] trace=${traceId} round=${_clarificationRoundCounter} ` +
+            `outgoing_count=${_outKeys.length} asked_persisted=${_priorAskedObservationKeys.length} ` +
+            `reason=round0_bypass_persisted_asked action=emit_options_anyway`,
+          );
+          _clarificationRoundCounter += 1;
+        } else if (_isSubsetOfAsked || _budgetExhausted) {
           console.error(
             `[CLARIFICATION_ROUND_EXHAUSTED] trace=${traceId} round=${_clarificationRoundCounter}/${_maxRounds} ` +
             `repeat_subset=${_isSubsetOfAsked} outgoing=[${_outKeys.slice(0, 6).join(',')}] ` +
