@@ -743,7 +743,11 @@ export async function evaluateHypothesisGraph(
   // return the eliminated candidate set so the orchestrator can ask a scoped
   // clarification instead of wrapping this as GRAPH_PIPELINE_BYPASSED.
   const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION', 'NO_REQUIRED_MATCH']);
-  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP'];
+  // S2 (2026-07-28): applicability mismatch is a true agronomic contradiction —
+  // the hypothesis is biologically impossible in this farmer's cultivation
+  // lane / season / water regime / etc. Register as a first-class contradiction
+  // so [STAGE_FILTER_KILLED_VALID_DIAGNOSIS] does not misclassify it.
+  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP', 'APPLICABILITY_MISMATCH'];
   const DB_REQUIRED_GATE_PREFIXES = ['REQUIRED_STAGE_FAILED', 'REQUIRED_DAS_FAILED'];
   const isDbRequiredGateElimination = (r?: string) =>
     !!r && DB_REQUIRED_GATE_PREFIXES.some((p) => r.startsWith(p));
