@@ -282,7 +282,9 @@ export function getStageByDAS(
 ): StageMasterRow | null {
   if (!cache) return null;
   const cropKey = (crop || '').toLowerCase();
-  const resolvedMethod = cultivationMethod === undefined ? activeCultivationMethod : cultivationMethod;
+  // FIX C1 (2026-07-28): no module-scope fallback. Lane-agnostic default
+  // when caller omits cultivationMethod — prevents cross-request contamination.
+  const resolvedMethod = cultivationMethod === undefined ? null : cultivationMethod;
   const method = resolvedMethod ? String(resolvedMethod).toLowerCase() : null;
 
   let exact: StageMasterRow | null = null;
