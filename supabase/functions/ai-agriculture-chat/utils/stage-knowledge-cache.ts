@@ -72,23 +72,41 @@ function ak(crop: string, method: string, stage: string) {
 }
 
 /**
- * Active cultivation_method for the current request. AUTHORITY: crop_schedules
- * (surfaced through BiologicalState). All stage lookups default to this lane so
- * call sites do not have to thread the method through every signature.
+ * FIX C1 (2026-07-28): Deleted `activeCultivationMethod` module-scope state.
+ * That variable created a cross-request data-corruption hazard in Supabase
+ * Edge Functions: Deno isolates serve multiple concurrent requests, every
+ * `await` between the set and downstream reads is a preemption point, and
+ * concurrent farmer B could overwrite the lane while farmer A was awaiting
+ * a DB call. When A resumed, its stage lookups used B's lane — silently
+ * giving A wrong-lane agronomic advice.
+ *
+ * The setter is now a deprecated no-op that logs a warning so any residual
+ * call sites are visible in production. The getter returns null so any
+ * legacy caller that reads it gets the lane-agnostic behavior (safe default).
+ *
+ * Correct pattern: every stage-lookup call MUST pass cultivationMethod
+ * explicitly, resolved from THIS request's BiologicalState / CanonicalState.
+ * Callers that currently omit the arg get lane-agnostic matching (which
+ * matches every row regardless of cultivation_method) — cross-farmer
+ * contamination cannot happen because there is no shared state.
  */
-let activeCultivationMethod: string | null = null;
-
 export function setActiveCultivationMethod(method: string | null | undefined): void {
+  // Deprecated no-op — retained for API compatibility only.
   const raw = method ? String(method).toLowerCase().trim() : null;
-  const next = raw && raw !== 'unknown' ? raw : null;
-  if (next !== activeCultivationMethod) {
-    console.log(`[STAGE_LANE] active_cultivation_method=${next ?? 'null'}`);
-  }
-  activeCultivationMethod = next;
+  console.warn(
+    `[STAGE_LANE_DEPRECATED] setActiveCultivationMethod called with method=${raw ?? 'null'}; ` +
+    `module-scope state was removed to prevent cross-request contamination. ` +
+    `Pass cultivationMethod explicitly to getStageRow/getStageByDAS/getStageFamilyFromDB instead.`,
+  );
 }
 
 export function getActiveCultivationMethod(): string | null {
-  return activeCultivationMethod;
+  console.warn(
+    `[STAGE_LANE_DEPRECATED] getActiveCultivationMethod called — module-scope state was ` +
+    `removed to prevent cross-request contamination. Callers must resolve the ` +
+    `cultivation method from BiologicalState per request.`,
+  );
+  return null;
 }
 
 /** A stage-graph / stage-master row belongs to the requested lane when its own
