@@ -76,6 +76,12 @@ export interface HypothesisClarificationInput {
   trace_id?: string | null;
   /** R3b — canonical SessionSSOT (Layer 3 lock) as primary context source. */
   session_ssot?: SessionSSOT | null;
+  /**
+   * FIX D1 (2026-07-28) — per-request cultivation lane (e.g. 'direct_seeded',
+   * 'transplanted'). Sourced from SessionSSOT ← crop_schedules. Nullable =
+   * lane-agnostic (intentional for callers that want universal behaviour).
+   */
+  cultivation_method?: string | null;
 }
 
 
@@ -181,6 +187,15 @@ export async function buildHypothesisClarificationOptions(
   const stage = input.crop_stage ?? _ssot?.growth_stage ?? input.land_context?.growth_stage ?? null;
   const das = input.DAS ?? _ssot?.days_since_sowing ?? input.land_context?.days_since_sowing ?? null;
   const lang = String(input.language || _ssot?.language || 'en').toLowerCase();
+  // FIX D1 (2026-07-28) — cultivation lane, SessionSSOT is the authority.
+  const cultivationMethod =
+    (input as any).cultivation_method
+    ?? (_ssot as any)?.cultivation_method
+    ?? null;
+  console.log(
+    `[CULTIVATION_LANE] trace=${trace} crop=${crop} stage=${stage} das=${das} ` +
+    `cultivation=${cultivationMethod ?? 'null'} source=session_ssot`,
+  );
 
   const renderMaxIn = input.max ?? 4;
   const tun = await readTunables(input.supabase, renderMaxIn);
@@ -278,7 +293,9 @@ export async function buildHypothesisClarificationOptions(
       observation_codes: graphSeeds,
       supabase: input.supabase,
       trace_id: `${trace}_seed_graph`,
-    });
+      // FIX D1 — lane-aware stage gating downstream
+      cultivation_method: cultivationMethod,
+    } as any);
     hypothesisIds = Array.from(new Set(graphOut.candidates.map((c) => c.hypothesis_id)));
   }
 
@@ -306,7 +323,7 @@ export async function buildHypothesisClarificationOptions(
         const list = Array.isArray(raw) ? raw : Array.isArray(raw?.value) ? raw.value : [raw?.value ?? raw];
         const hit = list.some((v: unknown) => {
           const k = canonicalObsCode(v);
-          return !!k && (k === stageKey || stagesEquivalent(k, stageKey));
+          return !!k && (k === stageKey || stagesEquivalent(k, stageKey, crop || null, cultivationMethod));
         });
         if (hit) validAtStage.add(String((r as any).hypothesis_id));
       }
@@ -810,6 +827,6 @@ export function stageAllowedByGraphCondition(
   const s = normalizeStageForDB(stage).toLowerCase();
   return allowed.some((x: any) => {
     const a = normalizeStageForDB(String(x)).toLowerCase();
-    return a === s || stagesEquivalent(a, s, crop ?? null);
+    return a === s || stagesEquivalent(a, s, crop ?? null, cultivationMethod);
   });
 }
