@@ -1247,7 +1247,8 @@ serve(async (req) => {
       const _intentCodeForReset = String(
         (orchestratorResponse as any)?.metadata?.intent_code ??
         (orchestratorResponse as any)?.intent ??
-        _orchAnyForCtx?._lastIntentCode ??
+        (orch as any)?._lastIntentCode ??
+
         '',
       ).toUpperCase();
       const _isFreshDiagnosticQuery =
