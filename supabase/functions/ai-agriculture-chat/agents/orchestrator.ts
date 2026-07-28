@@ -1,6 +1,8 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-28 05:00 UTC — FIX D1: resolve cultivation_method per turn into
+ *   SessionSSOT and pass it to all buildHypothesisClarificationOptions sites.
  * ───────────────────────────────────────────────────────────────────────────
  * 2026-07-27 23:45 UTC — SINGLE AUTHORITATIVE OBSERVATION STREAM. The symbolic
  *   reasoner branch consumed the pre-graph `allObservationsForPreAuth` set

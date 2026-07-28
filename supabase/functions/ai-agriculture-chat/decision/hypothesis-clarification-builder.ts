@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-28 05:00 UTC — FIX D1: accept `cultivation_method` (SessionSSOT
+ *   authority), log [CULTIVATION_LANE], and thread the lane into
+ *   evaluateHypothesisGraph + stagesEquivalent for lane-correct options.
  * 2026-07-27 — Track B/D invariants: [CLARIFICATION_LABEL_COLLISION] drops a
  *   second option whose farmer label is textually identical to one already on
  *   the card; [HYPOTHESIS_UNDISCRIMINABLE] logs candidate hypotheses that
