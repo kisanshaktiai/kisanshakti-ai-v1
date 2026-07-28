@@ -1219,10 +1219,58 @@ serve(async (req) => {
     // identical card (the `bb9c239e` transplant-shock loop).
     // ═══════════════════════════════════════════════════════════════════
     let _clarificationRoundCounter = Number((sessionState as any)?.clarification_round_counter ?? 0);
-    const _priorAskedObservationKeys: string[] = Array.isArray((sessionState as any)?.asked_observation_keys)
+    let _priorAskedObservationKeys: string[] = Array.isArray((sessionState as any)?.asked_observation_keys)
       ? ((sessionState as any).asked_observation_keys as string[]).map((k) => String(k).trim().toLowerCase()).filter(Boolean)
       : [];
+
+    // FIX E2 (2026-07-28): Fresh-query state reset.
+    // The loop guard reads _clarificationRoundCounter and _priorAskedObservationKeys
+    // from session state. Both persist across dialogs. On a genuinely fresh
+    // query — no pending clarification options AND the intent is a diagnostic
+    // (not CLARIFICATION_REPLY / OPTION_SELECTED) AND no option tap — the
+    // prior asked-set is STALE (from a completed or abandoned prior dialog).
+    // Treating them as "already asked in this dialog" produces false-positive
+    // loop escalations. Reset both counters BEFORE the B3/B4 checks so a new
+    // dialog starts at round=0 with an empty asked set.
+    // This does NOT weaken loop protection for legitimate multi-turn
+    // clarifications: within a single clarification chain pending options or
+    // a tap/reply intent are always present, so no reset occurs there.
+    {
+      const _loadedPendingOptions =
+        ((sessionState as any)?.pending_clarification_options?.length ?? 0) ||
+        ((sessionState as any)?.pending_clarification_observation_keys?.length ?? 0);
+      const _tapKeys =
+        (metadata as any)?.selected_observation_keys ??
+        (metadata as any)?.selectedObservationKeys ??
+        (requestBody as any)?.selected_observation_keys ??
+        null;
+      const _intentCodeForReset = String(
+        (orchestratorResponse as any)?.metadata?.intent_code ??
+        (orchestratorResponse as any)?.intent ??
+        _orchAnyForCtx?._lastIntentCode ??
+        '',
+      ).toUpperCase();
+      const _isFreshDiagnosticQuery =
+        (_loadedPendingOptions === 0) &&
+        !Array.isArray(_tapKeys) &&
+        (metadata as any)?.optionSelected !== true &&
+        _intentCodeForReset !== 'CLARIFICATION_REPLY' &&
+        _intentCodeForReset !== 'OPTION_SELECTED';
+      if (_isFreshDiagnosticQuery && (_clarificationRoundCounter > 0 || _priorAskedObservationKeys.length > 0)) {
+        console.log(
+          `[CLARIFICATION_STATE_RESET] trace=${traceId} reason=fresh_diagnostic_query ` +
+          `prior_round=${_clarificationRoundCounter} prior_asked=${_priorAskedObservationKeys.length} ` +
+          `intent=${_intentCodeForReset || 'UNKNOWN'} action=reset_to_round_0`,
+        );
+        _clarificationRoundCounter = 0;
+        _priorAskedObservationKeys = [];
+        // Do NOT clear pending_clarification_observation_keys itself — that
+        // persists for the other caller (hypothesis-clarification-builder
+        // pending_obs_keys) which handles its own semantics.
+      }
+    }
     try {
+
       const _isClarif = orchestratorResponse.type === 'CLARIFICATION_QUESTION' ||
         orchestratorResponse.type === 'CLARIFICATION_NEEDED';
       if (_isClarif) {
