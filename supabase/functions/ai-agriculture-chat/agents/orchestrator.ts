@@ -4024,7 +4024,7 @@ export class AIAgentOrchestrator {
       try {
         // FIX D1 (2026-07-28): cultivation lane threaded per request (no globals)
         const _cultivationMethodForSsot =
-          (typeof biologicalState !== 'undefined' ? (biologicalState as any)?.cultivation_method : null)
+          ((landContext as any)?.biological_state as any)?.cultivation_method
           ?? (canonicalContext as any)?.cultivation_method
           ?? (landContext as any)?.cultivation_method
           ?? null;
