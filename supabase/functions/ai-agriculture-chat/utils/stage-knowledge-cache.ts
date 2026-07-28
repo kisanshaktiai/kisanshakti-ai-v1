@@ -1,4 +1,8 @@
 /**
+ * CHANGE LOG
+ * 2026-07-28 04:45 UTC — FIX C1: deleted module-scope `activeCultivationMethod`
+ *   (cross-request contamination hazard). Setter/getter are deprecated stubs;
+ *   stage lookups default to lane-agnostic when no explicit method is passed.
  * ═══════════════════════════════════════════════════════════════════════════
  * STAGE KNOWLEDGE CACHE — Phase E SSOT
  * ═══════════════════════════════════════════════════════════════════════════
