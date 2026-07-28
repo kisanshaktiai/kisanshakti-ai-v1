@@ -2,6 +2,14 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-28 UTC — S2 (Step 3): generic applicability gate. Reads
+ *   hypothesis_conditions rows of types CULTIVATION_METHOD, SEASON,
+ *   CLIMATE_ZONE, WATER_REGIME, SOIL_TEXTURE, REGION, VARIETY_TYPE
+ *   from the DB (governed by hypothesis_master.applicability jsonb via
+ *   the sync_hypothesis_applicability trigger). Eliminates hypotheses
+ *   whose applicability contradicts the current biological context.
+ *   Crop-agnostic, dimension-extensible, safe on unknown context.
+ *   Emits [HYP_APPLICABILITY_GATE] for observability.
  * 2026-07-27 UTC — Loop fix: (a) is_required=true STAGE conditions now demand
  *   an EXACT stage match; `crop_stage_graph` adjacency no longer satisfies
  *   them (transplanting-only hypotheses were surviving at tillering).
