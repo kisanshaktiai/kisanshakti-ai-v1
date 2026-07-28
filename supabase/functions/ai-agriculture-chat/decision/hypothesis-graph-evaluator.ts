@@ -2,6 +2,14 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-07-28 UTC — S2 (Step 3): generic applicability gate. Reads
+ *   hypothesis_conditions rows of types CULTIVATION_METHOD, SEASON,
+ *   CLIMATE_ZONE, WATER_REGIME, SOIL_TEXTURE, REGION, VARIETY_TYPE
+ *   from the DB (governed by hypothesis_master.applicability jsonb via
+ *   the sync_hypothesis_applicability trigger). Eliminates hypotheses
+ *   whose applicability contradicts the current biological context.
+ *   Crop-agnostic, dimension-extensible, safe on unknown context.
+ *   Emits [HYP_APPLICABILITY_GATE] for observability.
  * 2026-07-27 UTC — Loop fix: (a) is_required=true STAGE conditions now demand
  *   an EXACT stage match; `crop_stage_graph` adjacency no longer satisfies
  *   them (transplanting-only hypotheses were surviving at tillering).
@@ -91,6 +99,107 @@ export interface GraphHypothesisInput {
 
 /** v5-P8 — graph-math fallback used when `system_config` key is missing. */
 const DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD = 0.6;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S2 (2026-07-28) — GENERIC APPLICABILITY GATE
+// ─────────────────────────────────────────────────────────────────────────────
+// Reads hypothesis_conditions rows whose condition_type is any of the
+// applicability dimensions and compares against the frozen field-twin
+// (canonical_context) for the current request. When the current value
+// exists AND is NOT contained in the DB-authored allowed list, the
+// hypothesis is biologically impossible for this farmer and is eliminated.
+//
+// Adding a new dimension (e.g. IRRIGATION_METHOD in 2028):
+//   1. Add to the DB CHECK constraint on hypothesis_conditions.condition_type
+//   2. Add to the sync_hypothesis_applicability trigger's applicability_types
+//   3. Append ONE entry to APPLICABILITY_DIMENSIONS below
+// Zero crop-specific code. Zero hypothesis-specific code.
+interface ApplicabilityDimension {
+  readonly conditionType: string;
+  readonly contextField: string;
+  readonly reasonTag: string;
+}
+const APPLICABILITY_DIMENSIONS: readonly ApplicabilityDimension[] = [
+  { conditionType: 'CULTIVATION_METHOD', contextField: 'cultivation_method', reasonTag: 'cultivation_mismatch' },
+  { conditionType: 'SEASON',             contextField: 'season',             reasonTag: 'season_mismatch' },
+  { conditionType: 'CLIMATE_ZONE',       contextField: 'climate_zone',       reasonTag: 'climate_zone_mismatch' },
+  { conditionType: 'WATER_REGIME',       contextField: 'water_regime',       reasonTag: 'water_regime_mismatch' },
+  { conditionType: 'SOIL_TEXTURE',       contextField: 'soil_texture',       reasonTag: 'soil_texture_mismatch' },
+  { conditionType: 'REGION',             contextField: 'region',             reasonTag: 'region_mismatch' },
+  { conditionType: 'VARIETY_TYPE',       contextField: 'variety_type',       reasonTag: 'variety_type_mismatch' },
+];
+
+function _readCanonicalContextField(ctx: unknown, field: string): string | null {
+  if (!ctx || typeof ctx !== 'object') return null;
+  const rec = ctx as Record<string, unknown>;
+  // Direct field on the frozen field-twin (e.g. cultivation_method).
+  let raw = rec[field];
+  // Some orchestrator paths nest the biological subtree under a "biological" or "bio_state" key.
+  if (raw == null && rec['biological'] && typeof rec['biological'] === 'object') {
+    raw = (rec['biological'] as Record<string, unknown>)[field];
+  }
+  if (raw == null && rec['bio_state'] && typeof rec['bio_state'] === 'object') {
+    raw = (rec['bio_state'] as Record<string, unknown>)[field];
+  }
+  if (raw == null) return null;
+  const s = String(raw).trim().toLowerCase();
+  if (!s || s === 'unknown' || s === 'null' || s === 'undefined') return null;
+  return s;
+}
+
+function _extractApplicabilityAllowedValues(rows: ConditionRow[]): string[] {
+  const out = new Set<string>();
+  for (const r of rows) {
+    const v = r.value_json;
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        const s = String(item ?? '').trim().toLowerCase();
+        if (s) out.add(s);
+      }
+    } else if (typeof v === 'string') {
+      const s = v.trim().toLowerCase();
+      if (s) out.add(s);
+    } else if (v && typeof v === 'object' && Array.isArray((v as any).values)) {
+      for (const item of (v as any).values) {
+        const s = String(item ?? '').trim().toLowerCase();
+        if (s) out.add(s);
+      }
+    }
+  }
+  return [...out];
+}
+
+interface ApplicabilityGateResult {
+  eliminated: boolean;
+  dimension?: string;
+  reasonTag?: string;
+  expected?: string[];
+  got?: string;
+}
+
+function checkApplicabilityConditions(
+  conds: ConditionRow[],
+  canonicalContext: unknown,
+): ApplicabilityGateResult {
+  for (const dim of APPLICABILITY_DIMENSIONS) {
+    const rows = conds.filter(c => c.condition_type === dim.conditionType);
+    if (rows.length === 0) continue;
+    const currentValue = _readCanonicalContextField(canonicalContext, dim.contextField);
+    if (!currentValue) continue;
+    const allowed = _extractApplicabilityAllowedValues(rows);
+    if (allowed.length === 0) continue;
+    if (!allowed.includes(currentValue)) {
+      return {
+        eliminated: true,
+        dimension: dim.conditionType,
+        reasonTag: dim.reasonTag,
+        expected: allowed,
+        got: currentValue,
+      };
+    }
+  }
+  return { eliminated: false };
+}
 let _bioStageHardGateThresholdCache: number | null = null;
 async function readBioStageHardGateThreshold(supabase: any): Promise<number> {
   if (_bioStageHardGateThresholdCache !== null) return _bioStageHardGateThresholdCache;
@@ -314,6 +423,55 @@ export async function evaluateHypothesisGraph(
           return { pass: false, reason: stagePassRaw.reason, required_fail: false };
         })()
       : stagePassRaw;
+
+    // ── S2 — APPLICABILITY GATE (2026-07-28) ──────────────────────────────
+    // DB-authored applicability conditions (CULTIVATION_METHOD, SEASON, etc.)
+    // eliminate hypotheses whose biological context does not match this
+    // farmer's field-twin. Runs BEFORE the STAGE gate because applicability
+    // rejections are more decisive (a DSR-only pipeline should never see
+    // transplant hypotheses at all). See APPLICABILITY_DIMENSIONS + the DB
+    // trigger sync_hypothesis_applicability for the full contract.
+    const _applicabilityGate = checkApplicabilityConditions(conds, input.canonical_context);
+    if (_applicabilityGate.eliminated) {
+      const _reason =
+        `APPLICABILITY_MISMATCH(${_applicabilityGate.dimension}:` +
+        `expected=${(_applicabilityGate.expected ?? []).join('|')},` +
+        `got=${_applicabilityGate.got})`;
+      console.warn(
+        `[HYP_APPLICABILITY_GATE] eliminated hypothesis=${hid} ` +
+          `reason=${_applicabilityGate.reasonTag ?? 'applicability_mismatch'} ` +
+          `dimension=${_applicabilityGate.dimension} ` +
+          `expected=[${(_applicabilityGate.expected ?? []).join('|')}] ` +
+          `got=${_applicabilityGate.got} ` +
+          `trace=${trace}`,
+      );
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: buckets.positive_matches,
+        negative_matches: buckets.negative_matches,
+        missing_required: buckets.missing_required,
+        blocking_conditions: buckets.blocking_conditions,
+        required_total: requiredTotal,
+        required_matched: requiredMatched,
+        required_match_pct: requiredPct,
+        supporting_score: supportingScore,
+        confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:${_reason}`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: _reason,
+      } as GraphHypothesisCandidate);
+      continue;
+    }
 
     // ── S1 — HARD biological stage gate ───────────────────────────────────
     // Biological invariant: a hypothesis whose DB-authored STAGE condition
@@ -585,7 +743,11 @@ export async function evaluateHypothesisGraph(
   // return the eliminated candidate set so the orchestrator can ask a scoped
   // clarification instead of wrapping this as GRAPH_PIPELINE_BYPASSED.
   const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION', 'NO_REQUIRED_MATCH']);
-  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP'];
+  // S2 (2026-07-28): applicability mismatch is a true agronomic contradiction —
+  // the hypothesis is biologically impossible in this farmer's cultivation
+  // lane / season / water regime / etc. Register as a first-class contradiction
+  // so [STAGE_FILTER_KILLED_VALID_DIAGNOSIS] does not misclassify it.
+  const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP', 'APPLICABILITY_MISMATCH'];
   const DB_REQUIRED_GATE_PREFIXES = ['REQUIRED_STAGE_FAILED', 'REQUIRED_DAS_FAILED'];
   const isDbRequiredGateElimination = (r?: string) =>
     !!r && DB_REQUIRED_GATE_PREFIXES.some((p) => r.startsWith(p));
