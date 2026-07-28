@@ -71,11 +71,15 @@ export function buildSessionSSOT(input: SessionSSOTInput): SessionSSOT {
     land_id: input.land_id,
     session_id: input.session_id,
     established_at: new Date().toISOString(),
+    // FIX D1 (2026-07-28): per-request cultivation lane (nullable = universal)
+    cultivation_method: input.cultivation_method
+      ? String(input.cultivation_method).trim().toLowerCase()
+      : null,
   });
 
   console.log(
     `[SSOT_ESTABLISHED] trace=${ssot.trace_id} crop=${ssot.crop_code} stage=${ssot.growth_stage} ` +
-    `das=${ssot.days_since_sowing} intent=${ssot.intent_code} language=${ssot.language} land_id=${ssot.land_id}`,
+    `das=${ssot.days_since_sowing} intent=${ssot.intent_code} language=${ssot.language} land_id=${ssot.land_id} cultivation=${ssot.cultivation_method ?? 'null'}`,
   );
 
   return ssot;
