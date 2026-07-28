@@ -424,6 +424,55 @@ export async function evaluateHypothesisGraph(
         })()
       : stagePassRaw;
 
+    // ── S2 — APPLICABILITY GATE (2026-07-28) ──────────────────────────────
+    // DB-authored applicability conditions (CULTIVATION_METHOD, SEASON, etc.)
+    // eliminate hypotheses whose biological context does not match this
+    // farmer's field-twin. Runs BEFORE the STAGE gate because applicability
+    // rejections are more decisive (a DSR-only pipeline should never see
+    // transplant hypotheses at all). See APPLICABILITY_DIMENSIONS + the DB
+    // trigger sync_hypothesis_applicability for the full contract.
+    const _applicabilityGate = checkApplicabilityConditions(conds, input.canonical_context);
+    if (_applicabilityGate.eliminated) {
+      const _reason =
+        `APPLICABILITY_MISMATCH(${_applicabilityGate.dimension}:` +
+        `expected=${(_applicabilityGate.expected ?? []).join('|')},` +
+        `got=${_applicabilityGate.got})`;
+      console.warn(
+        `[HYP_APPLICABILITY_GATE] eliminated hypothesis=${hid} ` +
+          `reason=${_applicabilityGate.reasonTag ?? 'applicability_mismatch'} ` +
+          `dimension=${_applicabilityGate.dimension} ` +
+          `expected=[${(_applicabilityGate.expected ?? []).join('|')}] ` +
+          `got=${_applicabilityGate.got} ` +
+          `trace=${trace}`,
+      );
+      eliminated.push({
+        hypothesis_id: hid,
+        cause_en: m.cause_name_en ?? null,
+        cause_hi: m.cause_name_hi ?? null,
+        cause_mr: m.cause_name_mr ?? null,
+        canonical_group: m.canonical_group ?? null,
+        crop_group: m.crop_group ?? null,
+        severity_model: m.severity_model ?? null,
+        positive_matches: buckets.positive_matches,
+        negative_matches: buckets.negative_matches,
+        missing_required: buckets.missing_required,
+        blocking_conditions: buckets.blocking_conditions,
+        required_total: requiredTotal,
+        required_matched: requiredMatched,
+        required_match_pct: requiredPct,
+        supporting_score: supportingScore,
+        confidence: 0,
+        context_gaps: [],
+        warnings: [`ELIMINATED:${_reason}`],
+        clarification_required: false,
+        candidate_rule_ids: [],
+        selected_rule_id: null,
+        eliminated: true,
+        eliminated_reason: _reason,
+      } as GraphHypothesisCandidate);
+      continue;
+    }
+
     // ── S1 — HARD biological stage gate ───────────────────────────────────
     // Biological invariant: a hypothesis whose DB-authored STAGE condition
     // does NOT include the current (known) stage is biologically impossible
