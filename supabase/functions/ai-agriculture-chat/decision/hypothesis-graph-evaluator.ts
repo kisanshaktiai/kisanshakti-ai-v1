@@ -99,6 +99,107 @@ export interface GraphHypothesisInput {
 
 /** v5-P8 — graph-math fallback used when `system_config` key is missing. */
 const DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD = 0.6;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S2 (2026-07-28) — GENERIC APPLICABILITY GATE
+// ─────────────────────────────────────────────────────────────────────────────
+// Reads hypothesis_conditions rows whose condition_type is any of the
+// applicability dimensions and compares against the frozen field-twin
+// (canonical_context) for the current request. When the current value
+// exists AND is NOT contained in the DB-authored allowed list, the
+// hypothesis is biologically impossible for this farmer and is eliminated.
+//
+// Adding a new dimension (e.g. IRRIGATION_METHOD in 2028):
+//   1. Add to the DB CHECK constraint on hypothesis_conditions.condition_type
+//   2. Add to the sync_hypothesis_applicability trigger's applicability_types
+//   3. Append ONE entry to APPLICABILITY_DIMENSIONS below
+// Zero crop-specific code. Zero hypothesis-specific code.
+interface ApplicabilityDimension {
+  readonly conditionType: string;
+  readonly contextField: string;
+  readonly reasonTag: string;
+}
+const APPLICABILITY_DIMENSIONS: readonly ApplicabilityDimension[] = [
+  { conditionType: 'CULTIVATION_METHOD', contextField: 'cultivation_method', reasonTag: 'cultivation_mismatch' },
+  { conditionType: 'SEASON',             contextField: 'season',             reasonTag: 'season_mismatch' },
+  { conditionType: 'CLIMATE_ZONE',       contextField: 'climate_zone',       reasonTag: 'climate_zone_mismatch' },
+  { conditionType: 'WATER_REGIME',       contextField: 'water_regime',       reasonTag: 'water_regime_mismatch' },
+  { conditionType: 'SOIL_TEXTURE',       contextField: 'soil_texture',       reasonTag: 'soil_texture_mismatch' },
+  { conditionType: 'REGION',             contextField: 'region',             reasonTag: 'region_mismatch' },
+  { conditionType: 'VARIETY_TYPE',       contextField: 'variety_type',       reasonTag: 'variety_type_mismatch' },
+];
+
+function _readCanonicalContextField(ctx: unknown, field: string): string | null {
+  if (!ctx || typeof ctx !== 'object') return null;
+  const rec = ctx as Record<string, unknown>;
+  // Direct field on the frozen field-twin (e.g. cultivation_method).
+  let raw = rec[field];
+  // Some orchestrator paths nest the biological subtree under a "biological" or "bio_state" key.
+  if (raw == null && rec['biological'] && typeof rec['biological'] === 'object') {
+    raw = (rec['biological'] as Record<string, unknown>)[field];
+  }
+  if (raw == null && rec['bio_state'] && typeof rec['bio_state'] === 'object') {
+    raw = (rec['bio_state'] as Record<string, unknown>)[field];
+  }
+  if (raw == null) return null;
+  const s = String(raw).trim().toLowerCase();
+  if (!s || s === 'unknown' || s === 'null' || s === 'undefined') return null;
+  return s;
+}
+
+function _extractApplicabilityAllowedValues(rows: ConditionRow[]): string[] {
+  const out = new Set<string>();
+  for (const r of rows) {
+    const v = r.value_json;
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        const s = String(item ?? '').trim().toLowerCase();
+        if (s) out.add(s);
+      }
+    } else if (typeof v === 'string') {
+      const s = v.trim().toLowerCase();
+      if (s) out.add(s);
+    } else if (v && typeof v === 'object' && Array.isArray((v as any).values)) {
+      for (const item of (v as any).values) {
+        const s = String(item ?? '').trim().toLowerCase();
+        if (s) out.add(s);
+      }
+    }
+  }
+  return [...out];
+}
+
+interface ApplicabilityGateResult {
+  eliminated: boolean;
+  dimension?: string;
+  reasonTag?: string;
+  expected?: string[];
+  got?: string;
+}
+
+function checkApplicabilityConditions(
+  conds: ConditionRow[],
+  canonicalContext: unknown,
+): ApplicabilityGateResult {
+  for (const dim of APPLICABILITY_DIMENSIONS) {
+    const rows = conds.filter(c => c.condition_type === dim.conditionType);
+    if (rows.length === 0) continue;
+    const currentValue = _readCanonicalContextField(canonicalContext, dim.contextField);
+    if (!currentValue) continue;
+    const allowed = _extractApplicabilityAllowedValues(rows);
+    if (allowed.length === 0) continue;
+    if (!allowed.includes(currentValue)) {
+      return {
+        eliminated: true,
+        dimension: dim.conditionType,
+        reasonTag: dim.reasonTag,
+        expected: allowed,
+        got: currentValue,
+      };
+    }
+  }
+  return { eliminated: false };
+}
 let _bioStageHardGateThresholdCache: number | null = null;
 async function readBioStageHardGateThreshold(supabase: any): Promise<number> {
   if (_bioStageHardGateThresholdCache !== null) return _bioStageHardGateThresholdCache;
