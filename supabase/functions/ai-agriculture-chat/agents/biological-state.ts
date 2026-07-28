@@ -1,4 +1,7 @@
 /**
+ * CHANGE LOG
+ * 2026-07-28 04:45 UTC — FIX C1: removed setActiveCultivationMethod() call and
+ *   its import; module-scope stage lane state was deleted upstream.
  * ═══════════════════════════════════════════════════════════════════════════
  * PHASE 1 — IMMUTABLE BIOLOGICAL STATE (Single Source of Truth)
  * ═══════════════════════════════════════════════════════════════════════════
