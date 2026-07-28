@@ -12451,6 +12451,11 @@ export type Database = {
       }
       hypothesis_master: {
         Row: {
+          applicability: Json | null
+          applicability_evidence_ref: string | null
+          applicability_reviewed_at: string | null
+          applicability_reviewed_by: string | null
+          applicability_source: string | null
           biological_basis: string | null
           canonical_group: string
           cause_name_en: string
@@ -12469,6 +12474,11 @@ export type Database = {
           version_hash: string | null
         }
         Insert: {
+          applicability?: Json | null
+          applicability_evidence_ref?: string | null
+          applicability_reviewed_at?: string | null
+          applicability_reviewed_by?: string | null
+          applicability_source?: string | null
           biological_basis?: string | null
           canonical_group: string
           cause_name_en: string
@@ -12487,6 +12497,11 @@ export type Database = {
           version_hash?: string | null
         }
         Update: {
+          applicability?: Json | null
+          applicability_evidence_ref?: string | null
+          applicability_reviewed_at?: string | null
+          applicability_reviewed_by?: string | null
+          applicability_source?: string | null
           biological_basis?: string | null
           canonical_group?: string
           cause_name_en?: string
