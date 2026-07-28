@@ -51,7 +51,6 @@
  */
 
 import { resolvePath, comparePredicate } from '../decision/hypothesis-evaluator.ts';
-import { setActiveCultivationMethod } from '../utils/stage-knowledge-cache.ts';
 
 export interface BiologicalState {
   readonly is_locked: true;
