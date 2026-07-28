@@ -3,6 +3,9 @@
  * SessionSSOT — Single Source of Truth for the current turn
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+ *   2026-07-28 05:00 UTC — FIX D1: added nullable `cultivation_method` to
+ *     SessionSSOT (+input, freeze block, SSOT_ESTABLISHED log). Per-request
+ *     lane from crop_schedules → BiologicalState; no module-scope state.
  *   2026-07-26 — Initial (R1). Built ONCE at Layer 3 (BIO_STATE_LOCKED /
  *     canonical-context + intent lock). Immutable (Object.frozen). Attached to
  *     the orchestrator instance (`_sessionSSOT`) and to
