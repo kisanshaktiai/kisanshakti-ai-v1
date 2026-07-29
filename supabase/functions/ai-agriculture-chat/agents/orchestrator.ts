@@ -827,6 +827,15 @@ import {
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
 import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
+import {
+  loadTaxonomies,
+  isTaxonomyLoaded,
+  isBioticObservation,
+  bioticObservations,
+  hasBioticEvidence as taxonomyHasBioticEvidence,
+  isBioticRule,
+  isAbioticRule,
+} from '../utils/db-driven-taxonomies.ts';
 import { scoreEvidenceSet, getEvidenceWeights } from '../decision/evidence-confidence.ts';
 
 
