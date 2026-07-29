@@ -68,10 +68,18 @@ const _LEGACY_SOIL_THRESHOLDS = {
 
 // Legacy freshness. WEATHER_HOURS and SCHEDULE_DAYS stay in-code (no seeded
 // system_config keys yet); soil/NDVI resolve via system_config every call.
-const FRESHNESS_THRESHOLDS = {
+// F5 (2026-07-29): externalized to system_config; the literals below are
+// cold-boot legacy fallbacks only. Tune the DB rows, not this file.
+const _LEGACY_FRESHNESS = {
   WEATHER_HOURS: 6,
   SCHEDULE_DAYS: 365,
 } as const;
+function weatherFreshnessHours() {
+  return getConfigNumber('weather_data_freshness_hours', _LEGACY_FRESHNESS.WEATHER_HOURS);
+}
+export function scheduleFreshnessDays() {
+  return getConfigNumber('schedule_data_freshness_days', _LEGACY_FRESHNESS.SCHEDULE_DAYS);
+}
 
 function ndviThresholds() {
   return getConfigJson('ndvi_status_thresholds', _LEGACY_NDVI_THRESHOLDS);
@@ -205,7 +213,8 @@ export interface AuthoritativeLandState {
     variety_id: string | null;            // lands.current_crop_variety_id or crop_schedules.variety_id
     variety_name: string | null;          // crop_schedules.crop_variety
     growth_stage: string | null;
-    stage_uuid: string | null;            // lands.stage_uuid
+    stage_uuid: string | null;            // phenology RPC > lands.stage_uuid (F4)
+    cultivation_method: string | null;    // F1: crop_schedules.cultivation_method lane
     stage_source_authoritative: string | null; // lands.stage_source ('phenology_ssot' | 'planting_date' | ...)
     stage_resolved_at: string | null;     // lands.stage_resolved_at
     days_since_sowing: number | null;     // precomputed lands.das when present, else computed
@@ -335,7 +344,7 @@ export async function loadAuthoritativeLandState(
       // 2. Crop schedule (active season) — PR-4d: include variety_id,
       supabase
         .from('crop_schedules')
-        .select('crop_name, crop_variety, variety_id, sowing_date, transplant_date, stages_covered, expected_harvest_date, status, is_active')
+        .select('crop_name, crop_variety, variety_id, cultivation_method, sowing_date, transplant_date, stages_covered, expected_harvest_date, status, is_active')
         .eq('land_id', landId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -520,7 +529,7 @@ export async function loadAuthoritativeLandState(
     if ((weather as any)?.observation_date) {
       const fetchedAt = new Date((weather as any).observation_date);
       weatherAgeHours = Math.floor((now.getTime() - fetchedAt.getTime()) / (1000 * 60 * 60));
-      weatherDataFresh = weatherAgeHours <= FRESHNESS_THRESHOLDS.WEATHER_HOURS;
+      weatherDataFresh = weatherAgeHours <= weatherFreshnessHours();
     }
     
     // CALCULATE DERIVED METRICS USING SSOT INTERPRETATION FUNCTIONS
@@ -618,7 +627,15 @@ export async function loadAuthoritativeLandState(
         variety_id: (land as any)?.current_crop_variety_id ?? cropSchedule?.variety_id ?? null,
         variety_name: cropSchedule?.crop_variety ?? null,
         growth_stage: computedGrowthStage,
-        stage_uuid: (land as any)?.stage_uuid ?? phenologyRow?.stage_uuid ?? null,
+        // F4 (2026-07-29): phenology RPC is the stage authority; lands.stage_uuid
+        // is only a persisted mirror and may lag a biological transition.
+        stage_uuid: phenologyRow?.stage_uuid ?? (land as any)?.stage_uuid ?? null,
+        // F1 (2026-07-29): cultivation lane is part of the authoritative state.
+        cultivation_method: (
+          phenologyRow?.cultivation_method
+          ?? (cropSchedule as any)?.cultivation_method
+          ?? null
+        ) ? String(phenologyRow?.cultivation_method ?? (cropSchedule as any)?.cultivation_method).toLowerCase() : null,
         stage_source_authoritative: (land as any)?.stage_source ?? stageSource,
         stage_resolved_at: (land as any)?.stage_resolved_at ?? null,
         days_since_sowing: daysSinceSowing,
