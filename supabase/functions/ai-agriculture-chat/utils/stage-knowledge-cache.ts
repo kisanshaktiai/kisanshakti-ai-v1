@@ -439,10 +439,10 @@ export function getStageFamilyFromDB(
   cultivationMethod?: string | null,
 ): string[] | null {
   if (!cache) return null;
-  // FIX C1 (2026-07-28): no module-scope fallback. Lane-agnostic default
-  // when caller omits cultivationMethod — prevents cross-request contamination.
-  const resolved = cultivationMethod === undefined ? null : cultivationMethod;
-  const lane = resolved ? String(resolved).toLowerCase() : null;
+  // FIX C1-b: explicit arg wins; otherwise the REQUEST-SCOPED lane. Rows whose
+  // own method is NULL/'any' always match (134 non-rice edges live there).
+  const lane = resolveLane(cultivationMethod);
+
   const cropKey = (crop || '').toLowerCase();
   const stageKey = (stage || '').toLowerCase();
   const out = new Set<string>();
