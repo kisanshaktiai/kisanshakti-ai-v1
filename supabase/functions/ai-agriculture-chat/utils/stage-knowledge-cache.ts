@@ -320,12 +320,6 @@ export function getStageRow(
   cultivationMethod?: string | null,
 ): StageMasterRow | null {
   if (!cache) return null;
-export function getStageRow(
-  crop: string,
-  stage: string,
-  cultivationMethod?: string | null,
-): StageMasterRow | null {
-  if (!cache) return null;
   // FIX C1-b: explicit arg wins; otherwise the REQUEST-SCOPED lane.
   const lane = resolveLane(cultivationMethod);
   const cropKey = (crop || '').toLowerCase();
