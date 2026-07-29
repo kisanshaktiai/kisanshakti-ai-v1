@@ -1295,7 +1295,16 @@ function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
 
 // ==================== ASYNC RULE LOADING ====================
 
-let cachedConvertedRules: Rule[] | null = null;
+/**
+ * LATENCY BATCH L3 (2026-07-29): converted-rule cache.
+ * `getAllRulesWithBundled()` is called 2x per turn (orchestrator 3114 / 8767)
+ * and re-built a closure for EVERY rule on each call. Conversion is pure
+ * (closures capture only the immutable `bundled` row), so the converted array
+ * is cached per crop with a short TTL. Rule content freshness still comes from
+ * `loadAllRules()`'s own cache.
+ */
+const CONVERTED_RULE_TTL_MS = 5 * 60 * 1000;
+const convertedRuleCache = new Map<string, { rules: Rule[]; expiresAt: number }>();
 
 /**
  * Load rules with optional crop code filtering.
@@ -1303,6 +1312,13 @@ let cachedConvertedRules: Rule[] | null = null;
  * Always pass cropCode when available to narrow candidates.
  */
 export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]> {
+  const cacheKey = (cropCode || '*').toLowerCase();
+  const hit = convertedRuleCache.get(cacheKey);
+  if (hit && hit.expiresAt > Date.now()) {
+    console.log(`📦 [RULE_CACHE_HIT] ${hit.rules.length} converted rules for ${cacheKey}`);
+    return hit.rules;
+  }
+
   // If crop-specific, don't use global cache - filter from loaded rules
   const allRules = await loadAllRules();
   
@@ -1320,8 +1336,11 @@ export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]>
     console.log(`📦 Loaded ${rulesToConvert.length} bundled rules from database (NO crop filter - consider passing cropCode)`);
   }
   
-  return rulesToConvert.map(convertBundledToRule);
+  const converted = rulesToConvert.map(convertBundledToRule);
+  convertedRuleCache.set(cacheKey, { rules: converted, expiresAt: Date.now() + CONVERTED_RULE_TTL_MS });
+  return converted;
 }
+
 
 function convertBundledToRule(bundled: ExecutableRule): Rule {
   return {
