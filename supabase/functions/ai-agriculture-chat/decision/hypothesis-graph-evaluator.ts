@@ -355,10 +355,19 @@ export function evaluateHypothesisGraph(
   // Opportunistic eviction — the map is tiny and bounded by TTL.
   for (const [k, v] of graphMemo) if (now - v.at > GRAPH_MEMO_TTL_MS) graphMemo.delete(k);
 
+  // Callers treat the result as their own; hand each one a fresh envelope so a
+  // downstream sort/splice cannot corrupt the memoized value.
+  const clone = (r: GraphHypothesisResult): GraphHypothesisResult => ({
+    ...r,
+    candidates: [...(r.candidates || [])],
+    eliminated: [...(r.eliminated || [])],
+    input_observations: [...(r.input_observations || [])],
+  });
+
   const hit = graphMemo.get(key);
   if (hit) {
     console.log(`[GRAPH_MEMO_HIT] trace=${input.trace_id ?? 'n/a'} key=${key.slice(0, 120)} age_ms=${now - hit.at}`);
-    return hit.result;
+    return hit.result.then(clone);
   }
 
   const result = evaluateHypothesisGraphUncached(input).catch((e) => {
@@ -367,7 +376,7 @@ export function evaluateHypothesisGraph(
     throw e;
   });
   graphMemo.set(key, { at: now, result });
-  return result;
+  return result.then(clone);
 }
 
 async function evaluateHypothesisGraphUncached(
