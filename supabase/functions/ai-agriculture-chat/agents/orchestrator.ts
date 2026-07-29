@@ -98,6 +98,18 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 /**
+ * CHANGE LOG (newest first)
+ *   2026-07-29 10:55 UTC — PHASE 0′ STEP 4: deleted hardcoded
+ *     PEST_EVIDENCE_CODES / PEST_RULE_CATEGORIES (diagnostic pre-filter) and
+ *     BIOTIC_INDICATORS / ABIOTIC_CATEGORIES (post-decision misroute guard).
+ *     Both now use utils/db-driven-taxonomies.ts (observation_master
+ *     .semantic_class via observation_aliases + decision_rules
+ *     .biological_group + system_config.taxonomy_*), with exact canonical
+ *     matching and NO-FILTER degradation when the cache is unavailable.
+ *     Added loadTaxonomies() to the per-turn DB-SSOT preload chain.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
  * ROLE:      Master orchestrator — coordinates 9 specialized agents for
@@ -827,6 +839,15 @@ import {
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
 import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
+import {
+  loadTaxonomies,
+  isTaxonomyLoaded,
+  isBioticObservation,
+  bioticObservations,
+  hasBioticEvidence as taxonomyHasBioticEvidence,
+  isBioticRule,
+  isAbioticRule,
+} from '../utils/db-driven-taxonomies.ts';
 import { scoreEvidenceSet, getEvidenceWeights } from '../decision/evidence-confidence.ts';
 
 
@@ -1373,6 +1394,11 @@ export class AIAgentOrchestrator {
     // M2 DB-SSOT: system_config tunables (spray thresholds, NDVI/soil bands, freshness windows).
     try { await _preloadSystemConfig(this.supabase); } catch (e) {
       console.warn(`[SYSCFG_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
+    }
+    // Phase 0′ DB-SSOT: biotic/abiotic/weed taxonomy (observation_master.semantic_class +
+    // decision_rules.biological_group + system_config.taxonomy_*). TTL-cached, non-fatal.
+    try { await loadTaxonomies(this.supabase); } catch (e) {
+      console.warn(`[TAXONOMY_LOAD_FAILED] trace=${traceId} err=${(e as Error).message}`);
     }
     let response: OrchestratorResponse;
     try {
@@ -8782,49 +8808,35 @@ export class AIAgentOrchestrator {
         // This prevents irrigation/nutrition rules from being primary when
         // DEAD_HEART, BORE_HOLES, or BORER evidence is detected.
         // ═══════════════════════════════════════════════════════════════════════════
-        const PEST_EVIDENCE_CODES = new Set([
-          'DEAD_HEART', 'DEAD_HEART_PRESENT', 'DEADHEART', 'DEAD_HEART_VISIBLE',
-          'STEM_BORING_MARKS', 'BORE_HOLES', 'BORER_DAMAGE', 'STEM_BORING',
-          'BORER_SUSPECTED', 'TUNNELS_IN_STEM', 'INTERNAL_TUNNEL',
-          'FRASS_VISIBLE', 'FRASS', 'LARVAE_IN_STEM', 'BORER_LARVAE_VISIBLE',
-          'INSECT_PRESENCE_CONFIRMED', 'PINK_LARVAE_VISIBLE'
-        ]);
-        const PEST_RULE_CATEGORIES = new Set([
-          'pest', 'pest_management', '03_pest', 'ipm', 'borer', 'insect',
-          'pest_control', 'biological_control'
-        ]);
-        
+        // Phase 0′ (2026-07-29): taxonomy is DB-SSOT — observation_master.semantic_class
+        // (via observation_aliases) and decision_rules.biological_group. No hardcoded lists.
         const allObsForPreFilter = [...(allObservationsForPreAuth || [])];
-        const hasPestPreFilterEvidence = allObsForPreFilter.some(obs => 
-          PEST_EVIDENCE_CODES.has(String(obs).toUpperCase())
-        );
-        
+        const _taxonomyReady = isTaxonomyLoaded();
+        const hasPestPreFilterEvidence = _taxonomyReady && taxonomyHasBioticEvidence(allObsForPreFilter);
+
         let rulesToEvaluate = allRulesWithBundled;
         let diagnosticPreFilterApplied = false;
-        
+
+        if (!_taxonomyReady) {
+          console.warn(`   ⚠️ [DIAGNOSTIC_PRE_FILTER] Taxonomy cache unavailable — degrading to NO FILTER`);
+        }
+
         if (hasPestPreFilterEvidence) {
-          console.log(`\n🎯 [DIAGNOSTIC_PRE_FILTER] Pest evidence detected in observations!`);
-          console.log(`   Evidence: ${allObsForPreFilter.filter(o => PEST_EVIDENCE_CODES.has(String(o).toUpperCase())).join(', ')}`);
-          
-          // Filter to pest management rules
-          const pestRules = allRulesWithBundled.filter((r: any) => {
-            // v7.9 FIX: Coerce to string to prevent .toLowerCase() crash on non-string fields
-            const cat = String(r.category || r.canonical_group || r.required_observation_category || '').toLowerCase();
-            const condCode = String(r.condition_code || '').toLowerCase();
-            return PEST_RULE_CATEGORIES.has(cat) || 
-                   condCode.includes('borer') || condCode.includes('pest') ||
-                   condCode.includes('shoot') || condCode.includes('insect');
-          });
-          
+          console.log(`\n🎯 [DIAGNOSTIC_PRE_FILTER] Biotic evidence detected in observations!`);
+          console.log(`   Evidence: ${bioticObservations(allObsForPreFilter).join(', ')}`);
+
+          // Filter to biotic (pest/disease) rules using decision_rules.biological_group
+          const pestRules = allRulesWithBundled.filter((r: any) => isBioticRule(r));
+
           if (pestRules.length > 0) {
             // Prepend pest rules at high priority, then keep remaining rules as fallback
             const nonPestRules = allRulesWithBundled.filter((r: any) => !pestRules.includes(r));
             rulesToEvaluate = [...pestRules, ...nonPestRules];
             diagnosticPreFilterApplied = true;
-            console.log(`   ✅ [DIAGNOSTIC_PRE_FILTER] Prioritized ${pestRules.length} pest rules above ${nonPestRules.length} others`);
+            console.log(`   ✅ [DIAGNOSTIC_PRE_FILTER] Prioritized ${pestRules.length} biotic rules above ${nonPestRules.length} others`);
             agentsUsed.push('DIAGNOSTIC_PRE_FILTER_PEST');
           } else {
-            console.warn(`   ⚠️ [DIAGNOSTIC_PRE_FILTER] No pest-category rules found, using full set`);
+            console.warn(`   ⚠️ [DIAGNOSTIC_PRE_FILTER] No biotic-group rules found, using full set`);
           }
         }
         
@@ -9736,33 +9748,26 @@ export class AIAgentOrchestrator {
               // If farmer observations contain biotic indicators but top rule is abiotic,
               // filter out abiotic rules and re-select from biotic-only rules
               // ═══════════════════════════════════════════════════════════════════════════
-              const BIOTIC_INDICATORS = new Set([
-                'BORE', 'HOLES', 'DEAD_HEART', 'INSECT', 'FRASS', 'WEBBING',
-                'CHEWING', 'LARVAE', 'BORING', 'STEM_BORING_MARKS', 'DEAD_HEART_PRESENT',
-                'INSECT_PRESENCE_CONFIRMED', 'FRASS_VISIBLE', 'WEBBING_PRESENT', 'LEAF_CHEWING',
-                'BORER_SUSPECTED'
-              ]);
-              const ABIOTIC_CATEGORIES = new Set(['irrigation', 'nutrition', 'ndvi', 'water_stress', 'stress', 'weather']);
-              
+              // Phase 0′ (2026-07-29): DB-SSOT taxonomy, exact canonical matching.
               const allObsFlat = symbolicFacts?.all_observations || [];
-              const hasBioticEvidence = allObsFlat.some((obs: string) => 
-                [...BIOTIC_INDICATORS].some(indicator => obs.toUpperCase().includes(indicator))
-              );
-              
+              const _misrouteTaxonomyReady = isTaxonomyLoaded();
+              const hasBioticEvidence = _misrouteTaxonomyReady && taxonomyHasBioticEvidence(allObsFlat);
+
+              if (!_misrouteTaxonomyReady) {
+                console.warn(`   ⚠️ [MISROUTE_GUARD] Taxonomy cache unavailable — guard disabled (no filter)`);
+              }
+
               if (hasBioticEvidence && symbolicResult.recommendations.length > 0) {
                 const topRule = symbolicResult.recommendations[0];
                 const topCategory = (topRule.category || '').toLowerCase();
-                
-                if (ABIOTIC_CATEGORIES.has(topCategory)) {
+
+                if (isAbioticRule(topRule)) {
                   console.log(`\n🚨 [MISROUTE_DETECTED] Biotic symptoms routed to abiotic rule!`);
                   console.log(`   Top rule: ${topRule.rule_id} (category=${topCategory})`);
                   console.log(`   Farmer observations include biotic indicators`);
-                  console.log(`   → Filtering to biotic-only rules`);
-                  
-                  const bioticRules = symbolicResult.recommendations.filter((r: any) => {
-                    const cat = (r.category || '').toLowerCase();
-                    return !ABIOTIC_CATEGORIES.has(cat);
-                  });
+                  console.log(`   → Filtering out abiotic rules`);
+
+                  const bioticRules = symbolicResult.recommendations.filter((r: any) => !isAbioticRule(r));
                   
                   if (bioticRules.length > 0) {
                     symbolicResult.recommendations = bioticRules;

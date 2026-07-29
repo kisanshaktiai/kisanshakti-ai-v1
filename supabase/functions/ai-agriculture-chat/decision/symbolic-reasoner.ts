@@ -13,6 +13,12 @@
  * - LLM is strictly prohibited from inventing treatments
  * 
  * CHANGE LOG (newest first)
+ *   2026-07-29 10:55 UTC — PHASE 0′ STEP 4: removed hardcoded BIOTIC_OBS_KEYS
+ *     and the inline abiotic-category list from the BioticGuard. Rule class now
+ *     resolves via utils/db-driven-taxonomies.ts (decision_rules
+ *     .biological_group) and observation class via observation_master
+ *     .semantic_class after alias canonicalization (exact match, no substring).
+ *     Guard degrades to NO FILTER when the taxonomy cache is unloaded.
  *   2026-07-27 23:45 UTC — SINGLE OBSERVATION STREAM (read-path only).
  *     (a) Ontology join corrected: observation_master.canonical_group IS the
  *         engine group, so engine_groups is seeded from it directly and
@@ -34,6 +40,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
+import {
+  isTaxonomyLoaded,
+  isAbioticRule,
+  hasBioticEvidence as taxonomyHasBioticEvidence,
+} from '../utils/db-driven-taxonomies.ts';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -341,26 +352,24 @@ export class SymbolicReasoner {
         rulesEvaluated++;
         
         // ═══════════════════════════════════════════════════════════════════════
-        // FIX 1: NDVI/ABIOTIC STRESS RULE GUARD
-        // Skip abiotic rules when biotic (pest/disease) evidence exists
+        // FIX 1: NDVI/ABIOTIC STRESS RULE GUARD  (Phase 0′ 2026-07-29: DB-SSOT)
+        // Class comes from decision_rules.biological_group / observation_master
+        // .semantic_class — no hardcoded agronomy lists. If the taxonomy cache is
+        // not loaded, the guard degrades to NO FILTER.
         // ═══════════════════════════════════════════════════════════════════════
         const ruleCategory = rule.category?.toLowerCase() || '';
-        const isAbioticRule = ['water_stress', 'irrigation', 'stress', 'ndvi'].includes(ruleCategory);
-        
-        if (isAbioticRule && facts.has_pest_evidence) {
+        const _taxReady = isTaxonomyLoaded();
+        const ruleIsAbiotic = _taxReady && isAbioticRule(rule);
+
+        if (ruleIsAbiotic && facts.has_pest_evidence) {
           console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} (category=${ruleCategory}) - pest evidence present`);
           continue;
         }
-        
-        // Check if biotic observations exist in all_observations
-        const BIOTIC_OBS_KEYS = ['BORE_HOLES', 'DEAD_HEART', 'INSECT_PRESENCE', 'FRASS', 'WEBBING', 
-          'STEM_BORING_MARKS', 'LEAF_CHEWING', 'DEAD_HEART_PRESENT', 'INSECT_PRESENCE_CONFIRMED',
-          'FRASS_VISIBLE', 'WEBBING_PRESENT', 'BORER_SUSPECTED'];
-        const hasBioticObs = (facts.all_observations || []).some(obs => 
-          BIOTIC_OBS_KEYS.some(key => obs.includes(key))
-        );
-        
-        if (isAbioticRule && hasBioticObs) {
+
+        // Exact canonical-code match against DB biotic semantic classes
+        const hasBioticObs = _taxReady && taxonomyHasBioticEvidence(facts.all_observations || []);
+
+        if (ruleIsAbiotic && hasBioticObs) {
           console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} - biotic observations detected in all_observations`);
           continue;
         }
