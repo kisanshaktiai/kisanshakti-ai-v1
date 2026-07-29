@@ -8791,49 +8791,35 @@ export class AIAgentOrchestrator {
         // This prevents irrigation/nutrition rules from being primary when
         // DEAD_HEART, BORE_HOLES, or BORER evidence is detected.
         // ═══════════════════════════════════════════════════════════════════════════
-        const PEST_EVIDENCE_CODES = new Set([
-          'DEAD_HEART', 'DEAD_HEART_PRESENT', 'DEADHEART', 'DEAD_HEART_VISIBLE',
-          'STEM_BORING_MARKS', 'BORE_HOLES', 'BORER_DAMAGE', 'STEM_BORING',
-          'BORER_SUSPECTED', 'TUNNELS_IN_STEM', 'INTERNAL_TUNNEL',
-          'FRASS_VISIBLE', 'FRASS', 'LARVAE_IN_STEM', 'BORER_LARVAE_VISIBLE',
-          'INSECT_PRESENCE_CONFIRMED', 'PINK_LARVAE_VISIBLE'
-        ]);
-        const PEST_RULE_CATEGORIES = new Set([
-          'pest', 'pest_management', '03_pest', 'ipm', 'borer', 'insect',
-          'pest_control', 'biological_control'
-        ]);
-        
+        // Phase 0′ (2026-07-29): taxonomy is DB-SSOT — observation_master.semantic_class
+        // (via observation_aliases) and decision_rules.biological_group. No hardcoded lists.
         const allObsForPreFilter = [...(allObservationsForPreAuth || [])];
-        const hasPestPreFilterEvidence = allObsForPreFilter.some(obs => 
-          PEST_EVIDENCE_CODES.has(String(obs).toUpperCase())
-        );
-        
+        const _taxonomyReady = isTaxonomyLoaded();
+        const hasPestPreFilterEvidence = _taxonomyReady && taxonomyHasBioticEvidence(allObsForPreFilter);
+
         let rulesToEvaluate = allRulesWithBundled;
         let diagnosticPreFilterApplied = false;
-        
+
+        if (!_taxonomyReady) {
+          console.warn(`   ⚠️ [DIAGNOSTIC_PRE_FILTER] Taxonomy cache unavailable — degrading to NO FILTER`);
+        }
+
         if (hasPestPreFilterEvidence) {
-          console.log(`\n🎯 [DIAGNOSTIC_PRE_FILTER] Pest evidence detected in observations!`);
-          console.log(`   Evidence: ${allObsForPreFilter.filter(o => PEST_EVIDENCE_CODES.has(String(o).toUpperCase())).join(', ')}`);
-          
-          // Filter to pest management rules
-          const pestRules = allRulesWithBundled.filter((r: any) => {
-            // v7.9 FIX: Coerce to string to prevent .toLowerCase() crash on non-string fields
-            const cat = String(r.category || r.canonical_group || r.required_observation_category || '').toLowerCase();
-            const condCode = String(r.condition_code || '').toLowerCase();
-            return PEST_RULE_CATEGORIES.has(cat) || 
-                   condCode.includes('borer') || condCode.includes('pest') ||
-                   condCode.includes('shoot') || condCode.includes('insect');
-          });
-          
+          console.log(`\n🎯 [DIAGNOSTIC_PRE_FILTER] Biotic evidence detected in observations!`);
+          console.log(`   Evidence: ${bioticObservations(allObsForPreFilter).join(', ')}`);
+
+          // Filter to biotic (pest/disease) rules using decision_rules.biological_group
+          const pestRules = allRulesWithBundled.filter((r: any) => isBioticRule(r));
+
           if (pestRules.length > 0) {
             // Prepend pest rules at high priority, then keep remaining rules as fallback
             const nonPestRules = allRulesWithBundled.filter((r: any) => !pestRules.includes(r));
             rulesToEvaluate = [...pestRules, ...nonPestRules];
             diagnosticPreFilterApplied = true;
-            console.log(`   ✅ [DIAGNOSTIC_PRE_FILTER] Prioritized ${pestRules.length} pest rules above ${nonPestRules.length} others`);
+            console.log(`   ✅ [DIAGNOSTIC_PRE_FILTER] Prioritized ${pestRules.length} biotic rules above ${nonPestRules.length} others`);
             agentsUsed.push('DIAGNOSTIC_PRE_FILTER_PEST');
           } else {
-            console.warn(`   ⚠️ [DIAGNOSTIC_PRE_FILTER] No pest-category rules found, using full set`);
+            console.warn(`   ⚠️ [DIAGNOSTIC_PRE_FILTER] No biotic-group rules found, using full set`);
           }
         }
         
