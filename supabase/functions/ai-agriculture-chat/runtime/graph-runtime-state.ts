@@ -1,7 +1,15 @@
 /**
+ * CHANGE LOG (newest first)
+ *   2026-07-29 — EVIDENCE IDENTITY REPAIR. ObservationLedger now folds every
+ *     append/confirm/reject code through the canonical-code SSOT
+ *     (`canonicalObsCode`) and is idempotent per canonical identity, so
+ *     casing/separator variants can no longer create duplicate evidence
+ *     nodes. Emits `[EVIDENCE_DEDUP]` when a duplicate is collapsed.
  * ═══════════════════════════════════════════════════════════════════════════
  * GRAPH RUNTIME STATE — Phase I (Graph SSOT)
  * ═══════════════════════════════════════════════════════════════════════════
+ * ONE immutable per-request runtime graph shared by every module.
+
  * ONE immutable per-request runtime graph shared by every module.
  *
  * Replaces the previous pattern where each module (extractor → mapper →
