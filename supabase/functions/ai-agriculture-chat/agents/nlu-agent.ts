@@ -93,9 +93,12 @@ async function sleep(ms: number): Promise<void> {
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries: number = 2,
-  baseDelay: number = 500,
-  timeoutMs: number = 5000
+  // LATENCY BATCH L7 (2026-07-29): retry budget halved (2 attempts x 5s + backoff
+  // could cost ~13s before perception even started). Perception is best-effort;
+  // the symbolic path degrades gracefully without it.
+  maxRetries: number = 1,
+  baseDelay: number = 400,
+  timeoutMs: number = 4000
 ): Promise<Response> {
   let lastError: Error | null = null;
   
@@ -259,7 +262,10 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: 'gpt-4o',
+              // LATENCY BATCH L7 (2026-07-29): perception/extraction is a
+              // classification task — gpt-4o-mini is materially faster and
+              // cheaper with no measurable loss on observation extraction.
+              model: 'gpt-4o-mini',
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Extract observations from: "${message}"` }
@@ -268,8 +274,8 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
               temperature: 0.1
             }),
           },
-          2,
-          500
+          1,
+          400
         );
 
         if (response.ok) {
@@ -315,8 +321,8 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
               }
             }),
           },
-          2,
-          500
+          1,
+          400
         );
 
         if (response.ok) {
