@@ -13,10 +13,16 @@
  *   5. crop_stage_master DAS window   → 0.70
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ *   2026-07-29 UTC — v8: DAS demoted to provisional. Fixed stage_transition_log
+ *     tier (was querying non-existent to_stage_code/transition_date; now
+ *     to_stage_uuid/evaluated_at joined to crop_stage_master, with das/dat
+ *     triggers capped at 0.5). Added morphological_evidence tier sourced from
+ *     crop_growth_analysis.detected_growth_stage (0.95, lane-scoped).
  *   2026-07-12 UTC — v7: NULL cultivation_method rows are excluded from GDD
  *     stage candidates (data-quality issue, mirrors SQL resolver). Only
  *     exact method match or explicit 'any' qualify. Rank order preserved:
  *     exact > 'any'.
+
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -133,29 +139,99 @@ export async function reconcilePhenology(
     // GDD path optional — never fail reconciliation.
   }
 
-  // ── Candidate: completed stage transitions ─────────────────────────────
+  // ── Candidate: completed stage transitions (biological ledger) ─────────
   try {
     const { data: transitions } = await supabase
       .from('stage_transition_log')
-      .select('to_stage_code, to_stage_uuid, transition_date')
+      .select('to_stage_uuid, trigger_type, confidence, evaluated_at')
       .eq('land_id', landId)
-      .order('transition_date', { ascending: false })
+      .not('to_stage_uuid', 'is', null)
+      .order('evaluated_at', { ascending: false })
       .limit(1);
     if (Array.isArray(transitions) && transitions.length > 0) {
       const t = transitions[0];
-      if (t.to_stage_code) {
+      const { data: stageRow } = await supabase
+        .from('crop_stage_master')
+        .select('growth_stage, stage_code, id')
+        .eq('id', t.to_stage_uuid)
+        .maybeSingle();
+      if (stageRow) {
+        const isCalendarTrigger =
+          typeof t.trigger_type === 'string' &&
+          ['das', 'dat'].includes(String(t.trigger_type).toLowerCase());
         candidates.push({
-          growth_stage: t.to_stage_code,
-          stage_code: t.to_stage_code,
-          stage_uuid: t.to_stage_uuid ?? null,
+          growth_stage: stageRow.growth_stage ?? null,
+          stage_code: stageRow.stage_code ?? null,
+          stage_uuid: stageRow.id ?? null,
           source: 'completed_stage_transitions',
-          confidence: 0.90,
+          confidence: isCalendarTrigger
+            ? Math.min(0.5, Number(t.confidence ?? 0.5))
+            : Math.max(0.90, Number(t.confidence ?? 0.90)),
         });
       }
     }
   } catch (_e) {
     // Optional signal.
   }
+
+  // ── Candidate: morphological field evidence (highest authority) ────────
+  try {
+    const { data: growthRows } = await supabase
+      .from('crop_growth_analysis')
+      .select('detected_growth_stage, confidence_score, created_at')
+      .eq('land_id', landId)
+      .not('detected_growth_stage', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const detected = growthRows?.[0]?.detected_growth_stage
+      ? String(growthRows[0].detected_growth_stage).trim().toLowerCase()
+      : null;
+
+    if (detected) {
+      const method = (phenologyRow as any)?.cultivation_method
+        ? String((phenologyRow as any).cultivation_method).toLowerCase()
+        : null;
+      let morphQ = supabase
+        .from('crop_stage_master')
+        .select('growth_stage, stage_code, id, cultivation_method')
+        .eq('crop_code', cropCode)
+        .eq('is_active', true)
+        .ilike('growth_stage', detected);
+      if (method) {
+        morphQ = morphQ.or(`cultivation_method.eq.any,cultivation_method.eq.${method}`);
+      }
+      const { data: morphStages } = await morphQ;
+      const morphHit = Array.isArray(morphStages)
+        ? morphStages
+            .filter((s: any) => s?.cultivation_method != null)
+            .sort((a: any, b: any) => {
+              const r = (x: any) => {
+                const m = String(x.cultivation_method).toLowerCase();
+                if (method && m === method) return 0;
+                if (m === 'any') return 1;
+                return 2;
+              };
+              return r(a) - r(b);
+            })[0]
+        : null;
+
+      if (morphHit) {
+        const raw = Number(growthRows?.[0]?.confidence_score);
+        const normalized = Number.isFinite(raw) ? (raw > 1 ? raw / 100 : raw) : null;
+        candidates.push({
+          growth_stage: morphHit.growth_stage ?? null,
+          stage_code: morphHit.stage_code ?? null,
+          stage_uuid: morphHit.id ?? null,
+          source: 'morphological_evidence',
+          confidence: Math.max(0.95, normalized ?? 0.95),
+        });
+      }
+    }
+  } catch (_e) {
+    // Optional signal.
+  }
+
 
   // Pick highest-confidence candidate.
   const winner = candidates.reduce((best, c) => (c.confidence > best.confidence ? c : best), dasCandidate);
