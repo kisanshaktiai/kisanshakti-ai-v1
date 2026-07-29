@@ -1,6 +1,11 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 15:00 UTC — S3: persist confirmed biological stage transitions.
+ *   After phenology reconciliation we call apply_stage_transitions(land) so the
+ *   winning transition is written to stage_transition_log; when a non-calendar
+ *   transition is applied we re-resolve phenology so the turn reasons on the
+ *   persisted biological stage instead of the DAS-provisional one.
  * 2026-07-29 10:45 UTC — FIX C1-b: bind the request-scoped cultivation lane
  *   (enterCultivationLane) right after SessionSSOT is built, so clarification,
  *   evidence freeze, GraphRuntime, hypothesis eval and rendering all resolve
