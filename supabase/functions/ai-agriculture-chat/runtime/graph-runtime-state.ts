@@ -32,6 +32,7 @@
  */
 
 import type { CanonicalContext } from '../decision/canonical-context-contract.ts';
+import { canonicalObsCode } from '../utils/canonical-code.ts';
 export type CanonicalContextContract = CanonicalContext;
 
 // ──────────────────────────────────────────────────────────────────────────
