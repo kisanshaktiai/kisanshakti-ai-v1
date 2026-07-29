@@ -23,9 +23,11 @@
 - Every file under supabase/functions/ai-agriculture-chat/** (neuro-symbolic decision brain) MUST carry a top-of-file CHANGE LOG block: newest-first entries with `YYYY-MM-DD HH:MM UTC — short summary`. Update it on every edit. Applies to orchestrator, decision/, runtime/, agents/, tests/, and any new file in the chat pipeline.
 - LLM must NEVER emit dosage: DECISION_PROVIDED requires a DB rule (else formatter suppressed), and every rendered dose token must match a DB action (see mem://safety/dosage-provenance-and-decision-backing).
 - `assertion_strength` is an evidence WEIGHT scored by decision/evidence-confidence.ts, NEVER a SQL exclusion filter; all symbolic codes fold through utils/canonical-code.ts; stage families only from crop_stage_graph (see mem://architecture/assertion-strength-weight-not-filter).
+- Edge deploy cap is UPLOADED SOURCE bytes (own + _shared), not the built bundle (2.76 MB vs 5 MB cap) — only deleting source characters helps; never split the brain for size (see mem://architecture/edge-deploy-size-is-source-not-bundle).
 - intent_observation_mapping must NEVER delete grounded observations (clarification seed = UNION(confirmed, perceived, IOM-ranked)); rule/hypothesis ids are UPPER_SNAKE while observation/crop/stage codes are lower_snake (see mem://architecture/iom-weight-not-filter-and-id-casing).
 
 ## Memories
+- [Edge Deploy Size = Source Bytes](mem://architecture/edge-deploy-size-is-source-not-bundle) — Measured bundle 2.76 MB vs 4.57 MB source upload; comment compaction is the only lever.
 - [IOM Weight & ID Casing](mem://architecture/iom-weight-not-filter-and-id-casing) — RC-1 clarification-seed union, stage-differential recovery, DB-verified identifier casing table.
 - [Assertion Strength = Weight](mem://architecture/assertion-strength-weight-not-filter) — Removes LITERAL-only IOM gates, adds evidence-confidence stage, one canonical normalizer, DB-only stage families.
 - [Dosage Provenance & Decision Backing](mem://safety/dosage-provenance-and-decision-backing) — DECISION_WITHOUT_DB_BACKING + DOSAGE_PROVENANCE_VIOLATION safety gates.
