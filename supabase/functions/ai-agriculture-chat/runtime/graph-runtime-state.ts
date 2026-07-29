@@ -198,7 +198,8 @@ export class ObservationLedger {
   }
 
   /** Append a "rejected" derived node — never removes the parent. */
-  reject(observation_code: string, reason: string, actor: string): void {
+  reject(rawCode: string, reason: string, actor: string): void {
+    const observation_code = this.canon(rawCode);
     assertCanonicalCode('observation_ledger.reject', observation_code);
     const parent = this._entries.find((e) => e.observation_code === observation_code);
     this._entries.push(
