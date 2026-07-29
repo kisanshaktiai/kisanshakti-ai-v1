@@ -294,8 +294,15 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_graph load failed', e);
   }
 
+  // FIX C1-b: lane-keyed index (`crop|method|stage`). The previous
+  // `crop|stage` key let rice direct_seeded and transplanted rows overwrite
+  // each other at load time, so one lane silently disappeared.
   const byCropStage = new Map<string, StageMasterRow>();
-  for (const r of master) byCropStage.set(k(r.crop_code, r.growth_stage), r);
+  for (const r of master) {
+    const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
+    byCropStage.set(ak(r.crop_code, m, r.growth_stage), r);
+  }
+
 
   const knowledgeByCropStage = new Map<string, StageKnowledgeRow>();
   for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.growth_stage), r);
