@@ -1,99 +1,135 @@
+# Biological Stage Inference — Forensic Audit & Surgical Fix (rev. 2)
 
-# Bundle-Size Forensic Audit — `ai-agriculture-chat`
+## 1. Current Runtime Audit (verified, not inferred)
 
-## Headline finding (measured, not estimated)
+Live pipeline for stage (traced through actual callers):
 
-I built the function's real bundle in the sandbox with `deno bundle --platform=browser --node-modules-dir=auto index.ts` (all npm deps resolved, unminified):
+```text
+orchestrator.ts:10170  rpc('resolve_crop_phenology_for_land')
+        ↓
+SQL resolve_crop_phenology(land) → resolve_crop_phenology(crop, cycle, method, variety, sow, transplant, gdd)
+        ↓
+orchestrator.ts:10208  reconcilePhenology()   (runtime/phenology-reconciler.ts)
+        ↓
+buildBiologicalState() → Object.freeze → landContext.biological_state (locked)
+        ↓
+GraphRuntime → hypothesis-graph-evaluator (HARD stage gate) → rule selection → LLM
+```
 
-| Metric | Measured | Cap | Verdict |
+Where DAS decides stage today:
+
+| # | Location | Behaviour | Verdict |
 |---|---|---|---|
-| **Built bundle (unminified, incl. supabase-js)** | **2.82 MB** | 5 MB | 44% headroom |
-| **Uploaded source** (`ai-agriculture-chat/**` + `_shared/**`) | **~4.57 MB** (Supabase reported 4.7 MB) | 5 MB | **binding constraint** |
+| 1 | `resolve_crop_phenology(...)` line ~144: `v_das BETWEEN csm.das_min AND csm.das_max` | **DAS is the primary and only stage selector.** Variety profile, GDD index and prev/next merely decorate the DAS-picked row. | Incorrect — root cause |
+| 2 | `evaluate_stage_transitions` → `stc_eval_single` | Supports `das`, `dat`, `gdd`, `observation`, `event` and `composite` triggers. **All 10 seeded `stage_transition_conditions` rows are `trigger_type='das'`, crop `rice` only.** The evidence layer is also a calendar. | Correct engine, wrong data |
+| 3 | `runtime/phenology-reconciler.ts` | Documents 5 tiers but builds only 3 candidates: DAS (0.70), GDD (0.80–0.90), completed transitions (0.90). No morphological/observation candidate exists in code; no weather, soil or NDVI candidate at all. | Needs refactor |
+| 4 | `phenology-reconciler.ts:139` | Selects `to_stage_code, transition_date` from `stage_transition_log`, but the real columns are `to_stage_uuid`, `evaluated_at`. The query silently returns nothing → tier is dead. | Bug |
+| 5 | GDD tier | Only **13 of 231** `crop_stage_master` rows have `gdd_min` populated, so the tier almost never fires even though `land_gdd_daily` holds 910 rows. | Data gap |
+| 6 | `biological-state.ts::evaluateBiologicalConstraints` | Reads `decision_rules WHERE category='BIOLOGICAL_CONSTRAINT'` — **0 such rows exist**. `predicted_stage_confidence` therefore never decays. Machinery live, inert. | Correct code, no data |
+| 7 | Persistence | `apply_stage_transitions` writes `stage_transition_log`, but **no runtime code calls it** and the table has **0 rows**. Nothing is remembered, so every chat re-derives stage from DAS. | Missing wiring |
+| 8 | `evaluate_stage_validation` | Reads `land_weather_metrics`, which has **0 rows**; real weather lives in `weather_observations` / `weather_aggregates` (959 rows each). Validation runs blind. | Wrong source table |
+| 9 | `src/lib/cropStage.ts` (client) | `stageFromProgress(daysSinceSowing/duration)` writes an English stage into `lands.crop_stage` — a fourth calendar authority. | Remove from write path |
+| 10 | `iom-gate.ts`, `observation-mapping-cache.ts`, `crop-calendar-lookup.ts`, `contradiction-engine.ts`, `failure-class-detector.ts` | Use `das_min/das_max` only to scope or validate rows, never to assign stage. | Correct — leave alone |
 
-The deploy is not failing because the bundle is too big. It is failing because the **source payload uploaded to Supabase** is near 5 MB.
+The rice DSR example reproduces exactly: DAS 20 picks the vegetative window, no emergence evidence is consulted, nothing decays confidence, nothing persists.
 
-**This inverts the optimization strategy.** Lazy imports, tree-shaking, dead-export elimination and dependency de-duplication reduce *bundle* bytes — they save **zero upload bytes**. Only removing actual characters from `.ts` files under `supabase/functions/` moves the number that is blocking deploys.
+## 2. Verified Biological Stage Design (existing DB only)
 
-It also means **no architectural split is warranted**, and my earlier "consolidate supabase-js / switch to `Deno.serve`" recommendation is downgraded: those are correctness/perf wins worth ~0 KB of upload relief.
+No new tables. Reused surfaces, each verified to exist with row counts where relevant: `crop_stage_master` (231), `crop_stage_graph` (155), `stage_transition_conditions` (10), `stage_validation_rules` (12), `crop_lifecycle_events` (9), `stage_transition_log` (0), `variety_phenology_profile` (22), `observation_master`, `hypothesis_master`, `hypothesis_conditions`, `decision_rules`, weather (`weather_observations` 959, `weather_aggregates` 959, `weather_forecasts` 378), soil (`soil_health` 36), GDD (`land_gdd_daily` 910), NDVI (`ndvi_data` 2,481), land tables (`lands` 41, `crop_schedules` 10 active).
 
-## Where the source bytes are
+The stage engine operates on a multi-source evidence hierarchy, not DAS:
 
+```text
+Canonical Evidence → Evidence Freeze
+        ↓
+[A] Existing Biological Stage
+    (latest stage_transition_log row for land + active crop cycle)
+        ↓ present → continue biological progression, skip B and C
+        ↓ absent
+[B] Autonomous Environmental Stage Inference
+    weather history → rainfall since sowing/transplant → irrigation history
+    → soil moisture → temperature → GDD → NDVI trend → cultivation method
+    → variety phenology → observation graph
+    ⇒ expected biological stage + expected stage confidence + evidence set
+        ↓
+[C] Validation Layer
+    farmer confirmation (only if confidence < configured threshold)
+    → photo evidence (if available, confidence modifier only)
+    ⇒ confirmed biological stage → persist to stage_transition_log
+        ↓
+[D] DAS Validation
+    crop_stage_master window → stage_validation_rules → confidence adjustment
+    ⇒ final biological stage
+        ↓
+Hypothesis Expansion → Hypothesis Validation → Rule Selection → Decision → LLM
 ```
-agents/            2,541.6 KB   (56%)
-decision/          1,027.1 KB   (23%)
-index.ts             261.5 KB   ( 6%)
-everything else      ~660   KB
-_shared/              78   KB
-```
 
-Top single files: `agents/orchestrator.ts` 682.2 KB, `index.ts` 240.4 KB, `agents/layered-rule-evaluator.ts` 99.5 KB, `agents/llm-response-formatter.ts` 118.1 KB.
+Evidence priority, in strict order:
 
-### Lever 1 — Comments: 1,032 KB (26.2% of all source)
+1. Previously confirmed biological stage
+2. Environmental evidence — weather history, rainfall, irrigation, soil moisture, NDVI trend, temperature, GDD, cultivation method, variety phenology
+3. Observation graph
+4. Farmer confirmation — only when confidence is insufficient
+5. Photo evidence — optional high-confidence validation
+6. DAS — validation only
 
-| File | Comment bytes | File size |
-|---|---|---|
-| `agents/orchestrator.ts` | 189.6 KB | 682.2 KB |
-| `index.ts` | 58.0 KB | 240.4 KB |
-| `agents/layered-rule-evaluator.ts` | 29.4 KB | 99.5 KB |
-| `agents/llm-response-formatter.ts` | 28.4 KB | 118.1 KB |
-| `decision/hypothesis-evaluator.ts` | 23.1 KB | 68.6 KB |
-| `bundled-rules/loader.ts` | 20.1 KB | 68.0 KB |
-| `decision/symbolic-reasoner.ts` | 19.5 KB | 73.5 KB |
-| top 12 combined | **~440 KB** | |
+This reflects Indian field reality: most farmers will never upload a photo and many give minimal observations, while weather, soil, NDVI, irrigation, cultivation method and variety are available automatically. Environmental evidence is therefore the primary autonomous inference engine, farmer confirmation is an exception mechanism, photo is an optional booster, and DAS is a plausibility validator that must never determine stage.
 
-Only 171.4 KB of this is `═══` banner / CHANGE LOG blocks — project memory mandates those stay. The remaining ~860 KB is inline narrative commentary, much of it historical ("FIX (2026-07-29) — …", "[STEP 7 REMOVED] …") duplicated across dozens of hunks.
+## 3. Surgical Fix Plan
 
-### Lever 2 — Logging: 276.2 KB across 2,564 `console.*` call sites
+**S1 — SQL: demote DAS in `resolve_crop_phenology`** (migration, function body only, unchanged signature)
+Resolution order becomes: (a) latest `stage_transition_log` row for the land whose cycle matches the active `crop_schedules` row → `source='biological_ledger'`; (b) else evidence-matched transition via `evaluate_stage_transitions` starting from the earliest lane stage; (c) else the current DAS window with `source='das_provisional'` and confidence capped at 0.5. Same return columns; only `source`/`confidence` values change. Risk: medium — DAS branch retained as final fallback.
 
-`agents/orchestrator.ts` alone: **93.4 KB / 782 calls**. `index.ts`: 30.0 KB / 278 calls. These are emoji-decorated multi-line trace strings. They count toward source *and* bundle *and* runtime latency.
+**S2 — Environmental inference tiers in the reconciler** (`runtime/phenology-reconciler.ts`)
+Fix the dead ledger tier (`to_stage_uuid`, `evaluated_at`, join `crop_stage_master`). Add candidates for: morphological/observation evidence (from frozen confirmed observations against `observation_master.applies_to_stages`), NDVI trend (`ndvi_data` against `crop_stage_master.expected_ndvi_min/max` and `variety_phenology_profile`), soil moisture (`soil_health`), rainfall/temperature since sowing (`weather_aggregates`/`weather_observations`), and irrigation history. Each candidate carries a DB-sourced confidence; no thresholds hardcoded in TypeScript — all read from `system_config`. Risk: medium.
 
-### Lever 3 — Hardcoded agronomy data literals (~150 KB, each with exactly ONE importer)
+**S3 — Persist the confirmed state** (`agents/orchestrator.ts`, single call site near 10208)
+After reconciliation, when the winner differs from the ledger head and `evaluate_stage_validation` does not block, write the `stage_transition_log` row with `evidence` = {stage, confidence, evidence sources, confirmation source, timestamp}. One write per turn, short-circuited on no change. Risk: low — table is append-only and empty today.
 
-Every module below is imported by `agents/orchestrator.ts` only, and each contradicts the project's DB-SSOT rule (no hardcoded agronomy in TS):
+**S4 — Autonomous stage initialization & reconfirmation policy** (`agents/orchestrator.ts`, `agents/clarification-generator.ts`)
+At the start of a land-specific crop cycle the runtime first checks for a confirmed biological stage; if one exists it is reused immediately and initialization is skipped entirely.
 
-| Module | Embedded literal | Size |
-|---|---|---|
-| `decision/differential-diagnosis-clarifier.ts` | `DIFFERENTIAL_PATTERNS` | 9.1 KB |
-| `agents/intent-lock.ts` | `INTENT_SCOPE_MAP` | 8.1 KB |
-| `agents/cross-crop-symptom-mapper.ts` | `SYMPTOM_PATTERNS` | 8.0 KB |
-| `agents/observation-cause-mapper.ts` | `OBSERVATION_RULES` | 8.0 KB |
-| `agents/language-induction-layer.ts` | Marathi/Hindi/English symptom maps | 13.2 KB |
-| `agents/nlp-agriculture-validator.ts` | Marathi/Hindi vocab | 11.0 KB |
-| `agents/crop-stage-advisor.ts` | WHEAT/RICE/COTTON/SUGARCANE advisors | 13.4 KB |
-| `agents/agricultural-vocabulary.ts` | pest/crop/disease/symptom vocab | 12.1 KB |
+If none exists, the runtime runs Autonomous Environmental Stage Inference (S2 tiers: weather history after sowing/transplant, cumulative rainfall, irrigation history, soil moisture, NDVI trend, temperature, GDD, cultivation method, variety phenology, observation graph), producing an expected stage, an expected confidence and a supporting-evidence set.
 
-Measurement caveat: my literal scanner reported `BLOCKED_PATTERNS` in `bundled-rules/loader.ts` at 50.4 KB — I verified the source and it is a 12-entry regex array (~0.4 KB). That row is a false positive; treat literal sizes above as approximate, confirmed individually before removal.
+- Confidence **above** the configured threshold → persist the stage directly. No farmer interaction.
+- Confidence **below** threshold → generate a clarification dynamically from the biological stage graph (`crop_stage_master` + `crop_stage_graph` candidates for the active lane), routed through the existing DB-provenance clarification contract. No hardcoded questions.
+- If a photo is present, Vision AI converts it to canonical observations that strengthen or weaken confidence; photo never assigns a stage.
 
-### Lever 4 — Correctness defects found during the trace (not size)
+On confirmation, persist stage, confidence, supporting evidence, evidence sources and timestamp to `stage_transition_log`; the stage then progresses continuously through the neuro-symbolic graph.
 
-1. **Broken dynamic import.** `agents/orchestrator.ts:5057` does `await import('../photo/photo-observation-mapper.ts')`. That file **does not exist** (`photo/` contains only `photo-analyzer.ts`). Every photo-bearing request throws. The bundler surfaced this as a hard error.
-2. **Duplicate supabase-js.** `_shared/subscriptionMiddleware.ts` pulls `https://esm.sh/@supabase/supabase-js@2.49.1`; everything else uses `npm:@supabase/supabase-js@2.57.2`. Two client copies in the bundle.
-3. **Duplicate utilities.** `detectLanguage` defined in 3 files (`index.ts`, `agents/language-induction-layer.ts`, `agents/nlu-agent.ts`); `isSchemaColumnError` in 3; `isFresh` in 3.
-4. **Duplicate object key.** `"सोयाबीन"` declared twice in `utils/crop-code-normalizer.ts` (lines 109 and 166) — the second silently overwrites the first.
+Reconfirmation is requested only when: a new crop cycle begins, crop changes, cultivation method changes, environmental evidence strongly contradicts the current stage, confirmed farmer observations contradict it, photo evidence contradicts it, or confidence falls below the configured threshold. Never during normal conversation. Risk: medium (UX-visible) — gated on the ledger-empty / contradiction conditions.
 
-## Recommended optimization order
+**S5 — Seed evidence-driven transitions and constraints** (data migration, no schema change)
+Add `stage_transition_conditions` rows with `trigger_type='observation'|'composite'` for germination/emergence/establishment boundaries per seeded crop and lane, and `decision_rules` rows with `category='BIOLOGICAL_CONSTRAINT'` (e.g. no emergence evidence under a dry spell) so `evaluateBiologicalConstraints` finally decays `predicted_stage_confidence`. All agronomy lives in rows, none in TypeScript. Risk: medium — seeded and verified crop-by-crop.
 
-**Phase A — zero behavior risk, ~400–450 KB recovered (unblocks deploy immediately)**
-1. Comment compaction in the 12 heaviest files: collapse multi-line inline narrative to one line, delete superseded historical "FIX (date)" prose whose change is already recorded in the file's CHANGE LOG. Preserve every top-of-file CHANGE LOG banner verbatim (memory contract). Est. **~300 KB**.
-2. Log compaction in `orchestrator.ts` + `index.ts`: collapse multi-line template traces to single-line key=value, delete pure entry/exit breadcrumbs. Keep every structured contract log (`[EVIDENCE_IDENTITY]`, `[GRAPH_CONTRACT_*]`, `[DOSAGE_PROVENANCE_VIOLATION]`, `[SYMBOLIC_ID_LEAK]`). Est. **~120 KB**.
+**S6 — Point stage validation at the populated weather tables** (migration)
+`evaluate_stage_validation` currently reads the empty `land_weather_metrics`; repoint it at `weather_aggregates`/`weather_observations` so validation rules see real temperature and rainfall. Risk: low.
 
-Projected upload after Phase A: **~4.15 MB** (17% headroom).
+**S7 — Retire the client calendar writer** (`src/lib/cropStage.ts`, `SmartLandConfirmCard`)
+Stop writing the derived stage into `lands.crop_stage`; the helper stays for display-only progress. Risk: low.
 
-**Phase B — correctness, ~0 KB, do in the same deploy**
-3. Restore or remove the missing `photo/photo-observation-mapper.ts` import path.
-4. Point `_shared/subscriptionMiddleware.ts` at `npm:@supabase/supabase-js@2.57.2`.
-5. Delete the duplicate `"सोयाबीन"` key.
+**S8 — Photo evidence path** (`photo/photo-observation-mapper.ts` → orchestrator)
+Feed canonical observations from Vision AI into the S2 morphological candidate as a confidence modifier only. Risk: low.
 
-**Phase C — DB-SSOT consolidation, ~150–250 KB, behavior-bearing (separate change, verify per module)**
-6. Migrate the eight hardcoded-agronomy modules in Lever 3 to lookups against the existing observation/intent/stage SSOT tables, deleting the literals. Each module is single-importer, so each can be cut over and verified independently.
-7. Collapse the three duplicated utilities into single shared implementations.
+## 4. Validation Report (how it will be proven)
 
-Projected upload after Phase C: **~3.9 MB**.
+Before/after on the rice DSR case, read from edge logs of a real turn:
 
-**Not recommended:** splitting the decision brain into multiple Edge Functions. The built bundle is 2.82 MB against a 5 MB cap, and `_shared/**` re-uploads with every function, so a split adds deployment surface and a cross-function state boundary to solve a problem Phase A already solves.
+- Before: `[GRAPH_NODE_TRACE][bio-lock] … stage_source=crop_stage_ssot das=20 biological_stage=VEGETATIVE constraints=[]`
+- After: `[GRAPH_NODE_TRACE][bio-lock] … stage_source=environmental_inference stage=GERMINATION das=20 predicted_stage_confidence<0.5 constraints=[EMERGENCE_NOT_CONFIRMED(BLOCK)]`
 
-## Technical notes
+Checks after each step:
 
-- Bundle measurement is reproducible: copy `supabase/functions/{_shared,ai-agriculture-chat}` to a scratch dir, stub the missing `photo-observation-mapper.ts`, then `deno bundle --node-modules-dir=auto --platform=browser index.ts -o out.js`.
-- Supabase's server-side build strips comments, which is exactly why the 1 MB of comments shows up in the upload figure but not in the 2.82 MB bundle — and why comment removal is the highest-yield, lowest-risk lever available.
-- Phase A touches no control flow, no exported signatures, and no DB contracts; it is verifiable by diffing the AST-relevant tokens before and after.
+1. `stage_transition_log` goes from 0 to ≥1 row per active land; a second chat in the same cycle logs `source=biological_ledger` and asks no stage question.
+2. A land with high-confidence environmental evidence is initialized with **zero** farmer clarifications.
+3. A land with weak evidence produces exactly one DB-generated stage clarification, then never again in that cycle.
+4. `[BIO_CONSTRAINT_GRAPH] constraints_count>0` on the dry-spell land.
+5. DSR vs transplanted rice at identical DAS resolve different lanes (existing lane regression preserved).
+6. No turn shows `source='das_provisional'` with confidence > 0.5.
+7. Existing suites under `tests/edge/ai-agriculture-chat/` stay green.
+
+### Technical notes
+
+- Persistence reuses `stage_transition_log` as the per-land append-only biological-state ledger and `crop_lifecycle_events` for farmer/photo confirmation events — no new tables, no new columns.
+- Only function bodies change in SQL; signatures, return columns and every TypeScript contract (`BiologicalState`, GraphRuntime split-check) stay identical.
+- All thresholds come from `system_config`; all new agronomic knowledge is inserted as `stage_transition_conditions` / `decision_rules` rows. Zero crop-specific logic enters TypeScript.
