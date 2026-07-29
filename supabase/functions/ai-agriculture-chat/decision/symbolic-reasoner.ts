@@ -34,6 +34,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
+import {
+  isTaxonomyLoaded,
+  isAbioticRule,
+  hasBioticEvidence as taxonomyHasBioticEvidence,
+} from '../utils/db-driven-taxonomies.ts';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
