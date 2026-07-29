@@ -1,6 +1,9 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 00:00 UTC — F1a: deleted dead generateCropHealthResponse (embedded
+ *   hardcoded ICAR NDVI/N thresholds + fabricated urea dosage). Zero callers.
+ * ───────────────────────────────────────────────────────────────────────────
  * 2026-07-28 05:00 UTC — FIX D1: resolve cultivation_method per turn into
  *   SessionSSOT and pass it to all buildHypothesisClarificationOptions sites.
  * ───────────────────────────────────────────────────────────────────────────
@@ -2195,7 +2198,7 @@ export class AIAgentOrchestrator {
       
       // ========================================
       // PHASE-13: ROUTE CROP_HEALTH THROUGH SYMBOLIC PIPELINE
-      // Previously: Early return with inline generateCropHealthResponse
+      // Previously: Early return with an inline hardcoded crop-health generator (deleted)
       // Now: Authority check + continue to rule engine for nutrient/water rules
       // ========================================
       if (queryRoute.route === 'CROP_HEALTH' && landContext) {
