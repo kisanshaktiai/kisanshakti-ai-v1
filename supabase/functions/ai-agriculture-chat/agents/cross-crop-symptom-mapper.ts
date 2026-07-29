@@ -1,21 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-9: CROSS-CROP SYMPTOM MAPPER
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Map raw farmer symptom text to canonical CrossCropSymptomKeys.
- * This is PURE OBSERVATION MAPPING - no crop-specific logic, no diagnosis.
- * 
- * PRINCIPLES:
- * ✔ Deterministic
- * ✔ No inference
- * ✔ No diagnosis
- * ✔ Works uniformly across all crops
- * ✔ Multi-language support (Marathi, Hindi, English)
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-9: CROSS-CROP SYMPTOM MAPPER
 
 import { CrossCropSymptomKey, serializeCrossCropSymptoms } from '../decision/cross-crop-symptom-ontology.ts';
 
@@ -24,9 +7,7 @@ export { serializeCrossCropSymptoms };
 
 export const CROSS_CROP_SYMPTOM_MAPPER_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM PATTERNS (Multi-language, Observation-Only)
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface SymptomPattern {
   key: CrossCropSymptomKey;
@@ -34,9 +15,7 @@ interface SymptomPattern {
 }
 
 const SYMPTOM_PATTERNS: SymptomPattern[] = [
-  // ═══════════════════════════════════════════════════════════════════════════
   // LEAF SYMPTOMS
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.LEAF_YELLOWING,
     patterns: [
@@ -115,9 +94,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEM SYMPTOMS
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.STEM_WEAKENING,
     patterns: [
@@ -154,9 +131,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // ROOT SYMPTOMS
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.ROOT_DAMAGE_VISIBLE,
     patterns: [
@@ -172,9 +147,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // INSECT OBSERVATIONS
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.SMALL_INSECTS_VISIBLE,
     patterns: [
@@ -218,9 +191,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GROWTH ABNORMALITIES
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.STUNTED_GROWTH,
     patterns: [
@@ -247,10 +218,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-14: PLANT DEATH / STAND FAILURE SYMPTOMS
-  // Critical for germination stage diagnosis
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.PLANT_DEATH,
     patterns: [
@@ -283,9 +251,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // DISTRIBUTION PATTERNS
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.AFFECTED_PATCHES,
     patterns: [
@@ -318,9 +284,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GENERAL CONDITIONS (Note: OVERALL_WEAK is defined in PHASE-14 section above)
-  // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.HONEYDEW_PRESENT,
     patterns: [
@@ -344,9 +308,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN MAPPING FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CrossCropMappingResult {
   symptoms: Set<CrossCropSymptomKey>;
@@ -355,13 +317,7 @@ export interface CrossCropMappingResult {
   mapping_source: 'CROSS_CROP_SYMPTOM_MAPPER';
 }
 
-/**
- * Map raw symptom text to CrossCropSymptomKeys.
- * This is DETERMINISTIC and works across all crops.
- * 
- * @param rawSymptoms Array of raw symptom text from farmer
- * @returns Set of matched CrossCropSymptomKeys
- */
+// Map raw symptom text to CrossCropSymptomKeys.
 export function mapToCrossCropSymptoms(
   rawSymptoms: string[]
 ): CrossCropMappingResult {
@@ -407,16 +363,12 @@ export function mapToCrossCropSymptoms(
   };
 }
 
-/**
- * Quick check if any symptoms were detected
- */
+// Quick check if any symptoms were detected
 export function hasCrossCropSymptoms(result: CrossCropMappingResult): boolean {
   return result.symptom_count > 0;
 }
 
-/**
- * Get symptoms by category
- */
+// Get symptoms by category
 export function getSymptomsByCategory(
   symptoms: Set<CrossCropSymptomKey>
 ): Record<string, CrossCropSymptomKey[]> {

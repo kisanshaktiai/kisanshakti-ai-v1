@@ -1,11 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * ECONOMIC CALCULATOR - Treatment Viability Assessment
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Calculates cost-benefit analysis, ROI, and affordability for treatment options.
- * Ensures farmers receive economically viable recommendations.
- */
+// ECONOMIC CALCULATOR - Treatment Viability Assessment
 
 import type {
   RuleExecutionInput,
@@ -19,9 +12,7 @@ import {
   ECONOMIC_THRESHOLDS
 } from './rule-engine-types.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN ECONOMIC CALCULATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function calculateEconomicViability(
   recommendation: RecommendationDetails,
@@ -92,9 +83,7 @@ export function calculateEconomicViability(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function getCropEconomics(cropCode: string): CropEconomicsData {
   const upperCropCode = cropCode.toUpperCase();
@@ -203,9 +192,7 @@ function determineRecommendation(
   return 'NOT_RECOMMENDED';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MULTI-OPTION COMPARISON
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function compareEconomicOptions(
   recommendations: RecommendationDetails[],
@@ -237,9 +224,7 @@ export function compareEconomicOptions(
   return ranked;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BUDGET ALLOCATION HELPER
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function suggestBudgetAllocation(
   totalBudget: number,

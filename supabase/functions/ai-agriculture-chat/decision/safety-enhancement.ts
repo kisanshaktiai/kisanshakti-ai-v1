@@ -1,19 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 6: SAFETY ENHANCEMENT MODULE (v2.0.0 - English-only)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * v2.0.0: Removed all hardcoded mr/hi strings.
- * Safety warnings are English-only; LLM narration layer translates at runtime.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE 6: SAFETY ENHANCEMENT MODULE (v2.0.0 - English-only)
 
 export const SAFETY_ENHANCEMENT_VERSION = '2.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type SafetyLevel = 'SAFE' | 'CAUTION' | 'EXPERT_ONLY';
 
@@ -48,9 +37,7 @@ export interface SafetyValidationResult {
   combined_message: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFETY LEVEL DEFINITIONS (English-only; LLM narration translates)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const SAFETY_WARNINGS: Record<SafetyLevel, SafetyWarning> = {
   'SAFE': {
@@ -73,12 +60,7 @@ const SAFETY_WARNINGS: Record<SafetyLevel, SafetyWarning> = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // IRAC/FRAC ROTATION FAMILIES — DB-SSOT (Tier 1 V3 cutover, 2026-07-24)
-// Authoritative source: public.chemical_rotation_group (moa_system, family).
-// The maps below are COLD-BOOT ONLY fallbacks used until the phase1 cache
-// warms; the family-keys are enumerated via listRotationFamilies() below.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import { listRotationFamilies as _listRotationFamiliesDb } from '../utils/db-ssot/phase1-caches.ts';
 
@@ -102,9 +84,7 @@ const _LEGACY_FUNGICIDE_GROUPS: Record<string, string[]> = {
   'FRAC_M': ['Mancozeb', 'Copper oxychloride', 'Copper hydroxide']
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFETY WARNING GENERATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function getSafetyWarning(
   safetyLevel: SafetyLevel | undefined,
@@ -124,9 +104,7 @@ export function formatSafetyWarning(
   return `${warning.icon} ${warning.warning_en}`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESISTANCE MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function checkResistanceRotation(
   resistanceGroup: string | undefined,
@@ -170,9 +148,7 @@ function getAlternativeGroups(currentGroup: string): string[] {
   return groups.filter(g => g !== currentGroup).slice(0, 3);
 }
 
-/**
- * Get rotation advice (English-only; LLM narration translates)
- */
+// Get rotation advice (English-only; LLM narration translates)
 export function getRotationAdvice(
   result: ResistanceCheckResult,
   _language: string
@@ -183,9 +159,7 @@ export function getRotationAdvice(
   return `⚠️ Do not use same chemical group consecutively! To prevent resistance, use ${alternatives} group.`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function validateSafety(
   rule: SafetyInput,
@@ -219,9 +193,7 @@ export function validateSafety(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function logSafetyValidation(
   ruleId: string,

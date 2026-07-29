@@ -80,9 +80,7 @@ import type { CanonicalContext } from '../decision/canonical-context-contract.ts
 
 export const CLARIFICATION_STRATEGY_VERSION = '4.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LockedStageContext {
   crop_code: string;
@@ -107,13 +105,7 @@ export interface ClarificationTriggerInput {
   clarification_completed: boolean;
   user_query?: string; // Added for failure class detection
   symptom_scope?: 'WHOLE_PLANT' | 'PART' | 'UNKNOWN'; // Added for failure class detection
-  /**
-   * OBSERVATION_STATE_CONTRACT — Only CONFIRMED farmer observations count as
-   * evidence. INFERRED symbols (alias expansion, IOM LITERAL peers, LLM
-   * guesses) MUST NOT satisfy the clarification gate for a diagnostic intent.
-   * When these are provided, they take priority over the legacy symptom_count
-   * / symptom_coverage inputs (which historically conflated the three classes).
-   */
+  // OBSERVATION_STATE_CONTRACT — Only CONFIRMED farmer observations count as
   confirmed_observation_count?: number;
   diagnostic_intent?: boolean;
 }
@@ -184,10 +176,7 @@ export interface ConfidenceTimingResult {
   timing_phase: 'INITIAL' | 'POST_CLARIFICATION';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 3: VISUAL OBSERVABILITY HELPER
-// Determines if a symptom can be observed visually without tools
-// ═══════════════════════════════════════════════════════════════════════════
 
 const VISUAL_OBSERVATION_PATTERNS = [
   // Colors and appearances
@@ -202,25 +191,17 @@ const VISUAL_OBSERVATION_PATTERNS = [
   'powder', 'भुर', 'sticky', 'चिकट', 'webbing', 'जाळ'
 ];
 
-/**
- * STEP 3: Check if an observation is visually observable by farmer
- */
+// STEP 3: Check if an observation is visually observable by farmer
 function isVisuallyObservable(optionId: string, label: string): boolean {
   const combined = `${optionId} ${label}`.toLowerCase();
   return VISUAL_OBSERVATION_PATTERNS.some(pattern => combined.includes(pattern.toLowerCase()));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 1. STAGE-LOCKED CLARIFICATION
-// Once crop stage is derived from crop_schedules (DOS), lock it for entire turn
-// ═══════════════════════════════════════════════════════════════════════════
 
 let _lockedStageContext: LockedStageContext | null = null;
 
-/**
- * Lock the growth stage for the current turn based on crop_schedules data.
- * This prevents downstream overrides and ensures consistent clarification.
- */
+// Lock the growth stage for the current turn based on crop_schedules data.
 export function lockStageForTurn(
   cropCode: string,
   growthStage: string,
@@ -242,37 +223,24 @@ export function lockStageForTurn(
   return _lockedStageContext;
 }
 
-/**
- * Get the currently locked stage context.
- * Returns null if no stage has been locked for this turn.
- */
+// Get the currently locked stage context.
 export function getLockedStage(): LockedStageContext | null {
   return _lockedStageContext;
 }
 
-/**
- * Clear the locked stage (call at end of turn).
- */
+// Clear the locked stage (call at end of turn).
 export function clearLockedStage(): void {
   _lockedStageContext = null;
 }
 
-/**
- * Check if a stage is currently locked.
- */
+// Check if a stage is currently locked.
 export function isStageLockedForTurn(): boolean {
   return _lockedStageContext !== null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 2. CLARIFICATION TRIGGER RULE
-// If crop+stage known but symptoms partial/ambiguous → clarify FIRST
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Determine if clarification should be triggered BEFORE rule evaluation.
- * This treats clarification as confidence-building, not a fallback.
- */
+// Determine if clarification should be triggered BEFORE rule evaluation.
 export function shouldTriggerClarificationFirst(
   input: ClarificationTriggerInput
 ): ClarificationTriggerResult {
@@ -301,13 +269,7 @@ export function shouldTriggerClarificationFirst(
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // OBSERVATION_STATE_CONTRACT — CONFIRMED-ONLY GATE (v1.0.0)
-  // A diagnostic turn with ZERO confirmed farmer observations MUST clarify,
-  // regardless of how many INFERRED / candidate symbols the induction layer
-  // produced. This closes the "sufficient symptom coverage" bypass that let
-  // AI-inferred codes pose as farmer evidence.
-  // ═══════════════════════════════════════════════════════════════════════════
   if (input.diagnostic_intent === true
       && typeof input.confirmed_observation_count === 'number'
       && input.confirmed_observation_count === 0) {
@@ -363,43 +325,17 @@ export function shouldTriggerClarificationFirst(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 3. HYPOTHESIS-FIRST CLARIFICATION
-// Pre-evaluate rules, then source options ONLY from candidate hypotheses
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Fetch clarification options from candidate hypothesis rules.
- * STEP 1: Pre-evaluate rules to build candidate hypothesis set
- * STEP 2: Source options ONLY from candidate rules' observable_characteristics
- * STEP 3: Rank by differentiation power and visual observability
- * STEP 4: Enforce stage compatibility
- * STEP 5: Block generic output when candidates exist
- */
-/**
- * Fetch clarification options strictly from stage-scoped rule hypotheses.
- * 
- * ARCHITECTURE (Trust-First):
- * 1. HYPOTHESIS-FIRST: Pre-evaluate rules BEFORE generating options
- * 2. RULE-DRIVEN: Options sourced ONLY from decision_rules.observable_characteristics
- * 3. DIFFERENTIATION: Rank by power to distinguish between hypotheses
- * 4. STAGE-LOCKED: All options must be valid for locked growth stage
- * 5. NON-GENERIC: Block generic output when rule candidates exist
- * 
- * HARD INVARIANTS:
- * - Crop/stage context is NEVER dropped or rebuilt during this function
- * - Rule-driven options CANNOT be overwritten by NLU fallback
- * - IDENTIFY_LOCATION is NEVER returned when terminal damage detected
- */
+// Fetch clarification options from candidate hypothesis rules.
+// Fetch clarification options strictly from stage-scoped rule hypotheses.
 export async function fetchRuleDrivenClarificationOptions(
   input: RuleDrivenClarificationInput
 ): Promise<RuleDrivenClarificationOutput | null> {
   const { crop_code, stage, current_symptoms, language, supabaseClient } = input;
   const traceId = input.trace_id || `trace_${Date.now()}`;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // HARD INVARIANT: Log preserved context (must never be undefined at this point)
-  // ═══════════════════════════════════════════════════════════════════════════
   console.log(`📊 [HypothesisFirst v5] Trust-First Clarification for ${crop_code}/${stage}`);
   console.log(`   Scope=RULE_DRIVEN, Source=DECISION_RULES`);
   console.log(`   Preserved context: crop=${crop_code}, stage=${stage}, DAS=${input.days_since_sowing ?? 'unknown'}`);
@@ -414,10 +350,7 @@ export async function fetchRuleDrivenClarificationOptions(
     console.error(`   🚨 [INVARIANT VIOLATION] stage missing or UNKNOWN`);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 0.5: CHECK FOR DISCRIMINATOR QUESTION FROM CAUSAL HYPOTHESIS ENGINE
-  // If the causal engine already produced a targeted question, prefer it
-  // ═══════════════════════════════════════════════════════════════════════════
   if ((input as any).discriminatorQuestion) {
     const dq = (input as any).discriminatorQuestion;
     console.log(`   🎯 [Clarification] Using discriminator question from causal hypothesis engine`);
@@ -453,10 +386,7 @@ export async function fetchRuleDrivenClarificationOptions(
     } as any;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: PRE-EVALUATE RULES TO BUILD CANDIDATE HYPOTHESIS SET
-  // This MUST happen BEFORE scope selection to ensure rule-awareness
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const _graphRun = await runGraphRuntime({
     supabase: supabaseClient,
@@ -491,24 +421,14 @@ export async function fetchRuleDrivenClarificationOptions(
   const failureResult = detectPrimaryFailureClass(failureClassInput);
   const domain = getClarificationDomain(failureResult.primary_class);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: SOURCE OPTIONS ONLY FROM CANDIDATE RULES
-  // If candidates exist, do NOT fall back to generic symptom lists
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (candidates.length === 0) {
     console.log(`   ⚠️ [HypothesisFirst] No candidates - using failure class fallback`);
     return useHypothesisFallback(failureResult, stage, language, traceId, 'NO_CANDIDATES');
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // ONTOLOGY GATE — single source of truth for farmer-observable codes.
-  // Reject any observation_key that is not present in observation_master with
-  // is_active=true AND is_farmer_observable=true. This is what stops
-  // diagnosis-level codes (e.g. TUNGRO_YELLOW_STUNT), system predictions
-  // (PREDICTED_NUTRIENT_DEMAND) and workflow concepts (WEEKLY_SUMMARY) from
-  // ever reaching the farmer as clarification options.
-  // ═══════════════════════════════════════════════════════════════════════════
   const candidateKeys: string[] = [];
   const candidateRuleIds: string[] = [];
   for (const c of candidates) {
@@ -612,10 +532,7 @@ export async function fetchRuleDrivenClarificationOptions(
   
   console.log(`   📦 [HypothesisFirst] Extracted ${allOptions.length} unique options from ${candidates.length} candidates`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 5: GUARANTEE NON-GENERIC OUTPUT
-  // If we have candidates but no valid options after filtering, regenerate
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (allOptions.length === 0 && candidates.length > 0) {
     console.log(`   ⚠️ [HypothesisFirst] All options filtered - attempting regeneration from candidates (ontology gate still enforced)`);
@@ -704,9 +621,7 @@ export async function fetchRuleDrivenClarificationOptions(
   };
 }
 
-/**
- * Generate a question that reflects the candidate hypotheses being tested.
- */
+// Generate a question that reflects the candidate hypotheses being tested.
 function getHypothesisAwareQuestion(
   candidates: CandidateHypothesis[],
   stage: string,
@@ -733,19 +648,7 @@ function getHypothesisAwareQuestion(
   return questions[language] || questions.en;
 }
 
-/**
- * PATCH v4-P5 — When the hypothesis graph returns zero candidates for a
- * valid (crop, intent, failure_class), the runtime MUST NOT guess a symptom
- * list. Return a WAITING_FOR_OBSERVATION sentinel (empty options + explicit
- * source tag). Downstream (`graph-runtime.ts` OBS_GATE / clarification
- * generator) drives an ASK-clarification anchored on the farmer's own text
- * rather than on a fabricated symptom list.
- *
- * The legacy path called `getFailureClassFallbackOptions()` which returned
- * hardcoded arrays like STUNTED_GROWTH/WILTING/LEAF_CURLING — that regressed
- * the rice "उगवले नाही" turn and would resurface across cotton, sugarcane,
- * wheat, fruit crops identically. All-crop fix: never invent symptoms.
- */
+// PATCH v4-P5 — When the hypothesis graph returns zero candidates for a
 function useHypothesisFallback(
   failureResult: FailureClassResult,
   stage: string,
@@ -788,9 +691,7 @@ function useHypothesisFallback(
 
 // Legacy useFailureClassFallback removed - replaced by useHypothesisFallback
 
-/**
- * Get failure-class-specific question template.
- */
+// Get failure-class-specific question template.
 function getFailureClassQuestion(
   failureClass: FailureClass,
   stage: string,
@@ -837,16 +738,9 @@ function getFailureClassQuestion(
   return questions[failureClass]?.[language] || questions.UNKNOWN[language];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 4. CONFIDENCE CONSTRUCTION TIMING
-// Final confidence computed ONLY after clarification response
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Calculate confidence at the appropriate timing phase.
- * Pre-clarification confidence is PRELIMINARY only.
- * Post-clarification confidence is FINAL.
- */
+// Calculate confidence at the appropriate timing phase.
 export function calculateConfidenceWithTiming(
   baseConfidence: number,
   clarificationCompleted: boolean,
@@ -878,18 +772,9 @@ export function calculateConfidenceWithTiming(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 5. CANONICAL STATE REBUILD AFTER CLARIFICATION
-// Map selected options to canonical symbols and re-run symbolic brain
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * MERGE selected clarification observation into existing symbols.
- * 
- * CRITICAL: This MERGES, not replaces. The selected observation is added
- * to the existing symbol set, preserving all previously gathered evidence.
- * This ensures incremental evidence accumulation across clarification turns.
- */
+// MERGE selected clarification observation into existing symbols.
 export function mapClarificationSelectionToSymbols(
   selectedOption: RuleDrivenOption,
   existingSymbols: string[]
@@ -916,10 +801,7 @@ export function mapClarificationSelectionToSymbols(
   return mergedSymbols;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 6. DECISION GATE ALIGNMENT
-// If clarification completed + rules fire → MUST return recommendation
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DecisionGateCheckInput {
   clarification_completed: boolean;
@@ -939,21 +821,11 @@ export interface DecisionGateCheckResult {
   clarification_active: boolean;
 }
 
-/**
- * Check if the decision gate mandates a recommendation.
- * 
- * CRITICAL: Session state is AUTHORITATIVE for clarification status.
- * Runtime flags are advisory only.
- * 
- * After clarification + rule match → empty responses are NOT allowed.
- */
+// Check if the decision gate mandates a recommendation.
 export function checkDecisionGateAlignment(
   input: DecisionGateCheckInput
 ): DecisionGateCheckResult {
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL: SESSION STATE IS AUTHORITATIVE
-  // Compute clarification_active from session state, NOT runtime flags
-  // ═══════════════════════════════════════════════════════════════════════════
   const clarificationActive = input.session_decision_state === 'awaiting_clarification';
   
   // INVARIANT CHECK: If clarification answered but session still says awaiting
@@ -1004,10 +876,7 @@ export function checkDecisionGateAlignment(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 7. LOGGING UTILITIES
-// Comprehensive logging for clarification flow debugging
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationLogEntry {
   trace_id: string;
@@ -1021,9 +890,7 @@ export interface ClarificationLogEntry {
 
 const _clarificationLogs: ClarificationLogEntry[] = [];
 
-/**
- * Log a clarification event for debugging and auditing.
- */
+// Log a clarification event for debugging and auditing.
 export function logClarificationEvent(
   traceId: string,
   event: ClarificationLogEntry['event'],
@@ -1056,9 +923,7 @@ export function logClarificationEvent(
   }
 }
 
-/**
- * Get recent clarification logs for a trace ID.
- */
+// Get recent clarification logs for a trace ID.
 export function getClarificationLogs(traceId?: string): ClarificationLogEntry[] {
   if (traceId) {
     return _clarificationLogs.filter(log => log.trace_id === traceId);

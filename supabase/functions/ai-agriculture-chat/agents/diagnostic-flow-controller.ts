@@ -5,22 +5,7 @@
  *     confirmed_observation_codes; injected symptom_codes are candidates only.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSTIC FLOW CONTROLLER
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Uses NLU output to orchestrate the decision-making process:
- * 1. Loads required TypeScript rule modules
- * 2. Gathers necessary context (weather, soil, NDVI)
- * 3. Evaluates rules in priority order
- * 4. Generates farmer-friendly recommendations
- * 
- * This runs on the edge function and coordinates between:
- * - NLU Agent output
- * - Decision Graph rule modules
- * - Supabase context data
- */
+// DIAGNOSTIC FLOW CONTROLLER
 
 import {
   NLUOutputWithRuleMapping,
@@ -54,9 +39,7 @@ import {
 // Static import for decision graph bridge (CRITICAL: No dynamic imports allowed in edge functions)
 import { evaluateDecisionGraph } from './decision-graph-bridge.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC SESSION STATE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticSession {
   session_id: string;
@@ -91,9 +74,7 @@ export interface LoadedModule {
   error?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC FLOW CONTROLLER
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class DiagnosticFlowController {
   private session: DiagnosticSession;
@@ -119,9 +100,7 @@ export class DiagnosticFlowController {
     this.supabaseClient = supabaseClient;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // STEP 1: RECEIVE NLU OUTPUT
-  // ═══════════════════════════════════════════════════════════════════════
   
   async processNLUOutput(nluOutput: NLUOutputWithRuleMapping): Promise<DiagnosticFlowResponse> {
     this.session.nlu_output = nluOutput;
@@ -150,17 +129,9 @@ export class DiagnosticFlowController {
       return this.handleBannedSubstance(nluOutput);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // v3.0: OBSERVATION-BASED AUTHORITY RESOLUTION (NLU GATING REMOVED)
-    // 
-    // Authority is derived from ObservationKeys, NOT from NLU intent/confidence.
-    // hasProblem and hasPestOrDisease are NO LONGER used for diagnosis eligibility.
-    // Terminal damage observations automatically grant CROP authority.
-    // ═══════════════════════════════════════════════════════════════════════════
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // BUG FIX #5: Collect observation keys from ALL sources, not just symptom_codes
-    // ═══════════════════════════════════════════════════════════════════════════
     const explicitConfirmedObservationCodes = Array.isArray((nluOutput.entities as any)?.confirmed_observation_codes)
       ? ((nluOutput.entities as any).confirmed_observation_codes as string[]).filter(Boolean)
       : null;
@@ -187,17 +158,7 @@ export class DiagnosticFlowController {
     // Check for terminal damage from observations (NOT NLU intent)
     const terminalDamageResult = detectTerminalDamageForAuthority(observationKeys);
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // TERMINAL_DAMAGE_CONTRACT (v2.0.0) — priority boost, NEVER bypass
-    // ─────────────────────────────────────────────────────────────────────────
-    // Prior bug: terminal damage jumped straight to evaluateRules() and
-    // skipped the observation graph entirely. That is unsafe — "plant died"
-    // has many causes (drought, seed rot, disease, chemical injury, pest).
-    // We keep the CROP authority uplift but STILL route through the normal
-    // GRAPH_GATE below. If the farmer's text already contains an observation
-    // (e.g. PLANT_DIED) the gate will proceed to evaluateRules; otherwise it
-    // will ask the observation navigator for confirmation.
-    // ═══════════════════════════════════════════════════════════════════════════
     if (terminalDamageResult.detected) {
       console.log('🚨 [DiagnosticFlow] Terminal damage detected — PRIORITY BOOST, still routing through observation graph');
       console.log('   Mode=DIAGNOSIS');
@@ -211,13 +172,6 @@ export class DiagnosticFlowController {
     }
     
     // v4.0 (GRAPH_GATE): CONTEXT vs EVIDENCE separation
-    //   CONTEXT  = crop, variety, stage, DAS, soil, NDVI, weather, GPS
-    //   EVIDENCE = confirmed farmer observations, sensor observations, validated symptoms
-    // A diagnostic turn MUST have EVIDENCE (>=1 confirmed observation) before
-    // rule/hypothesis evaluation. Crop alone is CONTEXT and MUST NOT unlock
-    // decision_rules — otherwise the observation graph is skipped and the
-    // hypothesis pool is empty. Non-diagnostic (proactive) modules keep the
-    // context-only path via a separate scheduler and never reach here.
     const hasCrop = !!nluOutput.entities?.crop_code;
     const confirmedObservationKeys = explicitConfirmedObservationCodes !== null
       ? new Set(explicitConfirmedObservationCodes)
@@ -245,9 +199,6 @@ export class DiagnosticFlowController {
     }
 
     // Diagnostic intent + context but ZERO evidence → route to observation navigator.
-    // This is the neuro-symbolic invariant: intent → intent_observation_mapping →
-    // observation_master → farmer confirms → hypothesis graph → decision_rules.
-    // We MUST NOT call evaluateRules() here.
     if (isDiagnosticIntent) {
       console.log(
         '❓ [DiagnosticFlow] Diagnostic intent without evidence — routing to observation navigator ' +
@@ -306,9 +257,7 @@ export class DiagnosticFlowController {
     return await this.evaluateRules();
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // STEP 2: BUILD EVALUATION CONTEXT
-  // ═══════════════════════════════════════════════════════════════════════
   
   async buildEvaluationContext(
     additionalContext: Partial<RuleEvaluationContext>
@@ -337,19 +286,14 @@ export class DiagnosticFlowController {
     return context;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // STEP 3: EVALUATE RULES
-  // ═══════════════════════════════════════════════════════════════════════
   
   async evaluateRules(): Promise<DiagnosticFlowResponse> {
     this.session.status = 'RESOLVING_AUTHORITY';
     
     const nlu = this.session.nlu_output;
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Build evaluation context from NLU BEFORE rule evaluation
-    // This was missing - causing context to be empty and all rules to fail
-    // ═══════════════════════════════════════════════════════════════════════════
     const context = await this.buildEvaluationContext({});
     
     console.log('📋 [DiagnosticFlow] Built evaluation context:', {
@@ -360,10 +304,7 @@ export class DiagnosticFlowController {
       crop_stage: context.crop_stage
     });
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // v3.0: DECISION AUTHORITY RESOLUTION (WITH OBSERVATIONS)
-    // Pass observations to resolver for terminal damage pre-check
-    // ═══════════════════════════════════════════════════════════════════════════
     
     // Collect all observations for authority check
     const allObservations = new Set<string>([
@@ -414,8 +355,6 @@ export class DiagnosticFlowController {
     }
     
     // v5.1 BUG 5 FIX: Check for crop damage enforcement BEFORE shouldSkipCropRules
-    // If preAuthorityResult has an enforced_decision (from terminal/crop damage), use it
-    // to prevent the standard authority resolver from incorrectly blocking CROP domain
     if (preAuthorityResult.enforced_decision && !authorityDecision.authority) {
       console.log('🔄 [DiagnosticFlow v5.1] Overriding authority with enforced crop damage decision');
       authorityDecision = preAuthorityResult.enforced_decision;
@@ -450,9 +389,7 @@ export class DiagnosticFlowController {
       }
     };
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Evaluate decision graph ONCE, not per module (major latency fix)
-    // ═══════════════════════════════════════════════════════════════════════════
     
     console.log('🔬 [DiagnosticFlow] Evaluating decision graph ONCE for all modules');
     
@@ -503,9 +440,7 @@ export class DiagnosticFlowController {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // RULE MODULE EVALUATION (Simulated - actual import happens in React)
-  // ═══════════════════════════════════════════════════════════════════════
   
   private async evaluateRuleModule(
     moduleRef: RuleModuleReference,
@@ -551,9 +486,7 @@ export class DiagnosticFlowController {
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // EMERGENCY HANDLERS
-  // ═══════════════════════════════════════════════════════════════════════
   
   private handleEmergency(nlu: NLUOutputWithRuleMapping): DiagnosticFlowResponse {
     this.session.status = 'ESCALATED';
@@ -579,9 +512,7 @@ export class DiagnosticFlowController {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // MESSAGE GENERATORS
-  // ═══════════════════════════════════════════════════════════════════════
   
   // English-only — LLM narration layer translates at runtime
   private getBlockMessageEn(rule: BlockingRuleInfo): string {
@@ -646,20 +577,10 @@ export class DiagnosticFlowController {
     ];
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // AUTHORITY RESOLUTION HELPERS
-  // ═══════════════════════════════════════════════════════════════════════
   
-  /**
-   * Extract detected causes from NLU output and context.
-   * Maps to cause codes used by the authority resolver.
-   */
-  /**
-   * Extract detected causes from NLU output and context.
-   * Maps to cause codes used by the authority resolver.
-   * 
-   * BUG FIX #4: Add mappings for terminal damage symptoms to causes
-   */
+  // Extract detected causes from NLU output and context.
+  // Extract detected causes from NLU output and context.
   private extractDetectedCauses(
     nlu: NLUOutputWithRuleMapping,
     context: RuleEvaluationContext
@@ -688,9 +609,7 @@ export class DiagnosticFlowController {
     for (const symptom of symptomCodes) {
       const upperSymptom = symptom.toUpperCase();
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // BUG FIX #4: Map terminal damage symptoms to causes for authority resolution
-      // ═══════════════════════════════════════════════════════════════════════════
       
       // Terminal damage symptoms -> CROP authority causes
       if (upperSymptom.includes('PLANT_DEATH') || upperSymptom.includes('DIED') || upperSymptom.includes('DEAD')) {
@@ -734,10 +653,7 @@ export class DiagnosticFlowController {
     return [...new Set(causes)]; // Deduplicate
   }
   
-  /**
-   * Handle cases where crop rules are blocked by higher authority.
-   * Returns appropriate response for LAND, CLIMATE, or SYSTEM authority.
-   */
+  // Handle cases where crop rules are blocked by higher authority.
   private handleAuthorityBlock(
     decision: AuthorityDecision,
     context: RuleEvaluationContext
@@ -753,9 +669,7 @@ export class DiagnosticFlowController {
     };
   }
   
-  /**
-   * Get localized messages for authority blocks.
-   */
+  // Get localized messages for authority blocks.
   // English-only authority block messages — LLM narration layer translates at runtime
   private getAuthorityBlockMessageEn(decision: AuthorityDecision): string {
     switch (decision.authority) {
@@ -772,9 +686,7 @@ export class DiagnosticFlowController {
     }
   }
   
-  /**
-   * Get alternatives based on authority domain.
-   */
+  // Get alternatives based on authority domain.
   // English-only alternatives — LLM narration layer translates at runtime
   private getAuthorityAlternatives(decision: AuthorityDecision): string[] {
     switch (decision.authority) {
@@ -802,9 +714,7 @@ export class DiagnosticFlowController {
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // SESSION MANAGEMENT
-  // ═══════════════════════════════════════════════════════════════════════
   
   getSessionState(): DiagnosticSession {
     return this.session;
@@ -826,9 +736,7 @@ export class DiagnosticFlowController {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticFlowResponse {
   action: 'ASK_CLARIFICATION' | 'REQUEST_PHOTO' | 'RECOMMEND' | 'BLOCK' | 'ESCALATE' | 'AUTHORITY_BLOCK';

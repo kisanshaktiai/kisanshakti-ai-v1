@@ -1,18 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * UNIFIED QUERY ROUTER - Production-Grade Intent Classification
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Routes farmer questions to the appropriate handler:
- * 1. STATIC_DATA → Direct DB lookup (crop name, land area, sowing date)
- * 2. PEST_DISEASE_TREATMENT → Full Decision Brain pipeline
- * 3. IRRIGATION_SCHEDULING → Irrigation Decision Module
- * 4. WEATHER_SPRAY_TIMING → Weather API + spray window calculation
- * 5. MARKET_PRICE → Market Intelligence API
- * 6. GENERAL_INFO → LLM Direct with agricultural context
- * 
- * VERSION: 1.0.0 - Production implementation
- */
+// UNIFIED QUERY ROUTER - Production-Grade Intent Classification
 
 export type QueryRoute = 
   | 'STATIC_DATA'
@@ -43,9 +29,7 @@ export interface QueryRoutingResult {
   context_hints: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PATTERN DEFINITIONS FOR ROUTING
-// ═══════════════════════════════════════════════════════════════════════════
 
 // Static data queries (no AI needed)
 const STATIC_DATA_PATTERNS = [
@@ -213,11 +197,7 @@ const CROP_HEALTH_PATTERNS = [
   /shetat kay challay|khet kaisa hai/i
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FERTILIZER / NUTRITION SCHEDULING PATTERNS
-// Pure scheduling questions ("which fertilizer / which spray now") — NOT
-// symptom reports. Must route to FERTILIZER_NUTRITION, not PEST_DISEASE.
-// ═══════════════════════════════════════════════════════════════════════════
 const FERTILIZER_NUTRITION_PATTERNS = [
   // Devanagari (Marathi + Hindi)
   /खत|खाद|उर्वरक|पोषण|पोषक|fertili[sz]er|nutrient/i,
@@ -230,10 +210,7 @@ const FERTILIZER_NUTRITION_PATTERNS = [
   /khat\s*(devu|dya|kadhi|kab|kontya|kounsa)/i
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM TOKENS — actual disease/pest evidence (used to differentiate
-// "spray for treatment" from "preventive spray scheduling")
-// ═══════════════════════════════════════════════════════════════════════════
 const SYMPTOM_TOKENS = [
   // Color / damage
   /पिवळ|पीला|yellow|पान.*रंग|\bpival[ae]?\b|\bpivla\b|\bpila\b/i,
@@ -250,8 +227,6 @@ const SYMPTOM_TOKENS = [
 ];
 
 // Generic "treatment-action" tokens that, on their own (without SYMPTOM_TOKENS),
-// are NOT enough to declare a pest/disease problem. They often appear in
-// scheduling questions like "now which spray should I take".
 const GENERIC_ACTION_TOKENS = [
   /फवारणी|स्प्रे|spray|छिड़काव|favarni/i,
   /काय\s*करू|क्या\s*करूं|what\s*(should|can|to)\s*do/i,
@@ -264,9 +239,7 @@ function hasAnySymptomToken(message: string): boolean {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN ROUTING FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function routeQuery(
   message: string, 
@@ -343,8 +316,6 @@ export function routeQuery(
   }
   
   // Priority 3.7: FERTILIZER / NUTRITION scheduling (no symptoms)
-  // Farmer asks "what fertilizer/spray to take now" → stage-based plan,
-  // NOT a diagnostic pest/disease flow.
   const fertilizerScore = countPatternMatches(message, FERTILIZER_NUTRITION_PATTERNS);
   const hasSymptoms = hasAnySymptomToken(message);
   if (fertilizerScore >= 1 && !hasSymptoms) {
@@ -357,9 +328,6 @@ export function routeQuery(
   }
 
   // Priority 4: Pest/Disease treatment (needs full Decision Brain)
-  // GUARD: if the only PEST_DISEASE matches are generic action tokens
-  // (spray/उपाय/treatment) and there are NO actual symptom tokens, this is
-  // a scheduling request — fall through to fertilizer/general routes.
   const pestDiseaseScore = countPatternMatches(message, PEST_DISEASE_PATTERNS);
   if (pestDiseaseScore >= 1) {
     const genericActionScore = countPatternMatches(message, GENERIC_ACTION_TOKENS);
@@ -428,9 +396,7 @@ export function routeQuery(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function countPatternMatches(message: string, patterns: RegExp[]): number {
   return patterns.filter(p => p.test(message)).length;
@@ -520,9 +486,7 @@ function extractPestDiseaseEntities(message: string): QueryRoutingResult['detect
   return entities;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ROUTE REQUIREMENT CHECKER
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function getRouteRequirements(route: QueryRoute): {
   needs_land_context: boolean;

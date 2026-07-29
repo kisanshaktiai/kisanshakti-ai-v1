@@ -123,8 +123,6 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
   }
 
   // Load affected_plant_part for all observation codes seen — one small
-  // hydration step keeps modal_affected_part scope-agnostic (an observation
-  // code's affected_plant_part is a property of the code, not of the cell).
   const codes = Array.from(new Set(iom.map((r) => r.observation_code).filter(Boolean)));
   const partByCode = new Map<string, string>();
   try {
@@ -172,18 +170,7 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
   );
 }
 
-/**
- * DB-backed intent → observations lookup — SCOPE-AWARE.
- *
- * `scope` fields come from the frozen BiologicalState / canonical land
- * context. Missing `crop_code` returns an empty entry to prevent cross-crop
- * pollution; missing `growth_stage` or `das` degrade to "match `all`" and
- * "no DAS filter", which is safe because the DB curates `all` cells
- * intentionally.
- *
- * Returns EMPTY_ENTRY on cache miss or empty scope-filtered result. Never
- * substitute a hardcoded fallback or an unscoped union.
- */
+// DB-backed intent → observations lookup — SCOPE-AWARE.
 export function getObservationsForIntent(
   intentCode: string,
   scope?: IntentMappingScope,

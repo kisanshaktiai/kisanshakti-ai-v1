@@ -131,10 +131,7 @@ async function pagedLoad<T>(
   return { rows, partial };
 }
 
-/**
- * Boot-time preload. Idempotent + single-flight + TTL-gated.
- * Safe to call at the top of orchestrate() alongside preloadPhase1Caches().
- */
+// Boot-time preload. Idempotent + single-flight + TTL-gated.
 export async function preloadObservationIndex(supabase: Supa, opts: { force?: boolean } = {}): Promise<void> {
   if (!opts.force && isFresh()) return;
   if (state.loading) return state.loading;
@@ -160,13 +157,6 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
           supabase,
           'observation_translations',
           // FIX G1 (DB schema mismatch): observation_translations has columns
-          // display_text and description_text, not label / description. The
-          // prior PostgREST alias syntax "label:display_text" was NOT applied
-          // by this stack — Postgres received a bare `label` column reference
-          // and rejected the query. Query with real column names; map to the
-          // ObservationTranslationRow interface in the row-insertion loop
-          // below so all downstream accessors (getObservationTranslation,
-          // getObservationTranslations) keep working without any rename ripple.
           'observation_code, language_code, display_text, description_text',
         ),
         pagedLoad<ObservationIntentRow>(
@@ -202,8 +192,6 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
         let bucket = translationsByCode.get(k);
         if (!bucket) { bucket = []; translationsByCode.set(k, bucket); }
         // FIX G1: map DB columns display_text/description_text into the
-        // ObservationTranslationRow interface fields label/description so
-        // getObservationTranslation callers stay unchanged.
         bucket.push({
           observation_code: r.observation_code,
           language_code: r.language_code,
@@ -249,9 +237,7 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
   return state.loading;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // SYNC ACCESSORS (read-only, non-authoritative in Phase 2)
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function observationIndexReady(): boolean {
   return state.loadedAt !== null && state.masterByCode.size > 0;
@@ -263,10 +249,7 @@ export function getObservationMaster(code: string): ObservationMasterRow | null 
   return state.masterByCode.get(k) ?? null;
 }
 
-/**
- * Resolve any alias variant (upper `alias_code`, normalised, or free `alias_text`)
- * to its canonical observation_code. Returns null on miss.
- */
+// Resolve any alias variant (upper `alias_code`, normalised, or free `alias_text`)
 export function resolveAliasCanonical(anyKey: string): string | null {
   const k = nLower(anyKey);
   if (!k) return null;
@@ -299,20 +282,9 @@ export function observationIndexSnapshot() {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // SHADOW-DIFF API — per-site dual-read compare (Phase 2, 7-day window)
-// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Compare a legacy per-site DB read against the shared index. Emits
- * `[OBS_INDEX_DIFF]` when they disagree. NEVER throws. Callers keep using
- * their own `expected` value — the index is not authoritative yet.
- *
- * `site`    caller identifier, e.g. `symbol-resolver.alias`
- * `key`     the lookup key that was queried
- * `expected` value the legacy query returned (canonical code, master row, etc.)
- * `actual`   value the shared index returned for the same key
- */
+// Compare a legacy per-site DB read against the shared index. Emits
 export function observationIndexDiff(
   site: string,
   key: string,

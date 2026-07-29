@@ -1,15 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FARMER COMMUNICATION GENERATOR - TYPE DEFINITIONS v3.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Types for generating farmer-friendly, multilingual messages from
- * technical decision outputs. Supports Marathi, Hindi, and English.
- */
+// FARMER COMMUNICATION GENERATOR - TYPE DEFINITIONS v3.0
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type SupportedLanguage = string;
 export type LiteracyLevel = 'LOW' | 'MODERATE' | 'HIGH';
@@ -34,9 +25,7 @@ export interface ConversationContext {
   time_since_first_report_hours?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TRILINGUAL TEXT STRUCTURE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface TrilingualText {
   mr: string;
@@ -50,9 +39,7 @@ export interface TrilingualTextArray {
   en: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LAYER 1: IMMEDIATE ACTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ImmediateAction {
   emoji: string;
@@ -66,9 +53,7 @@ export interface ImmediateAction {
   weather_note?: TrilingualText;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LAYER 2: APPLICATION INSTRUCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MaterialItem {
   name: TrilingualText;
@@ -112,9 +97,7 @@ export interface ApplicationInstructions {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LAYER 3: RATIONALE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface Rationale {
   heading: TrilingualText;
@@ -144,9 +127,7 @@ export interface Rationale {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LAYER 4: WARNINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface WarningItem {
   icon: '❌' | '⛔' | '🚫' | '⚠️';
@@ -169,9 +150,7 @@ export interface Warnings {
   regulatory_notes?: TrilingualText;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LAYER 5: FOLLOW-UP
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FollowUpCheckItem {
   day: number;
@@ -196,9 +175,7 @@ export interface FollowUpPlan {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ECONOMIC SUMMARY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EconomicSummary {
   heading: TrilingualText;
@@ -218,9 +195,7 @@ export interface EconomicSummary {
   value_proposition: TrilingualText;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // COMPLETE COMMUNICATION OUTPUT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FarmerNotification {
   title: string;
@@ -290,9 +265,7 @@ export interface FarmerCommunication {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SPECIAL SCENARIO TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type CommunicationScenario = 
   | 'STANDARD_RECOMMENDATION'
@@ -312,10 +285,7 @@ export interface ScenarioContext {
   conflict_resolution_needed: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LANGUAGE TEMPLATES — English-only (LLM narration translates at runtime)
-// REFACTORED: Hardcoded mr/hi text removed. English canonical only.
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** @deprecated LLM narration layer generates greetings in target language */
 export const GREETINGS: Record<string, string[]> = {
@@ -359,9 +329,7 @@ export const SECTION_HEADINGS: Record<string, TrilingualText> = {
   'SAFETY': { en: '🦺 Safety:' }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EMOJI ACCESSIBILITY DESCRIPTIONS — English-only
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const EMOJI_DESCRIPTIONS: Record<string, TrilingualText> = {
   '📌': { en: 'Important' },

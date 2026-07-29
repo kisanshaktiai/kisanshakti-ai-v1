@@ -1,17 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * BUNDLED RULES - LIGHTWEIGHT STUB (v1.0.0-stub)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * This is a lightweight stub to prevent bundle timeout.
- * Rules are loaded from canonical files at runtime.
- * 
- * ARCHITECTURE: Database-first loading with canonical fallback.
- */
+// BUNDLED RULES - LIGHTWEIGHT STUB (v1.0.0-stub)
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface BundledRule {
   rule_id: string;
@@ -33,9 +22,7 @@ export interface BundledRule {
   // REMOVED: trigger_keywords - column was DROPPED per SSOT architecture
   // trigger_keywords now lives INSIDE conditions_json: conditions_json.trigger_keywords
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 5: New Response Contract Fields
-  // ═══════════════════════════════════════════════════════════════════════════
   action_text?: string;      // What to do
   reason_text?: string;      // Why (cause, risk, logic)
   knowledge_text?: string;   // Agronomic / scientific basis
@@ -48,21 +35,15 @@ export interface BundledRule {
   // PHASE 3: Strict 5-type enum aligned with database canonical values
   action_type?: 'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION';
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 1: Graph Control Fields
-  // ═══════════════════════════════════════════════════════════════════════════
   blocks_rule_ids?: string[];      // Rules this rule blocks from firing
   prerequisite_rule_ids?: string[]; // Rules that must fire before this one
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 2: Temporal Constraint Fields
-  // ═══════════════════════════════════════════════════════════════════════════
   crop_age_days_min?: number;      // Minimum crop age for rule applicability
   crop_age_days_max?: number;      // Maximum crop age for rule applicability
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 3: ETL Safety Gate Fields
-  // ═══════════════════════════════════════════════════════════════════════════
   etl_applicable?: boolean;        // Whether ETL checking applies to this rule
   etl_value_min?: number;          // Minimum threshold for pest count
   etl_value_max?: number;          // Maximum threshold (spray required above this)
@@ -75,16 +56,12 @@ export interface BundledRule {
   active_ingredient?: string;
   organic_alternative?: string;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 6: Safety Enhancement Fields
-  // ═══════════════════════════════════════════════════════════════════════════
   farmer_safety_level?: 'SAFE' | 'CAUTION' | 'EXPERT_ONLY'; // DB stores TEXT, not integer
   resistance_group?: string;       // Resistance management group (e.g., IRAC Group 1B)
   mode_of_action?: string;         // Chemical mode of action for rotation
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // OBSERVATION LAYER: Pre-filter fields from decision_rules table
-  // ═══════════════════════════════════════════════════════════════════════════
   required_observation_category?: string[] | null;  // PEST, DISEASE, NUTRIENT, etc.
   required_plant_part?: string[] | null;            // STEM, LEAF, ROOT, WHOLE, etc.
   
@@ -99,9 +76,7 @@ export interface BundleMetadata {
   rulesByCropGroup: Record<string, number>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STUB DATA - Rules loaded at runtime from canonical files
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const CROP_GROUP_RULES: Record<string, BundledRule[]> = {};
 export const SAFETY_RULES: BundledRule[] = [];

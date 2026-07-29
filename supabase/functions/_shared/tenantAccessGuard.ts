@@ -1,30 +1,4 @@
-/**
- * Tenant Access Guard — Phase 5 (Pilot)
- *
- * Single canonical entry-guard for authenticated, farmer-scoped edge functions.
- * Composes the existing helpers into one call so business logic stays clean.
- *
- * What it enforces, in order:
- *   1. JWT is present, well-formed, unexpired (validateJWT → getUser).
- *   2. x-tenant-id / x-farmer-id headers are present and valid UUIDs.
- *   3. The farmer row exists AND farmer.tenant_id === x-tenant-id.
- *   4. jwt.sub === x-farmer-id  (anti-spoof: a logged-in farmer cannot
- *      impersonate another farmer in the same tenant).
- *      Bypass: when the request is signed with the SERVICE_ROLE key
- *      (used by cron jobs and admin tooling), step 4 is skipped.
- *
- * Returns either:
- *   - GuardedContext  → safe to proceed
- *   - Response        → already-formed 401/403 ready to return
- *
- * Usage:
- *   const guard = await guardTenantAccess(req);
- *   if (guard instanceof Response) return guard;
- *   const { tenantId, farmerId, userId, supabase } = guard;
- *
- * Class C (public/config) functions MUST NOT use this guard.
- * Class D (webhooks) should use signature validation instead.
- */
+// Tenant Access Guard — Phase 5 (Pilot)
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { validateJWT } from './jwtValidator.ts';
@@ -59,19 +33,11 @@ export interface GuardedContext {
 export interface GuardOptions {
   /** Allow x-farmer-id to be missing (background jobs only). Default: false. */
   allowMissingFarmerId?: boolean;
-  /**
-   * Skip the jwt.sub === x-farmer-id check.
-   * Service-role callers always skip it; this option lets you skip it for
-   * specific admin routes that legitimately impersonate farmers.
-   * Default: false.
-   */
+  // Skip the jwt.sub === x-farmer-id check.
   allowFarmerImpersonation?: boolean;
 }
 
-/**
- * Detect whether the Authorization header is the project's SERVICE_ROLE key.
- * Compared in constant-ish time by length + equality.
- */
+// Detect whether the Authorization header is the project's SERVICE_ROLE key.
 function isServiceRoleRequest(req: Request): boolean {
   const auth = req.headers.get('authorization');
   if (!auth?.startsWith('Bearer ')) return false;
@@ -81,17 +47,7 @@ function isServiceRoleRequest(req: Request): boolean {
   return token.length === serviceKey.length && token === serviceKey;
 }
 
-/**
- * Detect whether the Authorization header is the project's ANON key.
- * The farmer app uses custom auth (x-farmer-id / x-tenant-id headers); when
- * no real Supabase session JWT exists the client falls back to the anon key
- * (or publishable key) as Bearer. In that case we skip JWT/spoof checks and
- * rely on header validation + farmer↔tenant association lookup.
- *
- * Detection strategy: decode the JWT payload and check for `role: "anon"`
- * with no `sub` claim. This is more reliable than string-comparing the env
- * var (which may differ between deployments / publishable vs anon keys).
- */
+// Detect whether the Authorization header is the project's ANON key.
 function isAnonKeyRequest(req: Request): boolean {
   const auth = req.headers.get('authorization');
   if (!auth?.startsWith('Bearer ')) return false;
@@ -116,9 +72,7 @@ function isAnonKeyRequest(req: Request): boolean {
   }
 }
 
-/**
- * Main guard entry point. Call at the top of any Class A handler.
- */
+// Main guard entry point. Call at the top of any Class A handler.
 export async function guardTenantAccess(
   req: Request,
   options: GuardOptions = {},
@@ -143,9 +97,6 @@ export async function guardTenantAccess(
   const isAnonKey = !isServiceRole && isAnonKeyRequest(req);
 
   // ── Step 1: JWT validation ─────────────────────────────────────────────
-  // Skipped for service-role callers (cron/admin) AND for anon-key callers
-  // (the farmer app uses custom auth via x-farmer-id / x-tenant-id headers,
-  // which are validated against the farmers table in Step 3 below).
   let jwtUserId: string | null = null;
   if (!isServiceRole && !isAnonKey) {
     const jwtResult = await validateJWT(req);

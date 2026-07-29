@@ -1,20 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * IPM RECOMMENDATIONS — FALLBACK DATA
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * ⚠️ DEPRECATION NOTICE:
- * This file contains hardcoded IPM/disease knowledge that DUPLICATES
- * data in the `decision_rules` database. It is retained ONLY as a
- * fallback when DB rules fail to load.
- * 
- * MIGRATION TARGET: All IPM recommendations should be sourced from
- * `decision_rules` with category='ipm' and appropriate condition_codes.
- * Once DB coverage is complete, this file should be deleted.
- * 
- * All text is English-only — LLM narration layer translates at runtime.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// IPM RECOMMENDATIONS — FALLBACK DATA
 
 interface IPMRecommendation {
   crop_codes: string[];
@@ -136,9 +120,7 @@ const DISEASE_DATABASE: DiseaseRecommendation[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CULTURAL FALLBACK STRATEGIES
-// ═══════════════════════════════════════════════════════════════════════════
 
 const CULTURAL_STRATEGIES: Record<string, string[]> = {
   'SUGARCANE': [

@@ -1,11 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RULE MODULE RESOLVER - MAPS NLU OUTPUT TO DECISION GRAPH MODULES
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Determines which TypeScript rule modules from src/decision-graph/
- * should be loaded and evaluated based on NLU output.
- */
+// RULE MODULE RESOLVER - MAPS NLU OUTPUT TO DECISION GRAPH MODULES
 
 import {
   RuleModuleReference,
@@ -19,14 +12,9 @@ import {
   ContextRequirements,
 } from './rule-module-types.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE RULE MODULE RESOLVER
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Resolves which rule modules should be loaded based on NLU output
- * Always loads safety-critical modules (P0-P2) first
- */
+// Resolves which rule modules should be loaded based on NLU output
 export function resolveRuleModules(
   intent: NLUIntent,
   entities: ExtractedEntities,
@@ -34,9 +22,7 @@ export function resolveRuleModules(
 ): RuleModuleReference[] {
   const modules: RuleModuleReference[] = [];
   
-  // ═══════════════════════════════════════════════════════════════════════
   // P0 - EMERGENCY RULES (Always load first)
-  // ═══════════════════════════════════════════════════════════════════════
   modules.push({
     category: 'safety-rules',
     moduleFile: 'emergency-rules',
@@ -46,9 +32,7 @@ export function resolveRuleModules(
     reason: 'Emergency detection and override - always required'
   });
   
-  // ═══════════════════════════════════════════════════════════════════════
   // P1 - REGULATORY COMPLIANCE (Always load)
-  // ═══════════════════════════════════════════════════════════════════════
   modules.push({
     category: 'safety-rules',
     moduleFile: 'chemical-safety-rules',
@@ -67,9 +51,7 @@ export function resolveRuleModules(
     reason: 'Pre-harvest interval compliance - always required'
   });
   
-  // ═══════════════════════════════════════════════════════════════════════
   // P2 - WEATHER & ENVIRONMENTAL SAFETY (Always load)
-  // ═══════════════════════════════════════════════════════════════════════
   modules.push({
     category: 'safety-rules',
     moduleFile: 'weather-action-rules',
@@ -79,9 +61,7 @@ export function resolveRuleModules(
     reason: 'Weather restrictions for spray timing'
   });
   
-  // ═══════════════════════════════════════════════════════════════════════
   // P3 - CROP STAGE & REGIONAL RULES (Context-dependent)
-  // ═══════════════════════════════════════════════════════════════════════
   if (entities.crop_code) {
     modules.push({
       category: 'safety-rules',
@@ -102,9 +82,7 @@ export function resolveRuleModules(
     reason: 'Regional and seasonal adaptations'
   });
   
-  // ═══════════════════════════════════════════════════════════════════════
   // INTENT-SPECIFIC RULES
-  // ═══════════════════════════════════════════════════════════════════════
   
   if (intent === 'PEST_PROBLEM' || intent === 'EMERGENCY') {
     // P4 - Economic Threshold Rules
@@ -214,9 +192,7 @@ export function resolveRuleModules(
     });
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // SAFETY ALERT OVERRIDES
-  // ═══════════════════════════════════════════════════════════════════════
   
   if (safetyAlerts.banned_substance_mentioned) {
     // Ensure chemical safety is marked as highest priority
@@ -250,9 +226,7 @@ export function resolveRuleModules(
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT REQUIREMENTS DETERMINATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function determineContextRequirements(
   intent: NLUIntent,
@@ -284,9 +258,7 @@ export function determineContextRequirements(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION QUESTION GENERATOR FOR RULE REQUIREMENTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateRuleRequiredQuestions(
   intent: NLUIntent,
@@ -404,9 +376,7 @@ export function generateRuleRequiredQuestions(
   return questions;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BUILD COMPLETE NLU OUTPUT WITH RULE MAPPING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function buildNLUOutputWithRuleMapping(
   language: string,

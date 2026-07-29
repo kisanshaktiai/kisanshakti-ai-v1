@@ -60,20 +60,7 @@ export interface IOMAllowedResult {
   };
 }
 
-/**
- * Stage family expansion — SSOT is `public.crop_stage_graph` via
- * `utils/stage-knowledge-cache.ts`.
- *
- * 2026-07-26 (forensic audit F2): the 13-entry hardcoded `STAGE_SYNONYMS`
- * map that lived here was DELETED. It was agronomy-in-TypeScript, it had
- * already been removed from `runtime/clarification-contract.ts` and
- * `runtime/stage-family-shim.ts`, and it fed a HARD SQL gate
- * (`.in('growth_stage', …)`) — any of the 16 curated IOM stage values that
- * were absent from the map collapsed the allowlist and dropped valid rows.
- *
- * On cache miss we degrade to `[stage, 'all']` and log
- * `[IOM_GATE_STAGE_MISS]`. We NEVER substitute a hardcoded family.
- */
+// Stage family expansion — SSOT is `public.crop_stage_graph` via
 function expandStageFamily(crop: string, stage?: string | null, cultivationMethod?: string | null): string[] {
   const key = canonicalStageKey(stage);
   if (!key) return ['all'];
@@ -85,11 +72,7 @@ function expandStageFamily(crop: string, stage?: string | null, cultivationMetho
   return Array.from(new Set([...fam.map((s) => canonicalStageKey(s)).filter(Boolean), key, 'all']));
 }
 
-/**
- * Load the IOM-allowed observation set for the given context.
- * Returns an empty allowedSet on any error — caller MUST NOT default to
- * "keep everything".
- */
+// Load the IOM-allowed observation set for the given context.
 export async function loadIOMAllowed(
   supabase: any,
   intentCode: string,
@@ -119,9 +102,6 @@ export async function loadIOMAllowed(
 
   try {
     // PR-8 · Paginate the intent_observation_mapping query. PostgREST caps a
-    // single .select() at 1000 rows; a truncated allowlist silently drops
-    // valid observation codes and biases the decision graph. Loop with
-    // .range() until an incomplete page arrives.
     const PAGE_SIZE = 1000;
     const rows: any[] = [];
     for (let page = 0; page < 20; page++) {
@@ -194,35 +174,8 @@ export async function loadIOMAllowed(
   }
 }
 
-/**
- * Filter a list of candidate hypotheses to keep only those that have at
- * least one observable_characteristic whose observation_key is in the
- * IOM-allowed set. Returns the kept list and a list of dropped causes for
- * tracing.
- *
- * If `allowedSet` is empty (e.g. IOM lookup failed or no curated rows for
- * this cell), this function returns the input unchanged — the caller is
- * responsible for halting or applying additional safety filters. We never
- * drop everything on an empty allowlist because that would crash genuine
- * diagnosis flows where no IOM row exists yet.
- */
-/**
- * AUDIT-ONLY hypothesis IOM check.
- *
- * Architecture invariant (2026-07-08):
- *   `intent_observation_mapping` is the OBSERVATION discovery layer — it
- *   answers "what observations should we collect for this intent?", NOT
- *   "which hypotheses are valid". Hypothesis authority comes from
- *   `hypothesis_conditions` + `hypothesis_master`. Killing hypotheses that
- *   already survived the DB graph just because their surface observation
- *   labels are absent from an IOM cell corrupts the neuro-symbolic pipeline
- *   (OBS → HYP → RULE → DECISION).
- *
- * This function no longer removes hypotheses. It emits an [IOM_AUDIT] trace
- * for observability and always returns the input list unchanged, with any
- * non-overlapping candidates reported in `dropped` so downstream code can
- * still surface them for curation review.
- */
+// Filter a list of candidate hypotheses to keep only those that have at
+// AUDIT-ONLY hypothesis IOM check.
 export function filterHypothesesByIOM<
   T extends {
     cause?: string;

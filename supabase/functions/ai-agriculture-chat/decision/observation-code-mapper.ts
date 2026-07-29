@@ -1,27 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION CODE MAPPER v2.0.0 (100% Deterministic, Crash-Proof)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Convert SemanticExtraction (intent_code) to stable ObservationKey codes
- * using pure pattern matching. This is the ONLY layer that produces codes.
- * 
- * v2.0.0 CHANGES:
- * - Now works with intent_code-based SemanticExtraction (v5.1.0)
- * - All field accesses are null-safe with defaults
- * - Falls back gracefully when legacy fields are empty
- * 
- * RULES:
- * - 100% deterministic: same input ALWAYS produces same output
- * - Uses simple .includes() pattern matching on English text
- * - Maps to ObservationKey enum values from observation-ontology.ts
- * - NO LLM calls, NO randomness, NO external dependencies
- * - NEVER crashes on undefined/null fields
- * 
- * @version 2.0.0
- * @phase Universal NLU Refactoring - Crash-Proof Edition
- */
+// OBSERVATION CODE MAPPER v2.0.0 (100% Deterministic, Crash-Proof)
 
 import { ObservationKey } from './observation-ontology.ts';
 import type { SemanticExtraction } from '../agents/semantic-extractor.ts';
@@ -35,9 +12,7 @@ import {
 
 export const OBSERVATION_CODE_MAPPER_VERSION = '3.1.0'; // P8: shadow-diff observation_aliases against shared index
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MappedObservationCodes {
   observation_codes: ObservationKey[];         // All matched observation codes
@@ -50,33 +25,9 @@ export interface MappedObservationCodes {
   patterns_matched: string[];                  // For audit trail
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTENT CODE → OBSERVATION CODES  (v3.0.0 — DB-DRIVEN, SSOT)
-// ═══════════════════════════════════════════════════════════════════════════
-// The 15-row hardcoded INTENT_TO_OBSERVATION_MAPPINGS table that used to
-// live here has been DELETED (2026-07-08, PR-1). Intent→observation mapping
-// is now sourced exclusively from `public.intent_observation_mapping`
-// (13,539 active rows across 86 intents at deletion time) via the request-
-// scoped `utils/observation-mapping-cache.ts` cache preloaded in
-// `agents/orchestrator.ts`.
-//
-// The DB carries 78–406 curated observations per intent — 30–100× the old
-// hardcoded coverage. 2026-07-26 (forensic audit F1): this comment previously
-// claimed a filter of assertion_strength IN ('LITERAL','STRONG'). That was
-// both stale and wrong — 'STRONG' is not a value in the enum (the real values
-// are LITERAL / STRONG_HYPOTHESIS / DIFFERENTIAL) and no such filter exists in
-// the cache. `assertion_strength` is an ORDERING weight, never an exclusion
-// gate; see `decision/evidence-confidence.ts`. The `default_part` field
 
 // is now derived from the modal `observation_master.affected_plant_part`
-// across matched observations; `default_severity` remains a runtime neutral
-// (SEVERITY_MEDIUM) because severity is not an intent-level property in the
-// current schema and belongs to the observation, not the intent.
-//
-// Cache miss policy: NEVER fall back to a hardcoded intent map. Emit
-// `[OBS_MAPPING_CACHE_MISS]` and continue with an empty intent contribution
-// — the visual/pest fallback tables below still run to salvage codes from
-// legacy free-text fields (those are separately scheduled for PR-1b).
 
 /** DB `affected_plant_part` value → canonical ObservationKey AFFECTED_PART_*.
  *  Purely a code-shape adapter (framework, not agronomy). */
@@ -102,9 +53,7 @@ function toAffectedPartKey(dbValue: string | null | undefined): ObservationKey {
   return AFFECTED_PART_KEY_BY_DB_VALUE[v] ?? ObservationKey.AFFECTED_PART_UNKNOWN;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VISUAL CHANGES → OBSERVATION CODES MAPPING (Legacy fallback)
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface PatternMapping {
   patterns: string[];
@@ -178,9 +127,7 @@ const VISUAL_CHANGE_MAPPINGS: PatternMapping[] = [
   { patterns: ['insect', 'pest', 'bug', 'worm'], code: ObservationKey.INSECT_PRESENCE_CONFIRMED },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PEST BEHAVIOR → OBSERVATION CODES MAPPING
-// ═══════════════════════════════════════════════════════════════════════════
 
 const PEST_BEHAVIOR_MAPPINGS: PatternMapping[] = [
   { patterns: ['boring', 'tunneling', 'internal damage'], code: ObservationKey.STEM_BORING_MARKS },
@@ -192,9 +139,7 @@ const PEST_BEHAVIOR_MAPPINGS: PatternMapping[] = [
   { patterns: ['burrowing'], code: ObservationKey.ROOTS_ROTTED },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AFFECTED PART → OBSERVATION CODES MAPPING
-// ═══════════════════════════════════════════════════════════════════════════
 
 const AFFECTED_PART_MAPPINGS: Record<string, ObservationKey> = {
   'leaves': ObservationKey.AFFECTED_PART_LEAF,
@@ -217,9 +162,7 @@ const AFFECTED_PART_MAPPINGS: Record<string, ObservationKey> = {
   'grains': ObservationKey.AFFECTED_PART_FRUIT,
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DISTRIBUTION PATTERN → OBSERVATION CODES MAPPING
-// ═══════════════════════════════════════════════════════════════════════════
 
 const DISTRIBUTION_MAPPINGS: Record<string, ObservationKey> = {
   'entire field': ObservationKey.ENTIRE_FIELD_AFFECTED,
@@ -242,9 +185,7 @@ const DISTRIBUTION_MAPPINGS: Record<string, ObservationKey> = {
   'low lying': ObservationKey.LOW_LYING_AREA_AFFECTED,
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SEVERITY → OBSERVATION CODES MAPPING
-// ═══════════════════════════════════════════════════════════════════════════
 
 const SEVERITY_MAPPINGS: Record<string, ObservationKey> = {
   'mild': ObservationKey.SEVERITY_LOW,
@@ -253,9 +194,7 @@ const SEVERITY_MAPPINGS: Record<string, ObservationKey> = {
   'critical': ObservationKey.SEVERITY_CRITICAL,
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFE FIELD ACCESSORS (Crash-proof)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function safeArray<T>(arr: T[] | undefined | null): T[] {
   return Array.isArray(arr) ? arr : [];
@@ -265,28 +204,10 @@ function safeString(str: string | undefined | null): string {
   return typeof str === 'string' ? str : '';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN MAPPING FUNCTION (v2.0.0 - Intent-Based with Legacy Fallback)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Map semantic extraction to canonical ObservationKey codes
- * 100% DETERMINISTIC - same input always produces same output
- * 
- * v2.0.0: Uses intent_code as primary mapping source, with legacy field fallback
- * 
- * @param semantic - SemanticExtraction from LLM layer
- * @returns MappedObservationCodes - Canonical codes for rule engine
- */
-/**
- * Scope for the DB-SSOT `intent_observation_mapping` lookup. Comes from the
- * frozen `BiologicalState` / canonical land context.
- *
- * IMPORTANT: absence of `crop_code` DISABLES intent expansion — we refuse to
- * emit cross-crop observation codes. The cache would filter them away, but
- * we log the miss loudly here so callers wire the scope through instead of
- * silently expanding nothing.
- */
+// Map semantic extraction to canonical ObservationKey codes
+// Scope for the DB-SSOT `intent_observation_mapping` lookup. Comes from the
 export interface ObservationMappingScope {
   crop_code?: string | null;
   growth_stage?: string | null;
@@ -309,15 +230,7 @@ export function mapToObservationCodes(
   let affectedPartCode = ObservationKey.AFFECTED_PART_UNKNOWN;
   let severityCode = ObservationKey.SEVERITY_MEDIUM;
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIMARY PATH — DB-SSOT intent → observations (scope-aware, 2026-07-09)
-  // Reads from `utils/observation-mapping-cache.ts` (SSOT:
-  // public.intent_observation_mapping). Cache miss NEVER falls back to a
-  // hardcoded intent map — logs `[OBS_MAPPING_CACHE_MISS]` and continues.
-  //
-  // The lookup is CROP / STAGE / DAS scoped so a rice land never receives
-  // brinjal / cotton / onion observation codes for the same intent.
-  // ═══════════════════════════════════════════════════════════════════════════
   if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
     if (!isObservationMappingLoaded()) {
       console.warn(`[OBS_MAPPING_CACHE_MISS] intent=${intentCode} reason=cache_not_loaded action=skip_intent_expansion`);
@@ -339,9 +252,6 @@ export function mapToObservationCodes(
         usedIntentMapping = true;
         for (const rawCode of entry.observation_codes) {
           // ObservationKey is a string-valued enum — DB observation_codes
-          // cast directly. If a code has no matching enum member it flows
-          // through as-is; the rule engine already treats these as opaque
-          // strings for matching against decision_rules.observable_characteristics.
           const code = rawCode as ObservationKey;
           if (!observationCodes.includes(code)) {
             observationCodes.push(code);
@@ -350,8 +260,6 @@ export function mapToObservationCodes(
         }
         affectedPartCode = toAffectedPartKey(entry.modal_affected_part);
         // severityCode intentionally left at runtime neutral (SEVERITY_MEDIUM).
-        // Severity is an observation-level property, not intent-level, and
-        // the DB does not curate a per-intent default.
         patternsMatched.push(`intent_part:${affectedPartCode}`);
         patternsMatched.push(`db_ssot:intent_observation_mapping rows=${entry.source_rows}`);
         console.log(
@@ -369,9 +277,7 @@ export function mapToObservationCodes(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // FALLBACK: Map from legacy fields if available (backward compatibility)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // Map visual changes (if any exist)
   const visualChanges = safeArray(semantic?.visual_changes);
@@ -450,9 +356,7 @@ export function mapToObservationCodes(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // BUILD RESULT
-  // ═══════════════════════════════════════════════════════════════════════════
   const result: MappedObservationCodes = {
     observation_codes: observationCodes,
     affected_part_code: affectedPartCode,
@@ -473,9 +377,7 @@ export function mapToObservationCodes(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VOCABULARY BRIDGE: ALIAS EXPANSION (DB-Driven)
-// ═══════════════════════════════════════════════════════════════════════════
 
 type ObservationAliasRow = { alias_code: string; canonical_code: string };
 
@@ -525,9 +427,6 @@ async function loadObservationAliases(supabaseClient?: any): Promise<Observation
   }));
 
   // P8 (2026-07-24): SHADOW-DIFF observation_aliases against shared index.
-  // The DB read above is still authoritative. We only LOG divergence: any
-  // alias whose canonical resolution disagrees with the shared observation
-  // index. Non-fatal, sampled to keep logs bounded.
   if (_observationIndexReady()) {
     let checked = 0;
     for (const r of rows) {
@@ -548,12 +447,7 @@ async function loadObservationAliases(supabaseClient?: any): Promise<Observation
   return rows;
 }
 
-/**
- * Expand observation vocabulary so the rule engine sees BOTH generic + specific codes.
- *
- * - If a code is an alias_code: add its canonical_code(s)
- * - If a code is a canonical_code: add all alias_code(s)
- */
+// Expand observation vocabulary so the rule engine sees BOTH generic + specific codes.
 export async function expandObservationVocabularyViaAliases(
   inputCodes: string[],
   supabaseClient?: any
@@ -605,21 +499,7 @@ export async function expandObservationVocabularyViaAliases(
   return { expanded_codes: Array.from(expanded), trace };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P1 (Batch A) — INTENT-PEER SEED EXPANSION (DB-SSOT, zero hardcoded agronomy)
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// When a farmer-confirmed observation code produces no hypothesis anchor, the
-// graph is NOT allowed to die. `public.intent_observation_mapping` is the only
-// curated table that relates observation codes to each other through a shared
-// diagnostic intent. We use it as a pure identity/adjacency lookup:
-//
-//   seed_codes → intent_code(s) that reference them
-//              → sibling observation_code(s) under those intents
-//                (scoped by crop_code / growth_stage / DAS when known)
-//
-// No agronomy is authored here. If the DB has no curated peers the function
-// returns an empty expansion and the caller reports a structured gap.
 
 export interface IntentPeerContext {
   crop_code?: string | null;
@@ -738,13 +618,9 @@ export async function expandSeedsViaIntentPeers(
 
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Convert MappedObservationCodes to Set<ObservationKey> for rule engine
- */
+// Convert MappedObservationCodes to Set<ObservationKey> for rule engine
 export function toObservationKeySet(mapped: MappedObservationCodes): Set<ObservationKey> {
   const keys = new Set<ObservationKey>(mapped.observation_codes);
   keys.add(mapped.affected_part_code);
@@ -755,17 +631,13 @@ export function toObservationKeySet(mapped: MappedObservationCodes): Set<Observa
   return keys;
 }
 
-/**
- * Check if mapping produced any meaningful codes
- */
+// Check if mapping produced any meaningful codes
 export function hasMeaningfulCodes(mapped: MappedObservationCodes): boolean {
   return mapped.observation_codes.length > 0 || 
          mapped.affected_part_code !== ObservationKey.AFFECTED_PART_UNKNOWN;
 }
 
-/**
- * Get observation codes as string array (for logging/storage)
- */
+// Get observation codes as string array (for logging/storage)
 export function serializeMappedCodes(mapped: MappedObservationCodes): string[] {
   const codes = [...mapped.observation_codes];
   codes.push(mapped.affected_part_code);
@@ -776,9 +648,7 @@ export function serializeMappedCodes(mapped: MappedObservationCodes): string[] {
   return codes;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   mapToObservationCodes,

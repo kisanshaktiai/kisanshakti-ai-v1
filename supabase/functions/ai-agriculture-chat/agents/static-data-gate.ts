@@ -1,24 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * STATIC DATA GATE - Zero-AI Cost Response for Land Attribute Queries
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * This module intercepts ALL static data queries BEFORE NLU/AI processing.
- * 
- * CRITICAL PRINCIPLE: If data is in database, NEVER call AI to retrieve it.
- * 
- * Handles:
- * - Crop name queries
- * - Land area queries
- * - Soil type queries
- * - Sowing date queries
- * - Crop stage queries (calculated from sowing_date)
- * - Location queries
- * - Irrigation type queries
- * 
- * Processing time: <50ms (vs 2-5 seconds with AI)
- * Cost: $0 (vs $0.0001-0.001 per AI call)
- */
+// STATIC DATA GATE - Zero-AI Cost Response for Land Attribute Queries
 
 export interface LandContext {
   land_id: string;
@@ -63,9 +43,7 @@ export interface StaticDataGateOutput {
   processing_time_ms: number;
 }
 
-/**
- * Pattern definitions for static queries (language-agnostic)
- */
+// Pattern definitions for static queries (language-agnostic)
 const STATIC_QUERY_PATTERNS = {
   CROP_NAME: {
     patterns: [
@@ -196,17 +174,11 @@ const STATIC_QUERY_PATTERNS = {
   }
 };
 
-/**
- * MAIN GATE FUNCTION - Check and handle static queries
- * 
- * CRITICAL: This MUST be called BEFORE NLU Agent
- */
+// MAIN GATE FUNCTION - Check and handle static queries
 export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateOutput {
   const startTime = performance.now();
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL VALIDATION: Land context MUST be present for most static queries
-  // ═══════════════════════════════════════════════════════════════════════════
   if (!input.land_context) {
     console.log('⚠️ [StaticGate] No land context - passing to AI pipeline');
     return { handled: false, processing_time_ms: performance.now() - startTime, confidence: 0 };
@@ -215,9 +187,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
   const message = input.farmer_message.trim();
   const lang = input.language;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: CROP NAME QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pattern of STATIC_QUERY_PATTERNS.CROP_NAME.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] CROP_NAME query detected');
@@ -298,9 +268,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 2: LAND AREA QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pattern of STATIC_QUERY_PATTERNS.LAND_AREA.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] LAND_AREA query detected');
@@ -340,9 +308,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 3: SOWING DATE QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pattern of STATIC_QUERY_PATTERNS.SOWING_DATE.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] SOWING_DATE query detected');
@@ -394,9 +360,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 4: CROP STAGE QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pattern of STATIC_QUERY_PATTERNS.CROP_STAGE.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] CROP_STAGE query detected');
@@ -469,9 +433,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 5: SOIL TYPE QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pattern of STATIC_QUERY_PATTERNS.SOIL_TYPE.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] SOIL_TYPE query detected');
@@ -509,9 +471,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 6: IRRIGATION QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pattern of STATIC_QUERY_PATTERNS.IRRIGATION.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] IRRIGATION query detected');
@@ -550,9 +510,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 7: LOCATION QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pattern of STATIC_QUERY_PATTERNS.LOCATION.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] LOCATION query detected');
@@ -602,9 +560,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
   return { handled: false, processing_time_ms: performance.now() - startTime, confidence: 0 };
 }
 
-/**
- * Utility: Validate if land context is complete enough for crop-related queries
- */
+// Utility: Validate if land context is complete enough for crop-related queries
 export function validateLandContextForCropQueries(landContext: LandContext | null): {
   isValid: boolean;
   missingFields: string[];

@@ -1,31 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * WORLD-CLASS DELIVERY VALIDATOR
- * Ensures ALL Rule Engine Recommendations Reach Farmers
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Transform LLM from EDITOR to PRESENTER.
- * Validate that ALL recommendations from Rule Engine appear in final response.
- * 
- * PROBLEM SOLVED:
- * LLM was making EDITORIAL decisions - dropping chemical recommendations
- * to maintain "gentle, caring" tone. This causes ₹45,100/acre loss per farmer.
- * 
- * SOLUTION:
- * 1. Track all recommendations from Rule Engine
- * 2. Verify ALL appear in final response text
- * 3. Block delivery if critical recommendations missing
- * 4. Log violations for audit
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// WORLD-CLASS DELIVERY VALIDATOR
 
 export const DELIVERY_VALIDATOR_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RecommendationItem {
   product_name: string;
@@ -53,9 +30,7 @@ export interface DeliveryValidationResult {
   audit_log: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SEVERITY-BASED PRESENTATION ORDER
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const SEVERITY_BASED_ORDER: Record<string, string[]> = {
   'CRITICAL': ['CHEMICAL', 'BIOLOGICAL', 'CULTURAL'], // Most effective first
@@ -64,10 +39,7 @@ export const SEVERITY_BASED_ORDER: Record<string, string[]> = {
   'LOW': ['CULTURAL', 'BIOLOGICAL']
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PRODUCT NAME ALIASES
-// Same product may appear with different names
-// ═══════════════════════════════════════════════════════════════════════════
 
 const PRODUCT_ALIASES: Record<string, string[]> = {
   'chlorantraniliprole': ['coragen', 'क्लोरांट्रानिलिप्रोल', 'कोराजेन', 'rynaxypyr'],
@@ -84,9 +56,7 @@ const PRODUCT_ALIASES: Record<string, string[]> = {
   'neem': ['निंब', 'नीम', 'azadirachtin', 'अॅझाडिरॅक्टिन']
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXTRACT RECOMMENDATIONS FROM RULE ENGINE OUTPUT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function extractRecommendations(decisionOutput: any): RecommendationItem[] {
   const recommendations: RecommendationItem[] = [];
@@ -156,9 +126,7 @@ export function extractRecommendations(decisionOutput: any): RecommendationItem[
   return recommendations;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CHECK IF PRODUCT APPEARS IN RESPONSE TEXT
-// ═══════════════════════════════════════════════════════════════════════════
 
 function productAppearsInResponse(productName: string, responseText: string): boolean {
   const lowerResponse = responseText.toLowerCase();
@@ -191,9 +159,7 @@ function productAppearsInResponse(productName: string, responseText: string): bo
   return false;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN VALIDATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function validateDelivery(
   decisionOutput: any,
@@ -307,9 +273,7 @@ export function validateDelivery(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GENERATE MUST-INCLUDE CONSTRAINT FOR LLM PROMPT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateMustIncludeConstraint(
   decisionOutput: any,
@@ -363,9 +327,7 @@ If ANY product is missing, you are BLOCKING the farmer from getting complete adv
 ═══════════════════════════════════════════════════════════════════════════`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   validateDelivery,

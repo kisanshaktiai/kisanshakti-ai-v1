@@ -1,35 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FILE:      supabase/functions/ai-agriculture-chat/agents/rule-engine-executor.ts
- * ROLE:      Pure rule execution engine — evaluates rules and outputs
- *            structured decisions. NO language text (mr/hi/en).
- * AUTHORITY: LEGACY-SHIM over bundled-rules/loader.ts (SSOT). Scheduled to
- *            collapse in PR-3 Full.
- * STATUS:    ACTIVE (wrapper) — emits [RULE_ENGINE_LEGACY_WRAPPER] on invoke.
- * VERSION:   v4.0
- * LAST_PR:   PR-6 (header stamping, 2026-07-06)
- * STAMPED:   2026-07-06
- * NOTES:     Farmer-facing text handled downstream via i18n_keys + narrator.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// FILE:      supabase/functions/ai-agriculture-chat/agents/rule-engine-executor.ts
 
-/**
- * ARCHITECTURAL ROLE:
- * - Executes symbolic rules in priority order
- * - Outputs ONLY structured decision objects
- * - Contains NO language text (mr/hi/en)
- * - All farmer-facing messages via i18n_keys
- * - Narration layer handles text rendering
- * 
- * Production-grade rule execution engine that:
- * - Loads TypeScript rule modules dynamically
- * - Executes rules in priority order (P0 → P6)
- * - Resolves conflicts between competing recommendations
- * - Calculates economic viability
- * - Generates complete decision packages with audit trails
- * 
- * VERSION: 4.0.0 - SSOT Compliant
- */
+// ARCHITECTURAL ROLE:
 
 import type {
   RuleExecutionInput,
@@ -64,9 +35,7 @@ import { evaluateDecisionGraph, type RuleEvaluationContext } from './decision-gr
 
 export const RULE_ENGINE_EXECUTOR_VERSION = '4.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMBOLIC OUTPUT CONTRACT - Language-neutral
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RuleExecutionResult {
   rules_evaluated: number;
@@ -85,17 +54,12 @@ export interface RuleExecutionResult {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE ENGINE EXECUTOR CLASS - SSOT Compliant
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class RuleEngineExecutor {
   private rulesVersion: string = '2024.12.27';
   
-  /**
-   * Main entry point - Execute rules and generate decision
-   * Returns structured output - NO language text
-   */
+  // Main entry point - Execute rules and generate decision
   async execute(input: RuleExecutionInput): Promise<DecisionOutput> {
     const startTime = Date.now();
     const traceId = (input as any).trace_id || `rule_${Date.now().toString(36)}`;
@@ -220,10 +184,6 @@ export class RuleEngineExecutor {
       console.log(`  Total matched: ${totalRulesMatched}`);
       
       // GraphTruth contract: no rules matched → emit NEEDS_MORE_EVIDENCE sentinel.
-      // We DO NOT fabricate a MONITOR_ONLY primary_decision here — that was a
-      // symbolic bypass masquerading as agronomic advice. Downstream farmer
-      // response layer must render a differential question from
-      // observation_differential_questions instead.
       if (totalRulesMatched === 0 && bridgeResults.length === 0) {
         console.log(`[GRAPH_ZERO_RULE_MATCH] no rule/bridge matches — emitting NEEDS_MORE_EVIDENCE (no fabricated MONITOR advisory)`);
         return this.generateNeedsMoreEvidenceDecision(input, startTime, 'NO_RULE_MATCH');
@@ -269,15 +229,11 @@ export class RuleEngineExecutor {
     } catch (error) {
       console.error('[RuleEngine] Error:', error);
       // GraphTruth contract: on engine failure we do NOT invent a fake MONITOR
-      // recommendation. Emit NEEDS_MORE_EVIDENCE sentinel with the error captured
-      // in the audit trail so downstream layers surface a safe clarification.
       return this.generateNeedsMoreEvidenceDecision(input, startTime, `ENGINE_ERROR:${(error as Error).message}`);
     }
   }
   
-  /**
-   * Get execution result summary - structured output
-   */
+  // Get execution result summary - structured output
   getExecutionSummary(decisions: DecisionsByPriority, startTime: number): RuleExecutionResult {
     const allRules = Object.values(decisions).flat();
     const matchedRuleIds = allRules.map(r => r.rule_id);
@@ -311,9 +267,7 @@ export class RuleEngineExecutor {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // RULE MODULE LOADING
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private async loadRuleModules(references: RuleModuleReference[]): Promise<LoadedRuleModule[]> {
     const modules: LoadedRuleModule[] = [];
@@ -344,9 +298,7 @@ export class RuleEngineExecutor {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // RULE EVALUATION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private async executeRulesInPriorityOrder(
     modules: LoadedRuleModule[],
@@ -477,25 +429,9 @@ export class RuleEngineExecutor {
     return null;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // OUTPUT FORMATTING - Structured, no language text
-  // ═══════════════════════════════════════════════════════════════════════════
   
-  /**
-   * GraphTruth-compliant sentinel emitter.
-   *
-   * Replaces the legacy `generateDefaultDecision` and `generateFallbackDecision`
-   * fabricators, which invented `MONITOR_ONLY` / `FOLIAR_SPRAY` primary decisions
-   * whenever no rule matched or the engine threw. Those were symbolic bypasses:
-   * they produced agronomic-sounding output that had never been sourced from
-   * `decision_rules` / GraphTruth.
-   *
-   * This emitter returns a `NEEDS_MORE_EVIDENCE` status with an intentionally
-   * empty primary_decision skeleton (no product, no dosage, no method) so the
-   * downstream farmer response layer routes into the differential-question
-   * pathway (`observation_differential_questions`) instead of rendering
-   * fake advice.
-   */
+  // GraphTruth-compliant sentinel emitter.
   private generateNeedsMoreEvidenceDecision(
     input: RuleExecutionInput,
     startTime: number,
@@ -950,9 +886,7 @@ export class RuleEngineExecutor {
     return Math.min(score, 1.0);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // DEDUPLICATION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private deduplicateDecisions(decisions: DecisionsByPriority, traceId: string): void {
     const seenProducts = new Map<string, { priority: string; ruleId: string }>();
@@ -997,9 +931,7 @@ export class RuleEngineExecutor {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTERNAL TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface LoadedRuleModule {
   priority: RulePriority;
@@ -1014,9 +946,7 @@ interface RuleEvaluator {
   evaluate: (input: RuleExecutionInput) => RuleResult[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON EXPORT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const ruleEngineExecutor = new RuleEngineExecutor();
 export { RULE_ENGINE_VERSION };

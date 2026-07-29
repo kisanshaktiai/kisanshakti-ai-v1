@@ -1,31 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-8.1: CROP CONTEXT AUTHORITY
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Promote crop_schedules to a Context Authority for land-specific chat.
- * Used to inform WHEN and STAGE - must NOT infer WHAT problem exists.
- * 
- * PRINCIPLES:
- * - Crop schedule = Temporal Context Authority (WHEN and STAGE)
- * - Farmer text = Observation Authority (symptoms only)
- * - Symbolic Brain = Decision Authority (diagnose/prescribe)
- * - LLM = Language Renderer ONLY (no inference)
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-8.1: CROP CONTEXT AUTHORITY
 
 export const CONTEXT_AUTHORITY_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP CONTEXT AUTHORITY INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * CropContextAuthority - Single source of truth for crop-related context.
- * Built from crop_schedules table data.
- */
+// CropContextAuthority - Single source of truth for crop-related context.
 export interface CropContextAuthority {
   /** Crop name (e.g., 'Sugarcane', 'Cotton', 'Soybean') */
   crop_name: string;
@@ -49,16 +28,9 @@ export interface CropContextAuthority {
   source: 'crop_schedules';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BUILDER FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Build CropContextAuthority from a crop_schedules row.
- * Returns null if no valid crop data exists.
- * 
- * NO logic, NO diagnosis, NO inference.
- */
+// Build CropContextAuthority from a crop_schedules row.
 export function buildCropContextAuthority(cropScheduleRow: {
   crop_name?: string;
   crop?: string;
@@ -97,11 +69,7 @@ export function buildCropContextAuthority(cropScheduleRow: {
   };
 }
 
-/**
- * Build CropContextAuthority from landContext object.
- * This is an alternative entry point when crop_schedules data
- * has already been merged into landContext.
- */
+// Build CropContextAuthority from landContext object.
 export function buildCropContextFromLandContext(landContext: {
   current_crop?: string;
   growth_stage?: string;
@@ -125,13 +93,9 @@ export function buildCropContextFromLandContext(landContext: {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if crop context authority exists and is valid.
- */
+// Check if crop context authority exists and is valid.
 export function hasCropContextAuthority(authority: CropContextAuthority | null | undefined): authority is CropContextAuthority {
   if (authority === null || authority === undefined) {
     return false;
@@ -141,10 +105,7 @@ export function hasCropContextAuthority(authority: CropContextAuthority | null |
   return typeof cropName === 'string' && cropName.length > 0;
 }
 
-/**
- * Format crop context for stage-aware framing (no diagnosis).
- * Returns a neutral framing string for clarification.
- */
+// Format crop context for stage-aware framing (no diagnosis).
 export function formatCropContextFrame(
   authority: CropContextAuthority,
   language: string
@@ -180,14 +141,9 @@ export function formatCropContextFrame(
   return templates[language] || templates['en'];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT AUTHORITY RECONCILIATION (PHASE-11.1)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Render Context - Final resolved context for response generation.
- * Combines authoritative sources with fallback defaults.
- */
+// Render Context - Final resolved context for response generation.
 export interface RenderContext {
   crop_name?: string;
   growth_stage?: string;
@@ -209,28 +165,7 @@ export interface RenderContext {
   authority_override_applied: boolean;
 }
 
-/**
- * resolveFinalRenderContext - Context Authority Reconciliation
- * 
- * PURPOSE:
- * Ensures authoritative context (lockedCropContext) takes precedence
- * over canonical defaults during response rendering.
- * 
- * PRIORITY ORDER:
- * 1. dataAudit.land (freshly fetched data)
- * 2. lockedCropContext (session-persisted authority)
- * 3. landContext (already built from above)
- * 4. UNKNOWN/VEGETATIVE defaults
- * 
- * CRITICAL RULE:
- * If lockedCropContext exists and current context shows UNKNOWN/defaults,
- * OVERRIDE with lockedCropContext values.
- * 
- * @param landContext - Already built land context from index.ts
- * @param lockedCropContext - Session-persisted crop context authority
- * @param dataAudit - Fresh data audit from orchestrator
- * @returns Reconciled render context with source tracking
- */
+// resolveFinalRenderContext - Context Authority Reconciliation
 export function resolveFinalRenderContext(
   landContext: {
     current_crop?: string;

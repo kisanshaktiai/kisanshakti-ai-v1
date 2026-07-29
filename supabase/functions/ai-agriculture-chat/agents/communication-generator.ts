@@ -1,13 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FARMER COMMUNICATION GENERATOR v3.1
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Translates complex technical decisions from the Rule Engine into clear,
- * actionable, culturally appropriate advice in Marathi, Hindi, and English.
- * 
- * v3.1 UPDATE: Full data extraction and translation integration
- */
+// FARMER COMMUNICATION GENERATOR v3.1
 
 import type { DecisionOutput, EconomicAssessment, PrimaryDecision } from './rule-engine-types.ts';
 import { getNarratorVoice } from '../utils/language-utils.ts';
@@ -81,17 +72,12 @@ import {
   ResponseTemplateType 
 } from './question-classifier.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // COMMUNICATION GENERATOR CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class CommunicationGenerator {
   private readonly version = '3.1.0';
   
-  /**
-   * Main entry point - Generate farmer-friendly communication
-   * NOW WITH ADAPTIVE TEMPLATE SYSTEM
-   */
+  // Main entry point - Generate farmer-friendly communication
   async generate(
     decisionOutput: DecisionOutput,
     farmerProfile: FarmerProfile,
@@ -226,9 +212,7 @@ export class CommunicationGenerator {
     return output;
   }
   
-  /**
-   * Get default classification for backward compatibility
-   */
+  // Get default classification for backward compatibility
   private getDefaultClassification(): QuestionClassification {
     return {
       template_type: ResponseTemplateType.TREATMENT_FULL,
@@ -248,9 +232,7 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // SCENARIO & TONE SELECTION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private determineScenario(
     decision: DecisionOutput,
@@ -293,9 +275,7 @@ export class CommunicationGenerator {
     return 'PROFESSIONAL';
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 1: IMMEDIATE ACTION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateImmediateAction(
     decision: DecisionOutput,
@@ -415,9 +395,7 @@ export class CommunicationGenerator {
   
   // ═══════════════════════════════════════════════════════════════════════════
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 2: HOW TO DO IT (v3.1 - Full Data Population)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateHowTo(
     decision: DecisionOutput,
@@ -462,9 +440,7 @@ export class CommunicationGenerator {
     };
   }
   
-  /**
-   * Generate instructions for monitoring-only scenarios
-   */
+  // Generate instructions for monitoring-only scenarios
   private generateMonitoringInstructions(lang: SupportedLanguage): ApplicationInstructions {
     return {
       heading: SECTION_HEADINGS['HOW_TO'],
@@ -524,9 +500,7 @@ export class CommunicationGenerator {
     };
   }
   
-  /**
-   * Build materials list with extracted product data
-   */
+  // Build materials list with extracted product data
   private buildPopulatedMaterialsList(
     product: ExtractedProductDetails,
     economic: ExtractedEconomicInfo | null
@@ -588,9 +562,7 @@ export class CommunicationGenerator {
     };
   }
   
-  /**
-   * Build mixing instructions with extracted data
-   */
+  // Build mixing instructions with extracted data
   private buildPopulatedMixingInstructions(
     product: ExtractedProductDetails,
     mixingSteps: string[],
@@ -640,9 +612,7 @@ export class CommunicationGenerator {
     return step.replace(originalName, translatedName);
   }
   
-  /**
-   * Build application method with extracted data
-   */
+  // Build application method with extracted data
   private buildPopulatedApplicationMethod(
     product: ExtractedProductDetails,
     applicationSteps: string[]
@@ -688,9 +658,7 @@ export class CommunicationGenerator {
     return step;
   }
   
-  /**
-   * Build safety instructions with extracted data
-   */
+  // Build safety instructions with extracted data
   private buildPopulatedSafetyInstructions(
     safety: ReturnType<typeof extractSafetyInfo>
   ): ApplicationInstructions['safety_equipment'] {
@@ -782,9 +750,7 @@ export class CommunicationGenerator {
     };
   }
   
-  /**
-   * CRITICAL FIX: Sanitize product names to remove invalid values
-   */
+  // CRITICAL FIX: Sanitize product names to remove invalid values
   private sanitizeProductName(name: any): string | null {
     if (!name) return null;
     const strName = String(name).trim();
@@ -940,9 +906,7 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 3: RATIONALE (v3.1 - Full Data Population)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateRationale(decision: DecisionOutput, lang: SupportedLanguage): Rationale {
     // EXTRACT DATA using new extractors
@@ -1053,9 +1017,7 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 4: WARNINGS
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateWarnings(decision: DecisionOutput, lang: SupportedLanguage): Warnings {
     // PHASE-16: Safe array handling to prevent crashes
@@ -1124,9 +1086,7 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 5: ECONOMICS (v3.1 - Full Data Population)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateEconomics(economics: EconomicAssessment | undefined, lang: SupportedLanguage): EconomicSummary {
     // Handle missing economics data gracefully
@@ -1245,14 +1205,10 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 6: FOLLOW-UP (v3.1 - Full Data Population)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateFollowUp(decision: DecisionOutput, lang: SupportedLanguage): FollowUpPlan {
     // BUG-1 FIX: never dereference a possibly-null repeat context and never let
-    // a follow-up build failure discard the symbolic decision / matched
-    // diagnosis / rule output / BiologicalState.
     let extractedSchedule: any = {};
     let repeatInfo: any = null;
     try {
@@ -1374,9 +1330,7 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MESSAGE COMPILATION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private compileMainMessage(
     sections: any,
@@ -1405,9 +1359,7 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // NOTIFICATION & QUICK ACTIONS
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateNotification(action: ImmediateAction, lang: SupportedLanguage): FarmerNotification {
     return {
@@ -1450,9 +1402,7 @@ export class CommunicationGenerator {
     return actions;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // VOICE VERSION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateVoiceVersion(mainMessage: any, lang: SupportedLanguage): VoiceVersion {
     const sections = mainMessage.sections;
@@ -1473,9 +1423,7 @@ export class CommunicationGenerator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // UTILITY METHODS
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private mapUrgencyLevel(urgency: string): string {
     const mapping: Record<string, string> = {
@@ -1549,9 +1497,7 @@ export class CommunicationGenerator {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON EXPORT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const communicationGenerator = new CommunicationGenerator();
 export const COMMUNICATION_VERSION = '3.0.0';

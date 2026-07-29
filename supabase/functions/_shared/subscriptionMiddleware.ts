@@ -12,21 +12,7 @@ interface SubscriptionCheckResult {
   is_in_grace_period?: boolean;
 }
 
-/**
- * Validates farmer subscription status for edge function middleware.
- * Returns 402 Payment Required if no active subscription.
- * 
- * Usage in edge functions:
- * ```ts
- * import { validateSubscription } from '../_shared/subscriptionMiddleware.ts';
- * 
- * const subCheck = await validateSubscription(farmerId, tenantId);
- * if (!subCheck.valid) {
- *   return new Response(JSON.stringify({ error: 'subscription_required', ...subCheck }), { status: 402 });
- * }
- * // subCheck.features, subCheck.limits available for feature gating
- * ```
- */
+// Validates farmer subscription status for edge function middleware.
 export async function validateSubscription(
   farmerId: string,
   tenantId: string
@@ -55,9 +41,7 @@ export async function validateSubscription(
   }
 }
 
-/**
- * Check if a specific feature is available in the subscription.
- */
+// Check if a specific feature is available in the subscription.
 export function hasSubscriptionFeature(
   subCheck: SubscriptionCheckResult,
   featureName: string
@@ -66,10 +50,7 @@ export function hasSubscriptionFeature(
   return subCheck.features[featureName] === true;
 }
 
-/**
- * Check and increment usage for a metered feature.
- * Returns { allowed: boolean, current_usage, limit }
- */
+// Check and increment usage for a metered feature.
 export async function checkAndIncrementUsage(
   farmerId: string,
   tenantId: string,

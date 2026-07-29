@@ -1,31 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * LLM UNDERSTANDING LAYER - Layer 2 in 5-Layer Symbolic Brain Architecture
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE: Convert flexible, vernacular farmer input into structured 
- * observations that can be processed by the Symbolic Decision Brain.
- * 
- * CRITICAL CONSTRAINTS:
- * - Output MUST contain English observation keys ONLY
- * - NEVER include pest_code, disease_code, product_name, or dosage
- * - These are OBSERVATIONS, not DIAGNOSES
- * - The Symbolic Brain decides diagnoses from observations
- * 
- * FLOW:
- * Farmer Language (ANY FORM) → [THIS LAYER] → Structured Observations → 
- * Symbolic Decision Brain → LLM Response Formatter
- */
+// LLM UNDERSTANDING LAYER - Layer 2 in 5-Layer Symbolic Brain Architecture
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NEW OUTPUT TYPE - UnderstandingOutput (as per spec)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * UnderstandingOutput - The primary output type for the LLM Understanding Layer.
- * Contains structured observations extracted from farmer input.
- * CRITICAL: All observation keys MUST be in English.
- */
+// UnderstandingOutput - The primary output type for the LLM Understanding Layer.
 export interface UnderstandingOutput {
   // Detected language of farmer input
   language_detected: string;
@@ -61,14 +38,9 @@ export interface UnderstandingOutput {
   raw_farmer_text: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT VALIDATION - Prevent diagnosis leakage
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Validates that the UnderstandingOutput doesn't contain forbidden diagnosis words.
- * The Understanding Layer should ONLY extract observations, not diagnoses.
- */
+// Validates that the UnderstandingOutput doesn't contain forbidden diagnosis words.
 export function validateUnderstandingOutput(output: any): { valid: boolean; violations: string[] } {
   const forbiddenWords = [
     'pest_code', 'disease_code', 'product_name', 'dosage',
@@ -107,9 +79,7 @@ export function validateUnderstandingOutput(output: any): { valid: boolean; viol
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LEGACY TYPES (Kept for backward compatibility)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SemanticUnderstanding {
   primaryIntent: 'diagnosis' | 'treatment' | 'prevention' | 'general_advice' | 'scheduling' | 'weather' | 'market' | 'greeting' | 'unknown';
@@ -140,9 +110,7 @@ export interface SymptomMention {
   confidence: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM PATTERNS (Multi-language)
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface SymptomPattern {
   patterns: RegExp[];
@@ -261,9 +229,7 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTENT PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface IntentPattern {
   patterns: RegExp[];
@@ -346,9 +312,7 @@ const INTENT_PATTERNS: IntentPattern[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // URGENCY PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const URGENCY_PATTERNS = {
   immediate: [
@@ -362,9 +326,7 @@ const URGENCY_PATTERNS = {
   ]
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP PATTERNS (Multi-language)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const CROP_PATTERNS: Record<string, { patterns: RegExp[]; code: string }> = {
   'cotton': { patterns: [/कपास|कापूस|cotton|रुई/i], code: 'cotton' },
@@ -384,9 +346,7 @@ const CROP_PATTERNS: Record<string, { patterns: RegExp[]; code: string }> = {
   'banana': { patterns: [/केला|केळ|banana/i], code: 'banana' }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN UNDERSTANDING FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function parseSemanticUnderstanding(
   rawInput: string,
@@ -513,9 +473,7 @@ export function parseSemanticUnderstanding(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONVERT TO CANONICAL STRUCTURED MEANING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface StructuredMeaning {
   queryType: 'PEST_QUERY' | 'DISEASE_QUERY' | 'FERTILIZER_QUERY' | 'IRRIGATION_QUERY' | 

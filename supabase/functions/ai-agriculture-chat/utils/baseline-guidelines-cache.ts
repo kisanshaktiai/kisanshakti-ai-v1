@@ -1,21 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CROP BASELINE GUIDELINES CACHE v1.1.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * In-memory cache for crop_baseline_guidelines_v2 table.
- * Provides stage-wise nutrient and irrigation data for the decision engine.
- * 
- * v1.1.0 — Aligned with actual DB schema columns:
- *   - critical_moisture_percent (was: irrigation_critical)
- *   - water_requirement_mm (new)
- *   - notes (was: key_activities)
- *   - sulphur/zinc/iron/soil pH/EC fields (new)
- *   - Removed: common_problems (does not exist in DB)
- * 
- * Performance: 10-minute TTL, keyed by crop_code.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CROP BASELINE GUIDELINES CACHE v1.1.0
 
 export const BASELINE_CACHE_VERSION = '1.1.0';
 
@@ -49,10 +32,7 @@ interface GuidelineCache {
 let cache: GuidelineCache | null = null;
 const CACHE_TTL = 600_000; // 10 minutes
 
-/**
- * Pre-load all baseline guidelines from crop_baseline_guidelines_v2.
- * Call once during orchestrator init.
- */
+// Pre-load all baseline guidelines from crop_baseline_guidelines_v2.
 export async function loadBaselineGuidelines(supabase: any): Promise<void> {
   const now = Date.now();
   
@@ -105,10 +85,7 @@ export async function loadBaselineGuidelines(supabase: any): Promise<void> {
   if (cache) delete cache.loadingPromise;
 }
 
-/**
- * Get baseline guidelines for a specific crop and optional growth stage.
- * Returns all stages for the crop if no stage specified.
- */
+// Get baseline guidelines for a specific crop and optional growth stage.
 export function getBaselineForCrop(
   cropCode: string,
   growthStage?: string
@@ -124,9 +101,7 @@ export function getBaselineForCrop(
   );
 }
 
-/**
- * Get nutrient recommendation for a crop at a specific DAS (days after sowing).
- */
+// Get nutrient recommendation for a crop at a specific DAS (days after sowing).
 export function getBaselineByDAS(
   cropCode: string,
   das: number

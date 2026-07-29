@@ -1,19 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * EXPLANATION CHAIN BUILDER - RULE TRACEABILITY
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Generates human-readable explanation chains for every decision.
- * This ensures EVERY recommendation can be traced back to specific rules.
- * 
- * CRITICAL PRINCIPLE: No advice without rule citation
- */
+// EXPLANATION CHAIN BUILDER - RULE TRACEABILITY
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ExplanationStep {
   step: number;
@@ -72,9 +61,7 @@ export interface RuleMatchInfo {
   blocked_reason?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN BUILDER FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function buildExplanationChain(
   decisionId: string,
@@ -206,9 +193,7 @@ export function buildExplanationChain(
   return chain;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildStep(
   stepNumber: number,
@@ -405,9 +390,7 @@ function generateSummary(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FORMAT FOR FARMER DISPLAY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function formatExplanationForFarmer(
   chain: ExplanationChain,

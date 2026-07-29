@@ -1,50 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION CLASSIFICATION CACHE — DB-backed SSOT
- * ═══════════════════════════════════════════════════════════════════════════
- * Replaces the hardcoded observation classification Sets that used to live in:
- *   - decision/failure-class-detector.ts   (ESTABLISHMENT/PEST/DISEASE/
- *                                            NUTRIENT/WEED/VEGETATIVE_STRESS
- *                                            observation sets)
- *   - decision/authority-resolver.ts        (LAND_SYMPTOMS, CLIMATE_SYMPTOMS)
- *   - decision/unified-decision-gate.ts     (VAGUE_SYMPTOM_PATTERNS)
- *
- * SSOT: `public.observation_master` (2,540 active rows) joined against
- * `public.observation_aliases` to resolve upstream ALL_CAPS tokens
- * (e.g. `PLANT_DEATH`, `DEAD_HEART`) into canonical lowercase codes
- * (`plant_death`, `dead_heart_present`).
- *
- * DERIVATION RULES (DB → Runtime enums):
- *   FailureClass
- *     canonical_group like '%_soil'                 → (LAND authority — not a FC)
- *     canonical_group like '%weather%'/'%stress_weather%'
- *       OR semantic_class = 'weather_damage'        → VEGETATIVE_STRESS
- *     semantic_class = 'pest'                       → PEST_DAMAGE
- *     semantic_class = 'disease'                    → DISEASE_SYMPTOM
- *     semantic_class = 'nutrient'                   → NUTRIENT_DEFICIENCY
- *     semantic_class = 'weed'                       → WEED_COMPETITION
- *     semantic_class = 'phenology'
- *       OR observation_category = 'establishment'
- *       OR canonical_group like '%stage%'           → ESTABLISHMENT_FAILURE
- *     semantic_class = 'physiology'                 → VEGETATIVE_STRESS
- *     otherwise                                     → UNKNOWN
- *
- *   AuthorityDomain
- *     canonical_group like '%_soil'                 → LAND
- *     semantic_class = 'weather_damage'
- *       (and NOT soil)                              → CLIMATE
- *     semantic_class in ('pest','disease','nutrient',
- *                        'weed','physiology','phenology') → CROP
- *     otherwise                                     → UNKNOWN
- *
- *   isVague(code) — used by unified-decision-gate:
- *     is_diagnostic = false  OR  clarity_score < 30
- *
- * CACHE-MISS CONTRACT: `classify(token)` returns null. Callers MUST emit
- * `[OBS_CLASSIFICATION_MISS token=...]` and NEVER fall back to hardcoded
- * agronomy. This preserves the "DB = brain" invariant.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// OBSERVATION CLASSIFICATION CACHE — DB-backed SSOT
 
 export type FailureClassEnum =
   | 'ESTABLISHMENT_FAILURE'
@@ -215,11 +169,7 @@ export async function loadObservationClassification(supabase: any): Promise<void
   );
 }
 
-/**
- * Resolve any upstream token (uppercase alias OR lowercase canonical) to its
- * DB-classified record. Returns null on miss — callers MUST log
- * `[OBS_CLASSIFICATION_MISS]` and NEVER fall back to hardcoded agronomy.
- */
+// Resolve any upstream token (uppercase alias OR lowercase canonical) to its
 export function classifyObservation(token: string): ObservationClassification | null {
   if (!cache || !token) return null;
   const n = norm(token);
@@ -250,11 +200,7 @@ export function isVagueObservation(token: string): boolean {
   return c.is_vague;
 }
 
-/**
- * DB-driven stage compatibility. Uses `observation_master.applies_to_stages`.
- * Returns true when the token is unknown OR the DB places no stage restriction,
- * so callers stay backward-compatible with legacy observation tokens.
- */
+// DB-driven stage compatibility. Uses `observation_master.applies_to_stages`.
 export function observationAppliesToStage(token: string, stage: string): boolean {
   const c = classifyObservation(token);
   if (!c || !c.applies_to_stages || c.applies_to_stages.length === 0) return true;
@@ -267,10 +213,7 @@ export function isObservationClassificationLoaded(): boolean {
   return !!cache && cache.byCanonical.size > 0;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HYPOTHESIS TYPE CACHE — SSOT for cause-code → authority classification
-// Replaces the substring matching (`c.includes('PEST')`) in authority-resolver.
-// ═══════════════════════════════════════════════════════════════════════════
 
 type HypothesisTypeEnum = 'PEST' | 'DISEASE' | 'DEFICIENCY' | 'STRESS' | 'ENVIRONMENTAL' | 'UNKNOWN';
 

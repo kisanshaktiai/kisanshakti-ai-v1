@@ -35,9 +35,7 @@ export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 // edge runtime is serving a stale bundle and needs a forced redeploy.
 console.log(`[IntentClassifier] MODULE_LOAD version=${INTENT_CLASSIFIER_VERSION}`);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL INTENT REGISTRY (Fix 1) — loaded once per cold start from DB
-// ═══════════════════════════════════════════════════════════════════════════
 
 let _validIntentCodes: Set<string> | null = null;
 let _validIntentCodesPromise: Promise<Set<string>> | null = null;
@@ -66,8 +64,6 @@ async function loadCanonicalIntentCodes(): Promise<Set<string>> {
       const set = new Set<string>(data.map((r: any) => r.intent_code));
       _validIntentCodes = set;
       // Phase 3b: shadow dual-read removed. `observation-index` already
-      // mirrors this table on boot; the intent-set here is the canonical
-      // authority consumed by `registerIntentCodeSet()` below.
       try { registerIntentCodeSet(set); } catch (_e) { /* non-fatal */ }
       console.log(`[IntentValidator] Loaded ${set.size} canonical intent codes from DB`);
       return set;
@@ -80,9 +76,7 @@ async function loadCanonicalIntentCodes(): Promise<Set<string>> {
   return _validIntentCodesPromise;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface IntentLandContext {
   current_crop?: string;
@@ -97,9 +91,7 @@ export interface IntentClassification {
   confidence: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PROMPT BUILDER
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildLandContextBlock(landContext?: IntentLandContext): string {
   if (!landContext || !landContext.current_crop) return '';
@@ -169,9 +161,7 @@ Return JSON ONLY (no markdown, no prose):
 {"intent_code": "<one canonical code from the list>", "confidence": 0.0-1.0}`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HTTP / PARSING HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function callLLMWithRetry(endpoint: string, payload: RequestInit, maxRetries = 2): Promise<Response> {
   let attempt = 0; let delay = 300;
@@ -245,9 +235,7 @@ async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ int
   return safeExtractJson(content);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN CLASSIFY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function classifyFarmerIntent(
   farmerMessage: string,
@@ -299,15 +287,10 @@ export async function classifyFarmerIntent(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EMERGENCY KEYWORD FALLBACK — every emitted code is gated through validCodes
-// ═══════════════════════════════════════════════════════════════════════════
 
 function emit(code: string, conf: number, validCodes: Set<string>): IntentClassification {
   // PR-10 · Empty-registry safety: when the DB-driven registry is empty
-  // (cold-start race, network blip, or truly missing data), refuse to emit
-  // any hardcoded intent code. Downgrade to a low-confidence GENERAL_CROP_INFO
-  // so the orchestrator can trigger a safe clarification path.
   if (validCodes.size === 0) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.1 };
   if (validCodes.has(code)) return { intent_code: code, confidence: conf };
   if (validCodes.has('GENERAL_CROP_INFO')) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3 };

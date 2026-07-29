@@ -37,9 +37,7 @@
 
 export const FAILURE_CLASS_VERSION = '2.0.0'; // SSOT-compliant version
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type FailureClass = 
   | 'ESTABLISHMENT_FAILURE'
@@ -50,10 +48,7 @@ export type FailureClass =
   | 'WEED_COMPETITION'
   | 'UNKNOWN';
 
-/**
- * SSOT-COMPLIANT INPUT
- * Uses pre-extracted canonical observation codes, NOT raw user text
- */
+// SSOT-COMPLIANT INPUT
 export interface FailureClassInput {
   crop_code: string;
   growth_stage: string;
@@ -86,13 +81,7 @@ export interface FailureClassAuditLog {
   fallback_reason: string | null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PR-2 REFACTOR — All hardcoded ObservationKey Sets DELETED.
-// Classification now flows through DB SSOT via observation-classification-cache
-// (backed by public.observation_master + public.observation_aliases).
-// Early / vegetative stage detection now flows through StageKnowledgeCache
-// (backed by public.crop_stage_master DAS windows).
-// ═══════════════════════════════════════════════════════════════════════════
 
 import {
   classifyFailureClass,
@@ -102,12 +91,7 @@ import {
 } from '../utils/observation-classification-cache.ts';
 import { getStageByDAS, getStageRow } from '../utils/stage-knowledge-cache.ts';
 
-/**
- * DB-driven "early stage" check. A stage is early iff the DB row has
- * das_max <= EARLY_STAGE_DAS_CEILING (configurable). Falls back to false when
- * the DB has no coverage — callers must not synthesize an early-stage
- * classification from stage-name heuristics.
- */
+// DB-driven "early stage" check. A stage is early iff the DB row has
 const EARLY_STAGE_DAS_CEILING = 30;
 const VEGETATIVE_STAGE_DAS_CEILING = 90;
 
@@ -158,9 +142,7 @@ function bucketObservationsByClass(observations: string[]): Map<FailureClassEnum
   return buckets;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE DETECTION FUNCTION — PR-2 DB-DRIVEN
-// ═══════════════════════════════════════════════════════════════════════════
 
 const CLASS_CONFIDENCE_BASE: Record<FailureClass, number> = {
   ESTABLISHMENT_FAILURE: 0.85,
@@ -193,13 +175,7 @@ const CLASS_PRIORITY: FailureClass[] = [
   'VEGETATIVE_STRESS',
 ];
 
-/**
- * Detect primary failure class from canonical observations — DB-driven.
- * All classification derives from `observation_master.semantic_class` +
- * `canonical_group` via `classifyFailureClass()`. Stage windows come from
- * `crop_stage_master` via StageKnowledgeCache. No hardcoded observation
- * inventories.
- */
+// Detect primary failure class from canonical observations — DB-driven.
 export function detectPrimaryFailureClass(input: FailureClassInput): FailureClassResult {
   const { crop_code, growth_stage, days_since_sowing, observations, symptoms, symptom_scope } = input;
 
@@ -277,10 +253,7 @@ export function detectPrimaryFailureClass(input: FailureClassInput): FailureClas
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION DOMAIN MAPPING
-// Maps failure class to appropriate clarification domain
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationDomain {
   name: string;
@@ -334,16 +307,12 @@ const CLARIFICATION_DOMAINS: Record<FailureClass, ClarificationDomain> = {
   }
 };
 
-/**
- * Get clarification domain for a failure class
- */
+// Get clarification domain for a failure class
 export function getClarificationDomain(failureClass: FailureClass): ClarificationDomain {
   return CLARIFICATION_DOMAINS[failureClass] || CLARIFICATION_DOMAINS.UNKNOWN;
 }
 
-/**
- * Get failure class confidence thresholds
- */
+// Get failure class confidence thresholds
 export function getFailureClassThresholds(): Record<FailureClass, number> {
   return {
     ESTABLISHMENT_FAILURE: 0.80,
@@ -356,21 +325,9 @@ export function getFailureClassThresholds(): Record<FailureClass, number> {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE COMPATIBILITY CHECK - CANONICAL VERSION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if an observation is stage-compatible — DB-driven.
- *
- * Rules:
- *   1. If `observation_master.applies_to_stages` restricts the code to a
- *      specific list, the query stage must appear in that list.
- *   2. ESTABLISHMENT-class observations only apply in early DAS windows
- *      (derived from `crop_stage_master.das_max` via StageKnowledgeCache).
- *
- * Backward-compatible: unknown tokens / unknown stages return true.
- */
+// Check if an observation is stage-compatible — DB-driven.
 export function isObservationStageCompatible(
   observationKey: string,
   stage: string,
@@ -393,9 +350,7 @@ export function isObservationStageCompatible(
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FALLBACK OPTIONS FOR CLARIFICATION — DB-ONLY (v4-P4)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FallbackOption {
   observation_key: string;
@@ -403,19 +358,7 @@ export interface FallbackOption {
   category: string;
 }
 
-/**
- * PATCH v4-P4 — Hardcoded per-failure-class observation lists have been
- * REMOVED. Symptom generation is DB territory (observation_master +
- * intent_observation_mapping + intent_semantic_class_allowlist). This
- * function now returns an empty array; callers MUST fall through to the
- * WAITING_FOR_OBSERVATION path (see clarification-strategy.useHypothesisFallback
- * and runtime/graph-runtime OBS_GATE).
- *
- * The signature is preserved for interface compatibility. Do NOT re-introduce
- * literal observation codes here — that regressed the rice
- * "उगवले नाही" → STUNTED_GROWTH/WILTING/LEAF_CURLING bug and would resurface
- * across cotton, sugarcane, wheat, fruit crops the same way.
- */
+// PATCH v4-P4 — Hardcoded per-failure-class observation lists have been
 export function getFailureClassFallbackOptions(
   failureClass: FailureClass,
   _language: string = 'en'
@@ -425,9 +368,7 @@ export function getFailureClassFallbackOptions(
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AUDIT LOGGING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function createFailureClassAudit(
   traceId: string,
@@ -447,9 +388,7 @@ export function createFailureClassAudit(
   };
 }
 
-/**
- * Log failure class detection for debugging and audit purposes.
- */
+// Log failure class detection for debugging and audit purposes.
 export function logFailureClassDetection(
   traceId: string,
   input: FailureClassInput,
@@ -469,9 +408,7 @@ export function logFailureClassDetection(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   detectPrimaryFailureClass,

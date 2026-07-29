@@ -1,29 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DECISION GRAPH NAVIGATOR — v3 SOLE reasoning owner
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * Pure function over a frozen RuntimeGraphState snapshot. Replaces the three
- * legacy clarification producers (rule-driven, scoped, diagnosis-first) with
- * a single deterministic navigator.
- *
- * INPUT  : NavigatorInput  — context + hypotheses + confirmed/denied evidence
- *                            + ontology-allowed evidence keys + thresholds.
- * OUTPUT : NavigationResult — { decision, ranked, stopping, reason }.
- *
- * RANKING: GRAPH PRUNING (not entropy). For each candidate evidence key:
- *   prunes(e)   = |{ h ∈ active | e ∈ h.blocks   ∨ (e ∈ h.requires ∧ denial falsifies h) }|
- *   confirms(e) = |{ h ∈ active | e ∈ h.requires ∧ confirmation satisfies h }|
- *   score(e)    = prunes(e) + confirms(e) − redundancy(e, confirmed)
- *
- * STOPPING (PROCEED): ALL of
- *   1. |active| ≤ 1  OR  margin(top, second) ≥ stage_threshold
- *   2. requires(top) ⊆ confirmed  AND  blocks(top) ⊆ denied ∪ unknown
- *   3. turn ≤ max_clarification_rounds
- *
- * NO DB I/O. NO HUMANIZATION. NO TEMPLATE FALLBACK.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// DECISION GRAPH NAVIGATOR — v3 SOLE reasoning owner
 
 export interface GraphNode {
   readonly id: string;                       // hypothesis / rule id

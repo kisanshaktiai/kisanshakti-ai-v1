@@ -40,17 +40,9 @@ import type { BiologicalState } from '../agents/biological-state.ts';
 
 export const CANONICAL_CONTEXT_CONTRACT_VERSION = '2.1.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FAIL-FAST ASSERTION (MANDATORY GUARD)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Assert that canonical context is locked and non-null.
- * Call this at the START of any function that requires context.
- * This is the PRIMARY enforcement mechanism for canonical immutability.
- * 
- * @throws Error if context is null when it shouldn't be
- */
+// Assert that canonical context is locked and non-null.
 export function assertCanonicalContextLocked(
   context: CanonicalContext | null,
   location: string
@@ -72,27 +64,17 @@ export function assertCanonicalContextLocked(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL CONTEXT TYPE (SINGLE SOURCE OF TRUTH)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * The unified canonical context object.
- * This is the ONLY context object that flows through the decision pipeline.
- * All other context types (landContext, cropContext, preservedContext) are DEPRECATED.
- */
+// The unified canonical context object.
 export interface CanonicalContext {
-  // ═══════════════════════════════════════════════════════════════════════════
   // HARD INVARIANTS: These CANNOT be UNKNOWN once set
-  // ═══════════════════════════════════════════════════════════════════════════
   readonly crop_code: string;
   readonly crop_name: string;
   readonly growth_stage: string;
   readonly days_since_sowing: number | null;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // OPTIONAL DATA: Can be null but still tracked
-  // ═══════════════════════════════════════════════════════════════════════════
   readonly ndvi: {
     readonly value: number | null;
     readonly trend: string | null;
@@ -130,11 +112,7 @@ export interface CanonicalContext {
   readonly crop_cycle?: string | null;
   readonly variety_id?: string | null;
   readonly crop_variety?: string | null;
-  /**
-   * v6 — cultivation_method (AUTHORITY: crop_schedules). Values:
-   * 'direct_seeded' | 'transplanted' | 'any' | null. Consumed by
-   * downstream logs + biological gating; never used to encode agronomy.
-   */
+  // v6 — cultivation_method (AUTHORITY: crop_schedules). Values:
   readonly cultivation_method?: string | null;
 
 
@@ -163,9 +141,7 @@ export interface CanonicalContext {
   // v2.1.0 — land meta
   readonly area_acres?: number | null;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // METADATA
-  // ═══════════════════════════════════════════════════════════════════════════
   readonly land_id: string | null;
   readonly farmer_id: string | null;
   readonly source: 'BIOLOGICAL_STATE' | 'BIOLOGICAL_STATE_UNAVAILABLE' | 'CROP_SCHEDULES' | 'LAND_DATA' | 'INFERRED';
@@ -186,22 +162,14 @@ export interface CanonicalContext {
     geo: 'lands';
   }>;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LOCK FLAGS: Once true, this context CANNOT be modified
-  // ═══════════════════════════════════════════════════════════════════════════
   readonly is_locked: true;
   
-  /**
-   * Phase-1 lock flag - indicates context was built in orchestrator Phase-1
-   * and must NOT be rebuilt anywhere else in the pipeline.
-   */
+  // Phase-1 lock flag - indicates context was built in orchestrator Phase-1
   readonly phase1_locked: true;
 }
 
-/**
- * Lightweight flag to indicate context presence without full object.
- * Used for quick checks before accessing full context.
- */
+// Lightweight flag to indicate context presence without full object.
 export interface ContextPresenceFlags {
   readonly has_crop: boolean;
   readonly has_stage: boolean;
@@ -211,23 +179,14 @@ export interface ContextPresenceFlags {
   readonly has_weather: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BUILDER FUNCTION: Creates canonical context from landContext
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Build a canonical context from the orchestrator's landContext.
- * This function is called EXACTLY ONCE at the start of a turn.
- * 
- * @throws Error if landContext is flagged as present but incomplete
- */
+// Build a canonical context from the orchestrator's landContext.
 export function buildCanonicalContext(
   landContext: any,
   hasLandContext: boolean
 ): CanonicalContext | null {
-  // ═══════════════════════════════════════════════════════════════════════════
   // FAIL-FAST INVARIANT CHECK
-  // ═══════════════════════════════════════════════════════════════════════════
   if (hasLandContext && !landContext) {
     console.error(`🚨 [FAIL-FAST] hasLandContext=true but landContext is null/undefined`);
     throw new Error(`INVARIANT VIOLATION: hasLandContext=true but landContext is missing. Context MUST be a single canonical object.`);
@@ -243,9 +202,7 @@ export function buildCanonicalContext(
   const growthStage = landContext.growth_stage || null;
   const daysSinceSowing = landContext.days_since_sowing ?? null;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // FAIL-FAST: If we have landContext but missing critical fields
-  // ═══════════════════════════════════════════════════════════════════════════
   if (hasLandContext && (!cropCode || cropCode === 'UNKNOWN' || !growthStage || growthStage === 'UNKNOWN')) {
     console.error(`🚨 [FAIL-FAST] hasLandContext=true but context is incomplete:`);
     console.error(`   Crop: ${cropCode || 'MISSING'}`);
@@ -343,8 +300,6 @@ export function buildCanonicalContext(
     null;
 
   // v6 — cultivation_method: crop_schedules is authoritative; biological_state
-  // mirrors it once resolve_crop_phenology has returned. Fall back through
-  // the same lineage so downstream nodes see a stable value.
   const cultivationMethod =
     (landContext.biological_state as BiologicalState | null | undefined)?.cultivation_method ??
     cropSchedule?.cultivation_method ??
@@ -485,13 +440,9 @@ export function buildCanonicalContext(
   return canonicalContext;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if canonical context is complete enough for DIAGNOSTIC_CONFIRMATION
- */
+// Check if canonical context is complete enough for DIAGNOSTIC_CONFIRMATION
 export function hasDiagnosticContext(context: CanonicalContext | null): boolean {
   if (!context) return false;
   return (
@@ -501,9 +452,7 @@ export function hasDiagnosticContext(context: CanonicalContext | null): boolean 
   );
 }
 
-/**
- * Extract presence flags from canonical context
- */
+// Extract presence flags from canonical context
 export function getContextPresenceFlags(context: CanonicalContext | null): ContextPresenceFlags {
   if (!context) {
     return {
@@ -526,10 +475,7 @@ export function getContextPresenceFlags(context: CanonicalContext | null): Conte
   };
 }
 
-/**
- * Validate that context integrity is maintained.
- * Call this at critical points to catch violations early.
- */
+// Validate that context integrity is maintained.
 export function validateContextIntegrity(
   context: CanonicalContext | null,
   hasContextFlag: boolean,
@@ -552,14 +498,9 @@ export function validateContextIntegrity(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TERMINAL DAMAGE DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Terminal damage indicators that trigger DIAGNOSTIC_CONFIRMATION mode.
- * When these are detected, we CONFIRM THE CAUSE - not ask about location.
- */
+// Terminal damage indicators that trigger DIAGNOSTIC_CONFIRMATION mode.
 export const TERMINAL_DAMAGE_INDICATORS = [
   'SEEDLING_DIED',
   'PLANT_DIED',
@@ -574,9 +515,7 @@ export const TERMINAL_DAMAGE_INDICATORS = [
   'WILTING_SEVERE'
 ];
 
-/**
- * High severity indicators that combine with PATCHY_DAMAGE to trigger DIAGNOSTIC_CONFIRMATION.
- */
+// High severity indicators that combine with PATCHY_DAMAGE to trigger DIAGNOSTIC_CONFIRMATION.
 export const HIGH_SEVERITY_INDICATORS = [
   'SEVERITY_HIGH',
   'ENTIRE_FIELD_AFFECTED',
@@ -584,9 +523,7 @@ export const HIGH_SEVERITY_INDICATORS = [
   'AFFECTED_PERCENTAGE_HIGH'
 ];
 
-/**
- * Check if terminal damage indicators are present in observations.
- */
+// Check if terminal damage indicators are present in observations.
 export function hasTerminalDamage(observations: Set<string> | string[]): boolean {
   const obsSet = observations instanceof Set ? observations : new Set(observations);
   
@@ -601,9 +538,7 @@ export function hasTerminalDamage(observations: Set<string> | string[]): boolean
   return hasTerminal || hasPatchyWithHighSeverity;
 }
 
-/**
- * Get the specific terminal damage indicators that were detected.
- */
+// Get the specific terminal damage indicators that were detected.
 export function getDetectedTerminalDamage(observations: Set<string> | string[]): string[] {
   const obsSet = observations instanceof Set ? observations : new Set(observations);
   const detected: string[] = [];
@@ -621,13 +556,9 @@ export function getDetectedTerminalDamage(observations: Set<string> | string[]):
   return detected;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Log canonical context in production format for audit trail.
- */
+// Log canonical context in production format for audit trail.
 export function logCanonicalContextAudit(
   context: CanonicalContext | null,
   scope: string,

@@ -1,15 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGRO-CLIMATIC ZONE CACHE v1.0.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * In-memory cache for agro_climatic_zones table with spray threshold columns.
- * Used by weather-safety-gate to apply zone-specific spray thresholds
- * instead of hardcoded global defaults.
- * 
- * Performance: 10-minute TTL, keyed by zone_code.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// AGRO-CLIMATIC ZONE CACHE v1.0.0
 
 export const AGRO_ZONE_CACHE_VERSION = '1.0.0';
 
@@ -35,10 +24,7 @@ interface ZoneCache {
 let cache: ZoneCache | null = null;
 const CACHE_TTL = 600_000; // 10 minutes
 
-/**
- * Load all active agro-climatic zones with spray thresholds.
- * Returns Map<zone_code, AgroZoneThresholds>.
- */
+// Load all active agro-climatic zones with spray thresholds.
 export async function loadAgroZones(supabase: any): Promise<Map<string, AgroZoneThresholds>> {
   const now = Date.now();
   
@@ -89,10 +75,7 @@ export async function loadAgroZones(supabase: any): Promise<Map<string, AgroZone
   return result;
 }
 
-/**
- * Get zone-specific spray thresholds for the weather safety gate.
- * Falls back to null if zone not found (caller uses hardcoded defaults).
- */
+// Get zone-specific spray thresholds for the weather safety gate.
 export function getZoneSprayThresholds(
   zoneCode: string | undefined,
   zones: Map<string, AgroZoneThresholds>

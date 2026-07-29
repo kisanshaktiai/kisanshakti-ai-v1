@@ -1,20 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CROP SYNONYMS CACHE v1.1.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * In-memory cache for crop_synonyms table (multilingual crop name → crop_code).
- * Used to enrich NLU crop detection with DB-sourced synonyms beyond
- * the hardcoded agricultural-vocabulary.ts entries.
- * 
- * v1.1.0 — Aligned with actual DB schema columns:
- *   - canonical_crop (was: crop_code)
- *   - variant_name (was: synonym)
- *   - variant_type, region (new fields)
- * 
- * Performance: 10-minute TTL, single global load.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CROP SYNONYMS CACHE v1.1.0
 
 export const CROP_SYNONYMS_VERSION = '1.1.0';
 
@@ -36,10 +20,7 @@ interface SynonymsCache {
 let cache: SynonymsCache | null = null;
 const CACHE_TTL = 600_000; // 10 minutes
 
-/**
- * Load all crop synonyms from DB into an in-memory map.
- * Returns Map<lowercase_variant_name, CANONICAL_CROP>.
- */
+// Load all crop synonyms from DB into an in-memory map.
 export async function loadCropSynonyms(supabase: any): Promise<Map<string, string>> {
   const now = Date.now();
   
@@ -88,19 +69,12 @@ export async function loadCropSynonyms(supabase: any): Promise<Map<string, strin
   return result;
 }
 
-/**
- * Look up a crop code from a text token using the DB synonym cache.
- * Returns the CANONICAL_CROP or null if no match.
- */
+// Look up a crop code from a text token using the DB synonym cache.
 export function lookupCropSynonym(token: string, synonymMap: Map<string, string>): string | null {
   return synonymMap.get(token.toLowerCase()) || null;
 }
 
-/**
- * Sync accessor to the module-level synonym cache.
- * Returns an empty map when the cache has not been loaded yet — callers must
- * treat that as "no match" rather than falling back to hardcoded regex.
- */
+// Sync accessor to the module-level synonym cache.
 export function getCachedSynonymMap(): Map<string, string> {
   return cache?.synonymMap ?? new Map();
 }

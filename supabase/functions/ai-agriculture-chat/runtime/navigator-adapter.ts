@@ -1,22 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * NAVIGATOR ADAPTER — v3 Phase 2 (shadow) + Phase 3 (flag-gated)
- * ═══════════════════════════════════════════════════════════════════════════
- * Single bridge between the live RuntimeGraphState and the pure
- * DecisionGraphNavigator. No reasoning here — only:
- *   1. Read frozen snapshot of RuntimeGraphState.
- *   2. Load farmer-observable allowlist (IOM ∩ master) for the turn.
- *   3. Run ContradictionEngine (sets contradictionFlagged).
- *   4. Map RuleCandidate[] → GraphNode[]   (requires = missing observations,
- *                                            confirmed = matched observations).
- *   5. Call navigate(); return NavigationResult.
- *   6. Stamp result onto RuntimeTraceCollector under `navigator_*` keys.
- *
- * The orchestrator decides whether to use the result (Phase 3 flag).
- *
- * Failures are swallowed; shadow logging must never break a turn.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// NAVIGATOR ADAPTER — v3 Phase 2 (shadow) + Phase 3 (flag-gated)
 
 import type { GraphRuntimeState } from './graph-runtime-state.ts';
 import { detectContradiction } from './contradiction-engine.ts';
@@ -29,8 +11,6 @@ import {
 import { resolveNavigatorFlag, type NavigatorFlagState } from './navigator-flag.ts';
 import { canonicalizeObservationKey } from './clarification-contract.ts';
 // Stage adjacency is loaded from `public.crop_stage_graph` via the
-// stage-knowledge-cache and read through stage-family-shim. NO hardcoded
-// stage family lives in this file (or in the shim).
 import { stageFamily } from './stage-family-shim.ts';
 
 function stageVariants(stage?: string | null, crop?: string | null): string[] {

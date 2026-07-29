@@ -1,18 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSTIC ESCALATION RESPONSE GENERATOR
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Generates expert-quality explanatory responses when:
- * - Crop and stage are known
- * - Specific symptom is identified
- * - Diagnosis needs one more signal (photo, severity, distribution)
- * 
- * KEY PRINCIPLE: "Agronomists don't say 'just watch it' - they say 
- * 'this could be X, Y, or Z, and here's what I need to know next to confirm.'"
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// DIAGNOSTIC ESCALATION RESPONSE GENERATOR
 
 import type {
   DiagnosticEscalationData,
@@ -22,9 +8,7 @@ import type {
 
 export const DIAGNOSTIC_ESCALATION_GENERATOR_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticEscalationInput {
   language: string;
@@ -58,9 +42,7 @@ export interface DiagnosticEscalationInput {
   treatment_threshold?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TEMPLATES
-// ═══════════════════════════════════════════════════════════════════════════
 
 // English-only templates — LLM narration layer handles localization at runtime
 const TEMPLATES = {
@@ -87,9 +69,7 @@ const TEMPLATES = {
   get hi() { return this.en; }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CAUSE NAME TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 // English-only cause names — LLM narration layer translates to local farming terms at runtime
 const CAUSE_NAMES: Record<string, Record<string, string>> = {
@@ -114,9 +94,7 @@ const CAUSE_NAMES: Record<string, Record<string, string>> = {
   WIND_DAMAGE: { en: 'Wind Damage' }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPLANATION TEMPLATES
-// ═══════════════════════════════════════════════════════════════════════════
 
 // English-only explanations — LLM uses local farming terms at runtime
 const EXPLANATIONS: Record<string, Record<string, string>> = {
@@ -126,9 +104,7 @@ const EXPLANATIONS: Record<string, Record<string, string>> = {
   RUST_DISEASE: { en: 'Rust disease causes orange-brown pustules to appear on leaves.' }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHOTO GUIDANCE BY SYMPTOM
-// ═══════════════════════════════════════════════════════════════════════════
 
 // English-only photo guidance — LLM translates at runtime
 const PHOTO_GUIDANCE: Record<string, Record<string, { what: string; angle: string; lighting: string }>> = {
@@ -146,9 +122,7 @@ const PHOTO_GUIDANCE: Record<string, Record<string, { what: string; angle: strin
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN GENERATOR FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateDiagnosticEscalationData(input: DiagnosticEscalationInput): DiagnosticEscalationData {
   const { 
@@ -212,9 +186,7 @@ export function generateDiagnosticEscalationData(input: DiagnosticEscalationInpu
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE TEXT GENERATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateDiagnosticEscalationResponse(
   escalation: DiagnosticEscalationData,
@@ -308,9 +280,7 @@ export function generateDiagnosticEscalationResponse(
   return lines.join('\n');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function detectCategory(causeCode: string): DiagnosticHypothesis['category'] {
   const code = causeCode.toUpperCase();

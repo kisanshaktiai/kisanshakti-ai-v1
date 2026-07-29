@@ -1,28 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * REGIONAL AGRICULTURAL TRANSLATOR (v3.0.0) - DB-DRIVEN VERSION
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Translates agricultural terms to regional dialects based on farmer's location.
- * Uses observation_translations DB table via the i18n translation cache (SSOT).
- * 
- * v3.0.0 MIGRATION:
- * - Removed all hardcoded PEST_TRANSLATIONS dictionary (~320 lines)
- * - All labels now sourced from observation_translations DB table
- * - normalizePestName() retained (English-only pattern matching)
- * - Falls back to English if DB has no translation
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// REGIONAL AGRICULTURAL TRANSLATOR (v3.0.0) - DB-DRIVEN VERSION
 
 import { getTranslation, normalizeI18nKey } from '../i18n/translation-loader.ts';
 
 export const REGIONAL_TRANSLATOR_VERSION = '3.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FarmerLocation {
   state: string;
@@ -44,14 +26,7 @@ export interface RegionalTranslation {
   full_description_regional?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NORMALIZE PEST NAME FOR DB LOOKUP
-// CRITICAL: Extract core pest name from verbose database values
-// Examples:
-//   "Early Shoot Borer (Chilo infuscatellus) infestation" → "EARLY_SHOOT_BORER"
-//   "SMUT_SEED_BORNE" → "SMUT"
-//   "IPM prevention for Red Rot using hot water treatment" → "RED_ROT"
-// ═══════════════════════════════════════════════════════════════════════════
 
 function normalizePestName(name: string): string {
   let normalized = name
@@ -136,16 +111,9 @@ function normalizePestName(name: string): string {
   return normalizeI18nKey(normalized);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN TRANSLATION FUNCTION (DB-DRIVEN via i18n cache)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Translate agricultural terms to regional farmer vocabulary.
- * 
- * DB-DRIVEN: Uses observation_translations via i18n translation cache.
- * Falls back to English name if no DB entry found.
- */
+// Translate agricultural terms to regional farmer vocabulary.
 export async function translateToRegionalTerms(
   treatment: TreatmentToTranslate,
   location: FarmerLocation
@@ -183,9 +151,7 @@ export async function translateToRegionalTerms(
   };
 }
 
-/**
- * Batch translate multiple terms for efficiency.
- */
+// Batch translate multiple terms for efficiency.
 export async function batchTranslateTerms(
   terms: TreatmentToTranslate[],
   location: FarmerLocation
@@ -200,9 +166,7 @@ export async function batchTranslateTerms(
   return results;
 }
 
-/**
- * Quick translate just the pest/cause name for option labels.
- */
+// Quick translate just the pest/cause name for option labels.
 export async function translatePestName(
   pestNameEn: string,
   location: FarmerLocation

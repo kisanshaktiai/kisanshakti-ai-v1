@@ -1,26 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RESPONSE GENERATOR v2.0 — DEPRECATED (LEGACY)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * ⚠️ DEPRECATED: This module is superseded by:
- *   - `agents/deterministic-response-builder.ts` (structured response)
- *   - `agents/canonical-advisory-schema.ts` (canonical JSON)
- *   - `agents/llm-response-formatter.ts` (LLM narration)
- * 
- * Exports are preserved for backward compatibility with orchestrator.ts
- * but the template system is no longer the primary response path.
- * The canonical advisory JSON is now built in index.ts and sent to frontend.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// RESPONSE GENERATOR v2.0 — DEPRECATED (LEGACY)
 
 import type { SymbolicFact, InferenceResult, Hypothesis, FiredRule } from './symbolic-reasoner.ts';
 import type { ConfidenceScore, ConfidenceLevel } from './confidence-calculator.ts';
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ResponseInput {
   inferenceResult: InferenceResult;
@@ -46,10 +30,7 @@ export interface GeneratedResponse {
   language: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LANGUAGE-NEUTRAL TEMPLATES (English structural scaffolds)
-// LLM narration layer translates into farmer's language at runtime.
-// ═══════════════════════════════════════════════════════════════════════════
 
 const TEMPLATES = {
   VERY_HIGH: `📊 Diagnosis Report - {{land_name}} ({{crop}} - {{dos}} days)
@@ -127,9 +108,7 @@ More information is needed to accurately identify the problem.
 [Send Photo] [Talk to Expert]`
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE GENERATOR CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class ResponseGenerator {
   
@@ -283,9 +262,7 @@ export class ResponseGenerator {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON INSTANCE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let generatorInstance: ResponseGenerator | null = null;
 

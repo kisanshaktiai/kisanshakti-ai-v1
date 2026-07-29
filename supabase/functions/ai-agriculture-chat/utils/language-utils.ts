@@ -1,12 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * LANGUAGE UTILITIES — Centralized language helpers
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Single source for language name resolution, script detection, and
- * voice config. No hardcoded ternary chains in other files.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// LANGUAGE UTILITIES — Centralized language helpers
 
 /** Map language code to human-readable name (for LLM prompts) */
 export function getLanguageName(lang: string): string {

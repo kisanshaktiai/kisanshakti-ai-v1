@@ -1,15 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PIPELINE SELF-CHECK — Phase F
- * ═══════════════════════════════════════════════════════════════════════════
- * Cold-start self-check. Asserts every Phase A–E invariant is wired. If any
- * check fails it emits a single structured `PIPELINE_SELF_CHECK_FAILED` log
- * and flips `degradeToSafeMode=true`, which the orchestrator uses to fall
- * back to a clarification response instead of returning wrong advice.
- *
- * This runs once per cold start (memoized).
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PIPELINE SELF-CHECK — Phase F
 
 export interface SelfCheckResult {
   ok: boolean;

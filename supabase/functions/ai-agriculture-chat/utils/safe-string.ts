@@ -1,45 +1,15 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * SAFE STRING UTILITIES v3.0.0 - CRASH-PROOF PRODUCTION GUARDS
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * CRITICAL INVARIANTS:
- * - ZERO TypeError from undefined/null string operations
- * - Image-only and option-click flows MUST work without text
- * - All string methods are guarded against non-string inputs
- * 
- * MANDATORY USAGE:
- * - normalizeText: Convert unknown → string (empty fallback) - USE AT FUNCTION ENTRY
- * - safePreview: Safe text preview for logging - NEVER use .substring() directly
- * - hasText: Check if has non-whitespace content - USE before any text-dependent logic
- * 
- * FORBIDDEN OPERATIONS (on raw input):
- * ❌ input.substring()
- * ❌ input.trim()
- * ❌ input.toLowerCase()
- * ❌ input.includes()
- * ❌ input.length (without guard)
- * 
- * @version 3.0.0
- */
+// SAFE STRING UTILITIES v3.0.0 - CRASH-PROOF PRODUCTION GUARDS
 
 export const SAFE_STRING_VERSION = '3.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE GUARD FUNCTIONS - USE THESE EVERYWHERE
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize any input to string (empty fallback for non-strings).
- * This is the CORE guard function.
- */
+// Normalize any input to string (empty fallback for non-strings).
 export function normalizeText(input: unknown): string {
   return typeof input === 'string' ? input : '';
 }
 
-/**
- * Safe preview for logging - never crashes.
- */
+// Safe preview for logging - never crashes.
 export function safePreview(input: unknown, len = 50): string {
   const text = normalizeText(input);
   return text.length > 0
@@ -47,21 +17,12 @@ export function safePreview(input: unknown, len = 50): string {
     : '[NO_TEXT]';
 }
 
-/**
- * Check if has non-empty text content.
- */
+// Check if has non-empty text content.
 export function hasText(input: unknown): boolean {
   return normalizeText(input).trim().length > 0;
 }
 
-/**
- * Safely preview text for logging without crash risk.
- * Returns '[NO_TEXT_INPUT]' for empty/undefined/null inputs.
- * 
- * @param input - Any input value (string, undefined, null, object, etc.)
- * @param length - Maximum preview length (default: 50)
- * @returns Safe string preview
- */
+// Safely preview text for logging without crash risk.
 export function safePreviewText(input: unknown, length = 50): string {
   if (typeof input !== 'string' || input.length === 0) {
     return '[NO_TEXT_INPUT]';
@@ -71,81 +32,38 @@ export function safePreviewText(input: unknown, length = 50): string {
     : input;
 }
 
-/**
- * Safely convert to lowercase with empty string fallback.
- * 
- * @param input - Any input value
- * @returns Lowercase string or empty string
- */
+// Safely convert to lowercase with empty string fallback.
 export function safeLowerCase(input: unknown): string {
   return typeof input === 'string' ? input.toLowerCase() : '';
 }
 
-/**
- * Safely convert to uppercase with empty string fallback.
- * 
- * @param input - Any input value
- * @returns Uppercase string or empty string
- */
+// Safely convert to uppercase with empty string fallback.
 export function safeUpperCase(input: unknown): string {
   return typeof input === 'string' ? input.toUpperCase() : '';
 }
 
-/**
- * Safely trim with empty string fallback.
- * 
- * @param input - Any input value
- * @returns Trimmed string or empty string
- */
+// Safely trim with empty string fallback.
 export function safeTrim(input: unknown): string {
   return typeof input === 'string' ? input.trim() : '';
 }
 
-/**
- * Safely check if text includes a substring.
- * Returns false for non-string inputs.
- * 
- * @param input - Any input value
- * @param search - Substring to search for
- * @returns Boolean indicating if substring was found
- */
+// Safely check if text includes a substring.
 export function safeIncludes(input: unknown, search: string): boolean {
   return typeof input === 'string' && input.toLowerCase().includes(search.toLowerCase());
 }
 
-/**
- * Get safe string length (returns 0 for non-strings).
- * 
- * @param input - Any input value
- * @returns String length or 0
- */
+// Get safe string length (returns 0 for non-strings).
 export function safeLength(input: unknown): number {
   return typeof input === 'string' ? input.length : 0;
 }
 
-/**
- * Safely get substring with bounds checking.
- * Returns empty string for non-strings.
- * 
- * @param input - Any input value
- * @param start - Start index
- * @param end - Optional end index
- * @returns Substring or empty string
- */
+// Safely get substring with bounds checking.
 export function safeSubstring(input: unknown, start: number, end?: number): string {
   if (typeof input !== 'string') return '';
   return end !== undefined ? input.substring(start, end) : input.substring(start);
 }
 
-/**
- * Normalize farmer message to safe string.
- * This is the PRIMARY guard to use at function entry points.
- * 
- * Handles: string, {content: string}, {text: string}, {message: string}
- * 
- * @param input - Any input value (usually farmer message)
- * @returns Guaranteed string (original or empty)
- */
+// Normalize farmer message to safe string.
 export function normalizeFarmerMessage(input: unknown): string {
   if (typeof input === 'string') {
     return input;
@@ -164,20 +82,12 @@ export function normalizeFarmerMessage(input: unknown): string {
   return '';
 }
 
-/**
- * Check if input has meaningful text content.
- * 
- * @param input - Any input value
- * @returns Boolean indicating if input has non-whitespace text
- */
+// Check if input has meaningful text content.
 export function hasTextContent(input: unknown): boolean {
   return typeof input === 'string' && input.trim().length > 0;
 }
 
-/**
- * Extract message content from various input formats safely.
- * More comprehensive than normalizeFarmerMessage.
- */
+// Extract message content from various input formats safely.
 export function extractMessageContent(input: unknown): string {
   // Direct string
   if (typeof input === 'string') {
@@ -210,9 +120,7 @@ export function extractMessageContent(input: unknown): string {
   return '';
 }
 
-/**
- * Format message for safe logging (truncated + sanitized).
- */
+// Format message for safe logging (truncated + sanitized).
 export function formatForLogging(input: unknown, maxLength = 100): string {
   const text = extractMessageContent(input);
   if (!text) {
@@ -223,10 +131,7 @@ export function formatForLogging(input: unknown, maxLength = 100): string {
   return safePreviewText(cleaned, maxLength);
 }
 
-/**
- * Create a safe default result for observation extraction
- * when input is invalid or empty.
- */
+// Create a safe default result for observation extraction
 export interface SafeExtractionDefaults {
   observations: never[];
   crop_mentioned: null;
@@ -249,36 +154,19 @@ export function getEmptyExtractionResult(reason: string): SafeExtractionDefaults
   };
 }
 
-/**
- * Safe regex test that handles non-string inputs.
- * 
- * @param pattern - Regular expression to test
- * @param input - Any input value
- * @returns Boolean result of regex test, or false for non-strings
- */
+// Safe regex test that handles non-string inputs.
 export function safeRegexTest(pattern: RegExp, input: unknown): boolean {
   return typeof input === 'string' && pattern.test(input);
 }
 
-/**
- * Safe regex match that handles non-string inputs.
- * 
- * @param input - Any input value
- * @param pattern - Regular expression to match
- * @returns Match result or null for non-strings
- */
+// Safe regex match that handles non-string inputs.
 export function safeRegexMatch(input: unknown, pattern: RegExp): RegExpMatchArray | null {
   return typeof input === 'string' ? input.match(pattern) : null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FAIL-SAFE i18n KEY RESOLUTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Resolve an i18n key with a guaranteed fallback.
- * NEVER returns undefined - always returns a valid string.
- */
+// Resolve an i18n key with a guaranteed fallback.
 export function resolveI18nKey(key: unknown, fallbackKey = 'system.monitoring.default'): string {
   if (typeof key === 'string' && key.trim().length > 0) {
     return key.trim();
@@ -286,10 +174,7 @@ export function resolveI18nKey(key: unknown, fallbackKey = 'system.monitoring.de
   return fallbackKey;
 }
 
-/**
- * Safe response mode resolution with fallback.
- * Ensures invalid modes default to ASK_CLARIFICATION.
- */
+// Safe response mode resolution with fallback.
 export function resolveResponseModeString(mode: unknown, fallback = 'CLARIFICATION'): string {
   const VALID_MODES = [
     'OBSERVATION', 'CLARIFICATION', 'CLARIFICATION_REQUIRED', 'PHOTO_REQUIRED',
@@ -307,9 +192,7 @@ export function resolveResponseModeString(mode: unknown, fallback = 'CLARIFICATI
   return fallback;
 }
 
-/**
- * Safe extraction of severity from unknown input.
- */
+// Safe extraction of severity from unknown input.
 export function resolveSeverity(input: unknown): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
   const VALID_SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
   const severity = typeof input === 'string' ? input.toUpperCase().trim() : '';
@@ -321,9 +204,7 @@ export function resolveSeverity(input: unknown): 'LOW' | 'MEDIUM' | 'HIGH' | 'CR
   return 'MEDIUM'; // Safe default
 }
 
-/**
- * Create guaranteed action_codes array from input.
- */
+// Create guaranteed action_codes array from input.
 export function resolveActionCodes(input: unknown): string[] {
   if (Array.isArray(input)) {
     return input.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);

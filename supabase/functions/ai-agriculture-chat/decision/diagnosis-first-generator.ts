@@ -1,32 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSIS-FIRST RESPONSE GENERATOR (v1.0.0)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * When crop damage is detected with full land context, immediately generate
- * ranked diagnosis options from candidate hypotheses (decision_rules) instead
- * of asking generic clarification questions.
- * 
- * SENIOR AGRONOMIST PRINCIPLE:
- * "When a farmer reports dying crops, we present possible causes immediately.
- * We do NOT ask 'what problem do you see?' - that's not agronomist practice."
- * 
- * ARCHITECTURE:
- * 1. Takes candidate hypotheses from hypothesis-evaluator.ts
- * 2. Generates ranked diagnosis options (top 3-5 causes)
- * 3. Includes differentiating observations from observable_characteristics
- * 4. ALWAYS appends photo option as final fallback
- * 5. Returns response ready for UI rendering
- * 
- * HARD INVARIANTS:
- * - When land context exists, options MUST come from decision_rules
- * - Generic symptom lists are NEVER returned
- * - Photo option is ALWAYS available
- * - Diagnoses ranked by: priority → confidence → severity
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// DIAGNOSIS-FIRST RESPONSE GENERATOR (v1.0.0)
 
 import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothesis-evaluator.ts';
 // STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
@@ -41,9 +13,7 @@ import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
 export const DIAGNOSIS_FIRST_VERSION = '2.0.0';  // v2.0.0: DB-driven i18n, removed hardcoded CAUSE_TRANSLATIONS and OBSERVATION_LABELS
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosisOption {
   id: string;
@@ -98,9 +68,7 @@ export interface DiagnosisFirstInput {
   supabaseClient?: any;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL GROUP ICONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const GROUP_ICONS: Record<string, string> = {
   'pest': '🐛',
@@ -127,16 +95,9 @@ function getGroupIcon(canonicalGroup: string): string {
   return GROUP_ICONS[groupLower] || '🔍';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v2.0.0: CAUSE TRANSLATION - DB-DRIVEN via translateCause()
-// Replaces hardcoded CAUSE_TRANSLATIONS dictionary (was ~60 entries, mr/hi/en only)
-// Now scales to all crops and all languages via decision_rules.i18n_key + FALLBACK_TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get farmer-friendly cause label using DB-driven i18n system.
- * Resolution chain: translation-loader cache → FALLBACK_TRANSLATIONS → formatted key
- */
+// Get farmer-friendly cause label using DB-driven i18n system.
 function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string {
   const translated = translateCause(cause, language);
   
@@ -163,15 +124,9 @@ function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string
   return translated;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v2.0.0: OBSERVATION LABELS - DB-DRIVEN via loadObservationLabels()
-// Replaces hardcoded OBSERVATION_LABELS dictionary (was ~45 entries, mr/hi/en only)
-// Now loads from observation_translations table, scales to all languages
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get observation label from pre-loaded DB labels map, with formatted fallback
- */
+// Get observation label from pre-loaded DB labels map, with formatted fallback
 function getObservationLabelFromMap(
   key: string,
   labelsMap: Map<string, ObservationLabel>,
@@ -191,9 +146,7 @@ function getObservationLabelFromMap(
   return formatted;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHOTO OPTION LABELS (English-only — LLM narration layer translates)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const PHOTO_LABEL = { label: '📷 Send Photo', description: 'Send a crop photo for more accurate diagnosis' };
 
@@ -213,20 +166,9 @@ function getQuestionText(
   return DIAGNOSIS_QUESTION_TEMPLATE.multiple;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN GENERATOR FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Generate diagnosis-first response from candidate hypotheses.
- * 
- * PRINCIPLE: When crop damage is reported with land context, show ranked
- * diagnosis options immediately - don't ask generic clarification questions.
- * 
- * This is how a senior agronomist operates in the field.
- * 
- * v1.1.0: Now supports async regional translation for authentic farmer vocabulary.
- */
+// Generate diagnosis-first response from candidate hypotheses.
 export async function generateDiagnosisFirstResponse(
   input: DiagnosisFirstInput
 ): Promise<DiagnosisFirstOutput | null> {
@@ -280,12 +222,7 @@ export async function generateDiagnosisFirstResponse(
     console.log(`      ${i + 1}. ${h.cause} (group=${h.canonical_group}, priority=${h.priority}, score=${h.total_score.toFixed(2)})`);
   });
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // v2.0.0: DB-DRIVEN TRANSLATION
-  // 1. Initialize translation cache (from decision_rules.i18n_key)
-  // 2. Load observation labels from observation_translations table
-  // 3. Regional translator → DB-driven fallback (NOT hardcoded dictionaries)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // Initialize i18n translation cache if supabaseClient available
   if (supabaseClient) {
@@ -321,11 +258,7 @@ export async function generateDiagnosisFirstResponse(
   // Generate diagnosis options (with optional regional translation)
   const diagnoses: DiagnosisOption[] = await Promise.all(
     topHypotheses.map(async (h, idx) => {
-      // ═══════════════════════════════════════════════════════════════════
       // FIX #2: Pick MOST DIAGNOSTIC observation key, not just [0]
-      // Priority: is_diagnostic=true in observation_master > specific borer/disease
-      //           markers > observation not already known > fallback to [0]
-      // ═══════════════════════════════════════════════════════════════════
       const DIAGNOSTIC_PRIORITY_KEYS = new Set([
         'DEAD_HEART', 'DEAD_HEART_PRESENT', 'BORE_HOLES', 'BORE_HOLES_AT_BASE',
         'STEM_BORING_MARKS', 'FRASS_VISIBLE', 'RED_ROT_SYMPTOMS', 'SMUT_WHIP_PRESENT',
@@ -362,13 +295,7 @@ export async function generateDiagnosisFirstResponse(
       
       const observationKey = bestObservation?.observation_key || 'VISUAL_CHECK';
       
-      // ═══════════════════════════════════════════════════════════════
       // CRITICAL FIX v2.1.0: DB-FIRST label resolution
-      // Priority: DB observation_translations → regional translator fallback
-      // Previous bug: hardcoded regional dict returned short technical labels
-      // (e.g., "मृत गाभा / सुरळी वाळणे") which bypassed longer farmer-friendly
-      // DB entries (e.g., "मधली सुरळी सुकलेली आणि ओढल्यास बाहेर येते")
-      // ═══════════════════════════════════════════════════════════════
       let causeLabel: string;
       let observationLabel: string;
       
@@ -426,12 +353,7 @@ export async function generateDiagnosisFirstResponse(
         console.log(`   ✅ [v2.1] DB-first: cause="${h.cause}" → "${causeLabel}" | obs="${observationKey}" → "${observationLabel}"`);
       }
       
-      // ═══════════════════════════════════════════════════════════════
       // FORENSIC AUDIT FIX v8.0: Prevent mixed-language options
-      // When causeLabel is empty (no regional translation), prefer observationLabel.
-      // If observationLabel is also English for a non-English user, format h.cause
-      // as human-readable instead of raw UPPERCASE_CODE.
-      // ═══════════════════════════════════════════════════════════════
       let finalCauseLabel = causeLabel || observationLabel;
       if (!finalCauseLabel || finalCauseLabel === h.cause) {
         // Last resort: format the English cause as readable text
@@ -468,11 +390,7 @@ export async function generateDiagnosisFirstResponse(
     })
   );
   
-  // ═══════════════════════════════════════════════════════════════
   // SAFETY GUARD: Filter out diagnoses with synthetic/invalid observation keys.
-  // Valid keys are short uppercase codes (e.g., LEAF_YELLOWING, DEAD_HEART_PRESENT).
-  // Invalid keys are truncated sentences from cause field (e.g., ZINC_DEFICIENCY_CAUSES_CHLOROS).
-  // ═══════════════════════════════════════════════════════════════
   const KNOWN_VALID_LONG_KEYS = new Set(['INTERVEINAL_CHLOROSIS', 'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'WATERLOGGING_DAMAGE', 'HONEYDEW_PRESENT']);
   
   const filteredDiagnoses = diagnoses.filter(d => {
@@ -487,11 +405,7 @@ export async function generateDiagnosisFirstResponse(
     return true;
   });
   
-  // ═══════════════════════════════════════════════════════════════
   // CRITICAL FIX: Deduplicate options by observation_key.
-  // Multiple hypotheses can produce the same observation_key (e.g., NUTRIENT_DEFICIENCY),
-  // causing duplicate options in the farmer UI. Keep the highest-priority one.
-  // ═══════════════════════════════════════════════════════════════
   const seenObservationKeys = new Map<string, DiagnosisOption>();
   const validatedDiagnoses: DiagnosisOption[] = [];
   
@@ -520,12 +434,7 @@ export async function generateDiagnosisFirstResponse(
     console.log(`   🔄 [Dedup] Removed ${filteredDiagnoses.length - validatedDiagnoses.length} duplicate options by observation_key`);
   }
   
-  // ═══════════════════════════════════════════════════════════════
   // FORENSIC AUDIT FIX v8.0: Second dedup layer by cause_label
-  // Even after observation_key dedup, different observation keys can produce
-  // the same farmer-facing label (e.g., "NUTRIENT DEFICIENCY" from NUTRIENT_DEFICIENCY
-  // and YELLOWING keys). Dedup by normalized cause_label to prevent UI duplicates.
-  // ═══════════════════════════════════════════════════════════════
   const seenCauseLabels = new Map<string, DiagnosisOption>();
   const labelDedupedDiagnoses: DiagnosisOption[] = [];
   
@@ -557,12 +466,7 @@ export async function generateDiagnosisFirstResponse(
     console.log(`   🔄 [LabelDedup] Removed ${validatedDiagnoses.length - labelDedupedDiagnoses.length} duplicate options by cause_label`);
   }
 
-  // ═══════════════════════════════════════════════════════════════
   // FARMER-OBSERVABLE ONTOLOGY GATE (Phase X.2 — definitive enforcement)
-  // Drop any option whose observation_key is NOT in observation_master
-  // (i.e., diagnosis codes like TUNGRO_YELLOW_STUNT leaking from rules).
-  // The PHOTO option and the always-valid VISUAL_CHECK key bypass the gate.
-  // ═══════════════════════════════════════════════════════════════
   let ontologyGatedDiagnoses = labelDedupedDiagnoses;
   if (supabaseClient && labelDedupedDiagnoses.length > 0) {
     try {
@@ -623,10 +527,7 @@ export async function generateDiagnosisFirstResponse(
   };
 }
 
-/**
- * Create UNKNOWN diagnosis when no rules match.
- * This is a formal positive output - we NEVER suppress output when crop damage exists.
- */
+// Create UNKNOWN diagnosis when no rules match.
 export function createUnknownDiagnosisResponse(
   crop_code: string,
   growth_stage: string,
@@ -712,13 +613,7 @@ export function createUnknownDiagnosisResponse(
   };
 }
 
-/**
- * Format DiagnosisFirstOutput for ClarificationOptionsUI.
- * Converts to the format expected by the frontend.
- * 
- * v1.1.1: FIX - Prevent duplicate text in labels by checking for similarity
- * between cause_label and observation_label before combining them.
- */
+// Format DiagnosisFirstOutput for ClarificationOptionsUI.
 export function formatForClarificationUI(
   output: DiagnosisFirstOutput
 ): {
@@ -760,9 +655,6 @@ export function formatForClarificationUI(
   };
 
   // Convert diagnoses to clarification options format
-  // FIX: Avoid duplication when cause_label and observation_label are similar
-  // v1.3.0: CLEAN labels - NO embedded [obs_keys:...] metadata in display
-  // Frontend uses observation_key field for routing when farmer selects option
   const options = output.diagnoses.map(d => {
     let displayLabel: string;
     
@@ -776,9 +668,6 @@ export function formatForClarificationUI(
     }
     
     // v2.1.0: Return CLEAN label for farmer UI
-      // FIX #1: Embed cause + rule_id in observation_key metadata so orchestrator
-      // can bypass generic observation matching when farmer confirms a diagnosis
-      // Frontend (ClarificationOptionsUI) will use observation_key when sending selection
       return {
         id: d.id,
         label: displayLabel,  // CLEAN: Farmer sees only readable text

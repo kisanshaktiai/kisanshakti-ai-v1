@@ -104,9 +104,6 @@ export async function resolveHypothesesFromObservations(
   const resolved = await resolveObservationSymbols(input.supabase, evidence.real_codes);
 
   // ── Tier 0: canonical resolution ────────────────────────────────────────
-  // P1: an unresolved code is a DB curation gap, NOT a reason to discard
-  // farmer evidence. Pass it through in DB-canonical form and log it, so the
-  // graph can still attempt an anchor and the gap is visible in the trace.
   const canonicalSeeds: string[] = [];
   const unresolved_codes: string[] = [];
   for (const r of resolved) {
@@ -141,8 +138,6 @@ export async function resolveHypothesesFromObservations(
   let graphOut = await runGraph(seeds);
 
   // ── Tier 1: observation_aliases closure ─────────────────────────────────
-  // Only when the canonical seeds anchored nothing. Bidirectional alias
-  // closure is pure identity resolution (DB table), not agronomy.
   if (graphOut.candidates.length === 0 && canonicalSeeds.length > 0) {
     try {
       const { expanded_codes, trace: aliasTrace } = await expandObservationVocabularyViaAliases(
@@ -204,9 +199,6 @@ export async function resolveHypothesesFromObservations(
     .map(toResolution);
 
   // ── P2: per-code edge classification ────────────────────────────────────
-  // A code that matched a hypothesis which was later eliminated is
-  // PARTIAL_MATCH_ONLY, not NO_MATCH. This is what lets the orchestrator ask
-  // a scoped clarification instead of declaring a transport failure.
   const matchedInSurvivors = new Set<string>();
   for (const h of hypotheses) for (const c of h.matched_conditions) matchedInSurvivors.add(dbCanonical(c));
   const matchedInEliminated = new Set<string>();

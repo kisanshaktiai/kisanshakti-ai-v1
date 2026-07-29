@@ -1,15 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CROP VOCABULARY CACHE v1.0.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * In-memory cache for crop_vocabulary table.
- * Provides romanized phrase → semantic hint mappings for LLM prompt enrichment.
- * 
- * Performance: 5-minute TTL, concurrency-safe loading.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CROP VOCABULARY CACHE v1.0.0
 
 export const CROP_VOCABULARY_VERSION = '1.0.0';
 
@@ -29,10 +18,7 @@ interface VocabCacheEntry {
 const vocabCache = new Map<string, VocabCacheEntry>();
 const VOCAB_CACHE_TTL = 300_000; // 5 minutes
 
-/**
- * Get crop-specific vocabulary entries with caching.
- * Returns empty array if no entries found or on error.
- */
+// Get crop-specific vocabulary entries with caching.
 export async function getCropVocabulary(cropCodeRaw: string, supabase: any): Promise<VocabEntry[]> {
   // crop_vocabulary.crop_code is stored LOWERCASE in DB (rice, sugarcane, all, …).
   // Callers pass 'RICE' / 'ALL' / 'Sugarcane'; normalize to lower to match.
@@ -91,10 +77,7 @@ export async function getCropVocabulary(cropCodeRaw: string, supabase: any): Pro
   return result;
 }
 
-/**
- * Build a vocabulary block for LLM prompt injection.
- * Returns empty string if no vocabulary available.
- */
+// Build a vocabulary block for LLM prompt injection.
 export function buildVocabularyPromptBlock(cropCode: string, entries: VocabEntry[]): string {
   if (!entries || entries.length === 0) return '';
   

@@ -47,9 +47,7 @@ import {
 } from '../utils/db-driven-taxonomies.ts';
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NUTRITION CONFLICT ARBITRATION
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   passesZincSpecificityGate,
   passesMicronutrientSpecificityGate,
@@ -59,9 +57,7 @@ import {
   type DominanceBlockResult,
 } from './nutrition-conflict-arbitrator.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SymbolicFact {
   // Core context (from database - NEVER ask farmer)
@@ -120,8 +116,6 @@ export interface SymbolicFact {
   recent_treatments: string[];
 
   // PHASE C — Morphology reconciliation evidence (optional; null when phenology
-  // or observed morphology is unavailable). Never drives a decision by itself;
-  // used to nudge confidence and hint at stage shift.
   morphology_evidence?: {
     overall_status: 'CONSISTENT' | 'MILD_DEVIATION' | 'MAJOR_DEVIATION' | 'INSUFFICIENT_DATA';
     stage_shift_hint: 'AHEAD' | 'BEHIND' | null;
@@ -140,11 +134,7 @@ export interface RuleCondition {
   value?: any;
 }
 
-/**
- * FiredRule - LANGUAGE-INDEPENDENT symbolic output
- * NOTE: response_mr/hi/en were DROPPED per SSOT architecture.
- * All narration is LLM-generated from action_text + i18n_key.
- */
+// FiredRule - LANGUAGE-INDEPENDENT symbolic output
 export interface FiredRule {
   rule_id: string;
   rule_name: string;
@@ -180,10 +170,7 @@ export interface Hypothesis {
   supporting_rules: string[];
 }
 
-/**
- * InferenceResult - LANGUAGE-INDEPENDENT symbolic output
- * NOTE: response_mr/hi/en were DROPPED per SSOT architecture.
- */
+// InferenceResult - LANGUAGE-INDEPENDENT symbolic output
 export interface InferenceResult {
   diagnosis: Hypothesis | null;
   alternative_diagnoses: Hypothesis[];
@@ -206,10 +193,7 @@ export interface InferenceResult {
   }[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE CACHE - In-memory per crop_code with 5-minute TTL
-// Prevents 300-500 rule DB loads per request at 1M+ scale
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface CachedRules {
   rules: any[];
@@ -246,10 +230,7 @@ function setCachedRules(cacheKey: string, rules: any[]): void {
   ruleCache.set(cacheKey, { rules, expiresAt: Date.now() + RULE_CACHE_TTL_MS });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OBSERVATION METADATA CACHE - For ontology bridge + pre-filtering
-// Caches observation_master metadata with canonical_group_mapping join
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface ObservationMetadata {
   observation_code: string;
@@ -294,17 +275,12 @@ function setCachedObsMetadata(cacheKey: string, data: Map<string, ObservationMet
   obsMetadataCache.set(cacheKey, { data, expiresAt: Date.now() + RULE_CACHE_TTL_MS });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMBOLIC REASONER CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class SymbolicReasoner {
   private supabase: any;
   
-  /**
-   * GAP #1 FIX: Accept external Supabase client to prevent connection exhaustion.
-   * Falls back to creating a new client only if none provided.
-   */
+  // GAP #1 FIX: Accept external Supabase client to prevent connection exhaustion.
   constructor(supabaseClient?: any) {
     this.supabase = supabaseClient || createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -312,12 +288,7 @@ export class SymbolicReasoner {
     );
   }
   
-  /**
-   * CRITICAL: Execute symbolic rules against facts
-   * This is the core decision engine - NO LLM involvement
-   * 
-   * PHASE-17 FIX (Issue #4): Added fuzzy/partial matching support
-   */
+  // CRITICAL: Execute symbolic rules against facts
   async executeRules(
     facts: SymbolicFact,
     landState: AuthoritativeLandState | null,
@@ -351,12 +322,7 @@ export class SymbolicReasoner {
       for (const rule of rules) {
         rulesEvaluated++;
         
-        // ═══════════════════════════════════════════════════════════════════════
         // FIX 1: NDVI/ABIOTIC STRESS RULE GUARD  (Phase 0′ 2026-07-29: DB-SSOT)
-        // Class comes from decision_rules.biological_group / observation_master
-        // .semantic_class — no hardcoded agronomy lists. If the taxonomy cache is
-        // not loaded, the guard degrades to NO FILTER.
-        // ═══════════════════════════════════════════════════════════════════════
         const ruleCategory = rule.category?.toLowerCase() || '';
         const _taxReady = isTaxonomyLoaded();
         const ruleIsAbiotic = _taxReady && isAbioticRule(rule);
@@ -392,10 +358,7 @@ export class SymbolicReasoner {
           continue;
         }
         
-        // ═══════════════════════════════════════════════════════════════════════
         // NUTRITION CONFLICT ARBITRATION: Water stress & macro dominance gates
-        // ═══════════════════════════════════════════════════════════════════════
-        // ruleCategory already declared above
         const isNutritionRule = ruleCategory.includes('nutrition') || ruleCategory.includes('deficiency');
         
         if (isNutritionRule) {
@@ -463,11 +426,7 @@ export class SymbolicReasoner {
           partialMatch?.confidence ?? 0
         );
         
-        // ═══════════════════════════════════════════════════════════════════════
         // DIAGNOSTIC CONFIDENCE BOOST (graduated by discriminator_score)
-        // Uses observation_master.discriminator_score (0-100) + observation_type
-        // PRIMARY obs with high discriminator → up to 1.5x boost
-        // ═══════════════════════════════════════════════════════════════════════
         if (matches) {
           const obsMeta = (this as any)._currentObsMetadata as Map<string, ObservationMetadata> | undefined;
           if (obsMeta && obsMeta.size > 0) {
@@ -605,10 +564,7 @@ export class SymbolicReasoner {
     }
   }
   
-  /**
-   * PHASE-17 FIX (Issue #4): Evaluate partial/fuzzy match
-   * Returns true if enough conditions are met (above minScore threshold)
-   */
+  // PHASE-17 FIX (Issue #4): Evaluate partial/fuzzy match
   private evaluatePartialMatch(
     conditions: RuleCondition,
     facts: SymbolicFact,
@@ -657,18 +613,12 @@ export class SymbolicReasoner {
     return { matches: false, confidence: 0, missing: [] };
   }
   
-  /**
-   * Load rules matching the context from database.
-   * PHASE 3 FIX: Uses in-memory cache with 5-minute TTL per crop_code
-   * to eliminate 200-500ms DB hits on every request.
-   */
+  // Load rules matching the context from database.
  private async loadRulesForContext(facts: SymbolicFact): Promise<any[]> {
     const cropCode = facts.crop_code?.toLowerCase() || '';
     const stage = facts.growth_stage?.toLowerCase() || '';
     
-    // ═══════════════════════════════════════════════════════════════════════
     // UNIFIED: Use crop-code-normalizer instead of inline CROP_TO_DB map
-    // ═══════════════════════════════════════════════════════════════════════
     const { normalizeCropCode: normCrop, getCropCodeVariants: getVariants } = await import('../utils/crop-code-normalizer.ts');
     const dbCode = normCrop(cropCode);
     const variants = new Set(getVariants(cropCode));
@@ -712,19 +662,13 @@ export class SymbolicReasoner {
     return await this.applyObservationLayerFilter(stageFiltered, facts);
   }
   
-  /**
-   * OBSERVATION LAYER: Load observation metadata from observation_master + canonical_group_mapping
-   * Caches results with same TTL as rule cache.
-   */
+  // OBSERVATION LAYER: Load observation metadata from observation_master + canonical_group_mapping
   private async loadObservationMetadata(observationCodes: string[]): Promise<Map<string, ObservationMetadata>> {
     if (!observationCodes || observationCodes.length === 0) {
       return new Map();
     }
     
     // FIX F4-A (2026-07-26): observation_master.observation_code is 100%
-    // lower_snake in the DB. Upstream may pass UPPER_SNAKE codes from
-    // extractor/ledger. Normalize at the boundary so the .in() lookup
-    // actually matches. Deduplicate after normalization.
     const normalizedCodes = Array.from(
       new Set(
         (observationCodes || [])
@@ -759,18 +703,6 @@ export class SymbolicReasoner {
       
       if (bioGroups.length > 0) {
         // 2026-07-27 — DB-VERIFIED CORRECTION of FIX F1 (2026-07-26).
-        // `observation_master.canonical_group` values ARE engine groups
-        // ('01_physiology', '03_pest', '04_disease', '06_abiotic', ...) and
-        // `canonical_group_mapping.engine_group` holds the SAME strings, so
-        // the F1 join was tautological: it could only ever re-derive the value
-        // already present on the observation row. When the read returned zero
-        // rows (privileges / cache), `engine_groups` collapsed to [] and the
-        // ObsFilter logged `EngineGroups: []` — a false alarm, since the tier
-        // widening matches on `canonical_group`, never on `engine_group`.
-        //
-        // New contract: canonical_group IS the engine group (identity, always
-        // present). canonical_group_mapping only ENRICHES it with the
-        // biological label. Missing mapping rows are informational.
         const { data: mapData, error: mapError } = await this.supabase
           .from('canonical_group_mapping')
           .select('biological_group, engine_group, confidence')
@@ -793,8 +725,6 @@ export class SymbolicReasoner {
       const result = new Map<string, ObservationMetadata>();
       for (const obs of (obsData || [])) {
         // Identity edge (always non-empty when canonical_group is set). The
-        // mapping table adds no additional engine group — only the biological
-        // label — so it never widens this list.
         const engineGroups: Array<{ engine_group: string; confidence: number }> = [];
         if (obs.canonical_group) {
           engineGroups.push({ engine_group: obs.canonical_group, confidence: 1 });
@@ -830,11 +760,7 @@ export class SymbolicReasoner {
     }
   }
   
-  /**
-   * OBSERVATION LAYER: Apply category + plant-part pre-filtering to candidate rules
-   * Uses ontology bridge (canonical_group_mapping) for narrowing.
-   * Implements WHOLE wildcard logic per SQL architecture.
-   */
+  // OBSERVATION LAYER: Apply category + plant-part pre-filtering to candidate rules
   private async applyObservationLayerFilter(rules: any[], facts: SymbolicFact): Promise<any[]> {
     const rawObservations = facts.all_observations || [];
     if (rawObservations.length === 0) {
@@ -843,16 +769,6 @@ export class SymbolicReasoner {
     }
 
     // ─── OBSERVATION BRIDGE ───────────────────────────────────────────────
-    // Generic extractor codes (POOR_GERMINATION) must be bridged to the
-    // crop's canonical observation_master vocabulary before metadata lookup.
-    //
-    // 2026-07-27 GUARD: the alias pass previously rewrote EVERY code, so a
-    // code that already exists in `observation_master` could be replaced by an
-    // unrelated alias target (`STUNTED_GROWTH → obs_rice_patchy_emergence` in
-    // production). Now that this filter receives the unified graph observation
-    // stream, those codes are already canonical and MUST pass through
-    // untouched. Alias resolution applies ONLY to codes absent from
-    // observation_master.
     const cropForBridge = String(facts.crop_code || facts.crop || '').toLowerCase().trim();
     let observations: string[] = [...rawObservations];
     try {
@@ -934,16 +850,7 @@ export class SymbolicReasoner {
     
     console.log(`   🔬 [ObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}], EngineGroups: [${[...obsEngineGroups].join(',')}]`);
     
-    // ═══════════════════════════════════════════════════════════════════════
     // P3: TIERED RULE-FILTER WIDENING — never collapse candidates to zero.
-    // Tier 0 = category + plant_part (strictest)
-    // Tier 1 = drop required_plant_part
-    // Tier 2 = drop required_observation_category
-    // Tier 3 = widen by canonical_group
-    // Tier 4 = widen by crop_code
-    // Tier 5 = universal scope (all input rules)
-    // Returns the WIDEST NON-EMPTY tier. Purely structural — no agronomy.
-    // ═══════════════════════════════════════════════════════════════════════
     const obsCanonicalGroups = new Set<string>();
     for (const [, meta] of obsMeta) {
       const cg = (meta as any)?.canonical_group;
@@ -1022,9 +929,7 @@ export class SymbolicReasoner {
   }
 
   
-  /**
-   * Filter rules by growth stage
-   */
+  // Filter rules by growth stage
   private filterByStage(rules: any[], stage: string): any[] {
     return rules.filter(rule => {
       const stageApplicable = rule.stage_applicable || [];
@@ -1035,13 +940,7 @@ export class SymbolicReasoner {
     });
   }
   
-  /**
-   * CRITICAL: Evaluate conditions_json against facts.
-   * 
-   * BUG #1 FIX: Now handles BOTH formats:
-   * 1. Flat DB format (actual): {observations: [...], crop_stage: [...], ndvi_trend, soil_moisture_low, ...}
-   * 2. Recursive format (future): {all: [...], any: [...], fact: "...", operator: "..."}
-   */
+  // CRITICAL: Evaluate conditions_json against facts.
   evaluateConditionsJson(
     conditions: RuleCondition,
     facts: SymbolicFact
@@ -1053,9 +952,7 @@ export class SymbolicReasoner {
       return { matches: true, confidence: 0.5, reason: 'No conditions (default)', matched_conditions: [] };
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // PATH A: Recursive all/any/fact/operator format (future-proof)
-    // ═══════════════════════════════════════════════════════════════════════
     if (conditions.all && Array.isArray(conditions.all)) {
       const results = conditions.all.map(c => this.evaluateConditionsJson(c, facts));
       const allMatch = results.every(r => r.matches);
@@ -1097,27 +994,19 @@ export class SymbolicReasoner {
       };
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // PATH B: Flat DB format (actual production format)
-    // Handles 200+ condition keys from decision_rules.conditions_json
-    // ═══════════════════════════════════════════════════════════════════════
     const cond = conditions as any;
     let totalConditions = 0;
     let metConditions = 0;
     
     // Build a combined symptom/observation set for matching.
-    // 2026-07-26 (audit F3): every side of an observation comparison is folded
-    // through the canonical-code SSOT (`utils/canonical-code.ts`) so DB
-    // lower_snake_case codes and runtime-uppercased symbols cannot mismatch.
     const factSymptom = canonicalObsCode(facts.primary_symptom);
     const factQuery = canonicalObsCode(facts.user_query);
     const factStageCanon = canonicalStageKey(facts.growth_stage);
     const allObsCanon = (facts.all_observations || []).map(o => canonicalObsCode(o)).filter(Boolean);
 
     
-    // ═══════════════════════════════════════════════════════════════════════
     // STAGE KEYS: crop_stage, stage, growth_stage (aliases)
-    // ═══════════════════════════════════════════════════════════════════════
     const stageValue = cond.crop_stage || cond.stage || cond.growth_stage;
     if (stageValue) {
       totalConditions++;
@@ -1132,9 +1021,7 @@ export class SymbolicReasoner {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // OBSERVATION KEYS: observations, symptom, primary_symptom (aliases)
-    // ═══════════════════════════════════════════════════════════════════════
     const obsValue = cond.observations || cond.symptom || cond.primary_symptom;
     if (obsValue) {
       totalConditions++;
@@ -1168,9 +1055,7 @@ export class SymbolicReasoner {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // NDVI KEYS
-    // ═══════════════════════════════════════════════════════════════════════
     if (cond.ndvi_level) {
       totalConditions++;
       if (facts.ndvi_status && cond.ndvi_level.toUpperCase() === facts.ndvi_status.toUpperCase()) {
@@ -1186,9 +1071,7 @@ export class SymbolicReasoner {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // SEVERITY
-    // ═══════════════════════════════════════════════════════════════════════
     if (cond.severity && typeof cond.severity === 'string') {
       totalConditions++;
       if (facts.severity && cond.severity.toUpperCase() === facts.severity.toUpperCase()) {
@@ -1197,9 +1080,7 @@ export class SymbolicReasoner {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // KNOWN BOOLEAN/THRESHOLD FLAGS (mapped to SymbolicFact)
-    // ═══════════════════════════════════════════════════════════════════════
     const BOOLEAN_FLAG_MAP: Record<string, (f: SymbolicFact) => boolean> = {
       'soil_moisture_low': (f) => f.soil_moisture_estimated === 'DRY',
       'soil_moisture_high': (f) => f.soil_moisture_estimated === 'WET',
@@ -1222,21 +1103,14 @@ export class SymbolicReasoner {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // BOOLEAN OBSERVATION FLAGS: keys like black_whip_like_structure, dead_heart,
-    // leaf_rolling, pest_present, etc. - matched against primary_symptom
-    // These are the 200+ domain-specific keys in conditions_json
-    // ═══════════════════════════════════════════════════════════════════════
     const SKIP_KEYS = new Set([
       'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
       'ndvi_level', 'ndvi_trend', 'severity', 'trigger_keywords',
       'all', 'any', 'fact', 'operator', 'value',
       'crop_code', 'crop_type', // Already filtered at query level
       ...Object.keys(BOOLEAN_FLAG_MAP),
-      // ═══════════════════════════════════════════════════════════════════
       // P1 Fix: ROI metadata keys — NOT matching conditions, just metadata
-      // Must be skipped to prevent inflating totalConditions
-      // ═══════════════════════════════════════════════════════════════════
       'roi_basis', 'roi_modifier', 'roi_by_region',
       'roi_estimate', 'cost_benefit', 'economic_note',
     ]);
@@ -1376,9 +1250,7 @@ export class SymbolicReasoner {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // SCORING
-    // ═══════════════════════════════════════════════════════════════════════
     if (totalConditions === 0) {
       const keys = Object.keys(cond).filter(k => k !== 'trigger_keywords' && !SKIP_KEYS.has(k));
       if (keys.length === 0) {
@@ -1402,9 +1274,7 @@ export class SymbolicReasoner {
     };
   }
   
-  /**
-   * Get fact value from facts object with normalization
-   */
+  // Get fact value from facts object with normalization
   private getFactValue(facts: SymbolicFact, factName: string): any {
     // Normalize fact name to handle different formats
     const normalizedName = factName.toLowerCase().replace(/[_-]/g, '');
@@ -1467,9 +1337,7 @@ export class SymbolicReasoner {
     return undefined;
   }
   
-  /**
-   * Evaluate comparison operator
-   */
+  // Evaluate comparison operator
   private evaluateOperator(factValue: any, operator: string, conditionValue: any): boolean {
     const op = operator.toLowerCase();
     
@@ -1527,13 +1395,7 @@ export class SymbolicReasoner {
     }
   }
   
-  /**
-   * @deprecated REMOVED per SSOT architecture.
-   * Keyword matching is language-dependent and violates symbolic purity.
-   * All matching now uses conditions_json only.
-   * 
-   * This stub remains to prevent TypeScript errors during transition.
-   */
+  // @deprecated REMOVED per SSOT architecture.
   private checkKeywordMatch(
     _keywords: string[],
     _userQuery: string
@@ -1542,9 +1404,7 @@ export class SymbolicReasoner {
     return { matches: false, confidence: 0, matched_keyword: null };
   }
   
-  /**
-   * Bug 3 Fix: Map condition keys to numeric fact values
-   */
+  // Bug 3 Fix: Map condition keys to numeric fact values
   private getNumericFactForConditionKey(key: string, facts: SymbolicFact): number | null {
     const CONDITION_TO_FACT: Record<string, () => number | null> = {
       // Macronutrients
@@ -1579,9 +1439,7 @@ export class SymbolicReasoner {
     return getter ? getter() : null;
   }
   
-  /**
-   * Bug 3 Fix: Evaluate numeric threshold comparison
-   */
+  // Bug 3 Fix: Evaluate numeric threshold comparison
   private evaluateThreshold(factValue: number, operator: string, threshold: number): boolean {
     switch (operator) {
       case '<': return factValue < threshold;
@@ -1593,9 +1451,7 @@ export class SymbolicReasoner {
     }
   }
   
-  /**
-   * Generate human-readable explanation for rule firing
-   */
+  // Generate human-readable explanation for rule firing
   private generateRuleExplanation(rule: any, facts: SymbolicFact, match: any): string {
     const parts: string[] = [];
     
@@ -1612,9 +1468,7 @@ export class SymbolicReasoner {
     return parts.join(' ');
   }
   
-  /**
-   * Update hypotheses map with new rule match
-   */
+  // Update hypotheses map with new rule match
   private updateHypotheses(
     hypotheses: Map<string, Hypothesis>,
     rule: any,
@@ -1644,9 +1498,7 @@ export class SymbolicReasoner {
     }
   }
   
-  /**
-   * Rank hypotheses by confidence and supporting evidence
-   */
+  // Rank hypotheses by confidence and supporting evidence
   private rankHypotheses(
     hypotheses: Map<string, Hypothesis>,
     facts: SymbolicFact
@@ -1664,9 +1516,7 @@ export class SymbolicReasoner {
     return ranked;
   }
   
-  /**
-   * Calculate final confidence based on all factors
-   */
+  // Calculate final confidence based on all factors
   private calculateFinalConfidence(
     hypotheses: Hypothesis[],
     firedRules: FiredRule[],
@@ -1695,9 +1545,7 @@ export class SymbolicReasoner {
     return Math.min(0.95, confidence);
   }
   
-  /**
-   * Map observations and authoritative state to SymbolicFact
-   */
+  // Map observations and authoritative state to SymbolicFact
   static mapToSymbolicFact(
     canonicalState: CanonicalState,
     landState: AuthoritativeLandState | null,
@@ -1813,15 +1661,11 @@ export class SymbolicReasoner {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON INSTANCE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let reasonerInstance: SymbolicReasoner | null = null;
 
-/**
- * GAP #1 FIX: Accept optional Supabase client for connection reuse.
- */
+// GAP #1 FIX: Accept optional Supabase client for connection reuse.
 export function getSymbolicReasoner(supabaseClient?: any): SymbolicReasoner {
   // P3 Fix: Always pass fresh client per request to prevent stale connections
   // in edge functions where the Supabase client changes per request

@@ -1,6 +1,4 @@
 // ============= PRODUCT REPOSITORY (SSOT) =============
-// Queries master_products table instead of hardcoded arrays
-// ════════════════════════════════════════════════════════
 
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 
@@ -55,9 +53,7 @@ export interface ProductRecommendation {
   };
 }
 
-/**
- * Helper to transform DB row to Recommendation object
- */
+// Helper to transform DB row to Recommendation object
 function transformProduct(row: any): ProductRecommendation {
   const metadata = row.ai_metadata || {};
   const translations = row.translations || {};
@@ -85,9 +81,7 @@ function transformProduct(row: any): ProductRecommendation {
   };
 }
 
-/**
- * Find best product for a specific pest
- */
+// Find best product for a specific pest
 export async function findProductForPest(
   supabase: SupabaseClient,
   crop: string,
@@ -97,10 +91,6 @@ export async function findProductForPest(
 ): Promise<ProductRecommendation | null> {
   
   // Map severity to max IPM level logic
-  // LOW: Cultural/Botanical (<=3)
-  // MODERATE: Botanical/Biological (<=4)
-  // HIGH: Chemical (<=5)
-  // CRITICAL: Emergency (<=6)
   const severityToMaxIPM: Record<string, number> = {
     'LOW': 3,
     'MODERATE': 4,
@@ -114,8 +104,6 @@ export async function findProductForPest(
   const cropUpper = crop.toUpperCase().replace(/[_\s-]+/g, ''); // e.g. SUGARCANE -> SUGARCANE
   
   // Note: JSONB contains query uses strict string matching, so we rely on
-  // the fact that we migrated standardized codes.
-  // For more robust matching we might need text search or array expansion.
   
   let query = supabase
     .from('master_products')
@@ -123,9 +111,6 @@ export async function findProductForPest(
     .eq('ai_recommendable', true)
     .eq('status', 'active')
     // We use a broad filter then refine in memory if needed, or specific JSON path
-    // .contains('pest_targets', [pest]) is case sensitive and exact
-    // Since our migration used standard codes, this should work for migrated data.
-    // If migration used normalized codes (e.g. SHOOT_BORER), we must match that.
     .order('effectiveness_rating', { ascending: false });
 
   if (organicOnly) {
@@ -169,9 +154,7 @@ export async function findProductForPest(
   return transformProduct(matched[0]);
 }
 
-/**
- * Find best product for a specific disease
- */
+// Find best product for a specific disease
 export async function findProductForDisease(
   supabase: SupabaseClient,
   crop: string,
@@ -220,9 +203,7 @@ export async function findProductForDisease(
   return transformProduct(matched[0]);
 }
 
-/**
- * Check regulatory status of a chemical
- */
+// Check regulatory status of a chemical
 export async function checkChemicalStatus(
   supabase: SupabaseClient,
   chemicalName: string
@@ -244,9 +225,7 @@ export async function checkChemicalStatus(
   return { status: data.status, reason: data.reason };
 }
 
-/**
- * Get products by IPM level (for multi-stage recommendation)
- */
+// Get products by IPM level (for multi-stage recommendation)
 export async function getProductsByIPMLevel(
   supabase: SupabaseClient,
   crop: string,
@@ -271,8 +250,6 @@ export async function getProductsByIPMLevel(
     .eq('ai_recommendable', true)
     .eq('status', 'active')
     // We can't filter by array content efficiently with fuzzy match in SQL without exact codes
-    // So we fetch broader set and filter in JS
-    // IPM level filtering done in-memory below (JSONB arrow path uses text comparison)
     .order('effectiveness_rating', { ascending: false });
 
   if (error || !data) return [];

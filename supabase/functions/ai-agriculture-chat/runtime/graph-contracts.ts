@@ -150,10 +150,7 @@ export async function assertRulesExist(
 
 // ─────────────────── PATCH 1 · BIOLOGICAL_SCOPE_CONTRACT ──────────────────
 
-/**
- * Resolve the crop_group for a farmer crop_code from the `crops` table.
- * Returns lower-cased string when found, null otherwise. Zero hardcoding.
- */
+// Resolve the crop_group for a farmer crop_code from the `crops` table.
 export async function resolveCropGroup(
   supabase: SupabaseLike,
   cropCode: string | null | undefined,
@@ -214,24 +211,7 @@ async function fetchObservationScopeRows(
   return map;
 }
 
-/**
- * BIOLOGICAL_SCOPE_CONTRACT — decide whether each canonical observation code
- * is permissible in the current biological context.
- *
- * Accepts when ANY of:
- *   - master row missing scope metadata (universal by omission)
- *   - crop_code / crop_group / 'universal' ∈ applicable_crop_groups
- *   - observation_master.crop_group ∈ { crop_code, crop_group }
- *   - observation_master.crop_group == null
- *   - observation_type == 'GENERIC'         (biological symptom, cross-crop)
- *
- * Rejects when observation is scoped to a different crop / family and the
- * current context is not in that scope.
- *
- * Unknown symbols (not in observation_master) are dropped with the
- * `UNKNOWN_OBSERVATION_SYMBOL` reason so callers can distinguish scope
- * violation from graph-integrity violation.
- */
+// BIOLOGICAL_SCOPE_CONTRACT — decide whether each canonical observation code
 export async function filterByBiologicalScope(
   supabase: SupabaseLike,
   ctx: CropContext,
@@ -451,17 +431,7 @@ export function validateDecisionOutput(d: DecisionOutputCandidate | null | undef
   return { valid: true, kind, missing: [] };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HYPOTHESIS_INVARIANT_CONTRACT — impossible-state guard
-// ─────────────────────────────────────────────────────────────────────────
-//   In a diagnostic turn, `hypotheses=0 ∧ observation_required=false` is
-//   agronomically impossible: the graph either found candidate hypotheses
-//   or it must ask the farmer for more evidence. Silent exit means the
-//   system will fall back to orphan rules and hallucinate an answer.
-//
-//   Dev  → throw GraphContractViolation
-//   Prod → log [GRAPH_CONTRACT_VIOLATION] and force observation_required=true
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class GraphContractViolation extends Error {
   constructor(msg: string) { super(msg); this.name = 'GraphContractViolation'; }

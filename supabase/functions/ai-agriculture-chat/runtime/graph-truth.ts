@@ -1,23 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * GRAPH TRUTH — immutable per-turn agronomic node (single source of truth)
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * Built EXACTLY ONCE per turn, after the observation evidence lock. Every
- * downstream stage (hypothesis engine, rule engine, response builder) reads
- * from this object and MUST NOT mutate any field.
- *
- * Determinism contract:
- *   two agronomically identical queries against the same land MUST produce
- *   the same `hash`. If they don't, the divergence detector fires.
- *
- * Authority sources (asserted at build time, never inferred from farmer text):
- *   crop_code / variety_id ⇐ landContext (fetchComprehensiveLandContext)
- *   biological_stage / stage_uuid / DAS / GDD ⇐ BiologicalState
- *   canonical_observations ⇐ observation ontology (bridge + IOM peers)
- *   hypothesis_candidates ⇐ hypothesis engine (attached later, then re-frozen)
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// GRAPH TRUTH — immutable per-turn agronomic node (single source of truth)
 
 import { classifyEvidence } from './evidence-classifier.ts';
 
@@ -115,10 +96,6 @@ export function computeGraphHash(input: {
 
 export function buildGraphTruth(input: BuildGraphTruthInput): GraphTruth {
   // ── Split raw input into real observations vs context metadata ────────
-  // Metadata (CROP_IDENTIFIED, PHOTO_NOT_PROVIDED, ACTION_NONE, *_UNKNOWN,
-  // CONTEXT_*, etc.) MUST NEVER enter canonical_observations. It is
-  // captured separately so the response builder can still see farmer
-  // context without corrupting the reasoning graph.
   const classified = classifyEvidence(input.canonical_observations ?? []);
   const stripped = classified.ignored_codes;
   for (const md of stripped) {
@@ -188,11 +165,7 @@ export function buildGraphTruth(input: BuildGraphTruthInput): GraphTruth {
 }
 
 
-/**
- * Validate that authoritative fields didn't drift between two snapshots.
- * Emits [GRAPH_CONTRACT_VIOLATION] and returns list of violations. Never
- * mutates or silent-repairs.
- */
+// Validate that authoritative fields didn't drift between two snapshots.
 export function validateGraphTruth(
   before: GraphTruth,
   after: GraphTruth,
@@ -216,16 +189,7 @@ export function validateGraphTruth(
   return violations;
 }
 
-/**
- * Integrity check for a single GraphTruth instance.
- * Recomputes hash from current fields and compares to the stored `.hash`.
- * Called before every downstream stage (hypothesis, IOM gate, rule engine,
- * response builder) to prove no upstream code mutated an authoritative
- * field after lock.
- *
- * Emits [GRAPH_VALIDATED] on success, [GRAPH_CONTRACT_VIOLATION] on drift.
- * Never throws — the caller decides how to react.
- */
+// Integrity check for a single GraphTruth instance.
 export function assertGraphTruthIntegrity(
   gt: GraphTruth | null | undefined,
   callsite: string,

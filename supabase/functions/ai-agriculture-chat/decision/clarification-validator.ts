@@ -1,36 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CLARIFICATION VALIDATOR - DIAGNOSIS LEAKAGE PREVENTION
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * CRITICAL: Prevents diagnosis names from appearing in clarification options.
- * Options must be OBSERVATION-BASED only, not diagnostic conclusions.
- * 
- * WRONG: "नायट्रोजन कमतरता दिसते का?" (Nitrogen deficiency visible?)
- * RIGHT: "खालची पाने पिवळी आहेत का?" (Are lower leaves yellow?)
- * 
- * VERSION: 1.0.0
- */
+// CLARIFICATION VALIDATOR - DIAGNOSIS LEAKAGE PREVENTION
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSIS KEYWORDS TO BLOCK
-// These MUST NEVER appear in clarification options
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSIS KEYWORDS - STRICTLY DISEASE/PEST NAMES ONLY
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * IMPORTANT: Only include DIAGNOSTIC CONCLUSIONS, not observation descriptions.
- * 
- * ✅ BLOCKED (diagnosis names): 'blight', 'borer', 'aphid', 'rust'
- * ❌ ALLOWED (observations): 'insects visible', 'rotted', 'drying', 'holes'
- * 
- * The farmer needs to describe what they SEE (observations), not what they THINK
- * the problem is (diagnosis). This list blocks diagnosis leakage while allowing
- * legitimate observation-based template options.
- */
+// DIAGNOSIS KEYWORDS - STRICTLY DISEASE/PEST NAMES ONLY
 
 const DIAGNOSIS_KEYWORDS_EN = [
   // Disease NAMES (specific diagnoses - not generic descriptions)
@@ -88,9 +60,7 @@ const DIAGNOSIS_PATTERNS = [
   /\bPHI\b/i,  // Pre-Harvest Interval
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION RESULT INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationValidationResult {
   valid: boolean;
@@ -109,15 +79,11 @@ export interface DynamicOption {
   confidence?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION VALIDATOR CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class ClarificationValidator {
   
-  /**
-   * CRITICAL: Validate clarification options for diagnosis leakage
-   */
+  // CRITICAL: Validate clarification options for diagnosis leakage
   validateOptions(options: string[] | DynamicOption[]): ClarificationValidationResult {
     console.log('🔒 [ClarificationValidator] Checking for diagnosis leakage...');
     
@@ -156,9 +122,7 @@ export class ClarificationValidator {
     };
   }
   
-  /**
-   * Detect if option text contains diagnosis keywords
-   */
+  // Detect if option text contains diagnosis keywords
   private detectDiagnosisLeak(text: string): { leaked: boolean; keyword: string; language: string } {
     const textLower = text.toLowerCase();
     
@@ -194,17 +158,13 @@ export class ClarificationValidator {
     return { leaked: false, keyword: '', language: '' };
   }
   
-  /**
-   * Validate dynamic options from LLM generation
-   */
+  // Validate dynamic options from LLM generation
   validateDynamicOptions(options: DynamicOption[]): boolean {
     const result = this.validateOptions(options);
     return result.valid;
   }
   
-  /**
-   * Generate safe observation-based options for a scope
-   */
+  // Generate safe observation-based options for a scope
   generateSafeOptions(
     scope: string,
     crop: string,
@@ -286,9 +246,7 @@ export class ClarificationValidator {
     return safeOptions[scope]?.[language] || safeOptions[scope]?.['en'] || [];
   }
   
-  /**
-   * Sanitize LLM-generated options by removing any with diagnosis leakage
-   */
+  // Sanitize LLM-generated options by removing any with diagnosis leakage
   sanitizeOptions(options: DynamicOption[], fallbackScope: string, language: string): DynamicOption[] {
     const result = this.validateOptions(options);
     
@@ -317,9 +275,7 @@ export class ClarificationValidator {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON INSTANCE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let validatorInstance: ClarificationValidator | null = null;
 
@@ -348,10 +304,7 @@ export const DIAGNOSIS_KEYWORDS = [
   ...DIAGNOSIS_KEYWORDS_HI
 ];
 
-/**
- * ✅ CRITICAL FIX: Validate AND sanitize clarification options
- * Instead of just failing, this provides safe fallback options
- */
+// ✅ CRITICAL FIX: Validate AND sanitize clarification options
 export interface SanitizedClarificationResult {
   valid: boolean;
   sanitizedOptions: DynamicOption[];

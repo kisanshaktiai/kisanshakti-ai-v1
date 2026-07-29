@@ -50,14 +50,7 @@ function getCacheRef(): StageKnowledgeCacheRef | null {
   return ref ?? null;
 }
 
-/**
- * Return the DB-curated stage family for a (crop, stage) — a set of stages
- * that share a phenological neighbourhood in `crop_stage_graph`.
- *
- * When `crop` is omitted OR the DB has no entry, returns a singleton
- * `[normalized]` and emits `[STAGE_GRAPH_MISS]` so curators can spot gaps in
- * `crop_stage_graph`. This function NEVER substitutes a hardcoded family.
- */
+// Return the DB-curated stage family for a (crop, stage) — a set of stages
 export function stageFamily(
   stage?: string | null,
   crop?: string | null,
@@ -81,14 +74,7 @@ export function stageFamily(
   return [k];
 }
 
-/**
- * Symmetric biological-equivalence check.
- *
- * - With `crop`: DB SSOT. True iff either family contains the other stage.
- *   Empty inputs are treated as "unknown" and return true (never contradict).
- * - Without `crop`: strict equality only (a === b, after normalization).
- *   No hardcoded family bridging.
- */
+// Symmetric biological-equivalence check.
 export function stagesEquivalent(
   a: unknown,
   b: unknown,
@@ -115,9 +101,5 @@ export function stagesEquivalent(
   return false;
 }
 
-/**
- * @deprecated Retained ONLY as a named export for legacy imports that still
- * dereference it. Always an empty object. Use `stageFamily(stage, crop)`
- * instead. Any read on this object will now miss and force the DB lookup.
- */
+// @deprecated Retained ONLY as a named export for legacy imports that still
 export const STAGE_FAMILIES: Readonly<Record<string, readonly string[]>> = Object.freeze({});

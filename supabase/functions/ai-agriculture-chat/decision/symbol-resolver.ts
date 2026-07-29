@@ -237,11 +237,7 @@ export async function resolveObservationSymbols(
   return out;
 }
 
-/**
- * Batched canonical map for graph matching. This is identity resolution only:
- * aliases/master rows authored in DB decide equivalence; unresolved symbols map
- * to themselves so exact graph identity still works without guessing.
- */
+// Batched canonical map for graph matching. This is identity resolution only:
 export async function resolveObservationSymbolMap(
   supabase: any,
   inputs: ReadonlyArray<unknown>,

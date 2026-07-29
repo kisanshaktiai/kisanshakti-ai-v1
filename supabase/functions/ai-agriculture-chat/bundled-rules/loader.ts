@@ -22,9 +22,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DecisionInput {
   crop_code?: string;
@@ -64,41 +62,28 @@ export interface ExecutableRule extends BundledRule {
   conditions: (input: DecisionInput) => boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let cachedRules: ExecutableRule[] | null = null;
 let cacheExpiry: number = 0;
 const CACHE_TTL = 3600000; // 1 hour
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OBSERVATION ALIAS CACHE - Loaded from observation_aliases table
-// Replaces hardcoded alias dictionaries with DB-sourced SSOT
-// ═══════════════════════════════════════════════════════════════════════════
 let cachedObservationAliases: Record<string, string[]> | null = null;
 let aliasesCacheExpiry: number = 0;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE 7: Observation validation cache - loaded from observation_master
-// Used to validate that condition keys are valid observation codes
-// ═══════════════════════════════════════════════════════════════════════════
 let cachedObservationCodes: Set<string> | null = null;
 let obsCacheExpiry: number = 0;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // META/RUNTIME KEYS - Require explicit runtime context, NOT observation matching
-// These keys control rule flow (e.g., fallback rules) and must be set by orchestrator
-// ═══════════════════════════════════════════════════════════════════════════
 const META_RUNTIME_KEYS = new Set([
   'no_matching_diagnosis', 'no_confirmed_pest', 'block_rule_triggered',
   'fallback', 'chemical_attempt', 'diagnosis_method', 'bio_control_failed',
   'organic_failed', 'recovery_absent', 'salesman_recommendation'
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DATABASE LOADING
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function loadRulesFromDatabase(): Promise<BundledRule[]> {
   try {
@@ -112,14 +97,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // ═══════════════════════════════════════════════════════════════════════
     // Phase-Z FIX 1 — Paginate decision_rules.
-    // PostgREST hard-caps at 1000 rows per request regardless of .limit().
-    // Without .range() pagination, large rule tables (1800+) are silently
-    // truncated to 1000, losing ~45% of crop-specific rules and producing
-    // "Rules matched: 0" for queries whose winner sits past row 1000.
-    // Mirrors the alias / observation_master paginators below.
-    // ═══════════════════════════════════════════════════════════════════════
     const PAGE = 1000;
     const MAX_PAGES = 5; // safety cap (5000 rules)
     const allRows: any[] = [];
@@ -147,15 +125,9 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
       
-      // ═══════════════════════════════════════════════════════════════════════
       // ON-THE-FLY NORMALIZATION (Alternative to migrations)
-      // ═══════════════════════════════════════════════════════════════════════
       
       // Normalize action_type to standard enums
-      // ═══════════════════════════════════════════════════════════════════════
-      // PHASE 3: Strict action_type alignment - preserve DB canonical values
-      // Database uses 5 canonical types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
-      // ═══════════════════════════════════════════════════════════════════════
       const normalizeActionType = (action: string | null): string => {
         if (!action) return 'RECOMMEND';
         const upper = action.toUpperCase().trim();
@@ -260,9 +232,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         scientific_basis: row.scientific_basis || '',
         icar_package_ref: row.icar_package_ref,
         
-        // ═══════════════════════════════════════════════════════════════════════
         // PHASE 5: New Response Contract Fields (language-independent)
-        // ═══════════════════════════════════════════════════════════════════════
         action_text: row.action_text || null, // May be null, handle in UI
         reason_text: row.reason_text || null,
         knowledge_text: row.knowledge_text || null,
@@ -275,21 +245,15 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         alternatives: row.alternatives || [],
         action_type: normalizeActionType(row.action_type),
         
-        // ═══════════════════════════════════════════════════════════════════════
         // PHASE 1: Graph Control Fields
-        // ═══════════════════════════════════════════════════════════════════════
         blocks_rule_ids: row.blocks_rule_ids || [],
         prerequisite_rule_ids: row.prerequisite_rule_ids || [],
         
-        // ═══════════════════════════════════════════════════════════════════════
         // PHASE 2: Temporal Constraint Fields
-        // ═══════════════════════════════════════════════════════════════════════
         crop_age_days_min: row.crop_age_days_min,
         crop_age_days_max: row.crop_age_days_max,
         
-        // ═══════════════════════════════════════════════════════════════════════
         // PHASE 3: ETL Safety Gate Fields
-        // ═══════════════════════════════════════════════════════════════════════
         etl_applicable: row.etl_applicable,
         etl_value_min: row.etl_value_min,
         etl_value_max: row.etl_value_max,
@@ -302,19 +266,12 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         active_ingredient: row.active_ingredient,
         organic_alternative: row.organic_alternative,
         
-        // ═══════════════════════════════════════════════════════════════════════
         // PHASE 6: Safety Enhancement Fields
-        // ═══════════════════════════════════════════════════════════════════════
         farmer_safety_level: row.farmer_safety_level,
         resistance_group: row.resistance_group,
         mode_of_action: row.mode_of_action,
         
-        // ═══════════════════════════════════════════════════════════════════════
         // PHASE 8: RICH AGRONOMIC RESPONSE FIELDS (v1.0 Deterministic Builder)
-        // These columns are used by deterministic-response-builder.ts
-        // to construct fully rule-sourced farmer advisory responses
-        // ═══════════════════════════════════════════════════════════════════════
-        // Dosage & Application
         dosage_per_acre: row.dosage_per_acre || null,
         water_volume_per_acre: row.water_volume_per_acre || null,
         application_method: row.application_method || null,
@@ -368,9 +325,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         differentiating_questions: row.differentiating_questions || null,
         visual_markers: row.visual_markers || null,
         
-        // ═══════════════════════════════════════════════════════════════════════
         // OBSERVATION LAYER: Pre-filter columns
-        // ═══════════════════════════════════════════════════════════════════════
         required_observation_category: row.required_observation_category || null,
         required_plant_part: row.required_plant_part || null,
 
@@ -386,9 +341,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONDITION RECONSTRUCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 const BLOCKED_PATTERNS = [
   /eval\s*\(/i, /Function\s*\(/i, /import\s*\(/i, /require\s*\(/i,
@@ -423,9 +376,7 @@ function reconstructCondition(code: string): ((input: DecisionInput) => boolean)
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONDITION LEDGER - Strict Constraint-Based Evaluation
-// ═══════════════════════════════════════════════════════════════════════════
 
 export enum ConditionStatus {
   PASSED = 'PASSED',
@@ -453,9 +404,7 @@ export function clearLedgerCache(): void {
   conditionLedgerCache.clear();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // KEY CATEGORY CLASSIFICATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 const STRUCTURAL_KEYS = new Set(['all', 'any', 'fact', 'operator', 'value']);
 
@@ -477,10 +426,6 @@ const CATEGORY_E_KEYS = new Set(['weather', 'rain_forecast']);
 const CATEGORY_F_KEYS = new Set(['etl', 'etl_range']);
 
 // Category G: Informational/context (NOT required - don't block matching)
-// FORENSIC FIX 1B: Added all orphan keys that are informational/economic context
-// v7.6 FORENSIC FIX: Added domain-specific boolean keys that duplicate observations array
-// These are metadata annotations (e.g., egg_masses_visible: true) that redundantly
-// describe what the `observations` array already captures. They must NEVER block rules.
 const CATEGORY_G_KEYS = new Set([
   'context', 'roi_basis', 'roi_modifier', 'roi_by_region',
   'timing', 'method', 'operation', 'action', 'assessment_timing',
@@ -490,13 +435,7 @@ const CATEGORY_G_KEYS = new Set([
   'requires_identification', 'soil_type', 'soil_type_name',
   'variety', 'trait', 'region', 'farming_mode', 'monsoon_timing',
   'yield_potential', 'crop_cycle',
-  // ═══════════════════════════════════════════════════════════════════════════
   // v7.6 BUG 1 FIX: Domain-specific boolean keys from conditions_json
-  // These are observation metadata that duplicate the `observations` array.
-  // Previously fell through to unrecognized-key handler (line 927) as required:true
-  // which blocked ALL pest treatment rules from firing.
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Pest observation booleans
   'egg_masses_visible', 'pink_larvae_inside', 'bore_holes_at_nodes',
   'larvae_visible', 'larvae_present', 'larvae_in_stem', 'larvae_in_whorl',
   'frass_visible', 'frass_present', 'webbing_visible', 'webbing_present',
@@ -527,9 +466,7 @@ const CATEGORY_G_KEYS = new Set([
   'confidence_threshold', 'min_confidence',
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NUMERIC CONDITION EVALUATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 function evaluateNumericCondition(key: string, condValue: any, input: DecisionInput): ConditionEntry {
   const keyToInput: Record<string, () => number | undefined | null> = {
@@ -590,9 +527,7 @@ function evaluateNumericCondition(key: string, condValue: any, input: DecisionIn
   return { key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // WEATHER CONDITION EVALUATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 function evaluateWeatherCondition(condWeather: any, inputWeather: DecisionInput['weather']): boolean {
   if (!inputWeather) return false;
@@ -603,9 +538,7 @@ function evaluateWeatherCondition(condWeather: any, inputWeather: DecisionInput[
   return true;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ETL CONDITION EVALUATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 function evaluateETLCondition(condETL: any, pestCount: number): boolean {
   const min = condETL.min ?? condETL.threshold_min ?? 0;
@@ -613,9 +546,7 @@ function evaluateETLCondition(condETL: any, pestCount: number): boolean {
   return pestCount >= min && pestCount <= max;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BOOLEAN GATE EVALUATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, expandedObs: Set<string>, inputQuery: string): ConditionEntry {
   const expected = condValue === true || condValue === 'true';
@@ -641,11 +572,7 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
     return { key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.soil_nitrogen, ruleValue: condValue };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 1 FIX: REMOVED no_/normal_ prefix auto-pass shortcut
-  // Every key must now be evaluated explicitly. Meta/runtime keys that lack
-  // runtime context will return SKIPPED_NO_DATA (required=true) → rule fails.
-  // ═══════════════════════════════════════════════════════════════════════════
 
   // Mapped boolean evaluators (includes negative assertion keys)
   const booleanEvaluators: Record<string, () => boolean | null> = {
@@ -654,10 +581,7 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
       const pestObs = ['INSECT_PRESENCE', 'PEST_DAMAGE', 'BORE_HOLES', 'FRASS', 'WEBBING'];
       return pestObs.some(p => expandedObs.has(p)) ? true : null;
     },
-    // ═══════════════════════════════════════════════════════════════════════
     // PHASE 1: Explicit negative assertion evaluators (were auto-pass before)
-    // These now have proper runtime evaluation logic with required=true
-    // ═══════════════════════════════════════════════════════════════════════
     'no_matching_diagnosis': () => {
       // Runtime flag set by orchestrator when no specific rule matched
       // Without explicit flag, returns null → SKIPPED_NO_DATA → rule fails
@@ -716,10 +640,7 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
     return { key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: actual, ruleValue: condValue };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 2: Meta/runtime keys that lack evaluators FAIL (not SKIPPED)
-  // This prevents rules with meta-conditions from firing without orchestrator context
-  // ═══════════════════════════════════════════════════════════════════════════
   if (META_RUNTIME_KEYS.has(key)) {
     // Check if orchestrator explicitly set this flag on the input
     const runtimeValue = (input as any)[key];
@@ -743,18 +664,9 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
   return { key, status: ConditionStatus.PASSED, required: false, ruleValue: condValue };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN EVALUATOR: Strict fail-closed with condition ledger
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * STRICT CONSTRAINT-BASED EVALUATOR
- * 
- * Decision rule: A rule matches ONLY if:
- * 1. Zero entries have status FAILED
- * 2. Zero REQUIRED entries have status SKIPPED_NO_DATA or UNEVALUABLE
- * 3. At least one entry has status PASSED
- */
+// STRICT CONSTRAINT-BASED EVALUATOR
 export function evaluateConditionsJson(
   conditions: any,
   input: DecisionInput,
@@ -762,8 +674,6 @@ export function evaluateConditionsJson(
 ): boolean {
   if (!conditions || Object.keys(conditions).length === 0) {
     // CRITICAL FIX: Empty conditions rules should NOT match by default
-    // They are catch-all rules that win over specific rules with real conditions
-    // Only match if there are observations present (prevents SC_DIAG_GENERAL_015 from always winning)
     if (ruleId) {
       conditionLedgerCache.set(ruleId, [{ key: 'EMPTY_CONDITIONS', status: ConditionStatus.PASSED, required: false }]);
     }
@@ -802,9 +712,7 @@ export function evaluateConditionsJson(
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // FLAT DB FORMAT: Ledger-based strict evaluation
-  // ═══════════════════════════════════════════════════════════════════════════
   const ledger: ConditionEntry[] = [];
   const conditionKeys = Object.keys(conditions);
 
@@ -820,10 +728,6 @@ export function evaluateConditionsJson(
   if (inputSymptom) allInputObs.add(inputSymptom);
 
   // Observation aliases
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
-  // Empty fallback is intentional - safer than hardcoded phantom matches
-  // ═══════════════════════════════════════════════════════════════════════════
   const observationAliases: Record<string, string[]> = cachedObservationAliases || {};
 
   // Expand with aliases
@@ -870,16 +774,11 @@ export function evaluateConditionsJson(
     }
 
     // ─── Category A: Observation Keys ───
-    // FORENSIC FIX 1A: `required_symptoms` is treated as a soft observation match
-    // These are confirmation-level symptoms that farmers may describe in lay terms
     if (key === 'observations' || key === 'symptom' || key === 'primary_symptom' || key === 'required_symptoms') {
       const isRequiredSymptoms = key === 'required_symptoms';
       const obsList = Array.isArray(condValue) ? condValue : [condValue];
       if (obsList.length > 0) {
-        // ═══════════════════════════════════════════════════════════════════
         // PHASE 7: Validate observation codes against observation_master cache
-        // Log warnings for invalid codes that may indicate stale rule data
-        // ═══════════════════════════════════════════════════════════════════
         if (cachedObservationCodes && ruleId) {
           for (const obs of obsList) {
             const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
@@ -894,11 +793,7 @@ export function evaluateConditionsJson(
             const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
             for (const inputObs of expandedObs) {
               if (inputObs === obsUpper || inputObs.includes(obsUpper) || obsUpper.includes(inputObs)) return true;
-              // ═══════════════════════════════════════════════════════════════
               // AUDIT FIX: Root-word matching for related codes
-              // STUNTED_PLANTS ↔ STUNTED_GROWTH (share root word 'STUNTED')
-              // POOR_TILLERING ↔ POOR_RATOONING (share root word 'POOR')
-              // ═══════════════════════════════════════════════════════════════
               const obsWords = obsUpper.split('_');
               const inputWords = inputObs.split('_');
               const sharedWords = obsWords.filter(w => inputWords.includes(w) && w.length > 3);
@@ -1005,9 +900,6 @@ export function evaluateConditionsJson(
     }
 
     // ─── Unrecognized keys: Domain-specific observation flags ───
-    // v7.6 BUG 1 FIX: Changed from required:true → required:false
-    // Unknown boolean keys are treated as SOFT observation hints, not hard gates.
-    // This prevents orphan/new DB keys from blocking entire rules.
     if (condValue === true || condValue === 'true') {
       const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
       const match = expandedObs.has(keySymbol) ||
@@ -1103,12 +995,7 @@ export function evaluateConditionsJson(
     ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: false, ruleValue: condValue });
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // DECISION RULE: Strict fail-closed
-  // 1. Zero FAILED entries
-  // 2. Zero REQUIRED entries with SKIPPED_NO_DATA or UNEVALUABLE
-  // 3. At least one PASSED entry
-  // ═══════════════════════════════════════════════════════════════════════════
   const requiredFailed = ledger.filter(e => e.required &&
     (e.status === ConditionStatus.FAILED || e.status === ConditionStatus.SKIPPED_NO_DATA || e.status === ConditionStatus.UNEVALUABLE));
   const anyPassed = ledger.some(e => e.status === ConditionStatus.PASSED);
@@ -1132,16 +1019,7 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
         if (result) return true;
       }
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // AUDIT FIX: Secondary path - observable_characteristics matching
-      // When condition_code is STAGE_GENERAL and conditions_json fails (due to 
-      // diagnostic-level codes like ORANGE_RED_DOTS_AT_NODES not matching farmer-
-      // facing codes like POOR_TILLERING), check observable_characteristics which
-      // contains farmer-facing symptom codes that match NLU extraction output.
-      // ═══════════════════════════════════════════════════════════════════════════
-      // FORENSIC FIX 1F: Handle both array AND boolean-object format for observable_characteristics
-      // Array format: ["DEAD_HEART", "FRASS"] — already normalized by normalizeObservableChars
-      // Boolean-object format: {dead_heart: true, bore_holes: true} — normalized to array of uppercase keys
       const obsChars = (rule as any).observable_characteristics;
       if (obsChars && Array.isArray(obsChars) && obsChars.length > 0) {
         const inputSymptoms = (input.visual_symptoms || []).map(s =>
@@ -1191,9 +1069,7 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function loadAllRules(): Promise<ExecutableRule[]> {
   const now = Date.now();
@@ -1206,9 +1082,7 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
   cachedRules = bundled.map(makeExecutable);
   cacheExpiry = now + CACHE_TTL;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 4: Load observation aliases from DB (same TTL as rules)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (!cachedObservationAliases || now >= aliasesCacheExpiry) {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -1217,9 +1091,6 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
         const supabase = createClient(supabaseUrl, serviceRoleKey);
         
         // Load observation aliases — observation_aliases has ~14,023 rows
-        // but PostgREST caps responses at 1,000 rows by default, silently
-        // dropping ~93% of the alias bridge. Paginate via .range() to load
-        // the full set. (Fix D — Phase Y forensic audit.)
         const PAGE = 1000;
         const aliases: Array<{ alias_code: string; canonical_code: string; active?: boolean }> = [];
         for (let from = 0; ; from += PAGE) {
@@ -1254,10 +1125,7 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB (paginated)`);
         }
 
-        // ═══════════════════════════════════════════════════════════════════
         // PHASE 7: Load observation_master codes for validation
-        // (Also paginated — table has ~1,997 active rows, default cap 1,000.)
-        // ═══════════════════════════════════════════════════════════════════
         if (!cachedObservationCodes || now >= obsCacheExpiry) {
           const obsCodes: Array<{ observation_code: string }> = [];
           for (let from = 0; ; from += PAGE) {
@@ -1321,9 +1189,7 @@ export function loadRulesByCategory(category: string): ExecutableRule[] {
   return cachedRules?.filter(r => r.category === category) || [];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EVALUATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function evaluateRules(rules: ExecutableRule[], input: DecisionInput): ExecutableRule[] {
   const matched: ExecutableRule[] = [];
@@ -1345,39 +1211,7 @@ export function findRulesForCause(cause: string): ExecutableRule[] {
   return cachedRules?.filter(r => r.cause === cause) || [];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE C, gate #2 — INTENT GATING ON RULES  (2026-07-17 CORRECTED)
-//
-// FORENSIC FIX (2026-07-17):
-// The previous implementation compared `decision_rules.rule_intent`
-// (which encodes SEMANTIC ACTION TYPE — 'recommendation' | 'command' |
-// 'block' | 'education' | 'warning') against the farmer's diagnostic
-// intent code (e.g. 'POOR_TILLERING', 'emergence_failure'). These are
-// two disjoint symbol spaces — the comparison could never match, so
-// `kept` was always 0 and the entire intent-bound rule corpus was
-// silently `dropped`. Only the ~7 rows with rule_intent=NULL survived
-// as "generic penalty" rules, which then collapsed the graph.
-//
-// There is NO column on `decision_rules` that encodes farmer diagnostic
-// intent (verified: applicability_scope / category / crop_category /
-// required_observation_category are all scoping/taxonomy). Intent →
-// rule scoping is enforced upstream via `intent_observation_mapping`,
-// the hypothesis graph, and the condition evaluator.
-//
-// Therefore this gate now:
-//   1. Applies the INTENT_INCOMPATIBLE hard-drop map against
-//      `rule.category` (the correct semantic column for that check).
-//   2. Preserves the `_genericPenalty` marker on rules with
-//      rule_intent == null so the Phase-D arbiter continues to demote
-//      undeclared-action rules (unchanged behaviour).
-//   3. Does NOT filter on rule_intent as a diagnostic-intent match.
-//   4. Emits the same [BRAIN_TRACE][RULE_INTENT_GATE] log shape so
-//      regression fixtures and log parsers remain valid.
-// ═══════════════════════════════════════════════════════════════════════════
-// Intent-incompatibility list keyed by farmer diagnostic intent →
-// forbidden rule `category` values. E.g. an "emergence_failure" turn
-// can never be served by a "cyclone_recovery" or "post_harvest"
-// category rule. No per-crop agronomic constants live here.
 const INTENT_INCOMPATIBLE: Record<string, ReadonlySet<string>> = {
   emergence_failure: new Set([
     'cyclone_recovery',
@@ -1414,8 +1248,6 @@ export function filterRulesByIntent(
     out.push(r);
   }
   // NOTE: `dropped` remains in the log for shape compatibility; with
-  // the semantic mismatch fixed there is no longer a bucket that drops
-  // rules for intent-mismatch reasons, so it is always 0.
   console.log(
     `[BRAIN_TRACE][RULE_INTENT_GATE] intent="${intentKey}" kept=${kept} demoted=${demoted} dropped=0 incompat_dropped=${incompatDropped}`
   );
@@ -1437,9 +1269,7 @@ export function getRuleIdsForInput(input: DecisionInput): string[] {
   return matched.map(r => r.rule_id);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // METADATA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function getRuleCount(): number {
   return cachedRules?.length || 0;

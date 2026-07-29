@@ -1,27 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION AUTHORITY SYSTEM (v1.0.0)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Tracks the epistemic source and authority level of each observation symbol.
- * Ensures the Terminal Damage Gate only fires on farmer-confirmed evidence,
- * not on alias expansions, cross-crop injections, or LLM inferences.
- * 
- * Authority hierarchy (highest to lowest):
- * - CONFIRMED: Clarification selection, explicit farmer statement, photo-verified
- * - EXTRACTED: Pattern match from farmer's raw text (induction, cross-crop on raw text)
- * - INFERRED: Alias expansion, LLM semantic extraction, intent-to-observation mapping
- * - SYNTHETIC: Cross-crop injection, obsKeyExpansion, router fallback injection
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// OBSERVATION AUTHORITY SYSTEM (v1.0.0)
 
 export const OBSERVATION_AUTHORITY_VERSION = '1.0.0';
 
-/**
- * Authority levels for observation symbols.
- * Higher authority = more trustworthy for terminal gate decisions.
- */
+// Authority levels for observation symbols.
 export enum ObservationAuthority {
   /** Farmer explicitly confirmed via clarification selection, direct statement, or photo */
   CONFIRMED = 'CONFIRMED',
@@ -41,30 +22,18 @@ const AUTHORITY_RANK: Record<ObservationAuthority, number> = {
   [ObservationAuthority.SYNTHETIC]: 1
 };
 
-/**
- * A single observation with its authority metadata.
- */
+// A single observation with its authority metadata.
 export interface AuthoredObservation {
   code: string;
   authority: ObservationAuthority;
   source: string; // e.g., "CLARIFICATION_SELECTION", "ALIAS_EXPANSION", "CROSS_CROP_MAPPER"
 }
 
-/**
- * AuthoredObservationSet - Tracks observations with their authority levels.
- * 
- * When duplicate codes are added, the highest authority wins.
- * Provides filtered views for different consumers:
- * - Terminal gate: only CONFIRMED (+ optionally EXTRACTED)
- * - Rule engine: all codes (flat set)
- */
+// AuthoredObservationSet - Tracks observations with their authority levels.
 export class AuthoredObservationSet {
   private observations: Map<string, AuthoredObservation> = new Map();
 
-  /**
-   * Add an observation with its authority level and source.
-   * If the code already exists, the higher authority wins.
-   */
+  // Add an observation with its authority level and source.
   add(code: string, authority: ObservationAuthority, source: string): void {
     const existing = this.observations.get(code);
     if (existing) {
@@ -77,9 +46,7 @@ export class AuthoredObservationSet {
     }
   }
 
-  /**
-   * Add multiple codes with the same authority and source.
-   */
+  // Add multiple codes with the same authority and source.
   addAll(codes: Iterable<string>, authority: ObservationAuthority, source: string): void {
     for (const code of codes) {
       this.add(code, authority, source);
@@ -160,16 +127,5 @@ export class AuthoredObservationSet {
   }
 }
 
-/**
- * PATCH 4 (BUG 4) — Static terminal-code allowlist REMOVED.
- *
- * Injection admissibility is now decided by the DB:
- *   - `intent_observation_mapping.is_active`
- *   - `observation_master.can_generate_question`
- *   - `observation_master.is_farmer_observable`
- *
- * The previous hardcoded Set silently blocked legitimate cross-crop LITERAL
- * peers such as GERMINATION_FAILURE for RICE_EMERGENCE_FAILURE. Keeping a
- * runtime agriculture gate here violated the DB-is-brain contract.
- */
+// PATCH 4 (BUG 4) — Static terminal-code allowlist REMOVED.
 export const TERMINAL_CODES_BLOCKED_FROM_INJECTION: ReadonlySet<string> = new Set<string>();

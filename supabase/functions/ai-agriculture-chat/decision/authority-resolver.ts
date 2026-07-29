@@ -1,47 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DECISION AUTHORITY RESOLVER (Land-First Governance Layer)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Determines the single authoritative decision domain BEFORE any diagnostic
- * rules are evaluated. This is a HARD authority system, not probabilistic.
- * 
- * DESIGN LAWS:
- * - This layer is GOVERNANCE, not intelligence
- * - It does NOT infer causes
- * - It does NOT score, rank, or predict
- * - It does NOT use LLM reasoning
- * - It ONLY enforces legal authority to decide
- * - Authority is BINARY and DETERMINISTIC
- * 
- * Authority ≠ Confidence
- * Authority ≠ Probability  
- * Authority = Legal Right to Decide
- * 
- * PRECEDENCE (Strict Order):
- * 1. SAFETY - Overrides everything
- * 2. LAND - Overrides CROP, CLIMATE, SYSTEM
- * 3. CLIMATE - Overrides CROP only
- * 4. SYSTEM - Overrides CROP only
- * 5. CROP - Default (pests, diseases, nutrients)
- * 
- * 
- * v2.0.0 UPDATE (SURGICAL REFACTOR):
- * - Added observations parameter for terminal damage pre-check
- * - Terminal damage detection runs BEFORE other authority rules
- * - authority = NONE is PROHIBITED when terminal damage exists
- * - Hard assertion enforces invariant at resolution
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// DECISION AUTHORITY RESOLVER (Land-First Governance Layer)
 
 export const AUTHORITY_RESOLVER_VERSION = '2.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P1-1 FIX: Import canonical types from authority-types.ts
-// All authority-related types are now centralized
-// ═══════════════════════════════════════════════════════════════════════════
 
 import {
   DecisionAuthority,
@@ -61,9 +22,7 @@ import {
 export { DecisionAuthority, AuthorityStatus, ResponseMode };
 export type { AuthorityDecision };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT CONTRACT (Immutable - from existing symbolic layers)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface AuthorityInput {
   /** Cause codes detected by upstream layers (observation-cause-mapper) */
@@ -80,14 +39,9 @@ export interface AuthorityInput {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CAUSE DETECTION SETS (Deterministic Matching)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * SAFETY causes - Override EVERYTHING
- * If any of these are present, ONLY safety logic may proceed.
- */
+// SAFETY causes - Override EVERYTHING
 const SAFETY_CAUSES = new Set([
   'TOXIC_EXPOSURE',
   'LIVESTOCK_RISK',
@@ -98,10 +52,7 @@ const SAFETY_CAUSES = new Set([
   'EMERGENCY_ESCALATION'
 ]);
 
-/**
- * LAND causes - Override CROP, CLIMATE, SYSTEM
- * Soil and land-level issues invalidate pest/disease logic.
- */
+// LAND causes - Override CROP, CLIMATE, SYSTEM
 const LAND_CAUSES = new Set([
   'SALINITY',
   'SODICITY',
@@ -123,10 +74,7 @@ const LAND_CAUSES = new Set([
   'SOIL_STRUCTURE_DEGRADED'
 ]);
 
-/**
- * CLIMATE causes - Override CROP only
- * Weather events take precedence over pest/disease logic.
- */
+// CLIMATE causes - Override CROP only
 const CLIMATE_CAUSES = new Set([
   'FROST',
   'FROST_DAMAGE',
@@ -141,10 +89,7 @@ const CLIMATE_CAUSES = new Set([
   'HAIL_DAMAGE'
 ]);
 
-/**
- * SYSTEM causes - Override CROP only
- * Infrastructure failures take precedence over pest/disease logic.
- */
+// SYSTEM causes - Override CROP only
 const SYSTEM_CAUSES = new Set([
   'IRRIGATION_FAILURE',
   'PUMP_FAILURE',
@@ -155,12 +100,7 @@ const SYSTEM_CAUSES = new Set([
   'STORAGE_FAILURE'
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM → AUTHORITY DOMAIN — PR-2: DB-DRIVEN
-// LAND_SYMPTOMS / CLIMATE_SYMPTOMS Sets deleted. Domain now derives from
-// `observation_master.semantic_class` + `canonical_group` via the
-// observation-classification-cache.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import {
   classifyAuthorityDomain,
@@ -170,24 +110,9 @@ import {
 
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN RESOLVER FUNCTION (v2.0 - WITH TERMINAL DAMAGE PRE-CHECK)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * resolveDecisionAuthority
- * 
- * Determines which domain has the LEGAL RIGHT to make decisions.
- * This is pure symbolic logic with strict precedence rules.
- * 
- * v2.0 CHANGE: Now accepts optional observations parameter for terminal
- * damage pre-check. Terminal damage ALWAYS grants CROP authority,
- * BEFORE other rules are evaluated.
- * 
- * @param input - AuthorityInput from upstream symbolic layers
- * @param observations - Optional ObservationKeys for terminal damage check
- * @returns AuthorityDecision with explicit blocked/allowed domains
- */
+// resolveDecisionAuthority
 export function resolveDecisionAuthority(
   input: AuthorityInput,
   observations?: Set<string> | string[]
@@ -197,10 +122,7 @@ export function resolveDecisionAuthority(
   
   const resolvedAt = new Date().toISOString();
   
-  // ═══════════════════════════════════════════════════════════════════════
   // PRE-AUTHORITY GATE: Terminal damage OVERRIDES everything (v2.0)
-  // This runs BEFORE any other authority rules
-  // ═══════════════════════════════════════════════════════════════════════
   
   if (observations) {
     const terminalCheck = detectTerminalDamageForAuthority(observations);
@@ -219,10 +141,7 @@ export function resolveDecisionAuthority(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // RULE 0: NO CAUSES = NONE AUTHORITY (Observation/Information Only)
-  // BUT NOT if terminal damage exists (checked above)
-  // ═══════════════════════════════════════════════════════════════════════
   
   if (causes.size === 0 && symptoms.size === 0) {
     // v2.0: Double-check observations for terminal damage even if causes/symptoms empty
@@ -252,9 +171,7 @@ export function resolveDecisionAuthority(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // RULE 1: SAFETY (Overrides Everything)
-  // ═══════════════════════════════════════════════════════════════════════
   
   const safetyCauseDetected = [...causes].some(c => SAFETY_CAUSES.has(c));
   
@@ -277,13 +194,7 @@ export function resolveDecisionAuthority(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // RULE 2: LAND (Overrides CROP, CLIMATE, SYSTEM)
-  // PR-2: symptom trigger now derives from observation_master via
-  // classifyAuthorityDomain(). Governance cause tokens (SALINITY, WATERLOGGING,
-  // etc.) remain in LAND_CAUSES — those are authority governance tokens, not
-  // agronomic observations.
-  // ═══════════════════════════════════════════════════════════════════════
 
   const landCauseDetected = [...causes].some(c => LAND_CAUSES.has(c));
   const landSymptomDetected = [...symptoms].some(s => classifyAuthorityDomain(s) === 'LAND');
@@ -307,9 +218,7 @@ export function resolveDecisionAuthority(
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
   // RULE 3: CLIMATE (Overrides CROP only) — DB-driven symptom trigger
-  // ═══════════════════════════════════════════════════════════════════════
 
   const climateCauseDetected = [...causes].some(c => CLIMATE_CAUSES.has(c));
   const climateSymptomDetected = [...symptoms].some(s => classifyAuthorityDomain(s) === 'CLIMATE');
@@ -332,9 +241,7 @@ export function resolveDecisionAuthority(
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
   // RULE 4: SYSTEM (Overrides CROP only)
-  // ═══════════════════════════════════════════════════════════════════════
 
   const systemCauseDetected = [...causes].some(c => SYSTEM_CAUSES.has(c));
 
@@ -356,17 +263,7 @@ export function resolveDecisionAuthority(
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
   // RULE 5: CROP (Pests, diseases, nutrient stress) — DB-DRIVEN
-  //
-  // PR-2: substring cause matching (`c.includes('PEST')`) is DELETED. We now
-  // classify causes by:
-  //   1. `hypothesis_master.hypothesis_type` (PEST/DISEASE/DEFICIENCY/STRESS)
-  //   2. observation_master classifier for cause tokens that are also codes
-  //
-  // Symptom classification flows through observation_master as well — no more
-  // substring heuristics like `s.includes('YELLOWING')`.
-  // ═══════════════════════════════════════════════════════════════════════
 
   const causeIsHypoType = (target: string) =>
     [...causes].some(c => getHypothesisType(c) === target);
@@ -421,9 +318,7 @@ export function resolveDecisionAuthority(
     resolved_at: resolvedAt
   };
   
-  // ═══════════════════════════════════════════════════════════════════════
   // v2.0: FINAL INVARIANT CHECK - Terminal damage MUST have CROP authority
-  // ═══════════════════════════════════════════════════════════════════════
   if (observations) {
     const finalCheck = detectTerminalDamageForAuthority(observations);
     // This will throw if invariant is violated
@@ -433,15 +328,9 @@ export function resolveDecisionAuthority(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LAND CONTEXT TRIGGER DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Detect land-level triggers from context data (not causes).
- * This catches cases where structured data indicates land issues
- * before cause mapping has run.
- */
+// Detect land-level triggers from context data (not causes).
 function detectLandContextTrigger(landContext?: AuthorityInput['land_context']): boolean {
   if (!landContext) return false;
   
@@ -458,14 +347,9 @@ function detectLandContextTrigger(landContext?: AuthorityInput['land_context']):
   return false;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UTILITY: CHECK IF CROP RULES ARE BLOCKED
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Helper function for diagnostic-flow-controller integration.
- * Returns true if crop-level rules (pest/disease/nutrient) should be skipped.
- */
+// Helper function for diagnostic-flow-controller integration.
 export function shouldSkipCropRules(decision: AuthorityDecision): boolean {
   // NONE authority means observation only - skip all treatment rules
   if (decision.authority === DecisionAuthority.NONE) {
@@ -476,23 +360,17 @@ export function shouldSkipCropRules(decision: AuthorityDecision): boolean {
          decision.blocked_domains.includes(DecisionAuthority.CROP);
 }
 
-/**
- * Helper function to check if a specific domain is allowed.
- */
+// Helper function to check if a specific domain is allowed.
 export function isDomainAllowed(decision: AuthorityDecision, domain: DecisionAuthority): boolean {
   return decision.allowed_domains.includes(domain);
 }
 
-/**
- * Helper function to check if treatments are allowed.
- */
+// Helper function to check if treatments are allowed.
 export function areTreatmentsAllowed(decision: AuthorityDecision): boolean {
   return decision.treatments_allowed && decision.authority_status === AuthorityStatus.CONFIRMED;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AUDIT LOG STRUCTURE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface AuthorityAuditEntry {
   decision_authority: {
@@ -510,9 +388,7 @@ export interface AuthorityAuditEntry {
   resolved_at: string;
 }
 
-/**
- * Build audit log entry for authority resolution.
- */
+// Build audit log entry for authority resolution.
 export function buildAuthorityAuditEntry(
   input: AuthorityInput,
   decision: AuthorityDecision
@@ -534,9 +410,7 @@ export function buildAuthorityAuditEntry(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   resolveDecisionAuthority,

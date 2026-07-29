@@ -27,14 +27,7 @@
 
 export type Symbolic = string | null | undefined;
 
-/**
- * Deterministic graph-symbol normalization.
- *
- *   trim → collapse whitespace → replace ' ' and '-' with '_' → UPPERCASE
- *
- * Returns `null` for empty / non-string inputs so callers can filter safely
- * without exceptions.
- */
+// Deterministic graph-symbol normalization.
 export function normalize(input: Symbolic): string | null {
   if (input == null) return null;
   const s = String(input).trim();
@@ -55,11 +48,7 @@ export function equals(a: Symbolic, b: Symbolic): boolean {
   return na === nb;
 }
 
-/**
- * Deterministic normalized collection. Deduplicated, sorted, upper-cased.
- * Suitable for graph hashing and cache keys — same input set always yields
- * the same array regardless of source ordering / casing.
- */
+// Deterministic normalized collection. Deduplicated, sorted, upper-cased.
 export function normalizeCollection(
   input: ReadonlyArray<Symbolic> | null | undefined,
 ): string[] {
@@ -82,10 +71,7 @@ export function containedIn(needle: Symbolic, haystack: ReadonlyArray<Symbolic>)
   return false;
 }
 
-/**
- * Build a normalized Set for O(1) membership tests during graph evaluation.
- * Duplicates and empty/invalid entries are dropped.
- */
+// Build a normalized Set for O(1) membership tests during graph evaluation.
 export function toNormalizedSet(input: ReadonlyArray<Symbolic> | null | undefined): Set<string> {
   const out = new Set<string>();
   if (!Array.isArray(input)) return out;
@@ -96,10 +82,7 @@ export function toNormalizedSet(input: ReadonlyArray<Symbolic> | null | undefine
   return out;
 }
 
-/**
- * Preserves an audit trail: `{ raw_symbol, graph_symbol }` per input.
- * Deduplicated by graph_symbol. First raw form wins for the audit trace.
- */
+// Preserves an audit trail: `{ raw_symbol, graph_symbol }` per input.
 export function normalizeWithAudit(
   input: ReadonlyArray<Symbolic> | null | undefined,
   source?: string,
@@ -118,29 +101,12 @@ export function normalizeWithAudit(
   }));
 }
 
-/**
- * Guard used by runtime symbol filters. A symbol is "well-formed" iff it
- * normalizes to a non-empty identifier — i.e. any non-blank string. Case,
- * prefix, and length are NOT authority signals; agricultural authority
- * comes from the database.
- */
+// Guard used by runtime symbol filters. A symbol is "well-formed" iff it
 export function isWellFormedSymbol(input: Symbolic): boolean {
   return normalize(input) !== null;
 }
 
-/**
- * Structured symbol extraction. Accepts any of:
- *   - string / number
- *   - { graph_symbol } / { raw_symbol } / { canonical_code }
- *   - { observation_code } / { code } / { symbol } / { value } / { id }
- *
- * DOES NOT throw. If the input is a Promise, an unknown object shape, or
- * otherwise cannot be identified, the returned `symbol` is `null` and
- * `violation` describes why. GraphRuntime — not SymbolContract — decides
- * whether to fail-closed, trace, or route to clarification.
- *
- * Pure identity layer: no crop / stage / intent / observation knowledge.
- */
+// Structured symbol extraction. Accepts any of:
 export type SymbolViolation = 'PROMISE_LEAK' | 'UNKNOWN_SHAPE' | 'EMPTY';
 
 export interface SymbolExtraction {

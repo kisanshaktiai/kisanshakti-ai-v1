@@ -1,27 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 4: CENTRALIZED I18N TRANSLATION LOADER
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Provides a centralized, database-driven translation system using i18n_key
- * as the single anchor for all multilingual content.
- * 
- * ARCHITECTURE:
- * - i18n_key is the only multilingual anchor
- * - Translations loaded from database (observation_translations) at runtime
- * - Fallback chain: DB translation → action_text (English) → key itself
- * - Caching for performance
- * - NO hardcoded multilingual dictionaries (SSOT compliant)
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE 4: CENTRALIZED I18N TRANSLATION LOADER
 
 export const I18N_LOADER_VERSION = '2.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface Translation {
   key: string;
@@ -38,29 +19,14 @@ export interface TranslationCache {
 // Language-agnostic: accepts any language code
 export type SupportedLanguage = string;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let translationCache: TranslationCache | null = null;
 const CACHE_TTL = 3600000; // 1 hour
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE TRANSLATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get translation for a given i18n_key
- * 
- * Fallback chain:
- * 1. Cached database translation (from observation_translations)
- * 2. English action_text from decision_rules cache
- * 3. Key itself (formatted for display)
- * 
- * @param i18nKey - The translation key
- * @param language - Target language (mr, hi, en)
- * @returns Translated string
- */
+// Get translation for a given i18n_key
 export function getTranslation(
   i18nKey: string | null | undefined,
   language: SupportedLanguage
@@ -92,9 +58,7 @@ export function getTranslation(
   return formatKeyForDisplay(normalizedKey, language);
 }
 
-/**
- * Get full translation object for a key
- */
+// Get full translation object for a key
 export function getTranslationObject(i18nKey: string): Translation | null {
   const normalizedKey = normalizeI18nKey(i18nKey);
   
@@ -105,16 +69,9 @@ export function getTranslationObject(i18nKey: string): Translation | null {
   return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // KEY NORMALIZATION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize i18n_key to consistent format
- * - Converts to uppercase
- * - Replaces spaces and hyphens with underscores
- * - Removes parenthetical scientific names
- */
+// Normalize i18n_key to consistent format
 export function normalizeI18nKey(key: string): string {
   if (!key) return '';
   
@@ -127,11 +84,7 @@ export function normalizeI18nKey(key: string): string {
     .trim();
 }
 
-/**
- * Format key for human-readable display.
- * For English: SHOOT_BORER → Shoot Borer
- * For non-English: return raw code to avoid English leakage in regional UI
- */
+// Format key for human-readable display.
 function formatKeyForDisplay(key: string, language?: string): string {
   // If language is specified and not English, return raw code (avoid English title-case)
   if (language && language !== 'en') {
@@ -144,13 +97,9 @@ function formatKeyForDisplay(key: string, language?: string): string {
     .join(' ');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BATCH TRANSLATION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get translations for multiple keys at once
- */
+// Get translations for multiple keys at once
 export function getTranslations(
   keys: string[],
   language: SupportedLanguage
@@ -164,9 +113,7 @@ export function getTranslations(
   return result;
 }
 
-/**
- * Translate a cause string (handles complex formats)
- */
+// Translate a cause string (handles complex formats)
 export function translateCause(
   cause: string,
   language: SupportedLanguage
@@ -187,16 +134,9 @@ export function translateCause(
   return getTranslation(simplifiedCause, language);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHE MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Initialize translation cache from database
- * Loads from TWO sources:
- * 1. observation_translations → genuine multilingual labels (SSOT)
- * 2. decision_rules i18n_key → English action_text only (LLM translates at runtime)
- */
+// Initialize translation cache from database
 export async function initializeTranslationCache(
   supabaseClient: any
 ): Promise<void> {
@@ -210,10 +150,7 @@ export async function initializeTranslationCache(
   try {
     const translations = new Map<string, Translation>();
     
-    // ═══════════════════════════════════════════════════════════════════
     // SOURCE 1: observation_translations (genuine multilingual labels)
-    // This is the SSOT for pest/disease/symptom/action display names
-    // ═══════════════════════════════════════════════════════════════════
     const { data: obsTranslations, error: obsError } = await supabaseClient
       .from('observation_translations')
       .select('observation_code, language_code, display_text, description_text')
@@ -234,18 +171,12 @@ export async function initializeTranslationCache(
         const entry = grouped.get(code)!;
         const lang = (row.language_code || 'en').toLowerCase();
         // FIX (BUG A): display_text is the chip-ready label; description_text
-        // is an agronomic note that often contains Latin names. Prefer
-        // display_text strictly and only fall back to description_text when
-        // display_text is empty.
         const display = (row.display_text || '').trim();
         const desc = (row.description_text || '').trim();
         entry[lang] = display || desc;
       }
       
       // Merge into main translations map
-      // RC-2 (2026-07-26): observation_translations.observation_code is
-      // lower_snake in the DB. Register BOTH the canonical lower_snake key and
-      // the legacy UPPERCASE key so lookups from either convention resolve.
       for (const [code, translation] of grouped) {
         translations.set(code, translation);
         const lower = code.toLowerCase();
@@ -255,10 +186,7 @@ export async function initializeTranslationCache(
       console.log(`   ✅ [I18N] Loaded ${grouped.size} observation translations from DB`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════
     // SOURCE 2: decision_rules i18n_key → English action_text ONLY
-    // LLM narration layer handles translation at runtime
-    // ═══════════════════════════════════════════════════════════════════
     const { data: ruleData, error: ruleError } = await supabaseClient
       .from('decision_rules')
       .select('i18n_key, action_text, reason_text, cause, category')
@@ -300,17 +228,13 @@ export async function initializeTranslationCache(
   }
 }
 
-/**
- * Clear translation cache
- */
+// Clear translation cache
 export function clearTranslationCache(): void {
   translationCache = null;
   console.log('🧹 [I18N] Cache cleared');
 }
 
-/**
- * Check if cache is initialized
- */
+// Check if cache is initialized
 export function isCacheInitialized(): boolean {
   return translationCache !== null;
 }

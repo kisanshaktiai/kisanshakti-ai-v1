@@ -1,11 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * SYMBOLIC RULES BRIDGE - Lightweight Stub (v1.0.0-stub)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Rules are loaded from database at runtime via bundled-rules/loader.ts
- * This stub prevents bundle timeout errors.
- */
+// SYMBOLIC RULES BRIDGE - Lightweight Stub (v1.0.0-stub)
 
 import type { RuleResult, RuleExecutionInput } from './rule-engine-types.ts';
 import type { RulePriority } from './rule-module-types.ts';
@@ -20,9 +13,7 @@ import {
   type ExecutableRule
 } from '../bundled-rules/loader.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type RuleCategory = 
   | 'nutrient' | 'water' | 'temperature' | 'disease' | 'pest' | 'weed' 
@@ -55,15 +46,11 @@ export interface SymbolicRule {
   action_type?: 'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STUB: Empty registry - rules loaded from database at runtime
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const SYMBOLIC_RULES_REGISTRY: SymbolicRule[] = [];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PRIORITY CONVERSION
-// ═══════════════════════════════════════════════════════════════════════════
 
 const PRIORITY_VALUES: Record<string, number> = {
   'P0_EMERGENCY': 100,
@@ -80,18 +67,11 @@ function normalizePriority(priority: PriorityLevel | number): number {
   return PRIORITY_VALUES[priority] || 50;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // KEYWORD MATCHING - Uses database rules
-// ═══════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BUG FIX #3: Implement actual keyword matching instead of empty stub
-// Supports both string[] and RuleExecutionInput for compatibility
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Input type for matchRulesByKeywords - supports string array or object
- */
+// Input type for matchRulesByKeywords - supports string array or object
 type KeywordInput = string[] | RuleExecutionInput | {
   crop_code?: string;
   crop_stage?: string;
@@ -102,9 +82,7 @@ type KeywordInput = string[] | RuleExecutionInput | {
   disease_code?: string;
 };
 
-/**
- * Extract keywords from various input types
- */
+// Extract keywords from various input types
 function extractKeywords(input: KeywordInput): string[] {
   // If input is already a string array
   if (Array.isArray(input)) {
@@ -158,9 +136,7 @@ function extractKeywords(input: KeywordInput): string[] {
   return [...new Set(keywords)];
 }
 
-/**
- * Get crop code from various input types
- */
+// Get crop code from various input types
 function getCropCodeFromInput(input: KeywordInput): string {
   if (Array.isArray(input)) {
     // Try to find common crop names in keywords
@@ -245,9 +221,7 @@ export function matchRulesByKeywords(
   }));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE CONVERSION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function convertToRuleResult(
   rule: SymbolicRule | ExecutableRule,
@@ -270,9 +244,7 @@ export function convertToRuleResult(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CATEGORY/CROP FILTERING - Uses database via loader
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function getRulesByCategory(category: RuleCategory): SymbolicRule[] {
   return [];

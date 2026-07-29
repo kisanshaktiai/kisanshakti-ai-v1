@@ -1,18 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RURAL LANGUAGE DICTIONARY v2.0 — LANGUAGE-NEUTRAL
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * REFACTORED: All hardcoded Marathi/Hindi/Tamil/Telugu/Punjabi text REMOVED.
- * Rural language adaptation is handled by the LLM narration layer using
- * English-only prompt instructions.
- *
- * This file provides:
- *   - English-only LLM prompt rules for rural tone
- *   - No hardcoded regional language strings
- *   - LLM generates rural-appropriate text at runtime
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// RURAL LANGUAGE DICTIONARY v2.0 — LANGUAGE-NEUTRAL
 
 export interface TermMapping {
   formal: string;
@@ -26,10 +12,7 @@ export interface RegionalVocabulary {
   commonPhrases: Record<string, string>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RURAL LANGUAGE RULES — English-only, injected into LLM system prompt
-// The LLM translates and applies rural tone in the target language.
-// ═══════════════════════════════════════════════════════════════════════════
 
 const RURAL_LANGUAGE_RULES_EN = `
 ⚠️ RURAL LANGUAGE RULES (CRITICAL):
@@ -62,19 +45,13 @@ Example:
 ✅ "Spray the bug medicine — mix the amount I told you in water"
 `;
 
-/**
- * Get rural language rules for LLM prompt injection.
- * Returns English-only rules — LLM applies these in the target language.
- */
+// Get rural language rules for LLM prompt injection.
 export function getRuralLanguageRules(_language: string): string {
   // Single English rule set — LLM translates into target language
   return RURAL_LANGUAGE_RULES_EN;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VILLAGE AGRICULTURE OFFICER PERSONA — Universal, language-neutral
-// Injected into all LLM prompt layers to replace "TRANSLATOR" identity
-// ═══════════════════════════════════════════════════════════════════════════
 
 const VILLAGE_OFFICER_PERSONA = `
 ═══════════════════════════════════════════════════════════════════════════
@@ -121,20 +98,12 @@ GOOD (farmer conversational style):
 Apply this conversational village officer style in **whatever language the farmer is using.**
 `;
 
-/**
- * Get the Village Agriculture Officer persona block.
- * Universal, language-neutral — injected into all LLM prompt layers.
- * No hardcoded regional language strings.
- */
+// Get the Village Agriculture Officer persona block.
 export function getVillageOfficerPersona(): string {
   return VILLAGE_OFFICER_PERSONA;
 }
 
-/**
- * Replace formal terms with rural equivalents.
- * DEPRECATED: LLM narration layer handles this at runtime.
- * Kept for backward compatibility — returns text unchanged.
- */
+// Replace formal terms with rural equivalents.
 export function replaceFormalsWithRural(
   text: string,
   _language: string
@@ -143,16 +112,12 @@ export function replaceFormalsWithRural(
   return text;
 }
 
-/**
- * Should add InstaScan CTA
- */
+// Should add InstaScan CTA
 export function shouldAddInstaScanCTA(queryType: string): boolean {
   return ['pest', 'health', 'growth'].includes(queryType);
 }
 
-/**
- * Get InstaScan CTA — English only, LLM translates
- */
+// Get InstaScan CTA — English only, LLM translates
 export function getInstaScanCTA(_language: string): string {
   return `📸 **Tip:** Take a photo of the leaf/crop using this app! I'll see and tell you exactly what's wrong and which medicine to use. [Use InstaScan to capture photo]`;
 }

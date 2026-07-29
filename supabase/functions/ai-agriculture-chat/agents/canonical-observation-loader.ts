@@ -1,39 +1,8 @@
 // CHANGE LOG
 // 2026-07-29 10:55 UTC — FIX C1-b: expandStageSynonyms forwards cultivationMethod
-//   to getStageFamilyFromDB; omitted → request-scoped lane.
-// 2026-07-25 UTC — Batch A / P7: DELETED the hardcoded STAGE_KEY_PRIORITIES
-//   symptom-code map (germination/tillering/grand_growth/maturity/vegetative/
-//   flowering/boll_development). Stage and category priorities are now read
-//   from public.observation_master (is_active ∧ is_diagnostic ∧
-//   is_farmer_observable, applies_to_stages overlap, ordered by
-//   discriminator_score/clarity_score) with a 5-minute cache. No DB rows →
-//   empty result; there is no static fallback by design.
-// 2026-07-09 21:15 UTC — Emptied STAGE_KEY_PRIORITIES.all bucket. The
 
-//   INSECTS/YELLOW/WILT/SPOTS static list was firing as a universal
-//   fallback whenever the caller passed a stage not present in the map
-//   (e.g. `transplanting`), producing the "same options for every
-//   clarification" bug. Unknown stage now yields [] and the hypothesis
-//   graph is the only allowed source of stage-agnostic candidates.
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CANONICAL OBSERVATION KEYS LOADER v3.0
- * Load observation keys from decision_rules + observation_translations (DB-only)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Dynamically load canonical observation keys from the database to generate
- * context-aware clarification options. ALL labels come from DB — zero
- * hardcoded trilingual dictionaries.
- * 
- * v3.0 CHANGES:
- * - Removed OBSERVATION_KEY_LABELS hardcoded dictionary (~200 entries)
- * - All label resolution via observation_translations table
- * - Functions that need labels are now async (DB query)
- * - STAGE_KEY_PRIORITIES removed (P7) — codes now from observation_master
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// INSECTS/YELLOW/WILT/SPOTS static list was firing as a universal
+// CANONICAL OBSERVATION KEYS LOADER v3.0
  
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { ObservationKey } from '../decision/observation-ontology.ts';
@@ -43,9 +12,7 @@ import { getStageFamilyFromDB } from '../utils/stage-knowledge-cache.ts';
 
 export const CANONICAL_LOADER_VERSION = '3.0.0'; // v3: ZERO hardcoded labels
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ObservationKeyWithLabels {
   key: string;
@@ -72,24 +39,7 @@ export interface ClarificationOption {
   label: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE-WISE KEY PRIORITIES — DB-SSOT (P7, 2026-07-25)
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// The previous hardcoded STAGE_KEY_PRIORITIES map (germination/tillering/
-// grand_growth/... → literal symptom codes) has been REMOVED. It was authored
-// agronomy living in TypeScript and it drifted from observation_master.
-//
-// Priorities are now derived entirely from public.observation_master:
-//   is_active = true            → not retired
-//   is_diagnostic = true        → carries diagnostic signal (not metadata)
-//   is_farmer_observable = true → a farmer can actually answer it
-//   applies_to_stages && [...]  → curated stage applicability
-//   ORDER BY discriminator_score DESC, clarity_score DESC
-//
-// If the DB returns nothing for a stage, the result is EMPTY. Unknown stage
-// MUST NOT fall back to a static list — the hypothesis graph is the only
-// allowed source of stage-agnostic candidates.
 
 const STAGE_PRIORITY_CACHE_TTL_MS = 5 * 60 * 1000;
 const _stagePriorityCache = new Map<string, { at: number; codes: string[] }>();
@@ -164,9 +114,7 @@ async function loadStagePriorityCodesFromDB(
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Get Supabase client for DB queries
-// ═══════════════════════════════════════════════════════════════════════════
 
 function getSupabaseClient() {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -175,9 +123,7 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Format code as fallback label (no English leakage for non-English)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function formatCodeFallback(key: string, language: string): string {
   if (language === 'en') {
@@ -187,13 +133,9 @@ function formatCodeFallback(key: string, language: string): string {
   return key.replace(/_/g, ' ');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN FUNCTIONS (v3: all async, DB-driven labels)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get observation key label from DB. Async — queries observation_translations.
- */
+// Get observation key label from DB. Async — queries observation_translations.
 export async function getObservationKeyLabel(
   key: string,
   language: string
@@ -206,9 +148,7 @@ export async function getObservationKeyLabel(
   return label?.display_text || formatCodeFallback(key, language);
 }
 
-/**
- * Get observation key labels (async DB lookup)
- */
+// Get observation key labels (async DB lookup)
 export async function getObservationKeyLabels(key: string, language: string = 'en'): Promise<ObservationKeyWithLabels | null> {
   const client = getSupabaseClient();
   if (!client) return null;
@@ -240,10 +180,7 @@ export async function getObservationKeyLabels(key: string, language: string = 'e
   return result as ObservationKeyWithLabels;
 }
 
-/**
- * Get observation keys for a specific stage — async, DB-driven codes + labels.
- * P7: codes come from observation_master, never from a TS literal list.
- */
+// Get observation keys for a specific stage — async, DB-driven codes + labels.
 export async function getStageObservationKeys(
   stage: string,
   language: string,
@@ -268,11 +205,7 @@ export async function getStageObservationKeys(
   }));
 }
 
-/**
- * Get observation keys by category — async, DB-driven codes + labels.
- * P7: reads observation_master.observation_category directly instead of
- * flattening a hardcoded stage-priority map.
- */
+// Get observation keys by category — async, DB-driven codes + labels.
 export async function getCategoryObservationKeys(
   category: string,
   language: string,
@@ -314,9 +247,7 @@ export async function getCategoryObservationKeys(
   }));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE NORMALIZATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 const STAGE_NORMALIZATION_MAP: Record<string, string> = {
   'seedling': 'germination',
@@ -336,12 +267,6 @@ const STAGE_NORMALIZATION_MAP: Record<string, string> = {
 };
 
 // 2026-07-26 (forensic audit F2): the hardcoded `STAGE_SYNONYM_GROUPS` map was
-// DELETED. Stage families are agronomy and their SSOT is `public.crop_stage_graph`,
-// surfaced by `utils/stage-knowledge-cache.ts::getStageFamilyFromDB`.
-//
-// Cache miss (unloaded cache, or no curated row for this crop×stage) degrades to
-// the singleton `[stage, 'all']` and logs `[CANON_LOADER_STAGE_MISS]`. We NEVER
-// substitute a static family.
 function expandStageSynonyms(stage: string, crop?: string | null, cultivationMethod?: string | null): string[] {
   const key = canonicalStageKey(stage);
   if (!key) return ['all'];
@@ -362,10 +287,7 @@ function normalizeStageForDB(stage: string): string {
   return STAGE_NORMALIZATION_MAP[normalized] || normalized;
 }
 
-/**
- * Load observation keys from database by crop and stage.
- * ALL labels resolved from observation_translations — zero hardcoded labels.
- */
+// Load observation keys from database by crop and stage.
 export async function loadObservationKeysFromDB(
   cropCode: string,
   stage: string,
@@ -425,10 +347,6 @@ export async function loadObservationKeysFromDB(
     console.log(`[CanonicalLoader] Found ${data.length} rules with observable_characteristics`);
     
     // R2 FIX: observable_characteristics can be either:
-    //   - string[]                         (legacy seed)
-    //   - { observations: string[], ... }  (current JSONB schema)
-    //   - { keys: string[] } / object map  (defensive)
-    // Accept all shapes so curated rules aren't silently dropped.
     const uniqueKeys = new Set<string>();
     const collectKeys = (val: unknown): void => {
       if (!val) return;
@@ -449,9 +367,7 @@ export async function loadObservationKeysFromDB(
       collectKeys(rule.observable_characteristics);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // DB-ONLY LABELS: Query observation_translations for ALL label resolution
-    // ═══════════════════════════════════════════════════════════════════════════
     const keysArray = Array.from(uniqueKeys);
     const dbLabels = await loadObservationLabels(supabase, keysArray, language);
     
@@ -490,9 +406,7 @@ export async function loadObservationKeysFromDB(
   }
 }
 
-/**
- * Fallback function when DB is unavailable — uses stage priority keys with DB labels
- */
+// Fallback function when DB is unavailable — uses stage priority keys with DB labels
 async function getFallbackKeys(cropCode: string, stage: string, language: string = 'en'): Promise<LoadedObservationKeys> {
   const stageKeys = await getStageObservationKeys(stage, language, 20);
   
@@ -516,9 +430,7 @@ async function getFallbackKeys(cropCode: string, stage: string, language: string
   };
 }
 
-/**
- * Get top clarification options for a given context — async, DB-driven
- */
+// Get top clarification options for a given context — async, DB-driven
 export async function getClarificationOptions(
   cropCode: string,
   stage: string,

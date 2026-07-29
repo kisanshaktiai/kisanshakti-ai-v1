@@ -1,17 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * GRAPH NODE TRACE — Uniform per-node structured log line
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * Every node in the Neuro-Symbolic Decision Brain (INTENT, OBSERVATION,
- * BIO_STATE, EVIDENCE, HYPOTHESIS, RULE_ENGINE, SCIENTIFIC_GATE,
- * FINAL_RESPONSE) emits exactly ONE line via `emitNodeTrace()` so the whole
- * turn can be reconstructed from Supabase edge logs by grepping on trace_id.
- *
- * The payload is trimmed to keep the log line under ~1kB (Supabase truncates
- * beyond a few kB). Arrays are capped at 12 elements with a `+N more` tail.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// GRAPH NODE TRACE — Uniform per-node structured log line
 
 export type GraphNodeName =
   | 'INTENT'

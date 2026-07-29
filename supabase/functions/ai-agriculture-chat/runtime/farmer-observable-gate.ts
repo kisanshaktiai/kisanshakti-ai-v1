@@ -1,26 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FARMER-OBSERVABLE ONTOLOGY GATE
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * INVARIANT (single source of truth for the clarification graph):
- *
- *   Every observation_key presented to the farmer as a clarification option
- *   MUST correspond to a row in `observation_master` with
- *     is_active = true  AND  is_farmer_observable = true.
- *
- * Anything else (diagnosis-level codes such as TUNGRO_YELLOW_STUNT, system
- * predictions such as PREDICTED_NUTRIENT_DEMAND, internal workflow concepts
- * such as WEEKLY_SUMMARY) is dropped here and logged as a vocabulary gap.
- *
- * This module is the only place that enforces the invariant. Callers in
- *   - decision/hypothesis-evaluator.ts (synthetic obs from conditions_json)
- *   - agents/clarification-strategy.ts (rule-driven options → UI)
- *   - agents/dynamic-clarification-generator.ts (hypothesis-driven options)
- *   - agents/clarification-renderer.ts (defence in depth before render)
- * must funnel through `assertFarmerObservable()`.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// FARMER-OBSERVABLE ONTOLOGY GATE
 
 export type SupabaseClientLike = {
   from: (table: string) => any;
@@ -40,17 +18,10 @@ export interface OntologyGateResult {
 }
 
 // Canonical observation identifier: lower_snake_case.
-// `observation_master.observation_code` is stored lowercase; comparisons
-// must therefore use lowercase to avoid silent gate-drops.
 const normalize = (k: string): string =>
   String(k || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 
-/**
- * Bulk-validate candidate observation keys against `observation_master`.
- * Returns the set of keys that are (a) present, (b) active, (c) farmer-observable.
- * Records vocabulary gaps in `observation_vocabulary_gaps` for everything dropped
- * (best-effort; failures are logged but never thrown).
- */
+// Bulk-validate candidate observation keys against `observation_master`.
 export async function assertFarmerObservable(
   supabaseClient: SupabaseClientLike,
   candidateKeys: Iterable<string>,

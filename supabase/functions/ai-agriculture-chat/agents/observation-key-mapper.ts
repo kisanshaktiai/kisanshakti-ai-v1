@@ -1,22 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-8: OBSERVATION KEY MAPPER
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Convert extracted observations into canonical ObservationKeys.
- * This is PURE SYMBOLIC MAPPING - no LLM, no guessing.
- * 
- * RULES:
- * - Input: ObservationExtraction
- * - Output: Set<ObservationKey>
- * - Deterministic mapping only
- * - If uncertain → use UNKNOWN keys
- * - NO language checks
- * - NO text pattern matching (that's done in observation-extractor.ts)
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-8: OBSERVATION KEY MAPPER
 
 import { ObservationKey, type ObservationKeySet } from '../decision/observation-ontology.ts';
 import type { ObservationExtraction, AffectedPart, SymptomDistribution } from './observation-extractor.ts';
@@ -24,9 +6,7 @@ import type { CropContextAuthority } from '../decision/context-authority.ts';
 
 export const OBSERVATION_KEY_MAPPER_VERSION = '2.0.0'; // Phase-11: Insect-first clarification
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAPPING TABLES (Deterministic, No Language)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const AFFECTED_PART_MAP: Record<AffectedPart, ObservationKey> = {
   'leaf': ObservationKey.AFFECTED_PART_LEAF,
@@ -46,9 +26,7 @@ const DISTRIBUTION_MAP: Record<SymptomDistribution, ObservationKey> = {
   'unknown': ObservationKey.DISTRIBUTION_UNKNOWN
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN MAPPING FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ObservationKeyMappingResult {
   keys: Set<ObservationKey>;
@@ -57,13 +35,7 @@ export interface ObservationKeyMappingResult {
   mapping_source: 'OBSERVATION_EXTRACTION';
 }
 
-/**
- * Map ObservationExtraction to canonical ObservationKeys.
- * This is DETERMINISTIC - same input always produces same output.
- * 
- * PHASE-8.1: Now accepts CropContextAuthority for crop schedule integration.
- * The cropContext takes precedence over landContext for crop identification.
- */
+// Map ObservationExtraction to canonical ObservationKeys.
 export function mapToObservationKeys(
   observations: ObservationExtraction,
   landContext?: {
@@ -75,10 +47,7 @@ export function mapToObservationKeys(
   const keys = new Set<ObservationKey>();
   let unknownCount = 0;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 1. CROP IDENTIFICATION (PHASE-8.1: Crop Context Authority Priority)
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Priority: cropContext (from crop_schedules) > landContext > farmer mention
   if (observations.crop_mentioned || cropContext?.crop_name || landContext?.current_crop) {
     keys.add(ObservationKey.CROP_IDENTIFIED);
   } else {
@@ -86,27 +55,21 @@ export function mapToObservationKeys(
     unknownCount++;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 2. AFFECTED PART
-  // ═══════════════════════════════════════════════════════════════════════════
   const partKey = AFFECTED_PART_MAP[observations.affected_part] || ObservationKey.AFFECTED_PART_UNKNOWN;
   keys.add(partKey);
   if (partKey === ObservationKey.AFFECTED_PART_UNKNOWN) {
     unknownCount++;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 3. DISTRIBUTION
-  // ═══════════════════════════════════════════════════════════════════════════
   const distKey = DISTRIBUTION_MAP[observations.symptom_distribution] || ObservationKey.DISTRIBUTION_UNKNOWN;
   keys.add(distKey);
   if (distKey === ObservationKey.DISTRIBUTION_UNKNOWN) {
     unknownCount++;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 4. SEVERITY (from severity_words array)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (Array.isArray(observations.severity_words) && observations.severity_words.length > 0) {
     // Map severity words to severity level
     const severityKey = mapSeverityWords(observations.severity_words);
@@ -116,9 +79,7 @@ export function mapToObservationKeys(
     unknownCount++;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 5. TIMING (from time_reference)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (observations.time_reference) {
     const timingKey = mapTimeReference(observations.time_reference);
     keys.add(timingKey);
@@ -130,15 +91,11 @@ export function mapToObservationKeys(
     unknownCount++;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 6. OBSERVED PHENOMENA (from raw_symptom_text)
-  // ═══════════════════════════════════════════════════════════════════════════
   const phenomenaKeys = mapSymptomsToPhenomena(observations.raw_symptom_text);
   phenomenaKeys.forEach(k => keys.add(k));
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 7. FARMER ACTIONS
-  // ═══════════════════════════════════════════════════════════════════════════
   if (Array.isArray(observations.action_taken) && observations.action_taken.length > 0) {
     const actionKeys = mapActionsToKeys(observations.action_taken);
     actionKeys.forEach(k => keys.add(k));
@@ -146,9 +103,7 @@ export function mapToObservationKeys(
     keys.add(ObservationKey.ACTION_NONE);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 8. PHOTO STATUS (default: not provided)
-  // ═══════════════════════════════════════════════════════════════════════════
   keys.add(ObservationKey.PHOTO_NOT_PROVIDED);
   
   return {
@@ -159,9 +114,7 @@ export function mapToObservationKeys(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS (Deterministic, No Language)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function mapSeverityWords(severityWords: string[]): ObservationKey {
   // Join all severity words and check against known patterns
@@ -227,10 +180,7 @@ function mapSymptomsToPhenomena(rawSymptoms: string[]): ObservationKey[] {
     phenomena.push(ObservationKey.INSECT_PRESENT);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: Insect Behavior Detection (from clarification answers)
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Flying insects
   if (combined.includes('उडत') || combined.includes('उड़') || combined.includes('flying') ||
       combined.includes('fly') || combined.includes('उडण')) {
     phenomena.push(ObservationKey.INSECT_BEHAVIOR_FLYING);
@@ -242,10 +192,7 @@ function mapSymptomsToPhenomena(rawSymptoms: string[]): ObservationKey[] {
     phenomena.push(ObservationKey.INSECT_BEHAVIOR_CRAWLING);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: Insect Density Detection
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Few insects
   if (combined.includes('थोड') || combined.includes('काही') || combined.includes('कुछ') ||
       combined.includes('few') || combined.includes('scattered')) {
     phenomena.push(ObservationKey.INSECT_DENSITY_FEW);
@@ -257,10 +204,7 @@ function mapSymptomsToPhenomena(rawSymptoms: string[]): ObservationKey[] {
     phenomena.push(ObservationKey.INSECT_DENSITY_MANY);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: Plant Response Detection (from clarification answers)
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Curling response
   if (combined.includes('वळ') || combined.includes('मुड') || combined.includes('curl') ||
       combined.includes('गुंडाळ')) {
     phenomena.push(ObservationKey.PLANT_RESPONSE_CURLING);
@@ -385,9 +329,7 @@ function mapActionsToKeys(actions: string[]): ObservationKey[] {
   return actionKeys;
 }
 
-/**
- * Add photo key based on whether photo was provided
- */
+// Add photo key based on whether photo was provided
 export function addPhotoKey(keys: Set<ObservationKey>, photoProvided: boolean): void {
   keys.delete(ObservationKey.PHOTO_NOT_PROVIDED);
   keys.delete(ObservationKey.PHOTO_PROVIDED);
@@ -399,16 +341,12 @@ export function addPhotoKey(keys: Set<ObservationKey>, photoProvided: boolean): 
   }
 }
 
-/**
- * Serialize ObservationKeySet to array for logging/storage
- */
+// Serialize ObservationKeySet to array for logging/storage
 export function serializeKeys(keys: Set<ObservationKey>): string[] {
   return Array.from(keys);
 }
 
-/**
- * Deserialize array back to ObservationKeySet
- */
+// Deserialize array back to ObservationKeySet
 export function deserializeKeys(keyArray: string[]): Set<ObservationKey> {
   return new Set(keyArray as ObservationKey[]);
 }

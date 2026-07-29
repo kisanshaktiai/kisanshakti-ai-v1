@@ -1,17 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGRICULTURAL VOCABULARY DICTIONARY - MARATHI, HINDI, ENGLISH
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Comprehensive mapping of local agricultural terms to canonical codes.
- * Includes regional dialects, colloquialisms, and voice-to-text variations.
- */
+// AGRICULTURAL VOCABULARY DICTIONARY - MARATHI, HINDI, ENGLISH
 
 import { AgriculturalTerm } from './types.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PEST VOCABULARY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const PEST_VOCABULARY: AgriculturalTerm[] = [
   {
@@ -146,9 +137,7 @@ export const PEST_VOCABULARY: AgriculturalTerm[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DISEASE VOCABULARY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const DISEASE_VOCABULARY: AgriculturalTerm[] = [
   {
@@ -254,9 +243,7 @@ export const DISEASE_VOCABULARY: AgriculturalTerm[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM VOCABULARY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const SYMPTOM_VOCABULARY: AgriculturalTerm[] = [
   {
@@ -369,9 +356,7 @@ export const SYMPTOM_VOCABULARY: AgriculturalTerm[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP VOCABULARY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const CROP_VOCABULARY: AgriculturalTerm[] = [
   {
@@ -556,9 +541,7 @@ export const CROP_VOCABULARY: AgriculturalTerm[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FERTILIZER & CHEMICAL VOCABULARY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const FERTILIZER_VOCABULARY: AgriculturalTerm[] = [
   {
@@ -635,9 +618,7 @@ export const FERTILIZER_VOCABULARY: AgriculturalTerm[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // URGENCY INDICATORS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const URGENCY_PATTERNS = {
   high: {
@@ -661,9 +642,7 @@ export const URGENCY_PATTERNS = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EMOTIONAL STATE PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const EMOTION_PATTERNS = {
   panic: {
@@ -683,9 +662,7 @@ export const EMOTION_PATTERNS = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOOKUP FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function findCanonicalTerm(
   text: string,

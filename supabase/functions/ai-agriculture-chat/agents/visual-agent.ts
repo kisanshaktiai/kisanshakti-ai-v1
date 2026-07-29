@@ -1,21 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGENT 1B: VISUAL INTELLIGENCE AGENT - CORE LOGIC
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Advanced computer vision for agricultural image analysis.
- * Processes farmer photos to identify pests, diseases, and crop health issues.
- * 
- * CAPABILITIES:
- * 1. Image Quality Assessment - Determine if photo is usable
- * 2. Multi-Object Detection - Identify pests, diseases, symptoms simultaneously
- * 3. Severity Quantification - Estimate infestation/infection levels
- * 4. Contextual Validation - Cross-check with text-based report
- * 5. Confidence Calibration - Honest uncertainty reporting
- * 
- * @version 3.0.1
- * @agent AGENT_1B_VISUAL_INTELLIGENCE
- */
+// AGENT 1B: VISUAL INTELLIGENCE AGENT - CORE LOGIC
 
 import {
   VisualAgentInput,
@@ -41,13 +24,9 @@ import {
 
 export const VISUAL_AGENT_VERSION = '3.0.1';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN PROCESSING FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Process visual input and generate comprehensive analysis
- */
+// Process visual input and generate comprehensive analysis
 export async function processVisualAgent(
   input: VisualAgentInput,
   rawAnalysis?: RawAIAnalysisResult
@@ -128,9 +107,7 @@ export async function processVisualAgent(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 1: IMAGE QUALITY ASSESSMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 function assessImageQuality(imageData: VisualAgentInput['image_data']): ImageQualityAssessment {
   // In production, this would use actual image analysis
@@ -226,9 +203,7 @@ function assessImageQuality(imageData: VisualAgentInput['image_data']): ImageQua
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 2: VISUAL DETECTION PROCESSING
-// ═══════════════════════════════════════════════════════════════════════════
 
 function processVisualDetections(
   rawAnalysis: RawAIAnalysisResult | undefined,
@@ -399,9 +374,7 @@ function createDiseaseFromSuspectedIssue(issue: SuspectedIssue): DetectedDisease
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 3: CONTEXTUAL VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function validateAgainstTextContext(
   detections: VisualDetections,
@@ -519,9 +492,7 @@ function validateAgainstTextContext(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 4: SEVERITY QUANTIFICATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function quantifySeverity(
   detections: VisualDetections,
@@ -617,9 +588,7 @@ function determinePestSeverity(density: number, threshold: number): SeverityLeve
   return 'SEVERE';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 5: CONFIDENCE ASSESSMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 function assessConfidence(
   imageQuality: ImageQualityAssessment,
@@ -700,9 +669,7 @@ function assessConfidence(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 6: INTEGRATED DIAGNOSIS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function createIntegratedDiagnosis(
   detections: VisualDetections,
@@ -802,9 +769,7 @@ function createIntegratedDiagnosis(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function createRetakeResponse(
   input: VisualAgentInput,

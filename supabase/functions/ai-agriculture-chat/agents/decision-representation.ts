@@ -1,32 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * SYMBOLIC DECISION REPRESENTATION SCHEMA
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * CORE PRINCIPLE: "Rules are Supreme, AI only Explains"
- * 
- * This module defines the strict contract between:
- * - NLU Agent (extracts observations ONLY)
- * - Rule Engine (makes ALL decisions)
- * - LLM Formatter (renders decisions ONLY)
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- * FORBIDDEN FIELDS - NEVER include in NLU/AI output:
- * - product_names
- * - dosages
- * - actions
- * - recommendations
- * - treatment_methods
- * These belong EXCLUSIVELY to the Rule Engine
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// SYMBOLIC DECISION REPRESENTATION SCHEMA
 
 export const DECISION_REPRESENTATION_VERSION = '2.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MASTER PROMPT v3: UNDERSTANDING CONFIDENCE ENUM
-// Stage 4 symbolic check - determines if we have enough info to proceed
-// ═══════════════════════════════════════════════════════════════════════════
 
 export enum UnderstandingConfidence {
   VERY_LOW = 'VERY_LOW',   // < 2 critical fields known - MUST clarify
@@ -35,67 +11,41 @@ export enum UnderstandingConfidence {
   HIGH = 'HIGH'            // 6+ critical fields known - SAFE to prescribe
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ENUMS FOR DETERMINISTIC STATES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type DataConfidence = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
 export type SafetyFlag = 'URGENT' | 'CROP_DYING' | 'CHEMICAL_HAZARD' | 'WEATHER_RISK' | 'PHI_VIOLATION';
 export type ProblemType = 'PEST_ISSUE' | 'DISEASE_ISSUE' | 'NUTRIENT_ISSUE' | 'WATER_ISSUE' | 'WEATHER_ISSUE' | 'GENERAL_INFO' | 'UNKNOWN';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NLU CONTRACT OUTPUT - What AI/NLU can extract (OBSERVATIONS ONLY)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NLUDecisionGraphInput {
-  /**
-   * EXACT farmer words - preserved verbatim
-   * Examples: "पाने पिवळी", "dead heart", "मधली सुरळी वाळली"
-   */
+  // EXACT farmer words - preserved verbatim
   inferred_observations: string[];
   
-  /**
-   * HIGH-LEVEL problem categorization (NOT diagnosis)
-   * Must be one of ProblemType - NO specific pest/disease codes
-   */
+  // HIGH-LEVEL problem categorization (NOT diagnosis)
   inferred_problem_type: ProblemType;
   
-  /**
-   * NLU confidence score 0.0 - 1.0
-   * Below 0.7 triggers clarification from RULE ENGINE (not AI)
-   */
+  // NLU confidence score 0.0 - 1.0
   confidence_level: number;
   
-  /**
-   * What's missing to make a decision
-   * Examples: ["symptom_location", "affected_area_percent"]
-   */
+  // What's missing to make a decision
   required_missing_inputs: string[];
   
-  /**
-   * Safety flags that override normal processing
-   */
+  // Safety flags that override normal processing
   safety_flags: SafetyFlag[];
   
-  /**
-   * Detected input language for response matching
-   */
+  // Detected input language for response matching
   language_detected: string;
   
-  /**
-   * Urgency assessment
-   */
+  // Urgency assessment
   urgency: 'HIGH' | 'MEDIUM' | 'LOW';
   
-  /**
-   * Emotional state for tone adjustment
-   */
+  // Emotional state for tone adjustment
   emotional_state: 'PANIC' | 'STRESSED' | 'NEUTRAL' | 'CONFIDENT';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE ENGINE INPUT - Structured for deterministic evaluation
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RuleEngineInput {
   // From NLU (observations only)
@@ -142,9 +92,7 @@ export interface RuleEngineInput {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE ENGINE OUTPUT - ALL decisions come from here
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SymbolicAction {
   action_type: string;
@@ -159,24 +107,16 @@ export interface SymbolicAction {
 }
 
 export interface SymbolicDecisionOutput {
-  /**
-   * Unique decision identifier
-   */
+  // Unique decision identifier
   decision_id: string;
   
-  /**
-   * Decision status
-   */
+  // Decision status
   status: 'DECISION_MADE' | 'CLARIFICATION_NEEDED' | 'ESCALATION_REQUIRED' | 'NO_ACTION_NEEDED';
   
-  /**
-   * CRITICAL: All actions come EXCLUSIVELY from Rule Engine
-   */
+  // CRITICAL: All actions come EXCLUSIVELY from Rule Engine
   actions: SymbolicAction[];
   
-  /**
-   * Causes identified by Rule Engine (NOT NLU)
-   */
+  // Causes identified by Rule Engine (NOT NLU)
   identified_causes: {
     cause_code: string;
     cause_type: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'WEATHER';
@@ -184,18 +124,14 @@ export interface SymbolicDecisionOutput {
     rule_id: string;
   }[];
   
-  /**
-   * If clarification needed - options come from RULE ENGINE (not AI)
-   */
+  // If clarification needed - options come from RULE ENGINE (not AI)
   clarification?: {
     question_type: 'SYMPTOM_DETAIL' | 'LOCATION' | 'SEVERITY' | 'TIMING';
     options: string[];  // From predefined database, NOT AI-generated
     photo_helpful: boolean;
   };
   
-  /**
-   * Actions blocked by safety rules
-   */
+  // Actions blocked by safety rules
   blocked_actions: {
     action: string;
     reason: string;
@@ -203,24 +139,16 @@ export interface SymbolicDecisionOutput {
     alternatives?: string[];
   }[];
   
-  /**
-   * Rules that fired during evaluation
-   */
+  // Rules that fired during evaluation
   rules_fired: string[];
   
-  /**
-   * Overall confidence
-   */
+  // Overall confidence
   confidence: number;
   
-  /**
-   * Data quality assessment
-   */
+  // Data quality assessment
   data_confidence: DataConfidence;
   
-  /**
-   * Processing metadata
-   */
+  // Processing metadata
   metadata: {
     turn_id: string;
     trace_id: string;
@@ -229,50 +157,32 @@ export interface SymbolicDecisionOutput {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LLM FORMATTER INPUT - What LLM receives (render-only)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LLMRenderInput {
-  /**
-   * Original farmer message (for context/tone matching)
-   */
+  // Original farmer message (for context/tone matching)
   farmer_message: string;
   
-  /**
-   * Target language
-   */
+  // Target language
   language: string;
   
-  /**
-   * Symbolic decision - LLM can ONLY render this, not modify
-   */
+  // Symbolic decision - LLM can ONLY render this, not modify
   symbolic_decision: SymbolicDecisionOutput;
   
-  /**
-   * Crop context for natural phrasing
-   */
+  // Crop context for natural phrasing
   crop_context?: {
     crop_name: string;
     stage: string;
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Validate NLU output does NOT contain forbidden fields
- * Returns violations if internal codes found
- */
+// Validate NLU output does NOT contain forbidden fields
 export function validateNLUOutputContract(nluOutput: any): { valid: boolean; violations: string[] } {
   const violations: string[] = [];
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MASTER PROMPT v3 - CRITICAL REMOVALS FROM NLU OUTPUT
-  // NLU must NEVER identify causes - only Rule Engine does diagnosis
-  // ═══════════════════════════════════════════════════════════════════════════
   const forbiddenFields = [
     // Diagnosis codes - FORBIDDEN in NLU
     'pest',                   // NLU must NOT identify pests
@@ -326,10 +236,7 @@ export function validateNLUOutputContract(nluOutput: any): { valid: boolean; vio
   };
 }
 
-/**
- * Validate LLM output matches symbolic input exactly
- * Checks: products, dosages, actions all match
- */
+// Validate LLM output matches symbolic input exactly
 export function validateLLMOutputIntegrity(
   symbolicInput: SymbolicDecisionOutput,
   llmOutput: string
@@ -337,8 +244,6 @@ export function validateLLMOutputIntegrity(
   const violations: string[] = [];
   
   // Extract products/dosages from symbolic input
-  // P0 FIX: Also add active_ingredient to allowed list — the CHECK below
-  // scans for common pesticide names which ARE active ingredients, not trade names
   const allowedProducts = new Set<string>();
   const allowedDosages = new Set<string>();
   
@@ -392,9 +297,7 @@ export function validateLLMOutputIntegrity(
   };
 }
 
-/**
- * Create empty decision graph input (when NLU confidence is low)
- */
+// Create empty decision graph input (when NLU confidence is low)
 export function createEmptyNLUInput(
   language: string,
   message: string
@@ -411,9 +314,7 @@ export function createEmptyNLUInput(
   };
 }
 
-/**
- * Check if decision requires escalation
- */
+// Check if decision requires escalation
 export function requiresEscalation(decision: SymbolicDecisionOutput): boolean {
   return (
     decision.status === 'ESCALATION_REQUIRED' ||

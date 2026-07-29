@@ -1,47 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSIS-ONLY MODE (v3.0.0) - RULE-GRANTED AUTHORITY
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * SENIOR AGRONOMIST PRINCIPLE:
- * "When crops die, we diagnose causes — we do not ask permission from NLU."
- * 
- * ARCHITECTURAL CHANGE (v3.0):
- * Authority is now derived SOLELY from ObservationKeys + crop + stage.
- * NLU is treated as an OBSERVATION EXTRACTOR only — it NEVER decides if
- * a "problem exists" or gates diagnosis eligibility.
- * 
- * HARD INVARIANT:
- * If any terminal damage ObservationKey is present (SEEDLING_DIED, PLANT_DIED,
- * AFFECTED_PART_WHOLE, or PATCHY_DAMAGE + SEVERITY_HIGH), then:
- * 
- * - Diagnosis authority is AUTOMATICALLY granted to CROP domain
- * - NLU fields (hasPestOrDisease, intent, confidence) are IGNORED
- * - authority = NONE is IMPOSSIBLE when terminal damage exists
- * - Diagnosis-Only Mode activates BEFORE authority resolution
- * - Clarification is PERMANENTLY SKIPPED
- * 
- * ACTIVATION SEQUENCE (runs BEFORE authority-resolver.ts):
- * 1. Detect terminal damage from ObservationKeys (not NLU)
- * 2. If detected → FORCE CROP authority (even with limited context)
- * 3. SKIP clarification entirely
- * 4. Run hypothesis-first rule evaluation immediately
- * 5. Present diagnosis directly from decision_rules
- * 
- * NLU GATING PERMANENTLY DISABLED FOR:
- * - hasProblem checks
- * - hasPestOrDisease checks
- * - intent classification
- * - confidence thresholds
- * 
- * LOGS MUST SHOW:
- * Mode=DIAGNOSIS_ONLY
- * Authority=CROP
- * Trigger=TERMINAL_DAMAGE_OBSERVATION
- * NLU_ROLE=OBSERVATION_ONLY
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// DIAGNOSIS-ONLY MODE (v3.0.0) - RULE-GRANTED AUTHORITY
 
 import type { CanonicalContext } from './canonical-context-contract.ts';
 import { 
@@ -65,14 +22,9 @@ import {
 
 export const DIAGNOSIS_ONLY_MODE_VERSION = '4.0.0'; // v4: Crop damage triggers diagnosis mode
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXTENDED TERMINAL/CROP DAMAGE DETECTION (v4.0 - Crop Damage = Diagnosis Mode)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Extended terminal damage indicators - any of these FORCE CROP authority.
- * These are ObservationKeys that represent terminal/severe plant damage.
- */
+// Extended terminal damage indicators - any of these FORCE CROP authority.
 export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
   // Direct terminal damage
   'SEEDLING_DIED',
@@ -111,11 +63,7 @@ export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
   'MUD_TUBES_VISIBLE'
 ]);
 
-/**
- * v4.0: CROP DAMAGE OBSERVATION KEYS - Sufficient grounds for DIAGNOSIS mode.
- * These are NON-TERMINAL but still require diagnostic investigation.
- * Diagnosis is activated when these are present, even without pest/disease codes.
- */
+// v4.0: CROP DAMAGE OBSERVATION KEYS - Sufficient grounds for DIAGNOSIS mode.
 export const CROP_DAMAGE_OBSERVATION_KEYS = new Set([
   // Growth/vigor issues
   'PATCHY_GROWTH',
@@ -190,9 +138,7 @@ export const CROP_DAMAGE_OBSERVATION_KEYS = new Set([
   'RUST_PUSTULES'
 ]);
 
-/**
- * Severity modifiers that combine with damage observations to trigger diagnostic mode.
- */
+// Severity modifiers that combine with damage observations to trigger diagnostic mode.
 export const SEVERITY_ESCALATORS = new Set([
   'SEVERITY_HIGH',
   'SEVERITY_CRITICAL',
@@ -205,9 +151,7 @@ export const SEVERITY_ESCALATORS = new Set([
   'GETTING_WORSE'
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosisResult {
   cause: string;
@@ -287,10 +231,7 @@ export interface MatchedRule {
   evidence_matched?: string[];
 }
 
-/**
- * Terminal Damage Detection Result - v2.0
- * Includes authority enforcement data for upstream use.
- */
+// Terminal Damage Detection Result - v2.0
 export interface TerminalDamageDetectionResult {
   detected: boolean;
   terminal_damage: string[];
@@ -302,10 +243,7 @@ export interface TerminalDamageDetectionResult {
   reason: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v4.0: CROP DAMAGE DETECTION RESULT
-// Extended to support non-terminal crop damage that requires diagnosis
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CropDamageDetectionResult {
   detected: boolean;
@@ -320,29 +258,9 @@ export interface CropDamageDetectionResult {
   reason: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v4.0: CROP DAMAGE DETECTION (EXPANDED - Runs BEFORE authority resolution)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Detect crop damage from observations.
- * This runs BEFORE authority resolution to enforce CROP authority.
- * 
- * v4.0 CHANGE: Crop damage observations (not just terminal damage) are now
- * sufficient to trigger DIAGNOSIS mode. Pest/disease codes are NOT required.
- * 
- * HARD AGRONOMIC INVARIANT:
- * If canonical ObservationKeys OR CrossCropSymptoms indicate crop damage
- * (e.g., PATCHY_GROWTH, AFFECTED_PATCHES, OVERALL_WEAK, SEEDLING_DIED)
- * with severity ≥ MEDIUM, the system MUST activate the DIAGNOSIS category.
- * 
- * NLU GATING IS COMPLETELY BYPASSED for:
- * - hasPestOrDisease checks
- * - intent classification
- * - confidence thresholds
- * 
- * Authority is derived from OBSERVATIONS, not NLU.
- */
+// Detect crop damage from observations.
 export function detectCropDamageForDiagnosis(
   observations: Set<string> | string[],
   crossCropSymptoms?: string[]
@@ -493,30 +411,14 @@ export function detectCropDamageForDiagnosis(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v5.0: AUTHORITY-AWARE CROP DAMAGE DETECTION
-// Only checks CONFIRMED + EXTRACTED observations for terminal indicators.
-// Inferred/Synthetic codes are IGNORED for terminal gate decisions.
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Detect crop damage using ONLY farmer-confirmed or directly extracted evidence.
- * 
- * This is the CORRECT entry point for terminal damage detection.
- * It filters the AuthoredObservationSet to only CONFIRMED + EXTRACTED
- * authority levels before checking for terminal indicators.
- * 
- * INFERRED codes (alias expansion) and SYNTHETIC codes (cross-crop injection)
- * are EXCLUDED from terminal gate evaluation.
- */
+// Detect crop damage using ONLY farmer-confirmed or directly extracted evidence.
 export function detectCropDamageWithAuthority(
   authoredObservations: AuthoredObservationSet,
   crossCropSymptoms?: string[]
 ): CropDamageDetectionResult {
   // FIX 5 (v6.1): Promote INFERRED emergency codes to terminal gate
-  // Rationale: When LLM correctly identifies DEAD_HEART_PRESENT or STEM_BORING_MARKS
-  // from farmer's description, these are agronomically valid emergency indicators
-  // even if tagged INFERRED rather than EXTRACTED.
   const EMERGENCY_PROMOTION_CODES = new Set([
     'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
     'FRASS_VISIBLE', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES', 'WILTING_SEVERE',
@@ -582,10 +484,7 @@ export function detectCropDamageWithAuthority(
   return result;
 }
 
-/**
- * BACKWARD COMPATIBILITY: Wrapper for existing terminal damage detection.
- * Calls the new detectCropDamageForDiagnosis and maps to old format.
- */
+// BACKWARD COMPATIBILITY: Wrapper for existing terminal damage detection.
 export function detectTerminalDamageForAuthority(
   observations: Set<string> | string[]
 ): TerminalDamageDetectionResult {
@@ -625,16 +524,9 @@ export function detectTerminalDamageForAuthority(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v2.0: ENFORCED AUTHORITY DECISION (Overrides authority-resolver.ts)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Create an enforced CROP authority decision for terminal damage.
- * This OVERRIDES the normal authority-resolver.ts output.
- * 
- * HARD INVARIANT: When terminal damage is detected, authority = CROP.
- */
+// Create an enforced CROP authority decision for terminal damage.
 export function createEnforcedCropAuthority(
   terminalDamage: string[],
   observations: Set<string> | string[]
@@ -662,18 +554,9 @@ export function createEnforcedCropAuthority(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v3.0: HARD ASSERTION (INVARIANT ENFORCEMENT)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * HARD ASSERTION: If terminal damage is detected, authority MUST be CROP.
- * 
- * This is a non-negotiable runtime assertion that enforces the architectural
- * invariant: terminal damage observations ALWAYS grant CROP authority.
- * 
- * @throws Error if invariant is violated
- */
+// HARD ASSERTION: If terminal damage is detected, authority MUST be CROP.
 export function assertTerminalDamageAuthority(
   terminalDamageDetected: boolean,
   authority: DecisionAuthority
@@ -696,15 +579,9 @@ export function assertTerminalDamageAuthority(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v3.0: PRE-AUTHORITY GATE (RESOLVE FROM OBSERVATIONS, NOT NLU)
-// This is the SINGLE ENTRY POINT for observation-derived authority
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Result from pre-authority gate resolution.
- * This replaces NLU-based authority gating.
- */
+// Result from pre-authority gate resolution.
 export interface PreAuthorityGateResult {
   /** Resolved authority from observations */
   authority: DecisionAuthority;
@@ -718,23 +595,7 @@ export interface PreAuthorityGateResult {
   enforced_decision: AuthorityDecision | null;
 }
 
-/**
- * resolveDiagnosticAuthorityFromObservations
- * 
- * PRE-AUTHORITY GATE: Resolves authority from ObservationKeys BEFORE
- * authority-resolver.ts runs. This is the sole trigger for diagnosis authority.
- * 
- * NLU intent, hasPestOrDisease, and confidence are COMPLETELY IGNORED.
- * Authority is derived from:
- * - ObservationKeys (terminal damage indicators)
- * - Crop context
- * - Growth stage
- * 
- * HARD INVARIANT: If terminal damage exists, authority = CROP.
- * 
- * @param observations - Set of ObservationKeys from all sources
- * @param existingAuthority - Optional existing authority (will be overridden if terminal damage)
- */
+// resolveDiagnosticAuthorityFromObservations
 export function resolveDiagnosticAuthorityFromObservations(
   observations: Set<string> | string[],
   existingAuthority?: AuthorityDecision
@@ -775,26 +636,9 @@ export function resolveDiagnosticAuthorityFromObservations(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ACTIVATION CHECK: Should we use Diagnosis-Only Mode? (v2.0 - Observation-First)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if Diagnosis-Only Mode should be activated.
- * 
- * v2.0 CHANGES:
- * - Runs BEFORE authority resolution
- * - Detects terminal damage from ObservationKeys, NOT NLU
- * - NLU fields (hasPestOrDisease, intent, confidence) are IGNORED
- * - Authority is ENFORCED from observations
- * 
- * ACTIVATION CRITERIA:
- * 1. Terminal damage detected from ObservationKeys
- * 2. Canonical context is locked (crop + stage known)
- * 
- * Note: matchedRulesCount is no longer required for activation.
- * Terminal damage detection itself grants diagnostic authority.
- */
+// Check if Diagnosis-Only Mode should be activated.
 export function shouldActivateDiagnosisOnlyMode(
   canonicalContext: CanonicalContext | null,
   observations: Set<string> | string[],
@@ -821,8 +665,6 @@ export function shouldActivateDiagnosisOnlyMode(
   }
   
   // Terminal damage detected - check if context is sufficient
-  // Note: Even without context, we still detect terminal damage for logging
-  // But full activation requires crop/stage
   
   if (!canonicalContext || !canonicalContext.is_locked) {
     console.log(`\n⚠️ [DiagnosisOnlyMode] Terminal damage detected but context not locked`);
@@ -873,10 +715,7 @@ export function shouldActivateDiagnosisOnlyMode(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AUDIT FIX: CAUSE_TRANSLATIONS removed - hardcoded dict violated SSOT
-// Use translateCause() from i18n/translation-loader.ts for DB-driven translations
-// ═══════════════════════════════════════════════════════════════════════════
 import { translateCause as dbTranslateCause } from '../i18n/translation-loader.ts';
 
 // Thin wrapper that returns {mr, hi, en} object from DB-driven translateCause
@@ -888,9 +727,7 @@ function getCauseTranslation(causeKey: string): { mr: string; hi: string; en: st
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ACTION GUIDANCE TEMPLATES
-// ═══════════════════════════════════════════════════════════════════════════
 
 const ACTION_TEMPLATES: Record<string, { mr: string; hi: string; en: string }> = {
   'TREAT': {
@@ -915,19 +752,9 @@ const ACTION_TEMPLATES: Record<string, { mr: string; hi: string; en: string }> =
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN DIAGNOSIS GENERATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Generate Diagnosis-Only Mode output.
- * 
- * This function:
- * 1. Takes matched rules from symbolic engine
- * 2. Ranks them by confidence
- * 3. Returns top 1-3 diagnoses with agronomist-style explanations
- * 4. Includes optional photo confirmation prompt
- */
+// Generate Diagnosis-Only Mode output.
 export function generateDiagnosisOnlyOutput(
   input: DiagnosisOnlyInput
 ): DiagnosisOnlyOutput {
@@ -1074,15 +901,9 @@ export function generateDiagnosisOnlyOutput(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v4.0: UNKNOWN DIAGNOSIS CREATION
-// When no high-confidence rules match, emit explicit UNKNOWN diagnosis
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Create an explicit UNKNOWN diagnosis when no rules match.
- * This ensures the system never silently suppresses output when crop damage is present.
- */
+// Create an explicit UNKNOWN diagnosis when no rules match.
 function createUnknownDiagnosis(
   terminalDamage: string[],
   canonicalContext: CanonicalContext,
@@ -1118,20 +939,9 @@ function createUnknownDiagnosis(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FORMAT DIAGNOSIS FOR LLM (Render-Only Input)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Format diagnosis output for LLM rendering.
- * 
- * The LLM must ONLY:
- * - Translate and format these diagnoses
- * - Add empathetic language
- * - NEVER add its own diagnoses
- * - NEVER ask questions
- * - NEVER modify confidence or treatment
- */
+// Format diagnosis output for LLM rendering.
 export function formatDiagnosisForLLM(
   output: DiagnosisOnlyOutput,
   language: string
@@ -1180,9 +990,7 @@ export function formatDiagnosisForLLM(
   return parts.join('\n');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function logDiagnosisOnlyActivation(
   activated: boolean,

@@ -1,7 +1,4 @@
-/**
- * Feedback Learning & Improvement Engine
- * Continuously learns from farmer outcomes to improve system accuracy
- */
+// Feedback Learning & Improvement Engine
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import type {
@@ -32,9 +29,7 @@ export class FeedbackLearningEngine {
     );
   }
   
-  /**
-   * Record a treatment outcome from farmer feedback
-   */
+  // Record a treatment outcome from farmer feedback
   async recordOutcome(outcomeData: Partial<TreatmentOutcome>): Promise<string> {
     const outcome: TreatmentOutcome = {
       outcome_id: crypto.randomUUID(),
@@ -81,9 +76,7 @@ export class FeedbackLearningEngine {
     return outcome.outcome_id;
   }
   
-  /**
-   * Update outcome with follow-up data
-   */
+  // Update outcome with follow-up data
   async updateFollowUp(
     outcomeId: string,
     day: 3 | 7 | 14,
@@ -113,9 +106,7 @@ export class FeedbackLearningEngine {
     }
   }
   
-  /**
-   * Get recent outcomes for analysis
-   */
+  // Get recent outcomes for analysis
   async getRecentOutcomes(days: number): Promise<TreatmentOutcome[]> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -134,9 +125,7 @@ export class FeedbackLearningEngine {
     return data || [];
   }
   
-  /**
-   * Main learning function - analyze outcomes and generate improvements
-   */
+  // Main learning function - analyze outcomes and generate improvements
   async analyzeAndLearn(): Promise<{
     outcomes_analyzed: number;
     adjustments_made: number;
@@ -175,9 +164,7 @@ export class FeedbackLearningEngine {
     };
   }
   
-  /**
-   * Algorithm 1: Adjust confidence scores based on actual accuracy
-   */
+  // Algorithm 1: Adjust confidence scores based on actual accuracy
   private async adjustConfidenceScores(
     outcomes: TreatmentOutcome[]
   ): Promise<ConfidenceAdjustment[]> {
@@ -233,9 +220,7 @@ export class FeedbackLearningEngine {
     return adjustments;
   }
   
-  /**
-   * Algorithm 2: Refine treatment efficacy predictions
-   */
+  // Algorithm 2: Refine treatment efficacy predictions
   private async refineEfficacyPredictions(
     outcomes: TreatmentOutcome[]
   ): Promise<EfficacyUpdate[]> {
@@ -298,9 +283,7 @@ export class FeedbackLearningEngine {
     return updates;
   }
   
-  /**
-   * Algorithm 3: Improve economic predictions
-   */
+  // Algorithm 3: Improve economic predictions
   private async improveEconomicPredictions(
     outcomes: TreatmentOutcome[]
   ): Promise<EconomicAdjustment[]> {
@@ -352,9 +335,7 @@ export class FeedbackLearningEngine {
     return adjustments;
   }
   
-  /**
-   * Algorithm 4: Detect new patterns and suggest rule changes
-   */
+  // Algorithm 4: Detect new patterns and suggest rule changes
   private async detectNewPatterns(
     outcomes: TreatmentOutcome[]
   ): Promise<LearningSuggestion[]> {
@@ -480,18 +461,14 @@ export class FeedbackLearningEngine {
     return suggestions;
   }
   
-  /**
-   * Update rule performance metrics
-   */
+  // Update rule performance metrics
   private async updateRulePerformance(outcomes: TreatmentOutcome[]): Promise<void> {
     // This would track which rules led to which outcomes
     // Implementation depends on having rule IDs in the decision output
     console.log('   Updating rule performance metrics...');
   }
   
-  /**
-   * Generate improvement metrics report
-   */
+  // Generate improvement metrics report
   async generateImprovementReport(): Promise<ImprovementMetrics> {
     const outcomes = await this.getRecentOutcomes(30);
     const previousOutcomes = await this.getOutcomesBetween(60, 30);
@@ -574,16 +551,12 @@ export class FeedbackLearningEngine {
     };
   }
   
-  /**
-   * Get follow-up questions for a specific day
-   */
+  // Get follow-up questions for a specific day
   getFollowUpQuestions(day: 3 | 7 | 14, language: string): FollowUpQuestion[] {
     return FOLLOW_UP_QUESTIONS[day] || [];
   }
   
-  /**
-   * Get decisions needing follow-up
-   */
+  // Get decisions needing follow-up
   async getDecisionsForFollowUp(day: 3 | 7 | 14): Promise<any[]> {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() - day);

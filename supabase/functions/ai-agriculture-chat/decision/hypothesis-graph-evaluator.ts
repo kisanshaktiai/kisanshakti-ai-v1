@@ -46,42 +46,7 @@
  *   change; additive field only.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * HYPOTHESIS GRAPH EVALUATOR — v1.0 (Step 8, graph-first)
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * Pure DB graph discovery. NO rule text. NO LLM. NO hardcoded agronomy.
- *
- * Walks the ONLY authoritative graph:
- *
- *     observation_master
- *           ↓
- *     hypothesis_conditions   (OBSERVATION rows anchor discovery)
- *           ↓
- *     hypothesis_master        (crop_group, canonical_group, severity)
- *           ↓
- *     hypothesis_rule_mapping  (ONLY hypothesis→rule edge)
- *
- * SCHEMA REALITY (public.hypothesis_conditions):
- *   condition_type  ∈ {WEATHER, OBSERVATION, SOIL, DAS_RANGE, BOOLEAN_GATE, STAGE}
- *   condition_key   = observation_code OR semantic slot (reported_codes, symptom, etc.)
- *   value_json      = true  → positive expectation (evidence should be present)
- *                     false → negative expectation (evidence should be absent)
- *                     {code|observation_code|observations|observation_codes|...}
- *                     or string[] → canonical observation identities
- *   is_required     = true  → mandatory
- *                     false → supporting/nice-to-have
- *   weight          = numeric [0..1]
- *
- * BUCKET MAPPING (positive/negative reasoning is first-class):
- *   required   = OBSERVATION ∧ value_json=true  ∧ is_required=true
- *   supporting = OBSERVATION ∧ value_json=true  ∧ is_required=false
- *   exclusion  = OBSERVATION ∧ value_json=false ∧ is_required=true
- *   blocking   = OBSERVATION ∧ value_json=false ∧ is_required=false
- *
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// HYPOTHESIS GRAPH EVALUATOR — v1.0 (Step 8, graph-first)
 
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { stageCompatibility } from './stage-symbol-resolver.ts';
@@ -99,28 +64,13 @@ export interface GraphHypothesisInput {
   // for downstream predicate evaluators that reference the extended context.
   canonical_context?: unknown;
   // v5-P8 — biological stage-authority signal (0..1). When below the runtime
-  // threshold, STAGE hard-gates on `is_required=true` mismatch downgrade to
-  // soft penalties (STAGE_CONTEXT_CONFLICT).
   predicted_stage_confidence?: number;
 }
 
 /** v5-P8 — graph-math fallback used when `system_config` key is missing. */
 const DEFAULT_BIO_STAGE_HARD_GATE_THRESHOLD = 0.6;
 
-// ─────────────────────────────────────────────────────────────────────────────
 // S2 (2026-07-28) — GENERIC APPLICABILITY GATE
-// ─────────────────────────────────────────────────────────────────────────────
-// Reads hypothesis_conditions rows whose condition_type is any of the
-// applicability dimensions and compares against the frozen field-twin
-// (canonical_context) for the current request. When the current value
-// exists AND is NOT contained in the DB-authored allowed list, the
-// hypothesis is biologically impossible for this farmer and is eliminated.
-//
-// Adding a new dimension (e.g. IRRIGATION_METHOD in 2028):
-//   1. Add to the DB CHECK constraint on hypothesis_conditions.condition_type
-//   2. Add to the sync_hypothesis_applicability trigger's applicability_types
-//   3. Append ONE entry to APPLICABILITY_DIMENSIONS below
-// Zero crop-specific code. Zero hypothesis-specific code.
 interface ApplicabilityDimension {
   readonly conditionType: string;
   readonly contextField: string;
@@ -231,20 +181,12 @@ async function readBioStageHardGateThreshold(supabase: any): Promise<number> {
   return _bioStageHardGateThresholdCache;
 }
 
-/**
- * Only these reasons may REMOVE a hypothesis (true agronomic contradiction).
- * Missing/unknown context is NEVER an elimination reason — it becomes a
- * ContextGap that adjusts confidence and may trigger clarification.
- */
+// Only these reasons may REMOVE a hypothesis (true agronomic contradiction).
 export type HypothesisEliminationReason =
   | 'CONTRADICTORY_OBSERVATION' // exclusion condition observed
   | 'IMPOSSIBLE_CROP'           // hypothesis crop_group ≠ known crop_group
   | 'NO_REQUIRED_MATCH';        // required conditions defined, zero observed
 // NOTE: Stage/DAS mismatch is NEVER an elimination reason. Farmer-visible
-// symptoms (LEVEL 1 evidence) outrank derived crop calendar (LEVEL 4).
-// Stage/DAS conflicts become STAGE_CONTEXT_CONFLICT / DAS_CONTEXT_CONFLICT
-// warnings that reduce confidence and request clarification, but never
-// block a database-supported diagnosis.
 
 export interface ContextGap {
   missing: 'CROP_UNKNOWN' | 'STAGE_UNKNOWN' | 'DAS_UNKNOWN';
@@ -290,11 +232,7 @@ export interface GraphHypothesisResult {
   timings_ms: number;
   /** Map<hypothesis_id, rule_id[]> — orchestrator inverts to ruleToHypothesis. */
   rule_edges?: Map<string, string[]> | Record<string, string[]>;
-  /**
-   * P2 (Batch A) — machine-readable reason the graph produced no surviving
-   * candidate. `null` when at least one candidate survived. Consumers MUST
-   * branch on this instead of inferring intent from empty arrays.
-   */
+  // P2 (Batch A) — machine-readable reason the graph produced no surviving
   structured_gap_reason?: GraphStructuredGapReason | null;
 }
 
@@ -320,20 +258,9 @@ interface ObservationSet {
 
 type CanonicalCodeMap = Map<string, string>;
 
-// ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC API
-// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * LATENCY BATCH L2 (2026-07-29): single graph traversal per turn.
- * The graph was evaluated 2-3x per turn — orchestrator (6369), the
- * clarification builder (291) and the tiered seed expander (129) each ran a
- * full traversal (6+ sequential DB round-trips) over the SAME evidence.
- * Results are memoized on a short TTL keyed by the semantic inputs
- * (crop, group, stage, das, sorted observation set, stage confidence bucket).
- * The key deliberately EXCLUDES trace_id so cross-module callers within a turn
- * share the result; the TTL keeps it from behaving like a session cache.
- */
+// LATENCY BATCH L2 (2026-07-29): single graph traversal per turn.
 const GRAPH_MEMO_TTL_MS = 20_000;
 const graphMemo = new Map<string, { at: number; result: Promise<GraphHypothesisResult> }>();
 
@@ -476,8 +403,6 @@ async function evaluateHypothesisGraphUncached(
     const hasObservationEvidence = buckets.positive_matches.length > 0;
 
     // STAGE / DAS are DB-authored context signals. Once farmer-visible
-    // observation evidence anchors a hypothesis, context mismatch reduces
-    // confidence and asks clarification; it must not delete the candidate.
     const stagePassRaw = checkStageCondition(conds, input.growth_stage, input.crop_code ?? input.crop_group ?? null);
     const dasPass = checkDasCondition(conds, input.das);
 
@@ -494,12 +419,6 @@ async function evaluateHypothesisGraphUncached(
       : stagePassRaw;
 
     // ── S2 — APPLICABILITY GATE (2026-07-28) ──────────────────────────────
-    // DB-authored applicability conditions (CULTIVATION_METHOD, SEASON, etc.)
-    // eliminate hypotheses whose biological context does not match this
-    // farmer's field-twin. Runs BEFORE the STAGE gate because applicability
-    // rejections are more decisive (a DSR-only pipeline should never see
-    // transplant hypotheses at all). See APPLICABILITY_DIMENSIONS + the DB
-    // trigger sync_hypothesis_applicability for the full contract.
     const _applicabilityGate = checkApplicabilityConditions(conds, input.canonical_context);
     if (_applicabilityGate.eliminated) {
       const _reason =
@@ -543,12 +462,6 @@ async function evaluateHypothesisGraphUncached(
     }
 
     // ── S1 — HARD biological stage gate ───────────────────────────────────
-    // Biological invariant: a hypothesis whose DB-authored STAGE condition
-    // does NOT include the current (known) stage is biologically impossible
-    // for this turn. Elimination is a HARD gate, not a soft penalty. This is
-    // the symbolic half of "neuro-symbolic": physically impossible hypotheses
-    // cannot survive regardless of neural evidence strength.
-    // Stage expectations come exclusively from hypothesis_conditions (DB).
     const expectedStages = collectExpectedStages(conds);
     const currentStage = input.growth_stage
       ? normalizeStageForDB(String(input.growth_stage)).toLowerCase()
@@ -693,8 +606,6 @@ async function evaluateHypothesisGraphUncached(
     };
 
     // ── ELIMINATION: only true agronomic contradictions may remove ────────
-    // Allowed reasons: CONTRADICTORY_OBSERVATION, IMPOSSIBLE_CROP,
-    // NO_REQUIRED_MATCH. Stage/DAS mismatch is NEVER an elimination reason.
     const hypCropGroup = normalizeCropGroup(m.crop_group);
     const cropContradiction =
       cropKnown &&
@@ -718,10 +629,6 @@ async function evaluateHypothesisGraphUncached(
   }
 
   // ── RULE/STAGE COHERENCE INVARIANT (2026-07-27) ─────────────────────────
-  // A hypothesis that survives the stage gate while EVERY rule it maps to is
-  // scoped out of the current stage / crop-age cannot produce a decision. It
-  // silently becomes an empty decision → re-promoted clarification → loop.
-  // Drop it here, with a curator-visible log, instead of emitting a card.
   {
     const allRuleIds = Array.from(
       new Set(candidates.flatMap((c) => c.candidate_rule_ids ?? []).map(String)),
@@ -802,20 +709,8 @@ async function evaluateHypothesisGraphUncached(
   );
 
   // ── GRAPH DEATH INVARIANT ─────────────────────────────────────────────
-  // If OBS_TO_HYP matched hypotheses but zero survive AND every elimination
-  // reason is non-agronomic → over-filtering bug. Fail loud.
-  //
-  // DB-required STAGE/DAS gates are different: they are valid curated graph
-  // outcomes. A farmer may report an emergence symptom while the locked
-  // BiologicalState says transplanting; that is a stage-context conflict / no
-  // surviving hypothesis result, not a transport failure. Do not throw here —
-  // return the eliminated candidate set so the orchestrator can ask a scoped
-  // clarification instead of wrapping this as GRAPH_PIPELINE_BYPASSED.
   const CONTRADICTION_REASONS = new Set(['CONTRADICTORY_OBSERVATION', 'NO_REQUIRED_MATCH']);
   // S2 (2026-07-28): applicability mismatch is a true agronomic contradiction —
-  // the hypothesis is biologically impossible in this farmer's cultivation
-  // lane / season / water regime / etc. Register as a first-class contradiction
-  // so [STAGE_FILTER_KILLED_VALID_DIAGNOSIS] does not misclassify it.
   const CONTRADICTION_PREFIXES = ['IMPOSSIBLE_CROP', 'APPLICABILITY_MISMATCH'];
   const DB_REQUIRED_GATE_PREFIXES = ['REQUIRED_STAGE_FAILED', 'REQUIRED_DAS_FAILED'];
   const isDbRequiredGateElimination = (r?: string) =>
@@ -850,9 +745,6 @@ async function evaluateHypothesisGraphUncached(
   }
 
   // ── P2 (Batch A) — structured gap classification ───────────────────────
-  // Downstream consumers must never guess why the graph is empty. Order
-  // matters: DB-required stage/DAS gates are the most specific cause,
-  // partial evidence next, agronomic contradiction last.
   let structured_gap_reason: GraphStructuredGapReason | null = null;
   if (candidates.length === 0) {
     const hasPartialEvidence = eliminated.some((e) => (e.positive_matches ?? []).length > 0);
@@ -878,9 +770,7 @@ async function evaluateHypothesisGraphUncached(
     input_observations: observed.observations,
     trace_id: trace,
     timings_ms: Date.now() - started,
-    /** Map<hypothesis_id, rule_id[]> — exposed so the orchestrator can invert
-     *  it into the pure `edges.ruleToHypothesis` map required by
-     *  buildGraphRuntimeSnapshot. Never mutated by the caller. */
+    // Map<hypothesis_id, rule_id[]> — exposed so the orchestrator can invert
     rule_edges: ruleEdges,
     structured_gap_reason,
   };
@@ -911,9 +801,7 @@ function hasDasCondition(conds: ConditionRow[]): boolean {
   return conds.some((c) => c.condition_type === 'DAS_RANGE');
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // DB QUERIES
-// ─────────────────────────────────────────────────────────────────────────────
 
 async function queryAnchorHypotheses(supabase: any, observed: ObservationSet, trace: string): Promise<string[]> {
   try {
@@ -1007,8 +895,6 @@ async function queryMaster(supabase: any, hypIds: string[]): Promise<Map<string,
   if (hypIds.length === 0) return out;
   try {
     // NO crop filter here — crop mismatch is evaluated per-candidate as
-    // IMPOSSIBLE_CROP so the decision is visible in the trace instead of
-    // silently pruning anchored hypotheses.
     const { data, error } = await supabase
       .from('hypothesis_master')
       .select('hypothesis_id, crop_group, canonical_group, cause_name_en, cause_name_hi, cause_name_mr, severity_model, is_active')
@@ -1024,10 +910,7 @@ async function queryMaster(supabase: any, hypIds: string[]): Promise<Map<string,
   return out;
 }
 
-/**
- * DB-only scope reader for the rule/stage coherence invariant.
- * Reads `decision_rules.stage_applicable` + crop-age bounds. No agronomy in TS.
- */
+// DB-only scope reader for the rule/stage coherence invariant.
 async function queryRuleStageScope(
   supabase: any,
   ruleIds: string[],
@@ -1083,9 +966,7 @@ async function queryRuleMapping(supabase: any, hypIds: string[]): Promise<Map<st
   return out;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // BUCKETING & STAGE/DAS GATES
-// ─────────────────────────────────────────────────────────────────────────────
 
 interface Buckets {
   requiredCodes: Set<string>;
@@ -1168,10 +1049,6 @@ function checkStageCondition(
     if (allowed.length === 0) continue;
     const compatibility = stageCompatibility(s, allowed, crop);
     // FIX (2026-07-27): `crop_stage_graph` edges are ADJACENCY, not identity.
-    // Accepting `compatibility.family` for an is_required=true STAGE condition
-    // let `transplanting`-only hypotheses survive at `tillering` (adjacent via
-    // the TRIGGERS edge) — biologically impossible. Required stages must match
-    // EXACTLY; adjacency remains acceptable for supporting (soft) conditions.
     const ok = compatibility.unknown ||
       compatibility.exact ||
       (r.is_required === true ? false : compatibility.family);
@@ -1382,9 +1259,7 @@ function cap(arr: string[]): string[] {
   return arr.length <= 12 ? arr : [...arr.slice(0, 12), `+${arr.length - 12}`];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // TRACE
-// ─────────────────────────────────────────────────────────────────────────────
 
 function emitObsToHyp(
   trace: string,

@@ -1,11 +1,6 @@
 import { ResolvedTenant } from './tenantMiddleware.ts';
 
-/**
- * Tenant Blocker Middleware - Enterprise Multi-Tenant SaaS
- * 
- * Blocks requests for inactive, suspended, or pending tenants
- * Returns appropriate error responses with tenant-specific messages
- */
+// Tenant Blocker Middleware - Enterprise Multi-Tenant SaaS
 
 export interface BlockResult {
   blocked: boolean;
@@ -15,9 +10,7 @@ export interface BlockResult {
   message?: string;
 }
 
-/**
- * Check if tenant should be blocked from accessing the system
- */
+// Check if tenant should be blocked from accessing the system
 export function checkTenantStatus(tenant: ResolvedTenant): BlockResult {
   console.log('🔍 [TenantBlocker] Checking tenant status:', {
     tenantId: tenant.id,
@@ -74,9 +67,7 @@ export function checkTenantStatus(tenant: ResolvedTenant): BlockResult {
   }
 }
 
-/**
- * Get tenant-specific message based on status
- */
+// Get tenant-specific message based on status
 function getTenantMessage(tenant: ResolvedTenant, status: string): string {
   const companyName = tenant.branding?.company_name || tenant.name;
 
@@ -98,9 +89,7 @@ function getTenantMessage(tenant: ResolvedTenant, status: string): string {
   }
 }
 
-/**
- * Check if tenant has access to specific feature
- */
+// Check if tenant has access to specific feature
 export function checkTenantFeature(tenant: ResolvedTenant, feature: string): BlockResult {
   console.log('🔍 [TenantBlocker] Checking feature access:', {
     tenantId: tenant.id,
@@ -125,17 +114,13 @@ export function checkTenantFeature(tenant: ResolvedTenant, feature: string): Blo
   };
 }
 
-/**
- * Get feature-specific message
- */
+// Get feature-specific message
 function getFeatureMessage(tenant: ResolvedTenant, feature: string): string {
   const companyName = tenant.branding?.company_name || tenant.name;
   return `The '${feature}' feature is not enabled for ${companyName}. Please upgrade your plan or contact support.`;
 }
 
-/**
- * Create error response for blocked requests
- */
+// Create error response for blocked requests
 export function createBlockedResponse(blockResult: BlockResult, corsHeaders?: Record<string, string>): Response {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -156,9 +141,7 @@ export function createBlockedResponse(blockResult: BlockResult, corsHeaders?: Re
   );
 }
 
-/**
- * Middleware wrapper for easy integration
- */
+// Middleware wrapper for easy integration
 export async function withTenantBlocker(
   tenant: ResolvedTenant,
   corsHeaders?: Record<string, string>

@@ -1,26 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CONTEXT TRACER (v1.0.0)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Track crop/stage/DAS resolution through the execution path to detect
- * where context data is lost or incorrectly transformed.
- * 
- * TRACE POINTS:
- * 1. LAND_FETCH - After fetchComprehensiveLandContext()
- * 2. CANONICAL_CONTEXT - After buildCanonicalContextContract()
- * 3. CANONICAL_STATE - Before buildCanonicalState()
- * 4. OPTION_SELECTED - At clarification rebuild path
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CONTEXT TRACER (v1.0.0)
 
 export const CONTEXT_TRACER_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ContextTracePoint {
   readonly location: TraceLocation;
@@ -55,26 +37,20 @@ export interface DriftDetail {
   readonly severity: 'CRITICAL' | 'WARNING' | 'INFO';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SESSION TRACE STORAGE
-// ═══════════════════════════════════════════════════════════════════════════
 
 // Per-session trace storage (cleared each turn)
 let currentTraceId: string | null = null;
 const tracePoints: Map<string, ContextTracePoint[]> = new Map();
 
-/**
- * Initialize trace for a new turn
- */
+// Initialize trace for a new turn
 export function initializeTrace(traceId: string): void {
   currentTraceId = traceId;
   tracePoints.set(traceId, []);
   console.log(`📍 [ContextTracer] Initialized trace: ${traceId}`);
 }
 
-/**
- * Clear trace at end of turn
- */
+// Clear trace at end of turn
 export function clearTrace(traceId: string): void {
   tracePoints.delete(traceId);
   if (currentTraceId === traceId) {
@@ -82,9 +58,7 @@ export function clearTrace(traceId: string): void {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TRACE POINT CREATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface TraceInput {
   crop?: string | null;
@@ -94,10 +68,7 @@ export interface TraceInput {
   ndvi?: number | null;
 }
 
-/**
- * Create a trace point and store it for the current session.
- * This is the PRIMARY function to log context flow.
- */
+// Create a trace point and store it for the current session.
 export function traceContextPoint(
   location: TraceLocation,
   data: TraceInput,
@@ -135,13 +106,9 @@ export function traceContextPoint(
   return point;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT HELPERS FOR DIFFERENT DATA SHAPES
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Trace from landContext object
- */
+// Trace from landContext object
 export function traceFromLandContext(
   location: TraceLocation,
   landContext: any,
@@ -161,9 +128,7 @@ export function traceFromLandContext(
   );
 }
 
-/**
- * Trace from CanonicalContext object
- */
+// Trace from CanonicalContext object
 export function traceFromCanonicalContext(
   location: TraceLocation,
   canonicalContext: any,
@@ -183,9 +148,7 @@ export function traceFromCanonicalContext(
   );
 }
 
-/**
- * Trace from CanonicalState object
- */
+// Trace from CanonicalState object
 export function traceFromCanonicalState(
   location: TraceLocation,
   canonicalState: any,
@@ -205,14 +168,9 @@ export function traceFromCanonicalState(
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DRIFT DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Compare two trace points and detect drift.
- * Drift = context data changed unexpectedly between two points.
- */
+// Compare two trace points and detect drift.
 export function detectContextDrift(
   point1: ContextTracePoint,
   point2: ContextTracePoint
@@ -288,9 +246,7 @@ export function detectContextDrift(
   };
 }
 
-/**
- * Log all drift between consecutive trace points for a session.
- */
+// Log all drift between consecutive trace points for a session.
 export function logSessionDrifts(traceId: string): void {
   const points = tracePoints.get(traceId);
   if (!points || points.length < 2) {
@@ -318,16 +274,9 @@ export function logSessionDrifts(traceId: string): void {
   console.log(`📍 [ContextTracer] ═══ END DRIFT ANALYSIS ═══\n`);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INVARIANT ASSERTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Assert that CanonicalState matches CanonicalContext (the locked authority).
- * If drift is detected, CORRECT the CanonicalState to match CanonicalContext.
- * 
- * @returns The corrected CanonicalState (or original if no drift)
- */
+// Assert that CanonicalState matches CanonicalContext (the locked authority).
 export function assertAndCorrectContextAlignment(
   canonicalContext: any,
   canonicalState: any,
@@ -375,9 +324,7 @@ export function assertAndCorrectContextAlignment(
   return canonicalState;
 }
 
-/**
- * Get summary of all trace points for debugging
- */
+// Get summary of all trace points for debugging
 export function getTraceSummary(traceId: string): string {
   const points = tracePoints.get(traceId);
   if (!points || points.length === 0) {

@@ -36,10 +36,7 @@ export interface BridgedObservation {
   source: 'observation_aliases' | 'identity';
 }
 
-/**
- * Resolve a single raw extractor code to its canonical form via
- * `observation_aliases`. Returns identity mapping when no row exists.
- */
+// Resolve a single raw extractor code to its canonical form via
 export async function bridgeToCropVocab(
   supabase: any,
   cropCode: string | null | undefined,
@@ -49,8 +46,6 @@ export async function bridgeToCropVocab(
   if (!raw) return { raw_code: raw, canonical_code: raw, source: 'identity' };
 
   // Phase 3b cutover (2026-07-22): shared observation-index is authoritative
-  // when warm. Legacy per-request `observation_aliases` query is only used
-  // as a cold-boot fallback.
   try {
     const { observationIndexReady, resolveAliasCanonical } =
       await import('../utils/db-ssot/observation-index.ts');
@@ -91,16 +86,7 @@ export async function bridgeToCropVocab(
   }
 }
 
-/**
- * Batch bridge. Preserves input order, deduplicates canonical outputs
- * case-insensitively. Emits a single trace line per bridged (non-identity)
- * transformation.
- *
- * When `cropContext` is provided, the BIOLOGICAL_SCOPE_CONTRACT (P1) is
- * applied AFTER bridging: canonical codes scoped to a foreign crop / organ
- * are dropped with [OBS_SCOPE_REJECT]. Universal / generic / current-crop /
- * current-crop-group codes pass through.
- */
+// Batch bridge. Preserves input order, deduplicates canonical outputs
 export async function bridgeCodesDb(
   supabase: any,
   cropCode: string | null | undefined,
@@ -204,10 +190,7 @@ export async function bridgeCodesDb(
 }
 
 
-/**
- * DEPRECATED — sync pass-through kept for legacy call sites during transition.
- * New code MUST call `bridgeCodesDb`.
- */
+// DEPRECATED — sync pass-through kept for legacy call sites during transition.
 export function bridgeCodes(_cropCode: string | null | undefined, codes: string[]): string[] {
   if (!Array.isArray(codes) || codes.length === 0) return [];
   const seen = new Set<string>();
@@ -222,25 +205,7 @@ export function bridgeCodes(_cropCode: string | null | undefined, codes: string[
   return out;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP-CANONICAL RESOLVER — intent_observation_mapping as ontology bridge
-// ═══════════════════════════════════════════════════════════════════════════
-// Extractor + observation_aliases yield generic observation codes.
-// Hypothesis conditions are authored against crop-specific canonical
-// codes. The equivalence class between the two is curated in
-// `intent_observation_mapping`: rows for a given (intent_code, crop_code)
-// form the curated evidence class for that intent.
-//
-// 2026-07-26 (forensic audit F1) — the `.eq('assertion_strength','LITERAL')`
-// exclusion was DELETED. It made 13,245 of 13,594 active IOM rows invisible
-// to the graph, so any farmer observation curated as DIFFERENTIAL produced
-// `anchor=NONE` and zero peers, and the hypothesis conditions (authored
-// against crop-specific codes) could never fire. `assertion_strength` is now
-// a WEIGHT supplied to `decision/evidence-confidence.ts`, never a filter.
-//
-// NO hardcoded crop / stage / symptom / pest / disease is added here. The
-// ontology stays in the database.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import { canonicalObsCode, canonicalIntentCode, canonicalCropCode } from '../utils/canonical-code.ts';
 import { scoreEvidenceSet, type EvidenceCandidate } from './evidence-confidence.ts';

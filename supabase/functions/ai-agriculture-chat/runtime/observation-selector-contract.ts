@@ -18,32 +18,7 @@
  *   those confirmed codes into the hypothesis clarification builder.
  */
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION SELECTOR CONTRACT
- * ═══════════════════════════════════════════════════════════════════════════
- * Single boundary enforcer for the "OBSERVATION_REQUIRED → UI symptom picker"
- * response contract.
- *
- * Frontend requires:
- *   metadata.orchestrator_type === 'CLARIFICATION_QUESTION'
- *   metadata.options.length > 0
- *   each option: { label, value, observation_key }
- *
- * This module never invents symptoms. Options are loaded from the SSOT:
- *   decision_rules.observable_characteristics × observation_translations
- *
- * Invariants:
- *   1. Any CLARIFICATION_QUESTION response with empty options is hydrated
- *      from the SSOT before it can reach the transform boundary.
- *   2. Any DECISION_PROVIDED response that ships no primary_decision AND no
- *      farmer communication (the classic "I need more information" leak) is
- *      promoted to CLARIFICATION_QUESTION with SSOT-loaded options.
- *   3. If SSOT loading yields zero options, we throw
- *      OBSERVATION_CONTRACT_VIOLATION so the leak is greppable in logs
- *      instead of shipping silently as text.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// OBSERVATION SELECTOR CONTRACT
 
 import { buildHypothesisClarificationOptions, withPhotoOption } from '../decision/hypothesis-clarification-builder.ts';
 import { getSessionSSOT, type SessionSSOT } from './session-ssot.ts';
@@ -77,32 +52,18 @@ export interface ObservationContractContext {
   realObservationCount?: number | null;
   /** Confirmed farmer-visible observation codes already selected/extracted. */
   confirmedObservationCodes?: ReadonlyArray<string> | null;
-  /**
-   * RC-1 (2026-07-26) — codes the perception layer grounded this turn but the
-   * farmer has not confirmed. Unioned with the IOM cell inside the builder so
-   * a sparse IOM row set can never delete real field evidence.
-   */
+  // RC-1 (2026-07-26) — codes the perception layer grounded this turn but the
   perceivedObservationCodes?: ReadonlyArray<string> | null;
-  /**
-   * Reason surfaced with the clarification so operators can debug graph
-   * exhaustion vs empty-decision promotion vs plain hydration.
-   */
+  // Reason surfaced with the clarification so operators can debug graph
   graphReason?: string | null;
-  /**
-   * R3a — canonical SessionSSOT built at Layer 3. When present it is the
-   * authoritative source of crop/stage/DAS/intent/language.
-   */
+  // R3a — canonical SessionSSOT built at Layer 3. When present it is the
   session_ssot?: SessionSSOT | null;
   /** Optional orchestrator instance/state used to resolve the SSOT lazily. */
   orchestratorState?: any;
 
 }
 
-/**
- * SSOT loader — farmer-visible clarification options come from the hypothesis
- * graph. `intent_observation_mapping` may be used inside the builder only as a
- * discovery seed; it must never directly emit UI options.
- */
+// SSOT loader — farmer-visible clarification options come from the hypothesis
 export async function loadObservationSelectorOptions(
   ctx: ObservationContractContext,
 ): Promise<ObservationOption[]> {
@@ -145,11 +106,7 @@ export async function loadObservationSelectorOptions(
 
 // ─── Q1/Q2 — SSOT lock + DB rescue before any escalation degrade ───────────
 
-/**
- * SSOT lock invariant. crop_code + growth_stage + DAS + intent_code are
- * established at Land Context SSOT (step 3) and MUST be present on every
- * downstream clarification call. Returns the missing field name, or null.
- */
+// SSOT lock invariant. crop_code + growth_stage + DAS + intent_code are
 function missingSsotField(ctx: ObservationContractContext): string | null {
   if (!ctx.cropCode) return 'crop_code';
   if (!ctx.growthStage) return 'growth_stage';
@@ -158,20 +115,7 @@ function missingSsotField(ctx: ObservationContractContext): string | null {
   return null;
 }
 
-/**
- * Track A (2026-07-27) — `clarification_fallback_questions` retired.
- *
- * The intent-scoped safety net is now sourced from the SAME schema as every
- * other farmer-visible option:
- *
- *   observation_intent_master.allowed_observation_groups
- *        ↓ (group suffix match, e.g. 'physiology' ↔ '01_physiology')
- *   observation_master  (is_active ∧ is_farmer_observable ∧ can_generate_question)
- *        ↓
- *   observation_translations (display_text → description_text, lang → en)
- *
- * No column-per-language table, no TS label constants, no LLM generation.
- */
+// Track A (2026-07-27) — `clarification_fallback_questions` retired.
 async function loadIntentGroups(
   supabase: any,
   intentCode: string | null | undefined,
@@ -301,11 +245,7 @@ export interface RescueResult {
 }
 
 
-/**
- * Q2 — DB rescue: hypothesis-graph options first, then the DB fallback
- * question table. Mutates the response into a CLARIFICATION_QUESTION when any
- * DB-sourced options exist. Never synthesises options in TypeScript.
- */
+// Q2 — DB rescue: hypothesis-graph options first, then the DB fallback
 export async function attemptDbClarificationRescue(
   response: any,
   ctx: ObservationContractContext,
@@ -371,10 +311,7 @@ export async function attemptDbClarificationRescue(
   return { rescued: false, site: null, option_count: 0 };
 }
 
-/**
- * Absolute last-resort escalation. Only reachable when BOTH DB rescue paths
- * returned zero options.
- */
+// Absolute last-resort escalation. Only reachable when BOTH DB rescue paths
 function applyTrueEscalation(
   response: any,
   ctx: ObservationContractContext,
@@ -397,12 +334,7 @@ function applyTrueEscalation(
 }
 
 
-/**
- * Single enforcement point invoked immediately after the orchestrator returns.
- * Mutates the response in place to guarantee the OBSERVATION_REQUIRED contract.
- *
- * Returns metadata about what happened for the [BRAIN_TRACE] emitter.
- */
+// Single enforcement point invoked immediately after the orchestrator returns.
 export interface ContractResult {
   promoted: boolean;
   hydrated: boolean;
@@ -420,10 +352,6 @@ export async function ensureObservationSelectorContract(
   }
 
   // ── R3a — SSOT hydration: if the caller supplied session_ssot OR the
-  // response metadata carries it, it is the authoritative source of
-  // crop/stage/DAS/intent/language before the individually-passed fields.
-  // The existing SSOT_LOCK_LOST invariant then acts as a REAL safety net —
-  // it only fires if SSOT hydration itself failed (upstream bug).
   {
     const _ssot = (ctx as any).session_ssot ?? getSessionSSOT(response, (ctx as any).orchestratorState ?? null);
     if (_ssot) {
@@ -566,10 +494,6 @@ export async function ensureObservationSelectorContract(
   }
 
   // ── Case D: DIAGNOSTIC_ESCALATION with no options → promote to
-  // CLARIFICATION_QUESTION with DB-sourced (IOM/decision_rules) options.
-  // This is the graph-exhaustion path (hypothesis=0, rules=0). The farmer
-  // must be asked a scoped observation question instead of receiving an
-  // empty escalation card.
   if (type === 'DIAGNOSTIC_ESCALATION' && existingOptions.length === 0) {
     const options = await loadObservationSelectorOptions(effectiveCtx);
     if (options.length === 0) {

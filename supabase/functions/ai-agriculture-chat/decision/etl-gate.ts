@@ -1,30 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 3: ETL (ECONOMIC THRESHOLD LEVEL) SAFETY GATE
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Enforces ETL checking before pesticide/spray recommendations to prevent
- * unnecessary chemical applications, reduce farmer costs, and support IPM.
- * 
- * ARCHITECTURE:
- * - checkETLThreshold(): Validate pest count against rule thresholds
- * - shouldBlockSpray(): Determine if spray recommendation should be blocked
- * - getETLAdvice(): Get monitoring advice when ETL not crossed
- * 
- * ICAR COMPLIANCE:
- * - ETL thresholds sourced from ICAR Package of Practices
- * - Follows IPM progression (monitoring → cultural → biological → chemical)
- * - Prevents spray recommendations when pest pressure below threshold
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE 3: ETL (ECONOMIC THRESHOLD LEVEL) SAFETY GATE
 
 export const ETL_GATE_VERSION = '2.1.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ETL STANDARDS CACHE (from etl_standards table)
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface ETLStandard {
   pest_code: string;
@@ -40,11 +18,7 @@ interface ETLStandard {
 
 let etlStandardsCache: ETLStandard[] | null = null;
 
-/**
- * Pre-load ETL standards from database.
- * Call once before rule evaluation loop to avoid N+1 queries.
- * Now includes sampling_unit, action_threshold, and is_active filtering.
- */
+// Pre-load ETL standards from database.
 export async function loadETLStandards(supabaseClient: any): Promise<void> {
   if (etlStandardsCache) return; // Already loaded
   
@@ -68,10 +42,7 @@ export async function loadETLStandards(supabaseClient: any): Promise<void> {
   }
 }
 
-/**
- * Look up ETL threshold from etl_standards table by pest/crop context.
- * Falls back to rule-level thresholds if no DB match.
- */
+// Look up ETL threshold from etl_standards table by pest/crop context.
 export function lookupETLFromStandards(
   pestCode: string | undefined,
   cropCode: string | undefined,
@@ -97,9 +68,7 @@ export function lookupETLFromStandards(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ETLInput {
   rule_id: string;
@@ -130,9 +99,7 @@ export interface ETLValidationResult {
   monitoring_advice?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ACTION TYPES THAT REQUIRE ETL CHECK
-// ═══════════════════════════════════════════════════════════════════════════
 
 const SPRAY_ACTION_TYPES = new Set([
   'treatment',
@@ -145,18 +112,9 @@ const SPRAY_ACTION_TYPES = new Set([
   'CHEMICAL_CONTROL'
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE ETL VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if observed pest level crosses ETL threshold
- * 
- * @param observedValue - Observed pest count or damage percentage
- * @param minThreshold - Minimum threshold (monitor below this)
- * @param maxThreshold - Maximum threshold (spray required above this)
- * @returns ETL crossing status and gap to threshold
- */
+// Check if observed pest level crosses ETL threshold
 export function checkETLThreshold(
   observedValue: number | null | undefined,
   minThreshold: number | null | undefined,
@@ -187,13 +145,7 @@ export function checkETLThreshold(
   return { crossed: true, gap: null };
 }
 
-/**
- * Determine if spray recommendation should be blocked based on ETL
- * 
- * @param rule - Rule with ETL fields
- * @param context - Observation context
- * @returns ETLValidationResult with spray_allowed and recommendation
- */
+// Determine if spray recommendation should be blocked based on ETL
 export function shouldBlockSpray(
   rule: ETLInput,
   context: ETLContext
@@ -284,13 +236,9 @@ export function shouldBlockSpray(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MONITORING ADVICE
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Generate monitoring advice when ETL not crossed
- */
+// Generate monitoring advice when ETL not crossed
 function getMonitoringAdvice(observedValue: number, threshold: number): string {
   const percentage = Math.round((observedValue / threshold) * 100);
   
@@ -303,9 +251,7 @@ function getMonitoringAdvice(observedValue: number, threshold: number): string {
   }
 }
 
-/**
- * Get localized ETL advice
- */
+// Get localized ETL advice
 export function getETLAdvice(
   result: ETLValidationResult,
   language: string
@@ -327,9 +273,7 @@ export function getETLAdvice(
   return templates[language] || templates['en'];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function logETLValidation(
   ruleId: string,

@@ -1,11 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * MULTI-MODAL FUSION ENGINE - KisanShakti AI
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Intelligently combines information from text, images, sensor data, 
- * weather APIs, and satellite imagery into unified agricultural intelligence.
- */
+// MULTI-MODAL FUSION ENGINE - KisanShakti AI
 
 import type {
   MultiModalInput,
@@ -34,16 +27,12 @@ import {
 
 export const MULTIMODAL_FUSION_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN FUSION ENGINE CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class MultiModalFusionEngine {
   private version = MULTIMODAL_FUSION_VERSION;
   
-  /**
-   * Main fusion method - combines all input modalities
-   */
+  // Main fusion method - combines all input modalities
   async fuse(input: MultiModalInput): Promise<FusedIntelligence> {
     const startTime = Date.now();
     console.log('🔗 Multi-Modal Fusion: Starting...');
@@ -114,9 +103,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: CONFLICT DETECTION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private detectConflicts(input: MultiModalInput): ConflictDetectionResult {
     const conflicts: DetectedConflict[] = [];
@@ -262,9 +249,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: CROSS-VALIDATION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private crossValidate(input: MultiModalInput): CrossValidationResult {
     const facts: ValidatedFact[] = [];
@@ -422,9 +407,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: GAP FILLING
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private fillInformationGaps(input: MultiModalInput): GapFillingResult {
     const filled: FilledGap[] = [];
@@ -535,9 +518,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 4: CONFLICT RESOLUTION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private resolveConflict(conflict: DetectedConflict, input: MultiModalInput): ResolvedConflict {
     const sourceRankings = conflict.sources.map(s => ({
@@ -563,9 +544,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 5: BUILD UNIFIED CONTEXT
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private buildUnifiedContext(
     input: MultiModalInput,
@@ -700,9 +679,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 6: DATA QUALITY ASSESSMENT
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private assessDataQuality(
     input: MultiModalInput, 
@@ -764,9 +741,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 7: RECOMMENDATIONS
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateRecommendations(
     input: MultiModalInput,
@@ -802,9 +777,7 @@ export class MultiModalFusionEngine {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // HELPER METHODS
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateId(): string {
     return `fusion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

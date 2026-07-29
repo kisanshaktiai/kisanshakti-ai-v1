@@ -1,25 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * LANGUAGE QUALITY VALIDATOR - Post-LLM Response Validation
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PART 5 of KisanShakti comprehensive fix:
- * - Gibberish detection for Marathi/Hindi
- * - Grammar structure validation
- * - Technical term consistency
- * - Contradiction detection
- * 
- * VERSION: 1.0.0
- */
+// LANGUAGE QUALITY VALIDATOR - Post-LLM Response Validation
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TECHNICAL TERM TRANSLATIONS - REMOVED (Dead code: zero callers)
-// Translation is handled by the LLM narration layer at runtime.
-// ═══════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GIBBERISH DETECTION PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const GIBBERISH_PATTERNS = {
   // Impossible word combinations in Marathi
@@ -41,9 +24,7 @@ const GIBBERISH_PATTERNS = {
   ]
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTRADICTORY ACTION PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const CONTRADICTORY_PATTERNS = {
   mr: [
@@ -62,9 +43,7 @@ const CONTRADICTORY_PATTERNS = {
   ]
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GRAMMAR STRUCTURE PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 // Marathi sentences should end with verb forms
 const MARATHI_SENTENCE_ENDINGS = [
@@ -80,9 +59,7 @@ const MARATHI_SENTENCE_ENDINGS = [
   /येईल\.?$/, // will come
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION RESULT INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LanguageValidationResult {
   is_valid: boolean;
@@ -100,9 +77,7 @@ export interface LanguageIssue {
   suggestion?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN VALIDATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function validateLanguageQuality(
   text: string,
@@ -123,9 +98,7 @@ export function validateLanguageQuality(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: Gibberish Detection
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const gibberishPatterns = GIBBERISH_PATTERNS[language] || [];
   for (const pattern of gibberishPatterns) {
@@ -141,9 +114,7 @@ export function validateLanguageQuality(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 2: Contradictory Actions
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const contradictions = CONTRADICTORY_PATTERNS[language] || [];
   for (const { pattern, reason } of contradictions) {
@@ -159,9 +130,7 @@ export function validateLanguageQuality(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 3: Excessive Repetition
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const words = text.split(/\s+/);
   const wordCounts: Record<string, number> = {};
@@ -184,9 +153,7 @@ export function validateLanguageQuality(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 4: Sentence Structure (Devanagari-script languages)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (language === 'mr' || language === 'hi') {
     const sentences = text.split(/[।\.\n]+/).filter(s => s.trim().length > 10);
@@ -212,9 +179,7 @@ export function validateLanguageQuality(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 5: Empty or Too Short Response
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (text.trim().length < 50) {
     issues.push({
@@ -241,16 +206,9 @@ export function validateLanguageQuality(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TERM REPLACEMENT FUNCTION - REMOVED (Dead code: zero callers)
-// Translation is handled by the LLM narration layer at runtime.
-// ═══════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFE FALLBACK MESSAGE — LANGUAGE-AWARE (FIX 4)
-// Every fallback (normal, error, catch) MUST render in the farmer's language.
-// No English hardcoded string is ever returned when a language is provided.
-// ═══════════════════════════════════════════════════════════════════════════
 
 const FALLBACK_ASK_MORE: Record<string, string> = {
   mr: '🙏 कृपया आपल्या समस्येबद्दल अधिक माहिती द्या किंवा पिकाचा फोटो पाठवा. मी अचूक सल्ला देईन.',

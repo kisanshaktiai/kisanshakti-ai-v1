@@ -1,16 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * Phase H — EVIDENCE COVERAGE (single source of truth)
- * ═══════════════════════════════════════════════════════════════════════════
- * Coverage is computed over CONFIRMED OBSERVATIONS ONLY.
- * Excludes:
- *   - *_UNKNOWN placeholders
- *   - ACTION_NONE / PHOTO_NOT_PROVIDED
- *   - CROP_IDENTIFIED / STAGE_IDENTIFIED (context tags, not evidence)
- *   - inferred observations
- *   - diagnostic hypotheses
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// Phase H — EVIDENCE COVERAGE (single source of truth)
 
 export const INFORMATIVE_PLACEHOLDERS = new Set<string>([
   'CROP_IDENTIFIED',

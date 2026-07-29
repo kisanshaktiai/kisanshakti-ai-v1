@@ -45,9 +45,7 @@
 
 export const HYPOTHESIS_EVALUATOR_VERSION = '1.2.0'; // Added temporal constraint filtering
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: TEMPORAL CONSTRAINT VALIDATOR IMPORT
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   validateCropAge,
   filterRulesByAge,
@@ -57,26 +55,14 @@ import {
 } from './temporal-constraint-validator.ts';
 import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 // Step 3 — Hypothesis contract tightening.
-// The evaluator now recognises GraphTruth as the ONLY authoritative source of
-// (crop_code, growth_stage, DAS, canonical_observations, variety_id). Legacy
-// primitive fields remain on the interface to keep callers compiling but are
-// treated as inputs of last resort; when `graph_truth` is provided the
-// evaluator asserts its integrity and overwrites the mutable primitives.
 import type { GraphTruth } from '../runtime/graph-truth.ts';
 import { assertGraphTruthIntegrity } from '../runtime/graph-truth.ts';
 
 export interface HypothesisEvaluationInput {
-  /**
-   * Frozen GraphTruth for the turn. When present it OVERRIDES every mutable
-   * primitive below. Callers on the primary orchestrator path MUST pass this;
-   * the legacy path (clarification-strategy pre-Step-6) may still omit it and
-   * will emit `[HYPOTHESIS_CONTRACT] legacy_path` in logs.
-   */
+  // Frozen GraphTruth for the turn. When present it OVERRIDES every mutable
   graph_truth?: GraphTruth | null;
 
   crop_code: string;
@@ -150,22 +136,9 @@ export interface HypothesisEvaluationOutput {
   trace_id: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // (Phase 1 DB-SSOT) HYPOTHESIS_CANONICAL_GROUPS removed — the hardcoded list
-// was declared but never referenced in this file. Canonical groups now flow
-// from hypothesis_master.canonical_group (13 active groups) via the shared
-// utils/db-ssot/phase1-caches.getHypothesisCanonicalGroups() accessor.
-// ═══════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE F — VARIETY RESISTANCE MODULATION
-// Bounded multiplier applied to CandidateHypothesis.total_score based on the
-// farmer's current_crop_variety_id and matched threat/observation. This is
-// EVIDENCE-level modulation — resistance never eliminates a hypothesis;
-// susceptibility never invents one. All resistance rows come from the
-// curated `variety_resistance` table (columns: variety_id, threat_type,
-// observation_code, canonical_observation_code, threat_name, resistance_level).
-// ═══════════════════════════════════════════════════════════════════════════
 
 const RESISTANCE_MULTIPLIER: Record<VarietyResistanceLevel, number> = {
   HR: 0.60,   // highly resistant → strong down-rank
@@ -286,9 +259,7 @@ function findResistanceForCandidate(
 
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE COMPATIBILITY PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 // Import centralized stage normalizer
 import { 
@@ -299,13 +270,7 @@ import {
   type StageCategory 
 } from '../utils/stage-normalizer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CAUSE NORMALIZATION FOR DEDUPLICATION
-// Normalizes cause strings to detect duplicates like:
-// - "Early Shoot Borer (Chilo infuscatellus) infestation" → "early shoot borer"
-// - "EARLY_SHOOT_BORER" → "early shoot borer"
-// - "early_shoot_borer_tillering" → "early shoot borer"
-// ═══════════════════════════════════════════════════════════════════════════
 
 function normalizeCauseForDedup(cause: string): string {
   if (!cause) return 'unknown';
@@ -329,9 +294,7 @@ function normalizeCauseForDedup(cause: string): string {
   
   // Apply pattern-based normalization for known variations
   const patterns: [RegExp, string][] = [
-    // ═══════════════════════════════════════════════════════════════════════
     // PEST patterns (existing)
-    // ═══════════════════════════════════════════════════════════════════════
     [/early\s*shoot\s*borer/i, 'early shoot borer'],
     [/shoot\s*borer/i, 'shoot borer'],
     [/stem\s*borer/i, 'stem borer'],
@@ -350,11 +313,7 @@ function normalizeCauseForDedup(cause: string): string {
     [/wilt/i, 'wilt'],
     [/rust/i, 'rust'],
     
-    // ═══════════════════════════════════════════════════════════════════════
     // FORENSIC AUDIT FIX v8.0: NUTRIENT dedup patterns
-    // "Basal Nitrogen Recommendation", "Optimized Nitrogen Application",
-    // "Split Nitrogen Application" all collapse to "nitrogen deficiency"
-    // ═══════════════════════════════════════════════════════════════════════
     [/nitrogen/i, 'nitrogen deficiency'],
     [/phosphorus|phospho/i, 'phosphorus deficiency'],
     [/potassium|potash/i, 'potassium deficiency'],
@@ -366,8 +325,6 @@ function normalizeCauseForDedup(cause: string): string {
     [/sulphur|sulfur/i, 'sulphur deficiency'],
     [/nutrient\s*deficiency/i, 'nutrient deficiency'],
     // REMOVED: Over-broad yellowing|chlorosis pattern that collapsed ALL nutrient
-    // deficiencies (Iron, Zinc, Nitrogen, Magnesium) into one bucket.
-    // Specific nutrient patterns above handle dedup correctly.
     
     // DISEASE dedup patterns
     [/leaf\s*spot/i, 'leaf spot'],
@@ -386,16 +343,9 @@ function normalizeCauseForDedup(cause: string): string {
   return normalized;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PARTIAL CONDITION MATCHING
-// Evaluate how well a rule's conditions match available facts
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * PATCH v4-P2 — Generic dotted-path getter for canonical_context predicates.
- * Walks `a.b.c` (and numeric segments for arrays). Missing paths return
- * `undefined`. No agronomy — pure runtime utility.
- */
+// PATCH v4-P2 — Generic dotted-path getter for canonical_context predicates.
 export function resolvePath(root: unknown, path: string): unknown {
   if (root === null || root === undefined || typeof path !== 'string' || path.length === 0) {
     return undefined;
@@ -410,15 +360,7 @@ export function resolvePath(root: unknown, path: string): unknown {
   return cur;
 }
 
-/**
- * PATCH v4-P2 — Compare a resolved value against a predicate literal.
- * Supported literal shapes (all optional, no crop-specific ops):
- *   - primitive:            equality (case-insensitive for strings)
- *   - { eq }/{ ne }:        equality / inequality
- *   - { in: [...] }:        membership
- *   - { gt|gte|lt|lte: n }: numeric compare
- *   - { present: true/false }: value defined / undefined
- */
+// PATCH v4-P2 — Compare a resolved value against a predicate literal.
 export function comparePredicate(actual: unknown, expected: unknown): boolean {
   if (expected === null || expected === undefined) return actual === expected;
   if (typeof expected !== 'object') {
@@ -498,10 +440,6 @@ function evaluatePartialConditionMatch(
   }
 
   // ─── PATCH v4-P2 — canonical_context.* dotted-path predicates ─────────
-  // DB rules may include: conditions_json.canonical: { "soil.moisture_status": "DRY",
-  //   "weather.rainfall_after_sowing_mm": { "lte": 0 },
-  //   "biological_state.biological_constraints.0.code": "EMERGENCE_NOT_CONFIRMED" }
-  // Runtime only WALKS paths; agronomy stays in the DB row.
   const canonicalPreds = conditionsJson.canonical && typeof conditionsJson.canonical === 'object'
     ? (conditionsJson.canonical as Record<string, unknown>)
     : null;
@@ -522,10 +460,7 @@ function evaluatePartialConditionMatch(
   return { score: Math.min(1, score), matchedConditions };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE RELEVANCE SCORING
-// Uses centralized stage-normalizer.ts for consistency
-// ═══════════════════════════════════════════════════════════════════════════
 
 function calculateStageRelevance(
   stageApplicable: string[] | null,
@@ -538,19 +473,9 @@ function calculateStageRelevance(
   return calculateStageRelevanceScore(stageApplicable, currentStage, crop, cultivationMethod);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXTRACT OBSERVABLE CHARACTERISTICS
-// Parse and normalize observable_characteristics from rule
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * P0 FIX: Observable Characteristics Array Normalizer
- * Handles multiple formats from decision_rules:
- * - Array of strings: ["dead_heart", "larvae_present"]
- * - Array of objects: [{observation_key: "DEAD_HEART"}]
- * - Single object: {observation_key: "DEAD_HEART"}
- * - Empty/null: returns empty array safely
- */
+// P0 FIX: Observable Characteristics Array Normalizer
 function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, any>): ObservableCharacteristic[] {
   if (!raw) return [];
   
@@ -568,8 +493,6 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
       raw = [raw];
     }
     // CASE 2: Legacy format {symptom_name: true, another_symptom: true}
-    // Database stores observable_characteristics as: {dead_heart: true, central_shoot_dried: true}
-    // We need to convert this to: ["DEAD_HEART", "CENTRAL_SHOOT_DRIED"]
     else if (keys.some(k => typeof raw[k] === 'boolean')) {
       console.log(`   [ExtractObs] Converting legacy boolean object format with ${keys.length} keys: ${keys.slice(0, 5).join(', ')}`);
       // Convert {dead_heart: true, stem_hollow: true} → ["DEAD_HEART", "STEM_HOLLOW"]
@@ -687,20 +610,10 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
   }).filter((c): c is ObservableCharacteristic => c !== null && !!c.observation_key);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN HYPOTHESIS EVALUATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Pre-evaluate symbolic rules to build candidate hypothesis set.
- * This is a READ-ONLY step that does NOT fire treatments.
- */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CROP CODE NORMALIZER - Maps between full names and DB short codes
- * CRITICAL: decision_rules table uses short codes (SC, CTN, etc.)
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// Pre-evaluate symbolic rules to build candidate hypothesis set.
+// CROP CODE NORMALIZER - Maps between full names and DB short codes
 function getCropCodeVariantsForDB(cropCode: string): string[] {
   if (!cropCode) return ['all', 'ALL'];
   
@@ -759,12 +672,7 @@ export async function evaluateCandidateHypotheses(
 ): Promise<HypothesisEvaluationOutput> {
   const traceId = input.trace_id || `hyp_${Date.now()}`;
 
-  // ═════════════════════════════════════════════════════════════════════════
   // Step 3 — HYPOTHESIS CONTRACT: GraphTruth is the sole authority.
-  // If a frozen GraphTruth is supplied, project its fields onto the mutable
-  // primitives BEFORE any downstream reasoning runs, and log every drift so
-  // upstream leaks stay visible in traces.
-  // ═════════════════════════════════════════════════════════════════════════
   const gt = input.graph_truth ?? null;
   if (gt) {
     assertGraphTruthIntegrity(gt, 'EVALUATE_CANDIDATE_HYPOTHESES');
@@ -813,10 +721,7 @@ export async function evaluateCandidateHypotheses(
 
   
   try {
-    // ═══════════════════════════════════════════════════════════════════════
     // STEP 1: NORMALIZE CROP CODE AND STAGE FOR DB QUERY
-    // CRITICAL FIX: Use crop code variants (SC, SUGARCANE, etc.)
-    // ═══════════════════════════════════════════════════════════════════════
     
     const cropVariants = getCropCodeVariantsForDB(crop_code);
     const stageVariants = getStageQueryVariants(growth_stage, crop_code);
@@ -826,24 +731,12 @@ export async function evaluateCandidateHypotheses(
     console.log(`   [HypothesisEval] Stage variants for query: [${stageVariants.slice(0, 5).join(', ')}...]`);
     console.log(`   [HypothesisEval] DB stage normalized: ${growth_stage} → ${dbStage}`);
     
-    // ═══════════════════════════════════════════════════════════════════════
     // STEP 1.5: BUILD DYNAMIC QUERY WITH CROP AND STAGE FILTERING
-    // This prevents loading 100 random rules - instead load stage-scoped rules
-    // ═══════════════════════════════════════════════════════════════════════
     
     // Build crop filter: match any of the crop variants
     const cropFilter = cropVariants.map(v => `crop_code.ilike.${v}`).join(',');
     
     // Query with both crop AND stage filtering for better precision
-    // Increase limit since we're filtering more precisely
-    // ═══════════════════════════════════════════════════════════════════════
-    // CRITICAL BUG FIX: Do NOT filter out rules with empty observable_characteristics
-    // 184 rules (37.7%) were being excluded including nutrition, irrigation, pest rules
-    // These rules have matching data in conditions_json instead
-    // ═══════════════════════════════════════════════════════════════════════
-    // PR-8 · Paginate decision_rules so we never silently drop rules past the
-    // PostgREST 1000-row cap. Loop with .range() and stop on the first
-    // incomplete page.
     const PAGE_SIZE = 1000;
     const rulesRaw: any[] = [];
     let error: any = null;
@@ -906,10 +799,7 @@ export async function evaluateCandidateHypotheses(
     console.log(`   📦 [HypothesisEval] Loaded ${rulesRaw.length} candidate rules from database`);
     console.log(`   📊 [Debug] First 3 rule crop_codes: ${rulesRaw.slice(0, 3).map((r: any) => r.cause).join(', ')}`);
     
-    // ═══════════════════════════════════════════════════════════════════════
     // STEP 1.6: FILTER BY STAGE_APPLICABLE (in-code filtering)
-    // Supabase can't do array-contains easily, so we filter in code
-    // ═══════════════════════════════════════════════════════════════════════
     const stageFilteredRules = rulesRaw.filter((rule: any) => {
       const stageApplicable = rule.stage_applicable;
       
@@ -972,10 +862,7 @@ export async function evaluateCandidateHypotheses(
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // STEP 1.7: OBSERVATION LAYER PRE-FILTER (category + plant-part)
-    // Uses observation_master metadata + canonical_group_mapping ontology bridge
-    // ═══════════════════════════════════════════════════════════════════════
     let obsMetadataMap = new Map<string, any>();
     
     if (input.known_observations.length > 0) {
@@ -996,9 +883,7 @@ export async function evaluateCandidateHypotheses(
           
           console.log(`   🔬 [HypObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}]`);
           
-          // ═══════════════════════════════════════════════════════════════
           // P3: TIERED RULE-FILTER WIDENING — never collapse to zero.
-          // ═══════════════════════════════════════════════════════════════
           const obsCanonicalGroups = new Set<string>(
             obsMetaData.map((o: any) => o.canonical_group).filter(Boolean).map((g: string) => String(g).toUpperCase()),
           );
@@ -1070,10 +955,7 @@ export async function evaluateCandidateHypotheses(
       console.warn(`   ⚠️ [RULE_EXPLOSION] ${rulesToEvaluate.length} candidate rules for ${input.known_observations.length} observations`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // STEP 2: PHASE-17 - Filter by temporal constraints (crop_age_days_min/max)
-    // This ensures early-stage rules don't fire for mature crops and vice versa
-    // ═══════════════════════════════════════════════════════════════════════
     
     const temporalFilterInput = rulesToEvaluate.map((r: any) => ({
       rule_id: r.rule_id,
@@ -1106,9 +988,7 @@ export async function evaluateCandidateHypotheses(
       console.log(`   ⚠️ [HypothesisEval] All rules filtered by DAS - falling back to ${rulesToEvaluate.length} stage-filtered rules`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: Evaluate using partial condition matching
-    // ═══════════════════════════════════════════════════════════════════════
     
     const scoredCandidates: CandidateHypothesis[] = [];
     
@@ -1155,15 +1035,7 @@ export async function evaluateCandidateHypotheses(
       // Extract observable characteristics
       const observableChars = extractObservableCharacteristics(rule.observable_characteristics, obsMetadataMap);
       
-      // ═══════════════════════════════════════════════════════════════════════
       // CLARIFICATION ONTOLOGY CONTRACT:
-      // Rule predicates (conditions_json.observations) are INTERNAL — they
-      // MUST NOT be synthesized into farmer observations. Rules with no
-      // farmer-observable characteristics are kept as internal candidates
-      // (effectiveObsChars=[]); they cannot contribute UI clarification
-      // options. Clarification UI options come exclusively from
-      // intent_observation_mapping via runtime/clarification-contract.ts.
-      // ═══════════════════════════════════════════════════════════════════════
       const effectiveObsChars = observableChars;
       if (effectiveObsChars.length === 0) {
         console.log(`   ℹ️ Rule ${rule.rule_id}: no farmer-observable characteristics — kept as internal candidate (no UI options will be derived from it)`);
@@ -1188,12 +1060,7 @@ export async function evaluateCandidateHypotheses(
       });
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // PHASE F — VARIETY RESISTANCE MODULATION
-    // Apply bounded multiplier BEFORE sort/dedup so the highest post-adjustment
-    // candidate wins tie-breaks and dedup keeps the survivor. Skipped when no
-    // variety_id is provided or the variety has no curated resistance rows.
-    // ═══════════════════════════════════════════════════════════════════════
     if (input.variety_id) {
       const resistanceRows = await loadVarietyResistance(supabaseClient, input.variety_id);
       if (resistanceRows.length > 0) {
@@ -1216,12 +1083,7 @@ export async function evaluateCandidateHypotheses(
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: DEDUPLICATE by normalized cause + Rank and return top 4 candidates
-    // CRITICAL FIX: Multiple rules exist for same pest (e.g., EARLY_SHOOT_BORER,
-    // early_shoot_borer_tillering, Early Shoot Borer infestation)
-    // We MUST deduplicate to avoid showing duplicate options to farmers
-    // ═══════════════════════════════════════════════════════════════════════
     
     // Sort by score first (post-resistance)
     scoredCandidates.sort((a, b) => b.total_score - a.total_score);
@@ -1248,13 +1110,7 @@ export async function evaluateCandidateHypotheses(
     
     const topCandidates = deduplicatedCandidates.slice(0, 4);
 
-    // ═══════════════════════════════════════════════════════════════════════
     // ONTOLOGY GATE — strip non-farmer-observable observation_keys from every
-    // candidate's observable_characteristics. Without this gate, synthetic
-    // entries built from `conditions_json.observations` (or stray entries in
-    // `observable_characteristics`) can promote diagnosis-level codes like
-    // TUNGRO_YELLOW_STUNT into the clarification UI.
-    // ═══════════════════════════════════════════════════════════════════════
     const allCharKeys: string[] = [];
     const allRuleIds: string[] = [];
     for (const c of topCandidates) {
@@ -1336,10 +1192,7 @@ export async function evaluateCandidateHypotheses(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CHECK IF AN OBSERVATION DIFFERENTIATES BETWEEN HYPOTHESES
-// Higher score if the observation helps distinguish between candidates
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function calculateDifferentiationPower(
   observationKey: string,
@@ -1368,10 +1221,7 @@ export function calculateDifferentiationPower(
   return splitRatio * 2; // 0-1 scale, 1 = perfect differentiation
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NDVI CONSISTENCY CHECK
-// Adjust option ranking based on NDVI signals
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function isObservationNDVIConsistent(
   observationKey: string,
@@ -1405,10 +1255,7 @@ export function isObservationNDVIConsistent(
   return true;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VISUAL OBSERVABILITY SCORE
-// Prefer symptoms that farmers can easily observe without tools
-// ═══════════════════════════════════════════════════════════════════════════
 
 const HIGHLY_VISUAL_PATTERNS = [
   'COLOR', 'YELLOW', 'BROWN', 'BLACK', 'WHITE', 'RED', 'SPOT',
@@ -1435,13 +1282,7 @@ export function getVisualObservabilityScore(observationKey: string): number {
   return 0.6; // Default mid-score
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC CONFIRMATION OPTIONS GENERATOR (Trust-First Mode)
-// ═══════════════════════════════════════════════════════════════════════════
-// When terminal damage is detected (plant died, whole plant affected),
-// generate cause-confirmation options from rule observable_characteristics.
-// These options help differentiate between hypotheses (pest vs disease vs abiotic).
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticConfirmationOption {
   label_mr: string;
@@ -1465,11 +1306,7 @@ export interface DiagnosticConfirmationResult {
   hypotheses_count: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SSOT: Observation labels now loaded from observation_translations table
-// The loadObservationLabels function in i18n/observation-label-loader.ts
-// fetches display text from database instead of hardcoded dictionaries
-// ═══════════════════════════════════════════════════════════════════════════
 
 import { loadObservationLabels, getObservationIcon } from '../i18n/observation-label-loader.ts';
 
@@ -1496,31 +1333,8 @@ const OBSERVATION_ICONS_FALLBACK: Record<string, string> = {
   'PHOTO_REQUESTED': '📷'
 };
 
-/**
- * Generate DIAGNOSTIC_CONFIRMATION options from candidate hypotheses.
- * 
- * This function:
- * 1. Takes top candidate rules from hypothesis evaluation
- * 2. Extracts unique observable_characteristics
- * 3. Ranks by diagnostic power (differentiation ability)
- * 4. Returns max 4-5 options + mandatory photo option
- * 5. Removes "NONE_OF_THE_ABOVE" - replaced with "Take Photo"
- */
-/**
- * Generate DIAGNOSTIC_CONFIRMATION options from candidate hypotheses.
- * 
- * AGRONOMIST PRINCIPLE:
- * When terminal damage is detected, we CONFIRM THE CAUSE - not the LOCATION.
- * This mirrors real agronomist behavior: "If the whole plant died, I don't ask 
- * which part - I ask for evidence to find the cause"
- * 
- * This function:
- * 1. Takes top candidate rules from hypothesis evaluation
- * 2. Extracts unique observable_characteristics with field verifiability
- * 3. Ranks by diagnostic power (differentiation ability), not symptom frequency
- * 4. Returns max 4-6 options + mandatory photo option
- * 5. NEVER includes "NONE_OF_THE_ABOVE" - replaced with "Take Photo"
- */
+// Generate DIAGNOSTIC_CONFIRMATION options from candidate hypotheses.
+// Generate DIAGNOSTIC_CONFIRMATION options from candidate hypotheses.
 export function generateDiagnosticConfirmationOptions(
   candidates: CandidateHypothesis[],
   language: string = 'mr',
@@ -1570,10 +1384,7 @@ export function generateDiagnosticConfirmationOptions(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // RANKING: By diagnostic weight (40%) + field verifiability (40%) + differentiation (20%)
-  // This prioritizes options farmers can actually observe and that distinguish causes
-  // ═══════════════════════════════════════════════════════════════════════════
   const sortedObservations = Array.from(observationMap.values())
     .filter(obs => OBSERVATION_ICONS_FALLBACK[obs.observation_key]) // Only use observations with icons
     .sort((a, b) => {
@@ -1596,11 +1407,7 @@ export function generateDiagnosticConfirmationOptions(
     console.log(`      ${i + 1}. ${obs.observation_key} (power=${obs.diagnostic_power}, verify=${(obs.field_verifiability * 100).toFixed(0)}%, diff=${(obs.differentiation_score * 100).toFixed(0)}%)`);
   });
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // SSOT NOTE: For full compliance, this function should be made async and
-  // load labels from observation_translations table using loadObservationLabels().
-  // Current implementation uses observation_key for i18n_key resolution at UI layer.
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // Build options with observation keys (UI layer resolves multilingual labels)
   const options: DiagnosticConfirmationOption[] = sortedObservations.map(obs => {
@@ -1620,12 +1427,7 @@ export function generateDiagnosticConfirmationOptions(
     };
   });
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MANDATORY: Add "Take Photo" as FINAL option
-  // HARD RULE: NEVER include "NONE_OF_THE_ABOVE"
-  // Agronomic principle: If verbal confirmation fails, visual evidence is next step
-  // SSOT: Photo option uses i18n_key for UI layer resolution
-  // ═══════════════════════════════════════════════════════════════════════════
   const photoOption: DiagnosticConfirmationOption = {
     label_mr: '📷 Photo',  // Placeholder - resolved via i18n_key
     label_hi: '📷 Photo',  // Placeholder - resolved via i18n_key

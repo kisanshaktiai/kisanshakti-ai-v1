@@ -1,15 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DECISION GRAPH BRIDGE - Connect 2000+ ICAR Rules to Edge Function
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * VERSION: 3.0.0 - Production bridge with dynamic DB product integration
- * 
- * ARCHITECTURE:
- * - Takes RuleEvaluationContext from orchestrator
- * - Queries master_products table via product-repository.ts
- * - Returns RuleEvaluationResult with recommendations, warnings, blocks
- */
+// DECISION GRAPH BRIDGE - Connect 2000+ ICAR Rules to Edge Function
 
 import type {
   RuleEvaluationContext,
@@ -40,9 +29,7 @@ import {
 
 import { getCulturalAdvice } from './decision-graph-bridge-data.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE EVALUATION INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EvaluatedRule {
   rule_id: string;
@@ -67,20 +54,7 @@ export interface EvaluatedRule {
   }>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFETY CHEMICAL AUTHORITY (Phase 1 DB-SSOT)
-// ───────────────────────────────────────────────────────────────────────────
-// Banned + restricted + watch_list live in public.chemical_regulatory_status
-// (44 banned, 12 restricted, 3 watch_list rows verified 2026-07-22).
-// The two legacy arrays below are retained ONLY as cold-boot fallback used
-// while the DB cache preloads. Do NOT add rows here — insert into DB.
-// NEONICOTINOIDS is now DB-driven via chemical_regulatory_status.chemical_class
-// = 'neonicotinoid' (Tier 1 V2 cutover, 2026-07-24). The array below is a
-// COLD-BOOT ONLY fallback consulted while the phase1 cache is warming.
-// watch_list behavior change (new in Phase 1): matched watch_list chemicals
-// surface an informational WARN rule, never a BLOCK — surfaces regulatory
-// attention without denying access to still-legal inputs.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import {
   isBannedChemical as _isBannedChemicalDb,
@@ -102,9 +76,7 @@ const _LEGACY_NEONICOTINOIDS: readonly string[] = [
 ];
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN EVALUATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function evaluateDecisionGraph(
   supabase: any,
@@ -120,12 +92,6 @@ export async function evaluateDecisionGraph(
   const chemicalMentioned = context.last_chemical_used?.toLowerCase() || '';
   
   // 1. Safety Checks — Banned chemicals.
-  //    Order (Phase 3b, 2026-07-24): DB SSOT is the AUTHORITY.
-  //    `_isBannedChemicalDb` internally uses `chemical_regulatory_status` and
-  //    only touches `_LEGACY_BANNED_CHEMICALS` during the cold-boot window
-  //    (phase1CacheReady()===false). Once the cache is warm and empty it
-  //    throws SafetyCacheUnavailableError, which the orchestrator maps to a
-  //    SAFETY_BLOCKED response — we deliberately do NOT swallow it here.
   if (chemicalMentioned) {
     const bannedByDb = _isBannedChemicalDb(chemicalMentioned, _LEGACY_BANNED_CHEMICALS);
     const hitBanned = bannedByDb ? chemicalMentioned : undefined;
@@ -150,8 +116,6 @@ export async function evaluateDecisionGraph(
       });
     } else if (_isWatchListChemicalDb(chemicalMentioned)) {
       // Phase 1 behavior change: watch_list chemicals are NOT blocked — they
-      // surface an informational WARN so the farmer is aware of pending
-      // regulatory review without denying access to still-legal inputs.
       evaluatedRules.push({
         rule_id: 'SAFETY_WATCHLIST_INFO',
         category: 'safety',
@@ -250,9 +214,7 @@ export async function evaluateDecisionGraph(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTERNAL LOGIC (PEST/DISEASE)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function normalize(s: string) { return s.toUpperCase().replace(/[_\s-]+/g, ''); }
 

@@ -1,33 +1,11 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-9: CROSS-CROP SYMPTOM ONTOLOGY
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Define canonical observation-only symptom keys that work across ALL crops.
- * These are PURE OBSERVATIONS - no crop names, pest names, disease names.
- * 
- * PRINCIPLES:
- * ❌ No crop names
- * ❌ No pest names
- * ❌ No disease names
- * ❌ No nutrients
- * ✅ Observation only
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-9: CROSS-CROP SYMPTOM ONTOLOGY
 
 export const CROSS_CROP_SYMPTOM_ONTOLOGY_VERSION = '3.0.0'; // Phase-15: Weed observation keys
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROSS-CROP SYMPTOM KEYS
-// Pure observation codes that work uniformly across all crops
-// ═══════════════════════════════════════════════════════════════════════════
 
 export enum CrossCropSymptomKey {
-  // ═══════════════════════════════════════════════════════════════════════════
   // LEAF SYMPTOMS
-  // ═══════════════════════════════════════════════════════════════════════════
   LEAF_YELLOWING = 'LEAF_YELLOWING',
   LEAF_DRYING = 'LEAF_DRYING',
   LEAF_SPOTS = 'LEAF_SPOTS',
@@ -40,9 +18,7 @@ export enum CrossCropSymptomKey {
   LEAF_STICKY = 'LEAF_STICKY',
   LEAF_POWDER_COATING = 'LEAF_POWDER_COATING',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEM SYMPTOMS
-  // ═══════════════════════════════════════════════════════════════════════════
   STEM_WEAKENING = 'STEM_WEAKENING',
   STEM_BREAKAGE = 'STEM_BREAKAGE',
   STEM_DISCOLORATION = 'STEM_DISCOLORATION',
@@ -50,16 +26,12 @@ export enum CrossCropSymptomKey {
   STEM_SWELLING = 'STEM_SWELLING',
   STEM_FRASS_VISIBLE = 'STEM_FRASS_VISIBLE',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // ROOT SYMPTOMS
-  // ═══════════════════════════════════════════════════════════════════════════
   ROOT_DAMAGE_VISIBLE = 'ROOT_DAMAGE_VISIBLE',
   ROOT_ROTTING = 'ROOT_ROTTING',
   ROOT_WEAK = 'ROOT_WEAK',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // INSECT OBSERVATIONS
-  // ═══════════════════════════════════════════════════════════════════════════
   SMALL_INSECTS_VISIBLE = 'SMALL_INSECTS_VISIBLE',
   LARGE_INSECTS_VISIBLE = 'LARGE_INSECTS_VISIBLE',
   FLYING_INSECTS_VISIBLE = 'FLYING_INSECTS_VISIBLE',
@@ -68,26 +40,18 @@ export enum CrossCropSymptomKey {
   EGGS_VISIBLE = 'EGGS_VISIBLE',
   WEBBING_VISIBLE = 'WEBBING_VISIBLE',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: INSECT DENSITY OBSERVATIONS (few vs many)
-  // Agronomically relevant first-order classification
-  // ═══════════════════════════════════════════════════════════════════════════
   INSECT_DENSITY_FEW = 'INSECT_DENSITY_FEW',
   INSECT_DENSITY_MANY = 'INSECT_DENSITY_MANY',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: PLANT RESPONSE TO INSECTS (visible damage indicators)
-  // These are observed plant reactions when insects are present
-  // ═══════════════════════════════════════════════════════════════════════════
   PLANT_RESPONSE_CURLING = 'PLANT_RESPONSE_CURLING',
   PLANT_RESPONSE_YELLOWING = 'PLANT_RESPONSE_YELLOWING',
   PLANT_RESPONSE_STICKY = 'PLANT_RESPONSE_STICKY',
   PLANT_RESPONSE_HOLES = 'PLANT_RESPONSE_HOLES',
   PLANT_RESPONSE_NONE = 'PLANT_RESPONSE_NONE',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GROWTH ABNORMALITIES
-  // ═══════════════════════════════════════════════════════════════════════════
   STUNTED_GROWTH = 'STUNTED_GROWTH',
   PATCHY_GROWTH = 'PATCHY_GROWTH',
   UNEVEN_HEIGHT = 'UNEVEN_HEIGHT',
@@ -95,18 +59,14 @@ export enum CrossCropSymptomKey {
   POOR_FRUIT_SET = 'POOR_FRUIT_SET',
   ABNORMAL_SHAPE = 'ABNORMAL_SHAPE',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // DISTRIBUTION PATTERNS
-  // ═══════════════════════════════════════════════════════════════════════════
   AFFECTED_PATCHES = 'AFFECTED_PATCHES',
   AFFECTED_EDGES = 'AFFECTED_EDGES',
   UNIFORM_DAMAGE = 'UNIFORM_DAMAGE',
   SPREADING_PATTERN = 'SPREADING_PATTERN',
   RANDOM_DISTRIBUTION = 'RANDOM_DISTRIBUTION',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GENERAL PLANT CONDITIONS
-  // ═══════════════════════════════════════════════════════════════════════════
   OVERALL_WEAK = 'OVERALL_WEAK',
   COLOR_ABNORMAL = 'COLOR_ABNORMAL',
   HONEYDEW_PRESENT = 'HONEYDEW_PRESENT',
@@ -114,17 +74,12 @@ export enum CrossCropSymptomKey {
   FRUIT_DAMAGE = 'FRUIT_DAMAGE',
   FLOWER_DAMAGE = 'FLOWER_DAMAGE',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-14: PLANT DEATH / STAND FAILURE (Critical for diagnosis mode)
-  // ═══════════════════════════════════════════════════════════════════════════
   PLANT_DEATH = 'PLANT_DEATH',
   SEEDLING_DEATH = 'SEEDLING_DEATH',
   GERMINATION_FAILURE = 'GERMINATION_FAILURE',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-15: WEED OBSERVATIONS
-  // Pure field observations of weed presence, density, and type
-  // ═══════════════════════════════════════════════════════════════════════════
   WEED_PRESENT = 'WEED_PRESENT',
   WEED_HEAVY = 'WEED_HEAVY',
   WEED_ABOVE_CROP = 'WEED_ABOVE_CROP',
@@ -134,9 +89,7 @@ export enum CrossCropSymptomKey {
   BROADLEAF_WEEDS = 'BROADLEAF_WEEDS'
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM CATEGORIES (For UI grouping, NOT for diagnosis)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type SymptomCategory = 
   | 'LEAF'
@@ -165,27 +118,19 @@ export function getSymptomCategory(symptom: CrossCropSymptomKey): SymptomCategor
   return 'GENERAL';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Serialize cross-crop symptoms to array for storage/logging
- */
+// Serialize cross-crop symptoms to array for storage/logging
 export function serializeCrossCropSymptoms(symptoms: Set<CrossCropSymptomKey>): string[] {
   return Array.from(symptoms);
 }
 
-/**
- * Deserialize array back to Set
- */
+// Deserialize array back to Set
 export function deserializeCrossCropSymptoms(symptomArray: string[]): Set<CrossCropSymptomKey> {
   return new Set(symptomArray as CrossCropSymptomKey[]);
 }
 
-/**
- * Get all symptoms in a category
- */
+// Get all symptoms in a category
 export function getSymptomsInCategory(category: SymptomCategory): CrossCropSymptomKey[] {
   return Object.values(CrossCropSymptomKey).filter(s => getSymptomCategory(s) === category);
 }

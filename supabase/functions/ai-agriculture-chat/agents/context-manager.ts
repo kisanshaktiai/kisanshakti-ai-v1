@@ -1,18 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGENT 2A: CONTEXT-AWARE CONVERSATION MANAGER - PRODUCTION v1.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Maintains state across multiple conversation turns, detects context switches,
- * and ensures continuity in multi-session farmer interactions.
- * 
- * Core Responsibilities:
- * 1. Session State Management - Track conversation flow
- * 2. Context Preservation - Remember what was discussed
- * 3. Farmer Intent Tracking - Understand journey through problem-solving
- * 4. Multi-Land Disambiguation - Handle farmers with multiple plots
- * 5. Temporal Context - Track when issues were first reported vs follow-ups
- */
+// AGENT 2A: CONTEXT-AWARE CONVERSATION MANAGER - PRODUCTION v1.0
 
 import {
   SessionState,
@@ -40,9 +26,7 @@ const MAX_QUESTIONS_LIMIT = 5;
 const SESSION_TIMEOUT_HOURS = 24;
 const PHOTO_WAIT_TIMEOUT_HOURS = 24;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION QUESTION BANK
-// ═══════════════════════════════════════════════════════════════════════════
 
 const QUESTION_BANK: ClarificationQuestionBank[] = [
   {
@@ -146,9 +130,7 @@ const QUESTION_BANK: ClarificationQuestionBank[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SESSION MANAGEMENT FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function generateSessionId(): string {
   const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -197,9 +179,7 @@ function transitionState(
   return transition;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT SWITCH DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function detectContextSwitch(
   input: ContextManagerInput,
@@ -308,9 +288,7 @@ function getHoursSinceLastInteraction(lastInteraction: string): number {
   return (now.getTime() - last.getTime()) / (1000 * 60 * 60);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // KNOWLEDGE ACCUMULATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function updateAccumulatedKnowledge(
   existing: AccumulatedKnowledge,
@@ -369,9 +347,7 @@ function getNextQuestion(
   return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FARMER BEHAVIOR ANALYSIS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function analyzeFarmerBehavior(
   history: ConversationHistory,
@@ -401,9 +377,7 @@ function analyzeFarmerBehavior(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN CONTEXT MANAGER FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function processContextManager(
   input: Partial<ContextManagerInput> & { farmer_id: string; land_context?: any },
@@ -469,10 +443,7 @@ export function processContextManager(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Pre-populate confirmed facts from land context
-  // This prevents redundant questions about crop, area, soil, etc.
-  // ═══════════════════════════════════════════════════════════════════════════
   if (landContext) {
     console.log('📊 [ContextManager] Pre-populating facts from land context');
     
@@ -656,9 +627,7 @@ export function processContextManager(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export {
   CONTEXT_MANAGER_VERSION,

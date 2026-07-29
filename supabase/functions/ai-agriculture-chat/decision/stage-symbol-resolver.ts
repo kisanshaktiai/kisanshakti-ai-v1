@@ -1,11 +1,4 @@
-/**
- * DB-backed stage symbol resolver.
- *
- * Authority remains in crop_stage_master / crop_stage_graph through the
- * stage-knowledge cache and stage-family shim. This module only normalizes
- * runtime identity and asks the DB-backed shim whether two stage nodes are in
- * the same curated family.
- */
+// DB-backed stage symbol resolver.
 
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { normalizeStageKey, stageFamily, stagesEquivalent } from '../runtime/stage-family-shim.ts';

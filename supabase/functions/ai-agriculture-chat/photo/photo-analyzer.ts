@@ -1,27 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHOTO ANALYZER - Vision API Integration for Crop Disease/Pest Analysis
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Analyze farmer-uploaded photos using Vision API to extract structured
- * observations for re-entry into the symbolic decision pipeline.
- * 
- * PHASE-19: Part of the 4-layer architecture
- * - Receives photo from farmer
- * - Analyzes using Vision API (GPT-4o or Gemini)
- * - Returns structured observations for rule engine
- * 
- * @version 1.0.0
- */
+// PHOTO ANALYZER - Vision API Integration for Crop Disease/Pest Analysis
 
 import { AI_MODELS, getAPIKey, hasGeminiKey, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 
 export const PHOTO_ANALYZER_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface PhotoAnalysisInput {
   image_url: string;
@@ -74,9 +57,7 @@ export interface ImageQuality {
   issues: string[];       // e.g., 'blurry', 'too_dark', 'wrong_subject'
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ANALYSIS PROMPT
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildAnalysisPrompt(input: PhotoAnalysisInput): string {
   const cropContext = input.crop_context 
@@ -135,9 +116,7 @@ IMPORTANT RULES:
 Return ONLY the JSON object, no other text.`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN ANALYSIS FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function analyzePhoto(input: PhotoAnalysisInput): Promise<PhotoAnalysisOutput> {
   const startTime = Date.now();
@@ -254,9 +233,7 @@ export async function analyzePhoto(input: PhotoAnalysisInput): Promise<PhotoAnal
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function fetchImageAsBase64(imageUrl: string): Promise<string> {
   // If already base64, extract the data part
@@ -391,13 +368,9 @@ function validateUrgency(urgency: any): 'LOW' | 'MEDIUM' | 'HIGH' | 'EMERGENCY' 
     : 'LOW';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UNDERSTANDING ENHANCEMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Enhance understanding output with photo analysis results
- */
+// Enhance understanding output with photo analysis results
 export function enhanceUnderstandingWithPhoto(
   understanding: any,
   photoAnalysis: PhotoAnalysisOutput

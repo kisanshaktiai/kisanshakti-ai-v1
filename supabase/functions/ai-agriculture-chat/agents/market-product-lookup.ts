@@ -1,28 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * MARKET PRODUCT LOOKUP - Ingredient → Brand Name Resolver
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Maps scientific active ingredients from decision_rules to real market
- * product brand names from master_products table.
- * 
- * Example:
- *   "Chlorpyrifos 20% EC" → ["Dursban 20 EC", "Lorsban 20 EC", "Tafaban 20 EC"]
- * 
- * Features:
- * - In-memory cache with 6-hour TTL
- * - Crop-specific filtering
- * - Graceful fallback (never blocks advisory)
- * - Max 3 products returned
- * 
- * @version 1.0.0
- */
+// MARKET PRODUCT LOOKUP - Ingredient → Brand Name Resolver
 
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHE - 6-hour TTL ingredient→product cache
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface CacheEntry {
   products: string[];
@@ -58,16 +38,9 @@ function setCache(key: string, products: string[]): void {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INGREDIENT KEYWORD EXTRACTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Extract the primary ingredient keyword from a full ingredient string.
- * "Chlorpyrifos 20% EC" → "Chlorpyrifos"
- * "Emamectin Benzoate 5% SG" → "Emamectin"
- * "Trichoderma viride 1% WP" → "Trichoderma"
- */
+// Extract the primary ingredient keyword from a full ingredient string.
 export function extractIngredientKeyword(activeIngredient: string): string {
   if (!activeIngredient || typeof activeIngredient !== 'string') return '';
   
@@ -82,9 +55,7 @@ export function extractIngredientKeyword(activeIngredient: string): string {
   return firstWord || activeIngredient.split(/\s+/)[0] || '';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN LOOKUP FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MarketProductResult {
   found: boolean;
@@ -93,14 +64,7 @@ export interface MarketProductResult {
   source: 'cache' | 'db' | 'fallback';
 }
 
-/**
- * Look up market product brand names for a given active ingredient and crop.
- * 
- * @param supabase - Supabase client
- * @param activeIngredient - Full ingredient string e.g. "Chlorpyrifos 20% EC"
- * @param cropCode - Crop code e.g. "SUGARCANE"
- * @returns MarketProductResult with up to 3 brand names
- */
+// Look up market product brand names for a given active ingredient and crop.
 export async function lookupMarketProducts(
   supabase: SupabaseClient,
   activeIngredient: string,
@@ -126,8 +90,6 @@ export async function lookupMarketProducts(
 
   try {
     // Phase G — G5: PostgREST cannot apply `ilike` to a `jsonb::text` cast
-    // ("operator does not exist: jsonb ~~* text"). Fetch a bounded candidate
-    // set keyed on scalar indexed columns, then keyword-filter in memory.
     const cropNorm = (cropCode || '').toUpperCase().replace(/[_\s-]+/g, '');
 
     const { data, error } = await supabase
@@ -205,10 +167,7 @@ export async function lookupMarketProducts(
   }
 }
 
-/**
- * Format market products for display in farmer response.
- * Returns localized string or empty string if no products found.
- */
+// Format market products for display in farmer response.
 export function formatMarketProducts(
   products: string[],
   language: string

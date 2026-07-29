@@ -30,9 +30,7 @@ import {
   isStageKnowledgeLoaded,
 } from '../utils/stage-knowledge-cache.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS (kept for backward compatibility)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface GrowthStageInfo {
   stage: string;
@@ -64,9 +62,7 @@ export interface StageCalculationResult {
   stage_info: GrowthStageInfo | null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTERNAL HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function toGrowthStageInfo(
   crop: string,
@@ -78,9 +74,6 @@ function toGrowthStageInfo(
   return {
     stage: stageCode.toUpperCase(),
     // Stage-name translations are NOT stored in crop_stage_master today.
-    // Callers that need multilingual stage names must translate downstream
-    // via the LLM narration layer. We surface the canonical code so the
-    // downstream translator has an unambiguous key.
     stage_en: stageCode.toUpperCase(),
     stage_mr: stageCode.toUpperCase(),
     stage_hi: stageCode.toUpperCase(),
@@ -108,14 +101,9 @@ function unknownResult(daysSinceSowing: number, reason: string): StageCalculatio
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API — DB-backed replacements for the deleted ICAR_CALENDARS helpers
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * DB-driven stage lookup from days since sowing.
- * SSOT: public.crop_stage_master via StageKnowledgeCache.
- */
+// DB-driven stage lookup from days since sowing.
 export function calculateGrowthStageFromDAS(
   cropCode: string,
   daysSinceSowing: number,
@@ -156,10 +144,7 @@ export function calculateGrowthStageFromDAS(
   };
 }
 
-/**
- * Get pest / disease / action watch lists for a crop-stage.
- * SSOT: public.crop_stage_knowledge via StageKnowledgeCache.
- */
+// Get pest / disease / action watch lists for a crop-stage.
 export function getStageWatchLists(
   cropCode: string,
   stage: string,
@@ -170,16 +155,11 @@ export function getStageWatchLists(
     pests: (knowledge.pest_watch as string[]) ?? [],
     diseases: (knowledge.disease_watch as string[]) ?? [],
     // crop_stage_knowledge does not track a dedicated nutrient_focus list;
-    // callers that need this MUST derive it from decision_rules / baseline
-    // guidelines (already the case for narration).
     nutrients: [],
   };
 }
 
-/**
- * True when at least one crop_stage_master row exists for the crop.
- * Replaces the hardcoded `!!ICAR_CALENDARS[cropCode]` check.
- */
+// True when at least one crop_stage_master row exists for the crop.
 export function hasICARCalendar(cropCode: string, cultivationMethod?: string | null): boolean {
   const crop = (cropCode || '').toLowerCase().trim();
   // Probe the SSOT — any DAS window covers a stage row.

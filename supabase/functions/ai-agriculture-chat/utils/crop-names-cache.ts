@@ -1,26 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CROP NAMES CACHE — DB-driven SSOT for multilingual crop labels
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * PR-3: Replaces the hardcoded `ICAR_CALENDARS[cropCode].crop_name_{en,mr,hi}`
- * lookups that lived inside `decision/crop-calendar-lookup.ts`. That table
- * shipped only 5 crops. The `public.crops` table has 100+ crops with
- * translations for hi, mr, pa, ta, te, bn, gu, kn, ml, or, as, ur, sa.
- *
- * SSOT: `public.crops` (value, label, label_hi, label_mr, ...)
- * Runtime shape:
- *   Map<crop_code_lower, CropNameRow>
- *
- * Sync accessors — safe to call from any layer once `loadCropNames` has run
- * inside the orchestrator boot phase (idempotent, 10-minute TTL).
- *
- * Cache-miss contract: accessors return `null` on miss and log
- * `[CROP_NAMES_CACHE_MISS]`. Callers must NEVER fall back to a hardcoded
- * multilingual dictionary — the resolution chain is:
- *   crops.label_<lang> → crops.label → raw crop_code
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CROP NAMES CACHE — DB-driven SSOT for multilingual crop labels
 
 export interface CropNameRow {
   code: string;              // canonical crop_code (crops.value)
@@ -119,10 +97,7 @@ export function getCropCanonical(cropCode: string): string {
   return getCropNameRow(cropCode)?.label || cropCode;
 }
 
-/**
- * Localized display name.
- * lang: ISO-2 code (hi, mr, ta, ...). Falls back to English label, then raw code.
- */
+// Localized display name.
 export function getCropDisplayName(cropCode: string, lang: string): string {
   const row = getCropNameRow(cropCode);
   if (!row) return cropCode;

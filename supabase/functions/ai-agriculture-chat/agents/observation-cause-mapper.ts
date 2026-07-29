@@ -1,20 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION-TO-CAUSE MAPPER - Symbolic (No AI) Cause Inference
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Maps farmer observations to cause codes using ONLY symbolic rules.
- * This replaces AI-based pest/disease code extraction to prevent
- * AI influence on rule selection.
- * 
- * Philosophy: "Symbolic Brain decides, AI only explains"
- */
+// OBSERVATION-TO-CAUSE MAPPER - Symbolic (No AI) Cause Inference
 
 export const OBSERVATION_MAPPER_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ObservationMapperInput {
   observations: string[];
@@ -41,9 +29,7 @@ interface PatternRule {
   confidence: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OBSERVATION → CAUSE RULES (Deterministic, Auditable)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const OBSERVATION_RULES: PatternRule[] = [
   // ═══ PEST PATTERNS ═══
@@ -463,14 +449,9 @@ const OBSERVATION_RULES: PatternRule[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE MAPPING FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Map farmer observations to cause codes using deterministic rules
- * NO AI involved - purely symbolic pattern matching
- */
+// Map farmer observations to cause codes using deterministic rules
 export function mapObservationsToCauses(
   input: ObservationMapperInput
 ): CauseMappingResult {
@@ -557,9 +538,7 @@ export function mapObservationsToCauses(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION QUESTION GENERATORS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function generateNoCauseQuestion(language?: string): string {
   const questions = {
@@ -579,37 +558,26 @@ function generateAmbiguityQuestion(cause_codes: string[], language?: string): st
   return questions[language || 'en'];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get cause type for a cause code
- */
+// Get cause type for a cause code
 export function getCauseType(cause_code: string): 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'UNKNOWN' {
   const rule = OBSERVATION_RULES.find(r => r.cause_code === cause_code);
   return rule?.cause_type || 'UNKNOWN';
 }
 
-/**
- * Check if a cause code is crop-specific
- */
+// Check if a cause code is crop-specific
 export function isCropSpecificCause(cause_code: string): string[] | undefined {
   const rule = OBSERVATION_RULES.find(r => r.cause_code === cause_code);
   return rule?.crop_specific;
 }
 
-/**
- * Get all registered cause codes
- */
+// Get all registered cause codes
 export function getAllCauseCodes(): string[] {
   return OBSERVATION_RULES.map(r => r.cause_code);
 }
 
-/**
- * Validate that cause codes from AI match our rules
- * Use this to reject AI-generated codes not in our registry
- */
+// Validate that cause codes from AI match our rules
 export function validateCauseCode(code: string): boolean {
   return OBSERVATION_RULES.some(r => r.cause_code === code.toUpperCase());
 }

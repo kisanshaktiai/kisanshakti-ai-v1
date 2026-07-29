@@ -84,19 +84,9 @@ export interface GraphRuntimeInput {
   candidate_observations?: string[];
   /** Verbatim pass-through to the evaluator for fields not modelled above. */
   passthrough?: Record<string, unknown>;
-  /**
-   * v2.1.0 — Full frozen CanonicalContext. When present, forwarded into
-   * the evaluator via passthrough so DB predicates that reference the
-   * field-twin can resolve. Also triggers the strict split-check against
-   * the primitive counterparts on authority-owned fields.
-   */
+  // v2.1.0 — Full frozen CanonicalContext. When present, forwarded into
   canonical_context?: CanonicalContext | null;
-  /**
-   * Caller-supplied hook flipped to true on successful graph execution.
-   * Provided as a callback (not a shared object) so this module stays
-   * dependency-free and reusable across orchestrator, clarification, and
-   * future proactive workers.
-   */
+  // Caller-supplied hook flipped to true on successful graph execution.
   markExecuted?: () => void;
 }
 
@@ -129,8 +119,6 @@ export async function runGraphRuntime(
   const cctx = input.canonical_context ?? null;
 
   // ─── Split-check on authority-owned fields (crop/stage/dates only) ─────
-  // Soil / NDVI / weather are intentionally excluded — lands_cache is a
-  // legitimate fallback for those and is recorded in cctx.sources.
   if (cctx) {
     const norm = (v: unknown) => (v == null ? null : String(v).toUpperCase());
     const mismatches: string[] = [];
@@ -202,15 +190,11 @@ export async function runGraphRuntime(
     trace_id: input.trace_id,
     variety_id: input.variety_id ?? null,
     // Forward the frozen canonical context so DB predicates that reference
-    // soil.moisture, weather.forecast_7d, transplant_date, irrigation_type,
-    // biological_state.stage_uuid, etc. can resolve.
     canonical_context: cctx,
     ...passthrough,
   } as any);
 
   // Contract flip — MUST happen only after the evaluator resolves without
-  // throwing. If the evaluator throws, `graphExecuted` stays false and the
-  // MANDATORY_GRAPH_GATE downstream will raise GRAPH_PIPELINE_BYPASSED.
   try { input.markExecuted?.(); } catch { /* caller-side, non-fatal */ }
 
   const ms = Date.now() - t0;
@@ -255,19 +239,7 @@ export async function runGraphRuntime(
   return { result, candidates, winner, ms, state: 'READY_FOR_GRAPH' };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PATCH v4-P7 — INTENT ≠ OBSERVATION safety guard
-// ═══════════════════════════════════════════════════════════════════════════
-// Intent codes (opened by the classifier) MUST NEVER leak into the
-// confirmed/known/inferred observation arrays. Only outputs of the DB
-// observation candidate loader, image classifier, or explicit farmer
-// confirmation may enter those arrays.
-//
-// This is a runtime invariant guard. It is intentionally NON-THROWING for
-// the initial rollout to avoid production blast-radius; a `[OBS_INTENT_LEAK]`
-// log line is emitted so ingestion can convert to an alert. Flip to
-// `throw`-mode once the leak count is proven zero for 7 days.
-// ═══════════════════════════════════════════════════════════════════════════
 
 let __INTENT_CODE_SET: Set<string> | null = null;
 
@@ -280,11 +252,7 @@ export function registerIntentCodeSet(codes: Iterable<string>): void {
   );
 }
 
-/**
- * Assert that `obsCode` is NOT a known intent code. Returns true when the
- * code is safe to push into an observation array; false when it looks like
- * an intent leak (guard logs and lets caller decide whether to drop).
- */
+// Assert that `obsCode` is NOT a known intent code. Returns true when the
 export function assertNotAnIntentCode(
   obsCode: string | null | undefined,
   site: string,

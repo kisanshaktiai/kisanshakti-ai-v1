@@ -1,25 +1,11 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * TYPE MAPPERS - Unified type conversions between agent and decision graph systems
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Handles all type mismatches between:
- * - Agent system (string priorities)
- * - Decision graph system (numeric priorities)
- * - NLU output entities
- * - Rule evaluation context
- */
+// TYPE MAPPERS - Unified type conversions between agent and decision graph systems
 
 import type { RulePriority, CropStageCode, SeverityLevel } from './rule-module-types.ts';
 import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PRIORITY MAPPINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Convert numeric priority (from decision-graph) to agent string priority
- */
+// Convert numeric priority (from decision-graph) to agent string priority
 export function mapNumericPriorityToAgent(numericPriority: number): RulePriority {
   if (numericPriority >= 10) return 'P0_EMERGENCY';
   if (numericPriority >= 9) return 'P1_REGULATORY';
@@ -30,9 +16,7 @@ export function mapNumericPriorityToAgent(numericPriority: number): RulePriority
   return 'P6_OPTIMIZATION';
 }
 
-/**
- * Convert agent string priority to numeric (for sorting)
- */
+// Convert agent string priority to numeric (for sorting)
 export function mapAgentPriorityToNumeric(agentPriority: RulePriority): number {
   const priorityMap: Record<RulePriority, number> = {
     'P0_EMERGENCY': 10,
@@ -46,9 +30,7 @@ export function mapAgentPriorityToNumeric(agentPriority: RulePriority): number {
   return priorityMap[agentPriority] || 5;
 }
 
-/**
- * Normalize any priority value to string format
- */
+// Normalize any priority value to string format
 export function normalizePriority(priority: string | number | undefined): RulePriority {
   if (typeof priority === 'number') {
     return mapNumericPriorityToAgent(priority);
@@ -67,13 +49,9 @@ export function normalizePriority(priority: string | number | undefined): RulePr
   return 'P6_OPTIMIZATION'; // Default
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP STAGE MAPPINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize crop stage strings to canonical codes
- */
+// Normalize crop stage strings to canonical codes
 export function normalizeCropStage(stage: string | undefined): CropStageCode | undefined {
   if (!stage) return undefined;
   
@@ -106,13 +84,9 @@ export function normalizeCropStage(stage: string | undefined): CropStageCode | u
   return stageMap[stageUpper] || 'VEGETATIVE';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SEVERITY MAPPINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize severity strings or percentages to canonical levels
- */
+// Normalize severity strings or percentages to canonical levels
 export function normalizeSeverity(
   severity: string | number | undefined,
   infestationPercent?: number
@@ -159,13 +133,9 @@ export function normalizeSeverity(
   return 'MODERATE'; // Default
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP CODE MAPPINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize crop names to canonical codes
- */
+// Normalize crop names to canonical codes
 export function normalizeCropCode(cropName: string | undefined): string {
   if (!cropName) return 'UNKNOWN';
   // Delegate to single source of truth: crop-code-normalizer.ts
@@ -174,10 +144,7 @@ export function normalizeCropCode(cropName: string | undefined): string {
   return getFullCropName(shortCode);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DB-COMPATIBLE CROP CODE MAPPER
-// UNIFIED: Now delegates to crop-code-normalizer.ts (single source of truth)
-// ═══════════════════════════════════════════════════════════════════════════
 
 import {
   normalizeCropCode as _unifiedNormalizeCropCode,
@@ -185,29 +152,19 @@ import {
   getCropCodeVariants as _unifiedGetCropCodeVariants
 } from '../utils/crop-code-normalizer.ts';
 
-/**
- * Maps full crop names to DB-compatible short codes used in decision_rules table
- * @deprecated Use normalizeCropCode from utils/crop-code-normalizer.ts directly
- */
+// Maps full crop names to DB-compatible short codes used in decision_rules table
 export function normalizeCropCodeForDB(cropCode: string | undefined): string {
   return _unifiedNormalizeCropCode(cropCode);
 }
 
-/**
- * Get both DB and full crop codes for flexible matching
- * @deprecated Use getCropCodeVariants from utils/crop-code-normalizer.ts directly
- */
+// Get both DB and full crop codes for flexible matching
 export function getCropCodeVariants(cropCode: string | undefined): string[] {
   return _unifiedGetCropCodeVariants(cropCode);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PEST CODE MAPPINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize pest names to canonical codes
- */
+// Normalize pest names to canonical codes
 export function normalizePestCode(pestName: string | undefined): string {
   if (!pestName) return 'UNKNOWN';
   
@@ -317,13 +274,9 @@ export function normalizePestCode(pestName: string | undefined): string {
   return pestNormalized;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DISEASE CODE MAPPINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize disease names to canonical codes
- */
+// Normalize disease names to canonical codes
 export function normalizeDiseaseCode(diseaseName: string | undefined): string {
   if (!diseaseName) return 'UNKNOWN';
   
@@ -387,13 +340,9 @@ export function normalizeDiseaseCode(diseaseName: string | undefined): string {
   return diseaseName.toUpperCase().replace(/\s+/g, '_');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TRACE ID GENERATION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Generate a unique trace ID for request tracking
- */
+// Generate a unique trace ID for request tracking
 export function generateTraceId(): string {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).substring(2, 8);

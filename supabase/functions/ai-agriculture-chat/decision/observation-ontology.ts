@@ -1,51 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-18: CANONICAL OBSERVATION ONTOLOGY (DATABASE-ALIGNED)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Define a language-independent, diagnosis-neutral set of observation keys
- * that are ALIGNED with the decision_rules.observable_characteristics column.
- * 
- * RULES:
- * - Keys represent ONLY what can be observed, NOT causes
- * - NO pest names, disease names in keys (observations only)
- * - These keys MUST match what is stored in decision_rules table
- * - All logic must work on these keys, not language strings
- * 
- * CATEGORIES (A-M):
- * A. ESTABLISHMENT & GERMINATION (0–30 DAS)
- * B. VEGETATIVE GROWTH (Tillering / Branching / Grand Growth)
- * C. LEAF-BASED OBSERVATIONS (Color, Shape, Spots)
- * D. STEM / SHOOT / CROWN OBSERVATIONS
- * E. ROOT OBSERVATIONS
- * F. INSECT / PEST OBSERVATIONS
- * G. DISEASE-SPECIFIC VISUAL SIGNS
- * H. NUTRIENT DEFICIENCY INDICATORS
- * I. FLOWER / REPRODUCTIVE STAGE
- * J. FRUIT / POD / EAR / PANICLE STAGE
- * K. FIELD-LEVEL & PATTERN OBSERVATIONS
- * L. WATER & SOIL CONTEXT
- * M. WEATHER / EVENT BASED
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-18: CANONICAL OBSERVATION ONTOLOGY (DATABASE-ALIGNED)
 
 export const OBSERVATION_ONTOLOGY_VERSION = '2.0.0'; // Phase-18: Canonical DB-aligned
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CANONICAL ENGLISH OBSERVABLE KEYS
- * (Universal – Crop-Agnostic – Stage-Aware)
- * 
- * These keys are stored in decision_rules.observable_characteristics
- * and must be used for all clarification/matching logic.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CANONICAL ENGLISH OBSERVABLE KEYS
 export enum ObservationKey {
-  // ═══════════════════════════════════════════════════════════════════════════
   // A. ESTABLISHMENT & GERMINATION (0–30 DAS)
-  // ═══════════════════════════════════════════════════════════════════════════
   SEED_NOT_GERMINATED = 'SEED_NOT_GERMINATED',
   POOR_GERMINATION_PERCENT = 'POOR_GERMINATION_PERCENT',
   GAPS_IN_FIELD = 'GAPS_IN_FIELD',
@@ -68,9 +27,7 @@ export enum ObservationKey {
   SOIL_BORNE_DISEASE = 'SOIL_BORNE_DISEASE',
   MOISTURE_STRESS = 'MOISTURE_STRESS',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // B. VEGETATIVE GROWTH (Tillering / Branching / Grand Growth)
-  // ═══════════════════════════════════════════════════════════════════════════
   SLOW_GROWTH = 'SLOW_GROWTH',
   STUNTED_PLANTS = 'STUNTED_PLANTS',
   SHORT_INTERNODES = 'SHORT_INTERNODES',
@@ -82,9 +39,7 @@ export enum ObservationKey {
   UNEQUAL_PLANT_HEIGHT = 'UNEQUAL_PLANT_HEIGHT',
   PLANTS_LODGING = 'PLANTS_LODGING',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // C. LEAF-BASED OBSERVATIONS (Most Common Farmer Inputs)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // 1. COLOR & VIGOR
   LEAF_YELLOWING = 'LEAF_YELLOWING',
@@ -115,9 +70,7 @@ export enum ObservationKey {
   LEAF_WHITE_PATCHES = 'LEAF_WHITE_PATCHES',
   LEAF_BLACK_PATCHES = 'LEAF_BLACK_PATCHES',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // D. STEM / SHOOT / CROWN OBSERVATIONS
-  // ═══════════════════════════════════════════════════════════════════════════
   DEAD_HEART_PRESENT = 'DEAD_HEART_PRESENT',
   CENTRAL_SHOOT_DRY = 'CENTRAL_SHOOT_DRY',
   STEM_BORING_MARKS = 'STEM_BORING_MARKS',
@@ -128,9 +81,7 @@ export enum ObservationKey {
   CROWN_ROT_PRESENT = 'CROWN_ROT_PRESENT',
   BASE_DISCOLORATION = 'BASE_DISCOLORATION',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // E. ROOT OBSERVATIONS (If Farmer Pulls Plant)
-  // ═══════════════════════════════════════════════════════════════════════════
   ROOT_BROWNING = 'ROOT_BROWNING',
   ROOT_BLACKENING = 'ROOT_BLACKENING',
   ROOT_SOFT = 'ROOT_SOFT',
@@ -140,9 +91,7 @@ export enum ObservationKey {
   ROOT_NEMATODE_SIGNS = 'ROOT_NEMATODE_SIGNS',
   ROOT_ROTTED = 'ROOT_ROTTED',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // F. INSECT / PEST OBSERVATIONS (Farmer-Visible)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // 1. Presence & Behavior
   INSECTS_VISIBLE = 'INSECTS_VISIBLE',
@@ -169,9 +118,7 @@ export enum ObservationKey {
   STEM_BORING = 'STEM_BORING',
   ROOT_FEEDING = 'ROOT_FEEDING',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // G. DISEASE-SPECIFIC VISUAL SIGNS
-  // ═══════════════════════════════════════════════════════════════════════════
   FUNGAL_GROWTH_VISIBLE = 'FUNGAL_GROWTH_VISIBLE',
   WHITE_POWDERY_GROWTH = 'WHITE_POWDERY_GROWTH',
   GREY_MOLD_PRESENT = 'GREY_MOLD_PRESENT',
@@ -183,9 +130,7 @@ export enum ObservationKey {
   WILT_SYMPTOM = 'WILT_SYMPTOM',
   GUMMOSIS = 'GUMMOSIS',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // H. NUTRIENT DEFICIENCY INDICATORS (Symptoms – NOT diagnosis)
-  // ═══════════════════════════════════════════════════════════════════════════
   UNIFORM_YELLOWING_OLDER_LEAVES = 'UNIFORM_YELLOWING_OLDER_LEAVES',
   UNIFORM_YELLOWING_YOUNG_LEAVES = 'UNIFORM_YELLOWING_YOUNG_LEAVES',
   PURPLISH_LEAVES = 'PURPLISH_LEAVES',
@@ -195,18 +140,14 @@ export enum ObservationKey {
   THICK_LEAVES = 'THICK_LEAVES',
   BRITTLE_LEAVES = 'BRITTLE_LEAVES',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // I. FLOWER / REPRODUCTIVE STAGE
-  // ═══════════════════════════════════════════════════════════════════════════
   POOR_FLOWERING = 'POOR_FLOWERING',
   FLOWER_DROP = 'FLOWER_DROP',
   BUD_DROP = 'BUD_DROP',
   DELAYED_FLOWERING = 'DELAYED_FLOWERING',
   IRREGULAR_FLOWERING = 'IRREGULAR_FLOWERING',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // J. FRUIT / POD / EAR / PANICLE STAGE
-  // ═══════════════════════════════════════════════════════════════════════════
   POOR_FRUIT_SET = 'POOR_FRUIT_SET',
   FRUIT_DROP = 'FRUIT_DROP',
   FRUIT_DEFORMED = 'FRUIT_DEFORMED',
@@ -216,9 +157,7 @@ export enum ObservationKey {
   EMPTY_GRAINS = 'EMPTY_GRAINS',
   PARTIALLY_FILLED_GRAINS = 'PARTIALLY_FILLED_GRAINS',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // K. FIELD-LEVEL & PATTERN OBSERVATIONS (Critical for NDVI correlation)
-  // ═══════════════════════════════════════════════════════════════════════════
   PATCHY_DAMAGE = 'PATCHY_DAMAGE',
   EDGE_DAMAGE_ONLY = 'EDGE_DAMAGE_ONLY',
   LOW_LYING_AREA_AFFECTED = 'LOW_LYING_AREA_AFFECTED',
@@ -226,27 +165,21 @@ export enum ObservationKey {
   LOCALIZED_SPOTS = 'LOCALIZED_SPOTS',
   DIRECTIONAL_SPREAD = 'DIRECTIONAL_SPREAD',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // L. WATER & SOIL CONTEXT (Farmer-Observed)
-  // ═══════════════════════════════════════════════════════════════════════════
   FIELD_WATERLOGGED = 'FIELD_WATERLOGGED',
   SOIL_TOO_DRY = 'SOIL_TOO_DRY',
   CRACKS_IN_SOIL = 'CRACKS_IN_SOIL',
   SALT_CRUST_VISIBLE = 'SALT_CRUST_VISIBLE',
   WHITE_SOIL_DEPOSITS = 'WHITE_SOIL_DEPOSITS',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // M. WEATHER / EVENT BASED
-  // ═══════════════════════════════════════════════════════════════════════════
   DAMAGE_AFTER_RAIN = 'DAMAGE_AFTER_RAIN',
   DAMAGE_AFTER_FROST = 'DAMAGE_AFTER_FROST',
   DAMAGE_AFTER_HEAT = 'DAMAGE_AFTER_HEAT',
   DAMAGE_AFTER_WIND = 'DAMAGE_AFTER_WIND',
   DAMAGE_AFTER_HAIL = 'DAMAGE_AFTER_HAIL',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // N. ADDITIONAL WORLD-CLASS KEYS (ICAR/FAO aligned)
-  // ═══════════════════════════════════════════════════════════════════════════
   HONEYDEW_PRESENT = 'HONEYDEW_PRESENT',
   SOOTY_MOLD_ON_HONEYDEW = 'SOOTY_MOLD_ON_HONEYDEW',
   FRASS_VISIBLE = 'FRASS_VISIBLE',
@@ -255,9 +188,7 @@ export enum ObservationKey {
   TUNNELS_IN_SOIL = 'TUNNELS_IN_SOIL',
   MUD_TUBES_PRESENT = 'MUD_TUBES_PRESENT',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LEGACY KEYS (for backward compatibility - mapped from old system)
-  // ═══════════════════════════════════════════════════════════════════════════
   CROP_UNKNOWN = 'CROP_UNKNOWN',
   CROP_IDENTIFIED = 'CROP_IDENTIFIED',
   AFFECTED_PART_UNKNOWN = 'AFFECTED_PART_UNKNOWN',
@@ -341,10 +272,7 @@ export enum ObservationKey {
   // Severity Keys
   SEVERITY_CRITICAL = 'SEVERITY_CRITICAL',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // O. DIAGNOSIS-LEVEL CONFIRMED SYMBOLS
-  // Used for conflict arbitration - maps from clarification selections
-  // ═══════════════════════════════════════════════════════════════════════════
   NITROGEN_DEFICIENCY_CONFIRMED = 'NITROGEN_DEFICIENCY_CONFIRMED',
   PHOSPHORUS_DEFICIENCY_CONFIRMED = 'PHOSPHORUS_DEFICIENCY_CONFIRMED',
   POTASSIUM_DEFICIENCY_CONFIRMED = 'POTASSIUM_DEFICIENCY_CONFIRMED',
@@ -353,17 +281,10 @@ export enum ObservationKey {
   WATER_STRESS_CONFIRMED = 'WATER_STRESS_CONFIRMED',
 }
 
-/**
- * Type for a set of observation keys
- */
+// Type for a set of observation keys
 export type ObservationKeySet = Set<ObservationKey>;
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * STAGE-WISE KEY GROUPINGS
- * Used to determine which keys are relevant for each growth stage
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// STAGE-WISE KEY GROUPINGS
 
 export const STAGE_KEYS: Record<string, ObservationKey[]> = {
   germination: [
@@ -455,12 +376,7 @@ export const STAGE_KEYS: Record<string, ObservationKey[]> = {
   ]
 };
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CATEGORY MAPPINGS
- * Group observation keys by category for UI and logic
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CATEGORY MAPPINGS
 
 export const CATEGORY_KEYS: Record<string, ObservationKey[]> = {
   leaf_observations: [
@@ -512,10 +428,7 @@ export const CATEGORY_KEYS: Record<string, ObservationKey[]> = {
   ]
 };
 
-/**
- * Critical observation keys that are REQUIRED before proceeding to diagnosis.
- * Missing any of these requires clarification.
- */
+// Critical observation keys that are REQUIRED before proceeding to diagnosis.
 export const CRITICAL_OBSERVATION_KEYS: ObservationKey[] = [
   ObservationKey.CROP_IDENTIFIED,
   ObservationKey.AFFECTED_PART_LEAF,
@@ -525,9 +438,7 @@ export const CRITICAL_OBSERVATION_KEYS: ObservationKey[] = [
   ObservationKey.AFFECTED_PART_WHOLE
 ];
 
-/**
- * Keys that indicate sufficient understanding for each dimension
- */
+// Keys that indicate sufficient understanding for each dimension
 export const SUFFICIENT_KEYS: Record<string, ObservationKey[]> = {
   crop: [ObservationKey.CROP_IDENTIFIED],
   affected_part: [
@@ -562,9 +473,7 @@ export const SUFFICIENT_KEYS: Record<string, ObservationKey[]> = {
   ]
 };
 
-/**
- * Check if a dimension is satisfied by the given observation keys
- */
+// Check if a dimension is satisfied by the given observation keys
 export function isDimensionSatisfied(
   keys: Set<ObservationKey>,
   dimension: keyof typeof SUFFICIENT_KEYS
@@ -573,9 +482,7 @@ export function isDimensionSatisfied(
   return requiredKeys.some(k => keys.has(k));
 }
 
-/**
- * Get the next unsatisfied dimension in priority order
- */
+// Get the next unsatisfied dimension in priority order
 export function getNextMissingDimension(
   keys: Set<ObservationKey>
 ): keyof typeof SUFFICIENT_KEYS | null {
@@ -597,9 +504,7 @@ export function getNextMissingDimension(
   return null; // All dimensions satisfied
 }
 
-/**
- * Count how many dimensions are satisfied
- */
+// Count how many dimensions are satisfied
 export function countSatisfiedDimensions(keys: Set<ObservationKey>): number {
   let count = 0;
   for (const dimension of Object.keys(SUFFICIENT_KEYS) as (keyof typeof SUFFICIENT_KEYS)[]) {
@@ -610,17 +515,13 @@ export function countSatisfiedDimensions(keys: Set<ObservationKey>): number {
   return count;
 }
 
-/**
- * Get observation keys for a specific crop and stage from the STAGE_KEYS mapping
- */
+// Get observation keys for a specific crop and stage from the STAGE_KEYS mapping
 export function getStageObservationKeys(stage: string): ObservationKey[] {
   const normalizedStage = stage.toLowerCase().replace(/[\s-]/g, '_');
   return STAGE_KEYS[normalizedStage] || [];
 }
 
-/**
- * Get observation keys for a specific category
- */
+// Get observation keys for a specific category
 export function getCategoryObservationKeys(category: string): ObservationKey[] {
   return CATEGORY_KEYS[category] || [];
 }

@@ -1,17 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RULE MODULE MAPPING TYPES - INTEGRATION WITH DECISION GRAPH
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Types for mapping NLU output to TypeScript rule modules in:
- * - src/decision-graph/safety-rules/
- * - src/decision-graph/advanced-layers/
- * - src/decision-graph/crop-group-rules/
- */
+// RULE MODULE MAPPING TYPES - INTEGRATION WITH DECISION GRAPH
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PRIORITY LEVELS (Matching decision-graph/types.ts)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type RulePriority = 
   | 'P0_EMERGENCY'      // Emergency Override - Banned chemicals, Poisoning risk
@@ -22,9 +11,7 @@ export type RulePriority =
   | 'P5_IPM'            // IPM Preference
   | 'P6_OPTIMIZATION';  // Optimization - Best timing
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE MODULE REFERENCE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RuleModuleReference {
   /** Category folder: 'safety-rules', 'advanced-layers', 'crop-group-rules' */
@@ -47,9 +34,7 @@ export type RuleCategory =
   | 'crop-group-rules'
   | 'intelligence';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AVAILABLE SAFETY RULE MODULES (from src/decision-graph/safety-rules/)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type SafetyRuleModule = 
   | 'chemical-safety-rules'      // P0/P1 - Banned/restricted chemicals
@@ -65,18 +50,14 @@ export type SafetyRuleModule =
   | 'water-rules'                // P2/P3 - Irrigation scheduling
   | 'disease-management-rules';  // P3/P4 - Bacterial/fungal, DSI thresholds
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ADVANCED LAYER MODULES (from src/decision-graph/advanced-layers/)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type AdvancedLayerModule = 
   | 'layer1-plant-demand'
   | 'layer2-root-dominance'
   | 'layer3-nitrogen-efficiency';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ENHANCED NLU OUTPUT WITH RULE MAPPING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NLUOutputWithRuleMapping {
   // Language & Intent
@@ -244,9 +225,7 @@ export type EmergencyType =
   | 'CROP_FAILURE_IMMINENT'
   | 'WEATHER_EMERGENCY';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE EVALUATION CONTEXT (Input to Rule Modules)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RuleEvaluationContext {
   // From NLU
@@ -294,9 +273,7 @@ export interface RuleEvaluationContext {
   metadata?: Record<string, unknown>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE EVALUATION RESULT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RuleEvaluationResult {
   blocked: boolean;

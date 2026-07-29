@@ -15,25 +15,7 @@
  *   stop split-brain BRAIN_TRACE hyp=0 corruption.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * GRAPH SNAPSHOT — immutable per-turn result of the graph runtime.
- *
- * Ontology (strict, non-negotiable):
- *
- *     Observation ─▶ Hypothesis ─▶ Rule
- *
- * A `rule_id` is NEVER a `hypothesis_id`. The two node types are disjoint.
- * Hypotheses merge by `hypothesis_id` only. Engine A candidates are keyed
- * by `rule_id` and are promoted to hypotheses ONLY through an explicit
- * `edges.ruleToHypothesis` map supplied by the caller — the builder itself
- * is a pure function and performs zero I/O.
- *
- * Engines consolidated here:
- *   Engine A: decision/hypothesis-evaluator  (rule-centric candidates)
- *   Engine B: decision/hypothesis-graph-evaluator (hypothesis-centric)
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// GRAPH SNAPSHOT — immutable per-turn result of the graph runtime.
 
 export type GraphState =
   | 'READY_FOR_DECISION'
@@ -57,11 +39,7 @@ export interface RuleNode {
   readonly parent_hypothesis_id: string | null;
 }
 
-/**
- * Back-compat view expected by legacy orchestrator readers.
- * `id` is ALWAYS a hypothesis_id (never a rule_id). `candidate_rule_ids`
- * is the projection of child rules for that hypothesis.
- */
+// Back-compat view expected by legacy orchestrator readers.
 export interface GraphSnapshotHypothesis {
   readonly id: string;
   readonly confidence: number;
@@ -128,10 +106,7 @@ export interface BuildGraphSnapshotInput {
   reason?: string;
 }
 
-/**
- * Pure builder. No async, no DB, no fetch. Union both engines through
- * the injected rule→hypothesis edge map. Never fabricates hypotheses.
- */
+// Pure builder. No async, no DB, no fetch. Union both engines through
 export function buildGraphRuntimeSnapshot(args: BuildGraphSnapshotInput): GraphRuntimeSnapshot {
   const trace = args.trace_id;
   const edgeMap: ReadonlyMap<string, string> = args.edges?.ruleToHypothesis instanceof Map

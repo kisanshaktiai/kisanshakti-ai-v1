@@ -1,23 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * ENTITY CODE MAPPER - Unified Pest/Disease Code Normalization
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * P0-C: Single mapping layer to convert raw entity codes to decision graph codes.
- * This ensures rule engine always sees expected codes for matching.
- * 
- * Example:
- *   - Raw: SUGARCANE_SHOOT_BORER → Decision Graph: SHOOT_BORER
- *   - Raw: COTTON_WHITEFLY → Decision Graph: WHITEFLY
- * 
- * VERSION: 1.0.0
- */
+// ENTITY CODE MAPPER - Unified Pest/Disease Code Normalization
 
 export const ENTITY_CODE_MAPPER_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PEST CODE MAPPINGS: Raw Entity Code → Decision Graph Code
-// ═══════════════════════════════════════════════════════════════════════════
 
 const PEST_TO_DECISION_GRAPH: Record<string, string> = {
   // Sugarcane pests → Generic codes for rule matching
@@ -100,9 +85,7 @@ const PEST_TO_DECISION_GRAPH: Record<string, string> = {
   'SUGARCANE_DEAD_HEART': 'SHOOT_BORER',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DISEASE CODE MAPPINGS: Raw Entity Code → Decision Graph Code
-// ═══════════════════════════════════════════════════════════════════════════
 
 const DISEASE_TO_DECISION_GRAPH: Record<string, string> = {
   // Sugarcane diseases
@@ -163,9 +146,7 @@ const DISEASE_TO_DECISION_GRAPH: Record<string, string> = {
   'ANTHRACNOSE': 'ANTHRACNOSE',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP CODE MAPPINGS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const CROP_TO_DECISION_GRAPH: Record<string, string> = {
   // Normalize variants
@@ -220,14 +201,9 @@ const CROP_TO_DECISION_GRAPH: Record<string, string> = {
   'CHANA': 'GRAM',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Convert raw pest code to decision graph pest code
- * This is the SINGLE CHOKE POINT for pest code normalization
- */
+// Convert raw pest code to decision graph pest code
 export function toDecisionGraphPestCode(rawCode: string, cropCode?: string): string {
   if (!rawCode) return '';
   
@@ -263,9 +239,7 @@ export function toDecisionGraphPestCode(rawCode: string, cropCode?: string): str
   return normalized;
 }
 
-/**
- * Convert raw disease code to decision graph disease code
- */
+// Convert raw disease code to decision graph disease code
 export function toDecisionGraphDiseaseCode(rawCode: string, cropCode?: string): string {
   if (!rawCode) return '';
   
@@ -299,9 +273,7 @@ export function toDecisionGraphDiseaseCode(rawCode: string, cropCode?: string): 
   return normalized;
 }
 
-/**
- * Convert raw crop code to decision graph crop code
- */
+// Convert raw crop code to decision graph crop code
 export function toDecisionGraphCropCode(rawCode: string): string {
   if (!rawCode) return '';
   
@@ -314,10 +286,7 @@ export function toDecisionGraphCropCode(rawCode: string): string {
   return normalized;
 }
 
-/**
- * Apply all code normalizations to a rule engine input object
- * Call this ONCE before invoking the rule engine
- */
+// Apply all code normalizations to a rule engine input object
 export function normalizeCodesForRuleEngine(input: {
   pest_code?: string;
   disease_code?: string;
@@ -339,27 +308,20 @@ export function normalizeCodesForRuleEngine(input: {
   };
 }
 
-/**
- * Get the original crop-specific code from decision graph code
- * Used for display and logging
- */
+// Get the original crop-specific code from decision graph code
 export function getOriginalPestCode(decisionGraphCode: string, cropCode: string): string {
   const normalizedCrop = cropCode.toUpperCase().replace(/[\s-]+/g, '_');
   return `${normalizedCrop}_${decisionGraphCode}`;
 }
 
-/**
- * Check if a pest code is symptom-based (e.g., DEAD_HEART)
- */
+// Check if a pest code is symptom-based (e.g., DEAD_HEART)
 export function isSymptomBasedPestCode(code: string): boolean {
   const symptomCodes = ['DEAD_HEART', 'YELLOWING', 'WILTING', 'HOLES', 'SPOTS', 'POWDER'];
   const normalized = code.toUpperCase();
   return symptomCodes.some(s => normalized.includes(s));
 }
 
-/**
- * Log code mapping for debugging
- */
+// Log code mapping for debugging
 export function logCodeMapping(
   rawPest?: string,
   rawDisease?: string,

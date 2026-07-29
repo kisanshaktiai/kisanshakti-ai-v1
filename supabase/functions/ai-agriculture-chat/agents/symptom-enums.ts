@@ -1,8 +1,4 @@
-/**
- * CANONICAL SYMBOL ENUMS — English-only symbolic core
- * Extracted from language-induction-layer.ts for lightweight imports.
- * @version 1.0.0
- */
+// CANONICAL SYMBOL ENUMS — English-only symbolic core
 
 export enum CanonicalSymptomSymbol {
   LEAF_YELLOWING = 'LEAF_YELLOWING',

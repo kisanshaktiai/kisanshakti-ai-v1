@@ -1,21 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIFFERENTIAL DIAGNOSIS CLARIFIER - LAYER 4: Scientific Clarification
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Generates hypothesis-testing questions that maximize information gain:
- * - Identifies competing diagnoses from symptoms + context
- * - Generates discriminating questions (not generic)
- * - Supports visual aids for low-literacy farmers
- * 
- * PHILOSOPHY: Questions should distinguish between hypotheses, not just collect data
- * 
- * VERSION: 1.0.0
- */
+// DIFFERENTIAL DIAGNOSIS CLARIFIER - LAYER 4: Scientific Clarification
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CompetingHypothesis {
   cause_code: string;
@@ -81,9 +66,7 @@ export interface DifferentialClarificationInput {
   language: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIFFERENTIAL DIAGNOSIS PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface DifferentialPattern {
   primary_symptom: string;
@@ -268,9 +251,7 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
     ]
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // SMALL_INSECTS - Generic insect detection (aphids, whiteflies, thrips, jassids)
-  // ═══════════════════════════════════════════════════════════════════════════
   'SMALL_INSECTS': {
     primary_symptom: 'SMALL_INSECTS',
     competing_causes: [
@@ -382,9 +363,7 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN CLARIFICATION GENERATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateDifferentialClarification(
   input: DifferentialClarificationInput
@@ -508,13 +487,9 @@ export function generateDifferentialClarification(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONVENIENCE FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get the best differentiating question for current context
- */
+// Get the best differentiating question for current context
 export function getBestDifferentialQuestion(
   symptoms: string[],
   questionsAsked: number,
@@ -531,9 +506,7 @@ export function getBestDifferentialQuestion(
   return result.best_question;
 }
 
-/**
- * Check if more clarification needed or photo required
- */
+// Check if more clarification needed or photo required
 export function needsMoreClarification(
   symptoms: string[],
   questionsAsked: number,
