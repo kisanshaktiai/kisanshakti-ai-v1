@@ -1651,6 +1651,12 @@ export class AIAgentOrchestrator {
     (this as any)._graphTruth = null;
     console.log(`[RC1_BUILD_MARKER] v=rc1-2026-07-25T11:42 trace=${traceId} _graphTruth cleared per turn`);
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
+    // LATENCY BATCH L5 (2026-07-29): per-turn memo for idempotent context reads.
+    // fetchComprehensiveLandContext (1816/2632/11352) and fetchWeatherData
+    // (8119/8291/11132) were each executed 2-3x per turn with identical args.
+    // Cleared here so the memo NEVER survives a turn (singleton orchestrator).
+    (this as any)._turnMemo = new Map<string, Promise<any>>();
+
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
