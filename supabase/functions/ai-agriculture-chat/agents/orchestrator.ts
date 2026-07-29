@@ -9731,33 +9731,26 @@ export class AIAgentOrchestrator {
               // If farmer observations contain biotic indicators but top rule is abiotic,
               // filter out abiotic rules and re-select from biotic-only rules
               // ═══════════════════════════════════════════════════════════════════════════
-              const BIOTIC_INDICATORS = new Set([
-                'BORE', 'HOLES', 'DEAD_HEART', 'INSECT', 'FRASS', 'WEBBING',
-                'CHEWING', 'LARVAE', 'BORING', 'STEM_BORING_MARKS', 'DEAD_HEART_PRESENT',
-                'INSECT_PRESENCE_CONFIRMED', 'FRASS_VISIBLE', 'WEBBING_PRESENT', 'LEAF_CHEWING',
-                'BORER_SUSPECTED'
-              ]);
-              const ABIOTIC_CATEGORIES = new Set(['irrigation', 'nutrition', 'ndvi', 'water_stress', 'stress', 'weather']);
-              
+              // Phase 0′ (2026-07-29): DB-SSOT taxonomy, exact canonical matching.
               const allObsFlat = symbolicFacts?.all_observations || [];
-              const hasBioticEvidence = allObsFlat.some((obs: string) => 
-                [...BIOTIC_INDICATORS].some(indicator => obs.toUpperCase().includes(indicator))
-              );
-              
+              const _misrouteTaxonomyReady = isTaxonomyLoaded();
+              const hasBioticEvidence = _misrouteTaxonomyReady && taxonomyHasBioticEvidence(allObsFlat);
+
+              if (!_misrouteTaxonomyReady) {
+                console.warn(`   ⚠️ [MISROUTE_GUARD] Taxonomy cache unavailable — guard disabled (no filter)`);
+              }
+
               if (hasBioticEvidence && symbolicResult.recommendations.length > 0) {
                 const topRule = symbolicResult.recommendations[0];
                 const topCategory = (topRule.category || '').toLowerCase();
-                
-                if (ABIOTIC_CATEGORIES.has(topCategory)) {
+
+                if (isAbioticRule(topRule)) {
                   console.log(`\n🚨 [MISROUTE_DETECTED] Biotic symptoms routed to abiotic rule!`);
                   console.log(`   Top rule: ${topRule.rule_id} (category=${topCategory})`);
                   console.log(`   Farmer observations include biotic indicators`);
-                  console.log(`   → Filtering to biotic-only rules`);
-                  
-                  const bioticRules = symbolicResult.recommendations.filter((r: any) => {
-                    const cat = (r.category || '').toLowerCase();
-                    return !ABIOTIC_CATEGORIES.has(cat);
-                  });
+                  console.log(`   → Filtering out abiotic rules`);
+
+                  const bioticRules = symbolicResult.recommendations.filter((r: any) => !isAbioticRule(r));
                   
                   if (bioticRules.length > 0) {
                     symbolicResult.recommendations = bioticRules;
