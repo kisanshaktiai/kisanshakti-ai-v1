@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-07-29 10:55 UTC — FIX C1-b: expandStageSynonyms forwards cultivationMethod
+//   to getStageFamilyFromDB; omitted → request-scoped lane.
 // 2026-07-25 UTC — Batch A / P7: DELETED the hardcoded STAGE_KEY_PRIORITIES
 //   symptom-code map (germination/tillering/grand_growth/maturity/vegetative/
 //   flowering/boll_development). Stage and category priorities are now read
