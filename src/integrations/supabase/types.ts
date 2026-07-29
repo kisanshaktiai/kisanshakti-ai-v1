@@ -32410,6 +32410,10 @@ export type Database = {
           jwt_present: boolean
         }[]
       }
+      derive_stage_transition_conditions: {
+        Args: { p_crop_code?: string }
+        Returns: Json
+      }
       detect_land_overlaps: {
         Args: { p_tenant: string }
         Returns: {
@@ -33119,6 +33123,10 @@ export type Database = {
           p_subscription_id: string
           p_tenant_id: string
         }
+        Returns: Json
+      }
+      initialize_crop_cycle_stage: {
+        Args: { p_land_id: string }
         Returns: Json
       }
       insert_land_with_geometry: {
