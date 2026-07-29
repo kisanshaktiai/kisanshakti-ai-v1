@@ -8353,8 +8353,41 @@ export class AIAgentOrchestrator {
             const symbolicReasoner = new SymbolicReasoner();
             const factExtractor = new FactExtractor();
             
-            // BUG FIX #2: Build NESTED AuthoritativeLandState matching interface
-            const authoritativeLandState = landContext ? {
+            // F2 (2026-07-29): use the REAL authoritative state loader (SSOT).
+            // The hand-built literal below is now only a degraded fallback used
+            // when the loader fails (no land row / RPC error). It is tagged so
+            // downstream confidence penalties are attributable.
+            let authoritativeLandState: AuthoritativeLandState | null = null;
+            const _aslLandId = (landContext as any)?.land_id ?? (landContext as any)?.id ?? options.landId ?? null;
+            if (_aslLandId && farmerId && tenantId) {
+              const _aslCacheKey = `${_aslLandId}|${(this as any)._turnCounter ?? 0}`;
+              if ((this as any)._aslCacheKey === _aslCacheKey && (this as any)._aslCache) {
+                authoritativeLandState = (this as any)._aslCache;
+              } else {
+                try {
+                  const _aslResult = await loadAuthoritativeLandState(_aslLandId, farmerId, tenantId);
+                  if (_aslResult.success && _aslResult.state) {
+                    authoritativeLandState = _aslResult.state;
+                    (this as any)._aslCache = authoritativeLandState;
+                    (this as any)._aslCacheKey = _aslCacheKey;
+                    console.log(
+                      `[ASL_SSOT] loaded land=${_aslLandId} completeness=${authoritativeLandState.derived.data_completeness_score} ` +
+                      `freshness=${authoritativeLandState.derived.data_freshness_score} ` +
+                      `cultivation=${authoritativeLandState.crop.cultivation_method ?? 'null'} ` +
+                      `stage=${authoritativeLandState.crop.growth_stage ?? 'null'} trace=${traceId}`,
+                    );
+                  } else {
+                    console.warn(`[ASL_SSOT_FALLBACK] land=${_aslLandId} reason=${_aslResult.error ?? 'no_state'} trace=${traceId}`);
+                  }
+                } catch (aslErr) {
+                  console.warn(`[ASL_SSOT_FALLBACK] land=${_aslLandId} reason=threw:${(aslErr as Error).message} trace=${traceId}`);
+                }
+              }
+            }
+
+            // Degraded fallback (kept byte-compatible with the previous shape).
+            if (!authoritativeLandState) authoritativeLandState = (landContext ? {
+
               land_id: landContext.land_id,
               tenant_id: tenantId,
               farmer_id: farmerId,
