@@ -8403,6 +8403,13 @@ export class AIAgentOrchestrator {
                 current_crop: landContext.current_crop || null,
                 crop_code: canonicalCropCode(landContext.current_crop) || null,
                 growth_stage: landContext.growth_stage || null,
+                stage_uuid: (landContext as any).stage_uuid || null,
+                // F1 (2026-07-29): cultivation lane must survive the fallback path
+                cultivation_method:
+                  ((landContext as any)?.biological_state?.cultivation_method
+                    ?? (this as any)._sessionSSOT?.cultivation_method
+                    ?? (landContext as any)?.cultivation_method
+                    ?? null),
                 days_since_sowing: landContext.days_since_sowing || null,
                 sowing_date: landContext.sowing_date || null,
                 expected_harvest_date: null,
@@ -8452,8 +8459,8 @@ export class AIAgentOrchestrator {
               },
               loaded_at: new Date().toISOString(),
               sources_available: ['land_context'],
-              sources_missing: []
-            } : null;
+              sources_missing: ['authoritative_state_loader']
+            } : null) as any;
             
             // Extract symbolic facts from observations
             const observations = {
