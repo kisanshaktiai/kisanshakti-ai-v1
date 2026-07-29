@@ -1,6 +1,11 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 15:00 UTC — S3: persist confirmed biological stage transitions.
+ *   After phenology reconciliation we call apply_stage_transitions(land) so the
+ *   winning transition is written to stage_transition_log; when a non-calendar
+ *   transition is applied we re-resolve phenology so the turn reasons on the
+ *   persisted biological stage instead of the DAS-provisional one.
  * 2026-07-29 10:45 UTC — FIX C1-b: bind the request-scoped cultivation lane
  *   (enterCultivationLane) right after SessionSSOT is built, so clarification,
  *   evidence freeze, GraphRuntime, hypothesis eval and rendering all resolve
@@ -10232,6 +10237,51 @@ export class AIAgentOrchestrator {
           }
         } catch (e) {
           console.warn(`[PHENOLOGY_RECONCILIATION] failed err=${(e as Error).message}`);
+        }
+
+        // ── S3 — persist confirmed biological stage transitions ─────────────
+        // Single writer: apply_stage_transitions evaluates stage_transition_conditions,
+        // runs evaluate_stage_validation and appends to stage_transition_log.
+        // Persisted, non-calendar transitions become the ledger tier on the next
+        // resolve_crop_phenology call, so the brain stops re-deriving stage from DAS.
+        try {
+          const { data: applyRes, error: applyErr } = await this.supabase
+            .rpc('apply_stage_transitions', { p_land_id: landId });
+
+          if (applyErr) {
+            console.warn(
+              `[STAGE_PERSIST] skipped land=${landId} error=${applyErr.message}`,
+            );
+          } else {
+            const res: any = applyRes ?? {};
+            console.log(
+              `[STAGE_PERSIST] land=${landId} applied=${res.applied === true} ` +
+                `reason=${res.reason ?? 'matched'} ` +
+                `from=${res.from_stage ?? 'null'} to=${res.to_stage ?? 'null'} ` +
+                `blocked=${res.validation?.blocked === true}`,
+            );
+
+            if (res.applied === true) {
+              // Re-resolve so this turn reasons on the persisted stage (ledger tier).
+              const reRpc = await this.supabase
+                .rpc('resolve_crop_phenology_for_land', { p_land_id: landId });
+              const reRows = reRpc.data;
+              if (!reRpc.error && Array.isArray(reRows) && reRows.length > 0) {
+                const before = phenology.growth_stage;
+                phenology = reRows[0];
+                console.log(
+                  `[STAGE_PERSIST_REREAD] land=${landId} ${before} → ${phenology.growth_stage} ` +
+                    `(${phenology.stage_code}) src=${phenology.source} conf=${phenology.confidence}`,
+                );
+              } else if (reRpc.error) {
+                console.warn(
+                  `[STAGE_PERSIST_REREAD] failed land=${landId} err=${reRpc.error.message}`,
+                );
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[STAGE_PERSIST] threw land=${landId} err=${(e as Error).message}`);
         }
       }
       // v5-P8 — Biological Constraint Graph
