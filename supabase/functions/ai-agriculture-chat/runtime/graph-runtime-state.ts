@@ -1,7 +1,15 @@
 /**
+ * CHANGE LOG (newest first)
+ *   2026-07-29 — EVIDENCE IDENTITY REPAIR. ObservationLedger now folds every
+ *     append/confirm/reject code through the canonical-code SSOT
+ *     (`canonicalObsCode`) and is idempotent per canonical identity, so
+ *     casing/separator variants can no longer create duplicate evidence
+ *     nodes. Emits `[EVIDENCE_DEDUP]` when a duplicate is collapsed.
  * ═══════════════════════════════════════════════════════════════════════════
  * GRAPH RUNTIME STATE — Phase I (Graph SSOT)
  * ═══════════════════════════════════════════════════════════════════════════
+ * ONE immutable per-request runtime graph shared by every module.
+
  * ONE immutable per-request runtime graph shared by every module.
  *
  * Replaces the previous pattern where each module (extractor → mapper →
@@ -24,6 +32,7 @@
  */
 
 import type { CanonicalContext } from '../decision/canonical-context-contract.ts';
+import { canonicalObsCode } from '../utils/canonical-code.ts';
 export type CanonicalContextContract = CanonicalContext;
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -113,6 +122,16 @@ export interface ObservationNode {
 export class ObservationLedger {
   private readonly _entries: ObservationNode[] = [];
 
+  /**
+   * FIX (2026-07-29) — EVIDENCE IDENTITY.
+   * Every code entering the ledger is folded through the canonical-code SSOT
+   * so `LEAF-YELLOWING`, `Leaf Yellowing` and `leaf_yellowing` collapse to ONE
+   * symbolic identity instead of three ledger nodes / three evidence votes.
+   */
+  private canon(code: unknown): string {
+    return canonicalObsCode(code);
+  }
+
   append(input: {
     observation_code: string;
     source: ObservationSource;
@@ -122,9 +141,26 @@ export class ObservationLedger {
     parent_code?: string;
     actor: string;
   }): ObservationNode {
-    assertCanonicalCode('observation_ledger.observation_code', input.observation_code);
+    const code = this.canon(input.observation_code);
+    assertCanonicalCode('observation_ledger.observation_code', code);
+
+    // Idempotent by canonical identity: a second CREATE for the same code
+    // from the same source is a duplicate, not new evidence. Return the
+    // existing node (raising confidence if the new signal is stronger) so
+    // downstream counters cannot double-count one observation.
+    const existing = this._entries.find(
+      (e) => e.observation_code === code && e.source === input.source && !e.confirmed && !e.rejected,
+    );
+    if (existing) {
+      console.log(
+        `[EVIDENCE_DEDUP] code=${code} source=${input.source} actor=${input.actor} ` +
+          `reason=duplicate_append ledger_size=${this._entries.length}`,
+      );
+      return existing;
+    }
+
     const node: ObservationNode = Object.freeze({
-      observation_code: input.observation_code,
+      observation_code: code,
       source: input.source,
       confidence: input.confidence ?? 0.5,
       confirmed: false,
@@ -133,7 +169,7 @@ export class ObservationLedger {
       crop_applicability: input.crop_applicability
         ? Object.freeze([...input.crop_applicability])
         : undefined,
-      parent_code: input.parent_code,
+      parent_code: input.parent_code ? this.canon(input.parent_code) : undefined,
       validator_trail: Object.freeze([input.actor]),
       created_at: Date.now(),
     });
@@ -142,9 +178,18 @@ export class ObservationLedger {
   }
 
   /** Append a "confirmed" derived node referencing the parent code. */
-  confirm(observation_code: string, actor: string): void {
+  confirm(rawCode: string, actor: string): void {
+    const observation_code = this.canon(rawCode);
     assertCanonicalCode('observation_ledger.confirm', observation_code);
     const parent = this._entries.find((e) => e.observation_code === observation_code);
+    // Already confirmed by this same actor → no new node (identity stability).
+    const alreadyConfirmed = this._entries.some(
+      (e) => e.observation_code === observation_code && e.confirmed && e.validator_trail.includes(actor),
+    );
+    if (alreadyConfirmed) {
+      console.log(`[EVIDENCE_DEDUP] code=${observation_code} actor=${actor} reason=duplicate_confirm`);
+      return;
+    }
     this._entries.push(
       Object.freeze({
         observation_code,
@@ -162,7 +207,8 @@ export class ObservationLedger {
   }
 
   /** Append a "rejected" derived node — never removes the parent. */
-  reject(observation_code: string, reason: string, actor: string): void {
+  reject(rawCode: string, reason: string, actor: string): void {
+    const observation_code = this.canon(rawCode);
     assertCanonicalCode('observation_ledger.reject', observation_code);
     const parent = this._entries.find((e) => e.observation_code === observation_code);
     this._entries.push(
@@ -361,7 +407,11 @@ export class GraphRuntimeState {
         snap,
       );
     }
-    const codes = Array.from(new Set((snap.selected_observations || []).filter(Boolean)));
+    // FIX (2026-07-29): fold through the canonical-code SSOT so the frozen
+    // round carries the SAME identities as the observation ledger.
+    const codes = Array.from(
+      new Set((snap.selected_observations || []).map((c) => canonicalObsCode(c)).filter(Boolean)),
+    );
     for (const c of codes) assertCanonicalCode('evidence_round.selected_observations', c);
     const frozen: EvidenceRoundSnapshot = Object.freeze({
       crop_code: snap.crop_code ?? null,
