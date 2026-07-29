@@ -10386,6 +10386,19 @@ export class AIAgentOrchestrator {
           `🧬 [BIO_STATE_CREATE_RESULT] created=true land=${landId} ` +
             `stage=${biological_state.growth_stage} das=${biological_state.das}`,
         );
+        // F3 (2026-07-29): bind the cultivation lane AS SOON AS the biological
+        // state is locked — every stage-cache lookup made during context
+        // assembly must already resolve inside the correct lane. The later
+        // SessionSSOT binding re-enters the same lane (idempotent).
+        try {
+          StageKnowledgeCache.enterCultivationLane(biological_state.cultivation_method ?? null);
+          console.log(
+            `[STAGE_LANE_EARLY_BIND] land=${landId} method=${biological_state.cultivation_method ?? 'null'} ` +
+              `stage=${biological_state.growth_stage}`,
+          );
+        } catch (laneErr) {
+          console.warn(`[STAGE_LANE_EARLY_BIND_FAILED] land=${landId} err=${(laneErr as Error).message}`);
+        }
       } else {
         const failureReason = phenThrew
           ? `rpc_threw:${phenThrew.message}`
