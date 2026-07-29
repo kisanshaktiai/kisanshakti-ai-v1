@@ -13,10 +13,16 @@
  *   5. crop_stage_master DAS window   → 0.70
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ *   2026-07-29 UTC — v8: DAS demoted to provisional. Fixed stage_transition_log
+ *     tier (was querying non-existent to_stage_code/transition_date; now
+ *     to_stage_uuid/evaluated_at joined to crop_stage_master, with das/dat
+ *     triggers capped at 0.5). Added morphological_evidence tier sourced from
+ *     crop_growth_analysis.detected_growth_stage (0.95, lane-scoped).
  *   2026-07-12 UTC — v7: NULL cultivation_method rows are excluded from GDD
  *     stage candidates (data-quality issue, mirrors SQL resolver). Only
  *     exact method match or explicit 'any' qualify. Rank order preserved:
  *     exact > 'any'.
+
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
