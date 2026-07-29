@@ -341,26 +341,24 @@ export class SymbolicReasoner {
         rulesEvaluated++;
         
         // ═══════════════════════════════════════════════════════════════════════
-        // FIX 1: NDVI/ABIOTIC STRESS RULE GUARD
-        // Skip abiotic rules when biotic (pest/disease) evidence exists
+        // FIX 1: NDVI/ABIOTIC STRESS RULE GUARD  (Phase 0′ 2026-07-29: DB-SSOT)
+        // Class comes from decision_rules.biological_group / observation_master
+        // .semantic_class — no hardcoded agronomy lists. If the taxonomy cache is
+        // not loaded, the guard degrades to NO FILTER.
         // ═══════════════════════════════════════════════════════════════════════
         const ruleCategory = rule.category?.toLowerCase() || '';
-        const isAbioticRule = ['water_stress', 'irrigation', 'stress', 'ndvi'].includes(ruleCategory);
-        
-        if (isAbioticRule && facts.has_pest_evidence) {
+        const _taxReady = isTaxonomyLoaded();
+        const ruleIsAbiotic = _taxReady && isAbioticRule(rule);
+
+        if (ruleIsAbiotic && facts.has_pest_evidence) {
           console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} (category=${ruleCategory}) - pest evidence present`);
           continue;
         }
-        
-        // Check if biotic observations exist in all_observations
-        const BIOTIC_OBS_KEYS = ['BORE_HOLES', 'DEAD_HEART', 'INSECT_PRESENCE', 'FRASS', 'WEBBING', 
-          'STEM_BORING_MARKS', 'LEAF_CHEWING', 'DEAD_HEART_PRESENT', 'INSECT_PRESENCE_CONFIRMED',
-          'FRASS_VISIBLE', 'WEBBING_PRESENT', 'BORER_SUSPECTED'];
-        const hasBioticObs = (facts.all_observations || []).some(obs => 
-          BIOTIC_OBS_KEYS.some(key => obs.includes(key))
-        );
-        
-        if (isAbioticRule && hasBioticObs) {
+
+        // Exact canonical-code match against DB biotic semantic classes
+        const hasBioticObs = _taxReady && taxonomyHasBioticEvidence(facts.all_observations || []);
+
+        if (ruleIsAbiotic && hasBioticObs) {
           console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} - biotic observations detected in all_observations`);
           continue;
         }
