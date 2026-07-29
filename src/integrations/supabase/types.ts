@@ -32410,6 +32410,10 @@ export type Database = {
           jwt_present: boolean
         }[]
       }
+      derive_biological_stage_transitions: {
+        Args: { p_crop_code?: string }
+        Returns: Json
+      }
       derive_stage_transition_conditions: {
         Args: { p_crop_code?: string }
         Returns: Json
