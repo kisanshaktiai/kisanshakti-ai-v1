@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:55 UTC — FIX C1-b: stagesEquivalent stage-family bridge now runs inside the request-scoped cultivation lane bound by the orchestrator.
  * 2026-07-29 10:30 UTC — LATENCY L3: converted-rule cache per crop (5min TTL);
  *   getAllRulesWithBundled no longer rebuilds every rule closure twice a turn.
  */

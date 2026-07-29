@@ -1,4 +1,6 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:55 UTC — FIX C1-b: isEarly/isVegetativeStageFromDB accept cultivationMethod and forward it to getStageRow.
  * ═══════════════════════════════════════════════════════════════════════════
  * FAILURE CLASS DETECTOR - CANONICAL SYMBOL VERSION
  * ═══════════════════════════════════════════════════════════════════════════
@@ -109,21 +111,21 @@ import { getStageByDAS, getStageRow } from '../utils/stage-knowledge-cache.ts';
 const EARLY_STAGE_DAS_CEILING = 30;
 const VEGETATIVE_STAGE_DAS_CEILING = 90;
 
-function isEarlyStageFromDB(crop: string, stage: string, das: number | null): boolean {
+function isEarlyStageFromDB(crop: string, stage: string, das: number | null, cultivationMethod?: string | null): boolean {
   if (das !== null && das !== undefined) return das <= EARLY_STAGE_DAS_CEILING;
   if (!crop || !stage) return false;
-  const row = getStageRow(crop, stage);
+  const row = getStageRow(crop, stage, cultivationMethod);
   if (!row) return false;
   const dasMax = typeof row.das_max === 'number' ? row.das_max : null;
   return dasMax !== null && dasMax <= EARLY_STAGE_DAS_CEILING;
 }
 
-function isVegetativeStageFromDB(crop: string, stage: string, das: number | null): boolean {
+function isVegetativeStageFromDB(crop: string, stage: string, das: number | null, cultivationMethod?: string | null): boolean {
   if (das !== null && das !== undefined) {
     return das > EARLY_STAGE_DAS_CEILING && das <= VEGETATIVE_STAGE_DAS_CEILING;
   }
   if (!crop || !stage) return false;
-  const row = getStageRow(crop, stage);
+  const row = getStageRow(crop, stage, cultivationMethod);
   if (!row) return false;
   const dasMin = typeof row.das_min === 'number' ? row.das_min : null;
   const dasMax = typeof row.das_max === 'number' ? row.das_max : null;

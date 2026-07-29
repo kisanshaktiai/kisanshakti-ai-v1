@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-07-29 10:55 UTC — FIX C1-b: expandStageSynonyms forwards cultivationMethod
+//   to getStageFamilyFromDB; omitted → request-scoped lane.
 // 2026-07-25 UTC — Batch A / P7: DELETED the hardcoded STAGE_KEY_PRIORITIES
 //   symptom-code map (germination/tillering/grand_growth/maturity/vegetative/
 //   flowering/boll_development). Stage and category priorities are now read
@@ -340,11 +342,11 @@ const STAGE_NORMALIZATION_MAP: Record<string, string> = {
 // Cache miss (unloaded cache, or no curated row for this crop×stage) degrades to
 // the singleton `[stage, 'all']` and logs `[CANON_LOADER_STAGE_MISS]`. We NEVER
 // substitute a static family.
-function expandStageSynonyms(stage: string, crop?: string | null): string[] {
+function expandStageSynonyms(stage: string, crop?: string | null, cultivationMethod?: string | null): string[] {
   const key = canonicalStageKey(stage);
   if (!key) return ['all'];
   const cropKey = canonicalCropCode(crop);
-  const fam = cropKey ? getStageFamilyFromDB(cropKey, key) : null;
+  const fam = cropKey ? getStageFamilyFromDB(cropKey, key, cultivationMethod) : null;
   if (!fam || fam.length === 0) {
     console.log(
       `[CANON_LOADER_STAGE_MISS] crop=${cropKey || 'none'} stage=${key} ` +

@@ -1,4 +1,6 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:55 UTC — FIX C1-b: cultivationMethod arg resolves against the request-scoped lane (AsyncLocalStorage in stage-knowledge-cache) when omitted. No hardcoded families.
  * ═══════════════════════════════════════════════════════════════════════════
  * STAGE GRAPH READER — DB-backed replacement for the old shim
  * ═══════════════════════════════════════════════════════════════════════════

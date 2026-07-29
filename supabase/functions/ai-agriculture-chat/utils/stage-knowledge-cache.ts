@@ -1,9 +1,18 @@
 /**
  * CHANGE LOG
+ * 2026-07-29 10:20 UTC — FIX C1-b: request-scoped cultivation lane via
+ *   AsyncLocalStorage (`runWithCultivationLane` / `enterCultivationLane` /
+ *   `currentLane`). All lookups resolve the lane from the explicit arg first,
+ *   then the request store. `byCropStage` is now lane-keyed (rice DSR vs
+ *   transplanted no longer collide), `getStageByDAS` lost its "first hit"
+ *   branch (deterministic: exact lane → 'any' → lowest das_min, logged as
+ *   [STAGE_LANE_UNKNOWN]), and `laneMatches` degrades NULL row methods to
+ *   'any' so the 134 NULL-lane crop_stage_graph edges stay visible.
  * 2026-07-28 04:45 UTC — FIX C1: deleted module-scope `activeCultivationMethod`
  *   (cross-request contamination hazard). Setter/getter are deprecated stubs;
  *   stage lookups default to lane-agnostic when no explicit method is passed.
  * ═══════════════════════════════════════════════════════════════════════════
+
  * STAGE KNOWLEDGE CACHE — Phase E SSOT
  * ═══════════════════════════════════════════════════════════════════════════
  * Single runtime source for crop growth-stage data. Loads:
@@ -15,6 +24,10 @@
  * only when the DB rows are missing for a given crop.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+
 
 export interface StageMasterRow {
   crop_code: string;
@@ -100,27 +113,96 @@ export function setActiveCultivationMethod(method: string | null | undefined): v
   console.warn(
     `[STAGE_LANE_DEPRECATED] setActiveCultivationMethod called with method=${raw ?? 'null'}; ` +
     `module-scope state was removed to prevent cross-request contamination. ` +
-    `Pass cultivationMethod explicitly to getStageRow/getStageByDAS/getStageFamilyFromDB instead.`,
+    `Use runWithCultivationLane()/enterCultivationLane() or pass cultivationMethod ` +
+    `explicitly to getStageRow/getStageByDAS/getStageFamilyFromDB instead.`,
   );
 }
 
 export function getActiveCultivationMethod(): string | null {
-  console.warn(
-    `[STAGE_LANE_DEPRECATED] getActiveCultivationMethod called — module-scope state was ` +
-    `removed to prevent cross-request contamination. Callers must resolve the ` +
-    `cultivation method from BiologicalState per request.`,
-  );
-  return null;
+  // FIX C1-b: now backed by the REQUEST-SCOPED store (AsyncLocalStorage), not
+  // by module-scope mutable state. Safe under concurrency.
+  return currentLane();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIX C1-b (2026-07-29) — REQUEST-SCOPED CULTIVATION LANE
+// ───────────────────────────────────────────────────────────────────────────
+// AsyncLocalStorage gives every in-flight request its own lane. Unlike the
+// module-scope variable deleted by FIX C1, a store entered inside request A's
+// async context is invisible to request B, so concurrent farmers can never
+// read each other's cultivation lane.
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface LaneStore {
+  lane: string | null;
+  warned: Set<string>;
+}
+
+const laneALS = new AsyncLocalStorage<LaneStore>();
+
+function normLane(method: string | null | undefined): string | null {
+  const raw = method ? String(method).trim().toLowerCase() : '';
+  return raw ? raw : null;
+}
+
+/** Run `fn` with `method` as the active cultivation lane for this request. */
+export function runWithCultivationLane<T>(
+  method: string | null | undefined,
+  fn: () => T,
+): T {
+  return laneALS.run({ lane: normLane(method), warned: new Set<string>() }, fn);
+}
+
+/**
+ * Set the lane for the CURRENT async context onward (no callback wrapping).
+ * Used by the orchestrator the moment SessionSSOT resolves the lane mid-turn.
+ * Falls back to a warning (lane-agnostic behaviour) if the runtime does not
+ * implement `enterWith`.
+ */
+export function enterCultivationLane(method: string | null | undefined): void {
+  const lane = normLane(method);
+  try {
+    laneALS.enterWith({ lane, warned: new Set<string>() });
+  } catch (e) {
+    console.warn(
+      `[STAGE_LANE_ENTER_FAILED] method=${lane ?? 'null'} err=${(e as Error).message} ` +
+      `→ lookups fall back to lane-agnostic`,
+    );
+  }
+}
+
+/** The lane bound to the current request context, or null when unknown. */
+export function currentLane(): string | null {
+  return laneALS.getStore()?.lane ?? null;
+}
+
+/** Explicit arg wins (including an explicit null); otherwise the request store. */
+function resolveLane(cultivationMethod: string | null | undefined): string | null {
+  if (cultivationMethod === undefined) return currentLane();
+  return normLane(cultivationMethod);
+}
+
+/** Log a lane-ambiguity warning at most once per request context. */
+function warnOnce(key: string, message: string): void {
+  const store = laneALS.getStore();
+  if (store) {
+    if (store.warned.has(key)) return;
+    store.warned.add(key);
+  }
+  console.warn(message);
 }
 
 /** A stage-graph / stage-master row belongs to the requested lane when its own
- *  method equals the lane or is the universal 'any'. Unknown lane → all rows. */
+ *  method equals the lane or is the universal 'any'. Unknown lane → all rows.
+ *  FIX C1-b: a NULL row method degrades to 'any' — crop_stage_graph has 134
+ *  NULL-lane edges covering every non-rice crop; rejecting them would delete
+ *  those stage families entirely. */
 function laneMatches(rowMethod: unknown, lane: string | null): boolean {
-  const m = rowMethod ? String(rowMethod).toLowerCase() : null;
+  const m = rowMethod ? String(rowMethod).toLowerCase() : 'any';
   if (!lane) return true;
-  if (m === null) return false; // NULL = data-quality issue, never matched
   return m === lane || m === 'any';
 }
+
 
 export async function loadStageKnowledge(supabase: any): Promise<void> {
   const now = Date.now();
@@ -212,8 +294,15 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_graph load failed', e);
   }
 
+  // FIX C1-b: lane-keyed index (`crop|method|stage`). The previous
+  // `crop|stage` key let rice direct_seeded and transplanted rows overwrite
+  // each other at load time, so one lane silently disappeared.
   const byCropStage = new Map<string, StageMasterRow>();
-  for (const r of master) byCropStage.set(k(r.crop_code, r.growth_stage), r);
+  for (const r of master) {
+    const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
+    byCropStage.set(ak(r.crop_code, m, r.growth_stage), r);
+  }
+
 
   const knowledgeByCropStage = new Map<string, StageKnowledgeRow>();
   for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.growth_stage), r);
@@ -231,31 +320,44 @@ export function getStageRow(
   cultivationMethod?: string | null,
 ): StageMasterRow | null {
   if (!cache) return null;
-  // FIX C1 (2026-07-28): no module-scope fallback. When the caller omits
-  // cultivationMethod (undefined) OR passes null, use lane-agnostic matching
-  // — safe default, no cross-request contamination.
-  const resolved = cultivationMethod === undefined ? null : cultivationMethod;
-  const lane = resolved ? String(resolved).toLowerCase() : null;
+  // FIX C1-b: explicit arg wins; otherwise the REQUEST-SCOPED lane.
+  const lane = resolveLane(cultivationMethod);
   const cropKey = (crop || '').toLowerCase();
   const stageKey = (stage || '').toLowerCase();
+
   if (lane) {
-    let anyRow: StageMasterRow | null = null;
-    for (const r of cache.master) {
-      if (r.crop_code?.toLowerCase() !== cropKey) continue;
-      if (r.growth_stage?.toLowerCase() !== stageKey) continue;
-      const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
-      if (m === lane) return r;
-      if (m === 'any' && !anyRow) anyRow = r;
-    }
-    return anyRow;
+    const exact = cache.byCropStage.get(ak(cropKey, lane, stageKey));
+    if (exact) return exact;
+    return cache.byCropStage.get(ak(cropKey, 'any', stageKey)) ?? null;
   }
-  return cache.byCropStage.get(k(crop, stage)) ?? null;
+
+  // Lane unknown → scan master deterministically ('any' first, then lowest
+  // das_min). NEVER rely on a lane-agnostic map key (that was the collision).
+  let anyRow: StageMasterRow | null = null;
+  let best: StageMasterRow | null = null;
+  for (const r of cache.master) {
+    if (r.crop_code?.toLowerCase() !== cropKey) continue;
+    if (r.growth_stage?.toLowerCase() !== stageKey) continue;
+    const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
+    if (m === 'any' && !anyRow) anyRow = r;
+    if (!best || (r.das_min ?? Infinity) < (best.das_min ?? Infinity)) best = r;
+  }
+  const picked = anyRow ?? best;
+  if (picked) {
+    warnOnce(
+      `row:${cropKey}:${stageKey}`,
+      `[STAGE_LANE_UNKNOWN] crop=${cropKey} stage=${stageKey} ` +
+      `picked=${picked.growth_stage} method=${picked.cultivation_method ?? 'any'}`,
+    );
+  }
+  return picked;
 }
 
 export function getStageKnowledge(crop: string, stage: string): StageKnowledgeRow | null {
   if (!cache) return null;
   return cache.knowledgeByCropStage.get(k(crop, stage)) ?? null;
 }
+
 
 /** DB-first stage category lookup. Returns null when DB has no row.
  *  Note: crop_stage_master has no `stage_category` column — returns the
@@ -271,13 +373,15 @@ export function getStageCategoryFromDB(
 /**
  * DB-first DAS → stage lookup.
  *
- * v7 — NULL cultivation_method is treated as a data-quality issue and is
- * NEVER matched at runtime (mirrors the SQL resolver). A row qualifies iff
- * its own `cultivation_method` is 'any' OR equals the requested method
- * (case-insensitive). Exact match is preferred over 'any'.
+ * Lane resolution: explicit `cultivationMethod` wins (including an explicit
+ * null = lane-agnostic); otherwise the request-scoped lane. A row qualifies
+ * iff its own method equals the lane or is 'any'/NULL, exact preferred.
  *
- * When `cultivationMethod` is undefined the legacy first-hit behaviour is
- * preserved so pre-v6 callers stay green.
+ * FIX C1-b: the legacy "return first hit" branch is DELETED. With rice
+ * direct_seeded (10-160 DAS) and transplanted (0-125 DAS) both present, first
+ * hit meant a direct-seeded field could be scored on the transplanted
+ * timeline. When the lane is unknown we now pick deterministically
+ * ('any' → lowest das_min) and log [STAGE_LANE_UNKNOWN] once per request.
  */
 export function getStageByDAS(
   crop: string,
@@ -286,31 +390,35 @@ export function getStageByDAS(
 ): StageMasterRow | null {
   if (!cache) return null;
   const cropKey = (crop || '').toLowerCase();
-  // FIX C1 (2026-07-28): no module-scope fallback. Lane-agnostic default
-  // when caller omits cultivationMethod — prevents cross-request contamination.
-  const resolvedMethod = cultivationMethod === undefined ? null : cultivationMethod;
-  const method = resolvedMethod ? String(resolvedMethod).toLowerCase() : null;
+  const method = resolveLane(cultivationMethod);
 
   let exact: StageMasterRow | null = null;
   let anyRow: StageMasterRow | null = null;
+  let earliest: StageMasterRow | null = null;
 
   for (const r of cache.master) {
     if (r.crop_code?.toLowerCase() !== cropKey) continue;
     if (!((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das)) continue;
-    const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
+    const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
 
-    if (method) {
-      // NULL rows are excluded — treated as data-quality issue.
-      if (rowMethod === null) continue;
-      if (rowMethod === method && !exact) exact = r;
-      else if (rowMethod === 'any' && !anyRow) anyRow = r;
-    } else {
-      // Legacy path — return first hit as before.
-      return r;
-    }
+    if (rowMethod === 'any' && !anyRow) anyRow = r;
+    if (method && rowMethod === method && !exact) exact = r;
+    if (!earliest || (r.das_min ?? Infinity) < (earliest.das_min ?? Infinity)) earliest = r;
   }
-  return exact ?? anyRow;
+
+  if (method) return exact ?? anyRow;
+
+  const picked = anyRow ?? earliest;
+  if (picked) {
+    warnOnce(
+      `das:${cropKey}:${das}`,
+      `[STAGE_LANE_UNKNOWN] crop=${cropKey} das=${das} ` +
+      `picked=${picked.growth_stage} method=${picked.cultivation_method ?? 'any'}`,
+    );
+  }
+  return picked;
 }
+
 
 
 
@@ -331,10 +439,10 @@ export function getStageFamilyFromDB(
   cultivationMethod?: string | null,
 ): string[] | null {
   if (!cache) return null;
-  // FIX C1 (2026-07-28): no module-scope fallback. Lane-agnostic default
-  // when caller omits cultivationMethod — prevents cross-request contamination.
-  const resolved = cultivationMethod === undefined ? null : cultivationMethod;
-  const lane = resolved ? String(resolved).toLowerCase() : null;
+  // FIX C1-b: explicit arg wins; otherwise the REQUEST-SCOPED lane. Rows whose
+  // own method is NULL/'any' always match (134 non-rice edges live there).
+  const lane = resolveLane(cultivationMethod);
+
   const cropKey = (crop || '').toLowerCase();
   const stageKey = (stage || '').toLowerCase();
   const out = new Set<string>();

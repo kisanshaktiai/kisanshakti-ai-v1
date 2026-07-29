@@ -1,4 +1,6 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:55 UTC — FIX C1-b: calculateStageRelevance forwards cultivationMethod to calculateStageRelevanceScore.
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
  * 2026-07-11 UTC — v4-P2: generic dotted-path predicate resolver.
@@ -529,9 +531,11 @@ function calculateStageRelevance(
   stageApplicable: string[] | null,
   currentStage: string,
   crop?: string | null,
+  cultivationMethod?: string | null,
 ): number {
-  // Delegate to centralized normalizer (DB stage graph authority)
-  return calculateStageRelevanceScore(stageApplicable, currentStage, crop);
+  // Delegate to centralized normalizer (DB stage graph authority).
+  // FIX C1-b: lane forwarded; omitted → request-scoped lane (ALS).
+  return calculateStageRelevanceScore(stageApplicable, currentStage, crop, cultivationMethod);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

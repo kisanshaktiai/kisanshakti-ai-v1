@@ -1,5 +1,10 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:50 UTC — FIX C1-b: optional trailing `cultivationMethod` on
+ *   areStagesCompatible / calculateStageRelevanceScore, forwarded to
+ *   stagesEquivalent. Omitted → request-scoped lane (AsyncLocalStorage).
  * ═══════════════════════════════════════════════════════════════════════════
+
  * CENTRALIZED STAGE NORMALIZER (v2.0.0 — DB stage graph is the only authority)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
@@ -182,6 +187,7 @@ export function areStagesCompatible(
   ruleStage: string | undefined | null,
   currentStage: string | undefined | null,
   crop?: string | null,
+  cultivationMethod?: string | null,
 ): boolean {
   if (!ruleStage || ruleStage === '*' || ruleStage.toLowerCase() === 'all') return true;
   if (!currentStage) return false;
@@ -189,7 +195,7 @@ export function areStagesCompatible(
   const a = normalizeStageForDB(ruleStage);
   const b = normalizeStageForDB(currentStage);
   if (a === b) return true;
-  return stagesEquivalent(a, b, crop ?? null);
+  return stagesEquivalent(a, b, crop ?? null, cultivationMethod);
 }
 
 /**
@@ -201,6 +207,7 @@ export function calculateStageRelevanceScore(
   stageApplicable: string[] | null | undefined,
   currentStage: string,
   crop?: string | null,
+  cultivationMethod?: string | null,
 ): number {
   if (!stageApplicable || !Array.isArray(stageApplicable) || stageApplicable.length === 0) {
     return 0.5; // Universal rules get base score
@@ -214,11 +221,12 @@ export function calculateStageRelevanceScore(
 
   if (
     stageApplicable.some((s) =>
-      stagesEquivalent(normalizeStageForDB(s).toLowerCase(), current, crop ?? null)
+      stagesEquivalent(normalizeStageForDB(s).toLowerCase(), current, crop ?? null, cultivationMethod)
     )
   ) {
     return 0.8;
   }
+
 
   if (stageApplicable.some((s) => {
     const lower = String(s || '').toLowerCase();

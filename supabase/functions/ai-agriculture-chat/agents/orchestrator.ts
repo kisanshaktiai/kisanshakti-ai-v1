@@ -1,7 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:45 UTC — FIX C1-b: bind the request-scoped cultivation lane
+ *   (enterCultivationLane) right after SessionSSOT is built, so clarification,
+ *   evidence freeze, GraphRuntime, hypothesis eval and rendering all resolve
+ *   stages in the farmer's lane. calculateGrowthStageFromDAS now receives it.
  * 2026-07-29 10:30 UTC — LATENCY L5: per-turn memo (_turnMemo, reset in
+
  *   orchestrate) for fetchComprehensiveLandContext / fetchWeatherData; each was
  *   re-executed 2-3x per turn with identical arguments.
  * 2026-07-29 00:00 UTC — F1a: deleted dead generateCropHealthResponse (embedded
@@ -4084,6 +4089,18 @@ export class AIAgentOrchestrator {
           cultivation_method: _cultivationMethodForSsot,
         });
         (this as any)._sessionSSOT = _ssot;
+        // FIX C1-b (2026-07-29): bind the REQUEST-SCOPED cultivation lane for the
+        // remainder of the turn. Every stage lookup after this point (clarification
+        // selection, evidence freeze, GraphRuntime, hypothesis eval, rendering)
+        // resolves in the farmer's lane instead of falling into the lane-agnostic
+        // deterministic fallback.
+        StageKnowledgeCache.enterCultivationLane(_ssot.cultivation_method ?? _cultivationMethodForSsot);
+        console.log(
+          `[STAGE_LANE_ACTIVE] turn=${(this as any)._turnCounter ?? '?'} ` +
+          `crop=${_ssot.crop_code ?? 'unknown'} ` +
+          `method=${_ssot.cultivation_method ?? _cultivationMethodForSsot ?? 'unknown'} trace=${traceId}`,
+        );
+
       } catch (ssotErr) {
         console.error(`[SSOT_BUILD_FAILED] trace=${traceId} err=${(ssotErr as Error).message}`);
         // Continue — downstream layers fail closed via assertSessionSSOT when
