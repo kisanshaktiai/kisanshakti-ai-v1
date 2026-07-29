@@ -2560,25 +2560,29 @@ export class AIAgentOrchestrator {
             // would reject P1/P2/P3 outputs and silently skip the ledger
             // append + confirm — breaking downstream evidence classification.
             const CANON_RE_OPT = /^[a-z0-9_]+$/;
-            if (mappedObservationKey && CANON_RE_OPT.test(mappedObservationKey)) {
+            // FIX (2026-07-29): fold through the canonical-code SSOT before the
+            // shape test so a selection echoed in any casing/separator form
+            // resolves to the SAME symbolic identity as the ledger seed.
+            const _optCode = canonicalObsCode(mappedObservationKey);
+            if (_optCode && CANON_RE_OPT.test(_optCode)) {
               const already = graph.observation_ledger
                 .latestByCode()
-                .has(mappedObservationKey);
+                .has(_optCode);
               if (!already) {
                 graph.observation_ledger.append({
-                  observation_code: mappedObservationKey,
+                  observation_code: _optCode,
                   source: 'CLARIFICATION',
                   confidence: 0.95,
                   actor: 'orchestrator:OPTION_SELECTED',
                 });
               }
               graph.observation_ledger.confirm(
-                mappedObservationKey,
+                _optCode,
                 'orchestrator:OPTION_SELECTED'
               );
               console.log(
                 `[SSOT_TRACE][${traceId}] OPTION_SELECTED ledger.confirm ` +
-                  `code=${mappedObservationKey} ledger_size=${graph.observation_ledger.size()}`
+                  `code=${_optCode} ledger_size=${graph.observation_ledger.size()}`
               );
             }
           } catch (e) {
