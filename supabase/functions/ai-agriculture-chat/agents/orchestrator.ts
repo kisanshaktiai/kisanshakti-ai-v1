@@ -11400,7 +11400,26 @@ export class AIAgentOrchestrator {
    * CRITICAL FIX: Fetch comprehensive land context including soil, NDVI history, and crop schedule
    * Now includes NDVI full history for trend analysis and rule evaluation
    */
-  private async fetchComprehensiveLandContext(landId: string, farmerId: string): Promise<any> {
+  /**
+   * LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper.
+   * Delegates to fetchComprehensiveLandContextUncached at most once per
+   * (landId, farmerId) per turn. Memo is reset at the top of orchestrate().
+   */
+  private fetchComprehensiveLandContext(landId: string, farmerId: string): Promise<any> {
+    const memo: Map<string, Promise<any>> | undefined = (this as any)._turnMemo;
+    const key = `land:${landId}:${farmerId}`;
+    if (!memo) return this.fetchComprehensiveLandContextUncached(landId, farmerId);
+    const hit = memo.get(key);
+    if (hit) {
+      console.log(`[TURN_MEMO_HIT] ${key}`);
+      return hit;
+    }
+    const p = this.fetchComprehensiveLandContextUncached(landId, farmerId);
+    memo.set(key, p);
+    return p;
+  }
+
+  private async fetchComprehensiveLandContextUncached(landId: string, farmerId: string): Promise<any> {
     try {
       // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL SECURITY FIX: Validate farmer ownership FIRST before fetching data
@@ -12054,7 +12073,24 @@ export class AIAgentOrchestrator {
    * Format: { current: { temperature_c, humidity_percent, wind_speed_kmh, rainfall_last_24h_mm },
    *           forecast_24h: { rain_probability_percent, temperature_max_c, temperature_min_c, wind_max_kmh } }
    */
-  private async fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
+  /**
+   * LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper (see land ctx above).
+   */
+  private fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
+    const memo: Map<string, Promise<any>> | undefined = (this as any)._turnMemo;
+    const key = `weather:${landId || 'none'}`;
+    if (!memo) return this.fetchWeatherDataUncached(sessionId, landId);
+    const hit = memo.get(key);
+    if (hit) {
+      console.log(`[TURN_MEMO_HIT] ${key}`);
+      return hit;
+    }
+    const p = this.fetchWeatherDataUncached(sessionId, landId);
+    memo.set(key, p);
+    return p;
+  }
+
+  private async fetchWeatherDataUncached(sessionId: string, landId?: string): Promise<any> {
     // Weather data unavailable — return null values (no hardcoded defaults)
     const defaultWeather = {
       is_default: true,
