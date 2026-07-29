@@ -1,6 +1,9 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 00:00 UTC — F1a: deleted dead generateCropHealthResponse (embedded
+ *   hardcoded ICAR NDVI/N thresholds + fabricated urea dosage). Zero callers.
+ * ───────────────────────────────────────────────────────────────────────────
  * 2026-07-28 05:00 UTC — FIX D1: resolve cultivation_method per turn into
  *   SessionSSOT and pass it to all buildHypothesisClarificationOptions sites.
  * ───────────────────────────────────────────────────────────────────────────
@@ -2195,7 +2198,7 @@ export class AIAgentOrchestrator {
       
       // ========================================
       // PHASE-13: ROUTE CROP_HEALTH THROUGH SYMBOLIC PIPELINE
-      // Previously: Early return with inline generateCropHealthResponse
+      // Previously: Early return with an inline hardcoded crop-health generator (deleted)
       // Now: Authority check + continue to rule engine for nutrient/water rules
       // ========================================
       if (queryRoute.route === 'CROP_HEALTH' && landContext) {
@@ -13353,170 +13356,6 @@ export class AIAgentOrchestrator {
   // [STEP 7 REMOVED] applyPHIBlocking / applyPollinatorBlocking — SafetyGuardian
   // owns product substitution and blocked_actions population end-to-end.
 
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // P1-A: CROP HEALTH RESPONSE GENERATOR - REFACTORED TO SYMBOLIC OUTPUT
-  // Returns structured data + i18n_keys, NOT hardcoded language text
-  // Narration layer handles all text rendering
-  // ═══════════════════════════════════════════════════════════════════════════
-  
-  private generateCropHealthResponse(
-    landContext: any,
-    _language: string // Kept for backward compat but NOT used for text
-  ): { 
-    message: string;  // DEPRECATED: Narration layer fills this
-    confidence: number; 
-    suggestions: string[]; 
-    actions: any[]; 
-    isCritical: boolean;
-    // NEW: Symbolic output for narration layer
-    symbolic_output?: {
-      health_status_code: string;
-      i18n_key: string;
-      data_points: Record<string, any>;
-      action_codes: string[];
-    };
-  } {
-    const crop = landContext.current_crop || '';
-    const cropCode = (crop || '').toUpperCase();
-    const stage = landContext.growth_stage || 'VEGETATIVE';
-    const das = landContext.days_since_sowing || 0;
-    const ndvi = landContext.ndvi?.value || landContext.ndvi?.ndvi_value;
-    const ndviTrend = landContext.ndvi?.ndvi_trend;
-    const soil = landContext.soil_health;
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // NDVI THRESHOLDS BY CROP + STAGE (ICAR Standards) - Pure data, no language
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    const EXPECTED_NDVI_BY_STAGE: Record<string, { min: number; critical: number }> = {
-      'GERMINATION': { min: 0.08, critical: 0.05 },
-      'SEEDLING': { min: 0.15, critical: 0.10 },
-      'TILLERING': { min: 0.35, critical: 0.20 },
-      'VEGETATIVE': { min: 0.40, critical: 0.25 },
-      'STEM_ELONGATION': { min: 0.50, critical: 0.30 },
-      'FLOWERING': { min: 0.55, critical: 0.35 },
-      'GRAIN_FILLING': { min: 0.50, critical: 0.30 },
-      'MATURITY': { min: 0.35, critical: 0.20 }
-    };
-    
-    const stageUpper = (stage || 'VEGETATIVE').toUpperCase();
-    const expectedNdvi = EXPECTED_NDVI_BY_STAGE[stageUpper] || { min: 0.35, critical: 0.20 };
-    
-    // Calculate nitrogen state
-    const nitrogenKgPerHa = soil?.nitrogen_kg_per_ha;
-    let nitrogenState: 'LOW' | 'ADEQUATE' | 'HIGH' = 'ADEQUATE';
-    
-    const N_THRESHOLDS: Record<string, { low: number; high: number }> = {
-      'WHEAT': { low: 100, high: 200 },
-      'RICE': { low: 100, high: 200 },
-      'COTTON': { low: 80, high: 180 },
-      'SUGARCANE': { low: 120, high: 250 },
-      'SOYBEAN': { low: 40, high: 100 },
-      'MAIZE': { low: 100, high: 220 }
-    };
-    
-    const nThresh = N_THRESHOLDS[cropCode] || { low: 100, high: 200 };
-    if (nitrogenKgPerHa !== undefined) {
-      if (nitrogenKgPerHa < nThresh.low) nitrogenState = 'LOW';
-      else if (nitrogenKgPerHa > nThresh.high) nitrogenState = 'HIGH';
-    }
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // HEALTH STATUS DETERMINATION - SYMBOLIC CODES ONLY
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    let healthStatusCode: 'EXCELLENT' | 'GOOD' | 'MODERATE' | 'CONCERN' | 'CRITICAL' = 'GOOD';
-    let isCritical = false;
-    const actionCodes: string[] = [];
-    
-    if (ndvi !== undefined) {
-      if (ndvi < expectedNdvi.critical) {
-        healthStatusCode = 'CRITICAL';
-        isCritical = true;
-        console.log(`🚨 [NDVI CRITICAL] NDVI=${ndvi} < critical threshold ${expectedNdvi.critical} for stage ${stageUpper}`);
-      } else if (ndvi < expectedNdvi.min) {
-        healthStatusCode = 'CONCERN';
-      } else if (ndvi >= 0.6) {
-        healthStatusCode = 'EXCELLENT';
-      } else if (ndvi >= 0.4) {
-        healthStatusCode = 'GOOD';
-      } else {
-        healthStatusCode = 'MODERATE';
-      }
-    }
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // BUILD SYMBOLIC ACTIONS - i18n_keys, NOT text
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    const actions: any[] = [];
-    
-    if (nitrogenState === 'LOW') {
-      const ureaDosage = cropCode === 'WHEAT' ? '50' : cropCode === 'RICE' ? '45' : '40';
-      actions.push({
-        action_type: 'APPLY_FERTILIZER',
-        action_code: 'APPLY_UREA',
-        i18n_key: 'action.apply_urea',
-        product_code: 'UREA_46N',
-        dosage_value: ureaDosage,
-        dosage_unit: 'kg/acre',
-        priority: isCritical ? 'URGENT' : 'HIGH',
-        data: { nitrogen_kg_ha: nitrogenKgPerHa }
-      });
-      actionCodes.push('APPLY_UREA');
-    }
-    
-    // Always add monitoring action
-    actions.push({
-      action_type: 'MONITOR',
-      action_code: 'MONITOR_CROP',
-      i18n_key: 'action.monitor_regular',
-      priority: 'MEDIUM',
-      timing_code: 'EVERY_3_5_DAYS'
-    });
-    actionCodes.push('MONITOR_CROP');
-    
-    // Add urgent actions for critical status
-    if (isCritical) {
-      actionCodes.push('CHECK_IRRIGATION', 'INSPECT_PEST_DISEASE', 'CONSULT_EXPERT');
-    }
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // BUILD SYMBOLIC OUTPUT - Narration layer renders to farmer language
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    const symbolicOutput = {
-      health_status_code: healthStatusCode,
-      i18n_key: `crop_health.status.${healthStatusCode.toLowerCase()}`,
-      data_points: {
-        crop_code: cropCode,
-        stage_code: stageUpper,
-        days_after_sowing: das,
-        ndvi_value: ndvi,
-        ndvi_expected_min: expectedNdvi.min,
-        ndvi_trend: ndviTrend,
-        nitrogen_state: nitrogenState,
-        nitrogen_kg_ha: nitrogenKgPerHa,
-        phosphorus_kg_ha: soil?.phosphorus_kg_per_ha,
-        potassium_kg_ha: soil?.potassium_kg_per_ha,
-        ph_level: soil?.ph_level
-      },
-      action_codes: actionCodes
-    };
-    
-    // Suggestion codes for quick actions (not hardcoded text)
-    const suggestionCodes = ['PEST_QUERY', 'IRRIGATION_QUERY', 'FERTILIZER_QUERY'];
-    
-    return {
-      message: '', // DEPRECATED: Narration layer fills this from symbolic_output
-      confidence: ndvi !== undefined ? 0.85 : 0.65,
-      suggestions: suggestionCodes, // These are CODES, not display text
-      actions,
-      isCritical,
-      symbolic_output: symbolicOutput
-    };
-  }
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 8: GREETING RESPONSE GENERATOR - SYMBOLIC ONLY
