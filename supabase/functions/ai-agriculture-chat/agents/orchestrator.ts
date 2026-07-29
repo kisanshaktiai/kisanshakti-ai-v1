@@ -4089,6 +4089,18 @@ export class AIAgentOrchestrator {
           cultivation_method: _cultivationMethodForSsot,
         });
         (this as any)._sessionSSOT = _ssot;
+        // FIX C1-b (2026-07-29): bind the REQUEST-SCOPED cultivation lane for the
+        // remainder of the turn. Every stage lookup after this point (clarification
+        // selection, evidence freeze, GraphRuntime, hypothesis eval, rendering)
+        // resolves in the farmer's lane instead of falling into the lane-agnostic
+        // deterministic fallback.
+        StageKnowledgeCache.enterCultivationLane(_ssot.cultivation_method ?? _cultivationMethodForSsot);
+        console.log(
+          `[STAGE_LANE_ACTIVE] turn=${(this as any)._turnCounter ?? '?'} ` +
+          `crop=${_ssot.crop_code ?? 'unknown'} ` +
+          `method=${_ssot.cultivation_method ?? _cultivationMethodForSsot ?? 'unknown'} trace=${traceId}`,
+        );
+
       } catch (ssotErr) {
         console.error(`[SSOT_BUILD_FAILED] trace=${traceId} err=${(ssotErr as Error).message}`);
         // Continue — downstream layers fail closed via assertSessionSSOT when
