@@ -98,6 +98,18 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 /**
+ * CHANGE LOG (newest first)
+ *   2026-07-29 10:55 UTC — PHASE 0′ STEP 4: deleted hardcoded
+ *     PEST_EVIDENCE_CODES / PEST_RULE_CATEGORIES (diagnostic pre-filter) and
+ *     BIOTIC_INDICATORS / ABIOTIC_CATEGORIES (post-decision misroute guard).
+ *     Both now use utils/db-driven-taxonomies.ts (observation_master
+ *     .semantic_class via observation_aliases + decision_rules
+ *     .biological_group + system_config.taxonomy_*), with exact canonical
+ *     matching and NO-FILTER degradation when the cache is unavailable.
+ *     Added loadTaxonomies() to the per-turn DB-SSOT preload chain.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
  * ROLE:      Master orchestrator — coordinates 9 specialized agents for
