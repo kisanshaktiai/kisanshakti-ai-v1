@@ -23,28 +23,13 @@
  *   response already framed). Makes graph→state handoff greppable.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FILE:      supabase/functions/ai-agriculture-chat/index.ts
- * ROLE:      HTTP entrypoint — routes every farmer chat request into the
- *            9-agent orchestrator.
- * AUTHORITY: ENTRYPOINT (single edge-function surface for ai-agriculture-chat)
- * STATUS:    ACTIVE
- * VERSION:   v7.0.1
- * LAST_PR:   PR-6 (header stamping, 2026-07-06)
- * STAMPED:   2026-07-06
- * NOTES:     Romanized language detection + app language enforcement.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// FILE:      supabase/functions/ai-agriculture-chat/index.ts
 
 // BUILD_TAG bumps force the edge runtime to pick up dependent module changes
 // (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
 const BUILD_TAG = 'ai-agri-chat::mandatory-graph-gate::2026-07-05T18:45Z';
 console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
 // [GRAPH_GATE_BUILD] — grep marker so an uploaded log can prove whether the
-// deployed bundle contains the mandatory-graph-gate patch (POST_EVIDENCE_FREEZE
-// → OBS_TO_HYP → HYP_TO_RULE → RULE_RESULT → BRAIN_TRACE sequence enforcement).
-// Absence of this line in a cold-start log = the fix never shipped.
 console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=true hasSequenceGuard=true hasOrchestratorExit=true');
 
 
@@ -131,10 +116,7 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // REQUEST DEDUPLICATION GUARD
-// Prevents double-tap / duplicate concurrent requests from the same farmer
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface InFlightRequest {
   promise: Promise<Response>;
@@ -157,13 +139,7 @@ function cleanExpiredInflight(): void {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PRODUCTION FIX: Rich Application Details Builder
-// Ensures ALL 50+ agronomic fields from decision_rules propagate through
-// recovery paths to the deterministic response builder.
-// Without this, extractRichRuleData() in llm-response-formatter.ts receives
-// empty fields and the deterministic builder produces skeleton responses.
-// ═══════════════════════════════════════════════════════════════════════════
 function buildRichApplicationDetails(source: any, productName: string | null, productType: string | null): Record<string, any> {
   return {
     // Identity
@@ -398,8 +374,6 @@ serve(async (req) => {
   }
 
   // PHASE F: Cold-start self-check (memoized — runs once per cold start).
-  // Failures are logged loudly but do NOT 5xx; orchestrator degrades to
-  // safe-mode clarification when degradeToSafeMode is set.
   try {
     const sb = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -466,19 +440,11 @@ serve(async (req) => {
       return await handleTrainingDataCollection(requestBody);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 5 SECURITY GUARD: JWT + tenant + farmer-spoof check (one call)
-    //   - Validates Bearer token via getUser()
-    //   - Asserts x-tenant-id / x-farmer-id are valid UUIDs
-    //   - Verifies farmer.tenant_id === x-tenant-id
-    //   - Verifies jwt.sub === x-farmer-id (service-role bypass for cron)
-    // ═══════════════════════════════════════════════════════════════════════════
     const guard = await guardTenantAccess(req);
     if (guard instanceof Response) return guard;
 
     // metadata.* overrides are still honored, but only after the guard has
-    // validated the *header* identity. If metadata disagrees, the override
-    // must still belong to the same authenticated farmer.
     const finalTenantId = metadata.tenantId || guard.tenantId;
     const finalFarmerId = metadata.farmerId || guard.farmerId;
 
@@ -500,9 +466,7 @@ serve(async (req) => {
     const supabase = guard.supabase;
     console.log('✅ [Security] Phase-5 guard passed for farmer:', finalFarmerId);
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // RATE LIMITING
-    // ═══════════════════════════════════════════════════════════════════════════
     const rateLimitKey = `${finalTenantId}:${finalFarmerId}`;
     const rateLimit = await checkRateLimit(rateLimitKey, 'ai-agriculture-chat', { maxRequests: 20, windowMs: 60000 });
     
@@ -516,10 +480,7 @@ serve(async (req) => {
       );
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // REQUEST DEDUPLICATION: Prevent double-tap duplicate processing
-    // If an identical request from the same farmer is already in-flight, reject it
-    // ═══════════════════════════════════════════════════════════════════════════
     cleanExpiredInflight();
     const lastMessage = messages.length > 0 ? (messages[messages.length - 1]?.content || '') : '';
     dedupeKey = getDedupeKey(finalFarmerId, lastMessage);
@@ -539,12 +500,7 @@ serve(async (req) => {
     // Mark this request as in-flight
     inFlightRequests.set(dedupeKey, { promise: Promise.resolve(new Response()), expiresAt: Date.now() + DEDUP_WINDOW_MS });
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // SUBSCRIPTION QUOTA — atomic 20-per-day check (IST-aware via DB function)
-    // Uses `check_farmer_quota('ai_chat', 1, commit:true)` which locks the
-    // usage row, validates the per-tenant plan limit, and increments. A 402
-    // response tells the client to render the upgrade banner.
-    // ═══════════════════════════════════════════════════════════════════════════
     try {
       const { data: quotaResult, error: quotaErr } = await supabase.rpc('check_farmer_quota', {
         _farmer: finalFarmerId,
@@ -575,17 +531,12 @@ serve(async (req) => {
       console.warn('⚠️ [Quota] guard threw, allowing request:', (e as Error).message);
     }
 
-    //
     // CRITICAL: Enforce sessionId ↔ landId binding to prevent cross-land contamination
-    // ═══════════════════════════════════════════════════════════════════════════
     let currentSessionId = sessionId;
     const requestedLandId = landId || null;
     
     if (currentSessionId) {
-      // ═══════════════════════════════════════════════════════════════════════════
       // P0-A CRITICAL: VALIDATE sessionId belongs to this landId
-      // If mismatch, REJECT the sessionId and find/create correct one
-      // ═══════════════════════════════════════════════════════════════════════════
       const { data: sessionCheck } = await supabase
         .from('ai_chat_sessions')
         .select('id, land_id, farmer_id, tenant_id')
@@ -661,9 +612,7 @@ serve(async (req) => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // FETCH SESSION STATE + CONVERSATION HISTORY - CRITICAL for context continuity
-    // ═══════════════════════════════════════════════════════════════════════════
     let sessionState: {
       decision_state?: string;
       last_pest?: string;
@@ -677,10 +626,6 @@ serve(async (req) => {
       // SYMBOLIC IDENTITY: per-index observation_code captured at clarification render time
       pending_clarification_observation_keys?: string[];
       // STRUCTURED SSOT: full option records preserving canonical observation_key
-      // alongside label/value. This is the authoritative source for resolving
-      // farmer selections back to symbolic observation codes — no heuristic
-      // label-to-key reconstruction. Legacy parallel arrays above are kept for
-      // backwards compatibility during rollout.
       pending_clarification_options_structured?: Array<{
         label: string;
         value: string;
@@ -699,12 +644,7 @@ serve(async (req) => {
         growth_stage?: string;
         days_since_sowing?: number;
       };
-      // ═══════════════════════════════════════════════════════════════════════════
       // PART 10: SESSION CONTINUITY — problems_discussed tracking
-      // Maintains a list of problems discussed in this session for:
-      // 1. Repeat-concern detection (same query within 30 min → escalate)
-      // 2. Causal chaining (poor growth after stem holes → likely consequence of borer)
-      // ═══════════════════════════════════════════════════════════════════════════
       problems_discussed?: Array<{
         problem_code: string;      // e.g., 'STEM_DAMAGE', 'GROWTH_ANOMALY', 'PEST_BORER'
         turn_number: number;
@@ -727,17 +667,11 @@ serve(async (req) => {
         .eq('id', currentSessionId)
         .single();
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // P0-A ENFORCEMENT: Session is ALREADY validated to match this land
-      // Safe to load session state since P0-A rejected mismatched sessions
-      // ═══════════════════════════════════════════════════════════════════════════
       if (existingSession?.metadata?.decision_tracking) {
         sessionState = existingSession.metadata.decision_tracking;
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL FIX: Session Isolation - Clear pending options for GENERAL queries
-        // Prevents land-specific clarification options from leaking to General tab
-        // ═══════════════════════════════════════════════════════════════════════════
         const isGeneralSession = !requestedLandId;
         const sessionHasLand = existingSession.land_id !== null;
         
@@ -758,11 +692,7 @@ serve(async (req) => {
           }
         }
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL FIX: Auto-reset stuck session state
-        // If decision_state is 'awaiting_clarification' but no pending options exist,
-        // the session is STUCK from a previous turn. Reset to 'idle' to unblock.
-        // ═══════════════════════════════════════════════════════════════════════════
         const pendingCount = sessionState?.pending_clarification_options?.length || 0;
         if (sessionState?.decision_state === 'awaiting_clarification' && pendingCount === 0) {
           console.log(`🔓 [Session] AUTO-RESET: decision_state was 'awaiting_clarification' with 0 pending options → resetting to 'idle'`);
@@ -804,9 +734,7 @@ serve(async (req) => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // EXTRACT USER MESSAGE - WITH SAFETY GUARD
-    // ═══════════════════════════════════════════════════════════════════════════
     const lastUserMessage = messages[messages.length - 1];
     const rawMessageContent = typeof lastUserMessage === 'string' 
       ? lastUserMessage 
@@ -828,18 +756,11 @@ serve(async (req) => {
 
 
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // LANGUAGE DETECTION & CONSISTENCY CHECK
-    // Detect user's language and prepare for translation pipeline
-    // ═══════════════════════════════════════════════════════════════════════════
-    // FIX 8: Canonical language detection — single source of truth
-    // App language from client is the canonical language. Script detection only disambiguates.
     const canonicalLanguage = detectLanguage(userMessageContent, language);
     const detectedLanguage = canonicalLanguage;
 
     // PHASE Y HARD GUARANTEE: initialize trace collector before any symbolic
-    // short-circuit can return. The orchestrator will reset/re-seed this for
-    // the normal path, but proactive/early paths need their own collector.
     try {
       const earlyRuntimeTrace = resetRuntimeTraceCollector({
         trace_id: traceId,
@@ -858,9 +779,6 @@ serve(async (req) => {
     }
     
     // BUG-4 FIX: DEPRECATED - normalizeToEnglish only had ~23 hardcoded mappings,
-    // creating half-translated hybrid strings. LLM Semantic Extractor (Stage 1.5) 
-    // handles all languages natively. Pass original text for DB logging/training.
-    // const preprocessedContent = normalizeToEnglish(userMessageContent);
     const preprocessedContent = userMessageContent;
     
     console.log(`🌐 [${traceId}] Language Pipeline:`, {
@@ -870,9 +788,7 @@ serve(async (req) => {
       output_language_target: detectedLanguage
     });
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // SESSION CONTEXT INJECTION - Add previous recommendation context
-    // ═══════════════════════════════════════════════════════════════════════════
     let contextPrefix = '';
     if (sessionState?.pending_user_action && sessionState?.decision_state === 'recommendations_given') {
       // Build context about previous recommendations
@@ -900,19 +816,7 @@ serve(async (req) => {
       messagePreview: safePreview(userMessageContent)
     });
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // PROACTIVE-ALERT NARRATION SHORT-CIRCUIT (v1)
-    // ─────────────────────────────────────────────────────────────────────────
-    // When the user opened the chat from a proactive alert AND this is their
-    // first message in the session, the alert payload is attached to
-    // `metadata.proactiveAlert`. The Decision-Brain has ALREADY produced the
-    // authoritative agronomic answer (action_text_<lang>, decision_reasoning,
-    // trigger_data). We narrate that answer directly — LLM is restricted to
-    // translation/simplification. This avoids the orchestrator re-diagnosing
-    // from a vague seeded question and falling back to generic monitoring.
-    //
-    // Honors the SSOT invariant: 100% of agronomic advice comes from the DB.
-    // ═══════════════════════════════════════════════════════════════════════════
     const proactiveAlert = metadata?.proactiveAlert;
     const isFirstTurnFromAlert =
       !!proactiveAlert &&
@@ -1109,9 +1013,7 @@ serve(async (req) => {
 
 
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
-    // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();
     currentSessionIdForError = currentSessionId;
     
@@ -1157,13 +1059,7 @@ serve(async (req) => {
 
     console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // OBSERVATION_REQUIRED CONTRACT ENFORCER
-    // Fail-closed boundary: any response that intends to ask the farmer for
-    // symptom evidence (or that has no recommendations to ship) MUST reach the
-    // UI as a CLARIFICATION_QUESTION with a non-empty, SSOT-loaded option list.
-    // See runtime/observation-selector-contract.ts for the invariants.
-    // ═══════════════════════════════════════════════════════════════════════════
     let _observationContract: { promoted: boolean; hydrated: boolean; option_count: number; observation_required: boolean; reason: string | null } =
       { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: null };
     try {
@@ -1214,31 +1110,13 @@ serve(async (req) => {
       console.warn(`[OBSERVATION_CONTRACT] non-fatal: ${(contractErr as Error).message}`);
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // CLARIFICATION LOOP GUARD (2026-07-27)
-    // A clarification whose option key set is a SUBSET of everything we have
-    // already asked in this session is a loop, not a question. Same for a
-    // session that has burned its DB-configured clarification round budget.
-    // In both cases we stop asking and escalate instead of re-rendering the
-    // identical card (the `bb9c239e` transplant-shock loop).
-    // ═══════════════════════════════════════════════════════════════════
     let _clarificationRoundCounter = Number((sessionState as any)?.clarification_round_counter ?? 0);
     let _priorAskedObservationKeys: string[] = Array.isArray((sessionState as any)?.asked_observation_keys)
       ? ((sessionState as any).asked_observation_keys as string[]).map((k) => String(k).trim().toLowerCase()).filter(Boolean)
       : [];
 
     // FIX E2 (2026-07-28): Fresh-query state reset.
-    // The loop guard reads _clarificationRoundCounter and _priorAskedObservationKeys
-    // from session state. Both persist across dialogs. On a genuinely fresh
-    // query — no pending clarification options AND the intent is a diagnostic
-    // (not CLARIFICATION_REPLY / OPTION_SELECTED) AND no option tap — the
-    // prior asked-set is STALE (from a completed or abandoned prior dialog).
-    // Treating them as "already asked in this dialog" produces false-positive
-    // loop escalations. Reset both counters BEFORE the B3/B4 checks so a new
-    // dialog starts at round=0 with an empty asked set.
-    // This does NOT weaken loop protection for legitimate multi-turn
-    // clarifications: within a single clarification chain pending options or
-    // a tap/reply intent are always present, so no reset occurs there.
     {
       const _loadedPendingOptions =
         ((sessionState as any)?.pending_clarification_options?.length ?? 0) ||
@@ -1270,8 +1148,6 @@ serve(async (req) => {
         _clarificationRoundCounter = 0;
         _priorAskedObservationKeys = [];
         // Do NOT clear pending_clarification_observation_keys itself — that
-        // persists for the other caller (hypothesis-clarification-builder
-        // pending_obs_keys) which handles its own semantics.
       }
     }
     try {
@@ -1289,19 +1165,6 @@ serve(async (req) => {
         const _budgetExhausted = _clarificationRoundCounter >= _maxRounds;
 
         // FIX B3 (2026-07-28): Round-0 override for repeat_subset false-positive.
-        // `_priorAskedObservationKeys` is session-persisted and can carry keys
-        // across dialogs. At round=0 (fresh dialog) those keys are NOT
-        // "already asked in this dialog" — treating them as repeats discards
-        // the very first option set the graph produces and sends the farmer
-        // straight to DIAGNOSTIC_ESCALATION on turn 1.
-        // Budget exhaustion (round >= max) and round >= 1 repeat detection are
-        // untouched. State is never mutated here — the fix is at the check site.
-        // FIX B4 (2026-07-28): Net-new emission override.
-        // "outgoing ⊆ asked" was a false positive whenever one or more outgoing
-        // codes were GENUINELY NEW. Escalating on that basis discards real
-        // discriminators the hypothesis graph produced to narrow the winner.
-        // Correct rule: escalate only when the NET-NEW set is empty.
-        // Budget exhaustion (round >= max_rounds) untouched. No state mutation.
         const _netNew = (Array.isArray(_outKeys) ? _outKeys : [])
           .map((k: any) => String(k ?? '').trim().toLowerCase())
           .filter((k: string) => !!k && !_askedSet.has(k));
@@ -1351,12 +1214,7 @@ serve(async (req) => {
     }
 
 
-    // ═══════════════════════════════════════════════════════════════════
     // [ORCHESTRATOR_EXIT] audit + GRAPH_PIPELINE_BYPASSED invariant.
-    // Fires on EVERY response return path (early clarifications included).
-    // Guarantees that a diagnostic intent with real observations can never
-    // silently exit without the hypothesis graph having run.
-    // ═══════════════════════════════════════════════════════════════════
     try {
       const _orchAny: any = orch as any;
       const _graphExecuted: boolean = _orchAny?._graphExecuted === true;
@@ -1390,8 +1248,6 @@ serve(async (req) => {
       );
 
       // FIX 2 (GRAPH_HANDOFF_CHECK) — snapshot vs canonical-state vs exit must
-      // agree. Any drift is a contract violation and is logged loudly; we do
-      // NOT throw here (response is already framed), but the log is greppable.
       try {
         const _snap = _orchAny?._graphSnapshot;
         const _snapHyp: number = Array.isArray(_snap?.hypotheses) ? _snap.hypotheses.length : -1;
@@ -1414,11 +1270,6 @@ serve(async (req) => {
         console.warn(`[GRAPH_HANDOFF_CHECK] non-fatal: ${(hcErr as Error).message}`);
       }
       // NOTE: These invariants previously `throw`-ed, converting silent
-      // pipeline-bypass patterns into hard 500s. In production that masked
-      // the real underlying exception (which has already been handled by
-      // `handleOrchestrationError` and turned into a valid DECISION_PROVIDED
-      // fallback response). Downgrade to structured warnings so the response
-      // is still delivered while the anomaly remains greppable in logs.
       if (_isDiagnosticIntent && _evidenceFrozen && !_graphExecuted) {
         console.error(
           `[GRAPH_PIPELINE_BYPASSED_WARN] exit_path=${_path} intent=${_intentUpper} ` +
@@ -1441,12 +1292,7 @@ serve(async (req) => {
       console.warn(`[ORCHESTRATOR_EXIT] audit non-fatal: ${(auditErr as Error).message}`);
     }
 
-    // ───────────────────────────────────────────────────────────────────
     // PHASE Y SAFETY NET: ensure a RuntimeTrace row lands in ai_decision_log
-    // even on early-return paths (OPTION_SELECTED, sanitize-blocked, etc.)
-    // that bypass auditLogger.completeTurn(). `persistDecisionLog` is
-    // idempotent — if completeTurn already wrote the row, this is a no-op.
-    // ───────────────────────────────────────────────────────────────────
     await persistRuntimeTraceSafetyNet({
       supabase: (typeof (orch as any)?.getSupabase === 'function' ? (orch as any).getSupabase() : null) ?? supabase,
       traceLabel: 'ORCHESTRATOR_RESPONSE',
@@ -1465,14 +1311,10 @@ serve(async (req) => {
 
 
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 3: STORE MESSAGES FOR TRAINING & ANALYSIS
-    // ═══════════════════════════════════════════════════════════════════════════
     const responseTime = Date.now() - startTime;
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 3A: COMPREHENSIVE FILTERING AUDIT WITH TRANSPARENT LOGGING
-    // ═══════════════════════════════════════════════════════════════════════════
     
     // STEP 1: Log RAW recommendations from decision graph BEFORE any filtering
     console.log(`\n🔬 [${traceId}] ═══ FILTERING AUDIT START ═══`);
@@ -1501,15 +1343,7 @@ serve(async (req) => {
         });
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PRODUCTION HARDENING: PRIMARY DECISION INVARIANT
-      // A valid decision MUST have: rule_id AND action_type
-      // RECOVERY PRIORITY: 
-      //   1. layered_rule_result.primary_decision (NEW - from LayeredRuleEvaluator)
-      //   2. primary_matched_response (LEGACY)
-      //   3. matched_responses array
-      //   4. SYSTEM_FALLBACK
-      // ═══════════════════════════════════════════════════════════════════════════
       if (rawDecisionOutput.status === 'SUCCESS' || rawDecisionOutput.status === 'PARTIAL') {
         const primaryDecision = rawDecisionOutput.primary_decision;
         const hasValidActionType = !!primaryDecision?.action_type;
@@ -1522,16 +1356,10 @@ serve(async (req) => {
           console.error(`   rule_id: ${primaryDecision?.rule_id || primaryDecision?.application_details?.rule_id || 'MISSING'}`);
           console.error(`   source: index.ts`);
           
-          // ═══════════════════════════════════════════════════════════════════════════
           // PRIORITY 1: Check for layered_rule_result.primary_decision (NEW CONTRACT)
-          // This is built by layered-rule-evaluator.ts from eligible matched_responses
-          // ═══════════════════════════════════════════════════════════════════════════
           const layeredPrimaryDecision = rawDecisionOutput.layered_rule_result?.primary_decision;
           
-          // ═══════════════════════════════════════════════════════════════
           // BUG-1/BUG-6 FIX: Safety gate rules must NEVER be selected as
-          // primary decision. They belong in warnings/blocked_actions only.
-          // ═══════════════════════════════════════════════════════════════
           const SAFETY_GATE_RULE_PATTERN = /^GLOBAL_SAFETY/i;
           const isSafetyGateRule = (ruleId?: string) => 
             !!(ruleId && SAFETY_GATE_RULE_PATTERN.test(ruleId));
@@ -1629,8 +1457,6 @@ serve(async (req) => {
                   : [];
               
               // PRODUCTION FIX: Align eligibility with layered-rule-evaluator.ts
-              // Accept action_text OR i18n_key OR reason_text OR knowledge_text
-              // BUG-6 FIX: Also filter out GLOBAL_SAFETY rules from eligible responses
               const eligibleResponses = matchedResponses.filter((r: any) => 
                 r.rule_id && r.action_type && (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text) && !isSafetyGateRule(r.rule_id)
               );
@@ -1788,10 +1614,7 @@ serve(async (req) => {
       (!actions_returned || actions_returned.length === 0) &&
       (actions_filtered_out && actions_filtered_out.length > 0);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 5: LLM RESPONSE FORMATTING & DELIVERY
-    // Takes rule engine output and formats it into natural, empathetic advice
-    // ═══════════════════════════════════════════════════════════════════════════
     console.log(`\n📝 [${traceId}] ═══ PHASE 5: LLM RESPONSE FORMATTING ═══`);
     
     let responseContent: string;
@@ -1803,10 +1626,7 @@ serve(async (req) => {
     const remainingTime = Math.max(25000 - timeSpentSoFar, 5000); // At least 5s for formatting
     console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Check if Static Data Gate already handled this query
-    // Static Gate responses should NOT go through LLM formatting
-    // ═══════════════════════════════════════════════════════════════════════════
     const isStaticGateResponse = 
       orchestratorResponse.decision_output?.metadata?.template_type === 'STATIC_DIRECT' ||
       orchestratorResponse.communication?.metadata?.source === 'STATIC_DATA_GATE';
@@ -1824,13 +1644,7 @@ serve(async (req) => {
     } else if (
       orchestratorResponse.type === 'DECISION_PROVIDED' &&
       orchestratorResponse.decision_output &&
-      // ═══════════════════════════════════════════════════════════════════
       // T1 — DECISION_PROVIDED HARD INVARIANT (SAFETY CRITICAL)
-      // A DECISION_PROVIDED response MUST be backed by at least one DB rule
-      // (winner rule id, applied rules, or surviving DB actions). If it is
-      // not, the LLM formatter is NEVER invoked — an unbacked decision is
-      // exactly how a fabricated dosage reaches the farmer.
-      // ═══════════════════════════════════════════════════════════════════
       !(() => {
         const _do: any = orchestratorResponse.decision_output;
         const backed =
@@ -1848,10 +1662,7 @@ serve(async (req) => {
         return !backed;
       })()
     ) {
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-14: Check for Stage Fallback Response first
-      // If orchestrator returned a stage-aware fallback, use it directly
-      // ═══════════════════════════════════════════════════════════════════════════
       const decisionOutput = orchestratorResponse.decision_output as any;
       if (decisionOutput.status === 'STAGE_FALLBACK' && decisionOutput.stage_fallback_message) {
         console.log(`   🌱 [STAGE_FALLBACK] Using stage-aware fallback response`);
@@ -1863,10 +1674,6 @@ serve(async (req) => {
       
       try {
         // FIX: Build land context for LLM with fallback chain
-        // Priority 1: From dataAudit (normal path)
-        // Priority 2: From decision_output metadata lockedCropContext (OPTION_SELECTED path)
-        // Priority 3: From metadata lockedCropContext (fallback)
-        // FIX 3: Complete lockedCropContext propagation chain — 4-priority fallback
         const lockedCropCtx = orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
                               orchestratorResponse.metadata?.lockedCropContext;
         
@@ -1903,8 +1710,6 @@ serve(async (req) => {
           : lockedCropCtx ? 'lockedCropContext'
           : sessionState?.last_crop ? 'sessionState' : 'NONE';
         // Phase H — SSOT_TRACE: surface every source that competed for crop/stage
-        // and which authority won. dataAudit (land) is the SSOT; the others are
-        // only used when land is unavailable.
         console.log(
           `[SSOT_TRACE][${traceId}] landContext_source=${landContextSource} ` +
             `dataAudit_crop=${orchestratorResponse.dataAudit?.land?.current_crop ?? 'NULL'} ` +
@@ -1915,10 +1720,7 @@ serve(async (req) => {
           console.log(`      Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, Days: ${landContext.days_since_sowing}`);
         }
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 11.1: CONTEXT AUTHORITY RECONCILIATION
-        // Ensures lockedCropContext overrides canonical defaults before rendering
-        // ═══════════════════════════════════════════════════════════════════════════
         const renderContext = resolveFinalRenderContext(
           landContext,
           lockedCropCtx as CropContextAuthority | null | undefined,
@@ -1941,15 +1743,9 @@ serve(async (req) => {
         const finalGrowthStage = renderContext.growth_stage;
         const finalDaysSinceSowing = renderContext.days_since_sowing;
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 11 + P1-4: UNIFIED DECISION GATE - Single point of treatment validation
-        // Replaces dual prescription-gate and decision-readiness-gate
-        // ═══════════════════════════════════════════════════════════════════════════
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL FIX: Extract symptom_keys from SSOT (decision_output) first
-        // The orchestrator stores symptom info in decision_output, not just metadata
-        // ═══════════════════════════════════════════════════════════════════════════
         const decisionOutput = orchestratorResponse.decision_output as Record<string, any> || {};
         const symptomKeysFromDecision = decisionOutput.symptom_keys || 
                                         decisionOutput.observation_keys ||
@@ -1958,9 +1754,7 @@ serve(async (req) => {
         const symptomKeysFromMetadata = orchestratorResponse.metadata?.symptomKeys || [];
         const mergedSymptomKeys = [...new Set([...symptomKeysFromDecision, ...symptomKeysFromMetadata])];
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // CONFIDENCE BRIDGE: Extract symbolic confidence as SSOT for decision_confidence
-        // ═══════════════════════════════════════════════════════════════════════════
         const rawSymbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
           ?.primary_decision?.weighted_confidence
           ?? orchestratorResponse.decision_output?.layered_rule_result
@@ -2017,10 +1811,6 @@ serve(async (req) => {
           const rawGateResult = evaluateUnifiedGate(unifiedGateInput);
           
           // Apply suppression guard to prevent silent recommendation drops
-          // ═══════════════════════════════════════════════════════════════════════════
-          // CRITICAL FIX: Use decision_output as SSOT, not metadata
-          // decision_output contains the actual rules/actions from symbolic brain
-          // ═══════════════════════════════════════════════════════════════════════════
           const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
           const symbolicDecisionForGuard = {
             decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
@@ -2052,14 +1842,7 @@ serve(async (req) => {
           console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
           
           if (unifiedGateResult.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION) {
-            // ─────────────────────────────────────────────────────────────
             // Q3 — SSOT propagation invariant. Before committing to an
-            // escalation, attempt the DB clarification rescue (hypothesis
-            // graph → intent-group observations) with the full Land
-            // SSOT lock. Escalation is last resort only.
-            // ─────────────────────────────────────────────────────────────
-            // R4a — SessionSSOT is the authoritative source for the rescue
-            // context; the loose per-field locals are only fallbacks now.
             const _q3Ssot = getSessionSSOT(orchestratorResponse, orch);
             const _intentCodeResolved =
               _q3Ssot?.intent_code ??
@@ -2128,10 +1911,6 @@ serve(async (req) => {
             );
             
             // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend,
-            // UNLESS the observation-selector contract already promoted this
-            // turn into a CLARIFICATION_QUESTION with DB-sourced options.
-            // Overwriting that would drop the farmer's symptom picker and
-            // re-introduce the empty-escalation regression.
             if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
               orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
               orchestratorResponse.metadata = {
@@ -2165,13 +1944,7 @@ serve(async (req) => {
             console.log(`   ✅ Authority override ensured correct crop context in fallback response`);
           }
 
-          // ─────────────────────────────────────────────────────────────────
           // Second observation-selector contract pass — the unified gate may
-          // have promoted the response to DIAGNOSTIC_ESCALATION or a young-
-          // crop OBSERVATION response after the first enforcer ran. Re-run
-          // it so an empty escalation gets converted into a farmer-facing
-          // CLARIFICATION_QUESTION with hypothesis-graph-sourced options.
-          // ─────────────────────────────────────────────────────────────────
           try {
             const _orchAnyForCtx2: any = orch as any;
             const _graphScopeBlockedMeta2 = _orchAnyForCtx2?._graphScopeBlocked ?? null;
@@ -2229,9 +2002,7 @@ serve(async (req) => {
             }
           }
         } else {
-          // ═══════════════════════════════════════════════════════════════════════════
           // PRESCRIPTION GATE PASSED - Continue with LLM formatting
-          // ═══════════════════════════════════════════════════════════════════════════
           
           // SANITY CHECK: Prevent impossible stage calculations before LLM formatting
           // Uses reconciled values from renderContext
@@ -2306,10 +2077,7 @@ serve(async (req) => {
           console.log(`   ✅ LLM formatting complete: ${llmFormatterOutput.source} (${llmFormatterOutput.processing_time_ms}ms)`);
           console.log(`   📊 Sections: ${llmFormatterOutput.sections_included.join(', ')}`);
           
-          // ═══════════════════════════════════════════════════════════════════════════
           // SOURCE VALIDATION GATE - Final check before response delivery
-          // Ensures LLM didn't add products/dosages not in symbolic output
-          // ═══════════════════════════════════════════════════════════════════════════
           if (llmFormatterOutput.validation_passed === false) {
             console.error(`🚫 [SOURCE VALIDATION] LLM output validation failed!`);
             console.error(`   Violations: ${llmFormatterOutput.validation_violations?.join(', ')}`);
@@ -2349,14 +2117,7 @@ serve(async (req) => {
       }
       } // End of STAGE_FALLBACK else block
     } else {
-      // ═══════════════════════════════════════════════════════════════════════
       // R4b · Layer 14 — DB-first fallback for empty CLARIFICATION_QUESTION.
-      // Contract: no raw i18n keys ever reach the frontend. If the pipeline
-      // finished with CLARIFICATION_QUESTION but zero comm_keys / zero options,
-      // query DB directly for fallback questions + intro text, populate the
-      // response, and log the recovery. LLM is NOT invoked here; all text is
-      // DB-sourced pre-translated content.
-      // ═══════════════════════════════════════════════════════════════════════
       try {
         const response: any = orchestratorResponse as any;
         const _l14Ssot = getSessionSSOT(response, orch);
@@ -2439,11 +2200,7 @@ serve(async (req) => {
       responseContent = await forceTranslateResponse(responseContent, detectedLanguage);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
-    // If the symbolic engine returned zero products but the LLM output contains
-    // dosage patterns, strip the unauthorized content and log NARRATION_BREACH.
-    // ═══════════════════════════════════════════════════════════════════════════
     const symbolicProducts = actions_returned?.filter((a: any) => a.product_name && a.product_name !== 'N/A') || [];
     if (symbolicProducts.length === 0 && responseContent) {
       const dosagePattern = /\d+\s*(ml|g|kg|l|gm|gram|liter|litre|मिली|ग्रॅम|किलो|लिटर)\b/gi;
@@ -2458,11 +2215,7 @@ serve(async (req) => {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATION GATE: Prevent silent failures before saving response
-    // CRITICAL FIX: SKIP validation for non-decision response types
-    // Clarification and photo requests should NOT be validated as treatment outputs
-    // ═══════════════════════════════════════════════════════════════════════════
     const decision_brain_source = true;
     
     // Determine if this is a decision response that requires validation
@@ -2503,14 +2256,7 @@ serve(async (req) => {
     console.log(`   LLM Model Used: ${aiModelUsed || 'template'}`);
     console.log(`   Validation Passed: ${validationResult.passed}`);
 
-    // ═══════════════════════════════════════════════════════════════════════
     // T2 — CHEMICAL / DOSAGE PROVENANCE GATE (SAFETY CRITICAL)
-    // Every dosage token rendered to the farmer MUST appear verbatim in a
-    // DB-sourced action string. Any dosage that exists only in the narration
-    // is an LLM fabrication (root cause of the 23× Chlorantraniliprole
-    // overdose) and forces the response back to the DB-built template.
-    // No agronomy literals here — pure numeric-token provenance matching.
-    // ═══════════════════════════════════════════════════════════════════════
     try {
       const _dbCorpus = JSON.stringify(actions_returned ?? [])
         .concat(JSON.stringify(orchestratorResponse.decision_output ?? {}))
@@ -2666,11 +2412,7 @@ serve(async (req) => {
       // Continue - don't fail the request for storage issues
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // TRANSFORM ORCHESTRATOR RESPONSE TO LEGACY FORMAT
-    // CRITICAL FIX: Use responseContent (from LLM formatter) instead of re-generating
-    // This ensures what we save to DB is EXACTLY what we return to user
-    // ═══════════════════════════════════════════════════════════════════════════
     const responsePayload = transformOrchestratorResponseWithContent(
       orchestratorResponse,
       responseContent, // ← CRITICAL: Use the LLM-formatted content we already generated
@@ -2682,10 +2424,7 @@ serve(async (req) => {
       aiModelUsed
     );
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // SESSION-LEVEL DECISION TRACKING
-    // Updates session metadata after every decision brain execution
-    // ═══════════════════════════════════════════════════════════════════════════
     const recommendationsProvided = orchestratorResponse.type === 'DECISION_PROVIDED' && 
       (actions_returned && actions_returned.length > 0);
     
@@ -2733,11 +2472,6 @@ serve(async (req) => {
     const clarificationOptions = rawOptions.map((o: any) => o?.label).filter(Boolean) ||
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
     // SYMBOLIC IDENTITY: persist observation_key per option index so the next
-    // turn's OPTION_SELECTED can use the canonical code directly without
-    // heuristic label-to-code reconstruction.
-    // `photo_upload` is a UI affordance, never diagnostic evidence — it must
-    // not enter the pending-observation set (otherwise it gets treated as an
-    // asked symptom and skews the next turn's filtering).
     const clarificationObservationKeys: string[] =
       rawOptions
         .map((o: any) => (o?.observation_key || ''))
@@ -2755,8 +2489,6 @@ serve(async (req) => {
     }
 
     // STRUCTURED SSOT — full per-option record. This is what the next turn's
-    // option-selection resolver MUST consult; the parallel arrays above are
-    // kept only for backwards compatibility.
     const clarificationOptionsStructured = rawOptions
       .map((o: any) => ({
         label: String(o?.label ?? ''),
@@ -2772,11 +2504,7 @@ serve(async (req) => {
       }))
       .filter((o) => o.label || o.observation_key);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
-    // If orchestrator returns session_state_update, use it AUTHORITATIVELY
-    // This prevents infinite clarification loops
-    // ═══════════════════════════════════════════════════════════════════════════
     const sessionStateUpdateFromOrchestrator = orchestratorResponse.session_state_update ||
       orchestratorResponse.metadata?.session_state_update ||
       orchestratorResponse.decision_output?.metadata?.session_state_update;
@@ -2785,13 +2513,6 @@ serve(async (req) => {
       orchestratorResponse.decision_output?.metadata?.clarification_resolved === true;
     
     // P0-3 FIX: Extract lockedCropContext for session persistence.
-    // CANONICAL CONTEXT PRESERVATION (Phase fix): for CLARIFICATION_QUESTION turns,
-    // the orchestrator response often omits land.found/dataAudit because it short-
-    // circuits on the clarification path. Previously we then fell through to `null`
-    // and wiped the prior session's lockedCropContext, forcing the next turn to
-    // re-detect crop/stage/DAS from scratch. Instead, fall back to the existing
-    // sessionState.lockedCropContext so the canonical (crop, stage, DAS) survives
-    // every clarification round-trip untouched.
     const candidateLockedCropContextFromResponse =
       orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
       orchestratorResponse.metadata?.lockedCropContext ||
@@ -2804,8 +2525,6 @@ serve(async (req) => {
     const priorLockedCropContext = sessionState?.lockedCropContext || null;
 
     // Prefer response-provided context only when it actually carries a crop_name;
-    // otherwise preserve the prior canonical context. Never downgrade to null
-    // mid-clarification.
     const lockedCropContextForSession =
       (candidateLockedCropContextFromResponse && candidateLockedCropContextFromResponse.crop_name)
         ? {
@@ -2823,10 +2542,7 @@ serve(async (req) => {
     console.log(`   preserved_from_session:  ${!candidateLockedCropContextFromResponse?.crop_name && !!priorLockedCropContext}`);
     console.log(`   ═══════════════════════════════════════════`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // DECISION STATE DETERMINATION - Session state is AUTHORITATIVE
-    // Priority: session_state_update from orchestrator > isClarificationResponse > recommendationsProvided
-    // ═══════════════════════════════════════════════════════════════════════════
     let computedDecisionState: string;
     
     if (sessionStateUpdateFromOrchestrator?.decision_state) {
@@ -2845,11 +2561,7 @@ serve(async (req) => {
       computedDecisionState = 'no_action_needed';
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT CHECK: Clarification answered but still awaiting_clarification = BUG
-    // `option_selected=true` may only coexist with `awaiting_clarification` when
-    // the outgoing turn asks a genuinely NEW question (different option set).
-    // ═══════════════════════════════════════════════════════════════════════════
     let repeatClarificationBlocked = false;
     if (clarificationAnswered && computedDecisionState === 'awaiting_clarification') {
       const priorAskedKeys = new Set<string>(
@@ -2871,14 +2583,6 @@ serve(async (req) => {
 
 
     // FIX (repeated-option loop invariant): if the OUTGOING response is a
-    // CLARIFICATION_QUESTION with pending options, decision_state MUST be
-    // 'awaiting_clarification'. This handles OBSERVATION_CONTRACT_POSTGATE
-    // promotion of an empty DECISION_PROVIDED, where the orchestrator's
-    // stale session_state_update would otherwise leave
-    // decision_state='decision_in_progress' and the next turn would not
-    // recognise the farmer's tap as a clarification reply.
-    // Skipped when the outgoing card is a verbatim repeat of the card the
-    // farmer just answered — that is the loop we are closing.
     if (
       isClarificationResponse &&
       clarificationOptions.length > 0 &&
@@ -2897,9 +2601,7 @@ serve(async (req) => {
     console.log(`   unified_gate_mode: ${computedDecisionState === 'awaiting_clarification' ? 'BLOCKED (awaiting)' : 'ALLOW'}`);
     console.log(`   ═══════════════════════════════════════════`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PART 10: SESSION CONTINUITY — Update problems_discussed list
-    // ═══════════════════════════════════════════════════════════════════════════
     const currentProblems = sessionState?.problems_discussed || [];
     const currentTurn = (sessionState?.turn_count || 0) + 1;
     const now = new Date().toISOString();
@@ -2967,8 +2669,6 @@ serve(async (req) => {
     ].slice(-10); // Keep last 10 problems
 
     // ── CUMULATIVE SYMBOLIC EVIDENCE LEDGERS (2026-07-27) ──────────────────
-    // Without these, every clarification turn loses the farmer's prior
-    // selections and the builder re-offers the same options forever.
     const _turnConfirmedKeys: string[] = Array.isArray((orch as any)?._lastRealObservations)
       ? ((orch as any)._lastRealObservations as any[]).map((o) => String(o ?? '').trim().toLowerCase()).filter(Boolean)
       : [];
@@ -3000,13 +2700,6 @@ serve(async (req) => {
       last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
       timestamp: now,
       // CRITICAL FIX: Clear pending options when clarification is answered
-      // FIX (repeated-option loop root cause): persist whatever the OUTGOING
-      // response actually carries. clarificationAnswered describes the
-      // INCOMING farmer message; it must not gate what we save for the next
-      // turn. When rules return empty and OBSERVATION_CONTRACT_POSTGATE
-      // promotes the response to a NEW CLARIFICATION_QUESTION, the previous
-      // condition saved [] and the next turn treated the farmer's chip tap
-      // as a fresh query — producing an identical-option loop.
       pending_clarification_options: (isClarificationResponse && clarificationOptions.length > 0) ? clarificationOptions : [],
       pending_clarification_observation_keys: (isClarificationResponse && clarificationObservationKeys.length > 0) ? clarificationObservationKeys : [],
       pending_clarification_options_structured: (isClarificationResponse && clarificationOptionsStructured.length > 0) ? clarificationOptionsStructured : [],
@@ -3101,9 +2794,6 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // GRAPH_PIPELINE_BYPASSED is an internal audit/safety invariant, not a
-    // client transport failure. Returning 500 makes Supabase JS throw and the
-    // chat screen goes blank before the safe fallback can render. Keep the
-    // anomaly greppable in logs, but return a structured 200 response.
     if (
       errorMessage.includes('GRAPH_PIPELINE_BYPASSED') ||
       errorMessage.includes('GRAPH_ORDER_ERROR') ||
@@ -3150,29 +2840,15 @@ serve(async (req) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize message content to English for NLU processing
- * Maps common agricultural terms from regional languages to English
- */
-/**
- * @deprecated REMOVED — normalizeToEnglish had only 23 hardcoded mappings,
- * creating half-translated hybrid strings. LLM Semantic Extractor handles
- * all languages natively. Kept as no-op for any stale call sites.
- */
+// Normalize message content to English for NLU processing
+// @deprecated REMOVED — normalizeToEnglish had only 23 hardcoded mappings,
 function normalizeToEnglish(content: string): string {
   return content;
 }
 
-/**
- * Verify if response content matches target language.
- * CRITICAL FIX: Old logic only checked if ANY script char existed (regex.test).
- * This passed for mixed English/Marathi responses like "Hello farmer! 🌾 शुभेच्छा".
- * New logic checks that the response has SUFFICIENT target-script content (>30% of text).
- */
+// Verify if response content matches target language.
 function verifyLanguageConsistency(content: string, targetLanguage: string): boolean {
   if (targetLanguage === 'en') {
     const asciiRatio = (content.match(/[\x00-\x7F]/g) || []).length / content.length;
@@ -3201,17 +2877,8 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
   return true;
 }
 
-/**
- * Force translate response to target language.
- * 
- * CRITICAL FIX: Uses comprehensive section-header mapping + LLM fallback.
- * The old version only had 7 phrases and was useless.
- */
-/**
- * Force-translate response to target language using LLM.
- * REFACTORED: Removed 70+ hardcoded English→Marathi/Hindi string mappings.
- * Now uses LLM-only translation when English density > 30%, supporting ALL languages.
- */
+// Force translate response to target language.
+// Force-translate response to target language using LLM.
 async function forceTranslateResponse(content: string, targetLang: string): Promise<string> {
   if (targetLang === 'en') return content;
 
@@ -3309,11 +2976,7 @@ ${content}`;
   return content;
 }
 
-/**
- * Ensure primary_decision contains the SSOT rich texts from decision_rules.
- * This prevents "missing reason/knowledge/action" when some pipeline paths
- * populate primary_decision but omit application_details fields.
- */
+// Ensure primary_decision contains the SSOT rich texts from decision_rules.
 function hydrateDecisionOutputRichText(decisionOutput: any): void {
   if (!decisionOutput?.primary_decision) return;
 
@@ -3342,19 +3005,14 @@ function hydrateDecisionOutputRichText(decisionOutput: any): void {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE VALIDATION GATE - Prevents silent failures
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface ValidationResult {
   passed: boolean;
   errors: string[];
 }
 
-/**
- * Validate response before saving to database
- * Ensures decision brain output is properly reflected in user response
- */
+// Validate response before saving to database
 function validateResponseBeforeSave(params: {
   decision_brain_source: boolean;
   actions_returned: any[] | null;
@@ -3433,10 +3091,7 @@ function validateResponseBeforeSave(params: {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // NEW CHECK 5: Detect agricultural errors (harvest for young crops)
-    // CRITICAL FIX: Only validate when we HAVE crop schedule data - missing data should NOT trigger errors
-    // ═══════════════════════════════════════════════════════════════════════════
     const contentLower = responseContent.toLowerCase();
     const cropStage = orchestratorResponse.dataAudit?.land?.growth_stage?.toUpperCase() || '';
     const daysSinceSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing;
@@ -3451,12 +3106,7 @@ function validateResponseBeforeSave(params: {
     const effectiveDays = daysSinceSowing ?? fallbackDays ?? null;
     const effectiveStage = cropStage || fallbackStage?.toUpperCase() || '';
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PRODUCTION FIX: Only truly young stages should be blocked for harvest
-    // TILLERING (45-90 DAS for sugarcane) and GRAND_GROWTH are NOT young stages
-    // They are active growth stages where pest/disease control is primary concern
-    // Using blanket 120-day threshold was causing false rejections
-    // ═══════════════════════════════════════════════════════════════════════════
     const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
     
     // Use crop-specific minimum harvest age instead of blanket 120 days
@@ -3486,9 +3136,7 @@ function validateResponseBeforeSave(params: {
       console.log(`   ✓ Check 5: No harvest-for-young-crop error (stage: ${effectiveStage || 'unknown'}, days: ${effectiveDays ?? 'unknown'})`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // NEW CHECK 6: Validate product details are present for chemical/spray actions
-    // ═══════════════════════════════════════════════════════════════════════════
     if (actions_returned && actions_returned.length > 0) {
       const primaryAction = actions_returned.find((a: any) => a.type === 'primary');
       if (primaryAction) {
@@ -3514,10 +3162,7 @@ function validateResponseBeforeSave(params: {
       }
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // NEW CHECK 7: SOURCE VALIDATION - Ensure all content comes from symbolic brain
-    // Validates that LLM formatter did not add unauthorized content
-    // ═══════════════════════════════════════════════════════════════════════════
     if (decision_brain_source && actions_returned && actions_returned.length > 0) {
       console.log(`   🔍 Check 7: Source validation - ensuring content matches symbolic brain output`);
       
@@ -3564,11 +3209,7 @@ function validateResponseBeforeSave(params: {
   };
 }
 
-/**
- * Generate fallback response when validation fails
- * CRITICAL FIX: Use available actions if present instead of generic "technical issue"
- * Ensures user always gets helpful feedback even on failures
- */
+// Generate fallback response when validation fails
 function generateValidationFailureFallback(
   lang: string,
   validationErrors: string[],
@@ -3684,9 +3325,7 @@ With this information, I can provide you proper guidance.
 📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`;
 }
 
-/**
- * Generate response when ALL actions were filtered
- */
+// Generate response when ALL actions were filtered
 function generateAllActionsFilteredResponse(
   filteredActions: any[], 
   lang: string
@@ -3732,12 +3371,7 @@ function generateAllActionsFilteredResponse(
   return parts.join('\n');
 }
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * EXTRACT & AUDIT ACTIONS WITH FILTER TRACE
- * Enhanced version with detailed filter rule logging
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// EXTRACT & AUDIT ACTIONS WITH FILTER TRACE
 interface ActionAuditLog {
   total_recommendations: number;
   total_filtered: number;
@@ -3955,9 +3589,7 @@ function extractAndAuditActionsWithFilterTrace(orchestratorResponse: Orchestrato
   };
 }
 
-/**
- * Build explicit human-readable filter reason
- */
+// Build explicit human-readable filter reason
 function buildExplicitFilterReason(blocked: any, category: FilterCategory): string {
   const reasons: Record<FilterCategory, string> = {
     EMERGENCY: `EMERGENCY BLOCK: ${blocked.reason || 'Immediate safety concern'}`,
@@ -3973,9 +3605,7 @@ function buildExplicitFilterReason(blocked: any, category: FilterCategory): stri
   return reasons[category];
 }
 
-/**
- * Generate human-readable title for an action
- */
+// Generate human-readable title for an action
 function generateActionTitle(primary: any, lang: string): string {
   const actionType = primary.action_type || 'UNKNOWN';
   const productName = primary.application_details?.product_name;
@@ -3998,9 +3628,7 @@ function generateActionTitle(primary: any, lang: string): string {
   return titles[actionType] || actionType;
 }
 
-/**
- * Generate human-readable description for an action
- */
+// Generate human-readable description for an action
 function generateActionDescription(primary: any, lang: string): string {
   const parts: string[] = [];
   
@@ -4020,18 +3648,7 @@ function generateActionDescription(primary: any, lang: string): string {
   return parts.join(' | ') || 'Recommendation based on current conditions';
 }
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * POST-PROCESSING: Convert Decision Brain output to natural language
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * This step runs AFTER the decision graph completes and:
- * 1. Takes all recommendations from decision brain output
- * 2. Converts them to natural language for detected language (MR/HI/EN)
- * 3. Formats as bullet points or numbered list for chat response
- * 4. Returns text suitable for ai_chat_messages.content field
- * 5. NEVER returns empty - always reflects decision brain output
- */
+// POST-PROCESSING: Convert Decision Brain output to natural language
 async function getResponseContent(response: OrchestratorResponse, language: string): Promise<string> {
   const lang = language;
   console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
@@ -4109,23 +3726,13 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
       return response.llm_response || 
              response.escalation?.message_en || '';
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Handle SYSTEM_ERROR properly - provide helpful advice
-    // ═══════════════════════════════════════════════════════════════════════════
     case 'SYSTEM_ERROR':
       console.log(`   ⚠️ SYSTEM_ERROR response - generating helpful fallback`);
       const fallbackAdvice = response.error?.fallback_advice || '';
       return generateHelpfulErrorResponse(lang, fallbackAdvice);
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // SC-2 FIX (2026-07-25): DIAGNOSTIC_ESCALATION — emitted by
-    // runtime/observation-selector-contract.ts Case B when the farmer has
-    // confirmed observations but the graph has no downstream hypothesis edge.
-    // Instead of falling to the generic error path, surface the confirmed
-    // context back to the farmer with an explicit "no matching decision yet,
-    // sharing details helps" prompt. Uses main_message.full_text if the
-    // upstream layers populated it; otherwise assembles a neutral prompt.
-    // ═══════════════════════════════════════════════════════════════════════════
     case 'DIAGNOSTIC_ESCALATION': {
       const commFull = response.communication?.main_message?.full_text as any;
       const commText = commFull?.[lang] || commFull?.en || '';
@@ -4144,10 +3751,7 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
   }
 }
 
-/**
- * FALLBACK: When decision brain runs but produces no recommendations
- * Generates explanatory message asking for more information
- */
+// FALLBACK: When decision brain runs but produces no recommendations
 function generateNoRecommendationsFallback(response: OrchestratorResponse, lang: string): string {
   const parts: string[] = [];
   
@@ -4161,13 +3765,6 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
   
   // NOTE: Reaching this fallback means the OBSERVATION_REQUIRED contract
-  // enforcer (ensureObservationSelectorContract) did NOT promote the response
-  // — either because it already had content or the loader returned no options.
-  // We intentionally do NOT emit an English "I need more information" prompt
-  // here because that would be shipped as DECISION_PROVIDED text and the
-  // frontend would render it without the symptom selector. Instead, emit a
-  // short neutral acknowledgement; the contract violation (if any) is already
-  // logged upstream as OBSERVATION_CONTRACT_VIOLATION.
   if (detectedPest || detectedDisease) {
     const target = detectedPest || detectedDisease;
     parts.push(`Noted: ${target}. Please share what you currently observe in the field so I can advise precisely.`);
@@ -4179,9 +3776,7 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   return parts.join('\n\n');
 }
 
-/**
- * Build formatted numbered list from decision output
- */
+// Build formatted numbered list from decision output
 async function buildFormattedRecommendationsList(decision: any, lang: string, supabaseClient?: any): Promise<string> {
   const parts: string[] = [];
   
@@ -4314,26 +3909,18 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   return parts.join('\n\n');
 }
 
-/**
- * Generate clarification prompt when question text is missing
- */
+// Generate clarification prompt when question text is missing
 function generateClarificationPrompt(response: OrchestratorResponse, lang: string): string {
   // English-only — forceTranslateResponse() handles localization at runtime
   return 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.';
 }
 
-/**
- * Generic acknowledgment for unknown response types
- * @deprecated Use generateHelpfulErrorResponse instead
- */
+// Generic acknowledgment for unknown response types
 function generateGenericAcknowledgment(lang: string): string {
   return generateHelpfulErrorResponse(lang, '');
 }
 
-/**
- * PRODUCTION FIX: Generate helpful error response with actionable guidance
- * Instead of "we will respond shortly", provide immediate value
- */
+// PRODUCTION FIX: Generate helpful error response with actionable guidance
 function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
   // English-only — forceTranslateResponse() handles localization at runtime
   return `🙏 Hello Farmer Friend!
@@ -4353,10 +3940,7 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please 
 • Report any new pest/disease signs`;
 }
 
-/**
- * Fallback: Build natural language response directly from DecisionOutput
- * Used when CommunicationGenerator fails or returns incomplete data
- */
+// Fallback: Build natural language response directly from DecisionOutput
 async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
@@ -4460,18 +4044,13 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
   return parts.join('\n');
 }
 
-/**
- * Get generic monitoring message when no decision output is available
- */
+// Get generic monitoring message when no decision output is available
 function getGenericMonitoringMessage(_language: string): string {
   // English-only — forceTranslateResponse() handles localization at runtime
   return 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.';
 }
 
-/**
- * CRITICAL FIX: Flatten FarmerCommunication structure to readable text
- * Handles the main_message.sections structure properly
- */
+// CRITICAL FIX: Flatten FarmerCommunication structure to readable text
 function flattenCommunicationToText(comm: any, language: string, requires?: any): string {
   if (!comm) return '';
   
@@ -4632,12 +4211,7 @@ function detectLanguage(text: string, fallback: string): string {
   return fallback;
 }
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CRITICAL FIX: New transform function that uses PRE-GENERATED content
- * This ensures DB save and API response are IDENTICAL (no duplicate messages)
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CRITICAL FIX: New transform function that uses PRE-GENERATED content
 function transformOrchestratorResponseWithContent(
   response: OrchestratorResponse,
   preGeneratedContent: string,
@@ -4653,18 +4227,13 @@ function transformOrchestratorResponseWithContent(
 
   // For DECISION_PROVIDED, use the pre-generated LLM-formatted content
   if (response.type === 'DECISION_PROVIDED') {
-    // ═══════════════════════════════════════════════════════════════════════════
     // CANONICAL ADVISORY: Build structured JSON from decision_output
-    // This enables the frontend to render rich advisory cards
-    // ═══════════════════════════════════════════════════════════════════════════
     let structuredAdvisory: any = null;
     try {
       const decisionOutput = response.decision_output as any;
       const primaryDecision = decisionOutput?.primary_decision;
 
       // PHASE D: Authority gate BEFORE deterministic builder.
-      // If upstream Authority blocked treatments (SAFETY/LAND), do NOT render a
-      // prescription card — fall through to text-only narration.
       const authDecision = decisionOutput?.authority_decision || primaryDecision?.authority_decision;
       const treatmentsAllowed = authDecision ? authDecision.treatments_allowed !== false : true;
       if (authDecision && !treatmentsAllowed) {
@@ -4818,11 +4387,7 @@ function transformOrchestratorResponse(
           type: 'clarification',
           orchestrator_type: 'CLARIFICATION_QUESTION',
           question_id: typeof question === 'string' ? question : question?.question_id,
-          // ═══════════════════════════════════════════════════════════════════════════
           // CRITICAL FIX: Preserve observation_key for rule engine re-evaluation
-          // Previously: Only label/value were passed, dropping observation_key
-          // Now: Include observation_key, description, diagnostic_power for proper UI mapping
-          // ═══════════════════════════════════════════════════════════════════════════
           options: rawOptions.map((o: any) => ({
             label: typeof o === 'string' ? o : (o?.label || String(o)),
             value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
@@ -4953,13 +4518,7 @@ function getLocalizedMessage(comm: any, language: string): string {
   return comm.main_message || '';
 }
 
-/**
- * CRITICAL FIX: Generate context-aware follow-up questions based on:
- * 1. The actual AI response content
- * 2. The actions returned (pest/disease/fertilizer)
- * 3. The land and crop context
- * 4. User's preferred language
- */
+// CRITICAL FIX: Generate context-aware follow-up questions based on:
 function generateQuickRepliesFromCommunication(
   comm: any, 
   language: string, 

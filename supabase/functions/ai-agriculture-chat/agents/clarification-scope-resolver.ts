@@ -1,25 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-8: CLARIFICATION SCOPE RESOLVER (COMPLETE REWRITE)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Determine what to ask next using ObservationKeys ONLY.
- * No language strings, no text pattern matching, no diagnosis.
- * 
- * PHASE-8.1 UPDATE:
- * - Block crop clarification when CropContextAuthority exists
- * - Support hasCropContext flag to skip IDENTIFY_CROP scope
- * 
- * RULES:
- * - Input: Set<ObservationKey> + turn count + hasCropContext
- * - Output: ClarificationScope (deterministic)
- * - NEVER inspect raw text
- * - NEVER use pest/disease catalogs
- * - Max 3 clarification turns enforced
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-8: CLARIFICATION SCOPE RESOLVER (COMPLETE REWRITE)
 
 import {
   ObservationKey,
@@ -31,10 +10,7 @@ import {
 
 import { ClarificationScope } from './clarification-renderer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // IMPORT CANONICAL CONTEXT CONTRACT (SINGLE SOURCE OF TRUTH)
-// v6.0: Now uses CanonicalContext directly, not PreservedCanonicalContext
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   type CanonicalContext,
   hasDiagnosticContext,
@@ -53,9 +29,7 @@ export { ClarificationScope };
 // Re-export CanonicalContext types for consumers
 export type { CanonicalContext };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION PLAN (OUTPUT)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationPlan {
   scope: ClarificationScope;
@@ -85,34 +59,18 @@ export interface ClarificationState {
   consecutive_not_sure?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Maximum clarification turns before hard stop
- */
+// Maximum clarification turns before hard stop
 export const MAX_CLARIFICATION_TURNS = 3;
 
-/**
- * Minimum dimensions required before allowing rule engine
- */
+// Minimum dimensions required before allowing rule engine
 export const MIN_DIMENSIONS_FOR_DIAGNOSIS = 2; // crop + affected_part minimum
 
-/**
- * Priority order for clarification scopes (lower = higher priority)
- * 
- * PHASE-11 UPDATE: Insect behavior/plant response BEFORE distribution
- * When farmer reports insect presence, distribution is biologically premature.
- * Correct agronomic sequence: behavior → plant response → distribution (if needed)
- */
+// Priority order for clarification scopes (lower = higher priority)
 const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
   [ClarificationScope.IDENTIFY_CROP]: 1,
-  // ═══════════════════════════════════════════════════════════════════════════
   // DIAGNOSTIC_CONFIRMATION has HIGHEST priority after crop
-  // When terminal damage is detected (SEEDLING_DIED, AFFECTED_PART_WHOLE),
-  // NEVER ask about location - go directly to cause confirmation
-  // ═══════════════════════════════════════════════════════════════════════════
   [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: 1.5,    // BEFORE location questions
   [ClarificationScope.IDENTIFY_LOCATION]: 2,
   // PHASE-11: Insect-first clarification (before distribution)
@@ -127,43 +85,10 @@ const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
   [ClarificationScope.STOP_ESCALATE]: 8
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN RESOLUTION FUNCTION (PHASE-8 CORE)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Resolve clarification plan based on ObservationKeys ONLY.
- * This is DETERMINISTIC - same keys + turn count = same output.
- * 
- * PHASE-8.1: Added hasCropContext parameter to skip crop clarification
- * when CropContextAuthority exists from crop_schedules.
- * 
- * PHASE-11 UPDATE: Insect-First Clarification (Agronomically Correct)
- * When INSECT_PRESENT is detected:
- * - FIRST ask about behavior (flying/crawling) and plant response
- * - DEFER distribution questions until damage is confirmed or density is high
- * - This follows real agronomic reasoning: insect visibility ≠ infestation
- * 
- * PRIORITY ORDER:
- * 1. Crop identification (SKIPPED if hasCropContext=true)
- * 2. Affected part (location)
- * 2.5. Insect behavior (if insect present) - PHASE-11
- * 2.6. Plant response (if insect present) - PHASE-11
- * 3. Distribution (DEFERRED if insect-only without damage)
- * 4. Severity
- * 5. Timing
- * 6. Observation refinement
- * 7. Photo only
- * 8. Stop / escalate
- */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PRESERVED CANONICAL CONTEXT (DEPRECATED - USE CanonicalContext)
- * ═══════════════════════════════════════════════════════════════════════════
- * @deprecated Use CanonicalContext from canonical-context-contract.ts instead.
- * This interface is kept ONLY for backward compatibility during migration.
- * All new code should use CanonicalContext directly.
- */
+// Resolve clarification plan based on ObservationKeys ONLY.
+// PRESERVED CANONICAL CONTEXT (DEPRECATED - USE CanonicalContext)
 export interface PreservedCanonicalContext {
   crop_code: string;
   crop_name: string;
@@ -174,19 +99,7 @@ export interface PreservedCanonicalContext {
   is_locked: true;
 }
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSTIC CONFIRMATION AUTHORITY (PREEMPTIVE SCOPE)
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSTIC_CONFIRMATION is a PREEMPTIVE AUTHORITY, not an optional strategy.
- * It MUST be selected BEFORE any symptom-coverage or IDENTIFY_LOCATION logic.
- * 
- * When this authority is active:
- * - IDENTIFY_LOCATION is PERMANENTLY BLOCKED
- * - Generic clarification scopes are FORBIDDEN
- * - Only rule-driven diagnostic options are allowed
- * - Photo option is MANDATORY (replaces NONE_OF_THE_ABOVE)
- */
+// DIAGNOSTIC CONFIRMATION AUTHORITY (PREEMPTIVE SCOPE)
 export interface DiagnosticConfirmationAuthority {
   is_active: boolean;
   activated_by: string[]; // Terminal/severity indicators that triggered activation
@@ -194,20 +107,13 @@ export interface DiagnosticConfirmationAuthority {
   clarification_source: 'DECISION_RULES'; // Options must come from rules
 }
 
-/**
- * Check if DIAGNOSTIC_CONFIRMATION should be the preemptive authority.
- * This check runs BEFORE any other clarification logic.
- * 
- * v6.0: Simplified to use CanonicalContext directly.
- */
+// Check if DIAGNOSTIC_CONFIRMATION should be the preemptive authority.
 export function checkDiagnosticConfirmationAuthority(
   observedKeys: Set<ObservationKey>,
   hasCropContext: boolean,
   canonicalContext: CanonicalContext | null
 ): DiagnosticConfirmationAuthority {
-  // ═══════════════════════════════════════════════════════════════════════════
   // USE CANONICAL CONTRACT FOR TERMINAL DAMAGE DETECTION
-  // ═══════════════════════════════════════════════════════════════════════════
   const observedKeysArray = Array.from(observedKeys);
   const terminalDamageDetected = hasTerminalDamage(observedKeysArray);
   const detectedIndicators = getDetectedTerminalDamage(observedKeysArray);
@@ -242,15 +148,7 @@ export function checkDiagnosticConfirmationAuthority(
   };
 }
 
-/**
- * Resolve clarification plan based on ObservationKeys ONLY.
- * This is DETERMINISTIC - same keys + turn count = same output.
- * 
- * v6.0: Simplified signature - uses CanonicalContext directly.
- * The context is IMMUTABLE and was built in orchestrator Phase-1.
- * 
- * PREEMPTIVE AUTHORITY: DIAGNOSTIC_CONFIRMATION is checked FIRST.
- */
+// Resolve clarification plan based on ObservationKeys ONLY.
 export function resolveClarificationPlan(
   observedKeys: Set<ObservationKey>,
   turnCount: number,
@@ -258,9 +156,7 @@ export function resolveClarificationPlan(
   hasCropContext: boolean = false,
   canonicalContext: CanonicalContext | null = null  // v6.0: Single immutable context
 ): ClarificationPlan {
-  // ═══════════════════════════════════════════════════════════════════════════
   // HARD STOP: Maximum clarification turns reached
-  // ═══════════════════════════════════════════════════════════════════════════
   if (turnCount >= MAX_CLARIFICATION_TURNS) {
     return {
       scope: ClarificationScope.STOP_ESCALATE,
@@ -272,10 +168,7 @@ export function resolveClarificationPlan(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // v6.0: CONTEXT VALIDATION (Simpler - just check if context exists)
-  // No fail-fast needed here since context is built once in Phase-1
-  // ═══════════════════════════════════════════════════════════════════════════
   const hasContext = canonicalContext !== null && hasDiagnosticContext(canonicalContext);
   
   if (hasContext && canonicalContext) {
@@ -285,10 +178,7 @@ export function resolveClarificationPlan(
     console.log(`      ContextPreserved=true, phase1_locked=true`);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PREEMPTIVE AUTHORITY CHECK: DIAGNOSTIC_CONFIRMATION
-  // This MUST run BEFORE any other clarification logic
-  // ═══════════════════════════════════════════════════════════════════════════
   const diagnosticAuthority = checkDiagnosticConfirmationAuthority(
     observedKeys,
     hasCropContext || hasContext,
@@ -333,10 +223,7 @@ export function resolveClarificationPlan(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 1: Crop Unknown
-  // PHASE-8.1: SKIP if hasCropContext (CropContextAuthority exists)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (!hasCropContext && 
       observedKeys.has(ObservationKey.CROP_UNKNOWN) && 
       !observedKeys.has(ObservationKey.CROP_IDENTIFIED)) {
@@ -350,12 +237,7 @@ export function resolveClarificationPlan(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // NOTE: DIAGNOSTIC_CONFIRMATION is now handled by checkDiagnosticConfirmationAuthority()
-  // which runs BEFORE this function in the resolveClarificationPlan() call.
-  // The preemptive authority check ensures DIAGNOSTIC_CONFIRMATION is selected
-  // BEFORE any symptom-coverage or generic clarification logic.
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // Define terminal damage indicators for use in IDENTIFY_LOCATION blocking
   const TERMINAL_DAMAGE_INDICATORS = [
@@ -382,13 +264,7 @@ export function resolveClarificationPlan(
   const hasHighSeverity = SEVERITY_HIGH_INDICATORS.some(k => observedKeys.has(k));
   const hasWholePartAffected = observedKeys.has(ObservationKey.AFFECTED_PART_WHOLE);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 2: Affected Part Unknown
-  // ═══════════════════════════════════════════════════════════════════════════
-  // P0 INVARIANT 2: IDENTIFY_LOCATION is ILLEGAL if:
-  // - hasCropContext=true OR
-  // - AFFECTED_PART_WHOLE is set (whole plant damage = skip location question)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (observedKeys.has(ObservationKey.AFFECTED_PART_UNKNOWN)) {
     // Check if any specific part is identified
     const hasSpecificPart = [
@@ -402,11 +278,7 @@ export function resolveClarificationPlan(
     ].some(k => observedKeys.has(k));
     
     if (!hasSpecificPart) {
-      // ═══════════════════════════════════════════════════════════════════════════
       // HARD INVARIANT: Block IDENTIFY_LOCATION when context is known
-      // Agronomist Rule: If crop/stage are known, NEVER ask generic location questions
-      // Instead, use DIAGNOSTIC_CONFIRMATION for cause identification
-      // ═══════════════════════════════════════════════════════════════════════════
       if (hasCropContext) {
         console.log(`   🚫 [INVARIANT] IDENTIFY_LOCATION blocked - hasCropContext=true`);
         console.log(`      Scope=REFINE_OBSERVATION or DIAGNOSTIC_CONFIRMATION (context preserved)`);
@@ -459,17 +331,7 @@ export function resolveClarificationPlan(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: INSECT-FIRST CLARIFICATION (Priority 2.5 & 2.6)
-  // ═══════════════════════════════════════════════════════════════════════════
-  // When farmer reports insect presence (SMALL_INSECTS_VISIBLE, INSECT_PRESENT),
-  // ask about behavior and plant response BEFORE field distribution.
-  // 
-  // Agronomic Principle:
-  // - Insect visibility ≠ infestation
-  // - Insect visibility ≠ field-level problem
-  // - Field distribution is biologically premature at this stage
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const hasInsectPresence = observedKeys.has(ObservationKey.INSECT_PRESENT);
   
@@ -530,15 +392,7 @@ export function resolveClarificationPlan(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 3: Distribution Unknown
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE-11: Distribution is DEFERRED for insect-only observations.
-  // Only ask about field distribution if:
-  // - Plant damage is confirmed (curling, yellowing, holes, etc.)
-  // - OR high insect density is confirmed
-  // - OR insect behavior/response has been answered
-  // ═══════════════════════════════════════════════════════════════════════════
   if (observedKeys.has(ObservationKey.DISTRIBUTION_UNKNOWN)) {
     const hasDistribution = [
       ObservationKey.DISTRIBUTION_UNIFORM,
@@ -581,10 +435,6 @@ export function resolveClarificationPlan(
     ].some(k => observedKeys.has(k));
     
     // Allow distribution question only if:
-    // - No insect presence (non-insect problem) OR
-    // - Plant damage is confirmed OR
-    // - High density confirmed OR
-    // - Both behavior and response have been answered
     const canAskDistribution = 
       !hasInsectPresence || 
       hasPlantDamageConfirmed || 
@@ -610,9 +460,7 @@ export function resolveClarificationPlan(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 4: Severity Unknown (only if turn count allows)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (observedKeys.has(ObservationKey.SEVERITY_UNKNOWN) && turnCount < 2) {
     const hasSeverity = [
       ObservationKey.SEVERITY_LOW,
@@ -636,9 +484,7 @@ export function resolveClarificationPlan(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 5: Timing Unknown (only if critical fields covered)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (observedKeys.has(ObservationKey.TIMING_UNKNOWN) && 
       turnCount < 2 &&
       observedKeys.has(ObservationKey.CROP_IDENTIFIED)) {
@@ -664,9 +510,7 @@ export function resolveClarificationPlan(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 6: Observation Refinement (no specific phenomena detected)
-  // ═══════════════════════════════════════════════════════════════════════════
   const hasPhenomena = [
     ObservationKey.INSECT_PRESENT,
     ObservationKey.SYMPTOM_COLOR_CHANGE,
@@ -697,9 +541,7 @@ export function resolveClarificationPlan(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 7: Photo Only (if still insufficient after refinement)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (!observedKeys.has(ObservationKey.PHOTO_PROVIDED) && 
       turnCount === MAX_CLARIFICATION_TURNS - 1) {
     return {
@@ -712,9 +554,7 @@ export function resolveClarificationPlan(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // DEFAULT: Stop and let rule engine handle with available info
-  // ═══════════════════════════════════════════════════════════════════════════
   return {
     scope: ClarificationScope.STOP_ESCALATE,
     target_keys: [],
@@ -725,13 +565,9 @@ export function resolveClarificationPlan(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if clarification is needed based on observation keys.
- */
+// Check if clarification is needed based on observation keys.
 export function needsClarification(observedKeys: Set<ObservationKey>): boolean {
   // Must have crop identified
   if (!observedKeys.has(ObservationKey.CROP_IDENTIFIED) && 
@@ -758,9 +594,7 @@ export function needsClarification(observedKeys: Set<ObservationKey>): boolean {
   return satisfiedCount < MIN_DIMENSIONS_FOR_DIAGNOSIS;
 }
 
-/**
- * Check if sufficient information is available to proceed to diagnosis.
- */
+// Check if sufficient information is available to proceed to diagnosis.
 export function hasSufficientInformation(observedKeys: Set<ObservationKey>): boolean {
   // Must have crop
   if (!observedKeys.has(ObservationKey.CROP_IDENTIFIED)) {
@@ -792,9 +626,7 @@ export function hasSufficientInformation(observedKeys: Set<ObservationKey>): boo
   return hasAffectedPart || hasPhenomena;
 }
 
-/**
- * Initialize a new clarification state for a session.
- */
+// Initialize a new clarification state for a session.
 export function initializeClarificationState(): ClarificationState {
   return {
     turn_count: 0,
@@ -804,9 +636,7 @@ export function initializeClarificationState(): ClarificationState {
   };
 }
 
-/**
- * Update clarification state after a clarification turn.
- */
+// Update clarification state after a clarification turn.
 export function updateClarificationState(
   state: ClarificationState,
   scope: ClarificationScope,
@@ -821,19 +651,7 @@ export function updateClarificationState(
   };
 }
 
-/**
- * PHASE-12: Handle "Not Sure" responses with limits
- * 
- * Limit Definition:
- * - Maximum 2 consecutive "Not sure" responses on the same clarification topic
- * - Maximum 3 total "Not sure" responses across the entire diagnostic session
- * 
- * After Limit Reached, redirect to:
- * - Image upload request
- * - Guided field observation
- * - Expert escalation
- * - General guidance mode
- */
+// PHASE-12: Handle "Not Sure" responses with limits
 export function handleNotSureResponse(
   state: ClarificationState,
   currentScope: ClarificationScope
@@ -899,9 +717,7 @@ export function handleNotSureResponse(
   };
 }
 
-/**
- * PHASE-12: Detect if a farmer response is a "Not Sure" answer
- */
+// PHASE-12: Detect if a farmer response is a "Not Sure" answer
 export function isNotSureResponse(text: string): boolean {
   const notSurePatterns = [
     // Marathi

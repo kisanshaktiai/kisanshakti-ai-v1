@@ -1,28 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * WORLD-CLASS FOLLOW-UP GENERATOR
- * Day-by-Day Follow-up Plans for Farmer Actions
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Generate specific follow-up timelines so farmers know what to expect when.
- * No more "continue monitoring" without specific dates.
- * 
- * EXAMPLE OUTPUT:
- * 📅 Follow-up Plan:
- * | Day 3:    | Check for new dead hearts |
- * | Day 7:    | 70%+ improvement expected |
- * | Day 14:   | Second Trichogramma release |
- * | Day 21+:  | Weekly Trichogramma continues |
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// WORLD-CLASS FOLLOW-UP GENERATOR
 
 export const FOLLOW_UP_GENERATOR_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FollowUpAction {
   day: number;
@@ -47,9 +27,7 @@ export interface RealisticExpectation {
   timeline_days: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FOLLOW-UP TEMPLATES BY PEST/DISEASE
-// ═══════════════════════════════════════════════════════════════════════════
 
 const FOLLOW_UP_TEMPLATES: Record<string, FollowUpAction[]> = {
   'SHOOT_BORER': [
@@ -81,9 +59,7 @@ const FOLLOW_UP_TEMPLATES: Record<string, FollowUpAction[]> = {
   ]
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // REALISTIC EXPECTATIONS BY PROBLEM
-// ═══════════════════════════════════════════════════════════════════════════
 
 const REALISTIC_EXPECTATIONS: Record<string, RealisticExpectation> = {
   'SHOOT_BORER': {
@@ -124,9 +100,7 @@ const REALISTIC_EXPECTATIONS: Record<string, RealisticExpectation> = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GENERATE FOLLOW-UP PLAN
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateFollowUpPlan(
   pestOrDisease: string,
@@ -147,9 +121,7 @@ export function generateFollowUpPlan(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FORMAT FOLLOW-UP PLAN FOR DISPLAY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function formatFollowUpPlan(
   plan: FollowUpPlan,
@@ -168,9 +140,7 @@ export function formatFollowUpPlan(
   return output;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FORMAT REALISTIC EXPECTATIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function formatRealisticExpectations(
   pestOrDisease: string,
@@ -197,9 +167,7 @@ export function formatRealisticExpectations(
   return output;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GENERATE COMPLETE FOLLOW-UP SECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateCompleteFollowUp(
   pestOrDisease: string,
@@ -214,9 +182,7 @@ export function generateCompleteFollowUp(
   return output;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   generateFollowUpPlan,

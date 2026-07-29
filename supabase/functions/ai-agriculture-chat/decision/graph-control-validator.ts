@@ -1,25 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 1: GRAPH CONTROL VALIDATOR
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Enforces rule dependencies (blocks_rule_ids, prerequisite_rule_ids) to ensure
- * proper rule execution order and prevent conflicting recommendations.
- * 
- * ARCHITECTURE:
- * - checkRuleBlocking(): Prevents a rule from firing if a blocking rule has fired
- * - checkPrerequisites(): Ensures prerequisite rules have fired before allowing
- * - validateGraphConstraints(): Combined validation for both blocking and prerequisites
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE 1: GRAPH CONTROL VALIDATOR
 
 export const GRAPH_CONTROL_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface GraphValidationInput {
   rule_id: string;
@@ -39,18 +22,9 @@ export interface FiredRuleContext {
   blocked_rule_ids: Set<string>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE BLOCKING CHECK
-// If a rule in firedRuleIds blocks this rule, return false
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if a rule is blocked by any previously fired rule
- * 
- * @param ruleId - The rule being evaluated
- * @param firedRules - Map of fired rule_id -> blocks_rule_ids
- * @returns Object with blocked status and blocking rule IDs
- */
+// Check if a rule is blocked by any previously fired rule
 export function checkRuleBlocking(
   ruleId: string,
   firedRules: Map<string, string[]>
@@ -69,18 +43,9 @@ export function checkRuleBlocking(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PREREQUISITE CHECK
-// All rules in prerequisite_rule_ids must have fired before this rule can fire
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if all prerequisites have been satisfied
- * 
- * @param prerequisiteRuleIds - Rules that must fire before this one
- * @param firedRuleIds - Set of rule IDs that have already fired
- * @returns Object with satisfied status and missing prerequisites
- */
+// Check if all prerequisites have been satisfied
 export function checkPrerequisites(
   prerequisiteRuleIds: string[],
   firedRuleIds: Set<string>
@@ -103,18 +68,9 @@ export function checkPrerequisites(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Validate all graph constraints for a rule
- * 
- * @param rule - The rule to validate
- * @param firedRules - Map of fired rule_id -> blocks_rule_ids
- * @param firedRuleIds - Set of rule IDs that have already fired
- * @returns GraphValidationResult with can_fire status and reasons
- */
+// Validate all graph constraints for a rule
 export function validateGraphConstraints(
   rule: GraphValidationInput,
   firedRules: Map<string, string[]>,
@@ -153,13 +109,9 @@ export function validateGraphConstraints(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FIRED RULE CONTEXT BUILDER
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Create a context for tracking fired rules and their blocking relationships
- */
+// Create a context for tracking fired rules and their blocking relationships
 export function createFiredRuleContext(): FiredRuleContext {
   return {
     fired_rule_ids: new Set(),
@@ -167,13 +119,7 @@ export function createFiredRuleContext(): FiredRuleContext {
   };
 }
 
-/**
- * Register a rule as fired and update blocked rules list
- * 
- * @param context - The fired rule context to update
- * @param ruleId - The rule that just fired
- * @param blocksRuleIds - Rules that this rule blocks
- */
+// Register a rule as fired and update blocked rules list
 export function registerFiredRule(
   context: FiredRuleContext,
   ruleId: string,
@@ -188,16 +134,12 @@ export function registerFiredRule(
   }
 }
 
-/**
- * Check if a rule is blocked in the current context
- */
+// Check if a rule is blocked in the current context
 export function isRuleBlocked(context: FiredRuleContext, ruleId: string): boolean {
   return context.blocked_rule_ids.has(ruleId);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function logGraphValidation(
   ruleId: string,
@@ -221,24 +163,14 @@ export function logGraphValidation(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P2-3: MUTUAL EXCLUSION ENFORCEMENT
-// If rule A fired and rule B is in A's mutually_exclusive_with, block B
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MutualExclusionInput {
   rule_id: string;
   mutually_exclusive_with: string[];
 }
 
-/**
- * Check if a rule is blocked by mutual exclusion constraints
- * 
- * @param ruleId - The rule being evaluated
- * @param firedRuleMutexMap - Map of fired rule_id -> mutually_exclusive_with[]
- * @param firedRuleIds - Set of rule IDs that have already fired
- * @returns Object with blocked status and the blocking rule ID
- */
+// Check if a rule is blocked by mutual exclusion constraints
 export function checkMutualExclusion(
   ruleId: string,
   firedRuleMutexMap: Map<string, string[]>,
@@ -260,9 +192,7 @@ export function checkMutualExclusion(
   return { blocked: false, blocked_by: null, reason: '' };
 }
 
-/**
- * Full mutual exclusion validation including bidirectional check
- */
+// Full mutual exclusion validation including bidirectional check
 export function validateMutualExclusion(
   rule: MutualExclusionInput,
   firedRuleMutexMap: Map<string, string[]>,
@@ -288,9 +218,7 @@ export function validateMutualExclusion(
   return { blocked: false, blocked_by: null, reason: '' };
 }
 
-/**
- * Register a fired rule's mutual exclusion list for future checks
- */
+// Register a fired rule's mutual exclusion list for future checks
 export function registerMutualExclusion(
   mutexMap: Map<string, string[]>,
   ruleId: string,

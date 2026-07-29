@@ -62,28 +62,14 @@ export interface HypothesisClarificationInput {
   language?: string | null;
   max?: number;
   confirmed_observations?: ReadonlyArray<unknown>;
-  /**
-   * RC-1 (2026-07-26) — observations the perception layer grounded THIS turn
-   * but which the farmer has not explicitly confirmed. They are unioned with
-   * `confirmed_observations` and with the IOM-ranked codes; IOM never removes
-   * them.
-   */
+  // RC-1 (2026-07-26) — observations the perception layer grounded THIS turn
   perceived_observations?: ReadonlyArray<unknown>;
-  /**
-   * FIX 3 — observation keys that are already pending farmer confirmation
-   * from a previous turn (session.pending_clarification_observation_keys).
-   * Excluded from the clarification candidate pool so we never re-ask the
-   * exact same option the farmer just tapped.
-   */
+  // FIX 3 — observation keys that are already pending farmer confirmation
   pending_obs_keys?: ReadonlyArray<string>;
   trace_id?: string | null;
   /** R3b — canonical SessionSSOT (Layer 3 lock) as primary context source. */
   session_ssot?: SessionSSOT | null;
-  /**
-   * FIX D1 (2026-07-28) — per-request cultivation lane (e.g. 'direct_seeded',
-   * 'transplanted'). Sourced from SessionSSOT ← crop_schedules. Nullable =
-   * lane-agnostic (intentional for callers that want universal behaviour).
-   */
+  // FIX D1 (2026-07-28) — per-request cultivation lane (e.g. 'direct_seeded',
   cultivation_method?: string | null;
 }
 
@@ -127,10 +113,7 @@ export interface HypothesisClarificationResult {
   candidate_hypotheses: number;
 }
 
-/**
- * Tunables sourced from `system_config` (DB is SSOT). Defaults are execution
- * hints only — no agronomy encoded here.
- */
+// Tunables sourced from `system_config` (DB is SSOT). Defaults are execution
 interface ClarificationTunables {
   discriminator_bonus: number;
   required_bonus: number;
@@ -149,8 +132,6 @@ async function readTunables(supabase: any, renderMaxFromCaller: number): Promise
   };
   try {
     // P3a hotfix (2026-07-22): system_config columns are `config_key`/`config_value`,
-    // not `key`/`value`. Prior code silently returned zero rows and every tunable fell
-    // back to the TS default, defeating Phase 3a seed rollout.
     const { data } = await supabase
       .from('system_config')
       .select('config_key, config_value')
@@ -211,21 +192,7 @@ export async function buildHypothesisClarificationOptions(
     .map((r) => r.canonical_observation_code)
     .filter((x): x is string => !!x);
 
-  // ═════════════════════════════════════════════════════════════════════
   // RC-1 (2026-07-26) — IOM IS A WEIGHT, NEVER A FILTER.
-  //
-  // Previously: `seedCodes = confirmed; if (empty) seedCodes = IOM`.
-  // That made the curated IOM cell an EXCLUSIVE allowlist whenever the
-  // farmer's perceived observations had not yet been "confirmed". Log-99
-  // (rice / tillering / DAS 48, intent=GROWTH_ANOMALY) collapsed 5 perceived
-  // codes — including `stunted_plants` — down to the single IOM survivor
-  // `rice_lodging`, which is stage-impossible at tillering, producing
-  // NO_STAGE_VALID_HYPOTHESES and an infinite clarification loop.
-  //
-  // Now: the seed is the UNION of every grounded observation (confirmed +
-  // perceived) with the IOM-ranked codes. IOM membership becomes a ranking
-  // signal downstream, never an elimination.
-  // ═════════════════════════════════════════════════════════════════════
   const perceivedIn = Array.isArray((input as any).perceived_observations)
     ? ((input as any).perceived_observations as unknown[])
     : [];
@@ -302,16 +269,7 @@ export async function buildHypothesisClarificationOptions(
     hypothesisIds = Array.from(new Set(graphOut.candidates.map((c) => c.hypothesis_id)));
   }
 
-  // ═════════════════════════════════════════════════════════════════════
   // Step 4 (2026-07-26) — STAGE-SCOPED DIFFERENTIAL RECOVERY.
-  //
-  // When every candidate was eliminated by the biological stage gate, the
-  // previous code returned NO_STAGE_VALID_HYPOTHESES with zero options, so
-  // the runtime re-asked the identical question forever. Instead we ask the
-  // DB directly: which hypotheses for this crop_group ARE valid at the
-  // current stage? Those become the differential pool. 100% DB-sourced —
-  // no agronomy is synthesised here.
-  // ═════════════════════════════════════════════════════════════════════
   if (hypothesisIds.length === 0 && crop && stage) {
     try {
       const stageKey = canonicalObsCode(normalizeStageForDB(stage) || stage);
@@ -370,8 +328,6 @@ export async function buildHypothesisClarificationOptions(
   const confirmedSet = new Set(confirmedCodes.map((c) => c.toLowerCase()));
 
   // FIX 3 — exclude keys already pending farmer confirmation from a prior
-  // turn so the same option is never re-offered (root cause of the two-key
-  // germination loop).
   const pendingObs: string[] = Array.isArray(input.pending_obs_keys)
     ? input.pending_obs_keys.map((k) => String(k || '').toLowerCase()).filter(Boolean)
     : [];
@@ -445,10 +401,6 @@ export async function buildHypothesisClarificationOptions(
   const labels = await loadTranslations(input.supabase, Array.from(masterRows.keys()), lang);
 
   // Patch B — round-robin diversification across candidate hypotheses.
-  // Each pass emits one option per hypothesis that has not yet contributed.
-  // Only after every candidate hypothesis has contributed do we allow a
-  // second option from the same hypothesis. Stops at renderMax (but always
-  // guarantees ≥ min(renderMax, distinct_hypotheses) coverage).
   const hypothesisFor = (b: CodeBucket): string => {
     // Prefer the intersection with the resolved candidate hypothesis set
     // (matched ∪ nearest), then fall back to the top-weight condition.
@@ -458,14 +410,7 @@ export async function buildHypothesisClarificationOptions(
     return b.top_condition.hypothesis_id;
   };
 
-  // ═══════════════════════════════════════════════════════════════════════
   // T5 — NON-PEST-FIRST ORDERING ON A FRESH QUERY (DB-CONFIG DRIVEN)
-  // When no evidence is confirmed yet, the option set must not be dominated
-  // by one biological family. Ordering priority comes ONLY from
-  // system_config.clarification_group_priority (list of canonical_group
-  // values) joined against hypothesis_master.canonical_group. No agronomy
-  // literal lives in TS — empty config ⇒ pure score order (previous behavior).
-  // ═══════════════════════════════════════════════════════════════════════
   let groupRankByHypothesis = new Map<string, number>();
   try {
     const { getConfigJson } = await import('../utils/db-ssot/system-config-cache.ts');
@@ -514,10 +459,6 @@ export async function buildHypothesisClarificationOptions(
     const master = masterRows.get(b.code.toLowerCase());
     if (!master) return false;
     // Farmer-visible label MUST come from a DB text source. Order:
-    //   observation_translations[lang] → observation_translations[en]
-    //   → observation_master.description.
-    // A raw observation_code is NEVER shown to the farmer — the option is
-    // dropped instead (and logged) so the UI can never leak a symbolic code.
     const tr = labels.get(master.observation_code.toLowerCase());
     const label = (tr?.text || master.description || '').trim();
     if (!label) {
@@ -581,8 +522,6 @@ export async function buildHypothesisClarificationOptions(
   }
 
   // S3 — diversification invariant: when >1 candidate hypothesis survives the
-  // graph, the emitted option set MUST discriminate between at least two of
-  // them. A single-hypothesis option set cannot reduce diagnostic entropy.
   const distinctEmitted = Object.keys(optionsByHypothesis).length;
   if (hypothesisIds.length > 1 && options.length > 1 && distinctEmitted < 2) {
     console.warn(
@@ -622,8 +561,6 @@ export async function buildHypothesisClarificationOptions(
   console.log(`[OBS_LABEL_SOURCE] trace=${trace} lang=${lang} [${labelSources.join(',')}]`);
 
   // Repeat-loop invariant: the option set MUST NOT be a subset of the keys the
-  // farmer was already asked about last turn — that is the classic
-  // "same card forever" loop.
   if (pendingObs.length > 0 && options.length > 0) {
     const pendingSet = new Set(pendingObs);
     const allRepeat = options.every((o) => pendingSet.has(o.observation_code.toLowerCase()));
@@ -720,15 +657,7 @@ async function loadTranslations(
   return out;
 }
 
-/**
- * PHOTO OPTION (DB-sourced).
- * Appends the terminal "send a photo" option to any clarification option list.
- * The label text lives in `system_config` (`clarification_photo_option_<lang>`
- * with an `_en` fallback) — no farmer-visible string is hardcoded here.
- * The option carries `observation_key = 'photo_upload'`, which the frontend
- * (`ClarificationOptionsUI`) already routes to the camera instead of sending a
- * chat message. It is never diagnostic evidence.
- */
+// PHOTO OPTION (DB-sourced).
 export const PHOTO_OPTION_KEY = 'photo_upload';
 
 export async function buildPhotoOption(

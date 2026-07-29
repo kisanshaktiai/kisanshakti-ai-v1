@@ -1,57 +1,9 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DETERMINISTIC RESPONSE BUILDER v2.0.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Constructs structured farmer advisory responses ENTIRELY from
- * decision_rules table columns. No LLM-generated advice allowed.
- * 
- * ARCHITECTURE PRINCIPLE:
- * "Rules Decide, AI Only Translates"
- * 
- * v2.0.0 ADDITIONS:
- * - Active ingredient dose safety caps (MAX_SAFE_DOSES)
- * - PHI harvest proximity validation
- * - Environmental condition pre-validation
- * - Agronomic safety scoring (composite 0-1)
- * - Confidence-based response gating (TREAT / MONITOR / CLARIFY)
- * - Bee toxicity mandatory evening-spray enforcement
- * - Resistance rotation warnings
- * 
- * Every section of the response maps to specific decision_rules columns:
- * 
- * SECTION                  | SOURCE COLUMNS
- * ─────────────────────────|─────────────────────────────────────────
- * Problem Explanation      | cause, reason_text, knowledge_text, scientific_basis
- * Recommended Action       | action_text, action_type, treatment_type
- * Dosage Calculation       | dosage_per_acre × land_area, water_volume_per_acre × land_area
- * Application Method       | application_method, target_pest_stage
- * Safety Precautions       | phi_days, reentry_interval_hours, bee_toxicity,
- *                          | aquatic_toxicity, farmer_safety_level, regulatory_status
- * Organic Alternative      | organic_alternative, biological_group, ipm_level
- * Estimated Cost           | material_cost_per_acre × land_area, labor_cost_per_acre,
- *                          | labor_hours_per_acre, equipment_required
- * Success/Failure Signs    | success_indicators, failure_indicators
- * ROI Estimate             | roi_yield_gain_pct, roi_cost_saved_min/max, roi_net_score
- * Scientific Reference     | scientific_source, icar_package_ref, university_source
- * Environmental Conditions | min_temperature, max_temperature, rain_delay_hours,
- *                          | max_wind_speed, weather_dependency
- * 
- * @version 2.1.0
- * 
- * v2.1.0 ADDITIONS:
- * - Async DB-driven translation of indicator codes, action types, pest stages
- * - Uses observation_translations table (SSOT) for all technical term localization
- * - Eliminates raw English code leakage in Marathi/Hindi responses
- */
+// DETERMINISTIC RESPONSE BUILDER v2.0.0
 
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
 import { getTranslation, initializeTranslationCache } from '../i18n/translation-loader.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE: Rich Rule Data (all columns from decision_rules used in response)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RichRuleData {
   // Identity
@@ -136,9 +88,7 @@ export interface RichRuleData {
   visual_markers?: any[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE: Weather context for environmental validation
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface WeatherContext {
   temperature_celsius?: number;
@@ -148,9 +98,7 @@ export interface WeatherContext {
   is_raining?: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE: Crop context for PHI and harvest proximity
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CropContext {
   days_since_sowing?: number;
@@ -159,9 +107,7 @@ export interface CropContext {
   ratoon_cycle_reduction_days?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE: Structured Farmer Response (deterministic, rule-sourced)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface StructuredFarmerResponse {
   rule_id: string;
@@ -292,12 +238,7 @@ export interface StructuredFarmerResponse {
   safety_warnings: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAX SAFE DOSES — DB-SSOT (Tier 1 V1 cutover, 2026-07-24)
-// Authoritative source: system_config.max_safe_doses (seeded from CIB&RC + WHO).
-// The map below is a COLD-BOOT ONLY fallback consulted while the phase1 cache
-// is warming (loadedAt === null); once loaded, DB rows are authoritative.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import { getMaxDosePerHa as _getMaxDosePerHaDb } from '../utils/db-ssot/phase1-caches.ts';
 
@@ -324,9 +265,7 @@ const _LEGACY_MAX_SAFE_DOSES: Record<string, { max_g_per_ha: number; unit: strin
   'cartap hydrochloride': { max_g_per_ha: 1000, unit: 'g' },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DOSAGE PARSER: Extract numeric values from dosage strings
-// ═══════════════════════════════════════════════════════════════════════════
 
 function parseDosage(dosageStr: string): { value: number; unit: string } | null {
   if (!dosageStr) return null;
@@ -364,9 +303,7 @@ function calculateCostTotal(min: number | undefined, max: number | undefined, ar
   return `₹${Math.round(totalMin)}-${Math.round(totalMax)}`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // IPM LEVEL LABELS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const IPM_LABELS: Record<number, string> = {
   1: 'Prevention (cultural practices)',
@@ -377,9 +314,7 @@ const IPM_LABELS: Record<number, string> = {
   6: 'Emergency chemical intervention'
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TREATMENT ACTION TYPES (require product/dosage)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const TREATMENT_ACTIONS = new Set([
   'RECOMMEND', 'SPRAY', 'APPLY', 'TREATMENT', 'CHEMICAL_CONTROL',
@@ -388,14 +323,9 @@ const TREATMENT_ACTIONS = new Set([
   'SEED_TREATMENT', 'SOIL_DRENCH'
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFETY VALIDATORS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Validate dosage against active ingredient regulatory max limits.
- * Returns blocked=true if calculated total exceeds safe limit.
- */
+// Validate dosage against active ingredient regulatory max limits.
 export function validateDosageSafety(
   ruleData: RichRuleData,
   landAreaAcres: number
@@ -424,10 +354,7 @@ export function validateDosageSafety(
   return { blocked: false };
 }
 
-/**
- * Validate PHI (Pre-Harvest Interval) against harvest proximity.
- * Returns blocked=true if spray would violate PHI requirement.
- */
+// Validate PHI (Pre-Harvest Interval) against harvest proximity.
 export function validatePHISafety(
   phiDays: number | undefined,
   cropContext?: CropContext
@@ -452,10 +379,7 @@ export function validatePHISafety(
   return { blocked: false, days_to_harvest: daysToHarvest > 0 ? daysToHarvest : undefined };
 }
 
-/**
- * Validate environmental conditions for spray safety.
- * Returns spray_allowed=false if conditions are unsafe.
- */
+// Validate environmental conditions for spray safety.
 export function validateEnvironmentalConditions(
   ruleData: RichRuleData,
   weather?: WeatherContext
@@ -498,10 +422,7 @@ export function validateEnvironmentalConditions(
   return { spray_allowed, warnings };
 }
 
-/**
- * Compute composite agronomic safety score (0-1).
- * Score < 0.5 downgrades response to monitoring-only.
- */
+// Compute composite agronomic safety score (0-1).
 export function computeSafetyScore(ruleData: RichRuleData, cropContext?: CropContext): number {
   let score = 1.0;
   
@@ -547,9 +468,7 @@ export function computeSafetyScore(ruleData: RichRuleData, cropContext?: CropCon
   return Math.max(0, Math.min(1, score));
 }
 
-/**
- * Determine response decision mode based on confidence and safety.
- */
+// Determine response decision mode based on confidence and safety.
 function resolveResponseDecision(
   confidence: number,
   safetyScore: number,
@@ -566,9 +485,7 @@ function resolveResponseDecision(
   return 'CLARIFY';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN BUILDER: Construct structured response from rule data
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function buildDeterministicResponse(
   ruleData: RichRuleData,
@@ -637,9 +554,6 @@ export function buildDeterministicResponse(
   };
   
   // Section 2: Action
-  // Phase G — G2: action-text coalescer. If the primary rule was approved but
-  // `action_text` is empty, fall back to reason_text/knowledge_text/cause so we
-  // never emit an empty action object for an approved decision.
   const coalescedActionText =
     (ruleData.action_text && ruleData.action_text.trim()) ||
     (ruleData.reason_text && ruleData.reason_text.trim()) ||
@@ -818,9 +732,7 @@ export function buildDeterministicResponse(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Safety instruction from farmer_safety_level
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildSafetyInstruction(level?: string): string | undefined {
   if (!level) return undefined;
@@ -832,9 +744,7 @@ function buildSafetyInstruction(level?: string): string | undefined {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Spray window instruction from environmental thresholds
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildSprayWindowInstruction(rule: RichRuleData): string | undefined {
   const parts: string[] = [];
@@ -856,15 +766,9 @@ function buildSprayWindowInstruction(rule: RichRuleData): string | undefined {
   return parts.length > 0 ? parts.join('. ') + '.' : undefined;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FORMAT: Convert structured response to LLM prompt data
-// This is the TEXT that goes into the LLM prompt for translation/formatting
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Translate an array of indicator codes using observation_translations DB table.
- * SSOT: All translations come from database, not hardcoded dictionaries.
- */
+// Translate an array of indicator codes using observation_translations DB table.
 async function translateIndicatorArray(
   indicators: string[] | string | undefined | null,
   lang: string,
@@ -908,10 +812,7 @@ async function translateIndicatorArray(
   }
 }
 
-/**
- * Translate a technical term (action_type, target_stage, etc.) using DB.
- * Uses observation_translations table with the code as observation_code.
- */
+// Translate a technical term (action_type, target_stage, etc.) using DB.
 async function translateTechnicalTerm(
   term: string | undefined | null,
   lang: string,
@@ -1163,19 +1064,13 @@ export async function formatStructuredResponseForLLM(
   return parts.join('\n');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION: Check if rule data has enough content for a response
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function hasAdequateRuleContent(ruleData: RichRuleData): boolean {
   return !!(ruleData.action_text || ruleData.reason_text || ruleData.knowledge_text);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE ATOMICITY: Chemical mismatch detection utility
-// Prevents cross-rule contamination where chemical A's name appears
-// in rule B's dosage string (e.g., Chlorpyrifos product + Fipronil dosage)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const KNOWN_ACTIVE_INGREDIENTS = [
   'chlorpyrifos', 'fipronil', 'imidacloprid', 'thiamethoxam', 'acetamiprid',
@@ -1211,11 +1106,7 @@ export function detectChemicalMismatch(activeIngredient?: string, dosageString?:
   return false;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE INTEGRITY VALIDATOR
-// Ensures treatment fields are internally consistent within a single rule.
-// If mismatch detected, nullifies contaminated fields to prevent bad advice.
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function validateRuleIntegrity(ruleData: RichRuleData): RichRuleData {
   const ruleId = ruleData.rule_id || 'UNKNOWN';
@@ -1237,14 +1128,7 @@ export function validateRuleIntegrity(ruleData: RichRuleData): RichRuleData {
   return ruleData;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXTRACT RichRuleData from application_details (pipeline bridge)
-// ═══════════════════════════════════════════════════════════════════════════
-// RULE ATOMICITY PRINCIPLE:
-// Treatment-critical fields MUST come from primaryDecision ONLY.
-// appDetails fallback is ONLY allowed if appDetails.rule_id matches
-// primaryDecision.rule_id, preventing cross-rule data contamination.
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function extractRichRuleData(
   primaryDecision: any,
@@ -1343,9 +1227,7 @@ export function extractRichRuleData(
   return validateRuleIntegrity(ruleData);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MISSING DATA DETECTOR: Identify what's missing for a complete response
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function identifyMissingData(ruleData: RichRuleData, landAreaAcres?: number): string[] {
   const missing: string[] = [];

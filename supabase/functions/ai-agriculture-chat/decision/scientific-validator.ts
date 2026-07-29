@@ -1,22 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * SCIENTIFIC VALIDATOR — Phase C, gate #3
- * ═══════════════════════════════════════════════════════════════════════════
- * Runs between Rule Evaluation and Safety. Consults
- * `crop_baseline_guidelines_v2` (already loaded by baseline-guidelines-cache)
- * to verify that a candidate recommendation does not violate baseline
- * agronomic bounds:
- *   - irrigation volume (water_requirement_mm, irrigation_interval_days)
- *   - fertilizer doses (nitrogen/phosphorus/potassium/sulphur/zinc/iron)
- *   - PHI / max applications (from decision_rules itself, range-checked)
- *   - stage suitability (das_start/das_end window)
- *
- * Any recommendation outside bounds is REJECTED with
- *   rejection_reason='BASELINE_VIOLATION'
- * Rejected payloads must not reach the Deterministic Builder (Phase D
- * enforces ordering).
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// SCIENTIFIC VALIDATOR — Phase C, gate #3
 
 import {
   loadBaselineGuidelines,
@@ -129,8 +111,6 @@ export async function evaluateScientificGate(
   const approved: CandidateRecommendation[] = [];
   const rejected: Array<{ candidate: CandidateRecommendation; reasons: string[] }> = [];
   // FIX 5: track candidates that were APPROVED without a real baseline check.
-  // These must NOT contribute a confidence boost — missing reference data is
-  // "INSUFFICIENT_REFERENCE", not "PASS".
   let approvedWithBaseline = 0;
   let approvedWithoutBaseline = 0;
 
@@ -203,8 +183,6 @@ export async function evaluateScientificGate(
   }
 
   // FIX 5: confidence = (approved-with-baseline) / (candidates that had a
-  // baseline to check). Missing baseline == not evaluated → excluded from
-  // both numerator and denominator instead of counted as PASS=1.0.
   const evaluated = approvedWithBaseline + rejected.length;
   const scientificConfidence = candidates.length === 0
     ? 1
@@ -214,9 +192,6 @@ export async function evaluateScientificGate(
   chain?.set('scientific', scientificConfidence);
 
   // ─── GATE SPLIT — diagnosis vs treatment ───────────────────────────────
-  // Diagnosis is ALWAYS allowed when at least one candidate exists — the
-  // scientific gate only guards prescription/quantitative payloads.
-  // Treatment requires a baseline-approved candidate.
   const allow_diagnosis = candidates.length > 0;
   const allow_treatment = approvedWithBaseline > 0;
   const block_reasons: string[] = [];

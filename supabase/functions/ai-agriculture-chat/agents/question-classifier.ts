@@ -1,7 +1,4 @@
-/**
- * Question Classification System
- * Determines which response template and sections to use based on farmer's question
- */
+// Question Classification System
 
 export enum ResponseTemplateType {
   TREATMENT_FULL = 'treatment_full',           // Pest/disease with chemical products
@@ -34,9 +31,7 @@ export interface QuestionClassification {
   priority_order: string[];     // Order of section importance
 }
 
-/**
- * Classify the farmer's question and determine appropriate response template
- */
+// Classify the farmer's question and determine appropriate response template
 export function classifyQuestion(
   primaryIntent: string,
   nluOutput: any,
@@ -47,10 +42,7 @@ export function classifyQuestion(
   console.log('📋 [QuestionClassifier] Classifying question...');
   console.log(`   Primary intent: ${primaryIntent}`);
   
-  // ═════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Force TREATMENT_FULL if DecisionOutput has pest/disease target
-  // This ensures rule-based decisions always get detailed templates
-  // ═════════════════════════════════════════════════════════════════════════
   if (decisionOutput) {
     // Note: target is an object with pest_code, disease_code, nutrient_deficiency properties, not a string
     const hasPestTarget = !!(decisionOutput.primary_decision?.target?.pest_code || 
@@ -84,9 +76,7 @@ export function classifyQuestion(
     }
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 1: Pest/Disease Treatment with Products
-  // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'PEST_PROBLEM' || 
       primaryIntent === 'DISEASE_PROBLEM' ||
       primaryIntent === 'PEST_MANAGEMENT' ||
@@ -119,10 +109,7 @@ export function classifyQuestion(
     }
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
-  // PATTERN 2: Irrigation/Water Management Query  
-  // CRITICAL FIX: Added WATER_ISSUE mapping (actual NLU intent name)
-  // ═════════════════════════════════════════════════════════════════════════
+  // PATTERN 2: Irrigation/Water Management Query
   if (primaryIntent === 'IRRIGATION_QUERY' || 
       primaryIntent === 'WATER_MANAGEMENT' ||
       primaryIntent === 'WATER_SCHEDULE' ||
@@ -149,10 +136,7 @@ export function classifyQuestion(
     };
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 3: Fertilizer Schedule Query
-  // CRITICAL FIX: Added NUTRIENT_ISSUE mapping (actual NLU intent name)
-  // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'FERTILIZER_QUERY' || 
       primaryIntent === 'NUTRIENT_MANAGEMENT' ||
       primaryIntent === 'FERTILIZER_SCHEDULE' ||
@@ -179,9 +163,7 @@ export function classifyQuestion(
     };
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 4: Crop Health Check / Status Query
-  // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'CROP_STATUS_CHECK' || 
       primaryIntent === 'HEALTH_ASSESSMENT' ||
       primaryIntent === 'CROP_HEALTH' ||
@@ -207,9 +189,7 @@ export function classifyQuestion(
     };
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 5: General Information / Variety Selection
-  // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'GENERAL_QUERY' || 
       primaryIntent === 'VARIETY_SELECTION' ||
       primaryIntent === 'BEST_PRACTICES' ||
@@ -235,9 +215,7 @@ export function classifyQuestion(
     };
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 6: Weather-Based Advisory
-  // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'WEATHER_QUERY' || 
       primaryIntent === 'WEATHER_ADVISORY' ||
       nluOutput.entities_extracted?.weather_mentioned) {
@@ -261,9 +239,7 @@ export function classifyQuestion(
     };
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 7: Follow-up / Monitoring Update
-  // ═════════════════════════════════════════════════════════════════════════
   if ((contextState?.questions_asked || 0) > 0 && 
       (primaryIntent === 'PROBLEM_UPDATE' || 
        primaryIntent === 'PROGRESS_REPORT' ||
@@ -288,9 +264,7 @@ export function classifyQuestion(
     };
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 8: Market Information
-  // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'MARKET_QUERY' || 
       primaryIntent === 'PRICE_INFO' ||
       primaryIntent === 'MARKET_INFO') {
@@ -314,9 +288,7 @@ export function classifyQuestion(
     };
   }
   
-  // ═════════════════════════════════════════════════════════════════════════
   // DEFAULT: General Advice (Fallback)
-  // ═════════════════════════════════════════════════════════════════════════
   console.log('   ⚠️ Fallback to GENERAL_ADVICE');
   return {
     template_type: ResponseTemplateType.GENERAL_ADVICE,
@@ -336,25 +308,19 @@ export function classifyQuestion(
   };
 }
 
-/**
- * Helper: Check if question involves product application
- */
+// Helper: Check if question involves product application
 export function requiresProductApplication(classification: QuestionClassification): boolean {
   return classification.requires_sections.materials && 
          classification.requires_sections.mixing;
 }
 
-/**
- * Helper: Check if question is monitoring/status check
- */
+// Helper: Check if question is monitoring/status check
 export function isStatusCheck(classification: QuestionClassification): boolean {
   return classification.template_type === ResponseTemplateType.HEALTH_ASSESSMENT ||
          classification.template_type === ResponseTemplateType.MONITORING_UPDATE;
 }
 
-/**
- * Helper: Get human-readable template description
- */
+// Helper: Get human-readable template description
 export function getTemplateDescription(type: ResponseTemplateType): string {
   const descriptions: Record<ResponseTemplateType, string> = {
     [ResponseTemplateType.TREATMENT_FULL]: 'Full treatment with products and follow-up',

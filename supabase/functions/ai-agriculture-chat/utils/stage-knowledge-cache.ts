@@ -35,11 +35,7 @@ export interface StageMasterRow {
   das_min?: number | null;
   das_max?: number | null;
   stage_description?: string | null;
-  /**
-   * v6 — cultivation_method dimension (e.g. 'direct_seeded', 'transplanted',
-   * 'any', or NULL). Callers of getStageByDAS may filter by this to respect
-   * the biological path recorded in crop_schedules.
-   */
+  // v6 — cultivation_method dimension (e.g. 'direct_seeded', 'transplanted',
   cultivation_method?: string | null;
 }
 
@@ -67,11 +63,6 @@ interface Cache {
   byCropStage: Map<string, StageMasterRow>; // `${crop}|${stage}` → row
   knowledgeByCropStage: Map<string, StageKnowledgeRow>;
   // Adjacency list built from public.crop_stage_graph — SSOT for stage
-  // equivalence/adjacency. Key = `${crop}|${stage}`, value = set of adjacent
-  // stage codes (lowercased). Built from ALL edge types symmetrically since
-  // any edge type (STAGE_PRECEDES / ENABLES / CONCURRENT_WITH / TRIGGERS)
-  // marks the two stages as belonging to the same crop's phenological family
-  // for the purpose of rule stage-gating.
   stageAdjacency: Map<string, Set<string>>;
 }
 
@@ -88,25 +79,7 @@ function ak(crop: string, method: string, stage: string) {
   return `${(crop || '').toLowerCase()}|${(method || 'any').toLowerCase()}|${(stage || '').toLowerCase()}`;
 }
 
-/**
- * FIX C1 (2026-07-28): Deleted `activeCultivationMethod` module-scope state.
- * That variable created a cross-request data-corruption hazard in Supabase
- * Edge Functions: Deno isolates serve multiple concurrent requests, every
- * `await` between the set and downstream reads is a preemption point, and
- * concurrent farmer B could overwrite the lane while farmer A was awaiting
- * a DB call. When A resumed, its stage lookups used B's lane — silently
- * giving A wrong-lane agronomic advice.
- *
- * The setter is now a deprecated no-op that logs a warning so any residual
- * call sites are visible in production. The getter returns null so any
- * legacy caller that reads it gets the lane-agnostic behavior (safe default).
- *
- * Correct pattern: every stage-lookup call MUST pass cultivationMethod
- * explicitly, resolved from THIS request's BiologicalState / CanonicalState.
- * Callers that currently omit the arg get lane-agnostic matching (which
- * matches every row regardless of cultivation_method) — cross-farmer
- * contamination cannot happen because there is no shared state.
- */
+// FIX C1 (2026-07-28): Deleted `activeCultivationMethod` module-scope state.
 export function setActiveCultivationMethod(method: string | null | undefined): void {
   // Deprecated no-op — retained for API compatibility only.
   const raw = method ? String(method).toLowerCase().trim() : null;
@@ -124,14 +97,7 @@ export function getActiveCultivationMethod(): string | null {
   return currentLane();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FIX C1-b (2026-07-29) — REQUEST-SCOPED CULTIVATION LANE
-// ───────────────────────────────────────────────────────────────────────────
-// AsyncLocalStorage gives every in-flight request its own lane. Unlike the
-// module-scope variable deleted by FIX C1, a store entered inside request A's
-// async context is invisible to request B, so concurrent farmers can never
-// read each other's cultivation lane.
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface LaneStore {
   lane: string | null;
@@ -153,12 +119,7 @@ export function runWithCultivationLane<T>(
   return laneALS.run({ lane: normLane(method), warned: new Set<string>() }, fn);
 }
 
-/**
- * Set the lane for the CURRENT async context onward (no callback wrapping).
- * Used by the orchestrator the moment SessionSSOT resolves the lane mid-turn.
- * Falls back to a warning (lane-agnostic behaviour) if the runtime does not
- * implement `enterWith`.
- */
+// Set the lane for the CURRENT async context onward (no callback wrapping).
 export function enterCultivationLane(method: string | null | undefined): void {
   const lane = normLane(method);
   try {
@@ -192,11 +153,7 @@ function warnOnce(key: string, message: string): void {
   console.warn(message);
 }
 
-/** A stage-graph / stage-master row belongs to the requested lane when its own
- *  method equals the lane or is the universal 'any'. Unknown lane → all rows.
- *  FIX C1-b: a NULL row method degrades to 'any' — crop_stage_graph has 134
- *  NULL-lane edges covering every non-rice crop; rejecting them would delete
- *  those stage families entirely. */
+// A stage-graph / stage-master row belongs to the requested lane when its own
 function laneMatches(rowMethod: unknown, lane: string | null): boolean {
   const m = rowMethod ? String(rowMethod).toLowerCase() : 'any';
   if (!lane) return true;
@@ -275,8 +232,6 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
         const to   = idToStage.get(String(e.to_stage_id))?.stage;
         if (!crop || !from || !to) continue;
         // Symmetric adjacency — all curated edge types (STAGE_PRECEDES,
-        // ENABLES, CONCURRENT_WITH, TRIGGERS) mark the two stages as
-        // neighbours in the same crop's phenological graph.
         const edgeMethod = e.cultivation_method
           ? String(e.cultivation_method).toLowerCase()
           : 'any';
@@ -295,8 +250,6 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
   }
 
   // FIX C1-b: lane-keyed index (`crop|method|stage`). The previous
-  // `crop|stage` key let rice direct_seeded and transplanted rows overwrite
-  // each other at load time, so one lane silently disappeared.
   const byCropStage = new Map<string, StageMasterRow>();
   for (const r of master) {
     const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
@@ -359,9 +312,7 @@ export function getStageKnowledge(crop: string, stage: string): StageKnowledgeRo
 }
 
 
-/** DB-first stage category lookup. Returns null when DB has no row.
- *  Note: crop_stage_master has no `stage_category` column — returns the
- *  growth_stage itself uppercased, which is what downstream callers compare. */
+// DB-first stage category lookup. Returns null when DB has no row.
 export function getStageCategoryFromDB(
   crop: string,
   stage: string
@@ -370,19 +321,7 @@ export function getStageCategoryFromDB(
   return row?.growth_stage ? row.growth_stage.toUpperCase() : null;
 }
 
-/**
- * DB-first DAS → stage lookup.
- *
- * Lane resolution: explicit `cultivationMethod` wins (including an explicit
- * null = lane-agnostic); otherwise the request-scoped lane. A row qualifies
- * iff its own method equals the lane or is 'any'/NULL, exact preferred.
- *
- * FIX C1-b: the legacy "return first hit" branch is DELETED. With rice
- * direct_seeded (10-160 DAS) and transplanted (0-125 DAS) both present, first
- * hit meant a direct-seeded field could be scored on the transplanted
- * timeline. When the lane is unknown we now pick deterministically
- * ('any' → lowest das_min) and log [STAGE_LANE_UNKNOWN] once per request.
- */
+// DB-first DAS → stage lookup.
 export function getStageByDAS(
   crop: string,
   das: number,
@@ -426,13 +365,7 @@ export function isStageKnowledgeLoaded(): boolean {
   return !!cache && cache.master.length > 0;
 }
 
-/**
- * DB-first stage family lookup — SSOT is `public.crop_stage_graph`.
- * Returns adjacent stages (including the query stage itself) for a given
- * (crop, stage). Returns `null` when the cache is unloaded OR when the DB
- * has no entry for that (crop, stage) — callers MUST treat null as
- * "unknown, singleton fallback" and NEVER substitute a hardcoded family.
- */
+// DB-first stage family lookup — SSOT is `public.crop_stage_graph`.
 export function getStageFamilyFromDB(
   crop: string,
   stage: string,
@@ -456,11 +389,7 @@ export function getStageFamilyFromDB(
   return Array.from(out);
 }
 
-/**
- * DB-first symmetric equivalence — true iff `b` is in the DB-curated stage
- * family of `(crop, a)` OR vice versa. Returns `null` when the DB has no
- * data for either side; callers decide the fallback semantics.
- */
+// DB-first symmetric equivalence — true iff `b` is in the DB-curated stage
 export function stagesEquivalentFromDB(
   crop: string,
   a: string,

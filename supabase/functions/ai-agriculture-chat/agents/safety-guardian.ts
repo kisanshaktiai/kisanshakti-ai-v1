@@ -84,9 +84,7 @@ export class SafetyGuardian {
     );
   }
   
-  /**
-   * Main safety verification - MUST be called before any recommendation reaches farmer
-   */
+  // Main safety verification - MUST be called before any recommendation reaches farmer
   async verifySafety(
     decisionOutput: DecisionOutput,
     farmerContext: {
@@ -170,13 +168,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Gate 1: Check for banned substances.
-   * P4a (2026-07-24): DB SSOT via phase1-caches. `isBannedChemical` /
-   * `isRestrictedChemical` throw `SafetyCacheUnavailableError` when the cache
-   * is warm but empty — we catch and hard-fail BLOCK. During cold-boot both
-   * accessors fall back to the legacy hardcoded map internally.
-   */
+  // Gate 1: Check for banned substances.
   private checkBannedSubstances(decision: DecisionOutput): BannedSubstanceCheck {
     const violations: BannedSubstanceViolation[] = [];
     const productName = decision.primary_decision?.application_details?.product_name?.toUpperCase() || '';
@@ -241,9 +233,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Gate 2: Check human safety
-   */
+  // Gate 2: Check human safety
   private checkHumanSafety(decision: DecisionOutput): HumanSafetyCheck {
     const risks: HumanSafetyCheck['risks'] = [];
     const productType = decision.primary_decision?.application_details?.product_type;
@@ -296,9 +286,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Gate 3: Check food safety (PHI/MRL)
-   */
+  // Gate 3: Check food safety (PHI/MRL)
   private checkFoodSafety(
     decision: DecisionOutput,
     context: { expected_harvest_date?: string; crop_stage?: string }
@@ -342,9 +330,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Gate 4: Check environmental safety
-   */
+  // Gate 4: Check environmental safety
   private checkEnvironmentalSafety(decision: DecisionOutput): EnvironmentalCheck {
     const concerns: EnvironmentalCheck['concerns'] = [];
     const productName = decision.primary_decision?.application_details?.product_name?.toLowerCase() || '';
@@ -403,17 +389,12 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Gate 5: Check regulatory compliance
-   */
+  // Gate 5: Check regulatory compliance
   private checkRegulatoryCompliance(decision: DecisionOutput): RegulatoryCheck {
     const issues: RegulatoryCheck['compliance_issues'] = [];
     const productName = decision.primary_decision?.application_details?.product_name || '';
     
     // P4a: RESTRICTED lookup via DB SSOT. Tokenize product name so multi-word
-    // restricted names still match. Legacy BANNED_SUBSTANCES_INDIA is kept for
-    // the "Section 9(3)" reference metadata (P4d schema work outstanding) but
-    // the *decision* to flag is made by the DB accessor.
     const tokens = new Set<string>([
       productName.toUpperCase(),
       ...productName.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean),
@@ -452,9 +433,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Detect emergency situations
-   */
+  // Detect emergency situations
   private detectEmergency(farmerInput: string): EmergencyProtocol {
     const inputLower = farmerInput.toLowerCase();
     
@@ -508,12 +487,6 @@ export class SafetyGuardian {
     }
     
     // Check for banned substance use.
-    // P4b (2026-07-24): DB SSOT. `findBannedChemicalMention` scans the input for
-    // any chemical marked `banned` in `chemical_regulatory_status`. Legacy
-    // `EMERGENCY_KEYWORDS.banned_used` is passed as cold-boot fallback ONLY;
-    // once the cache is warm the accessor ignores it. Throws
-    // `SafetyCacheUnavailableError` if cache is warm-but-empty — we treat that
-    // as a hard emergency (fail-closed) so we do NOT silently downgrade.
     let bannedMention: string | null = null;
     try {
       bannedMention = _findBannedChemicalMentionDb(inputLower, EMERGENCY_KEYWORDS.banned_used);
@@ -555,9 +528,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Determine if escalation to human expert is needed
-   */
+  // Determine if escalation to human expert is needed
   private shouldEscalateToExpert(
     decision: DecisionOutput,
     safetyCheck: SafetyCheck,
@@ -628,9 +599,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Determine overall safety status from all gates
-   */
+  // Determine overall safety status from all gates
   private determineOverallSafety(check: SafetyCheck): SafetyStatus {
     const gates = check.safety_gates;
     
@@ -661,9 +630,7 @@ export class SafetyGuardian {
     return 'SAFE';
   }
   
-  /**
-   * Collect all blocking reasons from failed gates
-   */
+  // Collect all blocking reasons from failed gates
   private collectBlockingReasons(check: SafetyCheck): string[] {
     const reasons: string[] = [];
     const gates = check.safety_gates;
@@ -687,9 +654,7 @@ export class SafetyGuardian {
     return reasons;
   }
   
-  /**
-   * Find safer alternatives when a recommendation is blocked
-   */
+  // Find safer alternatives when a recommendation is blocked
   private findSaferAlternatives(decision: DecisionOutput): SaferAlternative[] {
     const alternatives: SaferAlternative[] = [];
     const targetPest = decision.primary_decision?.target?.pest_code;
@@ -735,9 +700,7 @@ export class SafetyGuardian {
     return alternatives.slice(0, 3);
   }
   
-  /**
-   * Add safety warnings to decision
-   */
+  // Add safety warnings to decision
   private addSafetyWarnings(decision: DecisionOutput, check: SafetyCheck): DecisionOutput {
     const warnings: string[] = [];
     
@@ -766,9 +729,7 @@ export class SafetyGuardian {
     } as DecisionOutput;
   }
   
-  /**
-   * Generate blocked message for farmer
-   */
+  // Generate blocked message for farmer
   private generateBlockedMessage(check: SafetyCheck): BlockedDecisionMessage {
     const reasons = check.blocking_reasons;
     
@@ -782,9 +743,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Handle emergency situations
-   */
+  // Handle emergency situations
   private async handleEmergency(
     emergency: EmergencyProtocol,
     decision: DecisionOutput,
@@ -831,9 +790,7 @@ export class SafetyGuardian {
     };
   }
   
-  /**
-   * Determine expert type based on decision and safety issues
-   */
+  // Determine expert type based on decision and safety issues
   private determineExpertType(decision: DecisionOutput, check: SafetyCheck): ExpertType {
     if (check.safety_gates.human_safety_check.risks.some(r => r.severity === 'CRITICAL')) {
       return 'SAFETY_OFFICER';
@@ -850,9 +807,7 @@ export class SafetyGuardian {
     return 'AGRONOMIST';
   }
   
-  /**
-   * Get WHO toxicity class for a product
-   */
+  // Get WHO toxicity class for a product
   private getWHOToxicityClass(productName: string): string {
     const toxicityMap: Record<string, string> = {
       'monocrotophos': 'Ib',
@@ -878,9 +833,7 @@ export class SafetyGuardian {
     return 'III'; // Default to slightly hazardous
   }
   
-  /**
-   * Log safety check to database
-   */
+  // Log safety check to database
   private async logSafetyCheck(check: SafetyCheck, escalation: EscalationDecision): Promise<void> {
     try {
       await this.supabase.from('safety_verifications').insert({

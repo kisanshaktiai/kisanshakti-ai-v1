@@ -1,7 +1,4 @@
-/**
- * Phase I — Single [BRAIN_TRACE] block per request.
- * Read-only over a frozen ConversationState plus pipeline phase outcomes.
- */
+// Phase I — Single [BRAIN_TRACE] block per request.
 import type { ConversationState } from './conversation-state.ts';
 
 export interface BrainTracePhases {
@@ -13,21 +10,12 @@ export interface BrainTracePhases {
   builder?:        string | null;
   translation?:    string | null;
   total_ms?:       number;
-  /**
-   * Override for `hyp` count. ConversationState is built BEFORE the hypothesis
-   * graph runs, so its `hypotheses` array is empty at construction. Callers
-   * that emit BRAIN_TRACE after the graph MUST pass the real graph count here
-   * so the log stops lying (`hyp=0` while graph produced N candidates).
-   */
+  // Override for `hyp` count. ConversationState is built BEFORE the hypothesis
   hypotheses_count?: number;
   obs_to_hyp_edges?: number;
   hyp_to_rule_edges?: number;
   sequence?: number;
-  /**
-   * OBSERVATION_REQUIRED contract flags — set by the boundary hydrator in
-   * index.ts (ensureObservationSelectorContract). Emitted on the single
-   * [BRAIN_TRACE] line so audits can grep for symptom-picker turns.
-   */
+  // OBSERVATION_REQUIRED contract flags — set by the boundary hydrator in
   observation_required?: boolean;
   observation_option_count?: number;
 }

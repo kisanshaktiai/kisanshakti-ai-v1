@@ -1,19 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RULE EVALUATION LAYER - Layer 3 in 5-Layer Symbolic Brain Architecture
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE: Thin wrapper around symbolic-reasoner.ts that provides a clean
- * interface for rule evaluation. This is the core decision engine layer.
- * 
- * CRITICAL CONSTRAINTS:
- * - All decisions come from deterministic rule evaluation
- * - NO LLM involvement in this layer
- * - Rules are SUPREME, this layer only executes them
- * 
- * FLOW:
- * LLM Understanding Layer → [THIS LAYER] → Structured Decisions → LLM Formatter
- */
+// RULE EVALUATION LAYER - Layer 3 in 5-Layer Symbolic Brain Architecture
 
 import { SymbolicReasoner, type SymbolicFact, type InferenceResult } from '../decision/symbolic-reasoner.ts';
 import { FactExtractor } from '../decision/fact-extractor.ts';
@@ -21,23 +6,9 @@ import type { AuthoritativeLandState } from '../decision/authoritative-state-loa
 import type { UnderstandingOutput } from '../llm-understanding-layer.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL-TO-RULE NORMALIZATION ADAPTER
-// ═══════════════════════════════════════════════════════════════════════════
-// 
-// PURPOSE: Reconcile CanonicalState enums with database-stored rule values
-// CanonicalState uses closed-world ENUMs (e.g., CropType.SUGARCANE, CropStage.GRAND_GROWTH)
-// decision_rules store values as lowercase snake_case strings (e.g., "sugarcane", "grand_growth")
-//
-// CRITICAL: Normalization happens ONLY at comparison time, NEVER mutates:
-// - CanonicalState (immutable after Phase 2.5)
-// - Database rule records (immutable)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize CanonicalState enum value to rule-compatible lowercase snake_case string
- * Used ONLY during rule matching - does NOT mutate the original value
- */
+// Normalize CanonicalState enum value to rule-compatible lowercase snake_case string
 export function normalizeEnumForRuleMatch(enumValue: string | undefined | null): string {
   if (!enumValue || enumValue === 'UNKNOWN') return '';
   
@@ -45,10 +16,7 @@ export function normalizeEnumForRuleMatch(enumValue: string | undefined | null):
   return enumValue.toLowerCase().replace(/-/g, '_');
 }
 
-/**
- * Check if a rule's crop_code matches the canonical state crop
- * Handles wildcards: "all", "*", "universal"
- */
+// Check if a rule's crop_code matches the canonical state crop
 export function cropMatchesRule(canonicalCrop: string, ruleCropCode: string | null | undefined): boolean {
   // Wildcard rules match everything
   if (!ruleCropCode || ruleCropCode === 'all' || ruleCropCode === '*' || ruleCropCode === 'universal') {
@@ -61,10 +29,7 @@ export function cropMatchesRule(canonicalCrop: string, ruleCropCode: string | nu
   return normalizedCanonical === normalizedRule;
 }
 
-/**
- * Check if a rule's stage_applicable array includes the canonical state stage
- * Handles wildcards: ["all"], ["*"]
- */
+// Check if a rule's stage_applicable array includes the canonical state stage
 export function stageMatchesRule(
   canonicalStage: string, 
   ruleStageApplicable: string[] | null | undefined
@@ -89,10 +54,7 @@ export function stageMatchesRule(
   });
 }
 
-/**
- * Normalize a CanonicalState for rule evaluation
- * Returns a normalized context object with lowercase snake_case values for matching
- */
+// Normalize a CanonicalState for rule evaluation
 export function createNormalizedContextForRules(canonicalState: CanonicalState): {
   crop_code: string;
   growth_stage: string;
@@ -117,9 +79,7 @@ export function createNormalizedContextForRules(canonicalState: CanonicalState):
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT/OUTPUT TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RuleEvaluationInput {
   // From Layer 2: LLM Understanding
@@ -214,14 +174,9 @@ export interface RuleEvaluationOutput {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN EVALUATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Evaluate rules against understanding and land state.
- * This is the core decision engine - wraps SymbolicReasoner.
- */
+// Evaluate rules against understanding and land state.
 export async function evaluateRules(input: RuleEvaluationInput): Promise<RuleEvaluationOutput> {
   const startTime = Date.now();
   console.log('⚙️ [RuleEvaluationLayer] Starting rule evaluation...');
@@ -286,20 +241,14 @@ export async function evaluateRules(input: RuleEvaluationInput): Promise<RuleEva
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Build SymbolicFact from understanding and land state
- */
+// Build SymbolicFact from understanding and land state
 function buildFactsFromInput(
   input: RuleEvaluationInput, 
   extractor: FactExtractor
 ): SymbolicFact {
-  // ═══════════════════════════════════════════════════════════════════════════
   // CANONICAL-TO-RULE NORMALIZATION: Apply normalization for rule matching
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // If we have a canonical state, use the extractor with normalized values
   if (input.canonical_state && input.land_state) {
@@ -336,9 +285,7 @@ function buildFactsFromInput(
   const severityObs = understanding?.observations?.find(o => o.category === 'SEVERITY');
   const severity = severityObs?.key.replace('SEVERITY_', '').toLowerCase() || 'unknown';
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // NORMALIZATION: Convert enum values to lowercase snake_case for rule matching
-  // ═══════════════════════════════════════════════════════════════════════════
   const rawCrop = landState?.crop.current_crop || understanding?.crop?.code || 'UNKNOWN';
   const rawStage = landState?.crop.growth_stage || 'UNKNOWN';
   
@@ -398,9 +345,7 @@ function buildFactsFromInput(
   return facts;
 }
 
-/**
- * Build observation object from understanding
- */
+// Build observation object from understanding
 function buildObservationFromUnderstanding(understanding: UnderstandingOutput | null): any {
   if (!understanding) return {};
   
@@ -417,9 +362,7 @@ function buildObservationFromUnderstanding(understanding: UnderstandingOutput | 
   };
 }
 
-/**
- * Map FiredRule to Recommendation
- */
+// Map FiredRule to Recommendation
 function mapToRecommendation(rule: any): Recommendation {
   return {
     rule_id: rule.rule_id,
@@ -444,9 +387,7 @@ function mapToRecommendation(rule: any): Recommendation {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function calculateNDVIStatus(ndvi: number | null | undefined): string {
   if (ndvi === null || ndvi === undefined) return 'UNKNOWN';
@@ -503,9 +444,7 @@ function calculateDataCompleteness(
   return total > 0 ? (points / total) * 100 : 0;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONVENIENCE EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export {
   type SymbolicFact,

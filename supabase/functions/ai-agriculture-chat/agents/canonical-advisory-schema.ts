@@ -1,24 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CANONICAL FARMER ADVISORY SCHEMA v1.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Defines the 2030-ready structured advisory JSON that flows end-to-end
- * from the symbolic decision brain to the frontend renderer.
- * 
- * All data sourced from decision_rules DB (SSOT).
- * LLM is strictly narrator — never generates agronomic content.
- * 
- * Maps from: StructuredFarmerResponse + RichRuleData
- * Consumed by: Frontend CanonicalAdvisoryCard component
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CANONICAL FARMER ADVISORY SCHEMA v1.0
 
 import type { RichRuleData, StructuredFarmerResponse } from './deterministic-response-builder.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL ADVISORY INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CanonicalFarmerAdvisory {
   version: '1.0';
@@ -140,10 +124,7 @@ export interface CanonicalFarmerAdvisory {
   safety_warnings: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BUILDER: StructuredFarmerResponse + RichRuleData → CanonicalFarmerAdvisory
-// Pure data transformation — no new logic, no DB calls
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function buildCanonicalAdvisory(
   structured: StructuredFarmerResponse,
@@ -192,9 +173,6 @@ export function buildCanonicalAdvisory(
   }
   
   // ═══ RULE ATOMICITY: Secondary observations stripped of treatment data ═══
-  // Secondary rules may ONLY provide cause/context/monitoring info.
-  // Treatment details (action_text with dosage/chemical) are stripped
-  // to prevent cross-rule contamination in the advisory card.
   const secondaryObs = (secondaryDecisions || []).map((d: any) => ({
     rule_id: d.rule_id || 'UNKNOWN',
     cause: d.cause || d.cause_name || '',
@@ -308,9 +286,7 @@ export function buildCanonicalAdvisory(
   return advisory;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MULTI-RULE BUILDER: Handles multiple matched rules
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function buildMultiRuleAdvisory(
   primaryAdvisory: CanonicalFarmerAdvisory,

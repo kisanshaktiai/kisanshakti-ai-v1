@@ -1,18 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * INTENT LOCK LAYER - Enforces "Symbolic Brain decides, AI only explains"
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Once an intent_label is produced for a turn, it is LOCKED.
- * The symbolic brain must evaluate only rules scoped to that intent.
- * This prevents intent mixing (e.g., irrigation queries producing pest advice).
- */
+// INTENT LOCK LAYER - Enforces "Symbolic Brain decides, AI only explains"
 
 export const INTENT_LOCK_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface IntentLock {
   turn_id: string;
@@ -23,9 +13,6 @@ export interface IntentLock {
   forbidden_action_types: string[];
   confidence: number;
   // PR-7 F6: signal that the intent's crop prefix does not match the
-  // authoritative land crop. Callers (orchestrator) should treat this as a
-  // hint to fall back to observation discovery / clarification instead of
-  // letting the mismatched intent drive rule filtering + IOM fallback.
   crop_scope_rejected?: boolean;
   crop_scope_reason?: string;
 }
@@ -36,9 +23,7 @@ export interface IntentLockValidation {
   filtered_actions: any[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTENT → SCOPE MAPPING (Deterministic, No AI)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const INTENT_SCOPE_MAP: Record<string, {
   allowed_scopes: string[];
@@ -95,8 +80,6 @@ const INTENT_SCOPE_MAP: Record<string, {
   },
   
   // CROP_HEALTH - "How is my crop?" queries
-  // CRITICAL: This must allow FERTILIZE when soil shows deficiency
-  // and allow IRRIGATE when NDVI shows stress
   'CROP_HEALTH': {
     allowed_scopes: ['GENERAL', 'INFORMATION', 'ADVISORY', 'NUTRIENT', 'FERTILIZER', 'IRRIGATION', 'HEALTH', 'NDVI'],
     allowed_actions: ['INFORM', 'ADVISE', 'CLARIFY', 'MONITOR', 'FERTILIZE', 'APPLY_FERTILIZER', 'IRRIGATE', 'APPLY', 'SOIL_TEST'],
@@ -131,11 +114,7 @@ const INTENT_SCOPE_MAP: Record<string, {
     forbidden_actions: ['SPRAY', 'IRRIGATE', 'FERTILIZE', 'HARVEST', 'SELL']
   },
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // SYMPTOM-BASED INTENTS (v5.2) — from SemanticExtractor intent_code
-  // These allow full diagnostic + treatment actions since the farmer
-  // is describing actual crop damage symptoms.
-  // ═══════════════════════════════════════════════════════════════════════════
   'STEM_DAMAGE': {
     allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'GENERAL'],
     allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
@@ -216,14 +195,9 @@ const DEFAULT_SCOPE = {
   forbidden_actions: []
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Lock an intent for the current turn
- * Once locked, only rules scoped to this intent can be evaluated
- */
+// Lock an intent for the current turn
 export function lockIntent(
   intent_label: string,
   confidence: number = 1.0,
@@ -237,16 +211,7 @@ export function lockIntent(
   // Get scope configuration
   const scopeConfig = INTENT_SCOPE_MAP[normalizedIntent] || DEFAULT_SCOPE;
   
-  // ═══════════════════════════════════════════════════════════════════════
   // PR-7 F6: crop-scope compatibility check
-  // Intent codes carrying a crop prefix (e.g. COTTON_SQUARE_BOLL_DROP_QUERY,
-  // RICE_TUNGRO_QUERY, SUGARCANE_*) MUST match the authoritative land crop.
-  // A COTTON_* intent locking onto a Rice field is a structural contract
-  // violation — flag it so the orchestrator can drop back to observation
-  // discovery instead of feeding the wrong intent into the IOM fallback.
-  // Rule is intentionally prefix-based (no per-intent table needed): the DB
-  // already encodes the mapping via decision_rules.crop_code / rule_intent.
-  // ═══════════════════════════════════════════════════════════════════════
   const CROP_PREFIXES = ['COTTON', 'RICE', 'WHEAT', 'SUGARCANE', 'MAIZE', 'SOYBEAN', 'ONION', 'TOMATO', 'POTATO', 'GROUNDNUT', 'CHICKPEA', 'MUSTARD'];
   const landCropUpper = (opts?.crop || '').trim().toUpperCase();
   const intentCropPrefix = CROP_PREFIXES.find(p => normalizedIntent.startsWith(p + '_'));
@@ -281,9 +246,7 @@ export function lockIntent(
   return lock;
 }
 
-/**
- * Validate if a rule is allowed under the current intent lock
- */
+// Validate if a rule is allowed under the current intent lock
 export function validateRuleScope(
   rule_id: string,
   rule_scope: string,
@@ -303,9 +266,7 @@ export function validateRuleScope(
   return isAllowed;
 }
 
-/**
- * Validate if an action type is allowed under the current intent lock
- */
+// Validate if an action type is allowed under the current intent lock
 export function validateActionType(
   action_type: string,
   lock: IntentLock
@@ -340,10 +301,7 @@ export function validateActionType(
   };
 }
 
-/**
- * Filter actions based on intent lock
- * Returns only actions that pass the intent scope validation
- */
+// Filter actions based on intent lock
 export function filterActionsByIntentLock(
   actions: any[],
   lock: IntentLock
@@ -372,10 +330,7 @@ export function filterActionsByIntentLock(
   return { passed, violations, filtered_actions };
 }
 
-/**
- * Filter rules based on intent lock scope
- * Returns only rules that are scoped to the locked intent
- */
+// Filter rules based on intent lock scope
 export function filterRulesByIntentLock(
   rules: Array<{ rule_id: string; scope?: string; category?: string }>,
   lock: IntentLock
@@ -386,10 +341,7 @@ export function filterRulesByIntentLock(
   });
 }
 
-/**
- * Check if the current intent lock allows a specific output field
- * Prevents LLM from adding content outside the intent scope
- */
+// Check if the current intent lock allows a specific output field
 export function validateOutputField(
   field_name: string,
   field_value: any,
@@ -435,9 +387,7 @@ export function validateOutputField(
   return { allowed: true };
 }
 
-/**
- * Get human-readable description of what's allowed under current lock
- */
+// Get human-readable description of what's allowed under current lock
 export function getIntentLockDescription(lock: IntentLock): string {
   return `Intent: ${lock.locked_intent}
 Allowed Actions: ${lock.allowed_action_types.join(', ')}
@@ -445,12 +395,7 @@ Forbidden Actions: ${lock.forbidden_action_types.join(', ')}
 Rule Scopes: ${lock.allowed_rule_scopes.join(', ')}`;
 }
 
-/**
- * Check if intent should trigger clarification (low confidence)
- * @param confidence - Current confidence score (0-1)
- * @param cropCode - Optional crop code for calibrated threshold
- * @param growthStage - Optional growth stage for calibrated threshold
- */
+// Check if intent should trigger clarification (low confidence)
 export function requiresClarification(
   confidence: number, 
   cropCode?: string, 
@@ -481,25 +426,14 @@ export function requiresClarification(
   return confidence < threshold;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AGRICULTURAL SYMPTOM BYPASS - Allows symbolic brain to run even at low confidence
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * CRITICAL FIX: Bypass clarification when farmer mentions agricultural symptoms
- * This ensures the Symbolic Decision Brain runs even when NLU confidence is low
- * 
- * @param farmerMessage - Raw farmer message
- * @param intentConfidence - NLU confidence score (0-1)
- * @returns true if clarification should be bypassed and symbolic brain should run
- */
+// CRITICAL FIX: Bypass clarification when farmer mentions agricultural symptoms
 export function shouldBypassClarificationForAgriSymptom(
   farmerMessage: string,
   intentConfidence: number
 ): boolean {
-  // ═══════════════════════════════════════════════════════════════════════════
   // SAFETY GUARD: Handle undefined/empty input gracefully
-  // ═══════════════════════════════════════════════════════════════════════════
   const safeMessage = typeof farmerMessage === 'string' ? farmerMessage : '';
   if (!safeMessage.trim()) return false;
   

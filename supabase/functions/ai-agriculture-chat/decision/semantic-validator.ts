@@ -1,20 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * SEMANTIC VALIDATOR — Phase C, gate #1
- * ═══════════════════════════════════════════════════════════════════════════
- * Runs between Observation Extraction and Hypothesis Generation.
- * Drops observations whose `observation_master.semantic_class` is not in
- * `intent_semantic_class_allowlist` for the active intent.
- *
- * Without this gate, an "irrigation_query" intent can pull in pest-class
- * observations and end up generating pest hypotheses — the documented
- * cross-class drift bug.
- *
- * The gate is MANDATORY: callers cannot bypass it. If the allowlist for an
- * intent is empty (DB has no rows), behavior is fail-OPEN (allow all) with
- * a loud warning, so a missing seed never blocks the pipeline.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// SEMANTIC VALIDATOR — Phase C, gate #1
 
 import type { EvidenceLedger } from './evidence-ledger.ts';
 import type { ConfidenceChain } from './confidence-chain.ts';
@@ -24,14 +8,7 @@ export interface ObservationCandidate {
   semantic_class?: string | null;
   confidence?: number;
   source?: string;
-  /**
-   * Canonical observation_code(s) extracted from the surface annotation
-   * `[obs_keys:code1,code2]`. When present and `semantic_class` is missing,
-   * the semantic gate resolves the class from `observation_master` by these
-   * canonical codes instead of by the surface label. This is the fix for
-   * SEMANTIC_GATE IGNORE ... missing semantic_class metadata caused by using
-   * the raw Marathi/Hindi surface string as the lookup key.
-   */
+  // Canonical observation_code(s) extracted from the surface annotation
   obs_keys?: string[];
 }
 
@@ -88,15 +65,7 @@ async function loadAllowlist(supabase: any): Promise<Map<string, Set<string>>> {
 }
 
 
-/**
- * Resolve a canonical `observation_master.semantic_class` for a candidate.
- * Preference order:
- *   1. explicit `obs.semantic_class`
- *   2. `obs.obs_keys[]` (canonical codes extracted from `[obs_keys:...]`)
- *   3. `obs.code` treated as a canonical code (best-effort)
- * Only queries the DB when needed. Missing lookups return null; caller keeps
- * the existing "missing semantic_class metadata" behavior for those.
- */
+// Resolve a canonical `observation_master.semantic_class` for a candidate.
 async function resolveSemanticClass(
   supabase: any,
   obs: ObservationCandidate,
@@ -138,8 +107,6 @@ export async function evaluateSemanticGate(
   const allowed = byIntent.get(intentKey);
 
   // Hydrate missing semantic_class from observation_master using obs_keys
-  // (or the code itself). This runs BEFORE the allowlist / fail-closed
-  // paths so both branches use the resolved class.
   for (const obs of observations) {
     if (!obs.semantic_class) {
       const r = await resolveSemanticClass(supabase, obs);
@@ -154,12 +121,6 @@ export async function evaluateSemanticGate(
 
 
   // FAIL-CLOSED (Phase X.4 hardening). A previously fail-open empty/error
-  // allowlist let pest- and disease-class observations through for advisory
-  // intents (e.g. GENERAL_CROP_INFO), feeding the diagnosis pipeline with
-  // semantically wrong classes. We now apply a conservative default set
-  // when the governance table is unseeded or the lookup errored, AND we
-  // emit a degraded confidence so downstream gates know not to trust this
-  // signal at face value. We never propagate semanticConfidence=1.
   if (!allowed || allowed.size === 0) {
     const CONSERVATIVE_DEFAULT_CLASSES = new Set([
       'physiology',

@@ -1,19 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGENT 1: NATURAL LANGUAGE UNDERSTANDING - TYPE DEFINITIONS v3.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Complete TypeScript interfaces for the NLU Agent that processes farmer
- * communications in Marathi, Hindi, and English including:
- * - Regional dialects and colloquialisms
- * - Mixed-language (code-switching) sentences
- * - Agricultural terminology in local languages
- * - Voice-to-text transcriptions with errors
- */
+// AGENT 1: NATURAL LANGUAGE UNDERSTANDING - TYPE DEFINITIONS v3.0
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NLUAgentInput {
   raw_input: string;
@@ -99,9 +86,7 @@ export interface EnvironmentalContext {
   humidity_percent?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NLUAgentOutput {
   understanding_metadata: UnderstandingMetadata;
@@ -360,9 +345,7 @@ export interface NextAgentRecommendation {
   reasoning?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOCAL AGRICULTURAL VOCABULARY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface AgriculturalTerm {
   canonical: string;
@@ -375,9 +358,7 @@ export interface AgriculturalTerm {
   scientific_name?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PROCESSING STEP TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LanguageDetectionResult {
   primary_language: string;

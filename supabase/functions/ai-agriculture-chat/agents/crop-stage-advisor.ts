@@ -1,27 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CROP STAGE ADVISOR - Stage-Specific Decision Trees
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * ⚠️ DEPRECATION NOTICE:
- * This file contains hardcoded agronomic knowledge that should be migrated
- * to the `decision_rules` database table for SSOT compliance.
- * 
- * CURRENT STATUS: Used as STAGE_ADVISORY_FALLBACK when zero rules fire
- * from the database for stage-specific queries.
- * 
- * MIGRATION TARGET: Create `crop_stage_knowledge` DB table to replace
- * all hardcoded StageAdvice objects below.
- * 
- * Tagged: STAGE_ADVISORY_FALLBACK (documented in memory)
- * 
- * PHASE 5: Provides stage-specific agronomic advice for each crop
- * All text is English-only — LLM narration layer translates at runtime.
- */
+// CROP STAGE ADVISOR - Stage-Specific Decision Trees
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface StageAdvice {
   water: string;
@@ -39,9 +18,7 @@ export interface CropStageAdvisor {
   stages: Record<string, StageAdvice>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // WHEAT STAGE-SPECIFIC ADVISOR (ICAR Standards)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const WHEAT_STAGE_ADVISOR: CropStageAdvisor = {
   crop_code: 'WHEAT',
@@ -123,9 +100,7 @@ const WHEAT_STAGE_ADVISOR: CropStageAdvisor = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RICE STAGE-SPECIFIC ADVISOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 const RICE_STAGE_ADVISOR: CropStageAdvisor = {
   crop_code: 'RICE',
@@ -207,9 +182,7 @@ const RICE_STAGE_ADVISOR: CropStageAdvisor = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SUGARCANE STAGE-SPECIFIC ADVISOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 const SUGARCANE_STAGE_ADVISOR: CropStageAdvisor = {
   crop_code: 'SUGARCANE',
@@ -276,9 +249,7 @@ const SUGARCANE_STAGE_ADVISOR: CropStageAdvisor = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // COTTON STAGE-SPECIFIC ADVISOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 const COTTON_STAGE_ADVISOR: CropStageAdvisor = {
   crop_code: 'COTTON',
@@ -356,9 +327,7 @@ const COTTON_STAGE_ADVISOR: CropStageAdvisor = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP ADVISOR REGISTRY
-// ═══════════════════════════════════════════════════════════════════════════
 
 const CROP_ADVISORS: Record<string, CropStageAdvisor> = {
   'WHEAT': WHEAT_STAGE_ADVISOR,
@@ -367,13 +336,9 @@ const CROP_ADVISORS: Record<string, CropStageAdvisor> = {
   'COTTON': COTTON_STAGE_ADVISOR,
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get stage-specific advice for a crop
- */
+// Get stage-specific advice for a crop
 export function getStageSpecificAdvice(
   cropCode: string,
   stage: string
@@ -393,9 +358,7 @@ export function getStageSpecificAdvice(
   return stageAdvice;
 }
 
-/**
- * Get water-specific advice for current crop and stage
- */
+// Get water-specific advice for current crop and stage
 export function getWaterAdvice(
   cropCode: string,
   stage: string,
@@ -409,9 +372,7 @@ export function getWaterAdvice(
   return advice.water;
 }
 
-/**
- * Get critical actions for current stage
- */
+// Get critical actions for current stage
 export function getCriticalActions(
   cropCode: string,
   stage: string
@@ -424,9 +385,7 @@ export function getCriticalActions(
   return advice.critical_actions;
 }
 
-/**
- * Get pests to watch for at current stage
- */
+// Get pests to watch for at current stage
 export function getPestWatch(
   cropCode: string,
   stage: string
@@ -439,9 +398,7 @@ export function getPestWatch(
   return advice.pest_watch;
 }
 
-/**
- * Check if an action should be avoided at current stage
- */
+// Check if an action should be avoided at current stage
 export function shouldAvoidAction(
   cropCode: string,
   stage: string,
@@ -465,9 +422,7 @@ export function shouldAvoidAction(
   return { avoid: false };
 }
 
-/**
- * Get all available crop advisors
- */
+// Get all available crop advisors
 export function getAvailableCropAdvisors(): string[] {
   return Object.keys(CROP_ADVISORS);
 }

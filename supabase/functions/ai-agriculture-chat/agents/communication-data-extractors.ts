@@ -1,11 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * COMMUNICATION DATA EXTRACTORS v1.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Utility functions to extract structured data from DecisionOutput
- * for populating farmer-friendly communication templates
- */
+// COMMUNICATION DATA EXTRACTORS v1.0
 
 import type { 
   DecisionOutput, 
@@ -18,9 +11,7 @@ import type {
   ApplicationDetails
 } from './rule-engine-types.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PRODUCT DETAILS EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ExtractedProductDetails {
   name: string;
@@ -36,9 +27,7 @@ export interface ExtractedProductDetails {
   productType: string;
 }
 
-/**
- * Extract product details from DecisionOutput
- */
+// Extract product details from DecisionOutput
 export function extractProductDetails(decision: DecisionOutput): ExtractedProductDetails | null {
   const appDetails = decision.primary_decision?.application_details;
   
@@ -98,9 +87,7 @@ function getPPELevel(ppeList: string[]): string {
   return 'LOW';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CAUSE INFORMATION EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ExtractedCauseInfo {
   cause: string;
@@ -113,9 +100,7 @@ export interface ExtractedCauseInfo {
   isNutrient: boolean;
 }
 
-/**
- * Extract cause information from DecisionOutput
- */
+// Extract cause information from DecisionOutput
 export function extractCauseInfo(decision: DecisionOutput): ExtractedCauseInfo {
   const primary = decision.primary_decision;
   const target = primary?.target || {};
@@ -151,9 +136,7 @@ function formatCauseName(code: string): string {
   return code.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ECONOMIC INFORMATION EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ExtractedEconomicInfo {
   costInr: number;
@@ -167,9 +150,7 @@ export interface ExtractedEconomicInfo {
   recommendation: string;
 }
 
-/**
- * Extract economic assessment information
- */
+// Extract economic assessment information
 export function extractEconomicInfo(decision: DecisionOutput): ExtractedEconomicInfo | null {
   const econ = decision.economic_assessment;
   
@@ -191,9 +172,7 @@ export function extractEconomicInfo(decision: DecisionOutput): ExtractedEconomic
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFETY INFORMATION EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ExtractedSafetyInfo {
   ppeRequired: string[];
@@ -204,9 +183,7 @@ export interface ExtractedSafetyInfo {
   precautions: string[];
 }
 
-/**
- * Extract safety information
- */
+// Extract safety information
 export function extractSafetyInfo(decision: DecisionOutput): ExtractedSafetyInfo {
   const appDetails = decision.primary_decision?.application_details;
   const blockedActions = decision.blocked_actions || [];
@@ -242,9 +219,7 @@ export function extractSafetyInfo(decision: DecisionOutput): ExtractedSafetyInfo
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MIXING INSTRUCTIONS EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MixingInstructions {
   steps: string[];
@@ -252,9 +227,7 @@ export interface MixingInstructions {
   waterRequired: string;
 }
 
-/**
- * Extract mixing instructions from rules and product details
- */
+// Extract mixing instructions from rules and product details
 export function extractMixingInstructions(
   rules: AppliedRule[] = [],
   product: ExtractedProductDetails | null
@@ -291,9 +264,7 @@ export function extractMixingInstructions(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // APPLICATION STEPS EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ApplicationSteps {
   steps: string[];
@@ -302,9 +273,7 @@ export interface ApplicationSteps {
   avoidTimes: string[];
 }
 
-/**
- * Extract application steps based on method
- */
+// Extract application steps based on method
 export function extractApplicationSteps(
   primary: PrimaryDecision | undefined,
   product: ExtractedProductDetails | null
@@ -381,13 +350,9 @@ function formatBestTime(timing: string): string {
   return timeMap[timing] || 'Morning (6-10 AM)';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // WEATHER CONSIDERATIONS EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Extract weather considerations
- */
+// Extract weather considerations
 export function extractWeatherConsiderations(decision: DecisionOutput): string | null {
   if (decision.status === 'WEATHER_DELAYED') {
     const timing = decision.primary_decision?.timing;
@@ -415,9 +380,7 @@ export function extractWeatherConsiderations(decision: DecisionOutput): string |
   return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FOLLOW-UP SCHEDULE EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ExtractedFollowUpSchedule {
   day3: string;
@@ -427,9 +390,7 @@ export interface ExtractedFollowUpSchedule {
   contactExpertIf: string[];
 }
 
-/**
- * Extract follow-up schedule
- */
+// Extract follow-up schedule
 export function extractFollowUpSchedule(decision: DecisionOutput): ExtractedFollowUpSchedule {
   const schedule = decision.follow_up_schedule || {};
   const outcomes = decision.primary_decision?.expected_outcomes;
@@ -468,13 +429,9 @@ export function extractFollowUpSchedule(decision: DecisionOutput): ExtractedFoll
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SCIENTIFIC BASIS EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Extract scientific basis from rules applied
- */
+// Extract scientific basis from rules applied
 export function extractScientificBasis(rules: AppliedRule[] = []): string {
   if (!rules || rules.length === 0) {
     return 'Based on ICAR recommendations';
@@ -500,9 +457,7 @@ export function extractScientificBasis(rules: AppliedRule[] = []): string {
   return 'Based on ICAR-IARI recommendations';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ALTERNATIVES EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ExtractedAlternative {
   action: string;
@@ -510,9 +465,7 @@ export interface ExtractedAlternative {
   cost?: number;
 }
 
-/**
- * Extract alternative recommendations
- */
+// Extract alternative recommendations
 export function extractAlternatives(decision: DecisionOutput): ExtractedAlternative[] {
   const alternatives: ExtractedAlternative[] = [];
   
@@ -545,9 +498,7 @@ export function extractAlternatives(decision: DecisionOutput): ExtractedAlternat
   return alternatives;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // REPEAT APPLICATION EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RepeatApplicationInfo {
   needed: boolean;
@@ -556,9 +507,7 @@ export interface RepeatApplicationInfo {
   currentApplication: number;
 }
 
-/**
- * Extract repeat application information
- */
+// Extract repeat application information
 export function extractRepeatApplicationInfo(decision: DecisionOutput): RepeatApplicationInfo | null {
   const repeat = decision.primary_decision?.application_details?.repeat_application;
   

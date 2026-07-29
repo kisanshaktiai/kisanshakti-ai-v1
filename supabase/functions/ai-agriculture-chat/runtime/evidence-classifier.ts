@@ -1,16 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * EVIDENCE CLASSIFIER — Farmer-visible symptom vs metadata separator
- * ═══════════════════════════════════════════════════════════════════════════
- * Prescription/coverage/gate decisions MUST use real_symptom_count.
- * Never observation_array.length.
- *
- * REAL_OBSERVATION  = farmer/sensor/image evidence of a field condition.
- * IGNORED_METADATA  = *_UNKNOWN / *_NONE / *_NOT_PROVIDED / ACTION_* /
- *                     CROP_IDENTIFIED / STAGE_IDENTIFIED / SEVERITY_* /
- *                     CONTEXT_* / PHOTO_*
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// EVIDENCE CLASSIFIER — Farmer-visible symptom vs metadata separator
 
 const METADATA_RE = /(_UNKNOWN$|_NONE$|_NOT_PROVIDED$|^ACTION_|^CROP_IDENTIFIED$|^STAGE_IDENTIFIED$|^SEVERITY_|^CONTEXT_|^PHOTO_)/i;
 

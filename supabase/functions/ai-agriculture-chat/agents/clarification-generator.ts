@@ -1,24 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-15: CLARIFICATION GENERATOR (DYNAMIC CONTEXT-AWARE)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Generate intelligent, context-aware clarification responses using ALL
- * agronomic data: crop, DOS, soil, NDVI, weather, and schedule data.
- * 
- * PHILOSOPHY:
- * - NOT a traditional chatbot with static templates
- * - World-class symbolic decision brain with LLM rendering
- * - Options are EVIDENCE-BASED from actual field conditions
- * 
- * PHASE-15 UPDATE:
- * - Integrated dynamic-clarification-generator for context-aware options
- * - Options now use crop stage, soil NPK, NDVI trends, weather forecasts
- * - Farmer sees RELEVANT choices based on actual conditions
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-15: CLARIFICATION GENERATOR (DYNAMIC CONTEXT-AWARE)
 
 import type { ObservationExtraction } from './observation-extractor.ts';
 import type { UnderstandingCheckResult } from './understanding-completeness-checker.ts';
@@ -51,15 +31,8 @@ import { ObservationKey } from '../decision/observation-ontology.ts';
 import type { CropContextAuthority } from '../decision/context-authority.ts';
 
 // PHASE-15: Dynamic clarification generator removed (R1 FIX). The deprecated
-// `generateDynamicClarification` stub returned empty data and forced the
-// pipeline into the English template fallback. Intent-driven clarification
-// now runs through `resolveIntentToObservations` against
-// `intent_observation_mapping`. The legacy module is no longer imported.
 
 // CLARIFICATION ONTOLOGY CONTRACT — single producer of farmer options.
-// REFINE_OBSERVATION clarifications MUST come from
-// intent_observation_mapping → observation_master → observation_translations.
-// No other source is allowed.
 import {
   loadClarificationCandidates,
   canonicalizeObservationKey,
@@ -67,9 +40,7 @@ import {
 } from '../runtime/clarification-contract.ts';
 import { createClient as createSupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v6.0: CANONICAL CONTEXT CONTRACT (IMMUTABLE, PASSED BY REFERENCE)
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   type CanonicalContext,
   assertCanonicalContextLocked,
@@ -84,9 +55,7 @@ export { ClarificationScope };
 export type { ClarificationPlan, ClarificationState };
 export type { CanonicalContext };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT/OUTPUT TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationInput {
   language: string;
@@ -110,29 +79,15 @@ export interface ScopedClarificationInput {
   cropContext?: CropContextAuthority | null;
   /** PHASE-15: Farmer message for LLM context */
   farmerMessage?: string;
-  /**
-   * Phase J — Canonical ConversationState (single runtime authority).
-   * When provided, clarification stage / crop / language / observations MUST
-   * be sourced from this frozen object and never recomputed.
-   */
+  // Phase J — Canonical ConversationState (single runtime authority).
   conversationState?: import('../runtime/conversation-state.ts').ConversationState;
-  /**
-   * R1 FIX — Canonical intent_code resolved upstream (semantic extraction / NLU).
-   * Required to drive the intent_observation_mapping path; when present, the
-   * clarification engine queries curated DB observations for this intent
-   * BEFORE falling back to template/decision-rule heuristics.
-   */
+  // R1 FIX — Canonical intent_code resolved upstream (semantic extraction / NLU).
   intent_code?: string;
 }
 
 export interface ClarificationOutput {
   response_text: string;
-  /**
-   * SYMBOLIC IDENTITY PRESERVATION:
-   * Options may be plain strings (legacy template paths) OR objects carrying
-   * the canonical `observation_key`. Downstream consumers MUST prefer the
-   * `observation_key` over any heuristic label-to-code reconstruction.
-   */
+  // SYMBOLIC IDENTITY PRESERVATION:
   options: Array<string | { label: string; observation_key?: string }>;
   photo_requested: boolean;
   clarification_prompt: string;
@@ -140,9 +95,7 @@ export interface ClarificationOutput {
   validation_passed?: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ACKNOWLEDGMENT TEMPLATES (Simple, No Diagnosis)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
   mr: '🌾 समजले.',
@@ -150,25 +103,15 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
   en: '🌾 Understood.'
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Generate PHASE-15 DYNAMIC clarification response.
- * Uses full agronomic context (crop, DOS, soil, NDVI, weather) for intelligent options.
- * 
- * v6.0: Context is RECEIVED, not rebuilt. canonicalContext is IMMUTABLE.
- */
+// Generate PHASE-15 DYNAMIC clarification response.
 export async function generateScopedClarification(
   input: ScopedClarificationInput
 ): Promise<ClarificationOutput> {
   const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage, conversationState, intent_code } = input;
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Phase J — ConversationState is the single runtime authority.
-  // Stage / crop / language are pulled from the frozen state when provided.
-  // ═══════════════════════════════════════════════════════════════════════════
   const effectiveLanguage = (conversationState?.semantic_status ? language : language) || 'en';
   const stateStage = conversationState?.stage || canonicalContext?.growth_stage || null;
   const stateCrop  = conversationState?.crop  || canonicalContext?.crop_code   || canonicalContext?.crop_name || null;
@@ -194,9 +137,7 @@ export async function generateScopedClarification(
   console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
   console.log(`   hasLandContext: ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Map observations to ObservationKeys (with cropContext)
-  // ═══════════════════════════════════════════════════════════════════════════
   const keyMappingResult = mapToObservationKeys(
     observations, 
     { current_crop: observations.crop_mentioned },
@@ -209,10 +150,7 @@ export async function generateScopedClarification(
   console.log(`   ObservationKeys: ${keyMappingResult.key_count} keys, ${keyMappingResult.unknown_count} unknowns`);
   console.log(`   Turn count: ${turnCount}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Resolve clarification plan (ObservationKey-based, deterministic)
-  // v6.0: Pass canonicalContext directly to scope resolver
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const clarificationPlan = resolveClarificationPlan(
     observedKeys,
@@ -222,11 +160,7 @@ export async function generateScopedClarification(
     canonicalContext // v6.0: Pass canonical context directly
   );
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CLARIFICATION ONTOLOGY CONTRACT — IOM is the SOLE source of options for
-  // REFINE_OBSERVATION. No decision_rules / observable_characteristics /
-  // conditions_json / synthetic key path may reach the UI.
-  // ═══════════════════════════════════════════════════════════════════════════
   const resolvedIntent =
     intent_code ||
     (conversationState as any)?.intent_code ||
@@ -239,8 +173,6 @@ export async function generateScopedClarification(
     const srk = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     // v4.0 (OBS_GRAPH): observation loading requires INTENT ONLY.
-    // Land context (NDVI, soil, GPS, weather) enriches ranking but MUST NOT
-    // gate the observation graph. Crop scope defaults to 'all' when absent.
     if (
       resolvedIntent &&
       resolvedIntent !== 'UNKNOWN' &&
@@ -335,9 +267,7 @@ export async function generateScopedClarification(
 
   console.log(`   Clarification plan: scope=${clarificationPlan.scope}, reason=${clarificationPlan.reason}`);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Handle STOP_ESCALATE (max turns or sufficient info)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (clarificationPlan.should_stop) {
     const monitoringAdvice = getMonitoringAdvice(language);
     return {
@@ -350,10 +280,7 @@ export async function generateScopedClarification(
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 4: Non-observation scopes (IDENTIFY_CROP/LOCATION/DISTRIBUTION/SEVERITY)
-  // — These are NOT the farmer-observation ontology and may use templates.
-  // ═══════════════════════════════════════════════════════════════════════════
   const renderResult = await renderClarificationAsync({
     scope: clarificationPlan.scope,
     target_observation_keys: clarificationPlan.target_keys,
@@ -395,13 +322,7 @@ export async function generateScopedClarification(
   };
 }
 
-/**
- * LEGACY FUNCTION: Generate clarification response (backward compatibility).
- * Routes to Phase-8 system internally.
- * 
- * v6.0 FIX: This function does NOT have land context, so it must pass
- * canonicalContext: null. This fixes the INVARIANT VIOLATION bug.
- */
+// LEGACY FUNCTION: Generate clarification response (backward compatibility).
 export async function generateClarificationResponse(input: ClarificationInput): Promise<ClarificationOutput> {
   const { language, farmer_message, observations, crop_code, clarification_type } = input;
   
@@ -450,9 +371,7 @@ export async function generateClarificationResponse(input: ClarificationInput): 
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OPTION MATCHING (For farmer response processing)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MatchedOption {
   original_option: string;
@@ -461,10 +380,7 @@ export interface MatchedOption {
   match_confidence: number;
 }
 
-/**
- * PHASE-9.1: Standardized match result interface
- * Used by orchestrator to handle option matching safely
- */
+// PHASE-9.1: Standardized match result interface
 export interface OptionMatchResult {
   /** Whether a match was found */
   matched: boolean;
@@ -476,18 +392,8 @@ export interface OptionMatchResult {
   match_confidence: number;
 }
 
-/**
- * Match farmer's response to a clarification option.
- * Used when farmer selects from options or types something similar.
- * 
- * PHASE-9.1: Returns standardized OptionMatchResult with NULL-SAFE design.
- */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * LANGUAGE-AGNOSTIC TEXT NORMALIZATION (v2.0)
- * Strips emojis, symbols, and metadata for pure text comparison
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// Match farmer's response to a clarification option.
+// LANGUAGE-AGNOSTIC TEXT NORMALIZATION (v2.0)
 function normalizeTextForComparison(text: string): string {
   if (!text) return '';
   
@@ -508,10 +414,7 @@ function normalizeTextForComparison(text: string): string {
     .toLowerCase();
 }
 
-/**
- * Calculate token-based similarity between two strings (0-1)
- * Language-agnostic: works on tokenized words in any script
- */
+// Calculate token-based similarity between two strings (0-1)
 function calculateTokenSimilarity(text1: string, text2: string): number {
   if (!text1 || !text2) return 0;
   
@@ -545,10 +448,7 @@ export function matchFarmerResponseToOption(
   
   const response = farmerResponse.trim();
   
-  // ========================================
   // CHECK 1: EMBEDDED OBSERVATION KEYS (HIGHEST PRIORITY)
-  // If message contains [obs_keys:...], this IS an option selection
-  // ========================================
   const obsKeysMatch = response.match(/\[obs_keys:([^\]]+)\]/);
   if (obsKeysMatch) {
     // This is definitely an option selection from the UI
@@ -566,10 +466,7 @@ export function matchFarmerResponseToOption(
     }
   }
   
-  // ========================================
   // CHECK 2: UNICODE-AWARE DIGIT NORMALIZATION
-  // Supports Devanagari (Hindi/Marathi), Arabic, and other numeral systems
-  // ========================================
   const UNICODE_DIGIT_MAP: Record<string, string> = {
     // Devanagari digits
     '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
@@ -605,10 +502,7 @@ export function matchFarmerResponseToOption(
     }
   }
   
-  // ========================================
   // CHECK 3: NORMALIZED TEXT MATCHING (Language-Agnostic)
-  // Strip emojis/symbols and compare pure text
-  // ========================================
   const normalizedResponse = normalizeTextForComparison(response);
   
   // If normalized response is too short (< 2 chars), it's not a valid selection
@@ -654,10 +548,7 @@ export function matchFarmerResponseToOption(
     }
   }
   
-  // ========================================
   // CHECK 4: TOKEN SIMILARITY (Language-Agnostic Fuzzy Match)
-  // For cases like "कीड" matching "🐛 कीड/किडीचा हल्ला"
-  // ========================================
   let bestMatch: { index: number; confidence: number } | null = null;
   
   for (let i = 0; i < pendingOptions.length; i++) {
@@ -681,25 +572,14 @@ export function matchFarmerResponseToOption(
     };
   }
   
-  // ========================================
   // NO MATCH FOUND
-  // This could be a NEW QUERY, not an option selection
-  // ========================================
   return {
     matched: false,
     match_confidence: 0
   };
 }
 
-/**
- * Map selected option back to ObservationKey.
- * This is used to update the observation state after farmer selects an option.
- * 
- * WORLD-CLASS FIX: Uses ENGLISH canonical keywords ONLY
- * All matching is done against English canonical terms, making this
- * language-agnostic and maintainable. The UI renders in the farmer's language,
- * but option matching uses standardized English keywords embedded in option IDs.
- */
+// Map selected option back to ObservationKey.
 export function mapOptionToObservation(
   option: string,
   scope: ClarificationScope
@@ -707,11 +587,7 @@ export function mapOptionToObservation(
   // Normalize option to lowercase for matching
   const optionLower = option.toLowerCase();
   
-  // ========================================
   // ENGLISH CANONICAL KEYWORD PATTERNS
-  // These are the ONLY allowed matching patterns
-  // Multilingual UI labels should contain these English keywords
-  // ========================================
   
   switch (scope) {
     case ClarificationScope.IDENTIFY_CROP:

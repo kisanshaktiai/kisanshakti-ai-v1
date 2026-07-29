@@ -1,18 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSTIC HYPOTHESIS MANAGEMENT TYPES v3.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Types for managing multiple diagnostic hypotheses with:
- * - Confidence tracking and Bayesian updates
- * - Evidence management (supporting/contradicting)
- * - Multi-cause scenario handling
- * - Smart question selection with information gain
- */
+// DIAGNOSTIC HYPOTHESIS MANAGEMENT TYPES v3.0
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC HYPOTHESIS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticHypothesis {
   /** Unique identifier for this hypothesis */
@@ -92,9 +80,7 @@ export type HypothesisRelationship =
   | 'AGGRAVATES'               // e.g., Water stress makes pest damage worse
   | 'INDEPENDENT';             // No relationship
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC QUESTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticQuestion {
   question_id: string;
@@ -148,9 +134,7 @@ export type QuestionCategory =
   | 'ENVIRONMENTAL'
   | 'DIFFERENTIATING'; // Questions that help distinguish between two similar hypotheses
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC SESSION STATE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticSessionState {
   session_id: string;
@@ -205,9 +189,7 @@ export interface DetectedEntity {
   bounding_box?: { x: number; y: number; width: number; height: number };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MULTI-CAUSE SCENARIO HANDLING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MultiCauseAnalysis {
   scenario: MultiCauseScenario;
@@ -233,9 +215,7 @@ export type TreatmentStrategy =
   | 'TREAT_SEQUENTIALLY'
   | 'ESCALATE_TO_EXPERT';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONFIDENCE UPDATE LOGIC TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ConfidenceUpdate {
   hypothesis_id: string;
@@ -295,9 +275,7 @@ export const DEFAULT_CONFIDENCE_RULES: ConfidenceUpdateRules = {
   decay_rate: 0.02 // 2% per hour
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ESCALATION CRITERIA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EscalationCriteria {
   /** Max questions before escalation */
@@ -324,9 +302,7 @@ export const DEFAULT_ESCALATION_CRITERIA: EscalationCriteria = {
   unknown_species_escalates: true
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC FLOW DECISION OUTPUT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticDecision {
   decision_type: DiagnosticDecisionType;

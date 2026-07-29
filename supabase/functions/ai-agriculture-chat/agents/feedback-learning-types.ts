@@ -1,7 +1,4 @@
-/**
- * Feedback Learning & Improvement Engine Types
- * Continuously learns from farmer outcomes to improve system accuracy
- */
+// Feedback Learning & Improvement Engine Types
 
 // Treatment Outcome Tracking
 export interface TreatmentOutcome {

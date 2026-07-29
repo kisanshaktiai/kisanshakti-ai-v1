@@ -1,14 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE Y — RuntimeTraceCollector
- * ───────────────────────────────────────────────────────────────────────────
- * Single per-request forensic collector. Captures pipeline stages, snapshots,
- * and metrics. Persisted to ai_decision_log via audit-logger.completeTurn().
- *
- * No agronomic logic. No DB writes from this module — it only buffers state.
- * Failures are swallowed so instrumentation never blocks a farmer response.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE Y — RuntimeTraceCollector
 
 export const RUNTIME_VERSION  = '1.0.0';
 export const PIPELINE_VERSION = '2026.06.Y';
@@ -268,15 +258,7 @@ export class RuntimeTraceCollector {
     } catch {}
   }
 
-  /**
-   * Persist a single row into ai_decision_log. Idempotent — sets `persisted=true`
-   * on success and returns the inserted id. Never throws (swallow + warn).
-   *
-   * Called from:
-   *   - audit-logger.completeTurn() (primary, with full TurnAuditLog ctx), and
-   *   - index.ts safety-net after orch.orchestrate() returns, so OPTION_SELECTED
-   *     and other early-return paths that skip completeTurn still produce a row.
-   */
+  // Persist a single row into ai_decision_log. Idempotent — sets `persisted=true`
   async persistDecisionLog(
     supabase: any,
     extra: {
@@ -487,8 +469,6 @@ export class RuntimeTraceCollector {
 
 
 // ─── request-scoped singleton ──────────────────────────────────────────────
-// Edge functions handle one request per isolate slot; this matches the
-// existing AuditLogger singleton pattern.
 let _current: RuntimeTraceCollector | null = null;
 
 export function resetRuntimeTraceCollector(header: Partial<RuntimeTraceHeader> & { trace_id: string }): RuntimeTraceCollector {

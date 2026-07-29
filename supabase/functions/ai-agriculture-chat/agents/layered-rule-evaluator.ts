@@ -4,24 +4,9 @@
  * 2026-07-29 10:30 UTC — LATENCY L3: converted-rule cache per crop (5min TTL);
  *   getAllRulesWithBundled no longer rebuilds every rule closure twice a turn.
  */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FILE:      supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts
- * ROLE:      Layered rule evaluation pipeline — graph control, temporal
- *            constraints, ETL validation.
- * AUTHORITY: LEGACY-SHIM over bundled-rules/loader.ts (SSOT). Scheduled to
- *            collapse in PR-3 Full.
- * STATUS:    ACTIVE (wrapper) — emits [RULE_ENGINE_LEGACY_WRAPPER] on invoke.
- * VERSION:   v3.0 (PHASE-17)
- * LAST_PR:   PR-6 (header stamping, 2026-07-06)
- * STAMPED:   2026-07-06
- * NOTES:     Rules loaded from DB at runtime to prevent bundle timeout.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// FILE:      supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts
 
 // PR-7 F5: DB-derived stage-equivalence (shared with contradiction-engine
-// and navigator-adapter). Replaces the empty local STAGE_FAMILIES stub so
-// the stage gate stops soft-bypassing every rule.
 import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
 import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
 
@@ -67,9 +52,7 @@ import {
   type SymbolicFact
 } from '../decision/symbolic-reasoner.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: GRAPH CONTROL & SAFETY VALIDATORS
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   validateGraphConstraints,
   checkRuleBlocking,
@@ -170,14 +153,7 @@ export interface Rule {
   active: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MANDATORY INTERFACE: MatchedResponse for primary decision eligibility
-// CRITICAL: A response is ONLY eligible for primary decision if it has:
-//   - rule_id (EXISTS)
-//   - action_type (NOT NULL)
-//   - action_text OR i18n_key (NOT NULL) - LLM narration layer handles text
-// NOTE: response_en/hi/mr columns were DROPPED per SSOT architecture
-// ═══════════════════════════════════════════════════════════════════════════
 export interface MatchedResponse {
   rule_id: string;
   cause: string;
@@ -191,9 +167,7 @@ export interface MatchedResponse {
   i18n_key?: string;
   // Fix 4: conditions_json for downstream arbitration inspection
   conditions_json?: Record<string, unknown>;
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 8: Rich agronomic fields for deterministic response builder
-  // ═══════════════════════════════════════════════════════════════════════════
   active_ingredient?: string;
   dosage_per_acre?: string;
   water_volume_per_acre?: string;
@@ -250,11 +224,7 @@ export interface MatchedResponse {
   response_en?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MANDATORY INTERFACE: PrimaryDecision - built from selected MatchedResponse
-// This is the ACTUAL PRIMARY DECISION passed to UnifiedGate and LLM Formatter
-// NOTE: All narration is LLM-generated - no language-specific columns
-// ═══════════════════════════════════════════════════════════════════════════
 export interface PrimaryDecision {
   rule_id: string;
   action_type: string;
@@ -270,9 +240,7 @@ export interface PrimaryDecision {
   reason_text?: string;
   knowledge_text?: string;
   i18n_key?: string;
-  // ═══════════════════════════════════════════════════════════════════════════
   // RICH AGRONOMIC FIELDS — Must match MatchedResponse for full propagation
-  // ═══════════════════════════════════════════════════════════════════════════
   cause?: string | null;
   active_ingredient?: string | null;
   dosage_per_acre?: string | null;
@@ -350,10 +318,7 @@ export interface LayeredRuleResult {
   confidence_in_result: number;
   // All matched responses from evaluation (for audit/fallback)
   matched_responses: MatchedResponse[];
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL: PRIMARY_DECISION - Built from highest-priority eligible response
-  // This MUST be passed to orchestrator.ts and mapped into decision_output
-  // ═══════════════════════════════════════════════════════════════════════════
   primary_decision: PrimaryDecision | null;
 }
 
@@ -368,13 +333,7 @@ export const ALL_RULES: Rule[] = [];
 
 // ==================== CONDITION MATCHING (STRICT AND-BASED VALIDATION) ====================
 
-/**
- * STRICT CONSTRAINT-BASED CONDITION VALIDATION
- * 
- * CRITICAL: Any condition requiring contextual data FAILS if canonical context 
- * value is UNKNOWN, NOT_TESTED, null, or undefined.
- * Missing/indeterminate data NEVER passes a condition check.
- */
+// STRICT CONSTRAINT-BASED CONDITION VALIDATION
 const INDETERMINATE_VALUES = new Set(['', 'UNKNOWN', 'NOT_TESTED', 'N/A', 'UNDEFINED', 'NULL']);
 
 function isDataPresent(value: unknown): boolean {
@@ -391,10 +350,7 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
   if (conditions.crop_stage?.length && !conditions.crop_stage.includes(state.crop_stage as CropStage)) return false;
   if (conditions.visual_symptom?.length && !conditions.visual_symptom.includes(state.visual_symptom as VisualSymptom)) return false;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STRICT: Contextual data conditions FAIL if data is missing/UNKNOWN
-  // This prevents rules requiring NDVI/soil/weather from matching without evidence
-  // ═══════════════════════════════════════════════════════════════════════════
   if (conditions.ndvi_level?.length) {
     if (!isDataPresent(state.ndvi_level)) return false;
     if (!conditions.ndvi_level.includes(state.ndvi_level as NDVILevel)) return false;
@@ -426,10 +382,7 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
 
 // ==================== MAIN EVALUATION ====================
 
-/**
- * PHASE-17: Enhanced rule evaluation with graph control, ETL, and safety
- * CRITICAL: All array operations are now null-safe to prevent crashes
- */
+// PHASE-17: Enhanced rule evaluation with graph control, ETL, and safety
 export function evaluateRulesLayered(
   rules: Rule[], 
   state: CanonicalState,
@@ -464,10 +417,7 @@ export function evaluateRulesLayered(
     safety_warnings: [],
     confidence_in_result: 0.5,
     matched_responses: [],
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL: primary_decision is NULL until explicitly built from eligible response
-    // This will be populated AFTER evaluation via selectPrimaryDecision()
-    // ═══════════════════════════════════════════════════════════════════════════
     primary_decision: null
   };
   
@@ -513,15 +463,11 @@ export function evaluateRulesLayered(
         });
         
         // CRITICAL: Collect response text from matched diagnosis rules for LLM formatting
-        // SSOT ARCHITECTURE: action_text + i18n_key are the only response fields
-        // response_mr/hi/en columns were DROPPED - narration is LLM-generated
         const actionDetails = rule.then.action_details || {};
         const ruleActionType = rule.then.action_type || actionDetails.action_type;
         const rulePriority = rule.priority || 50;
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PRIMARY_ACTION_ELIGIBILITY: Only add if action_type exists AND has content
-        // ═══════════════════════════════════════════════════════════════════════════
         if (ruleActionType && (actionDetails.action_text || actionDetails.i18n_key)) {
           result.matched_responses.push({
             rule_id: rule.id,
@@ -632,10 +578,7 @@ export function evaluateRulesLayered(
       
       if (!matchesConditions(rule, state)) continue;
       
-      // ═══════════════════════════════════════════════════════════════════════
       // PHASE-17: GRAPH CONTROL VALIDATION
-      // Check if this rule is blocked by any previously fired rule
-      // ═══════════════════════════════════════════════════════════════════════
       const graphInput: GraphValidationInput = {
         rule_id: rule.id,
         blocks_rule_ids: rule.then.action_details?.blocks_rule_ids || [],
@@ -651,9 +594,7 @@ export function evaluateRulesLayered(
         continue; // Skip this rule
       }
       
-      // ═══════════════════════════════════════════════════════════════════════
       // PHASE-17: ETL VALIDATION (for pesticide/treatment rules)
-      // ═══════════════════════════════════════════════════════════════════════
       const etlApplicable = rule.then.action_details?.etl_applicable;
       if (etlApplicable !== false) {
         // Try DB-backed ETL standards first, fall back to rule-level values
@@ -684,9 +625,7 @@ export function evaluateRulesLayered(
         }
       }
       
-      // ═══════════════════════════════════════════════════════════════════════
       // PHASE-17: RESISTANCE ROTATION CHECK
-      // ═══════════════════════════════════════════════════════════════════════
       const resistanceGroup = rule.then.action_details?.resistance_group;
       if (resistanceGroup && options?.recentTreatments) {
         const recentGroups = options.recentTreatments.map(t => t.resistance_group);
@@ -702,9 +641,7 @@ export function evaluateRulesLayered(
         }
       }
       
-      // ═══════════════════════════════════════════════════════════════════════
       // PHASE-17: FARMER SAFETY WARNING GENERATION
-      // ═══════════════════════════════════════════════════════════════════════
       const farmerSafetyLevel = rule.then.action_details?.farmer_safety_level as SafetyLevel | undefined;
       if (farmerSafetyLevel && farmerSafetyLevel !== 'SAFE') {
         const safetyWarning = getSafetyWarning(farmerSafetyLevel, 'en');
@@ -879,12 +816,7 @@ export function evaluateRulesLayered(
   result.final_diagnosis = conflictResult.primary_diagnosis;
   result.confidence_in_result = conflictResult.confidence_in_resolution;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL: BUILD PRIMARY_DECISION FROM ELIGIBLE MATCHED RESPONSES
-  // PRIMARY_ACTION_ELIGIBILITY: rule_id EXISTS + action_type NOT NULL + content NOT NULL
-  // NOTE: response_en/hi/mr were DROPPED - content = action_text OR i18n_key
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUG 2 FIX: Deduplicate matched_responses by rule_id (keep first occurrence)
   const seenRuleIds = new Set<string>();
   result.matched_responses = result.matched_responses.filter(r => {
     if (!r.rule_id || seenRuleIds.has(r.rule_id)) return false;
@@ -893,8 +825,6 @@ export function evaluateRulesLayered(
   });
   
   // FIX 3 (v6.1): Relaxed eligibility — accept rules with reason_text or knowledge_text
-  // when action_text is null. Many DB rules have valid reason/knowledge but null action_text.
-  // The formatter can build a response from reason_text + knowledge_text.
   const eligibleResponses = result.matched_responses.filter(r => 
     r.rule_id && 
     r.action_type && 
@@ -902,10 +832,7 @@ export function evaluateRulesLayered(
   );
   
   if (eligibleResponses.length > 0) {
-    // ═══════════════════════════════════════════════════════════════════════════
     // Fix 1: NUTRITION CONFLICT ARBITRATION before primary selection
-    // Filters out nutrition rules that fail zinc gate, water stress, or macro dominance
-    // ═══════════════════════════════════════════════════════════════════════════
     const arbitratedResponses = eligibleResponses.filter(r => {
       const ruleCategory = (r.cause || '').toLowerCase();
       const ruleIdUpper = r.rule_id.toUpperCase();
@@ -953,10 +880,7 @@ export function evaluateRulesLayered(
       console.log(`🔬 [ArbitrationGate] Filtered ${eligibleResponses.length - arbitratedResponses.length} nutrition rules, ${arbitratedResponses.length} remaining`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // SAFETY_GATE EXCLUSION: safety_gate rules must NEVER be primary decision
-    // They are applied post-selection as overlays, not competing candidates
-    // ═══════════════════════════════════════════════════════════════════════════
     const SAFETY_GATE_ACTION_TYPES = new Set([
       'safety_gate', 'SAFETY_GATE', 'BLOCK', 'URGENT_BLOCK',
       'weather_block', 'WEATHER_BLOCK'
@@ -972,10 +896,7 @@ export function evaluateRulesLayered(
       console.log(`🛡️ [SafetyGateExclusion] Excluded ${responsesForSelection.length - nonSafetyResponses.length} safety_gate rules from primary arbitration`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // NORMALIZED SCORING: score = matched_conditions / total_required_conditions
-    // No urgency bias, no action_type boosting. Pure evidence ratio.
-    // ═══════════════════════════════════════════════════════════════════════════
     
     // BUG 5 FIX: Use confirmed observations for primary scoring when available
     const confirmedObs = (state as any).confirmed_observations;
@@ -985,14 +906,9 @@ export function evaluateRulesLayered(
     const currentSymptoms = primarySymptomSource.map((s: string) => canonicalObsCode(s)).filter(Boolean);
     
     const scored = candidatesForPrimary.map(r => {
-      // ═══════════════════════════════════════════════════════════════════
       // LEDGER-BASED SCORING: Use condition ledger for accurate scoring
-      // Only counts REQUIRED conditions in denominator
-      // ═══════════════════════════════════════════════════════════════════
       const ledger = getConditionLedger(r.rule_id);
       // PHASE D: generic-rule penalty (set by bundled-rules/loader.ts when a rule
-      // lacks rule_intent or required_observation_category). Demote so specific
-      // intent-bound rules win when both pass the same conditions.
       const genericPenalty = ((r as any)._genericPenalty === true) ? 0.85 : 1.0;
       if (ledger && ledger.length > 0) {
         const requiredEntries = ledger.filter(e => e.required);
@@ -1029,14 +945,7 @@ export function evaluateRulesLayered(
     });
 
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE G — G1: TIERED ARGMAX (Intent + Semantic > Intent|Semantic > Generic)
-    // Partition candidates so a generic rule can NEVER outrank an intent-bound
-    // rule, regardless of evidence score. Argmax runs only inside the highest
-    // non-empty tier. This is the locked authority order:
-    //   1) Intent Match  2) Semantic Match  3) Hypothesis  4) Sci-validated
-    //   5) Generic (allowed only if 1–3 empty)
-    // ═══════════════════════════════════════════════════════════════════════════
     const hasIntent = (r: any) => r && r.rule_intent != null && r._genericPenalty !== true;
     const hasSemantic = (s: { matchedConditions: number; totalConditions: number }) =>
       s.totalConditions > 0 && s.matchedConditions > 0;
@@ -1054,15 +963,7 @@ export function evaluateRulesLayered(
     const activeScored = winnerTier === 0 ? tier0 : (winnerTier === 1 ? tier1 : tier2);
     console.log(`[BRAIN_TRACE][RULE_TIER] t0=${tier0.length} t1=${tier1.length} t2=${tier2.length} winner_tier=${winnerTier}`);
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // AUDIT FIX: Sort by data_authority_rank DESC first, then evidence score
-    // data_authority_rank: 95 = highest authority (ICAR/research validated)
-    //                      55 = lowest authority (generic advisory)
-    // ═══════════════════════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════════════════════
-    // CATEGORY PRIORITY MAP — Rule conflict resolution pre-sort
-    // SAFETY_GATE rules ALWAYS surface first regardless of evidence score
-    // ═══════════════════════════════════════════════════════════════════════════
     const CATEGORY_PRIORITY_MAP: Record<string, number> = {
       'SAFETY_GATE': 100,  'BLOCK': 100,
       'URGENT_ACTION': 90,
@@ -1103,11 +1004,7 @@ export function evaluateRulesLayered(
     scored.push(...activeScored, ...remaining);
     const best = scored[0].response;
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PRE-SELECTION CONFIDENCE GATE: If best rule score < threshold, trigger clarification
-    // PRODUCTION FIX: When PrescriptionGate overrides LOW confidence (strong symptom 
-    // evidence), relax threshold from 0.60 → 0.40 to allow rule selection.
-    // ═══════════════════════════════════════════════════════════════════════════
     const BASE_CONFIDENCE_GATE_THRESHOLD = 0.60;
     const OVERRIDE_CONFIDENCE_GATE_THRESHOLD = 0.40;
     const hasOverride = !!options?.prescriptionGateOverride;
@@ -1124,12 +1021,7 @@ export function evaluateRulesLayered(
       console.warn(`   ACTION: Skipping primary selection → triggering clarification`);
       // primary_decision remains null — orchestrator will route to clarification
     } else {
-      // ═══════════════════════════════════════════════════════════════════════════
       // MANDATORY: Build complete PrimaryDecision with density-weighted confidence
-      // SSOT ARCHITECTURE: weighted_confidence is the authoritative confidence score
-      // ═══════════════════════════════════════════════════════════════════════════
-      // BUG FIX: Guard against division by zero when totalConditions = 0
-      // This happens for fallback rules like SC_DIAG_GENERAL_015 with {no_matching_diagnosis: true}
       const totalConds = scored[0].totalConditions;
       const matchedConds = scored[0].matchedConditions;
       const baseScore = totalConds > 0 ? matchedConds / totalConds : (scored[0].response.confidence_score ?? 0.5);
@@ -1138,9 +1030,6 @@ export function evaluateRulesLayered(
       
       result.primary_decision = {
         // PR-7 F1: expose the winning ExecutableRule so downstream gates
-        // (prescription-gate-enforcer Gate 0a) can read the leakage /
-        // no-treatment flags that bundled-rules/loader.ts stamped on it.
-        // Without this line Gate 0a is dead code.
         _sourceRule: best,
         rule_id: best.rule_id,
         action_type: best.action_type,
@@ -1214,11 +1103,7 @@ export function evaluateRulesLayered(
       console.log(`   weighted_confidence: ${weightedConfidence.toFixed(3)}`);
     }
   } else {
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 7: RULE_DATA_INTEGRITY_ERROR - Fail-fast when rules matched but
-    // no primary action can be resolved. This indicates data quality issues
-    // in the decision_rules table (missing action_text/i18n_key).
-    // ═══════════════════════════════════════════════════════════════════════════
     const matchedRuleIds = result.matched_responses.map(r => r.rule_id);
     console.error(`🚨 [RULE_DATA_INTEGRITY_ERROR] matched_responses=${result.matched_responses.length} but 0 eligible for primary!`);
     console.error(`   Matched rule IDs: [${matchedRuleIds.join(', ')}]`);
@@ -1246,12 +1131,7 @@ export function evaluateRulesLayered(
   console.log(`   Blocked by ETL: ${result.rules_blocked_by_etl.length}`);
   console.log(`   Safety warnings: ${result.safety_warnings.length}`);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // GRAPH_NODE_TRACE — RULE_ENGINE
-  // Emits one uniform node line for forensic pipeline reconstruction.
-  // Never silent: even zero-match still surfaces block_reasons so the
-  // orchestrator invariant checker can attribute the gap.
-  // ═══════════════════════════════════════════════════════════════════════════
   try {
     const blockReasons: string[] = [];
     if (result.rules_blocked_by_graph.length) blockReasons.push(`graph:${result.rules_blocked_by_graph.length}`);
@@ -1301,22 +1181,11 @@ function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
 
 // ==================== ASYNC RULE LOADING ====================
 
-/**
- * LATENCY BATCH L3 (2026-07-29): converted-rule cache.
- * `getAllRulesWithBundled()` is called 2x per turn (orchestrator 3114 / 8767)
- * and re-built a closure for EVERY rule on each call. Conversion is pure
- * (closures capture only the immutable `bundled` row), so the converted array
- * is cached per crop with a short TTL. Rule content freshness still comes from
- * `loadAllRules()`'s own cache.
- */
+// LATENCY BATCH L3 (2026-07-29): converted-rule cache.
 const CONVERTED_RULE_TTL_MS = 5 * 60 * 1000;
 const convertedRuleCache = new Map<string, { rules: Rule[]; expiresAt: number }>();
 
-/**
- * Load rules with optional crop code filtering.
- * CRITICAL FIX: Without cropCode, loads ALL rules (517+) causing rule explosion.
- * Always pass cropCode when available to narrow candidates.
- */
+// Load rules with optional crop code filtering.
 export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]> {
   const cacheKey = (cropCode || '*').toLowerCase();
   const hit = convertedRuleCache.get(cacheKey);
@@ -1356,14 +1225,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     when: {
       custom: (state: CanonicalState & { user_query?: string; visual_symptoms?: string[] }) => {
         try {
-          // ═══════════════════════════════════════════════════════════════════════════
-          // ═══════════════════════════════════════════════════════════════════════════
           // STAGE PRE-FILTER: Enforce stage_applicable BEFORE evaluating other conditions
-          // v7.8 FIX: When stage is a DEFAULT/INFERRED value (VEGETATIVE, UNKNOWN),
-          // SKIP the strict stage gate. Default stages are not authoritative — they
-          // should NOT block pest/disease rules from firing. The conditions_json 
-          // evaluator has softer stage handling that properly skips when data is missing.
-          // ═══════════════════════════════════════════════════════════════════════════
           const stageApplicable = bundled.stage_applicable || [];
           const currentStage = canonicalStageKey(state.crop_stage);
           
@@ -1383,25 +1245,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             );
             
             if (!hasWildcard) {
-              // ───────────────────────────────────────────────────────────
               // Phase Z FIX (H3): Stage-family equivalence.
-              // Rules tagged for an early-life stage (emergence/seedling)
-              // must remain reachable when the canonical stage is a
-              // semantically-equivalent neighbour (germination / nursery /
-              // establishment). The runtime previously used a strict
-              // `.includes()` which hard-blocked every emergence-failure
-              // rule when the land's current_crop_stage = GERMINATION.
-              // The family map MUST stay symmetric and crop-independent.
-              // ───────────────────────────────────────────────────────────
-              // PR-7 F5: use the shared stage-family shim (backed by
-              // crop_stage_graph rows curated in the DB). This replaces the
-              // previous empty local STAGE_FAMILIES stub, which caused every
-              // rule to fall into the [STAGE_ONTOLOGY_MISSING] soft-bypass
-              // and turned the stage gate into a no-op.
-              // Crop context for DB-backed stage-family lookup. Prefer the
-              // rule's declared crop; fall back to the canonical land state.
-              // Without a crop we skip the family bridge entirely — see
-              // stage-family-shim.ts.
               const stageCropCtx = String(
                 (bundled as any).crop_code || (state as any).crop_type || ''
               ).toLowerCase();
@@ -1431,19 +1275,8 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             }
           }
           
-          // ═══════════════════════════════════════════════════════════════════════════
           // CRITICAL FIX: ENFORCE crop_code matching with proper normalization
-          // Database uses short codes (SC, CTN) while CanonicalState uses full names (SUGARCANE, COTTON)
-          // ═══════════════════════════════════════════════════════════════════════════
-          /**
-           * cropCodeAliases — REMOVED. Crop-code equivalences (short-code
-           * ↔ canonical name ↔ vernacular alias) MUST come from the DB
-           * (`public.crop_synonyms`). This empty placeholder preserves
-           * the reference below; unresolved mismatches emit a
-           * `[CROP_ALIAS_MISSING]` forensic log and cause a hard drop —
-           * which is the correct symbolic behaviour when the DB does not
-           * yet map the code. DO NOT repopulate.
-           */
+          // cropCodeAliases — REMOVED. Crop-code equivalences (short-code
           const cropCodeAliases: Record<string, string[]> = {};
 
           const ruleCropCode = bundled.crop_code?.toUpperCase() || '';
@@ -1472,18 +1305,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           }
 
           
-          // ═══════════════════════════════════════════════════════════════════════════
           // OBSERVATION LAYER FILTER: required_observation_category + required_plant_part
-          // Prevents cross-domain rule matching (e.g., nutrient rules for pest symptoms)
-          // ═══════════════════════════════════════════════════════════════════════════
-          // ─────────────────────────────────────────────────────────────
-          // Ontology-first evidence union. Priority = authority.
-          //   1. observation_codes[]         (canonical DB ontology codes)
-          //   2. confirmed_observations[]    (verified by farmer / vision)
-          //   3. synthetic_observations[]    (inferred by symbolic bridge)
-          //   4. visual_symptom              (legacy singular enum)
-          // NO observation → symptom conversion. Codes flow verbatim.
-          // ─────────────────────────────────────────────────────────────
           const _obsCodes:  string[] = Array.isArray((state as any).observation_codes)      ? (state as any).observation_codes      : [];
           const _confirmed: string[] = Array.isArray((state as any).confirmed_observations) ? (state as any).confirmed_observations : [];
           const _synthetic: string[] = Array.isArray((state as any).synthetic_observations) ? (state as any).synthetic_observations : [];
@@ -1503,18 +1325,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             const inferredCategories = new Set<string>();
             const inferredPlantParts = new Set<string>();
             
-            /**
-             * CATEGORY_PATTERNS — REMOVED. Observation → category resolution
-             * MUST come from `observation_master.observation_category`.
-             * PLANT_PART_PATTERNS — REMOVED. Plant-part resolution MUST
-             * come from `observation_master.affected_plant_part`.
-             *
-             * Empty placeholders retained so the loops below run as no-ops:
-             * `inferredCategories` / `inferredPlantParts` stay empty and the
-             * downstream gates are skipped (they only apply when the
-             * inferred set is non-empty), which correctly defers to the
-             * rule's DB-level predicates instead of string-pattern matching.
-             */
+            // CATEGORY_PATTERNS — REMOVED. Observation → category resolution
             const CATEGORY_PATTERNS: Record<string, string[]> = {};
             const PLANT_PART_PATTERNS: Record<string, string[]> = {};
             
@@ -1554,16 +1365,6 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           }
           
           // Pass ALL CanonicalState properties to rule conditions
-          // ═══════════════════════════════════════════════════════════════════
-          // v7.9 CRITICAL FIX: CanonicalState has visual_symptom (SINGULAR enum)
-          // but rule evaluator needs visual_symptoms (PLURAL array of observation codes).
-          // The observations are stored in confirmed_observations + synthetic_observations
-          // which are injected into the extended canonical state by the orchestrator.
-          // Without this bridge, input.visual_symptoms was ALWAYS empty, causing
-          // every observation-based condition to FAIL with SKIPPED_NO_DATA + required:true.
-          // ═══════════════════════════════════════════════════════════════════
-          // Reuse the ontology-first evidence union computed above so
-          // ObsFilter and the rule-condition evaluator see identical evidence.
           const uniqueVisualSymptoms = evidenceCodesUpper;
           
           const input = {
@@ -1616,50 +1417,34 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     then: {
       possible_cause: bundled.cause,
       cause_confidence: bundled.confidence_score || 0.7,
-      // ═══════════════════════════════════════════════════════════════════════════
       // PRODUCTION HARDENING: action_type is REQUIRED - use from DB, fallback to RECOMMEND
-      // ═══════════════════════════════════════════════════════════════════════════
       action_type: bundled.action_type || 'RECOMMEND',
       action_details: {
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 1: Graph Control Fields - CRITICAL for rule dependencies
-        // ═══════════════════════════════════════════════════════════════════════════
         blocks_rule_ids: bundled.blocks_rule_ids || [],
         prerequisite_rule_ids: bundled.prerequisite_rule_ids || [],
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 2: Temporal Constraint Fields - CRITICAL for age-based filtering
-        // ═══════════════════════════════════════════════════════════════════════════
         crop_age_days_min: bundled.crop_age_days_min,
         crop_age_days_max: bundled.crop_age_days_max,
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 3: ETL Safety Gate Fields - CRITICAL for spray decision
-        // ═══════════════════════════════════════════════════════════════════════════
         etl_applicable: bundled.etl_applicable,
         etl_value_min: bundled.etl_value_min,
         etl_value_max: bundled.etl_value_max,
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 6: Safety Enhancement Fields - CRITICAL for farmer safety
-        // ═══════════════════════════════════════════════════════════════════════════
         farmer_safety_level: bundled.farmer_safety_level,
         resistance_group: bundled.resistance_group,
         mode_of_action: bundled.mode_of_action,
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // NEW RESPONSE CONTRACT: action_text, reason_text, knowledge_text (PRIORITY)
-        // Legacy response_mr/hi/en are FALLBACK ONLY
-        // ═══════════════════════════════════════════════════════════════════════════
         action_text: bundled.action_text,
         reason_text: bundled.reason_text,
         knowledge_text: bundled.knowledge_text,
         i18n_key: bundled.i18n_key,
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL: Include action_type in action_details for downstream propagation
-        // This ensures action_type is available in matched_responses
-        // ═══════════════════════════════════════════════════════════════════════════
         action_type: bundled.action_type || 'RECOMMEND',
         
         // LEGACY: Deprecated response fields (fallback only)
@@ -1676,9 +1461,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
         etl_threshold: bundled.etl_threshold,
         organic_alternative: bundled.organic_alternative,
         
-        // ═══════════════════════════════════════════════════════════════════════
         // PHASE 8: Rich agronomic fields for deterministic response builder
-        // ═══════════════════════════════════════════════════════════════════════
         dosage_per_acre: bundled.dosage_per_acre,
         water_volume_per_acre: bundled.water_volume_per_acre,
         application_method: bundled.application_method,
@@ -1745,11 +1528,7 @@ function mapBundledCategory(category: string): RuleCategory {
     'weed': RuleCategory.DIAGNOSIS,
     'stress': RuleCategory.DIAGNOSIS,
     
-    // ═══════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Nutrition rules go to PRESCRIPTION, NOT DIAGNOSIS
-    // This prevents urgent nutrition rules from dominating primary selection
-    // over pest/disease diagnosis rules via ACTION_TYPE_PRIORITY
-    // ═══════════════════════════════════════════════════════════════════════
     'nutrient': RuleCategory.PRESCRIPTION,
     'nutrition': RuleCategory.PRESCRIPTION,
     
@@ -1774,11 +1553,7 @@ function mapBundledCategory(category: string): RuleCategory {
     'planting': RuleCategory.PRESCRIPTION,
     'ratoon_management': RuleCategory.PRESCRIPTION,
     
-    // ═══════════════════════════════════════════════════════════════════════
     // PRODUCTION FIX v7.5: Categories that were falling to OBSERVATION default
-    // causing rules to be evaluated in Phase 1 where matched_responses are NOT
-    // collected. These must route to DIAGNOSIS or PRESCRIPTION to produce output.
-    // ═══════════════════════════════════════════════════════════════════════
     'ipm': RuleCategory.PRESCRIPTION,           // IPM monitoring/trap rules
     'stage_problems': RuleCategory.DIAGNOSIS,   // Stage-specific pest/disease alerts
     'advisory': RuleCategory.PRESCRIPTION,      // General advisory rules
@@ -1794,29 +1569,19 @@ function mapBundledCategory(category: string): RuleCategory {
     // CLARIFICATION - special handling
     'clarification': RuleCategory.OBSERVATION,
     
-    // ═══════════════════════════════════════════════════════════════════════
     // FORENSIC AUDIT FIX v8.0: 4 previously unmapped categories
-    // These were defaulting to DIAGNOSIS via the fallback, causing 7 warnings/request
-    // ═══════════════════════════════════════════════════════════════════════
     'governance': RuleCategory.SAFETY,              // Policy/regulatory rules
     'resistance_mgmt': RuleCategory.PRESCRIPTION,   // Resistance management protocols
     'weed_management': RuleCategory.PRESCRIPTION,   // Weed treatment rules
     'physiology': RuleCategory.DIAGNOSIS,            // Physiological disorder identification
 
-    // ═══════════════════════════════════════════════════════════════════════
     // Phase H — Fix 11: Category canonicalization. Explicit mapping for the
-    // categories that were silently coerced to DIAGNOSIS (one warning per request).
-    // ═══════════════════════════════════════════════════════════════════════
     'crop_rotation':         RuleCategory.PRESCRIPTION,
     'proactive_pest':        RuleCategory.WARNING,
     'proactive_monitoring':  RuleCategory.OBSERVATION,
     'management':            RuleCategory.PRESCRIPTION,
 
-    // ═══════════════════════════════════════════════════════════════════════
     // Phase Y — Fix E: rest of the proactive_* family + nutrition/irrigation
-    // were silently falling through to the DIAGNOSIS default, re-typing
-    // advisory rules as diagnoses. Map the whole family explicitly.
-    // ═══════════════════════════════════════════════════════════════════════
     'proactive_irrigation':  RuleCategory.PRESCRIPTION,
     'proactive_nutrition':   RuleCategory.PRESCRIPTION,
     'proactive_disease':     RuleCategory.WARNING,
@@ -1824,8 +1589,6 @@ function mapBundledCategory(category: string): RuleCategory {
     'proactive_weather':     RuleCategory.WARNING,
 
     // PR-7 F7: NDVI authority gate rules are SAFETY-class (they gate other
-    // rules based on satellite reliability), not diagnostic. Previously fell
-    // through to the safe-default OBSERVATION with a per-request warning.
     'ndvi_authority_gate':   RuleCategory.SAFETY,
   };
 
@@ -1840,24 +1603,14 @@ function mapBundledCategory(category: string): RuleCategory {
     return RuleCategory.WARNING;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
   // Phase Y — Fix E: unknown categories MUST NOT silently become DIAGNOSIS.
-  // That misroutes advisory/observational rules into the diagnosis pipeline
-  // and is one of the documented contributors to the "Tungro for
-  // ungerminated rice" failure. Default to OBSERVATION; a rule that genuinely
-  // wants to be a diagnosis must declare it explicitly.
-  // ═══════════════════════════════════════════════════════════════════════
   console.warn(`⚠️ [mapBundledCategory] Unmapped category '${category}' → OBSERVATION (safe default; was DIAGNOSIS)`);
   return RuleCategory.OBSERVATION;
 }
 
 // ==================== KEYWORD FALLBACK ====================
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LANGUAGE-AGNOSTIC: Strong agricultural observation codes (NO hardcoded mr/hi/en words)
-// These are canonical observation symbols, NOT language-specific keywords.
-// Language detection is handled by the Neuro-Symbolic Bridge (LLM semantic normalizer).
-// ═══════════════════════════════════════════════════════════════════════════
 const STRONG_AGRI_OBSERVATION_CODES = [
   'DEAD_HEART', 'PLANT_DEATH', 'DRYING_WILTING', 'GERMINATION_FAILURE',
   'GAPS_IN_FIELD', 'PEST_DAMAGE', 'DISEASE_PATTERN', 'STEM_BORER',
@@ -1931,17 +1684,7 @@ export function getTotalRuleCount(): { core: number; bundled: number; total: num
 
 function validateWheatBiocontrol(_bioagent: string): boolean { return true; }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STEP 8 — HYPOTHESIS-SCOPED RULE EVALUATION (graph-first entry point)
-// ═══════════════════════════════════════════════════════════════════════════
-// The ONLY graph edge from hypothesis → rule is `public.hypothesis_rule_mapping`.
-// There is NO fallback to `decision_rules.hypothesis_code` — that column is a
-// competing SSOT and would silently mask curation gaps. When a hypothesis has
-// no rule_id in the mapping we surface HYPOTHESIS_RULE_EDGE_MISSING so the
-// narrator can tell the farmer "insufficient knowledge" and the log can flag
-// the curation task. When zero mapped rules match the canonical state we
-// surface RULE_COVERAGE_GAP. Advice is never invented.
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EvaluateRulesForHypothesesInput {
   hypothesis_codes: string[];

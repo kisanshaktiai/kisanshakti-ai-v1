@@ -1,29 +1,12 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CONTEXT VALIDATOR - LAYER 2: Context Assembly & Validation
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Implements critical validation gates:
- * - G2: CONTEXT_COMPLETENESS - Block if crop=UNKNOWN OR stage=DEFAULT
- * - G3: CONTEXT_CONSISTENCY - Block if NDVI contradicts symptoms
- * 
- * ARCHITECTURE: Part of 6-layer neuro-symbolic decision brain
- * 
- * VERSION: 1.0.0
- */
+// CONTEXT VALIDATOR - LAYER 2: Context Assembly & Validation
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
 import type { BiologicalState } from '../agents/biological-state.ts';
 // PR-4c: getStageByDAS import DELETED. Stage is consumed from
-// biological_state / land_state.crop.growth_stage (SSOT). This validator
-// MUST NOT recompute stage from DAS — a single writer (resolve_crop_phenology)
-// owns growth_stage.
 import { getCachedSynonymMap } from '../utils/crop-synonyms-cache.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type ValidationStatus = 'PASS' | 'FAIL' | 'WARN' | 'NEEDS_CLARIFICATION';
 
@@ -80,22 +63,9 @@ export interface ContextValidationInput {
   user_query?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE RESOLUTION — DB SSOT
-// ═══════════════════════════════════════════════════════════════════════════
-// PR-3: The former in-file `ICAR_CROP_CALENDARS` table (8 crops × 4-6 stages)
-// has been DELETED. It duplicated `public.crop_stage_master` (146+ curated
-// rows across all supported crops), was drifting, and violated the SSOT
-// invariant that no agronomic calendar may live outside the database.
-// Stage lookup now goes through `StageKnowledgeCache.getStageByDAS()` —
-// preloaded by the orchestrator at boot (idempotent, 10-minute TTL).
-// If the cache misses, we surface `stage_source='DEFAULT'` with a
-// `VEGETATIVE` fallback (a generic bucket, not per-crop agronomy) rather
-// than re-inject a hardcoded table.
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM-NDVI CONTRADICTION PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface ContradictionPattern {
   symptom_pattern: string[];
@@ -125,15 +95,11 @@ const NDVI_SYMPTOM_CONTRADICTIONS: ContradictionPattern[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN VALIDATION CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class ContextValidator {
   
-  /**
-   * MAIN: Validate and reconcile context
-   */
+  // MAIN: Validate and reconcile context
   validateContext(input: ContextValidationInput): ContextValidationResult {
     console.log('🔍 [ContextValidator] Starting validation...');
     
@@ -186,9 +152,7 @@ export class ContextValidator {
     return result;
   }
   
-  /**
-   * G2.1: Crop Context Reconciliation
-   */
+  // G2.1: Crop Context Reconciliation
   private validateCropContext(input: ContextValidationInput, result: ContextValidationResult): void {
     // CRITICAL FIX: Treat 'UNKNOWN' as null/undefined so the priority chain falls through
     const stripUnknown = (v: string | undefined | null): string | undefined => 
@@ -245,22 +209,7 @@ export class ContextValidator {
     result.gates_passed.push('G2_CROP_COMPLETENESS');
   }
   
-  /**
-   * G2.2: Growth Stage Consumption (PR-4c — READ-ONLY from BiologicalState SSOT)
-   *
-   * This validator NO LONGER computes stage from DAS. The only authoritative
-   * writer of `growth_stage` is `resolve_crop_phenology()` (surfaced on
-   * explicit `input.biological_state.growth_stage` and mirrored to
-   * `land_state.crop.growth_stage` by the loader when available).
-   *
-   * Priority order:
-   *   1. input.biological_state.growth_stage       → stage_source='LOCKED'
-   *   2. land_state.biological_state.growth_stage  → stage_source='LOCKED'
-   *   3. land_state.crop.growth_stage              → stage_source='CONFIRMED'
-   *   3. null                                      → stage_source='UNKNOWN'
-   *
-   * No hardcoded ladder. No DAS-to-stage lookup. No VEGETATIVE default.
-   */
+  // G2.2: Growth Stage Consumption (PR-4c — READ-ONLY from BiologicalState SSOT)
   private validateGrowthStage(input: ContextValidationInput, result: ContextValidationResult): void {
     const bioState: BiologicalState | null =
       input.biological_state ?? ((input.land_state as any)?.biological_state as BiologicalState | null) ?? null;
@@ -298,12 +247,7 @@ export class ContextValidator {
     result.gates_passed.push('G2_STAGE_DETERMINISM');
   }
   
-  /**
-   * G3: NDVI-Symptom Consistency Check
-   * 
-   * FIX: Normalize NDVI access - AuthoritativeLandState uses `latest_value`, not `current_ndvi`
-   * Check multiple potential NDVI field locations to prevent undefined access
-   */
+  // G3: NDVI-Symptom Consistency Check
   private checkNDVISymptomConsistency(input: ContextValidationInput, result: ContextValidationResult): void {
     // FIX: Normalize NDVI into single canonical value before validation
     // Priority: latest_value (AuthoritativeLandState) > current_ndvi (legacy) > facts.ndvi
@@ -347,9 +291,7 @@ export class ContextValidator {
     }
   }
   
-  /**
-   * Calculate overall data quality score (0-100)
-   */
+  // Calculate overall data quality score (0-100)
   private calculateDataQuality(input: ContextValidationInput, result: ContextValidationResult): number {
     let score = 0;
     
@@ -402,15 +344,7 @@ export class ContextValidator {
     return Math.min(100, score);
   }
   
-  /**
-   * Normalize crop name for comparison.
-   *
-   * PR-3: The former hardcoded multilingual regex (sugarcane/wheat/rice/…)
-   * has been DELETED. Resolution now flows through the DB-loaded synonym
-   * cache (`public.crop_synonyms`, 200+ curated variants across 8 languages)
-   * plus a fall-through to the lowercased trim of the input. No agronomic
-   * or linguistic table lives in this file.
-   */
+  // Normalize crop name for comparison.
   private normalizeCrop(crop: string): string {
     const raw = (crop || '').toLowerCase().trim();
     if (!raw) return raw;
@@ -418,16 +352,7 @@ export class ContextValidator {
     return canonical ? String(canonical).toLowerCase() : raw;
   }
   
-  /**
-   * FIX: Normalize NDVI value access across different data structures
-   * 
-   * AuthoritativeLandState uses `ndvi.latest_value`
-   * Legacy context uses `ndvi.current_ndvi`
-   * SymbolicFact uses `ndvi` directly
-   * 
-   * This method checks all potential sources and returns the first available value.
-   * If all are undefined, returns null (explicitly marking as UNKNOWN).
-   */
+  // FIX: Normalize NDVI value access across different data structures
   private normalizeNDVIValue(input: ContextValidationInput): number | null {
     // Priority 1: AuthoritativeLandState.ndvi.latest_value (AUTHORITATIVE)
     if (input.land_state?.ndvi?.latest_value !== undefined && 
@@ -451,9 +376,7 @@ export class ContextValidator {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON & CONVENIENCE FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 let validatorInstance: ContextValidator | null = null;
 
@@ -468,10 +391,7 @@ export function validateContextCompleteness(input: ContextValidationInput): Cont
   return getContextValidator().validateContext(input);
 }
 
-/**
- * G3: Perform NDVI-symptom consistency checks
- * Returns any contradictions found between field data
- */
+// G3: Perform NDVI-symptom consistency checks
 export function performConsistencyChecks(input: {
   ndviValue?: number | null;
   symptoms?: string[];

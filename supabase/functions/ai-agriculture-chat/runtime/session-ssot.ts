@@ -25,9 +25,6 @@ export type SessionSSOT = Readonly<{
   session_id: string;
   established_at: string;    // ISO timestamp for audit
   // FIX D1 (2026-07-28): cultivation lane threaded per request from
-  // crop_schedules → BiologicalState. Nullable when unknown (universal lane).
-  // NO module-scope fallback — every downstream stage lookup that cares about
-  // lane MUST read it from this field, never from any shared global.
   cultivation_method: string | null;
 }>;
 
@@ -44,11 +41,7 @@ export interface SessionSSOTInput {
   cultivation_method?: string | null;
 }
 
-/**
- * Build and freeze a SessionSSOT. Throws structured error if any required
- * field is missing — this is the ONLY point in the pipeline where an
- * SSOT is instantiated.
- */
+// Build and freeze a SessionSSOT. Throws structured error if any required
 export function buildSessionSSOT(input: SessionSSOTInput): SessionSSOT {
   const missing: string[] = [];
   if (!input.crop_code || String(input.crop_code).trim() === '') missing.push('crop_code');
@@ -88,11 +81,7 @@ export function buildSessionSSOT(input: SessionSSOTInput): SessionSSOT {
   return ssot;
 }
 
-/**
- * Resolve the SessionSSOT for a given response, orchestrator state, or both.
- * Priority: response.metadata.session_ssot → orch._sessionSSOT → null.
- * Returns null if unavailable — callers decide how to handle absence.
- */
+// Resolve the SessionSSOT for a given response, orchestrator state, or both.
 export function getSessionSSOT(
   response: any,
   orchestratorState: any,
@@ -104,10 +93,7 @@ export function getSessionSSOT(
   return null;
 }
 
-/**
- * Hard assertion for downstream sites that CANNOT proceed without an SSOT.
- * Throws structured error with the specific missing field(s).
- */
+// Hard assertion for downstream sites that CANNOT proceed without an SSOT.
 export function assertSessionSSOT(ssot: SessionSSOT | null, siteHint: string): asserts ssot is SessionSSOT {
   if (!ssot) throw new Error(`SSOT_MISSING at ${siteHint}: no session_ssot on response or orchestrator state`);
   const missing: string[] = [];

@@ -39,10 +39,7 @@ function isFresh(): boolean {
   return state.loadedAt !== null && Date.now() - state.loadedAt < TTL_MS;
 }
 
-/**
- * Preload every row from system_config. Idempotent + single-flight.
- * Safe to invoke on every request; TTL prevents redundant DB round-trips.
- */
+// Preload every row from system_config. Idempotent + single-flight.
 export async function preloadSystemConfig(
   supabase: Supa,
   opts: { force?: boolean } = {},

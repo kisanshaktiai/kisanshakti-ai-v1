@@ -35,21 +35,10 @@ import type { CanonicalContext } from '../decision/canonical-context-contract.ts
 import { canonicalObsCode } from '../utils/canonical-code.ts';
 export type CanonicalContextContract = CanonicalContext;
 
-// ──────────────────────────────────────────────────────────────────────────
 // CANONICAL ID INVARIANT — only [A-Z0-9_]+ allowed for codes carried on
-// the symbolic graph. Anything else is presentation-layer leakage.
-// ──────────────────────────────────────────────────────────────────────────
 const CANONICAL_ID_RE = /^[A-Z0-9_]+$/;
 
-/**
- * 2026-07-26 (clarification state-machine repair) — OBSERVATION codes are
- * DB-canonical **lower_snake_case** (`observation_master.observation_code`
- * 2549/2549 lowercase). The UPPER_SNAKE-only invariant above applies to
- * rule / hypothesis / intent identifiers ONLY. Enforcing UPPER on observation
- * slots made every `observation_ledger.append/confirm` throw
- * SYMBOLIC_ID_LEAK, so a farmer's clarification selection was never persisted
- * on the graph and the same clarification card was re-rendered forever.
- */
+// 2026-07-26 (clarification state-machine repair) — OBSERVATION codes are
 const CANONICAL_OBS_ID_RE = /^[a-z0-9_]+$/;
 
 export class SymbolicIdLeakError extends Error {
@@ -94,9 +83,7 @@ function assertCanonicalCode(slot: string, code: unknown): asserts code is strin
 }
 
 
-// ──────────────────────────────────────────────────────────────────────────
 // OBSERVATION LEDGER (append-only)
-// ──────────────────────────────────────────────────────────────────────────
 export type ObservationSource =
   | 'LLM'
   | 'IOM'
@@ -122,12 +109,7 @@ export interface ObservationNode {
 export class ObservationLedger {
   private readonly _entries: ObservationNode[] = [];
 
-  /**
-   * FIX (2026-07-29) — EVIDENCE IDENTITY.
-   * Every code entering the ledger is folded through the canonical-code SSOT
-   * so `LEAF-YELLOWING`, `Leaf Yellowing` and `leaf_yellowing` collapse to ONE
-   * symbolic identity instead of three ledger nodes / three evidence votes.
-   */
+  // FIX (2026-07-29) — EVIDENCE IDENTITY.
   private canon(code: unknown): string {
     return canonicalObsCode(code);
   }
@@ -145,9 +127,6 @@ export class ObservationLedger {
     assertCanonicalCode('observation_ledger.observation_code', code);
 
     // Idempotent by canonical identity: a second CREATE for the same code
-    // from the same source is a duplicate, not new evidence. Return the
-    // existing node (raising confidence if the new signal is stronger) so
-    // downstream counters cannot double-count one observation.
     const existing = this._entries.find(
       (e) => e.observation_code === code && e.source === input.source && !e.confirmed && !e.rejected,
     );
@@ -245,9 +224,7 @@ export class ObservationLedger {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────
 // RULE CANDIDATE GRAPH (in-place scoring)
-// ──────────────────────────────────────────────────────────────────────────
 export type RuleStatus = 'CANDIDATE' | 'WINNER' | 'DROPPED';
 
 export class RuleCandidate {
@@ -282,9 +259,7 @@ export class RuleCandidate {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────
 // SNAPSHOT VERSIONS (Phase D.5 — per-request replayability)
-// ──────────────────────────────────────────────────────────────────────────
 export interface SnapshotVersions {
   readonly ontology_version: string | null;
   readonly iom_version: string | null;
@@ -295,9 +270,7 @@ export interface SnapshotVersions {
   readonly captured_at: number;
 }
 
-// ──────────────────────────────────────────────────────────────────────────
 // GRAPH RUNTIME STATE (the blackboard)
-// ──────────────────────────────────────────────────────────────────────────
 export interface IntentNode {
   readonly intent_code: string;
   readonly confidence: number;
@@ -310,22 +283,7 @@ export interface DecisionNode {
   readonly metadata: Record<string, unknown>;
 }
 
-/**
- * Phase A — EVIDENCE ROUND SNAPSHOT
- * Frozen once per request the moment the farmer's observation selection has
- * been confirmed onto the ObservationLedger. Its purpose is to block the
- * "Observation → Observation" re-ask loop: any downstream branch that wants
- * to emit another CLARIFICATION_QUESTION MUST first check
- *   graph.evidence_round?.round_completed && cross_turn_round_index >= max_rounds
- * and fall through to the hypothesis/decision path when true.
- *
- * DB authority (no TypeScript policy):
- *   max_rounds ← observation_intent_master.max_clarification_rounds (default 1)
- *
- * The snapshot is immutable — freeze-once — mirroring canonical_context /
- * intent_node / decision_node. Cross-turn accumulation is owned by the
- * session-state layer (clarification_turn_count), not this snapshot.
- */
+// Phase A — EVIDENCE ROUND SNAPSHOT
 export interface EvidenceRoundSnapshot {
   readonly crop_code: string | null;
   readonly growth_stage: string | null;
@@ -352,10 +310,6 @@ export class GraphRuntimeState {
   private _evidence_round: EvidenceRoundSnapshot | null = null;
 
   // ── Phase C — Legacy graph-projection SSOT ─────────────────────────────
-  // These four fields were previously kept as `(this as any)._x` on the
-  // orchestrator instance. They are now owned by GraphRuntimeState so every
-  // reader crosses a single authority. Legacy write-through remains in the
-  // orchestrator for one release (Phase C.1); Phase C.2 will delete it.
   private _hypothesis_ids: readonly string[] = Object.freeze([] as string[]);
   private _hypothesis_rule_ids: readonly string[] = Object.freeze([] as string[]);
   private _obs_to_hyp_edges = 0;
@@ -391,8 +345,6 @@ export class GraphRuntimeState {
   setLastRealObservations(codes: readonly string[]): void {
     const clean = Array.from(new Set((codes || []).filter(Boolean).map(String)));
     // NOTE: real-obs list may include semantic-class codes; keep the loose
-    // canonical shape check without asserting a stricter regex here — the
-    // orchestrator already filters via isRealObservation().
     this._last_real_observations = Object.freeze(clean);
   }
   get last_real_observations(): readonly string[] { return this._last_real_observations; }
@@ -558,9 +510,7 @@ export class GraphRuntimeState {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────
 // DRIFT GUARD — call at the boundary of each pipeline phase.
-// ──────────────────────────────────────────────────────────────────────────
 export interface PhaseCheckpoint {
   observation_count: number;
   hypothesis_count: number;
@@ -617,8 +567,6 @@ export function assertNoGraphDrift(
     );
   }
   // Hypothesis graph entries may transition status but must not disappear
-  // without a recorded drop_reason. (Length-only check here is sufficient
-  // since RuleCandidate.drop() never removes the entry.)
   if (now.hypothesis_count < previous.hypothesis_count) {
     throw new GraphStateDriftError(
       stage,
@@ -630,9 +578,7 @@ export function assertNoGraphDrift(
   return now;
 }
 
-// ──────────────────────────────────────────────────────────────────────────
 // SNAPSHOT VERSION LOADER — single 60s-cached round-trip.
-// ──────────────────────────────────────────────────────────────────────────
 let _snapshotCache: { at: number; data: Omit<SnapshotVersions, 'canonical_context_hash' | 'language' | 'captured_at'> } | null = null;
 const SNAPSHOT_TTL_MS = 60_000;
 

@@ -1,28 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * STAGE 1: LANGUAGE NORMALIZER (LLM, FLEXIBLE)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * MASTER PROMPT v3 - Stage 1
- * 
- * PURPOSE:
- * - Normalize Marathi / Hindi / English input
- * - Remove emotion and filler words
- * - Output clean factual text only
- * 
- * RULES:
- * - NO intent extraction
- * - NO cause identification
- * - NO entity codes
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// STAGE 1: LANGUAGE NORMALIZER (LLM, FLEXIBLE)
 
 export const LANGUAGE_NORMALIZER_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NormalizedInput {
   original_text: string;
@@ -33,9 +13,7 @@ export interface NormalizedInput {
   has_agricultural_content: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EMOTION & FILLER PATTERNS TO REMOVE
-// ═══════════════════════════════════════════════════════════════════════════
 
 const EMOTION_PATTERNS: Record<string, string[]> = {
   mr: [
@@ -91,9 +69,7 @@ const FILLER_PATTERNS: Record<string, string[]> = {
   ]
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AGRICULTURAL KEYWORDS (to verify content is farming related)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const AGRICULTURAL_KEYWORDS: Record<string, string[]> = {
   mr: [
@@ -116,9 +92,7 @@ const AGRICULTURAL_KEYWORDS: Record<string, string[]> = {
   ]
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LANGUAGE DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function detectLanguageFromText(text: string): string {
   const devanagariPattern = /[\u0900-\u097F]/g;
@@ -152,10 +126,7 @@ function detectLanguageFromText(text: string): string {
     return 'mr';
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // ROMANIZED REGIONAL LANGUAGE DETECTION
-  // Detect Marathi/Hindi written in Latin script (Roman Marathi/Hindi)
-  // ═══════════════════════════════════════════════════════════════════════════
   const lowerText = text.toLowerCase();
   
   // Romanized Marathi markers (common words/phrases unique to Marathi)
@@ -179,9 +150,7 @@ function detectLanguageFromText(text: string): string {
   return 'en';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TEXT NORMALIZATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function removePatterns(text: string, patterns: string[]): { cleaned: string; removed: string[] } {
   let cleaned = text;
@@ -245,9 +214,7 @@ function checkAgriculturalContent(text: string, language: string): boolean {
   return false;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN NORMALIZER FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function normalizeLanguage(text: string): NormalizedInput {
   const originalText = text.trim();
@@ -301,9 +268,7 @@ export function normalizeLanguage(text: string): NormalizedInput {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   normalizeLanguage,

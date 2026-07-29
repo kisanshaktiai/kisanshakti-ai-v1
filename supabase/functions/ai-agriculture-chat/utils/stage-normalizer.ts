@@ -27,22 +27,13 @@ import { stageFamily, stagesEquivalent } from '../runtime/stage-family-shim.ts';
 
 export const STAGE_NORMALIZER_VERSION = '2.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE CATEGORY DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type StageCategory = 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURITY' | 'UNKNOWN';
 
 // NOTE (2026-07-27): the hardcoded SEEDLING/PRE_SOWING/VEGETATIVE/REPRODUCTIVE/
-// MATURITY stage lists were DELETED. They duplicated `public.crop_stage_graph`
-// and merged direct-seeded and transplanted timelines into one path. Stage
-// category, adjacency and compatibility now come EXCLUSIVELY from the DB via
-// utils/stage-knowledge-cache.ts + runtime/stage-family-shim.ts.
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE TO DB FORMAT MAPPING
-// Converts UI/frontend stage names to database-compatible format
-// ═══════════════════════════════════════════════════════════════════════════
 
 const STAGE_DB_MAP: Record<string, string> = {
   // Seedling / germination variants (true germination window only)
@@ -107,14 +98,9 @@ const STAGE_DB_MAP: Record<string, string> = {
   'post_irrigation': 'tillering',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize a stage name to database-compatible format.
- * E.g., "Seedling" → "germination", "Grand Growth" → "grand_growth"
- */
+// Normalize a stage name to database-compatible format.
 export function normalizeStageForDB(stage: string | undefined | null): string {
   if (!stage) return 'unknown';
   
@@ -125,11 +111,7 @@ export function normalizeStageForDB(stage: string | undefined | null): string {
   return STAGE_DB_MAP[key] || key;
 }
 
-/**
- * DB-only stage category resolution (SSOT: crop_stage_master, scoped to the
- * active cultivation lane). Returns UNKNOWN when crop is missing or the DB has
- * no row — never synthesizes a category from stage-name heuristics.
- */
+// DB-only stage category resolution (SSOT: crop_stage_master, scoped to the
 export function getStageCategory(
   stage: string | undefined | null,
   crop?: string | null,
@@ -150,12 +132,7 @@ export function getStageCategory(
   return 'UNKNOWN';
 }
 
-/**
- * Get all stage variants for a DB query against `stage_applicable`.
- * SSOT: `public.crop_stage_graph` (via the stage-family shim). No hardcoded
- * category expansion — only the canonical stage, its DB-curated family for the
- * ACTIVE cultivation lane, and the universal wildcards.
- */
+// Get all stage variants for a DB query against `stage_applicable`.
 export function getStageQueryVariants(
   stage: string | undefined | null,
   crop?: string | null,
@@ -179,10 +156,7 @@ export function getStageQueryVariants(
   return Array.from(variants);
 }
 
-/**
- * Check if two stages are compatible. Wildcards always pass; otherwise the DB
- * stage graph decides (exact stage or same curated family in the active lane).
- */
+// Check if two stages are compatible. Wildcards always pass; otherwise the DB
 export function areStagesCompatible(
   ruleStage: string | undefined | null,
   currentStage: string | undefined | null,
@@ -198,11 +172,7 @@ export function areStagesCompatible(
   return stagesEquivalent(a, b, crop ?? null, cultivationMethod);
 }
 
-/**
- * Stage relevance score (0-1) for rule ranking.
- *   1.0 exact stage · 0.8 DB-curated family · 0.5 wildcard/universal · 0.1 else
- * No substring guessing, no hardcoded category buckets.
- */
+// Stage relevance score (0-1) for rule ranking.
 export function calculateStageRelevanceScore(
   stageApplicable: string[] | null | undefined,
   currentStage: string,

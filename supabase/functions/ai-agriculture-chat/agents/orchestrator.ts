@@ -114,21 +114,7 @@
  *     Added loadTaxonomies() to the per-turn DB-SSOT preload chain.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FILE:      supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
- * ROLE:      Master orchestrator — coordinates 9 specialized agents for
- *            end-to-end agronomic advisory (intent → rules → narration).
- * AUTHORITY: RUNTIME (single orchestrator; only caller allowed to invoke
- *            runGraphRuntime, rule-engine-executor, layered-rule-evaluator).
- * STATUS:    ACTIVE
- * VERSION:   v2.0 (LLM-First Response System)
- * LAST_PR:   PR-6 (header stamping, 2026-07-06)
- * STAMPED:   2026-07-06
- * NOTES:     Simple Qs answered directly via LLM; rule engine only fires for
- *            pest / disease / treatment decisions.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// FILE:      supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
@@ -160,14 +146,7 @@ const DECISION_GRAPH_STAGE_SEQUENCE: Record<DecisionGraphStage, number> = {
   BRAIN_TRACE: 5,
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Phase 1 DB-SSOT: diagnostic-intent authority lives in
-// observation_intent_master.routing_target='SYMBOLIC_BRAIN' (85 rows).
-// The legacy hardcoded set below is retained ONLY as a cold-boot fallback
-// used while the DB cache is loading; once phase1CacheReady() is true, DB is
-// the single source of truth. Do NOT add rows to this list — add them to
-// observation_intent_master and let the cache pick them up.
-// ─────────────────────────────────────────────────────────────────────────────
 import {
   preloadPhase1Caches as _preloadPhase1Caches,
   isDiagnosticIntent as _isDiagnosticIntentDb,
@@ -224,10 +203,7 @@ import { CommunicationGenerator } from './communication-generator.ts';
 import { FeedbackLearningEngine } from './feedback-learning.ts';
 import { SafetyGuardian } from './safety-guardian.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-16: NEW SYMBOLIC DECISION BRAIN IMPORTS
-// These provide proper rule evaluation with JSON conditions_json parsing
-// ═══════════════════════════════════════════════════════════════════════════
 import { 
   SymbolicReasoner,
   type SymbolicFact,
@@ -261,22 +237,8 @@ import {
   type LLMResponseInput 
 } from './llm-response-generator.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMBOLIC ROUTING CONTRACT (Fix 2 + Fix 7 + Fix 8)
-// Canonical DIRECT-mode intents verified against observation_intent_master
-// where clarification_mode='DIRECT'. These intents MUST bypass symptom
-// clarification gates and go straight to the symbolic rule engine.
-// ═══════════════════════════════════════════════════════════════════════════
-/**
- * P6 (2026-07-24): DIRECT-mode intents are DB-authoritative via
- * `observation_intent_master.clarification_mode='DIRECT'`. This const remains
- * as a cold-boot fallback ONLY — the runtime lookup goes through
- * `isAdvisoryDirectIntent(intent, _LEGACY_ADVISORY_DIRECT_INTENTS)` in
- * phase1-caches which prefers the DB set and unions the legacy as a safety
- * net until agronomist reconciles the two rows currently missing in DB
- * (WEATHER_ADVISORY, CROP_HEALTH_DASHBOARD). Do NOT add new intents here;
- * insert them into `observation_intent_master` with clarification_mode='DIRECT'.
- */
+// P6 (2026-07-24): DIRECT-mode intents are DB-authoritative via
 const _LEGACY_ADVISORY_DIRECT_INTENTS: readonly string[] = [
   'FERTILIZER_SCHEDULE',
   'IRRIGATION_QUERY',
@@ -315,11 +277,7 @@ export function isAdvisoryRoute(intentCode: string | null | undefined): boolean 
   return _isAdvisoryDirectIntentDb(intentCode, _LEGACY_ADVISORY_DIRECT_INTENTS);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OBSERVATION CONTRACT GUARD (Fix 2)
-// Observations entering the symbolic engine MUST be canonical English codes
-// matching /^[A-Z][A-Z0-9_]+$/. Raw farmer text in any language is BLOCKED.
-// ═══════════════════════════════════════════════════════════════════════════
 export function isCanonicalObservationCode(s: any): boolean {
   return typeof s === 'string' && /^[A-Z][A-Z0-9_]+$/.test(s) && s.length <= 80;
 }
@@ -367,10 +325,7 @@ import type { NLUIntent, ExtractedEntities, SafetyAlerts } from './rule-module-t
 // Import rule resolver for NLU-to-Rules mapping (CRITICAL GAP 1 FIX)
 import { resolveRuleModules, determineContextRequirements, generateRuleRequiredQuestions } from './rule-module-resolver.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UNIVERSAL SEMANTIC EXTRACTOR - LLM-Based Language-Agnostic NLU (Phase 21)
-// Replaces hardcoded dictionaries with LLM extraction + deterministic mapping
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   extractSemanticMeaning,
   SEMANTIC_EXTRACTOR_VERSION,
@@ -386,10 +341,7 @@ import {
   type MappedObservationCodes
 } from '../decision/observation-code-mapper.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LEGACY LANGUAGE INDUCTION LAYER (Fallback only - to be deprecated)
-// Kept for USE_LLM_NLU=false feature flag during migration
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   induceCanonicalSymbols,
   getSymptomSymbolsForRules,
@@ -417,9 +369,7 @@ import {
 // UNIFIED: Import canonical crop code normalizer
 import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STABILIZATION v4.0: LLM Output Validator + Crop Vocabulary Cache
-// ═══════════════════════════════════════════════════════════════════════════
 import { validateLLMOutputAgainstDB } from '../utils/llm-output-validator.ts';
 import { getCropVocabulary, buildVocabularyPromptBlock } from '../utils/crop-vocabulary-cache.ts';
 
@@ -432,10 +382,7 @@ import {
   logCodeMapping
 } from './entity-code-mapper.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STATIC IMPORTS FOR EDGE FUNCTION COMPATIBILITY
-// All modules must be statically imported (no await import() allowed)
-// ═══════════════════════════════════════════════════════════════════════════
 import { routeQuery, getRouteRequirements } from './query-router.ts';
 import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authority-resolver.ts';
 import { checkStaticDataGate } from './static-data-gate.ts';
@@ -449,9 +396,7 @@ import { buildNavigatorOverride } from '../runtime/navigator-response.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE B/C/E WIRING — request context, mandatory gates, stage SSOT
-// ═══════════════════════════════════════════════════════════════════════════
 import { createRequestContext, snapshotContext, type RequestContext } from '../decision/request-context.ts';
 import { evaluateSemanticGate } from '../decision/semantic-validator.ts';
 import { evaluateScientificGate, type CandidateRecommendation } from '../decision/scientific-validator.ts';
@@ -470,10 +415,7 @@ import {
   validateCropContext 
 } from './soil-ndvi-state-calculator.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P0 CRITICAL: CANONICAL STATE BUILDER & LAYERED RULE EVALUATOR
-// These form the SYMBOLIC DECISION BRAIN - deterministic, auditable
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   buildCanonicalState,
   checkPrescriptionGate,
@@ -502,17 +444,13 @@ import {
   resolveConflicts as resolveDiagnosisConflicts
 } from './diagnosis-conflict-resolver.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // WORLD-CLASS CLARIFICATION: Multi-Match Detector for Competing Diagnoses
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   performMultiMatchDetection,
   type MultiMatchResult
 } from './generic-multi-match-detector.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P0 CRITICAL MODULE IMPORTS - PRODUCTION-READY INTEGRATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 // AUTHORITATIVE STATE LOADER - Single source of truth from DB tables
 import { 
@@ -539,9 +477,7 @@ import {
   type MorphologyEvidence
 } from '../decision/morphology-reconciler.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFE STRING UTILITIES - Production-grade guards against undefined/null
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   safePreviewText,
   normalizeFarmerMessage,
@@ -594,14 +530,7 @@ interface BiologicalStateContradictionAudit {
   trace_id: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SHARED CONSTANT: Emergency observation codes (used in both return paths)
-// ═══════════════════════════════════════════════════════════════════════════
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 1 DB-SSOT: emergency observation authority is public.emergency_observation_codes
-// (38 rows). Legacy hardcoded set retained ONLY as cold-boot fallback until
-// the DB cache preloads. Use getEmergencyObsSet() at call sites.
-// ─────────────────────────────────────────────────────────────────────────────
 const _LEGACY_EMERGENCY_OBS_CODES: readonly string[] = [
   'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
   'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
@@ -611,10 +540,7 @@ function getEmergencyObsSet(): Set<string> {
   return _getEmergencyObsCodesDb(_LEGACY_EMERGENCY_OBS_CODES);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
-// These enforce scientific validity before any treatment recommendation
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   validateContextCompleteness,
   performConsistencyChecks,
@@ -632,9 +558,6 @@ import {
 } from '../decision/differential-diagnosis-clarifier.ts';
 
 // PR-3: `getStageSpecificInfo` was imported but never referenced and was
-// never exported by crop-calendar-lookup — removed. `calculateGrowthStageFromDAS`
-// is retained as a re-export for downstream helpers that still resolve DAS→stage
-// through the DB-backed shim in decision/crop-calendar-lookup.ts.
 import { calculateGrowthStageFromDAS } from '../decision/crop-calendar-lookup.ts';
 
 // PHASE-8: Smart Clarification Generator - ObservationKey-based
@@ -677,9 +600,7 @@ import {
   serializeCrossCropSymptoms 
 } from './cross-crop-symptom-mapper.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE H + I — Graph SSOT runtime blackboard
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   GraphRuntimeState,
   checkpoint as graphCheckpoint,
@@ -691,36 +612,27 @@ import {
   RuleCandidate,
 } from '../runtime/graph-runtime-state.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-18: Rule Evaluation Layer - Clean wrapper for symbolic reasoning
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   evaluateRules as evaluateRulesLayer,
   type RuleEvaluationInput,
   type RuleEvaluationOutput
 } from '../layers/rule-evaluation-layer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-18: LLM Understanding Layer - Clean wrapper for NLU
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   type UnderstandingOutput,
   validateUnderstandingOutput
 } from '../llm-understanding-layer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-19: Photo Analyzer - Vision API Integration for crop photo analysis
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   analyzePhoto,
   enhanceUnderstandingWithPhoto,
   type PhotoAnalysisOutput
 } from '../photo/photo-analyzer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-20: CLARIFICATION-FIRST CONFIDENCE STRATEGY
-// Treats clarification as primary confidence-building, not fallback
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   lockStageForTurn,
   getLockedStage,
@@ -739,17 +651,12 @@ import {
   CLARIFICATION_STRATEGY_VERSION
 } from './clarification-strategy.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-22.5: HYPOTHESIS EVALUATOR FOR DIAGNOSIS-FIRST FLOW
-// Pre-evaluate rules to build candidate hypothesis set BEFORE clarification
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   type CandidateHypothesis,
   type HypothesisEvaluationOutput
 } from '../decision/hypothesis-evaluator.ts';
 // PR-2: hypothesis graph MUST be reached through the single runtime facade.
-// Do NOT reintroduce a direct `evaluateCandidateHypotheses` import here —
-// that bypasses `graphExecuted` bookkeeping and the [GRAPH_RUNTIME] trace.
 import { runGraphRuntime } from '../runtime/graph-runtime.ts';
 import {
   buildGraphRuntimeSnapshot,
@@ -760,10 +667,7 @@ import {
 
 export const ORCHESTRATOR_VERSION = '4.1.0'; // Phase-22.5: Diagnosis-First mode with hypothesis-driven options
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-21: CANONICAL CONTEXT CONTRACT IMPORTS
-// Single immutable context built once and passed by reference
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   buildCanonicalContext as buildCanonicalContextContract,
   assertCanonicalContextLocked,
@@ -775,10 +679,7 @@ import {
   type CanonicalContext
 } from '../decision/canonical-context-contract.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-25: CONTEXT TRACER - Track crop/stage/DAS through execution path
-// Detects and logs context drift between CanonicalContext and CanonicalState
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   initializeTrace,
   clearTrace,
@@ -790,11 +691,7 @@ import {
   CONTEXT_TRACER_VERSION
 } from '../utils/context-tracer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-22: DIAGNOSIS-ONLY MODE (v3.0 - Rule-Granted Authority)
-// Terminal damage grants CROP authority, bypasses NLU gating
-// NLU is observation-only, never gates diagnosis
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   shouldActivateDiagnosisOnlyMode,
   generateDiagnosisOnlyOutput,
@@ -819,14 +716,9 @@ import {
   AuthoredObservationSet,
   ObservationAuthority,
   // PATCH 4 (BUG 4): TERMINAL_CODES_BLOCKED_FROM_INJECTION removed.
-  // The DB (intent_observation_mapping.is_active + observation_master.can_generate_question)
-  // is the sole authority for whether a code may enter the graph.
 } from '../utils/observation-authority.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-22.5: DIAGNOSIS-FIRST GENERATOR
-// When crop damage detected with land context, show hypothesis-driven options
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   generateDiagnosisFirstResponse,
   createUnknownDiagnosisResponse,
@@ -856,61 +748,26 @@ import {
 import { scoreEvidenceSet, getEvidenceWeights } from '../decision/evidence-confidence.ts';
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
-// UPDATED: Now maps to actual VisualSymptom enum values from canonical-state-builder
-// ═══════════════════════════════════════════════════════════════════════════
-/**
- * WORLD-CLASS FIX: Map clarification answer to visual symptom
- * Uses ENGLISH canonical keywords ONLY - no hardcoded Marathi/Hindi
- * Matching uses standardized English keywords embedded in option IDs
- */
-/**
- * PHASE 5 REWRITE: mapDistributionToSymptom
- * 
- * REMOVED: 100+ hardcoded English/Marathi/Hindi string mappings that acted
- * as a parallel decision layer outside the symbolic engine.
- * 
- * NEW LOGIC: 
- * 1. Extract embedded observation_key from option metadata ([obs_keys:KEY])
- * 2. If no embedded key found, return the raw text as-is for the NLU + 
- *    observation code mapper to handle via DB-sourced lookups.
- * 
- * The symbolic engine (decision_rules + observation_master) is the SSOT
- * for symptom-to-diagnosis mapping. This function must NOT duplicate that logic.
- */
+// WORLD-CLASS FIX: Map clarification answer to visual symptom
+// PHASE 5 REWRITE: mapDistributionToSymptom
 function mapDistributionToSymptom(optionText: string, _scope: ClarificationScope): string {
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: Check for embedded observation_key in option text
-  // Options are formatted as: "Label text [obs_keys:KEY1,KEY2]"
-  // This is the AUTHORITATIVE path - keys come from observation_master
-  // ═══════════════════════════════════════════════════════════════════════════
   const obsKeyMatch = optionText.match(/\[obs_keys?:([^\]]+)\]/i);
   if (obsKeyMatch) {
     // FIX (canonical-code contract): observation codes are lower_snake_case
-    // across the platform (runtime/clarification-contract.ts:15-20). Prior
-    // .toUpperCase() broke every downstream DB lookup against
-    // observation_master.observation_code (100% lowercase, verified in DB).
     const embeddedKey = canonicalizeObservationKey(obsKeyMatch[1].split(',')[0]);
     console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key: ${embeddedKey}`);
     return embeddedKey;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: No embedded key found - return UNKNOWN
-  // The NLU semantic extractor + observation code mapper (DB-sourced) will
-  // handle language-agnostic mapping. DO NOT hardcode symptom mappings here.
-  // ═══════════════════════════════════════════════════════════════════════════
   console.log(`   ⚠️ [mapDistributionToSymptom] No embedded obs_key in option text, returning UNKNOWN`);
   console.log(`   📋 Option text: "${optionText.substring(0, 80)}"`);
   return 'UNKNOWN';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION OPTION TRANSLATION HELPER
-// Translates raw observation codes to farmer-friendly local language
-// Priority: 1) observation_translations DB table, 2) LLM translation fallback
-// ═══════════════════════════════════════════════════════════════════════════
 async function translateClarificationOptions(
   options: Array<string | { label: string; observation_key?: string; [key: string]: any }>,
   language: string,
@@ -966,11 +823,6 @@ async function translateClarificationOptions(
   console.log(`🌐 [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
 
   // Step 1: Look up labels from observation_translations (SSOT).
-  // FIX (BUG B): DB stores observation_code lowercase; runtime carries
-  // UPPERCASE. Query both cases and match case-insensitively.
-  // FIX (BUG A): prefer display_text strictly over description_text — the
-  // long description often embeds Latin pathogen names that must never
-  // surface in a chip label.
   const upperCodes = Array.from(new Set(
     needsTranslation
       .map(e => normalizeObservationCode(e.label, e.obsKey))
@@ -1011,9 +863,6 @@ async function translateClarificationOptions(
   }
 
   // Step 2: Deterministic English fallback. The previous GPT-4o-mini
-  // "translate codes to rural language" path was the source of hallucinated,
-  // inconsistent farmer wording — it has been removed. Missing rows are
-  // logged so observation_translations can be seeded.
   for (const code of upperCodes) {
     if (labelMap.has(code)) continue;
     const en = fallbackEnMap.get(code);
@@ -1042,9 +891,7 @@ async function translateClarificationOptions(
 
     // Fallback: avoid raw English leakage in non-English UI
     if (normalizedCode) {
-      // CRITICAL FIX: Humanize the code into readable text instead of 
-      // returning opaque "Observation option N" labels that are meaningless to farmers.
-      // The humanized form (e.g., "Gaps In Field") is still better than generic numbering.
+      // CRITICAL FIX: Humanize the code into readable text instead of
       const humanized = normalizedCode
         .replace(/_/g, ' ')
         .toLowerCase()
@@ -1244,19 +1091,12 @@ export class AIAgentOrchestrator {
     this.safetyGuardian = new SafetyGuardian();
   }
 
-  /**
-   * PHASE Y SAFETY NET: expose the orchestrator's service-role Supabase client
-   * so external callers (e.g. the index.ts persistence safety net) can persist
-   * RuntimeTrace rows on early-return paths without relying on private-field
-   * casts or globalThis lookups.
-   */
+  // PHASE Y SAFETY NET: expose the orchestrator's service-role Supabase client
   public getSupabase(): ReturnType<typeof createClient> {
     return this.supabase;
   }
   
-  /**
-   * Create a per-request DiagnosticFlowController
-   */
+  // Create a per-request DiagnosticFlowController
   private createDiagnosticController(sessionId: string, farmerId: string, landId?: string): DiagnosticFlowController {
     return new DiagnosticFlowController(sessionId, farmerId, this.supabase, landId);
   }
@@ -1288,10 +1128,7 @@ export class AIAgentOrchestrator {
   }
 
   
-  /**
-   * Generate clarification structure with i18n keys
-   * Text rendering delegated to narration layer
-   */
+  // Generate clarification structure with i18n keys
   private generateIntentMismatchClarification(
     language: string,
     cropName?: string
@@ -1304,10 +1141,7 @@ export class AIAgentOrchestrator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-14: Stage-Aware Fallback - Returns symbolic structure
-  // Text generation delegated to narration layer
-  // ═══════════════════════════════════════════════════════════════════════════
   private generateStageAwareFallback(
     cropCode: string,
     stage: string,
@@ -1345,10 +1179,7 @@ export class AIAgentOrchestrator {
     };
   }
   
-  /**
-   * Generic fallback when no crop-stage advisor data is available
-   * Returns symbolic structure - narration layer handles i18n
-   */
+  // Generic fallback when no crop-stage advisor data is available
   private generateGenericFallback(
     cropCode: string,
     daysSinceSowing: number,
@@ -1366,20 +1197,7 @@ export class AIAgentOrchestrator {
     };
   }
   
-  /**
-   * Public entrypoint. Wraps `_orchestrateImpl` with the GraphRuntime
-   * ownership-boundary invariant: after graph execution the immutable
-   * `_graphSnapshot` is the sole source of truth for hypotheses,
-   * candidate rules, and graph lineage. Downstream layers may enrich
-   * the response (clarification options, narration, safety metadata)
-   * but MUST NOT drop the graph's hypotheses/rules before exit.
-   *
-   * Emits one canonical [GRAPH_HANDOFF_CHECK] line per turn and throws
-   * GRAPH_CONTRACT_VIOLATION when hypotheses are lost across the
-   * runtime→response handoff. Also stamps the response with the frozen
-   * snapshot so CLARIFICATION_QUESTION continuations carry the graph
-   * lineage (graphExecuted, hypotheses, candidateRules, winner, trace_id).
-   */
+  // Public entrypoint. Wraps `_orchestrateImpl` with the GraphRuntime
   async orchestrate(
     farmerMessage: string,
     sessionId: string,
@@ -1456,9 +1274,6 @@ export class AIAgentOrchestrator {
             `(snapshot_hyp=${snapHyp} exit_hyp=${exitHyp})`,
           );
           // The frozen snapshot is the SSOT: repair the exit mirrors from it
-          // rather than destroying a valid farmer response. A lost mirror is an
-          // internal bookkeeping defect (e.g. clarification/no-decision exits
-          // that never re-stamp GraphRuntimeState), NOT a reason to 500.
           const snapHypIds = (snap?.hypotheses ?? [])
             .map((h: any) => h?.hypothesis_id ?? h?.id ?? h?.code)
             .filter(Boolean);
@@ -1514,13 +1329,7 @@ export class AIAgentOrchestrator {
       }
     } catch { /* stamping is additive; never fatal */ }
 
-    // ═══════════════════════════════════════════════════════════════════════
     // P5 + P6 — MANDATORY DECISION_OUTPUT INVARIANT
-    // Once graph execution has started for the turn, the response MUST carry a
-    // populated decision_output: either a real decision, or the structured
-    // no-decision object with graph_gap + trace. Never a silent abort.
-    // Existing populated decision_output is NEVER overwritten.
-    // ═══════════════════════════════════════════════════════════════════════
     try {
       const started = (this as any)._graphExecutionStarted === true;
       const graphRan = (this as any)._graphExecuted === true;
@@ -1573,8 +1382,6 @@ export class AIAgentOrchestrator {
     }
 
     // R2 — attach the immutable SessionSSOT to the response so every layer
-    // downstream of the orchestrator (Q3 rescue, L14 PostProcessor) reads the
-    // SAME canonical crop/stage/DAS/intent/language.
     try {
       const _ssot = (this as any)._sessionSSOT as SessionSSOT | undefined;
       if (_ssot && response) {
@@ -1589,14 +1396,7 @@ export class AIAgentOrchestrator {
 
   }
 
-  /**
-   * P5 — Canonical structured no-decision object.
-   *
-   * Emitted whenever graph execution started but no real decision could be
-   * assembled. Carries the full graph trace so the caller (index.ts) and the
-   * farmer-facing layer can explain the gap instead of silently aborting.
-   * Contains NO agronomy — it is pure runtime trace state.
-   */
+  // P5 — Canonical structured no-decision object.
   buildStructuredNoDecision(args: {
     trace_id: string;
     graph_gap: string | null;
@@ -1646,8 +1446,6 @@ export class AIAgentOrchestrator {
         askedObservationKeys?: string[];
         clarificationRoundCounter?: number;
         // STRUCTURED SSOT — preferred. Per-option records with canonical
-        // observation_key preserved alongside label/value, so OPTION_SELECTED
-        // can resolve symbolic identity directly without label mapping.
         pendingClarificationOptionsStructured?: Array<{
           label: string;
           value: string;
@@ -1679,40 +1477,22 @@ export class AIAgentOrchestrator {
     (this as any)._graphHypothesisEdgeMissing = [];
     (this as any)._graphSnapshot = null;
     // RC-1 FIX: orchestrator is a module-level singleton (see bottom of file);
-    // _graphTruth MUST be cleared per turn or the next turn's projection can
-    // consume a stale graph_truth with canonical_observations=[] (log:
-    // PRE_CANONICAL_STATE obs=0 while EVIDENCE_CLASSIFICATION real=3).
     (this as any)._graphTruth = null;
     console.log(`[RC1_BUILD_MARKER] v=rc1-2026-07-25T11:42 trace=${traceId} _graphTruth cleared per turn`);
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
     // LATENCY BATCH L5 (2026-07-29): per-turn memo for idempotent context reads.
-    // fetchComprehensiveLandContext (1816/2632/11352) and fetchWeatherData
-    // (8119/8291/11132) were each executed 2-3x per turn with identical args.
-    // Cleared here so the memo NEVER survives a turn (singleton orchestrator).
     (this as any)._turnMemo = new Map<string, Promise<any>>();
 
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
-    // Every stage below contributes to this ctx instead of resetting confidence.
-    // ═══════════════════════════════════════════════════════════════════════════
     const requestCtx: RequestContext = createRequestContext(traceId);
-    // ─────────────────────────────────────────────────────────────────
     // Phase I — Graph SSOT blackboard. ONE per request. Shared by every
-    // stage. Frozen-shell + append-only ledger + drift guards.
-    // ─────────────────────────────────────────────────────────────────
     const graph = new GraphRuntimeState(traceId);
     let graphCp = graphCheckpoint(graph);
     // Phase C.1 — expose GraphRuntimeState as SSOT on `this` so the outer
-    // orchestrate() wrapper (finally-block audit + response stamp) and any
-    // helper method not carrying `graph` in closure can read the authority.
     (this as any).__graphRuntimeState = graph;
 
-    // ─────────────────────────────────────────────────────────────────
     // PHASE Y — RuntimeTraceCollector (single per request).
-    // Captures pipeline stages, snapshots, knowledge versions; persisted by
-    // audit-logger.completeTurn() into ai_decision_log. Never throws.
-    // ─────────────────────────────────────────────────────────────────
     const runtimeTrace = resetRuntimeTraceCollector({
       trace_id: traceId,
       execution_mode: options.photoUrl ? 'live-vision' : 'live',
@@ -1721,16 +1501,11 @@ export class AIAgentOrchestrator {
     // Pre-load stage knowledge cache (idempotent, 10min TTL).
     try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
     // Pre-load DB-backed intent→observation mapping (replaces the deleted
-    // hardcoded INTENT_TO_OBSERVATION_MAPPINGS table in observation-code-mapper).
-    // Idempotent, 10min TTL — SSOT is public.intent_observation_mapping.
     try {
       const { loadObservationMapping } = await import('../utils/observation-mapping-cache.ts');
       await loadObservationMapping(this.supabase);
     } catch (_e) { /* non-fatal — mapper will log [OBS_MAPPING_CACHE_MISS] */ }
     // PR-2: Pre-load DB-backed observation & hypothesis classification caches
-    // (replaces hardcoded failure-class and authority-domain Sets in
-    // failure-class-detector, authority-resolver, and unified-decision-gate).
-    // SSOT: observation_master + observation_aliases + hypothesis_master.
     try {
       const { loadObservationClassification, loadHypothesisTypes } =
         await import('../utils/observation-classification-cache.ts');
@@ -1740,12 +1515,7 @@ export class AIAgentOrchestrator {
       ]);
     } catch (_e) { /* non-fatal — classifiers log [OBS_CLASSIFICATION_MISS] on lookup */ }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // Phase H — Fix 7 (Knowledge Initialization)
-    // Pre-load all knowledge caches at request init so every execution path
-    // (clarification / irrigation / diagnosis / advisory) shares the same
-    // warm runtime context. Promise.allSettled → per-cache isolation.
-    // ═══════════════════════════════════════════════════════════════════════════
     try {
       const [
         { loadETLStandards },
@@ -1781,15 +1551,11 @@ export class AIAgentOrchestrator {
       console.warn(`⚠️ Knowledge base pre-load orchestration failed:`, e instanceof Error ? e.message : 'unknown');
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
-    // ═══════════════════════════════════════════════════════════════════════════
     const safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
     const hasTextInput = hasTextContent(safeFarmerMessage);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE-18: Layer timing infrastructure for 3-layer architecture visibility
-    // ═══════════════════════════════════════════════════════════════════════════
     const layerTimings = {
       layer1_context: 0,     // Layer 1: Context loading & preprocessing
       layer2_understanding: 0, // Layer 2: LLM Understanding
@@ -1804,15 +1570,10 @@ export class AIAgentOrchestrator {
     console.log(`   [${traceId}] HasText: ${hasTextInput}, HasPhoto: ${!!options.photoUrl}`);
     console.log(`   [${traceId}] ContextTracer: v${CONTEXT_TRACER_VERSION}`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE-25: Initialize context trace for this turn
-    // ═══════════════════════════════════════════════════════════════════════════
     initializeTrace(traceId);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE-26: MANDATORY SESSION STATE LOGGING (Every Turn)
-    // Track decision state to detect infinite clarification loops
-    // ═══════════════════════════════════════════════════════════════════════════
     const incomingDecisionState = options.sessionState?.decisionState || 'no_session_state';
     const pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
     const clarificationActive = incomingDecisionState === 'awaiting_clarification';
@@ -1839,9 +1600,7 @@ export class AIAgentOrchestrator {
       console.log(`   [${traceId}] 🔗 Session Context: previousPest=${options.sessionState.previousPest}, previousCrop=${options.sessionState.previousCrop}, turn=${options.sessionState.turnCount}`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // LAYER 1: CONTEXT LOADING (No LLM)
-    // ═══════════════════════════════════════════════════════════════════════════
     const layer1Start = Date.now();
     console.log('\n📦 [LAYER 1] Context Loading...');
     
@@ -1849,19 +1608,14 @@ export class AIAgentOrchestrator {
     let landContext: any = null;
     
     try {
-      // ========================================
       // PHASE 0: FETCH LAND CONTEXT FIRST (Single Source of Truth)
-      // ========================================
       if (options.landId) {
         landContext = await this.fetchComprehensiveLandContext(options.landId, farmerId);
         console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
         if (landContext) {
           console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
           
-          // ═══════════════════════════════════════════════════════════════════════════
           // PHASE-20: STAGE-LOCKED CLARIFICATION
-          // Lock the growth stage for the entire turn to ensure consistent clarification
-          // ═══════════════════════════════════════════════════════════════════════════
           if (landContext.growth_stage && landContext.current_crop) {
             // PHASE-1 SSOT: BiologicalState (when locked) is the sole stage authority.
             // Only fall back to CROP_SCHEDULE/LAND_CONTEXT when resolver produced no row.
@@ -1890,22 +1644,14 @@ export class AIAgentOrchestrator {
       layerTimings.layer1_context = Date.now() - layer1Start;
       console.log(`   ✅ Layer 1 complete (${layerTimings.layer1_context}ms)`);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-21: BUILD CANONICAL CONTEXT EXACTLY ONCE (HARD INVARIANT)
-      // This is the SINGLE source of truth for the entire turn.
-      // ═══════════════════════════════════════════════════════════════════════════
-      // ═══════════════════════════════════════════════════════════════════════════
-      // PHASE-25: TRACE POINT 1 - After landContext fetch
-      // ═══════════════════════════════════════════════════════════════════════════
       if (landContext) {
         traceFromLandContext('LAND_FETCH', landContext, traceId);
       }
       
       const canonicalContext = buildCanonicalContextContract(landContext, !!landContext);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-25: TRACE POINT 2 - After CanonicalContext build
-      // ═══════════════════════════════════════════════════════════════════════════
       if (canonicalContext) {
         traceFromCanonicalContext('CANONICAL_CONTEXT', canonicalContext, traceId);
         console.log(`✅ [PHASE-21] CanonicalContext built and LOCKED:`);
@@ -1938,12 +1684,7 @@ export class AIAgentOrchestrator {
         });
       } catch {}
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // Phase H + I — Freeze canonical context onto the Graph SSOT blackboard.
-      // Capture per-request snapshot versions (ontology / IOM / translations) so
-      // every decision is replayable. assertNoGraphDrift() will fail-fast if any
-      // later stage tries to mutate crop/stage/DAS/language/intent.
-      // ═══════════════════════════════════════════════════════════════════════════
       try {
         graph.freezeCanonicalContext(canonicalContext ?? null);
         const language = (options as any).language ?? null;
@@ -1960,12 +1701,7 @@ export class AIAgentOrchestrator {
             `translations=${versions.translation_version} language=${language}`
         );
 
-        // ═══════════════════════════════════════════════════════════════════
         // PHASE-1 STAGE AUTHORITY GUARD (log-only during migration)
-        // The frozen canonical context MUST have source=BIOLOGICAL_STATE when
-        // landContext exists. Any other source means an old authority (crop
-        // schedule heuristic, lands.crop_stage text) beat the SSOT.
-        // ═══════════════════════════════════════════════════════════════════
         if (canonicalContext && landContext) {
           const bioLocked = !!(landContext as any)?.biological_state?.is_locked;
           if (bioLocked && canonicalContext.source !== 'BIOLOGICAL_STATE') {
@@ -1995,11 +1731,7 @@ export class AIAgentOrchestrator {
       }
 
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: PHOTO ANALYSIS EARLY PATH
-      // If farmer uploaded a photo, analyze it BEFORE other processing
-      // This enhances understanding with visual observations for rule evaluation
-      // ═══════════════════════════════════════════════════════════════════════════
       let photoAnalysisResult: PhotoAnalysisOutput | null = null;
       if (options.photoUrl) {
         console.log('\n📸 [PHASE-19] Photo Analysis Path...');
@@ -2054,11 +1786,7 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // ========================================
       // PHASE 0.3: UNIFIED QUERY ROUTER (NEW)
-      // Categorizes farmer question into proper handling route
-      // ========================================
-      // Static import at top of file
       
       const queryRoute = routeQuery(farmerMessage, {
         lastPest: options.sessionState?.previousPest,
@@ -2072,13 +1800,7 @@ export class AIAgentOrchestrator {
       console.log(`   Context hints: ${queryRoute.context_hints.join(', ')}`);
       agentsUsed.push('QUERY_ROUTER');
       
-      // ========================================
       // PHASE 0.3B: DB-DRIVEN VOCABULARY ROUTE OVERRIDE
-      // ========================================
-      // If routeQuery() returned GENERAL_INFO, check crop_vocabulary DB
-      // for phrase_pattern matches that indicate a specific intent.
-      // This is fully DB-driven: no hardcoded regional strings.
-      // ========================================
       if (queryRoute.route === 'GENERAL_INFO') {
         try {
           const msgLower = farmerMessage.toLowerCase();
@@ -2122,38 +1844,21 @@ export class AIAgentOrchestrator {
       
       const routeRequirements = getRouteRequirements(queryRoute.route);
       
-      // ========================================
       // PHASE-13: ROUTE GREETING THROUGH SYMBOLIC PIPELINE
-      // No more early return - let greeting queries go through rule engine
-      // ========================================
       if (queryRoute.route === 'GREETING') {
         console.log(`✅ [${traceId}] GREETING detected - routing through symbolic pipeline (PHASE-13)`);
         agentsUsed.push('SYMBOLIC_GREETING_PIPELINE');
         // Continue to full symbolic pipeline - will match greeting-specific rules
       }
       
-      // ========================================
-      // ========================================
       // PHASE 0.4B: GENERAL_INFO - RULE ENGINE DRIVEN (Not LLM Bypass)
-      // ========================================
-      // SYMBOLIC BRAIN PRINCIPLE: ALL queries go through Rule Engine
-      // Even general queries get routed through symbolic decision path
-      // LLM only RENDERS the decision, never MAKES it
-      // ========================================
-      // P0-5 FIX: GENERAL_INFO now continues to full symbolic pipeline
-      // REMOVED: Early return with decision_brain_source=true without actual rule evaluation
-      // General queries without land context now flow through the normal NLU + Rule Engine path
       if (queryRoute.route === 'GENERAL_INFO' && !options.landId) {
         console.log(`💬 [${traceId}] GENERAL_INFO without land - continuing to full symbolic pipeline (P0-5)`);
         agentsUsed.push('SYMBOLIC_GENERAL_PIPELINE');
         // No early return - continue to NLU and rule evaluation for proper symbolic decisions
       }
       
-      // ========================================
       // PHASE-13: ROUTE IRRIGATION THROUGH SYMBOLIC PIPELINE
-      // Previously: Early return with inline irrigation logic
-      // Now: Authority check + continue to rule engine for CPWS rules
-      // ========================================
       if (queryRoute.route === 'IRRIGATION_SCHEDULING' && landContext) {
         console.log(`💧 [${traceId}] IRRIGATION query - routing through symbolic pipeline with authority check`);
         
@@ -2236,11 +1941,7 @@ export class AIAgentOrchestrator {
         // No early return - continue to NLU + Rule Engine
       }
       
-      // ========================================
       // PHASE-13: ROUTE CROP_HEALTH THROUGH SYMBOLIC PIPELINE
-      // Previously: Early return with an inline hardcoded crop-health generator (deleted)
-      // Now: Authority check + continue to rule engine for nutrient/water rules
-      // ========================================
       if (queryRoute.route === 'CROP_HEALTH' && landContext) {
         console.log(`🌱 [${traceId}] CROP_HEALTH query - routing through symbolic pipeline with authority check`);
         
@@ -2264,10 +1965,7 @@ export class AIAgentOrchestrator {
         // No early return - continue to NLU + Rule Engine
       }
       
-      // ========================================
       // PHASE 0.5: STATIC DATA GATE (CRITICAL - BEFORE AI)
-      // ========================================
-      // Check if query is about static land attributes - answer WITHOUT AI (static import at top)
       
       const staticGateResult = checkStaticDataGate({
         farmer_message: farmerMessage,
@@ -2356,28 +2054,15 @@ export class AIAgentOrchestrator {
       
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
       
-      // ========================================
       // PHASE 9.1-FIX PATCH 1+2: CLARIFICATION RESPONSE HARD GATE
-      // When pending_options > 0, COMPLETELY SKIP NLU pipeline - only process option selection
-      // This is the CRITICAL FIX to prevent infinite clarification loops
-      // ========================================
       let pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
       const clarificationTurnCount = options.sessionState?.turnCount || 0;
       
-      // ========================================
       // PHASE 1.2: NEW QUERY DETECTOR (FAIL-OPEN TO NLU)
-      // Language-agnostic detection of NEW question vs option selection
-      // If farmer types free text that doesn't match any option, treat as NEW query
-      // ========================================
       if (pendingOptionsCount > 0) {
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
 
-        // ═══════════════════════════════════════════════════════════════════
         // T6 — SSOT REUSE ON THE UI-TAP PATH
-        // The option-selected branch short-circuits before Layer 3, so the
-        // SessionSSOT built on the question turn must be re-hydrated here
-        // instead of being silently absent. Never rebuilt from heuristics.
-        // ═══════════════════════════════════════════════════════════════════
         try {
           const _persistedSsot = (options.sessionState as any)?.session_ssot;
           if (_persistedSsot && typeof _persistedSsot === 'object' && _persistedSsot.crop_code) {
@@ -2397,26 +2082,14 @@ export class AIAgentOrchestrator {
           console.warn(`[SSOT_REUSE_FAILED] trace=${traceId} err=${(e as Error).message}`);
         }
         
-        // ========================================
         // STEP 1: Try to match response to pending options (using improved matcher)
-        // This is the AUTHORITATIVE check - if it matches, it's an option selection
-        // ========================================
         const matchResult = matchFarmerResponseToOption(safeFarmerMessage, pendingOptions);
         
-        // ========================================
         // STEP 2: Check for explicit option selection indicators
-        // ========================================
         const isNumericOnly = /^[१२३४1-4]$/.test(safeFarmerMessage.trim());
         const hasEmbeddedObsKeys = /\[obs_keys:[^\]]+\]/.test(safeFarmerMessage);
         
-        // ========================================
         // STEP 3: FAIL-OPEN LOGIC
-        // If message:
-        //   - is NOT numeric-only (1-4), AND
-        //   - has NO embedded obs_keys, AND
-        //   - does NOT match any option (via improved matcher)
-        // Then: CLEAR stale clarification and proceed to NLU pipeline
-        // ========================================
         const isLikelyNewQuery = !isNumericOnly && 
                                   !hasEmbeddedObsKeys && 
                                   !matchResult.matched && 
@@ -2452,18 +2125,11 @@ export class AIAgentOrchestrator {
         // PATCH 2: NULL-SAFE option matching
         const matchResult = matchFarmerResponseToOption(safeFarmerMessage, pendingOptions);
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL FIX: Extract observation_key from frontend message if embedded
-        // Frontend sends: "Label text [obs_keys:OBSERVATION_KEY1,OBSERVATION_KEY2]"
-        // ═══════════════════════════════════════════════════════════════════════════
         const obsKeysMatch = safeFarmerMessage.match(/\[obs_keys:([^\]]+)\]/);
         const embeddedObservationKeys = obsKeysMatch ? obsKeysMatch[1].split(',').filter(k => k.trim()) : [];
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // FIX #1: Extract cause and rule_id from confirmed diagnosis selection
-        // Frontend embeds: "Label [obs_keys:KEY] [cause:Cause Name] [rule_id:RULE_ID]"
-        // When present, this allows direct rule loading bypassing generic observation matching
-        // ═══════════════════════════════════════════════════════════════════════════
         const causeMatch = safeFarmerMessage.match(/\[cause:([^\]]+)\]/);
         const ruleIdMatch = safeFarmerMessage.match(/\[rule_id:([^\]]+)\]/);
         const confirmedCause = causeMatch ? causeMatch[1].trim() : null;
@@ -2480,10 +2146,6 @@ export class AIAgentOrchestrator {
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
           // CRITICAL FIX: Use embedded observation key if available, else use
-          // the per-index canonical key persisted at clarification render time.
-          // Heuristic label→code reconstruction is FORBIDDEN — it broke the
-          // symbolic identity. Only fall back when both DB-sourced channels
-          // are empty.
           let mappedObservationKey: string | null = null;
           const persistedObsKeys = (options.sessionState as any)?.pendingClarificationObservationKeys || [];
           const persistedStructured: Array<{
@@ -2509,8 +2171,6 @@ export class AIAgentOrchestrator {
             (selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key)
           ) {
             // FIX (canonical-code contract): selectedStructuredOption came
-            // from buildHypothesisClarificationOptions → observation_master
-            // in canonical lowercase. Do not re-cast.
             mappedObservationKey = canonicalizeObservationKey(
               selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key
             );
@@ -2525,9 +2185,6 @@ export class AIAgentOrchestrator {
             console.log(`   📋 Using PERSISTED ObservationKey @${matchResult.option_index}: "${mappedObservationKey}"`);
           } else {
             // Phase I-6: Heuristic label→code mapping is a SYMBOLIC_ID_LEAK.
-            // Record it in the EvidenceLedger so it shows up in the trace and
-            // emit a structured warning. The mapping is kept ONLY as a legacy
-            // safety net until the wire contract is migrated to {option_id}.
             mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
             try {
               requestCtx.ledger.lose(
@@ -2544,25 +2201,11 @@ export class AIAgentOrchestrator {
                 `"${mappedObservationKey || 'UNKNOWN'}" (legacy fallback)`
             );
           }
-          // ─────────────────────────────────────────────────────────────
           // Phase I-3 — CLARIFICATION confirm on the ObservationLedger.
-          // The user's selection is the strongest possible signal for an
-          // observation. Append (or confirm) onto the append-only ledger
-          // so downstream modules see a single canonical confirmation
-          // node carrying source=CLARIFICATION and confidence≥0.9.
-          // Non-canonical (leaked label) values are skipped — the
-          // EvidenceLedger already recorded the SYMBOLIC_ID_LEAK above.
-          // ─────────────────────────────────────────────────────────────
           try {
             // FIX (canonical-code contract): canonical observation codes are
-            // lower_snake_case (verified: observation_master.observation_code
-            // is 100% lowercase across 2,549 rows). The prior UPPERCASE regex
-            // would reject P1/P2/P3 outputs and silently skip the ledger
-            // append + confirm — breaking downstream evidence classification.
             const CANON_RE_OPT = /^[a-z0-9_]+$/;
             // FIX (2026-07-29): fold through the canonical-code SSOT before the
-            // shape test so a selection echoed in any casing/separator form
-            // resolves to the SAME symbolic identity as the ledger seed.
             const _optCode = canonicalObsCode(mappedObservationKey);
             if (_optCode && CANON_RE_OPT.test(_optCode)) {
               const already = graph.observation_ledger
@@ -2595,14 +2238,7 @@ export class AIAgentOrchestrator {
             }
           }
 
-          // ═══════════════════════════════════════════════════════════════════
           // TERMINAL CLARIFICATION TRANSITION (2026-07-26)
-          // A valid selection ENDS the clarification branch. Persist first,
-          // then clear the lock, zero pending options and hand control to the
-          // graph/rule pipeline in the SAME turn. `option_selected=true` must
-          // never coexist with `awaiting_clarification` after this point.
-          // Fail closed ONLY when no canonical observation could be resolved.
-          // ═══════════════════════════════════════════════════════════════════
           const _askedObsKeysPrevTurn: string[] = (
             ((options.sessionState as any)?.pendingClarificationObservationKeys ?? []) as string[]
           ).map((k) => canonicalizeObservationKey(k)).filter(Boolean);
@@ -2630,10 +2266,7 @@ export class AIAgentOrchestrator {
             );
           }
 
-          /**
-           * Repeat guard — an option already asked last turn, or already
-           * confirmed, must never be re-rendered after a valid selection.
-           */
+          // Repeat guard — an option already asked last turn, or already
           const _dropRepeatOptions = <T extends { observation_key?: string }>(
             opts: T[],
             confirmed: ReadonlyArray<string>,
@@ -2661,10 +2294,7 @@ export class AIAgentOrchestrator {
             return kept;
           };
 
-          // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
-          // Log pre-clarification state and rebuild with new symbols
-          // ═══════════════════════════════════════════════════════════════════
           
           // Track pre-clarification confidence for logging
           const preClarificationConfidence = options.sessionState?.confidence || 0.5;
@@ -2676,13 +2306,7 @@ export class AIAgentOrchestrator {
             landContextForOptionSelection = await this.fetchComprehensiveLandContext(options.landId, farmerId) || undefined;
           }
           
-          // ─────────────────────────────────────────────────────────────
           // Phase H — LAND-FIRST priority. CanonicalContext (land-derived)
-          // is authoritative. lockedCropContext is a wire-compat artifact
-          // and only used when land is unavailable. Old order
-          // (strategy > locked > land) caused crop/stage divergence
-          // between turns documented in the audit.
-          // ─────────────────────────────────────────────────────────────
           const lockedStageFromStrategy = getLockedStage();
           const canonicalCropForOption = graph.canonical_context?.crop_code;
           const canonicalStageForOption = graph.canonical_context?.growth_stage;
@@ -2792,11 +2416,6 @@ export class AIAgentOrchestrator {
           // The selected observation key is CONFIRMED (farmer explicitly chose it)
           if (mappedObservationKey) {
             // FIX (canonical-code contract): defensive re-canonicalize before
-            // pushing to allObservations, which is passed to
-            // expandObservationVocabularyViaAliases (DB alias expansion).
-            // P2/P3 above already canonicalize, but this guarantees the
-            // invariant at the boundary between local variables and the
-            // downstream reasoning array.
             const _canonKey = canonicalizeObservationKey(mappedObservationKey);
             if (_canonKey) {
               allObservations.push(_canonKey);
@@ -2807,11 +2426,7 @@ export class AIAgentOrchestrator {
             allObservations.push(visualSymptom);
           }
           
-          // ═══════════════════════════════════════════════════════════════════════════
           // FIX #3: OBSERVATION KEY EXPANSION - DB-DRIVEN via observation_aliases
-          // Replaces hardcoded obsKeyExpansion dictionary with expandObservationVocabularyViaAliases()
-          // v5.1: All expansion now comes from observation_aliases table
-          // ═══════════════════════════════════════════════════════════════════════════
           
           // FIX #1: If cause was confirmed, add cause-specific observations from the confirmed rule
           if (confirmedRuleId && confirmedRuleId !== 'UNKNOWN_FALLBACK' && confirmedRuleId !== 'PHOTO_FALLBACK') {
@@ -2879,10 +2494,7 @@ export class AIAgentOrchestrator {
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
 
-          // ═══════════════════════════════════════════════════════════════════
           // MANDATORY GRAPH CONTRACT: confirmed observation must traverse
-          // Observation → Hypothesis before any rule or fallback branch.
-          // ═══════════════════════════════════════════════════════════════════
           const optionEvidence = classifyEvidence(allObservations);
           const optionGraphResolution = await resolveHypothesesFromObservations({
             supabase: this.supabase,
@@ -2906,15 +2518,7 @@ export class AIAgentOrchestrator {
             `matched_rules=${optionGraphRuleIds.length}`,
           );
 
-          // ═══════════════════════════════════════════════════════════════════
           // Phase A — EVIDENCE ROUND FREEZE + OBSERVATION-LOOP GATE
-          // The farmer just selected an observation this turn. Freeze the
-          // round snapshot on the graph and consult observation_intent_master
-          // for the DB-authoritative round budget. If the budget is exhausted
-          // we MUST fall through to the hypothesis/decision path instead of
-          // emitting yet another CLARIFICATION_QUESTION (the farmer-visible
-          // "observation → observation" loop).
-          // ═══════════════════════════════════════════════════════════════════
           const _intentCodeForRound =
             (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY';
           let _maxRoundsFromDb = 1;
@@ -3014,8 +2618,6 @@ export class AIAgentOrchestrator {
               `clarification_source=hypothesis_graph options=${clarificationOptions.length}`,
             );
             // Mirror confirmed observations onto the enforcer-visible field so
-            // the observation-selector-contract can degrade (not 500) when this
-            // seed-graph clarification path also has zero loadable options.
             {
               const _rc = Array.isArray(optionEvidence.real_codes) ? [...optionEvidence.real_codes] : [];
               (this as any)._lastRealObservations = _rc;
@@ -3160,15 +2762,6 @@ export class AIAgentOrchestrator {
             // ═══════════════════════════════════════════════════════════════
             // CHANGE LOG 2026-07-26 — HYPOTHESIS→RULE SCOPE COLLAPSE FIX.
             // `getAllRulesWithBundled()` returns `Rule` objects whose identity
-            // field is `id` (see layered-rule-evaluator.convertBundledToRule),
-            // NOT `rule_id`. The old filter read `r.rule_id` → always
-            // `undefined` → EVERY rule was dropped even when the graph had
-            // mapped 25 valid rules ([OPTION_GRAPH_SCOPE] rules 202 → 0).
-            // That silently converted a confirmed BPH diagnosis into a 1%
-            // STAGE_FALLBACK "tell me what you see" reply.
-            // Identity is now read from `id ?? rule_id` and compared
-            // case-insensitively via the canonical symbol normalizer.
-            // ═══════════════════════════════════════════════════════════════
             const beforeGraphScope = allRulesForOption.length;
             const ruleIdentity = (r: any): string =>
               canonicalSymbolCode(r?.id ?? r?.rule_id ?? '');
@@ -3195,12 +2788,6 @@ export class AIAgentOrchestrator {
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length} (crop=${cropCodeForRules})`);
           
           // Pass user_query AND visual_symptoms for rule matching
-          // CRITICAL: visual_symptoms array is what evaluateConditionsJson checks!
-          // Phase Z FIX (H4): also propagate `confirmed_observations` so the
-          // bundled-rule evaluator (layered-rule-evaluator.ts:1439-1452) and
-          // the hypothesis evaluator both see the farmer-confirmed symbol set.
-          // Without this the bundle path silently fell back to visual_symptom
-          // = 'UNKNOWN' and hard-failed every conditions_json.observations[] check.
           const stateWithQuery = { 
             ...canonicalState, 
             user_query: farmerMessage,
@@ -3227,11 +2814,7 @@ export class AIAgentOrchestrator {
           // CRITICAL FIX: Check for matched_responses even when prescriptions are empty
           const hasMatchedResponses = ruleResult.matched_responses && ruleResult.matched_responses.length > 0;
 
-          // ═══════════════════════════════════════════════════════════════════════════
           // PHASE H — Emit canonical ConversationState on OPTION_SELECTED short-circuit
-          // so the [CONVERSATION_STATE] + [BRAIN_TRACE] invariants are observable on
-          // every execution path (not only the main pipeline at line ~3804).
-          // ═══════════════════════════════════════════════════════════════════════════
           try {
             const optionStateInferred = (ruleResult.diagnoses || [])
               .map((d: any) => d?.diagnosis_code || d?.code)
@@ -3261,11 +2844,7 @@ export class AIAgentOrchestrator {
           }
 
           
-          // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: DECISION GATE ALIGNMENT
-          // If clarification completed + rules fire → MUST return recommendation
-          // SESSION STATE IS AUTHORITATIVE - clarification just answered
-          // ═══════════════════════════════════════════════════════════════════
           
           const decisionGateCheck = checkDecisionGateAlignment({
             clarification_completed: true, // We just processed a clarification selection
@@ -3315,11 +2894,7 @@ export class AIAgentOrchestrator {
             const safePrescriptions = Array.isArray(ruleResult.prescriptions) ? ruleResult.prescriptions : [];
             const safeMatchedResponses = Array.isArray(ruleResult.matched_responses) ? ruleResult.matched_responses : [];
             
-            // ═══════════════════════════════════════════════════════════════════════════
             // FORENSIC AUDIT FIX v8.0: Build actions from prescriptions > matched_responses > primary_decision
-            // Previously, when both prescriptions and matched_responses were empty but primary_decision
-            // existed (pest rules routed to DIAGNOSIS phase), actionsToReturn was [] causing Actions=0 bug.
-            // ═══════════════════════════════════════════════════════════════════════════
             let actionsToReturn: any[] = [];
             
             if (safePrescriptions.length > 0) {
@@ -3364,10 +2939,7 @@ export class AIAgentOrchestrator {
             const primaryResponse = hasMatchedResponses ? ruleResult.matched_responses[0] : null;
             const statusToUse = ruleResult.prescriptions.length > 0 ? 'DIAGNOSIS_COMPLETE' : 'OBSERVATION_PROVIDED';
             
-            // ═══════════════════════════════════════════════════════════════════════════
             // CRITICAL FIX: Build proper primary_decision object from layered_rule_result
-            // This MUST be a PrimaryDecision object, NOT a string
-            // ═══════════════════════════════════════════════════════════════════════════
             const layeredPrimaryDecision = ruleResult.primary_decision;
             let primaryDecisionObject: any = null;
             
@@ -3491,10 +3063,7 @@ export class AIAgentOrchestrator {
               console.error(`   🚨 OPTION_SELECTED: Failed to build primary_decision - no eligible source found`);
             }
             
-            // ═══════════════════════════════════════════════════════════════════════════
             // CRITICAL FIX: SESSION STATE TRANSITION - Decision state MUST be updated
-            // This signals to index.ts that clarification is COMPLETE
-            // ═══════════════════════════════════════════════════════════════════════════
             const sessionStateUpdate = {
               decision_state: 'decision_in_progress',  // NOT 'awaiting_clarification'
               pending_options: 0,
@@ -3515,9 +3084,7 @@ export class AIAgentOrchestrator {
             return {
               type: 'DECISION_PROVIDED',
               session_id: sessionId,
-              // ═══════════════════════════════════════════════════════════════════════════
               // CRITICAL: session_state_update tells index.ts to transition decision_state
-              // ═══════════════════════════════════════════════════════════════════════════
               session_state_update: sessionStateUpdate,
               decision_output: {
                 decision_id: `rule_${Date.now()}`,
@@ -3526,9 +3093,7 @@ export class AIAgentOrchestrator {
                 decision_brain_source: true,
                 // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
                 authority_decision: authorityDecision,
-                // ═══════════════════════════════════════════════════════════════════════════
                 // CRITICAL FIX: primary_decision MUST be an object, NOT a string!
-                // ═══════════════════════════════════════════════════════════════════════════
                 primary_decision: primaryDecisionObject,
                 // CRITICAL: Attach layered_rule_result for recovery in index.ts
                 layered_rule_result: {
@@ -3594,10 +3159,7 @@ export class AIAgentOrchestrator {
             };
           }
           
-          // ═══════════════════════════════════════════════════════════════════
           // PHASE-14: NO RULES MATCHED - Use Stage-Aware Fallback
-          // Instead of generic "समजले", provide crop-stage-specific advice
-          // ═══════════════════════════════════════════════════════════════════
           console.log(`⚠️ [OPTION_SELECTED] No rules matched for ${cropName}/${growthStage} - using stage-aware fallback`);
           
           // FIX: Build dataAudit for OPTION_SELECTED path to preserve land context
@@ -3611,9 +3173,6 @@ export class AIAgentOrchestrator {
           };
           
           // ── S1 (downstream) — biological compatibility of STAGE_FALLBACK ────
-          // If widening produced advice for a stage the SessionSSOT does NOT
-          // confirm, we must NOT generate stage-inappropriate advice. Demote to
-          // a structured NO_DECISION instead.
           {
             const _blockedStateUpdate = {
               decision_state: 'decision_in_progress',
@@ -3689,8 +3248,6 @@ export class AIAgentOrchestrator {
           console.log(`   ═══════════════════════════════════════════════`);
 
           // Mirror confirmed observations onto the enforcer-visible field so
-          // observation-selector-contract Case C can degrade (not 500) when
-          // this stage-fallback path yields no loadable options.
           {
             const _rc = Array.isArray(optionEvidence?.real_codes)
               ? [...optionEvidence.real_codes]
@@ -3792,10 +3349,7 @@ export class AIAgentOrchestrator {
         // This comment documents that the hard gate is complete
       }
       
-      // ========================================
       // PHASE 0.4A: NEW QUERY PATH (No pending options)
-      // Only reaches here if pendingOptionsCount === 0 (fresh query)
-      // ========================================
       console.log('\n🔢 PHASE 0.4A: Fresh Query Detection...');
       
       // Track if farmer selected an option - used to bypass clarification later
@@ -3815,24 +3369,11 @@ export class AIAgentOrchestrator {
       let processedFarmerMessage = safeFarmerMessage;
       let matchedObservation: { observation: string; likely_cause: string } | null = null;
       
-      // ========================================
       // PHASE 1: MASTER PROMPT v3 - 5-STAGE UNDERSTANDING PIPELINE
-      // Stage 1: Language Normalization
-      // Stage 2: Observation Extraction
-      // Stage 3: Symbol Canonicalization (in Phase 2.5)
-      // Stage 4: Understanding Completeness Check
-      // Stage 5: Diagnosis & Prescription (in Phase 4)
-      // ========================================
-      // ═══════════════════════════════════════════════════════════════════════════
-      // LAYER 2: LLM UNDERSTANDING (Semantic Extraction)
-      // ═══════════════════════════════════════════════════════════════════════════
       const layer2Start = Date.now();
       console.log('\n🧠 [LAYER 2] LLM Understanding Pipeline...');
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 1: LANGUAGE NORMALIZATION (LLM, FLEXIBLE)
-      // Clean farmer input - remove emotion, filler. NO intent, NO cause, NO codes.
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log('   📝 Stage 1: Language Normalization...');
       
       // Static import at top of file
@@ -3850,11 +3391,7 @@ export class AIAgentOrchestrator {
       console.log(`      Normalized: "${safePreviewText(normalizedInput.normalized_text)}"...`);
       console.log(`      Language: ${normalizedInput.detected_language} (canonical=${canonicalLang}), Removed: ${normalizedInput.removed_elements.length} elements`);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 1.5: UNIVERSAL SEMANTIC EXTRACTION (Phase 21 - LLM-Based)
-      // Uses LLM to extract semantic meaning in ANY language → plain English
-      // Then deterministic mapper converts English → ObservationKeys
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔮 Stage 1.5: Universal Semantic Extractor (v${SEMANTIC_EXTRACTOR_VERSION})...`);
       
       // STABILIZATION v4.0 ISSUE 8: Crop Vocabulary Prompt Enrichment
@@ -3900,8 +3437,6 @@ export class AIAgentOrchestrator {
       agentsUsed.push('SEMANTIC_EXTRACTOR');
       
       // STEP 2: Deterministic mapper converts English → ObservationKeys.
-      // Scope-aware (2026-07-09) — pass frozen crop/stage/DAS from the locked
-      // land context so cross-crop observation codes never leak into the turn.
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction, {
         crop_code: landContext?.current_crop ?? null,
         growth_stage: landContext?.growth_stage ?? null,
@@ -3927,11 +3462,7 @@ export class AIAgentOrchestrator {
         console.warn(`      ⚠️ Alias expansion failed, continuing without it: ${(e as Error)?.message || String(e)}`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // FIX 3: ZERO-CODE CLARIFICATION GATE
-      // If mapper returns zero meaningful codes AND intent is symptom-based,
-      // force clarification — do NOT enter symbolic brain with empty observations
-      // ═══════════════════════════════════════════════════════════════════════════
       const symptomBasedIntents = [
         'EMERGENCE_FAILURE', 'GROWTH_ANOMALY', 'COLOR_CHANGE', 'WILTING_OR_DROOPING',
         'LEAF_DAMAGE_VISIBLE', 'LEAF_MARKS_OR_SPOTS', 'STEM_DAMAGE', 'ROOT_OR_BASE_PROBLEM',
@@ -4033,13 +3564,7 @@ export class AIAgentOrchestrator {
         ? semanticExtraction.intent_confidence : 0;
       const obsCodesList = expandedObservationCodes || [];
 
-      // ═══════════════════════════════════════════════════════════════════════
       // INTENT SALVAGE + EVIDENCE OVERRIDE (Fix 2)
-      // - Legacy: reclassify UNKNOWN when crop or observations exist.
-      // - Fix 2: if the mapper returned any real farmer symptom, force a
-      //   diagnostic intent regardless of what the LLM classified. A visible
-      //   symptom is always diagnostic — never GENERAL_CROP_INFO / CROP_INFO.
-      // ═══════════════════════════════════════════════════════════════════════
       let realObsCountForSalvage = 0;
       try {
         const ec = classifyEvidence(obsCodesList);
@@ -4064,12 +3589,7 @@ export class AIAgentOrchestrator {
         });
       } catch {/* trace must not throw */}
 
-      // ═══════════════════════════════════════════════════════════════════════
       // R2 — SessionSSOT establishment (Layer 3 lock).
-      // Built ONCE per turn from the frozen CanonicalContext (crop/stage/DAS,
-      // itself sourced from BIO_STATE_LOCKED) + the locked intent + language.
-      // Immutable; every downstream layer reads it via getSessionSSOT().
-      // ═══════════════════════════════════════════════════════════════════════
       try {
         // FIX D1 (2026-07-28): cultivation lane threaded per request (no globals)
         const _cultivationMethodForSsot =
@@ -4094,10 +3614,6 @@ export class AIAgentOrchestrator {
         });
         (this as any)._sessionSSOT = _ssot;
         // FIX C1-b (2026-07-29): bind the REQUEST-SCOPED cultivation lane for the
-        // remainder of the turn. Every stage lookup after this point (clarification
-        // selection, evidence freeze, GraphRuntime, hypothesis eval, rendering)
-        // resolves in the farmer's lane instead of falling into the lane-agnostic
-        // deterministic fallback.
         StageKnowledgeCache.enterCultivationLane(_ssot.cultivation_method ?? _cultivationMethodForSsot);
         console.log(
           `[STAGE_LANE_ACTIVE] turn=${(this as any)._turnCounter ?? '?'} ` +
@@ -4112,9 +3628,7 @@ export class AIAgentOrchestrator {
       }
 
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 4: Intent Confidence Tiering with Hard Override Guard
-      // ═══════════════════════════════════════════════════════════════════════════
       const intentTier = intentConf >= 0.65 ? 'HIGH' : intentConf >= 0.35 ? 'TENTATIVE' : 'LOW';
       console.log(`      [IntentTier] ${intentTier} confidence (${(intentConf * 100).toFixed(0)}%) - intent: ${intentCode}`);
       
@@ -4123,9 +3637,6 @@ export class AIAgentOrchestrator {
       console.log(`      Mapping: ${mappedCodes?.mapping_method || 'UNKNOWN'}, Patterns: ${(mappedCodes?.patterns_matched || []).length}`);
 
       // GRAPH_NODE_TRACE — OBSERVATION (canonicalized set entering symbolic engine)
-      // Fix 1: hard invariant — if evidence classifier saw real symptoms but the
-      // graph-facing observation array is empty, the pipeline handoff has
-      // corrupted state. Log loudly (do not mask).
       try {
         const evidenceObs = classifyEvidence(expandedObservationCodes || []);
         emitNodeTrace(traceId, 'OBSERVATION', {
@@ -4176,10 +3687,7 @@ export class AIAgentOrchestrator {
 
 
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 7: LLM Output Validation Against Database
-      // Validate intent codes and observation codes before they enter the symbolic engine
-      // ═══════════════════════════════════════════════════════════════════════════
       try {
         const llmValidation = await validateLLMOutputAgainstDB({
           intent_code: intentCode,
@@ -4189,10 +3697,6 @@ export class AIAgentOrchestrator {
         });
 
         // ONTOLOGY ALIAS SUBSTITUTION — preserve evidence instead of deleting it.
-        // Codes like SEEDLING_DIED / STUNTED_PLANTS that are not per-crop rows
-        // in intent_observation_mapping are re-mapped to canonical peers
-        // (POOR_CROP_ESTABLISHMENT, POOR_GROWTH_VISIBLE) so hypothesis
-        // conditions authored against the canonical vocabulary still fire.
         const aliasedMap = llmValidation.aliased_observations || {};
         const aliasedCount = Object.keys(aliasedMap).length;
         if (aliasedCount > 0) {
@@ -4217,10 +3721,7 @@ export class AIAgentOrchestrator {
         console.warn(`      ⚠️ [LLM_VALIDATION] Validation failed, continuing without it: ${(validationError as Error)?.message || String(validationError)}`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // LEGACY FALLBACK: Language Induction Layer (for backward compatibility)
-      // Still runs to provide inductionResult for existing code paths
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
       // T4 — pass land-context authority so DB crop wins over hardcoded CROP_MAP
@@ -4241,12 +3742,7 @@ export class AIAgentOrchestrator {
         console.log(`      Unmapped tokens: ${inductionResult.unmapped_tokens.slice(0, 5).join(', ')}${inductionResult.unmapped_tokens.length > 5 ? '...' : ''}`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: MERGE LLM SEMANTIC EXTRACTION INTO INDUCTION RESULT
-      // The new LLM-based mappedCodes.observation_codes must be injected into
-      // inductionResult.symptoms so they flow through to clarification & rules
-      // ═══════════════════════════════════════════════════════════════════════════
-      // CRASH-PROOF: Use intent_confidence with fallback (v5.1.0 compatibility)
       const safeConfidence = typeof semanticExtraction?.intent_confidence === 'number'
         ? semanticExtraction.intent_confidence
         : (typeof semanticExtraction?.confidence === 'number' ? semanticExtraction.confidence : 0.5);
@@ -4306,9 +3802,6 @@ export class AIAgentOrchestrator {
         }
         
         // Update symbol coverage based on merged symptoms
-        // SPRINT 3 FIX: Adaptive coverage denominator. Real-world farmer reports rarely exceed
-        // 3–5 symptoms per case, so 8 systematically under-rated single/double-symptom diagnoses.
-        // Cap denominator at max(4, len) so any single strong symptom yields ≥25% coverage.
         inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / Math.max(4, Math.min(8, inductionResult.symptoms.length)));
         inductionResult.aggregated_confidence = Math.max(
           inductionResult.aggregated_confidence,
@@ -4319,12 +3812,7 @@ export class AIAgentOrchestrator {
         console.log(`      Merged symptoms: [${inductionResult.symptoms.map(s => s.symbol).join(', ')}]`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: ROUTER ENTITY FALLBACK
-      // When LLM returns 429 or UNKNOWN_OBSERVATION, use the query router's
-      // detected_entities (pest, symptom, crop) as fallback symptoms.
-      // The router uses deterministic regex and ALWAYS runs successfully.
-      // ═══════════════════════════════════════════════════════════════════════════
       const routerEntities = queryRoute?.detected_entities;
       const llmFailed = intentCode === 'UNKNOWN_OBSERVATION' || intentCode === 'UNKNOWN' || intentConf < 0.1;
       const routerHasEntities = routerEntities && (routerEntities.pest || routerEntities.symptom || routerEntities.crop);
@@ -4400,18 +3888,13 @@ export class AIAgentOrchestrator {
         }
         
         // Recalculate coverage
-        // SPRINT 3 FIX: see comment above — adaptive denominator (min 4) to avoid penalising
-        // legitimate single/double-symptom diagnoses coming from the router-entity fallback path.
         inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / Math.max(4, Math.min(8, inductionResult.symptoms.length)));
         inductionResult.aggregated_confidence = Math.max(inductionResult.aggregated_confidence, queryRoute.confidence);
         
         console.log(`   ✅ POST-ROUTER-FALLBACK: ${inductionResult.symptoms.length} symptoms, coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PATCH 2: STAGE CONTEXT GUARD
-      // If intent metadata requires stage context and we don't have it, ask farmer
-      // ═══════════════════════════════════════════════════════════════════════════
       let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string; max_clarification_rounds?: number } | null = null;
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -4433,12 +3916,7 @@ export class AIAgentOrchestrator {
         console.warn(`   ⚠️ [PATCH 2] Failed to load intent metadata: ${metaErr}`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // FIX 1: DIRECT-MODE INTENT BYPASS
-      // If intent metadata says clarification_mode='DIRECT' AND we have crop context,
-      // skip the understanding checker entirely. Advisory intents (fertilizer, irrigation,
-      // harvest) don't need symptom clarification — they go straight to the rule engine.
-      // ═══════════════════════════════════════════════════════════════════════════
       let directModeBypass = false;
       // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
       // fires whenever any layer of context (canonical, land record, or crop schedule) knows the crop.
@@ -4466,10 +3944,6 @@ export class AIAgentOrchestrator {
         requiresAgronomicReasoningIntent(intentCode) ||
         symptomBasedIntents.includes(currentIntentForGate);
       // F3 — HARD PREEMPT: diagnostic intent + zero confirmed observations
-      // must NEVER take the DIRECT_MODE bypass, regardless of route label
-      // (GENERAL_INFO / CROP_HEALTH / …) or intent metadata. This is the only
-      // way to guarantee observation cards render for the first-diagnostic-turn
-      // pattern (farmer says "पीक अजून उगवले नाही" → 1 confirmed obs, no hyp).
       const __preemptConvState = (this as any).__conversationState;
       const __preemptConfirmed = __preemptConvState?.informative_count ?? 0;
       const __preemptIsDiagnostic =
@@ -4478,10 +3952,6 @@ export class AIAgentOrchestrator {
         __preemptConvState?.mode === 'MIXED';
 
       // FIX (consultant model): informative_count is inflated by structural
-      // metadata like CROP_IDENTIFIED / STAGE_IDENTIFIED / LAND_KNOWN that
-      // provide zero symptom evidence. Count only observations flagged
-      // is_diagnostic=true in observation_master (DB authority). No hardcoded
-      // list. Fall back to informative_count only when the index is not warm.
       let __diagnosticConfirmed = __preemptConfirmed;
       if (_observationIndexReady()) {
         const confirmedArr: unknown[] = Array.isArray(__preemptConvState?.confirmed)
@@ -4524,10 +3994,6 @@ export class AIAgentOrchestrator {
 
       
       // PATCH 2: Stage context guard - ask farmer for crop stage if required
-      // v7.7 FIX: For DIAGNOSTIC intents (STEM_DAMAGE, LEAF_DAMAGE, PEST_OBSERVATION, etc.)
-      // the farmer is reporting visible damage. Blocking the entire pipeline for stage info
-      // is WRONG — the symptoms alone are sufficient for rule matching.
-      // Instead, use a default stage ('VEGETATIVE') and let the rule engine handle it.
       const DIAGNOSTIC_INTENTS = new Set([
         'STEM_DAMAGE', 'BORER_IDENTIFICATION', 'LEAF_DAMAGE', 'ROOT_DAMAGE', 'FRUIT_DAMAGE',
         'PEST_OBSERVATION', 'DISEASE_OBSERVATION', 'REPORT_SYMPTOM',
@@ -4571,10 +4037,7 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PATCH 6: HYBRID ROUTING LOGIC
-      // Route INFO_MODULE intents to LLM direct response, HYBRID based on crop context
-      // ═══════════════════════════════════════════════════════════════════════════
       if (intentMetaFromDB?.routing_target === 'INFO_MODULE') {
         console.log(`   📚 [PATCH 6] INFO_MODULE route: Intent ${intentCode} → LLM direct response (no rule engine)`);
         agentsUsed.push('INFO_MODULE_ROUTE');
@@ -4699,11 +4162,7 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // FIX 4: REMOVED LLM_FAILSAFE — replaced with clarification-only path
-      // When LLM fails but land context exists, force clarification instead of
-      // artificially boosting coverage to allow ungrounded symbolic execution
-      // ═══════════════════════════════════════════════════════════════════════════
       const llmFailedForFailsafe = intentCode === 'UNKNOWN_OBSERVATION' && intentConf < 0.2;
       const hasLandContextForFailsafe = landContext && landContext.current_crop && landContext.growth_stage;
       
@@ -4715,40 +4174,21 @@ export class AIAgentOrchestrator {
         // Do NOT boost inductionResult — let shouldRunSymbolicBrain remain false
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE INDUCTION GATE: Determine if symbolic brain should run
-      // Based on symbol_coverage and aggregated_confidence, NOT intent confidence
-      // ═══════════════════════════════════════════════════════════════════════════
       const inductionCoverageSufficient = hasMinimumCoverage(inductionResult, 0.25); // 25% coverage or 1+ symbols
       const inductionConfidenceSufficient = inductionResult.aggregated_confidence >= 0.5 || inductionResult.total_symbols_extracted >= 2;
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // FIX: HARD BLOCK SYMBOLIC BRAIN WHEN ZERO SYMPTOMS EXTRACTED
-      // A crop symbol alone (e.g., SUGARCANE) is NOT sufficient for PEST/DISEASE rules
-      // BUT: Irrigation, crop health, and weather queries DON'T need symptoms
-      // ═══════════════════════════════════════════════════════════════════════════
       const hasSymptoms = inductionResult.symptoms.length > 0;
       
       // PR-7 F2: `GENERAL_INFO` REMOVED from this allowlist. It was a
-      // heuristic query-router bucket (50%-conf) that quietly bypassed the
-      // zero-symptom invariant gate when the semantic classifier had already
-      // locked a specific diagnostic intent — the "two classifiers, use
-      // whichever is convenient" failure mode from trace_mr9ixe63_gvykf4.
-      // Routes that legitimately do not need farmer-confirmed symptoms:
       const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'WEATHER_SPRAY_TIMING', 'GREETING', 'FERTILIZER_NUTRITION'];
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
       // FIX 4: LLM failsafe NO LONGER allows symbolic brain — clarification only
       let shouldRunSymbolicBrain = isSymptomFreeRoute || ((inductionCoverageSufficient || inductionConfidenceSufficient) && hasSymptoms);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // FIX 7 (PR-7 F2 rewrite): HARD INVARIANT — Block rule firing whenever there
-      // are zero symptoms and the route is not on the symptom-free allowlist.
-      // The previous formulation `shouldRunSymbolicBrain && !hasSymptoms && !isSymptomFreeRoute`
-      // was self-defeating: whenever `isSymptomFreeRoute` was true the gate
-      // could not fire at all, which is exactly how GENERAL_INFO leaked
-      // through with 0 observations.
-      // ═══════════════════════════════════════════════════════════════════════════
       if (!hasSymptoms && !isSymptomFreeRoute) {
         const gateIntentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN';
         console.log(`\n🚫 [INVARIANT_GATE] Blocking symbolic brain: zero observations + route=${queryRoute.route} intent=${gateIntentCode}`);
@@ -4770,11 +4210,7 @@ export class AIAgentOrchestrator {
       
       console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2: OBSERVATION EXTRACTION (LLM, STRICT)
-      // Extract ONLY what farmer explicitly states. NO pest, disease, deficiency.
-      // PHASE-17 FIX: Pass landContext so crop is never "unknown" if we have it
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log('   👁️ Stage 2: Observation Extraction...');
       
       // PHASE-17 FIX (Issue #2): Build land context for observation extractor
@@ -4805,12 +4241,7 @@ export class AIAgentOrchestrator {
       console.log(`      Affected part: ${observationExtraction.affected_part}, Distribution: ${observationExtraction.symptom_distribution}`);
       console.log(`      Severity words: ${observationExtraction.severity_words.join(', ') || 'none'}`);
 
-      // ═══════════════════════════════════════════════════════════════════════
       // PHASE C, GATE #1 — SEMANTIC VALIDATOR
-      // Runs immediately after observation extraction. Drops observations whose
-      // semantic_class is not allow-listed for the active intent. Fails OPEN
-      // when the allowlist is unseeded so the pipeline is never blocked.
-      // ═══════════════════════════════════════════════════════════════════════
       requestCtx.ledger.create('OBSERVATION_EXTRACT', 'extraction',
         { symptoms: observationExtraction.raw_symptom_text.length, crop: observationExtraction.crop_mentioned },
         { source: 'observation-extractor' });
@@ -4818,9 +4249,6 @@ export class AIAgentOrchestrator {
         observationExtraction.raw_symptom_text.length > 0 ? 0.9 : 0.5);
       try {
         // FIX 1 — parse the `[obs_keys:code1,code2]` annotation attached by
-        // the UI/normalizer. Without this, the semantic gate was looking up
-        // the raw Marathi/Hindi surface string in observation_master and
-        // dropping every observation as "missing semantic_class metadata".
         const OBS_KEYS_RE = /\[obs_keys:([^\]]+)\]/i;
         const semObs = (observationExtraction.raw_symptom_text || []).map((t: string) => {
           const raw = String(t);
@@ -4866,17 +4294,10 @@ export class AIAgentOrchestrator {
         agentsUsed.push('URGENCY_DETECTED');
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2.5: PHASE-8/8.1 OBSERVATION KEY MAPPING (REQUIRED)
-      // Convert observations to canonical ObservationKeys
-      // PHASE-8.1: Build CropContextAuthority from landContext
-      // PHASE-9.1-FIX PATCH 3: crop_schedules is authoritative - NEVER overwrite with observation
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log('   🔑 Stage 2.5: ObservationKey Mapping...');
       
       // PHASE-9.1-FIX PATCH 3: Use LOCKED crop context if available (from previous clarification)
-      // Otherwise, build fresh from land context
-      // This ensures crop context is NEVER lost during clarification retries
       let cropContextAuthority: CropContextAuthority | null = null;
       
       if (lockedCropContext && lockedCropContext.crop_name) {
@@ -4981,10 +4402,7 @@ export class AIAgentOrchestrator {
       console.log(`      Unknown keys: ${observationKeyResult.unknown_count}`);
       console.log(`      Keys: ${(serializeKeys(observationKeys) || []).join(', ')}`);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-8/8.1 GUARDRAIL: Prevent CROP_UNKNOWN when CropContextAuthority exists
-      // This invariant prevents regression of the crop identification bug
-      // ═══════════════════════════════════════════════════════════════════════════
       if (hasCropContext && observationKeys.has(ObservationKey.CROP_UNKNOWN)) {
         console.error('   ❌ PHASE-8.1 VIOLATION: CropContextAuthority exists but ObservationKey says CROP_UNKNOWN');
         console.error(`      cropContextAuthority.crop_name: ${cropContextAuthority!.crop_name}`);
@@ -4995,10 +4413,7 @@ export class AIAgentOrchestrator {
         );
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-9: CROSS-CROP SYMPTOM MAPPING
-      // Map raw symptoms to canonical CrossCropSymptomKeys for uniform handling
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log('   🌿 Stage 2.6: Cross-Crop Symptom Mapping...');
       
       const crossCropResult = mapToCrossCropSymptoms(observationExtraction.raw_symptom_text);
@@ -5017,12 +4432,6 @@ export class AIAgentOrchestrator {
       console.log(`      Symptoms: ${serializeCrossCropSymptoms(crossCropSymptoms).slice(0, 5).join(', ')}${crossCropSymptoms.size > 5 ? '...' : ''}`);
       
       // NOTE: Cross-crop symptoms will be injected into nluOutput AFTER NLU processing (line ~2760)
-      // The nluOutput variable is declared later, so we store crossCropSymptoms in this scope
-      // and inject them after NLU declaration
-      // ═══════════════════════════════════════════════════════════════════════════
-      // STAGE 4: UNDERSTANDING COMPLETENESS CHECK (SYMBOLIC - NO LLM)
-      // Determine if we have enough info to proceed or need clarification
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log('   🎯 Stage 4: Understanding Completeness Check...');
       
       // Static import at top of file
@@ -5041,11 +4450,7 @@ export class AIAgentOrchestrator {
       console.log(`      Contradictions: ${understandingResult.contradiction_detected.length}`);
       console.log(`      Clarification required: ${understandingResult.clarification_required}`);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: ENHANCED PHOTO OBSERVATION NORMALIZATION
-      // If farmer uploaded a photo, normalize Vision AI output to canonical
-      // ObservationKey codes and inject into rule engine pipeline (same as text)
-      // ═══════════════════════════════════════════════════════════════════════════
       
       // Import photo observation mapper for canonical code normalization
       let photoMappedCodes: any = null;
@@ -5126,43 +4531,13 @@ export class AIAgentOrchestrator {
         agentsUsed.push('PHOTO_UNDERSTANDING_ENHANCED');
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-22 v4.0: CROP DAMAGE DETECTION GATE (OBSERVATION-DERIVED AUTHORITY)
-      // 
-      // This is the SINGLE ENTRY POINT for rule-granted diagnosis authority.
-      // HARD AGRONOMIC INVARIANT: 
-      // If canonical ObservationKeys OR CrossCropSymptoms indicate crop damage
-      // (e.g., PATCHY_GROWTH, AFFECTED_PATCHES, OVERALL_WEAK, SEEDLING_DIED)
-      // with severity ≥ MEDIUM, the system MUST activate the DIAGNOSIS category.
-      // 
-      // NLU is treated as OBSERVATION EXTRACTOR only - it NEVER gates diagnosis.
-      // Authority is derived from ObservationKeys + crop + stage, NOT from NLU intent.
-      // pest_code and disease_code are NOT required to enter DIAGNOSIS mode.
-      // 
-      // Logs must show:
-      // DiagnosticTrigger=CROP_DAMAGE
-      // Authority=CROP
-      // Mode=DIAGNOSIS
-      // Stage=<GROWTH_STAGE>
-      // RulesExecuted=DIAGNOSIS
-      // ═══════════════════════════════════════════════════════════════════════════
       
       // Collect all observations for crop damage detection
       const authoredObservations = new AuthoredObservationSet();
       const allObservationsForPreAuth = new Set<string>(); // backward-compat flat set
       
       // FIX B1 (2026-07-27): the previous gate was purely SYNTACTIC — it
-      // accepted any well-formed symbol, including canonical-state METADATA
-      // tokens (CROP_IDENTIFIED, AFFECTED_PART_*, DISTRIBUTION_*, SEVERITY_*,
-      // TIMING_*, ACTION_*, PHOTO_*) emitted by the canonical-state builder.
-      // Those polluted allObservationsForPreAuth → facts.all_observations →
-      // SymbolicReasoner rule matching, producing "Rules Evaluated: 0" while
-      // real observations were present. The gate is now an ALLOWLIST driven
-      // by the warm observation-index (DB SSOT): a token is admitted iff
-      // observation_master contains it, or observation_aliases resolves it to
-      // a code observation_master contains. NO hardcoded metadata denylist.
-      // Cold boot fails OPEN (legacy syntactic behavior) with
-      // [OBS_SEMANTIC_FILTER_COLD] as the drift probe.
       const _obsIndexWarm = (() => {
         try { return !!_observationIndexReady(); } catch { return false; }
       })();
@@ -5196,11 +4571,6 @@ export class AIAgentOrchestrator {
       }
 
       // SYMBOL CONTRACT — runtime accepts any well-formed symbol regardless of
-      // casing / separators. Agricultural authority (whether a code exists in
-      // observation_master / IOM / hypothesis_conditions) is DB-owned; the
-      // runtime only normalizes graph identity via SymbolContract. Lowercase
-      // DB codes (e.g. `obs_rice_no_emergence`, `poor_germination`) MUST
-      // survive this gate.
       function acceptSymbol(s: unknown): string | null {
         const norm = SymbolContract.normalize(s as any);
         if (!norm) return null;
@@ -5274,9 +4644,6 @@ export class AIAgentOrchestrator {
       }
 
       // FIX B1 turn summary: report semantic-filter behavior for observability.
-      // admitted = tokens accepted as canonical observation codes
-      // dropped_metadata = tokens rejected by the DB allowlist (canonical-state
-      // metadata, extractor noise, or unknown vocabulary)
       if (_obsIndexWarm) {
         console.log(
           `   🧪 [OBS_SEMANTIC_FILTER] admitted=${_obsSemanticFilterStats.admitted} ` +
@@ -5286,58 +4653,13 @@ export class AIAgentOrchestrator {
       }
       
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE-AGNOSTIC ARCHITECTURE: LLM-First Symptom Fallback
-      // 
-      // OLD APPROACH (REMOVED): Hardcoded Marathi/Hindi/English keywords
-      // This was NOT scalable - required manual maintenance for each language.
-      // 
-      // NEW APPROACH: If induction layer returns no symptoms but NLU detected
-      // an agricultural problem intent (anything other than UNKNOWN_OBSERVATION),
-      // inject a generic symptom to trigger diagnosis-first mode.
-      // 
-      // This is LANGUAGE-AGNOSTIC because:
-      // 1. LLM understands ANY language the farmer uses
-      // 2. LLM maps farmer's concern to canonical intent_code
-      // 3. We use intent_code (not keywords) to determine if diagnosis is needed
-      // 4. No hardcoded regional language patterns required
-      // ═══════════════════════════════════════════════════════════════════════════
-      // ═══════════════════════════════════════════════════════════════════════════
-      // T3 · DB-DRIVEN INTENT→OBSERVATION FALLBACK (no hardcoded agronomy)
-      //
-      // If the extractor produced no observations but the LLM identified an
-      // intent, look up observation peers for that (intent, crop) in
-      // `intent_observation_mapping`. The DB is the ONLY source of truth for
-      // this mapping — no hardcoded `intentToSymptom` / `advisoryIntents` lists.
-      //
-      // 2026-07-26 (forensic audit F1) — the `assertion_strength='LITERAL'`
-      // exclusion was DELETED here too. Strength is now a WEIGHT scored by
-      // `decision/evidence-confidence.ts`; injection is bounded by the
-      // DB-configured `evidence_iom_fallback_max_inject` cap rather than by
-      // an agronomically arbitrary strength filter.
-      //
-      // Fallback ordering:
-      //   1) rows scoped to landContext.current_crop, evidence-ranked
-      //   2) rows scoped to crop_code='universal'/'all' (advisory intents like
-      //      FERTILIZER_SCHEDULE, HARVEST_TIMING), evidence-ranked
-      //   3) intent_code injected as observation only if it appears in
-      //      observation_master (kept for advisory-direct rule matching)
 
       // ═══════════════════════════════════════════════════════════════════════════
       if (allObservationsForPreAuth.size === 0 && landContext && landContext.current_crop) {
         const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
 
-        // ═══════════════════════════════════════════════════════════════════════
         // PR-7 F3: IOM-fallback preconditions.
-        // Without these guards a low-confidence, wrong-crop, or clarification-
-        // bound intent silently manufactured INFERRED evidence (see incident
-        // trace_mr9ixe63_gvykf4 where COTTON_SQUARE_BOLL_DROP_QUERY injected
-        // SEVERITY_MEDIUM + INSECT_DENSITY_MANY onto a Rice weed query).
-        //   (a) require intent-lock confidence ≥ 0.75
-        //   (b) reject when intent's crop prefix disagrees with land crop
-        //   (c) never synthesise evidence when we are already heading to a
-        //       clarification turn (route === DIAGNOSTIC and hasSymptoms === false)
-        // ═══════════════════════════════════════════════════════════════════════
         const iomLockConfidence = Number((this as any)._intentLock?.confidence ?? intentConfidence ?? 0);
         const iomCropRejected = Boolean((this as any)._intentLock?.crop_scope_rejected);
         const iomIsDiagnosticNoSymptoms =
@@ -5370,8 +4692,6 @@ export class AIAgentOrchestrator {
               const chosen = cropScoped.length > 0 ? cropScoped : iomRows;
 
               // Evidence confidence ORDERS the candidates (assertion_strength is a
-              // weight, never a filter). The bounded cap prevents a zero-observation
-              // turn from manufacturing hundreds of INFERRED differentials.
               const weights = getEvidenceWeights();
               const scored = scoreEvidenceSet(
                 (chosen as any[]).map((r) => ({
@@ -5407,8 +4727,6 @@ export class AIAgentOrchestrator {
               console.log(`ℹ️ [INTENT_IOM_FALLBACK] intent=${intentCode} crop=${landContext.current_crop} no_iom_peers_for_cell`);
 
               // Advisory-direct: if intent itself is a valid observation code (e.g. FERTILIZER_SCHEDULE),
-              // inject it so the rule engine can match. Otherwise leave the observation set empty and
-              // let clarification take over.
               if (directModeBypass) {
                 allObservationsForPreAuth.add(intentCode);
                 authoredObservations.add(intentCode, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
@@ -5425,17 +4743,7 @@ export class AIAgentOrchestrator {
       // Add cross-crop symptoms if available
       const crossCropSymptomsList = crossCropSymptoms ? [...crossCropSymptoms] : [];
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // v6.0: Cross-crop symptoms injection — DB is authority, no hardcoded block-list.
-      // The previous `TERMINAL_CODES_BLOCKED_FROM_INJECTION` hardcoded set was
-      // agronomy-in-code that actively prevented `GERMINATION_FAILURE` from ever
-      // reaching `hypothesis_conditions` for RICE_GERMINATION_FAILURE — the exact
-      // regression tracked in the Marathi `भात अजून उगवले नाही` audit. Any code
-      // the DB curator marked as a LITERAL peer for the active (intent, crop)
-      // via `intent_observation_mapping` MUST be admissible; blocking is a
-      // curator decision expressed via `intent_observation_mapping.is_active`,
-      // never a static TS set. Kept the trace line for observability.
-      // ═══════════════════════════════════════════════════════════════════════════
       if (crossCropSymptomsList.length > 0) {
         const injected: string[] = [];
         crossCropSymptomsList.forEach(sym => {
@@ -5461,18 +4769,7 @@ export class AIAgentOrchestrator {
       // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
 
-      // ═══════════════════════════════════════════════════════════════════════
       // FORENSIC FIX — TRUE OBSERVATION HANDOFF (Fixes 1 + 2, late-binding)
-      // ---------------------------------------------------------------------
-      // The early OBSERVATION trace fires before the Language Interpreter /
-      // induction / cross-crop enrichers add their evidence, so it reports
-      // real_symptom_count=0 even when downstream discovers real symptoms
-      // (e.g. POOR_GERMINATION at 95% conf). This second trace fires AFTER
-      // allObservationsForPreAuth is fully populated and is the SSOT the
-      // rule engine / decision graph will actually see. It also runs the
-      // GRAPH_STATE_CORRUPTION invariant and the evidence→intent override
-      // against the true merged set.
-      // ═══════════════════════════════════════════════════════════════════════
       try {
         const mergedCodes = Array.from(allObservationsForPreAuth);
         const trueEvidence = classifyEvidence(mergedCodes);
@@ -5485,9 +4782,6 @@ export class AIAgentOrchestrator {
         });
 
         // FIX 2 (surgical) — symbolic evidence immutability. Once the
-        // classifier confirmed real symptoms upstream, downstream handoffs
-        // MUST preserve them. If the merged graph-facing set has lost every
-        // real symptom, the handoff has corrupted state → loud invariant.
         if (realObsCountForSalvage > 0 && trueEvidence.real_symptom_count === 0) {
           console.error(
             `[GRAPH_EVIDENCE_LOSS][${traceId}] symbolic evidence dropped between ` +
@@ -5513,10 +4807,6 @@ export class AIAgentOrchestrator {
         }
 
         // FIX 3 (surgical) — freeze intent after evidence extraction.
-        // If ANY real farmer symptom exists, GENERAL_CROP_INFO / CROP_INFO /
-        // GENERAL_QUERY / UNKNOWN are forbidden. Symptom evidence always
-        // creates DIAGNOSTIC_INQUIRY — the intent is now sealed for the rest
-        // of the turn (any later re-classification must respect this lock).
         const forbiddenAdvisory = new Set([
           'GENERAL_CROP_INFO', 'CROP_INFO', 'GENERAL_INFO', 'GENERAL_QUERY',
           'UNKNOWN', 'UNKNOWN_OBSERVATION',
@@ -5588,11 +4878,6 @@ export class AIAgentOrchestrator {
               );
 
               // FIX 2 — hard re-route: when bio-state proves the crop is past
-              // emergence, the germination-family intent cannot survive the
-              // stage gate. Confidence downgrade alone leaves intentCode
-              // frozen at EMERGENCE_FAILURE and every hypothesis STAGE-BLOCKS.
-              // Replace intent with a stage-appropriate diagnostic intent.
-              // Lists come from system_config with hardcoded defaults.
               try {
                 const readConfig = async (
                   key: string,
@@ -5600,9 +4885,6 @@ export class AIAgentOrchestrator {
                 ): Promise<string[] | string> => {
                   try {
                     // P3a hotfix (2026-07-22): system_config columns are
-                    // `config_key` / `config_value`. Legacy `key`/`value`
-                    // query silently returned null → every reroute tunable
-                    // fell back to the TS default. Fix restores DB authority.
                     const { data } = await this.supabase
                       .from('system_config')
                       .select('config_value')
@@ -5689,29 +4971,9 @@ export class AIAgentOrchestrator {
       }
 
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // Phase I-8 — Seed the per-request ObservationLedger (append-only) from
-      // the flat pre-auth set, freeze intent on the graph, and assert no drift.
-      // Non-canonical (non UPPER_SNAKE) entries are recorded as SYMBOLIC_ID_LEAK
-      // on the evidence ledger and skipped — never silently mutated into the
-      // symbolic graph. This is the single SSOT entry-point for observations.
-      // ═══════════════════════════════════════════════════════════════════════════
       try {
-        // ─────────────────────────────────────────────────────────────────
         // FIX (2026-07-29) — EVIDENCE IDENTITY REPAIR.
-        // This seed loop previously validated observation codes against
-        // /^[A-Z0-9_]+$/ (UPPER_SNAKE). Observation codes are DB-canonical
-        // lower_snake (observation_master.observation_code 2549/2549
-        // lowercase) and ObservationLedger enforces lower_snake on
-        // observation slots. Result: EVERY code was either rejected here as
-        // "non_canonical" or thrown out by append() — the graph observation
-        // ledger was NEVER seeded from the main evidence stream.
-        // Codes are now folded through the canonical-code SSOT before the
-        // shape check, and deduplicated on the CANONICAL form (not the raw
-        // string) so casing/separator variants can no longer create two
-        // identities for one observation.
-        // Intent keeps the UPPER_SNAKE contract (intent codes are uppercase).
-        // ─────────────────────────────────────────────────────────────────
         const CANON_RE = /^[A-Z0-9_]+$/;           // intent / rule identifiers
         const CANON_OBS_RE = /^[a-z0-9_]+$/;       // observation identifiers
         const seenSeed = new Set<string>();
@@ -5780,12 +5042,7 @@ export class AIAgentOrchestrator {
       }
 
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // Phase H — Fix 1: Direct-mode VETO on symptom signal.
-      // Re-evaluate directModeBypass now that observations are extracted.
-      // A symptom report mis-classified as GENERAL_CROP_INFO must NOT enter
-      // GENERAL_INFO advisory routing. Content beats label.
-      // ═══════════════════════════════════════════════════════════════════════════
       {
         const informativeNow = [...allObservationsForPreAuth].filter((c: string) => isInformativeObs(c));
         if (directModeBypass && informativeNow.length > 0 && !directHardBypass) {
@@ -5794,26 +5051,15 @@ export class AIAgentOrchestrator {
           bypassClarification = false;
         } else if (directHardBypass && informativeNow.length > 0) {
           // FORENSIC FIX (2026-07): Evidence beats intent contract. A symptom
-          // report must never stay in advisory route just because the intent
-          // metadata declared clarification_mode=DIRECT/max_rounds=0. Content
-          // beats label — VETO applies even for hard bypass.
           console.log(`   🛑 [DIRECT_HARD_BYPASS_VETO] Symptom signal (${informativeNow.length} informative obs) overrides intent contract for intent=${intentCode}`);
           directModeBypass = false;
           bypassClarification = false;
         }
 
         // Fix F: For DIRECT-hard intents (e.g. GENERAL_CROP_INFO), seed the rule
-        // engine input with IOM-allowed observations so the advisory comes from
-        // the curated intent×crop×stage×DAS set instead of the raw intent code.
         if (directHardBypass) {
           try {
-            // ═══════════════════════════════════════════════════════════════
             // PHASE-1 OBSERVATION-BEATS-INTENT GUARD
-            // If the farmer's observation stream carries stress/failure signals
-            // (POOR_GERMINATION, EMERGENCE_FAILURE, PLANT_DEATH, …), block the
-            // "healthy_crop"-style IOM enrichment path. Never allow the graph
-            // to hold POOR_GERMINATION + healthy_crop simultaneously.
-            // ═══════════════════════════════════════════════════════════════
             const STRESS_MARKERS = [
               'POOR_GERMINATION', 'GERMINATION_FAILURE', 'NO_EMERGENCE', 'EMERGENCE_FAILURE',
               'SEEDLING_DIED', 'PLANT_DIED', 'PLANT_DEATH', 'DEAD_SEEDLINGS',
@@ -5875,23 +5121,13 @@ export class AIAgentOrchestrator {
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
-      // Phase H — Fix 3: confirmed-only, *_UNKNOWN placeholders excluded.
-      // ═══════════════════════════════════════════════════════════════════════════
       const authorityBasedCodes = authoredObservations.getConfirmedAndExtractedCodes();
       const informativeAuthorityCodes = authorityBasedCodes.filter((c: string) => isInformativeObs(c));
       const evidenceCoverage = computeCoverage(informativeAuthorityCodes);
       console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED, informative-only): ${(evidenceCoverage * 100).toFixed(0)}% (${informativeAuthorityCodes.length}/${authorityBasedCodes.length} informative)`);
 
       // FIX G2 (symmetric with __preemptHardBlock and __confirmedCountForTrigger
-      // added in the previous commit): informativeAuthorityCodes still includes
-      // structural metadata like CROP_IDENTIFIED / AFFECTED_PART_UNKNOWN /
-      // DISTRIBUTION_UNKNOWN that inflate coverage above the 25% floor and let
-      // the pipeline skip clarification even when there is zero diagnostic
-      // biological evidence. Filter through observation_master.is_diagnostic
-      // (DB authority) before the gate. No hardcoded list. Falls back to the
-      // unfiltered value on cold boot.
       const diagnosticInformativeCodes = _observationIndexReady()
         ? informativeAuthorityCodes.filter(
             (c: string) => _getObservationMaster(c)?.is_diagnostic === true,
@@ -5924,10 +5160,7 @@ export class AIAgentOrchestrator {
       // Log authority breakdown
       console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // Phase H — Canonical ConversationState (frozen, single runtime authority)
-      // Computed exactly once. Every downstream module should read from this.
-      // ═══════════════════════════════════════════════════════════════════════════
       const __advisoryIntentForState =
         ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
         isAdvisoryRoute(intentCode);
@@ -5966,9 +5199,6 @@ export class AIAgentOrchestrator {
       (this as any).__conversationState = conversationState; // accessible to trace emit
       console.log(`   🧊 [CONVERSATION_STATE] frozen mode=${conversationState.mode} clarify=${conversationState.clarification_required}(${conversationState.clarification_reason}) coverage=${conversationState.coverage.toFixed(2)} confirmed=${conversationState.confirmed.length} unknown=${conversationState.unknown.length}`);
       // NOTE: The primary [BRAIN_TRACE] emit was here. It ran BEFORE the
-      // hypothesis graph (see L~4811), which meant `hyp` was always 0.
-      // The single authoritative emit is now downstream of the POST_RULE
-      // stage so hyp/candidates/eligible/winner reflect real graph state.
 
       // Phase H — Fix 2: ConversationState owns clarification. Sync the
       // legacy boolean so downstream gates stay consistent without recomputing.
@@ -6000,8 +5230,6 @@ export class AIAgentOrchestrator {
       );
       
       // v5.1: REMOVED legacy v4 resolveDiagnosticAuthorityFromObservations — dual detector caused
-      // INFERRED/SYNTHETIC codes to incorrectly trigger terminal damage via the flat allObservationsForPreAuth set.
-      // cropDamageResult (v5, authority-aware) is now the SOLE authority source.
       
       // v5.1: Enforced authority derived ONLY from authority-aware v5 detector
       let enforcedAuthorityDecision = cropDamageResult.enforced_authority 
@@ -6091,29 +5319,12 @@ export class AIAgentOrchestrator {
       // v4.0: For DIAGNOSIS_WITH_CLARIFICATION, allow optional confirmation but still run rules
       let diagnosisWithOptionalClarification = cropDamageResult.diagnosis_mode === 'DIAGNOSIS_WITH_CLARIFICATION';
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // TASK 2 — INTENT AUTHORITY OVERRIDE (Step 8 route-authority fix)
-      // Any intent that inherently requires agronomic reasoning MUST route through
-      // the symbolic diagnosis graph. The general query router cannot downgrade a
-      // symbolic intent to GENERAL_INFO / advisory-only. This is what unblocks
-      // EMERGENCE_FAILURE, PEST, DISEASE, NUTRIENT_STRESS, WILTING, YELLOWING,
-      // CROP_DAMAGE, GERMINATION_FAILURE, REPORT_SYMPTOM from being silently
-      // shunted into the LLM narration lane without OBS_TO_HYP / HYP_TO_RULE /
-      // RULE_RESULT ever emitting.
-      // ═══════════════════════════════════════════════════════════════════════════
       const isDiagnosticIntent = requiresAgronomicReasoningIntent(intentCode);
       const mandatoryGraphRealObsCount = Array
         .from(allObservationsForPreAuth)
         .filter((c) => isRealObservation(String(c))).length;
       // PATCH 1 (Mandatory Graph Gate — broadened):
-      // Any signal that could produce agronomic reasoning MUST enter the graph:
-      //   • diagnostic intent (EMERGENCE_FAILURE, PEST, DISEASE, …)
-      //   • diagnosis mode / crop-damage activation
-      //   • ANY real observation in the pre-auth set
-      //   • ANY confirmed/inferred symbolic observation
-      //   • Land context with a live crop (advisory-style diagnostic queries
-      //     like "भात अजून उगवले नाही" where NLU may not extract observations
-      //     but the graph still owns the answer)
       const _confirmedObsSignal = (confirmedObsCodes?.length ?? 0) > 0 ||
         (syntheticObsCodes?.length ?? 0) > 0;
       const _landCropSignal = !!(landContext && (landContext as any).current_crop);
@@ -6144,11 +5355,7 @@ export class AIAgentOrchestrator {
         throw new Error(`ROUTE_AUTHORITY_VIOLATION: diagnostic intent=${intentCode} but route=GENERAL_INFO`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX v4.1: Override DIAGNOSIS_ONLY → DIAGNOSIS_WITH_CLARIFICATION
-      // when land context exists. This ensures farmers see diagnosis options to
-      // select, which increases confidence for accurate treatment recommendations.
-      // ═══════════════════════════════════════════════════════════════════════════
       const hasLandContext = landContext && 
         landContext.current_crop && 
         landContext.days_since_sowing !== undefined &&
@@ -6216,10 +5423,7 @@ export class AIAgentOrchestrator {
         console.log(`   Clarification=HYPOTHESIS_DRIVEN (NOT generic)`);
         agentsUsed.push('DIAGNOSIS_FIRST_MODE');
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // DIAGNOSIS-FIRST: Run hypothesis evaluation IMMEDIATELY
-        // This MUST happen BEFORE any generic clarification
-        // ═══════════════════════════════════════════════════════════════════════════
         try {
           const bioForGraph: BiologicalState | null = (landContext as any)?.biological_state ?? null;
           const cropCode =
@@ -6236,30 +5440,10 @@ export class AIAgentOrchestrator {
             ? growthStage
             : null;
 
-          // ═══════════════════════════════════════════════════════════════════
           // Phase Y — Fix C: bridge generic NLU codes (poor_germination,
-          // germination_failure, …) into the crop's IOM canonical vocabulary
-          // (obs_rice_no_emergence, …) BEFORE hypothesis evaluation. Without
-          // this, rice extracts emit "physiology" codes that the rice IOM
-          // ("phenology") allowlist will never match, and the diagnosis
-          // pipeline reaches for unrelated diseases like Tungro.
-          // ═══════════════════════════════════════════════════════════════════
-          // ═══════════════════════════════════════════════════════════════════
-          // OBSERVATION BRIDGE — DB-BACKED (observation_aliases)
-          // Freezes evidence just before hypothesis evaluation:
-          //   real_codes                = raw farmer-derived symbols (EXTRACTED)
-          //   canonical_observation_codes = DB-resolved canonical codes (INFERRED)
-          // No hardcoded agronomy in TS. All mappings come from
-          // public.observation_aliases (see decision/concept-bridge.ts).
-          // ═══════════════════════════════════════════════════════════════════
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
           const raw_evidence_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
           // ── S2 — CURRENT-TURN OBSERVATION PURGE ────────────────────────────
-          // Prior-turn clarification candidates must NOT be treated as
-          // confirmed evidence in this turn unless the farmer re-asserted
-          // them. Stale carryover is the source of "phantom evidence" that
-          // lets the graph skip clarification with observations nobody
-          // confirmed. Purge is identity-only (no agronomy in TS).
           const _staleKeys = new Set(
             ((options as any)?.sessionState?.pendingClarificationObservationKeys ?? [])
               .map((k: unknown) => String(k).trim().toLowerCase())
@@ -6285,8 +5469,6 @@ export class AIAgentOrchestrator {
             );
           }
           // T3 — UI_TAP_OBS_LOCK: on a tap turn the confirmed evidence set MUST
-          // be exactly the codes the farmer tapped (EXTRACTED authority). Any
-          // extra code surviving into the frozen set is an identity leak.
           if (_staleKeys.size > 0 && _turnAsserted.size > 0) {
             const _leaked = real_codes.filter((c) => !_turnAsserted.has(String(c).trim().toLowerCase()));
             console.log(
@@ -6302,14 +5484,6 @@ export class AIAgentOrchestrator {
             metadata: ignoredRawCodes,
           };
           // P5 SYMBOL_IDENTITY_CONTRACT + P1 BIOLOGICAL_SCOPE_CONTRACT
-          // RC-1 FIX (2026-07-25): bridge BEFORE identity. Extractor emits
-          // UPPERCASE codes (e.g. RICE_LODGING); observation_master stores
-          // lowercase canonical codes (rice_lodging). Running identity on
-          // raw uppercase would drop every real observation as UNKNOWN and
-          // starve the graph (obs=0 at PRE_CANONICAL_STATE). observation_
-          // aliases already carries the UPPERCASE→lowercase mapping, so
-          // bridging first canonicalizes, then identity validates the
-          // canonical form. All wiring is DB-driven; no hardcoded agronomy.
           const { assertObservationsExist } = await import('../runtime/graph-contracts.ts');
           const preBridged = await bridgeCodesDb(
             this.supabase,
@@ -6338,13 +5512,7 @@ export class AIAgentOrchestrator {
             }
           }
 
-          // ═══════════════════════════════════════════════════════════════════
           // CROP CANONICAL RESOLVE — intent_observation_mapping LITERAL peers
-          // Expands generic canonical codes (e.g. `poor_germination`) into
-          // their crop-specific LITERAL peers (e.g. `obs_rice_no_emergence`)
-          // whenever the anchor member is confirmed by the farmer. No
-          // hardcoded agronomy — see decision/concept-bridge.ts.
-          // ═══════════════════════════════════════════════════════════════════
           const resolved = await resolveCropCanonicalObservations(
             this.supabase,
             intentCode,
@@ -6384,8 +5552,6 @@ export class AIAgentOrchestrator {
           // decision_output (real decision OR structured no-decision).
           (this as any)._graphExecutionStarted = true;
           // P1: the frozen canonical set is the SSOT every downstream stage
-          // boundary must see. Persist it so obs→hyp, rule load and the exit
-          // invariant all read identical codes.
           (this as any)._lastRealObservations = [...canonical_observation_codes];
           (this as any)._lastIntentCode = intentCode;
           console.log(
@@ -6404,14 +5570,7 @@ export class AIAgentOrchestrator {
             console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${real_codes.join(',')} → ${currentObservations.join(',')}`);
           }
 
-          // ═══════════════════════════════════════════════════════════════════
           // STEP 8 — HYPOTHESIS GRAPH EVALUATOR (DB graph discovery)
-          // Walks observation_master → hypothesis_conditions → hypothesis_master
-          // → hypothesis_rule_mapping. Emits [OBS_TO_HYP]. Its candidate_rule_ids
-          // are used later as a curated scope for the layered rule evaluator.
-          // The existing evaluateCandidateHypotheses + CausalHypothesisEngine
-          // remain in the chain (arbitration/ranking) as the plan requires.
-          // ═══════════════════════════════════════════════════════════════════
           let graphHypothesisRuleIds: string[] = [];
           let graphHypothesisEdgeMissing: string[] = [];
           try {
@@ -6433,8 +5592,6 @@ export class AIAgentOrchestrator {
               trace_id: traceId,
               canonical_context: canonicalContext,
               // v5-P8 — carry the biological stage-authority signal so the
-              // evaluator can downgrade STAGE hard-gates when the field twin
-              // contradicts the calendar-picked stage.
               predicted_stage_confidence:
                 typeof bioStateForGraph?.predicted_stage_confidence === 'number'
                   ? bioStateForGraph.predicted_stage_confidence
@@ -6469,15 +5626,8 @@ export class AIAgentOrchestrator {
             (this as any)._graphExecuted = true;
 
             // ─── SNAPSHOT (Engine B merge) ────────────────────────────────
-            // If Engine A already produced a snapshot this turn, merge it
-            // with the Engine B result so a stage-filter kill on B never
-            // overwrites a valid A hypothesis. If Engine A has not run yet
-            // (diagnosis-first path arrives later) the snapshot is created
-            // from Engine B alone and Engine A merges into it on arrival.
             try {
               // Capture Engine B's rule mapping and stash the inverted view
-              // (Map<rule_id, hypothesis_id>) so Engine A can promote its
-              // rule-keyed candidates without a second DB round-trip.
               const ruleEdgesMap = (graphOut as any).rule_edges as Map<string, string[]> | undefined;
               const ruleToHypothesis = ruleEdgesMap ? invertRuleMapping(ruleEdgesMap) : new Map<string, string>();
               (this as any)._ruleToHypothesis = ruleToHypothesis;
@@ -6512,10 +5662,6 @@ export class AIAgentOrchestrator {
               );
 
               // HANDOFF INVARIANT FIX (2026-07-25): the merged snapshot is the
-              // SSOT for hypotheses after Engine A+B merge. If Engine B
-              // eliminated all candidates but Engine A survivors are in the
-              // snapshot, project those into exit state so the handoff
-              // check (snapshot_hyp vs exit_hyp) does not falsely fire.
               try {
                 if (merged.hypotheses.length > 0) {
                   const mergedHypIds = merged.hypotheses.map(h => h.id);
@@ -6537,12 +5683,7 @@ export class AIAgentOrchestrator {
               console.warn(`[GRAPH_SNAPSHOT] engineB merge non-fatal: ${(snapErr as Error).message}`);
             }
 
-            // ═══════════════════════════════════════════════════════════════
             // PATCH 1 (BUG 1) — Project graph result back onto ConversationState
-            // so downstream readers (BRAIN_TRACE, decision builder, invariants)
-            // see the real hypothesis count instead of the placeholder [] set
-            // at buildConversationState time.
-            // ═══════════════════════════════════════════════════════════════
             try {
               const graphOutHypIds = graphOut.candidates
                 .map((c: any) => String(c?.hypothesis_id ?? '').trim())
@@ -6553,19 +5694,6 @@ export class AIAgentOrchestrator {
               const snapHypIds = snap?.hypotheses.map(h => h.id) ?? [];
               const hypIds = Array.from(new Set([...graphOutHypIds, ...snapHypIds]));
               // FIX I1 (crash root cause): the critical exit-hyp state writes below
-              // MUST run before the ConversationState mutation. ConversationState is
-              // frozen by runtime/conversation-state.ts (buildConversationState
-              // returns an immutable). The `cs.hypotheses = ...` assignment throws
-              // TypeError "Cannot assign to read only property 'hypotheses'" in
-              // strict mode. When this throw jumped to the outer catch, ALL sibling
-              // writes below (setHypothesisIds, _graphHypothesisIds, etc.) were
-              // skipped — causing GRAPH_HANDOFF_CHECK in orchestrate()'s finally
-              // block to read exit_hyp=0 while snapshot_hyp=1, throwing
-              // GRAPH_CONTRACT_VIOLATION and killing the response.
-              //
-              // Reorder: authoritative exit-hyp tracking first, then the audit-side
-              // ConversationState attachment in its own inner try/catch that cannot
-              // affect the outer flow.
               (this as any)._graphHypothesisIds = hypIds;
               const _obsEdges = graphOut.candidates.reduce(
                 (n: number, c: any) => n + (Array.isArray(c?.matched_observations)
@@ -6619,17 +5747,6 @@ export class AIAgentOrchestrator {
               );
 
               // FIX J1a (PATCH 2 revision): the original invariant checked
-              // `cs.hypotheses.length` — but ConversationState is frozen by
-              // runtime/conversation-state.ts (buildConversationState returns
-              // an immutable). After the I1 reorder, cs.hypotheses is never
-              // updated (assignment throws inside an isolated try/catch). The
-              // authoritative exit-hyp store is `(this as any)._graphHypothesisIds`
-              // (set unconditionally BEFORE the frozen assignment attempt).
-              // Reading cs.hypotheses.length would spuriously fire this
-              // invariant every time the graph finds a hypothesis, causing
-              // GRAPH_RESULT_DROPPED → diagnosis-first fallback → keyword-match
-              // fabrication path picking wrong rules (e.g. PROACTIVE_FLOOD_
-              // PREPAREDNESS_001 for a "growth is low" query).
               const _authHypCount = ((this as any)._graphHypothesisIds ?? []).length;
               if (graphOut.candidates.length > 0 && _authHypCount === 0) {
                 throw new Error(
@@ -6653,17 +5770,11 @@ export class AIAgentOrchestrator {
 
             console.warn(`   ⚠️ [HYP_GRAPH] evaluator skipped: ${graphErrMessage}`);
             // P3 — if we already have valid graph output from an earlier
-            // successful pass this turn, do NOT wipe rule ids in the
-            // "non-fatal exhausted" branch. A late non-fatal throw (e.g. audit
-            // block) would otherwise erase the 13 rules Chain A produced.
             const _priorCandidates = ((this as any)._graphHypothesisResult?.candidates ?? []) as any[];
             const _priorRuleIds = ((this as any)._graphHypothesisRuleIds ?? []) as string[];
             const _preserveExistingChainA = _priorCandidates.length > 0 || _priorRuleIds.length > 0;
             if (nonFatalNoSurvivorGraph && !_preserveExistingChainA) {
               // The graph ran far enough to establish that DB-curated stage/DAS
-              // constraints exhausted the candidate set. That is a valid graph
-              // result, not a bypass. Mark sequence=2 so downstream invariants
-              // and the index-level audit do not convert it into HTTP 500.
               try {
                 assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
               } catch (orderErr) {
@@ -6705,20 +5816,13 @@ export class AIAgentOrchestrator {
             }
           }
           // Hard graph invariant — even if the try above resolved without an
-          // exception, if it never actually ran (e.g., early return refactor),
-          // fail closed for diagnostic intents.
           if (isDiagnosticIntent && !(this as any)._graphExecuted) {
             throw new Error(`GRAPH_PIPELINE_BYPASSED: diagnostic intent=${intentCode} but [OBS_TO_HYP] was never emitted`);
           }
 
 
 
-          // ═══════════════════════════════════════════════════════════════════
           // T1/T9 · BUILD IMMUTABLE GRAPH TRUTH + CANONICAL HASH
-          // Runs exactly once per turn, right after evidence lock. Downstream
-          // hypothesis / rule engines read from this node; same agronomic
-          // meaning MUST produce the same hash regardless of query wording.
-          // ═══════════════════════════════════════════════════════════════════
           try {
             const bioState: any = (landContext as any)?.biological_state ?? null;
             const graphTruth = buildGraphTruth({
@@ -6749,8 +5853,6 @@ export class AIAgentOrchestrator {
             (this as any)._graphTruth = graphTruth;
           } catch (e) {
             // RC-1 FIX: do NOT let a stale prior-turn _graphTruth survive when
-            // this turn's build fails. Null it out so PRE_CANONICAL_STATE and
-            // projectCanonicalStateFromGraphTruth cannot silently reuse it.
             (this as any)._graphTruth = null;
             console.error(
               `[GRAPH_TRUTH_BUILD_FAILED] trace=${traceId} intent=${intentCode} obs_in=${canonical_observation_codes.length} err=${(e as Error).message}`,
@@ -6762,10 +5864,7 @@ export class AIAgentOrchestrator {
 
 
 
-          // ═══════════════════════════════════════════════════════════════════════════
           // CRITICAL BUG FIX: DAS propagation - use ?? (nullish) not || (falsy)
-          // Also add robust fallback chain with logging to trace DAS source
-          // ═══════════════════════════════════════════════════════════════════════════
           const resolvedDAS = canonicalContext?.days_since_sowing 
             ?? landContext?.days_since_sowing 
             ?? lockedCropContext?.days_since_sowing 
@@ -6780,10 +5879,6 @@ export class AIAgentOrchestrator {
           assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
 
           // T3 — Hypothesis engine reads GraphTruth authority directly.
-          // GraphTruth.canonical_observations is the frozen ontology-resolved set
-          // (observation_master codes via observation_aliases + IOM peers). Any
-          // divergence between currentObservations and this set means an upstream
-          // mutator ran after the evidence lock — trace it, then trust GraphTruth.
           const _gtForHyp = (this as any)._graphTruth as import('../runtime/graph-truth.ts').GraphTruth | null;
           const hypObservations: string[] = _gtForHyp
             ? [..._gtForHyp.canonical_observations]
@@ -6797,8 +5892,6 @@ export class AIAgentOrchestrator {
           }
 
           // PR-2: single graph entrypoint. `runGraphRuntime` owns the
-          // [GRAPH_RUNTIME] trace emission AND flips `_graphExecuted` on
-          // success via the markExecuted hook — no duplicate bookkeeping here.
           const _graphRun = await runGraphRuntime({
             supabase: this.supabase,
             graph_truth: _gtForHyp,
@@ -6819,11 +5912,6 @@ export class AIAgentOrchestrator {
               ?? (landContext as any)?.variety_id
               ?? null),
             // v2.1.0 — full frozen field-twin. Enables DB predicates that
-            // reference soil.moisture / weather.forecast_7d / transplant_date
-            // / irrigation_type / biological_state.stage_uuid to resolve.
-            // GRAPH_CONTEXT_SPLIT_ERROR fires if any authority-owned field
-            // (crop / stage / DAS / variety / sources.crop / sources.stage)
-            // drifts from the primitive counterparts above.
             canonical_context: canonicalContext ?? null,
             markExecuted: () => { (this as any)._graphExecuted = true; },
           });
@@ -6832,16 +5920,9 @@ export class AIAgentOrchestrator {
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
 
           // ─── SNAPSHOT (Engine A) ─────────────────────────────────────────
-          // Build the initial immutable snapshot from Engine A. Engine B
-          // (evaluateHypothesisGraph) runs earlier in the pipeline — if its
-          // result was stored, merge it in here so the snapshot never loses
-          // hypotheses just because one engine produced zero candidates.
           try {
             const engineB = (this as any)._graphHypothesisResult ?? null;
             // Prefer the cached rule→hypothesis map (populated when Engine B
-            // ran earlier in this turn). If absent, invert engineB.rule_edges
-            // now; otherwise fall back to an empty map — Engine A rules then
-            // route to orphan_rule_ids and log RULE_WITHOUT_HYPOTHESIS_EDGE.
             let ruleToHypothesis: Map<string, string> = (this as any)._ruleToHypothesis ?? new Map<string, string>();
             if (ruleToHypothesis.size === 0 && engineB?.rule_edges instanceof Map) {
               ruleToHypothesis = invertRuleMapping(engineB.rule_edges);
@@ -6866,11 +5947,7 @@ export class AIAgentOrchestrator {
 
           console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses (pre-IOM)`);
 
-          // ═══════════════════════════════════════════════════════════════════
           // IOM AUDIT ONLY: intent_observation_mapping is an observation
-          // discovery layer, not hypothesis authority. The graph result stays
-          // owned by hypothesis_conditions + hypothesis_master.
-          // ═══════════════════════════════════════════════════════════════════
           try {
             // T1 — GraphTruth integrity check before IOM gate
             assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_IOM_GATE');
@@ -6944,10 +6021,6 @@ export class AIAgentOrchestrator {
             console.log(`═══════════════════════════════════════════════════════════════\n`);
             
             // Return diagnosis-first options to UI
-            // ═══════════════════════════════════════════════════════════════════════════
-            // CRITICAL FIX: Use snake_case fields and `question.options` for proper 
-            // mapping in transformOrchestratorResponse (index.ts)
-            // ═══════════════════════════════════════════════════════════════════════════
             let diagnosisOptions = clarificationFormat.options.map((opt: any) => ({
               label: opt.label,
               value: opt.value || opt.label,
@@ -6956,13 +6029,7 @@ export class AIAgentOrchestrator {
               diagnostic_power: opt.diagnostic_power || 'MEDIUM'
             }));
 
-            // ═══════════════════════════════════════════════════════════════════
             // Phase Y — Fix G: never leak guardrail / block-rule labels into the
-            // farmer-facing option list. Internal labels like
-            // "A blocking rule is active." or "Block all CIB&RC banned chemicals
-            // on rice" must be filtered out before translation. This is a
-            // belt-and-braces filter in addition to the upstream sanitizers.
-            // ═══════════════════════════════════════════════════════════════════
             const GUARDRAIL_LABEL_PATTERNS = [
               /blocking rule is active/i,
               /\bblock\b.*\b(cib&?rc|banned|chemical|pesticide|fertili[sz]er)/i,
@@ -6981,12 +6048,7 @@ export class AIAgentOrchestrator {
               console.warn(`   🛡️ [DIAG_FIRST] dropped ${preFilter - diagnosisOptions.length} guardrail labels from farmer-facing options`);
             }
 
-            // ═══════════════════════════════════════════════════════════════════
             // GRAPH CONTRACT — Clarification options must originate from the
-            // hypothesis graph: hypothesis_master → hypothesis_conditions →
-            // observation_master → observation_translations. IOM is discovery
-            // seed only inside the builder, never a direct UI source.
-            // ═══════════════════════════════════════════════════════════════════
             try {
               const graphClarification = await buildHypothesisClarificationOptions({
               // FIX D1 (2026-07-28): lane from SessionSSOT — never a module global
@@ -7129,15 +6191,7 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 4B: UNDERSTANDING-BASED CLARIFICATION GATE
-      // If understanding is insufficient, ask clarification BEFORE NLU
-      // (SKIPPED if Diagnosis-Only Mode is active)
-      // ═══════════════════════════════════════════════════════════════════════════
-      // FIX (advisory routing): advisory routes (fertilizer / irrigation / spray-timing /
-      // crop-health / general-info) never need symptom clarification. Reuse the same exempt
-      // set as the Zero-Code Gate so the Understanding gate cannot ask "what are you observing?"
-      // for a scheduling / nutrition question.
       const isAdvisoryRouteForGate =
         ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
         intentMetaFromDB?.clarification_mode === 'DIRECT' ||
@@ -7146,24 +6200,13 @@ export class AIAgentOrchestrator {
         console.log(`   ✅ [ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE] route=${queryRoute.route} intent=${intentCode} — skipping symptom clarification (understanding=${understandingResult.understanding_confidence})`);
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
       // NEURO-SYMBOLIC INVARIANT: clarification cannot fire before the
-      // hypothesis graph has executed. For diagnostic intents, if the
-      // graph has NOT run yet (`_graphExecuted` set by the [OBS_TO_HYP]
-      // stage above), UnderstandingChecker is downgraded to advisory —
-      // ConversationState + graph evidence-gaps decide, not the checker.
-      // Reference: mem://architecture/deterministic-response-return-invariant
-      // and the current Marathi EMERGENCE_FAILURE regression trace.
-      // ═══════════════════════════════════════════════════════════════════════
       const _graphHasRun = (this as any)._graphExecuted === true;
       const _evidenceHasFrozen = (this as any)._evidenceFrozen === true;
       const _ruleHasRun = (this as any)._ruleResultExists === true;
       const _convStateOk = (this as any).__conversationState
         && (this as any).__conversationState.clarification_required === false;
       // Scope-safe crop/stage locals for the log lines below. The `cropCode`
-      // const declared inside the diagnosis-first try-block (line ~4828) is
-      // OUT OF SCOPE here — referencing it caused
-      // "ReferenceError: cropCode is not defined" in the UNDERSTANDING_GATE.
       const _logCropCode =
         canonicalCropCode((canonicalContext as any)?.crop_code) ||
         canonicalCropCode((landContext as any)?.current_crop) ||
@@ -7204,14 +6247,7 @@ export class AIAgentOrchestrator {
 
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // USE SCOPE-AWARE CLARIFICATION TO PREVENT DIAGNOSIS LEAKAGE
-        // Options are constrained to what is OBSERVED, not suspected
-        // ═══════════════════════════════════════════════════════════════════════════
-        // ═══════════════════════════════════════════════════════════════════════════
-        // PHASE-21: Pass CANONICAL CONTEXT (read-only) - NO MORE landContext/hasLandContext
-        // The canonicalContext is the SINGLE source of truth, built once in Phase-1
-        // ═══════════════════════════════════════════════════════════════════════════
         const scopedClarificationInput: ScopedClarificationInput = {
           language: normalizedInput.detected_language,
           observations: observationExtraction,
@@ -7231,21 +6267,9 @@ export class AIAgentOrchestrator {
         const clarificationResponse = await generateScopedClarification(scopedClarificationInput);
         agentsUsed.push('SCOPED_CLARIFICATION');
 
-        // ═══════════════════════════════════════════════════════════════════
         // v3 PHASE 4 — DECISION GRAPH NAVIGATOR ACTIVE-MODE OVERRIDE
-        // ───────────────────────────────────────────────────────────────────
-        // If the navigator flag is ACTIVE for this tenant and the navigator
-        // produced a result (run earlier in the pipeline OR via a no-op
-        // pre-pass below), swap the legacy clarification options for the
-        // graph-pruning-ranked options. CONTEXT_CONTRADICTION /
-        // INSUFFICIENT_EVIDENCE collapse to an empty option set so the
-        // response collapses to a deterministic reconciliation prompt.
-        // ═══════════════════════════════════════════════════════════════════
         try {
           // Pre-pass: trigger navigator now if it has not yet captured a
-          // result (orchestrator-late shadow path may not have run yet on
-          // this code branch). Safe — adapter swallows failures and skips
-          // when prerequisites are missing.
           if (!(this as any).__navigatorOutput) {
             const navIntentEarly = intentCode || 'GENERAL_QUERY';
             (this as any).__navigatorOutput = await runDecisionGraphNavigator({
@@ -7286,10 +6310,7 @@ export class AIAgentOrchestrator {
           );
         }
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // VALIDATION FIX: Use sanitization instead of all-or-nothing validation
-        // Even if some options leak diagnosis, we sanitize and continue
-        // ═══════════════════════════════════════════════════════════════════════════
         if (!clarificationResponse.validation_passed) {
           console.warn(`   ⚠️ Clarification validation detected issues - using sanitized options`);
           
@@ -7387,16 +6408,10 @@ export class AIAgentOrchestrator {
           observationExtraction.crop_mentioned || landContext?.current_crop
         );
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE-21: Validate canonical context integrity (fail-fast)
-        // Uses canonicalContext !== null instead of hasLandContext boolean
-        // ═══════════════════════════════════════════════════════════════════════════
         validateContextIntegrity(canonicalContext, !!canonicalContext, 'CLARIFICATION_RESPONSE');
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE-21: TRUST-FIRST PRODUCTION VERIFICATION
-        // Uses canonicalContext directly - no more preservedContext rebuilding
-        // ═══════════════════════════════════════════════════════════════════════════
         const clarificationScope = clarificationResponse.scope || 'UNKNOWN';
         const isDiagnosticConfirmation = clarificationScope === 'DIAGNOSTIC_CONFIRMATION';
         
@@ -7419,10 +6434,7 @@ export class AIAgentOrchestrator {
           console.log(`      - Context preservation: ENFORCED (single canonical object)`);
         }
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE-21: HARD INVARIANT - IDENTIFY_LOCATION is ILLEGAL with canonical context
-        // Uses canonicalContext instead of landContext
-        // ═══════════════════════════════════════════════════════════════════════════
         if (clarificationScope === 'IDENTIFY_LOCATION' && canonicalContext) {
           console.error(`\n🚨 [FATAL INVARIANT VIOLATION] IDENTIFY_LOCATION used with known crop!`);
           console.error(`   Crop: ${canonicalContext.crop_code}, Stage: ${canonicalContext.growth_stage}`);
@@ -7488,9 +6500,7 @@ export class AIAgentOrchestrator {
             clarification_scope: clarificationResponse.scope,
             scope_validation_passed: clarificationResponse.validation_passed,
             pendingClarificationOptions: safeOptions,
-            // ═══════════════════════════════════════════════════════════════════════════
             // PHASE-21: Pass canonical context directly (no more preservedContext)
-            // ═══════════════════════════════════════════════════════════════════════════
             canonicalContext: canonicalContext,
             // LEGACY: lockedCropContext for backward compatibility
             lockedCropContext: canonicalContext ? {
@@ -7502,10 +6512,7 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // Continue with NLU processing for backward compatibility
-      // NLU now ONLY extracts observations, NOT pest/disease codes
-      // ═══════════════════════════════════════════════════════════════════════════
       let nluOutput: NLUOutput | null = null;
       try {
         // Use processed message (could be matched option text) for NLU
@@ -7565,8 +6572,6 @@ export class AIAgentOrchestrator {
       }
       
       // CRITICAL FIX: Inject cross_crop_symptoms into NLU output for diagnostic-flow-controller
-      // This ensures terminal damage detection works even when NLU doesn't extract symptoms
-      // NOTE: crossCropSymptoms was computed earlier in Stage 2.6 and stored in this._crossCropSymptoms
       const storedCrossCropSymptoms = (this as any)._crossCropSymptoms as Set<string> | undefined;
       if (nluOutput && storedCrossCropSymptoms && storedCrossCropSymptoms.size > 0) {
         if (!nluOutput.symptom_extraction) {
@@ -7576,9 +6581,7 @@ export class AIAgentOrchestrator {
         console.log(`      Injected ${storedCrossCropSymptoms.size} cross-crop symptoms into NLU output`);
       }
       
-      // ========================================
       // PHASE 1A.1: P0 NLP VALIDATION (Marathi/Hindi agricultural vocabulary)
-      // ========================================
       console.log('\n🔍 PHASE 1A.1: P0 NLP Agricultural Validation...');
       
       let nlpValidation: NLPValidationResult | null = null;
@@ -7607,18 +6610,10 @@ export class AIAgentOrchestrator {
         console.error('   ❌ NLP Validation failed (non-blocking):', nlpError);
       }
       
-      // ========================================
       // [STEP 7 REMOVED] PHASE 1A.2 GDD Phenology + 1A.3 Photoperiod blocks.
-      // Phenology is now resolved upstream by resolve_crop_phenology + runtime/phenology-reconciler
-      // reading crop_stage_master / variety_phenology_profile / stage_transition_log.
-      // Photoperiod sensitivity moved to crop_stage_master DB flags (Step 8).
-      // ========================================
       const phenologyResult: any = null;
       
-      // ========================================
       // PHASE 1A.4: INTENT LOCK - Enforce symbolic-first routing
-      // Once locked, only rules scoped to this intent can be evaluated
-      // ========================================
       console.log('\n🔒 PHASE 1A.4: Intent Lock Enforcement...');
       
       // Static imports at top of file
@@ -7632,10 +6627,6 @@ export class AIAgentOrchestrator {
       console.log(`   🔗 [IntentPropagation] semantic=${semanticExtraction?.intent_code}, nlu=${nluOutput?.intent_classification?.primary_intent}, final=${detectedIntent} (${(intentConfidence * 100).toFixed(0)}%)`);
       
       // Lock the intent for this turn
-      // PR-7 F2 (log) + F6 (crop scope): pass land crop into lockIntent so the
-      // crop-prefix compatibility check inside intent-lock.ts can flag mismatches.
-      // Also surface router↔semantic disagreements — the pattern that let the
-      // pipeline pick "GENERAL_INFO" to bypass gates but "COTTON_*" to filter rules.
       const routerIntentForLog = (queryRoute as any)?.route || 'UNKNOWN';
       const semanticIntentForLog = semanticExtraction?.intent_code || 'UNKNOWN';
       if (routerIntentForLog !== 'UNKNOWN' && semanticIntentForLog !== 'UNKNOWN' && routerIntentForLog !== semanticIntentForLog) {
@@ -7655,10 +6646,7 @@ export class AIAgentOrchestrator {
         if (rt) { rt.context = { ...(rt.context || {}), intent: { code: detectedIntent, confidence: intentConfidence, crop_scope_rejected: !!intentLock.crop_scope_rejected } }; }
       } catch {}
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // AUDIT LOGGER INITIALIZATION - Include new Stage 1-4 data
-      // ═══════════════════════════════════════════════════════════════════════════
-      // Initialize audit logger for this turn
       const auditLogger = getAuditLogger();
       auditLogger.startTurn({
         turn_id: intentLock.turn_id,
@@ -7732,11 +6720,7 @@ export class AIAgentOrchestrator {
         console.log(`   🚫 BYPASSING clarification - farmer already selected option, proceeding to Decision Brain`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE INDUCTION-BASED CLARIFICATION GATE (Replaces intent-confidence)
-      // Uses symbol_coverage and aggregated_confidence from Language Induction Layer
-      // This is INDEPENDENT of intent confidence logic
-      // ═══════════════════════════════════════════════════════════════════════════
       
       // Determine if we have sufficient symbol coverage to proceed to symbolic brain
       // If coverage is low AND no agricultural symptoms detected, prepare clarification
@@ -7747,11 +6731,7 @@ export class AIAgentOrchestrator {
         console.log(`   🌾 Induction enrichment: ${inductionResult.symptoms.length} supplementary symbols (coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%)`);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // CLARIFICATION CHECK - NOW BASED ON LANGUAGE INDUCTION RESULTS
-      // Deferred until after symbolic brain runs
-      // Uses symbol_coverage and aggregated_confidence instead of intent_confidence
-      // ═══════════════════════════════════════════════════════════════════════════
       let pendingClarificationResponse: any = null;
       
       // Calculate induction-based clarification threshold
@@ -7767,31 +6747,14 @@ export class AIAgentOrchestrator {
       // Also consider legacy intent-confidence for backward compatibility
       const legacyNeedsClarification = requiresClarification(intentConfidence) && !inductionBasedBypass;
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-20: CLARIFICATION-FIRST TRIGGER CHECK
-      // If crop+stage known but symptoms partial → clarify BEFORE rules
-      // ═══════════════════════════════════════════════════════════════════════════
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
       const lockedStage = getLockedStage();
       
-      // ═══════════════════════════════════════════════════════════════════════
       // OBSERVATION_STATE_CONTRACT (F1) — feed the trigger with CONFIRMED-ONLY
-      // counts from the frozen ConversationState. The prior wiring passed
-      // `inductionResult.symptoms.length` and `inductionResult.symbol_coverage`
-      // which include INFERRED IOM LITERAL peers + alias expansions + LLM
-      // guesses, so `SUFFICIENT_SYMPTOM_COVERAGE` fired with 1 confirmed
-      // symptom and 13 inferred peers.
-      //
-      // symptom_count / symptom_coverage are ALWAYS derived from
-      // `informative_count`. Diagnostic intent is derived from the DB-driven
-      // authority set — no route labels, no crop-specific gates.
-      // ═══════════════════════════════════════════════════════════════════════
       const __convState = (this as any).__conversationState;
 
       // FIX (symmetric with __preemptHardBlock above): count only observations
-      // flagged is_diagnostic=true in observation_master. Prevents structural
-      // metadata from tricking SUFFICIENT_SYMPTOM_COVERAGE into skipping the
-      // consultant-model clarification round.
       let __confirmedCountForTrigger: number = __convState?.informative_count ?? 0;
       if (_observationIndexReady()) {
         const confirmedArr: unknown[] = Array.isArray(__convState?.confirmed)
@@ -7808,8 +6771,6 @@ export class AIAgentOrchestrator {
         __convState?.mode === 'MIXED';
 
       // Confirmed-only coverage: 3 informative observations is treated as full
-      // coverage (crop-agnostic — matches the hypothesis engine's minimum
-      // 3-observation quorum used across all domains). Cap at 1.0.
       const CONFIRMED_COVERAGE_QUORUM = 3;
       const __confirmedCoverageForTrigger = Math.min(
         1,
@@ -7830,8 +6791,6 @@ export class AIAgentOrchestrator {
       };
 
       // F2 — Authority-aware evidence log. Prior [EVIDENCE_CLASSIFICATION]
-      // conflated INFERRED with "real". Emit the split explicitly so audit
-      // greps show both classes.
       console.log(
         `[EVIDENCE_CLASSIFICATION_AUTHORITY] trace=${traceId} ` +
         `informative_confirmed=${__confirmedCountForTrigger} ` +
@@ -7859,9 +6818,6 @@ export class AIAgentOrchestrator {
       );
       
       // Use PHASE-20 trigger as primary, legacy as fallback.
-      // OBSERVATION_STATE_CONTRACT is stronger than route labels: if the
-      // frozen conversation state says diagnostic evidence is missing, even a
-      // GENERAL_INFO/symptom-free route must render observation choices.
       const observationAuthorityRequiresClarification =
         !!(this as any).__conversationState?.clarification_required &&
         (
@@ -7893,10 +6849,7 @@ export class AIAgentOrchestrator {
       if (shouldPrepareClarification && !bypassClarification) {
         console.log(`   ⚠️ PHASE-20: Clarification triggered (${clarificationTrigger.reason}) - PREPARING clarification (deferred)`);
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE-20: TRY RULE-DRIVEN CLARIFICATION FIRST
-        // Generate options from decision_rules.observable_characteristics
-        // ═══════════════════════════════════════════════════════════════════════════
         let ruleDrivenClarification = null;
         if (lockedStage && this.supabase) {
           const ruleDrivenInput: RuleDrivenClarificationInput = {
@@ -7915,13 +6868,7 @@ export class AIAgentOrchestrator {
           
           ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);
 
-          // ═══════════════════════════════════════════════════════════════
           // v3 PHASE 4 — NAVIGATOR ACTIVE-MODE OVERRIDE (rule-driven path)
-          // ───────────────────────────────────────────────────────────────
-          // Same contract as the scoped path: when the navigator flag is
-          // ACTIVE and the navigator produced ranked evidence, swap the
-          // rule-driven options for graph-pruning-ranked ones.
-          // ═══════════════════════════════════════════════════════════════
           try {
             if (!(this as any).__navigatorOutput) {
               const navIntentRD = intentCode || 'GENERAL_QUERY';
@@ -7986,22 +6933,10 @@ export class AIAgentOrchestrator {
         const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS_PLUS_PHOTO';
         const nluClarificationOptions = (nluOutput as any)?.clarification_options || [];
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // TRUST-FIRST: Rule-Driven Options MUST Take Priority
-        // HARD INVARIANT: Rule-driven options CANNOT be overwritten by NLU fallback
-        // ═══════════════════════════════════════════════════════════════════════════
         let finalClarificationOptions: string[];
         let clarificationSource: 'DECISION_RULES' | 'GRAPH_EMPTY' = 'GRAPH_EMPTY';
-        // ═══════════════════════════════════════════════════════════════════
         // IOM-FIRST INVARIANT (Neuro-Symbolic Contract)
-        // Whenever the pipeline has a valid diagnostic intent, the SSOT for
-        // farmer-observation options is `intent_observation_mapping`. Do NOT
-        // gate this on ConversationState mode alone — that gate caused the
-        // legacy VEGETATIVE_STRESS fallback (STUNTED_GROWTH / WILTING /
-        // LEAF_CURLING) to leak whenever the state classifier had not yet
-        // flipped to DIAGNOSIS. Intent ≠ Observation, but a valid intent
-        // MUST open the IOM graph path first.
-        // ═══════════════════════════════════════════════════════════════════
         const _intentStr = String(intentCode || 'UNKNOWN').toUpperCase();
         const _isDiagnosticIntent =
           !!intentCode &&
@@ -8077,10 +7012,7 @@ export class AIAgentOrchestrator {
           );
           finalClarificationOptions = [];
           
-          // ═══════════════════════════════════════════════════════════════════════════
           // INVARIANT WARNING: When context exists, rule-driven options SHOULD exist
-          // This indicates a potential gap in decision_rules coverage
-          // ═══════════════════════════════════════════════════════════════════════════
           if (lockedStage && inductionResult.symptoms.length > 0) {
             console.error(`   🚨 [INVARIANT WARNING] Land context + symptoms exist but no rule-driven options`);
             console.error(`      Crop: ${lockedStage.crop_code}, Stage: ${lockedStage.growth_stage}`);
@@ -8144,10 +7076,7 @@ export class AIAgentOrchestrator {
         console.log(`   ✅ Clarification SKIPPED (induction bypass: ${inductionBasedBypass}, option bypass: ${bypassClarification}) - proceeding to Symbolic Decision Brain`);
       }
       
-      // ========================================
       // PHASE 1B: LLM-FIRST CHECK - BLOCKED FOR AGRICULTURAL QUERIES WITH LAND CONTEXT
-      // FIX: Routing Flag Determinism - evaluate once, invalidate conflicting flags
-      // ========================================
       const canDirectAnswer = canAnswerDirectly(detectedIntent, farmerMessage);
       const needsRules = requiresRuleEngine(detectedIntent, farmerMessage);
       
@@ -8276,10 +7205,7 @@ export class AIAgentOrchestrator {
         console.log('   ✅ Photo analyzed:', visualOutput.detections?.pests?.length || 0, 'detections');
       }
       
-      // ========================================
       // PHASE 1B: CONTEXT LOADING (with NLU output) - with error boundary
-      // CRITICAL FIX: Now passes landId to loadContext
-      // ========================================
       let contextState: ContextState | null = null;
       try {
         contextState = await this.loadContext(sessionId, farmerId, tenantId, farmerMessage, nluOutput!, options.landId);
@@ -8294,10 +7220,7 @@ export class AIAgentOrchestrator {
         agentsUsed.push('Context_FALLBACK');
       }
       
-      // ========================================
       // PHASE 2: MULTI-MODAL FUSION - with error boundary
-      // CRITICAL FIX: Now includes FULL LAND CONTEXT (Context Contract)
-      // ========================================
       console.log('\n🔗 PHASE 2: Fusing Multi-Modal Data with FULL Land Context...');
       
       let fusedIntelligence: FusedIntelligence;
@@ -8416,9 +7339,7 @@ export class AIAgentOrchestrator {
         agentsUsed.push('Fusion_FALLBACK');
       }
       
-      // ========================================
       // PHASE 2.5: BUILD CANONICAL STATE (Single Source of Truth for Decision Brain)
-      // ========================================
       console.log('\n🧠 PHASE 2.5: Building Canonical State for Symbolic Decision Brain...');
       
       let canonicalState: CanonicalState | null = null;
@@ -8430,10 +7351,7 @@ export class AIAgentOrchestrator {
         const inductionSymptoms = getSymptomSymbolsForRules(inductionResult);
         const inductionCrop = getCropSymbolForRules(inductionResult);
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 2.5 FIX: Pass GDD phenology result as the MOST AUTHORITATIVE stage source
-        // Priority: gddResult.growth_stage → landContext.growth_stage → nluOutput → UNKNOWN
-        // ═══════════════════════════════════════════════════════════════════════════
         const gddResultForCanonical = phenologyResult ? {
           growth_stage: phenologyResult.current_stage,
           stage_name: phenologyResult.stage_name,
@@ -8444,10 +7362,7 @@ export class AIAgentOrchestrator {
           accumulated_gdd: landContext.gdd_phenology.accumulated_gdd
         } : undefined);
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL FIX: Collect ALL symptom sources for canonical state
-        // Include: visual_symptoms + cross_crop_symptoms + induction symptoms
-        // ═══════════════════════════════════════════════════════════════════════════
         const visualSymptomCodes = nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [];
         const crossCropSymptomCodes = nluOutput?.symptom_extraction?.cross_crop_symptoms || [];
         
@@ -8492,31 +7407,9 @@ export class AIAgentOrchestrator {
         });
 
         // Phase 5 — GraphTruth is the sole authority for crop / stage / observations.
-        // Overwrite those three fields with the frozen node so no upstream
-        // inference (induction, NLU, GDD, cropContextAuthority) can leak.
         projectCanonicalStateFromGraphTruth(canonicalState, (this as any)._graphTruth);
 
-        // ═══════════════════════════════════════════════════════════════════════════
         // Step 2 — POST-PROJECTION MUTATION BLOCK COLLAPSED (was lines 6252-6277).
-        //
-        // Prior behaviour (removed):
-        //   1. Re-wrote `canonicalState.crop_type` from `inductionCrop` (hardcoded
-        //      keyword map in language-induction-layer.ts) when GraphTruth had
-        //      already projected the DB-authoritative crop.
-        //   2. Re-wrote `canonicalState.crop_type` / `.growth_stage` from
-        //      `cropContextAuthority` (message-inference fallback) with the same
-        //      leak semantics.
-        //
-        // These branches only fired when GraphTruth returned UNKNOWN/null — a
-        // structural signal that the land has no bound crop or the DB has no
-        // matching row. In that case the correct action is to raise
-        // GRAPH_NEEDS_MORE_EVIDENCE downstream (Step 1 sentinel), NOT to graft
-        // a parallel NLU brain's guess onto the frozen node.
-        //
-        // GraphTruth is now the ONLY writer to canonicalState.crop_type /
-        // .growth_stage after line 6249. Any drift is logged for observability
-        // but never repaired here.
-        // ═══════════════════════════════════════════════════════════════════════════
         {
           const _gtForAudit = (this as any)._graphTruth as
             | import('../runtime/graph-truth.ts').GraphTruth
@@ -8525,12 +7418,6 @@ export class AIAgentOrchestrator {
           const projectedStage = canonicalState.growth_stage as unknown as string | null;
 
           // FIX H1 (DB-SSOT backfill for stage): the prior refusal blocked BOTH
-          // the unsafe inductionCrop leak AND the safe crop_schedules DB SSOT.
-          // When cropContextAuthority.source === 'crop_schedules', the stage
-          // value ultimately came from crop_stage_ssot v7 via BIO_STATE_LOCKED
-          // — this is DB-authoritative and MUST be honored. Language-inference
-          // fallback (source='farmer_message') is still rejected. This is not
-          // a hardcoded agri map; it is DB-SSOT continuity across projection.
           const _cropAuthorityIsSSOT =
             cropContextAuthority?.source === 'crop_schedules';
 
@@ -8584,15 +7471,7 @@ export class AIAgentOrchestrator {
 
 
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // NEURO-SYMBOLIC CONTRACT: CanonicalState transports symbols only.
-        // Removed hasTerminalDamage / induction override — the ontology
-        // (observation_master + observation_aliases + concept-bridge) already
-        // resolves farmer language into canonical codes before this point.
-        // If a mutation is observed, canonical-state-builder logs
-        // [CANONICAL_MUTATION_BLOCKED]; if evidence never reached the builder,
-        // the fix belongs upstream in the extractor/bridge, not here.
-        // ═══════════════════════════════════════════════════════════════════════════
         if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN' || canonicalState.visual_symptom === 'NONE') && uniqueSymptomCodes.length > 0) {
           const firstRealCode = uniqueSymptomCodes[0];
           console.log(`[GRAPH_NODE_TRACE] node=OBSERVATION real_count=${uniqueSymptomCodes.length} first=${firstRealCode} canonical_symptom=${canonicalState.visual_symptom}`);
@@ -8612,10 +7491,7 @@ export class AIAgentOrchestrator {
         console.log(`      Soil N: ${canonicalState.soil_nitrogen}, P: ${canonicalState.soil_phosphorus}, K: ${canonicalState.soil_potassium}`);
         console.log(`      Data Confidence: ${canonicalState.data_confidence}`);
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE-17: 8 MANDATORY GATES (G1-G8) - Scientific Validation Layer
-        // These gates ensure treatments are ONLY recommended when scientifically valid
-        // ═══════════════════════════════════════════════════════════════════════════
         console.log('\n🔐 PHASE 2.5.1: Running 8 Mandatory Validation Gates...');
         agentsUsed.push('8_MANDATORY_GATES');
         
@@ -8623,8 +7499,6 @@ export class AIAgentOrchestrator {
         console.log('   ✅ G1 INPUT_NORMALIZATION: PASSED (language detected)');
         
         // G2: CONTEXT_COMPLETENESS - Block if crop=UNKNOWN OR stage=DEFAULT without sowing_date
-        // CRITICAL FIX: Use enriched canonical state crop (which includes induction result)
-        // instead of raw cropContextAuthority which may be undefined
         const enrichedCropName = canonicalState.crop_type && canonicalState.crop_type !== 'UNKNOWN' 
           ? canonicalState.crop_type 
           : cropContextAuthority?.crop_name;
@@ -8769,9 +7643,6 @@ export class AIAgentOrchestrator {
         };
         
         // Check prescription gate before rule engine
-        // FIX 1 (STATE_SYNC) — publish frozen GraphRuntimeSnapshot counts onto
-        // canonicalState BEFORE the prescription gate reads them. Without this,
-        // graph=1 hyp / 4 rules degraded to 0/0 downstream (split-brain).
         try {
           const _snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
           syncCanonicalStateFromSnapshot(canonicalState as any, _snap, { trace_id: traceId });
@@ -8785,9 +7656,7 @@ export class AIAgentOrchestrator {
           console.log(`   ✅ Prescription Gate PASSED`);
         }
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 2.5.5: CAUSAL HYPOTHESIS ARBITRATION (NEW)
-        // ═══════════════════════════════════════════════════════════════════════════
         console.log('\n🧠 PHASE 2.5.5: Causal Hypothesis Arbitration...');
         let hypothesisRuleScope: string[] | undefined = undefined;
         let hypothesisResult: any = undefined;
@@ -8847,14 +7716,7 @@ export class AIAgentOrchestrator {
         const allRulesWithBundled = await getAllRulesWithBundled(cropCodeForFilter || undefined);
         console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (crop=${cropCodeForFilter || 'ALL'})`);
         
-        // ═══════════════════════════════════════════════════════════════════════════
-        // DIAGNOSTIC PRE-FILTER (PART 7): When pest evidence is present, 
-        // filter to PEST_MANAGEMENT rules first and rank above all others.
-        // This prevents irrigation/nutrition rules from being primary when
-        // DEAD_HEART, BORE_HOLES, or BORER evidence is detected.
-        // ═══════════════════════════════════════════════════════════════════════════
-        // Phase 0′ (2026-07-29): taxonomy is DB-SSOT — observation_master.semantic_class
-        // (via observation_aliases) and decision_rules.biological_group. No hardcoded lists.
+        // DIAGNOSTIC PRE-FILTER (PART 7): When pest evidence is present,
         const allObsForPreFilter = [...(allObservationsForPreAuth || [])];
         const _taxonomyReady = isTaxonomyLoaded();
         const hasPestPreFilterEvidence = _taxonomyReady && taxonomyHasBioticEvidence(allObsForPreFilter);
@@ -8888,9 +7750,6 @@ export class AIAgentOrchestrator {
         // If hypothesis narrowed scope, filter rules (only if pre-filter didn't already apply)
         if (!diagnosticPreFilterApplied && hypothesisRuleScope && hypothesisRuleScope.length > 0) {
           // CANONICAL-CODE CONTRACT (2026-07-26): rule identity is `id` on
-          // converted bundled rules and `rule_id` on raw DB rows — compare both
-          // through the canonical normalizer so casing never silently empties
-          // the graph scope (see [GRAPH_RULE_SCOPE_EMPTY]).
           const _scopeSet = new Set(hypothesisRuleScope!.map((rid) => canonicalSymbolCode(rid)).filter(Boolean));
           const scopedRules = allRulesWithBundled.filter((r: any) =>
             _scopeSet.has(canonicalSymbolCode(r?.id ?? r?.rule_id ?? '')));
@@ -8904,8 +7763,6 @@ export class AIAgentOrchestrator {
         }
         
         // CRITICAL: Pass user_query to canonical state for keyword-based matching
-        // FIX 3: For DIRECT-mode advisory intents, prepend intent code to user_query
-        // so rule engine can match by action_type (e.g., FERTILIZER_SCHEDULE rules)
         const queryForRuleEngine = directModeBypass 
           ? `[INTENT:${intentCode}] ${farmerMessage}` 
           : farmerMessage;
@@ -8918,8 +7775,6 @@ export class AIAgentOrchestrator {
         };
         
         // PRODUCTION FIX: Pass PrescriptionGate override signal to confidence gate
-        // When prescriptionGate.allowed=true despite LOW confidence, this relaxes
-        // the evaluator's pre-selection threshold (0.60→0.40) so rules can fire
         const isPrescriptionGateOverride = prescriptionGate.allowed && 
           canonicalState.data_confidence === 'LOW';
         
@@ -8927,12 +7782,7 @@ export class AIAgentOrchestrator {
         // This block is intentionally a no-op (single-source preload upstream).
         console.log('[KNOWLEDGE_PRELOAD] using request-init caches (Phase H Fix 7)');
         
-        // ═══════════════════════════════════════════════════════════════════
         // PHASE C, GATE #2 — INTENT FILTER before scoring
-        // Replaces direct evaluateRulesLayered() with an intent-filtered list.
-        // Generic rules (rule_intent == null) survive but carry a penalty flag
-        // that the layered scorer multiplies by 0.85 (see Phase D).
-        // ═══════════════════════════════════════════════════════════════════
         const activeIntentForRules = (typeof intentCode !== 'undefined' && intentCode)
           ? String(intentCode) : 'GENERAL_QUERY';
         const rulesAfterIntent = filterRulesByIntent(rulesToEvaluate as any, activeIntentForRules);
@@ -8941,11 +7791,6 @@ export class AIAgentOrchestrator {
         console.log(`   🎯 [INTENT_FILTER] intent=${activeIntentForRules} ${rulesToEvaluate.length} → ${rulesAfterIntent.length}`);
 
         // STEP 8 — narrow the intent-filtered set to hypothesis_rule_mapping edges.
-        // Union NOT intersection: if the graph edge set is available and non-empty,
-        // it is treated as the authoritative candidate scope. Fallback path (no edges)
-        // keeps the existing intent-filtered set so unrelated flows are unaffected.
-        // P1 — prefer non-empty source (mirror-drift safe). `??` alone made a
-        // frozen empty runtime-state getter mask a populated self field.
         const _grsRuleIds = ((((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.hypothesis_rule_ids) ?? []) as readonly string[];
         const _selfRuleIds = ((this as any)._graphHypothesisRuleIds ?? []) as string[];
         const _chosenRuleIds: readonly string[] = _grsRuleIds.length > 0 ? _grsRuleIds : _selfRuleIds;
@@ -8953,9 +7798,6 @@ export class AIAgentOrchestrator {
         console.log(`[HYP_RULE_SRC] trace=${traceId} grs=${_grsRuleIds.length} self=${_selfRuleIds.length} chosen=${_chosenRuleIds.length}`);
 
         // P2 — if both mirrors are empty but the graph produced surviving
-        // candidates that carry their own candidate_rule_ids, reconstruct the
-        // set directly from graphOut. `_graphHypothesisResult.candidates` is
-        // the SSOT for hypothesis→rule edges (populated at line 5804).
         const _graphSurvivorsForRules: any[] = ((this as any)._graphHypothesisResult?.candidates) ?? [];
         if (graphRuleIdSet.size === 0 && _graphSurvivorsForRules.length > 0) {
           const _recoveredRuleIds = _graphSurvivorsForRules
@@ -8988,15 +7830,7 @@ export class AIAgentOrchestrator {
             rulesForEvaluator = [];
           }
         } else if (_graphExecutedFlag && _graphSurvivors.length === 0 && _isDiagnosticIntentForScope) {
-          // ═══════════════════════════════════════════════════════════════════
           // NEURO-SYMBOLIC INVARIANT — GRAPH_SCOPE_BLOCKED
-          // Graph executed, DB gates eliminated every hypothesis. A diagnostic
-          // decision rule cannot fire without causal hypothesis lineage:
-          //   OBSERVATION → HYPOTHESIS → RULE → DECISION
-          // Force empty candidate pool so the layered evaluator returns 0
-          // matched rules and the downstream stage-clarification path takes
-          // over. Prevents leakage of unrelated PROACTIVE_* / global rules.
-          // ═══════════════════════════════════════════════════════════════════
           const _blocked = rulesAfterIntent.length;
           rulesForEvaluator = [];
           (this as any)._graphScopeBlocked = {
@@ -9018,14 +7852,8 @@ export class AIAgentOrchestrator {
           : (graphRuleIdSet.size === 0 ? 'HYPOTHESIS_RULE_EDGE_MISSING' : 'OK');
         if ((this as any)._evidenceFrozen) {
           // Diagnosis-first / early rule-engine paths may enter here without
-          // the main hypothesis-graph loop having emitted [OBS_TO_HYP]. Advance
-          // the sequence synthetically when we already have graph output so the
-          // strict HYP_TO_RULE ordering check does not crash the turn.
           if (Number((this as any).__decisionGraphSequence ?? 0) === 1) {
             // REAL_GRAPH_PATH — no more `synthesized=true`. Emit an OBS_TO_HYP
-            // line whose numbers come from the immutable snapshot. If the
-            // snapshot is empty here the downstream GRAPH_PIPELINE_BYPASSED
-            // guard fires; we no longer paper over the miss.
             assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
             const snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
             const snapHyp = (snap?.hypotheses ?? []).map(h => h.id).slice(0, 12).join(',');
@@ -9047,10 +7875,6 @@ export class AIAgentOrchestrator {
         assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
 
         // PR-7 F4: forensic snapshot of what actually reaches the layered
-        // evaluator. Resolves the addendum §4 open item: log the exact rule
-        // ids + intents + proactive count so a wrongly-included rule like
-        // PROACTIVE_FLOOD_PREPAREDNESS_001 is attributable to a concrete
-        // upstream stage (intent filter vs graph-scope vs pre-filter).
         try {
           const _rfe: any[] = rulesForEvaluator as any[];
           const _ids = _rfe.map(r => String(r?.rule_id ?? r?.id ?? '?')).slice(0, 20);
@@ -9095,14 +7919,7 @@ export class AIAgentOrchestrator {
 
 
 
-        // ═══════════════════════════════════════════════════════════════════
         // Phase I-4 — Seed the per-request hypothesis_graph with
-        // RuleCandidate nodes. Scores are mutated IN-PLACE downstream
-        // (scientific gate, authority, completeness, ranking). Validators
-        // never rebuild this list — they call candidate.score(...) /
-        // candidate.drop(reason). Non-canonical rule_ids are skipped
-        // (recorded as SYMBOLIC_ID_LEAK on the evidence ledger).
-        // ═══════════════════════════════════════════════════════════════════
         try {
           const RULE_ID_RE = /^[A-Z0-9_]+$/;
           const safeApplied = Array.isArray(layeredRuleResult?.rules_applied)
@@ -9181,9 +7998,6 @@ export class AIAgentOrchestrator {
               `winner=${graph.hypothesis_graph.find((c) => c.status === 'WINNER')?.rule_id ?? 'NONE'}`
           );
           // Fix 4 — promotion invariant: candidate ids were produced by the
-          // rule evaluator but must survive into the active hypothesis_graph
-          // used downstream. If they collapse to zero the rule engine ran on
-          // the wrong universe and silently picked the wrong branch.
           try {
             (graph as any).__hypothesis_seeded_count = _seededCount;
             const _candidatesFromEvaluator = candidateIds.size;
@@ -9207,19 +8021,7 @@ export class AIAgentOrchestrator {
         }
 
 
-        // ═══════════════════════════════════════════════════════════════════
         // v3 PHASE 2/3 — DECISION GRAPH NAVIGATOR (shadow + flag-gated)
-        // ───────────────────────────────────────────────────────────────────
-        // Always runs in SHADOW mode (logs navigator decision into
-        // runtime_trace.navigator_shadow) so we can replay-compare against
-        // the legacy clarification producers. When the
-        // DECISION_GRAPH_NAVIGATOR env flag (or tenant allowlist) is ON the
-        // adapter additionally marks the result as ACTIVE for downstream
-        // consumers — orchestrator does NOT yet swap the response path
-        // (that flip happens in Phase 4 of the migration plan).
-        //
-        // Fire-and-forget: failures are swallowed inside the adapter.
-        // ═══════════════════════════════════════════════════════════════════
         try {
           const navIntent = (typeof intentCode !== 'undefined' && intentCode)
             ? String(intentCode) : (activeIntentForRules || 'GENERAL_QUERY');
@@ -9254,10 +8056,7 @@ export class AIAgentOrchestrator {
 
 
 
-        // ═══════════════════════════════════════════════════════════════════
         // PHASE C, GATE #3 — SCIENTIFIC VALIDATOR (after rules, before authority)
-        // Cross-checks rule outputs against crop_baseline_guidelines_v2.
-        // ═══════════════════════════════════════════════════════════════════
         try {
           const candidates: CandidateRecommendation[] = (layeredRuleResult.matched_responses || [])
             .map((r: any) => ({
@@ -9311,16 +8110,11 @@ export class AIAgentOrchestrator {
         } catch (_) { /* trace must never throw */ }
 
         // PATCH 5 (BUG 1) — Single authoritative [BRAIN_TRACE] emit, AFTER the
-        // hypothesis graph AND the rule stage. Reads real hyp count from the
-        // graph projection (see L~4836), not the empty placeholder built at
-        // buildConversationState time.
         try {
           const _winner = layeredRuleResult?.primary_decision;
           const _snap = (this as any)._graphSnapshot as GraphRuntimeSnapshot | undefined;
 
           // Prefer the immutable snapshot over the legacy per-field projections.
-          // If snapshot has hypotheses but the legacy projection is empty, the
-          // corruption guard throws GRAPH_STATE_CORRUPTION_ERROR — fail loud.
           const _grsRead = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
           const _legacyHypIds: string[] = [
             ...((_grsRead?.hypothesis_ids) ?? ((this as any)._graphHypothesisIds ?? []) as string[]),
@@ -9370,9 +8164,6 @@ export class AIAgentOrchestrator {
               `action=route_to_observation_cards`
             );
             // F4 — HARD ROUTER: force observation-card response, refuse rule fallback.
-            // Load candidate observations from IOM cache SCOPED to the frozen
-            // land context (crop / stage / DAS). 2026-07-09 — unscoped calls
-            // used to leak brinjal / cotton / onion codes into rice turns.
             try {
               const { getObservationsForIntent } = await import('../utils/observation-mapping-cache.ts');
               const _routerCrop = (typeof cropCode === 'string' && cropCode)
@@ -9429,9 +8220,6 @@ export class AIAgentOrchestrator {
           });
 
           // HYPOTHESIS_INVARIANT_CONTRACT — diagnostic + graph_ran + hyp=0 +
-          // observation_required=false is an impossible state that historically
-          // caused silent rule fallbacks. Fail loud in dev; fail closed in prod
-          // (force clarification instead of hallucinated diagnosis).
           try {
             const { assertObservationRequiredWhenNoHypothesis } =
               await import('../runtime/graph-contracts.ts');
@@ -9473,13 +8261,6 @@ export class AIAgentOrchestrator {
           );
 
           // FIX J1b (PATCH 2 late-invariant revision): same reasoning as J1a.
-          // ConversationState.hypotheses is frozen and never updates after the
-          // I1 reorder. Use the authoritative _graphHypothesisIds store which
-          // is the same source GRAPH_HANDOFF_CHECK uses in orchestrate()'s
-          // finally block. If _hypIds itself was already sourced from
-          // _graphHypothesisIds, this comparison is trivially safe; if it was
-          // sourced from an alternate path (e.g. GraphRuntimeState), we still
-          // cross-check against the authoritative store.
           const _authHypCountLate = ((this as any)._graphHypothesisIds ?? []).length;
           if (_hypIds.length > 0 && _authHypCountLate === 0) {
             throw new Error(
@@ -9493,21 +8274,7 @@ export class AIAgentOrchestrator {
           /* trace must never throw */
         }
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // 2026-07-27 — SINGLE AUTHORITATIVE OBSERVATION STREAM (read-path only)
-        //
-        // Forensic finding: the symbolic-reasoner / clarification branch consumed
-        // `allObservationsForPreAuth` (assembled BEFORE the graph ran, 2 codes in
-        // the failing trace) while GraphRuntime reached READY_FOR_DECISION with 5
-        // observations held in `_graphSnapshot.observations`. Two divergent
-        // evidence sets → `[ObsMeta] Loaded 1 …` → zero rule match → clarification
-        // fallback, even though the graph already had a winner.
-        //
-        // This resolver is the ONLY observation source the downstream read paths
-        // (PIPELINE_HEALTH log, GRAPH_ZERO_RULE_MATCH log, FactExtractor) may use.
-        // Precedence: graph snapshot → pre-auth set (cold / no-graph turns only).
-        // No agronomy, no mutation of graph state.
-        // ═══════════════════════════════════════════════════════════════════════════
         const unifiedObservationStream: string[] = (() => {
           const norm = (list: readonly unknown[]): string[] =>
             Array.from(
@@ -9538,11 +8305,7 @@ export class AIAgentOrchestrator {
           return chosen;
         })();
 
-        // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures
-        // Logs critical warning when symptoms exist but zero rules matched,
-        // enabling fast identification of condition_code/observable_characteristics gaps
-        // ═══════════════════════════════════════════════════════════════════════════
         const pipelineSymptoms = unifiedObservationStream.length > 0
           ? unifiedObservationStream
           : ((canonicalStateWithQuery as any).confirmed_observations || (canonicalStateWithQuery as any).visual_symptoms || []);
@@ -9559,24 +8322,7 @@ export class AIAgentOrchestrator {
           console.warn(`   ⚠️ Safety Blocks: ${safeSafetyBlocks.map(b => b?.message || 'unknown').join(', ')}`);
         }
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // Step 4 — KEYWORD FALLBACK REMOVED (was PHASE-14, lines 6899-6955).
-        //
-        // Prior behaviour (deleted):
-        //   - When `layeredRuleResult.rules_matched === 0`, ran
-        //     `evaluateBundledKeywordRules(farmerMessage, canonicalState)`, a
-        //     regex-over-raw-user-text parallel NLU brain.
-        //   - On any match, OVERWROTE `layeredRuleResult.rules_matched`,
-        //     `.rules_applied`, `.diagnoses`, and `.final_diagnosis` with
-        //     keyword-derived hits — bypassing GraphTruth, the observation
-        //     ontology, IOM, hypothesis arbitration, and safety gates.
-        //
-        // This violated: (a) GraphTruth as sole authority, (b) DB-driven
-        // ontology (evaluator reads `observation_master` / `decision_rules`),
-        // (c) neuro-symbolic contract (LLM is narrator only). Zero matches is
-        // a legitimate graph signal: the correct downstream response is
-        // GRAPH_NEEDS_MORE_EVIDENCE (Step 1 sentinel), not a keyword guess.
-        // ═══════════════════════════════════════════════════════════════════════════
         if (layeredRuleResult.rules_matched === 0) {
           console.warn(
             `[GRAPH_ZERO_RULE_MATCH] trace=${traceId} ` +
@@ -9590,14 +8336,7 @@ export class AIAgentOrchestrator {
 
 
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE-16: SYMBOLIC REASONER INTEGRATION (Enhanced JSON Condition Evaluation)
-        // Uses new SymbolicReasoner for proper conditions_json parsing
-        // ═══════════════════════════════════════════════════════════════════════════
-        // CRITICAL FIX: Run Symbolic Reasoner ALWAYS, not just when rules_matched === 0
-        // This ensures the primary decision brain runs even when layered rules found some matches
-        // BUG 3 FIX: Add intent guard - don't run symbolic reasoner when intent is UNKNOWN
-        // unless there are at least 2 confirmed/extracted observations
         const shouldRunSymbolicReasoner = canonicalState && (
           intentCode !== 'UNKNOWN' || 
           (allObservationsForPreAuth && allObservationsForPreAuth.size >= 2)
@@ -9609,10 +8348,7 @@ export class AIAgentOrchestrator {
             const symbolicReasoner = new SymbolicReasoner();
             const factExtractor = new FactExtractor();
             
-            // ═══════════════════════════════════════════════════════════════════════════
             // BUG FIX #2: Build NESTED AuthoritativeLandState matching interface
-            // The interface expects nested crop/soil/ndvi/weather objects, not flat fields
-            // ═══════════════════════════════════════════════════════════════════════════
             const authoritativeLandState = landContext ? {
               land_id: landContext.land_id,
               tenant_id: tenantId,
@@ -9689,18 +8425,13 @@ export class AIAgentOrchestrator {
               severity: canonicalState.severity || 'UNKNOWN'
             };
             
-            // ═══════════════════════════════════════════════════════════════════════════
             // BUG FIX #1: Pass correct arguments to FactExtractor.extractFacts()
-            // Signature: extractFacts(observation, canonicalState, landState, userQuery)
-            // ═══════════════════════════════════════════════════════════════════════════
             const symbolicFacts = factExtractor.extractFacts(
               observations,
               canonicalState,  // Pass actual CanonicalState, not a fragment
               authoritativeLandState,  // Now properly structured
               farmerMessage,  // Add missing 4th argument (user query)
               // 2026-07-27: was `[...allObservationsForPreAuth]` — the second,
-              // pre-graph observation stream. Now the unified authoritative
-              // stream (graph snapshot first).
               [...unifiedObservationStream]
             );
             
@@ -9740,11 +8471,7 @@ export class AIAgentOrchestrator {
                   product_reference: r.rule_id || 'SYMBOLIC'
                 }));
                 
-                // ═══════════════════════════════════════════════════════════════════════════
                 // CRITICAL FIX v5.3: Merge symbolic recommendations into matched_responses
-                // AND build primary_decision so the pipeline doesn't hit RULE_DATA_INTEGRITY_ERROR.
-                // Without this, pest rules fire but never become eligible for primary decision.
-                // ═══════════════════════════════════════════════════════════════════════════
                 for (const rec of symbolicResult.recommendations) {
                   layeredRuleResult.matched_responses.push({
                     rule_id: rec.rule_id || 'SYMBOLIC',
@@ -9781,19 +8508,11 @@ export class AIAgentOrchestrator {
               }
               
               // BUG 6 FIX: Remove redundant ConfidenceCalculator call
-              // The SSOT weighted_confidence from LayeredRuleEvaluator is authoritative
-              // ConfidenceCalculator was Path B (legacy) and conflicts with SSOT
-              // layeredRuleResult.confidence_in_result is already set by the evaluator
               if (!layeredRuleResult.confidence_in_result && layeredRuleResult.primary_decision?.weighted_confidence) {
                 layeredRuleResult.confidence_in_result = layeredRuleResult.primary_decision.weighted_confidence;
               }
               
-              // ═══════════════════════════════════════════════════════════════════════════
               // FIX 8B: POST-DECISION VALIDATION — Block misrouted biotic→abiotic decisions
-              // If farmer observations contain biotic indicators but top rule is abiotic,
-              // filter out abiotic rules and re-select from biotic-only rules
-              // ═══════════════════════════════════════════════════════════════════════════
-              // Phase 0′ (2026-07-29): DB-SSOT taxonomy, exact canonical matching.
               const allObsFlat = symbolicFacts?.all_observations || [];
               const _misrouteTaxonomyReady = isTaxonomyLoaded();
               const hasBioticEvidence = _misrouteTaxonomyReady && taxonomyHasBioticEvidence(allObsFlat);
@@ -9827,21 +8546,7 @@ export class AIAgentOrchestrator {
               
               agentsUsed.push('SYMBOLIC_REASONER', 'FACT_EXTRACTOR', 'CONFIDENCE_CALCULATOR');
               
-              // ═══════════════════════════════════════════════════════════════════════════
               // WORLD-CLASS CLARIFICATION: Multi-Match Detection for Competing Diagnoses
-              // Prevents wrong pesticide recommendations by asking farmer to clarify when
-              // multiple pests/diseases match with similar confidence.
-              // ═══════════════════════════════════════════════════════════════════════════
-              // ═══════════════════════════════════════════════════════════════════════════
-              // PHASE-22: DIAGNOSIS-ONLY MODE - Skip multi-match clarification
-              // When terminal damage detected, present diagnoses directly instead of asking
-              // ═══════════════════════════════════════════════════════════════════════════
-              // v5.1 BUG 4 FIX: Guard DiagnosisOnlyMode against redundant execution
-              // Skip reformatting if symbolic reasoner already produced a high-confidence primary decision
-              // v5.3 FIX: Check BOTH symbolicResult AND layeredRuleResult for primary_decision
-              // The v5.3 merge block builds primary_decision on layeredRuleResult (line ~5022),
-              // NOT on symbolicResult. Without this, DiagnosisOnlyMode always activates and
-              // overrides valid symbolic treatment recommendations with a diagnosis-only response.
               const symbolicHasPrimaryDecision = layeredRuleResult?.primary_decision || 
                 (symbolicResult.primary_decision && (symbolicResult.confidence || 0) > 0.6);
               
@@ -10004,10 +8709,7 @@ export class AIAgentOrchestrator {
         console.error('   ❌ Canonical State Builder failed (non-blocking):', canonicalError);
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // DEFERRED CLARIFICATION: Only return clarification if symbolic brain found 0 rules
-      // This ensures we always try the symbolic brain BEFORE falling back to clarification
-      // ═══════════════════════════════════════════════════════════════════════════
       const totalRulesMatched = layeredRuleResult?.rules_matched || 0;
       
       if (pendingClarificationResponse && (totalRulesMatched === 0 || pendingClarificationResponse.forceObservation)) {
@@ -10021,9 +8723,6 @@ export class AIAgentOrchestrator {
         const { clarificationResponse, structuredOptions, intentConfidence, inductionCoverage, inductionConfidence } = pendingClarificationResponse;
         
         // CRITICAL FIX: Farmer-visible options must already be graph/IOM-backed.
-        // Do NOT synthesize a second-chance list here; the old dynamic fallback
-        // queried generic decision_rules metadata and produced the same pest/leaf
-        // choices after the graph had correctly returned 0 candidates.
         const rawClarificationOptions = Array.isArray(clarificationResponse?.options)
           ? clarificationResponse.options.filter((opt: any) => opt != null)
           : [];
@@ -10093,21 +8792,12 @@ export class AIAgentOrchestrator {
         console.log(`   ✅ Symbolic brain found ${totalRulesMatched} rules - SKIPPING clarification`);
       }
       
-      // ========================================
       // PHASE 3: DIAGNOSTIC FLOW MANAGEMENT
-      // CRITICAL FIX v5.2: Skip when symbolic brain already produced results
-      // to prevent GATHERING_INFO from overriding valid diagnoses
-      // ========================================
       
       // Build once so it's available for both diagnostic and rule-engine paths
       const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence, intentCode as any);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX (Forensic Audit): Wire orchestrator's assembled observations
-      // into nluWithRuleMapping.entities.symptom_codes so DiagnosticFlowController
-      // and authority-resolver can see them. Without this, observations=0 in the
-      // diagnostic flow despite 20+ observations being assembled in the orchestrator.
-      // ═══════════════════════════════════════════════════════════════════════════
       if (allObservationsForPreAuth && allObservationsForPreAuth.size > 0) {
         const existingSymptomCodes = new Set<string>(nluWithRuleMapping.entities?.symptom_codes || []);
         for (const obs of allObservationsForPreAuth) {
@@ -10124,9 +8814,6 @@ export class AIAgentOrchestrator {
       let diagnosticState: any;
       
       // FORENSIC FIX (2026-07): isSymptomFreeRoute is computed from the
-      // initial queryRoute label and can be stale once observations are
-      // extracted. If real informative symptoms exist, do NOT skip PHASE 3
-      // as symptom_free — that hands the turn to unrelated advisory rules.
       const informativeForPhase3 = [...(allObservationsForPreAuth || new Set<string>())].filter((c: string) => isInformativeObs(c));
       const symptomFreeForPhase3 = isSymptomFreeRoute && informativeForPhase3.length === 0;
       if (symbolicAlreadyProduced || symptomFreeForPhase3 || bypassClarification) {
@@ -10212,9 +8899,7 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // LAYER 3: RULE EVALUATION (Symbolic Brain - No LLM)
-      // ═══════════════════════════════════════════════════════════════════════════
       const layer3Start = Date.now();
       console.log('\n⚙️ [LAYER 3] Rule Evaluation...');
       console.log(`   [${traceId}] PHASE 4: Executing Rule Engine with Decision Graph Bridge...`);
@@ -10235,18 +8920,10 @@ export class AIAgentOrchestrator {
       let decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
       agentsUsed.push('RuleEngine');
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PRODUCTION FIX: Set decision_brain_source = true on all rule engine outputs
-      // Without this flag, the LLM formatter rejects the decision at the
-      // SYMBOLIC-ONLY GATE (llm-response-formatter.ts line ~298) and returns empty,
-      // causing "Continue monitoring" fallback responses even when rules matched.
-      // ═══════════════════════════════════════════════════════════════════════════
       decisionOutput.decision_brain_source = true;
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Attach layered_rule_result to decisionOutput for index.ts recovery
-      // This ensures primary_decision from LayeredRuleEvaluator is available for fallback
-      // ═══════════════════════════════════════════════════════════════════════════
       if (layeredRuleResult) {
         decisionOutput.layered_rule_result = layeredRuleResult;
         
@@ -10364,11 +9041,7 @@ export class AIAgentOrchestrator {
           }
         }
 
-        // ──────────────────────────────────────────────────────────────
         // Phase I-7 — POST_DECISION drift guard. Capture the winning
-        // rule_id on the graph (once) and verify no module mutated the
-        // canonical_context / intent between extraction and decision.
-        // ──────────────────────────────────────────────────────────────
         try {
           const winnerRaw =
             decisionOutput.primary_decision?.rule_id ||
@@ -10413,12 +9086,7 @@ export class AIAgentOrchestrator {
         }
 
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // BUG-3 FIX: Propagate rules_applied from layeredRuleResult → decisionOutput
-        // Without this, decisionOutput.rules_applied stays empty ([]) even when 11+
-        // rules actually fired. This causes PHASE-19 photo gate (line 6322) to
-        // incorrectly trigger when rulesAppliedCount === 0.
-        // ═══════════════════════════════════════════════════════════════════════════
         const safeLayeredRulesApplied = Array.isArray(layeredRuleResult.rules_applied) 
           ? layeredRuleResult.rules_applied 
           : [];
@@ -10484,22 +9152,12 @@ export class AIAgentOrchestrator {
         }
       } catch {}
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // HARD INVARIANT: If PRIMARY_DECISION exists with valid rule_id, return NOW
-      // This prevents timeout by ensuring we don't continue processing indefinitely
-      // ═══════════════════════════════════════════════════════════════════════════
       const primaryRuleId = decisionOutput.primary_decision?.rule_id || 
                             decisionOutput.primary_decision?.application_details?.rule_id;
       const primaryActionType = decisionOutput.primary_decision?.action_type;
 
-      // ─────────────────────────────────────────────────────────────────────
       // FORENSIC FIX (2026-06-28): Add confidence + observation-evidence guard
-      // to the HARD INVARIANT. Previously, keyword-matched rules without any
-      // confirmed observation (e.g. flood prep / crop rotation fired by a
-      // generic Marathi query) were promoted to PRIMARY_DECISION, then
-      // rejected downstream → final fallback message reached the farmer
-      // instead of the clarification chips.
-      // ─────────────────────────────────────────────────────────────────────
       const invariantObsCount = Array.from(allObservationsForPreAuth || []).length;
       const invariantRulesMatched = (layeredRuleResult as any)?.rules_matched
         ?? (layeredRuleResult as any)?.matched_rules?.length
@@ -10536,11 +9194,7 @@ export class AIAgentOrchestrator {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
         }
         
-        // ═══════════════════════════════════════════════════════════════════
         // [STEP 7 REMOVED] Local PHI + Pollinator enforcement.
-        // Both are now handled inside SafetyGuardian.verifySafety() below
-        // (Gate 3: FoodSafetyCheck / PHI, Gate 4: EnvironmentalCheck / POLLINATOR_RISK).
-        // ═══════════════════════════════════════════════════════════════════
         let immediateSafetyStatus = 'APPROVED';
         const immediateChemicals = this.extractChemicalRecommendations(decisionOutput);
 
@@ -10647,11 +9301,7 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: PHOTO REQUEST ON LOW CONFIDENCE + NO RULES
-      // If rule engine returned no recommendations AND confidence is low,
-      // request a photo to help with diagnosis
-      // ═══════════════════════════════════════════════════════════════════════════
       const rulesAppliedCount = decisionOutput.rules_applied?.length || 0;
       const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision;
       const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
@@ -10733,10 +9383,7 @@ export class AIAgentOrchestrator {
         console.log(`\n📸 [PHASE-19] Low confidence + no rules matched - requesting photo`);
         console.log(`   Rules applied: ${rulesAppliedCount}, Confidence: ${decisionOutput.confidence_score || 0}`);
         
-        // ═══════════════════════════════════════════════════════════════════════════
         // SSOT: Photo request uses i18n_keys - actual translations loaded by UI layer
-        // from observation_translations and message_translations tables
-        // ═══════════════════════════════════════════════════════════════════════════
         return {
           type: 'PHOTO_REQUEST',
           session_id: sessionId,
@@ -10767,18 +9414,11 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // MANDATORY FALLBACK: Generate SSOT-compliant clarification from decision_rules
-      // when zero rules matched and no primary decision exists
-      // This prevents the function from timing out without a response
-      // ═══════════════════════════════════════════════════════════════════════════
       if (hasNoRecommendations && !hasNoPhoto) {
         console.warn(`\n⚠️ [MANDATORY_FALLBACK] No rules matched with photo present - generating SSOT clarification`);
         
         // CANONICAL-CODE CONTRACT (2026-07-26): decision_rules.crop_code is stored
-        // lower_snake_case FULL NAME ('rice', 'sugarcane', 'all') — never uppercase,
-        // never a short code. The previous `.toUpperCase() || 'SC'` guaranteed zero
-        // crop-scoped rows (only the 64 `all` rows could ever match).
         const rawCropForFallback =
           (canonicalContext as any)?.crop_code ??
           landContext?.current_crop ??
@@ -10874,9 +9514,7 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: Enhance decision with photo analysis results if available
-      // ═══════════════════════════════════════════════════════════════════════════
       if (photoAnalysisResult && photoAnalysisResult.success) {
         console.log(`\n📸 [PHASE-19] Enhancing decision with photo analysis...`);
         
@@ -10900,10 +9538,7 @@ export class AIAgentOrchestrator {
         agentsUsed.push('PHOTO_ENHANCED');
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // P0-E: INTENT LOCK ENFORCEMENT - Filter actions by locked intent
-      // CRITICAL: Prevent actions outside the intent scope from reaching the farmer
-      // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n🔒 [${traceId}] P0-E: Applying Intent Lock Filter...`);
       
       // PHASE-16: Safe array handling for actions collection
@@ -10988,11 +9623,7 @@ export class AIAgentOrchestrator {
         console.log(`   ✅ P0-E: All ${allActions.length} actions passed intent lock filter`);
       }
       
-      // ========================================
       // PHASE 5: SAFETY VERIFICATION
-      // [STEP 7 REMOVED] PHASE 5.1 (PHI) and PHASE 5.2 (Pollinator) local pre-checks —
-      // SafetyGuardian.verifySafety() below owns both gates end-to-end.
-      // ========================================
       console.log('\n🛡️ PHASE 5: Safety Verification (SafetyGuardian single-gate)...');
       const chemicalRecommendations = this.extractChemicalRecommendations(decisionOutput);
 
@@ -11077,19 +9708,12 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // ========================================
       // PHASE 6: QUESTION CLASSIFICATION + FARMER COMMUNICATION
-      // ========================================
-      // ═══════════════════════════════════════════════════════════════════════════
-      // LAYER 4: LLM RESPONSE FORMATTING (Render-only mode)
-      // ═══════════════════════════════════════════════════════════════════════════
       const layer4Start = Date.now();
       console.log('\n🎨 [LAYER 4] LLM Response Formatting...');
       console.log('\n📋 PHASE 6A: Classifying Question Type...');
       
       // Classify the question to determine which sections to show
-      // CRITICAL FIX: Pass decisionOutput for robust template selection
-      // This ensures rule-based decisions always get TREATMENT_FULL template
       const questionClassification = classifyQuestion(
         nluWithRuleMapping.intent_classification?.primary_intent || 'GENERAL_QUERY',
         nluWithRuleMapping,
@@ -11124,10 +9748,7 @@ export class AIAgentOrchestrator {
       console.log('   ✅ Message generated with', farmerCommunication.metadata?.sections_count || 'all', 'sections');
       console.log('   ✅ Sections:', farmerCommunication.metadata?.sections_included?.join(', ') || 'all');
       
-      // ========================================
       // PHASE 7: SAVE & SCHEDULE FOLLOW-UPS (NON-BLOCKING)
-      // CRITICAL FIX: Wrapped in try/catch to prevent blocking farmer response
-      // ========================================
       console.log('\n💾 PHASE 7: Saving Decision & Scheduling Follow-ups...');
       
       // NON-BLOCKING: Fire-and-forget with error logging
@@ -11147,10 +9768,7 @@ export class AIAgentOrchestrator {
       
       console.log('   ✅ Decision save initiated (non-blocking)');
       
-      // ========================================
       // PHASE 7B: FEEDBACK LEARNING INTEGRATION
-      // CRITICAL FIX: Connect Feedback Learning Engine
-      // ========================================
       console.log('\n🧠 PHASE 7B: Recording for Feedback Learning...');
       try {
         // Record the decision outcome for learning
@@ -11179,9 +9797,7 @@ export class AIAgentOrchestrator {
         console.warn('   ⚠️ Feedback recording failed (non-blocking):', feedbackError);
       }
       
-      // ========================================
       // PHASE 8: BUILD DATA AUDIT & RETURN TO FARMER
-      // ========================================
       const processingTime = Date.now() - startTime;
       console.log('\n✅ Orchestrator: Flow complete!');
       console.log(`   Template used: ${questionClassification.template_type}`);
@@ -11193,10 +9809,7 @@ export class AIAgentOrchestrator {
       console.log(`   📊 Data Quality Score: ${dataAudit.summary.data_quality_score}%`);
       console.log(`   📊 Available Sources: ${dataAudit.summary.available_sources}/${dataAudit.summary.total_data_sources}`);
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Complete audit logging before returning
-      // This ensures every turn is persisted for forensic tracing
-      // ═══════════════════════════════════════════════════════════════════════════
       try {
         // Log symbolic decision output
         auditLogger.logSymbolicDecision({
@@ -11228,14 +9841,10 @@ export class AIAgentOrchestrator {
       }
       
       // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      // DB SSOT: emergency codes come from public.emergency_observation_codes
-      // via getEmergencyObsSet() (cold-boot fallback to _LEGACY_EMERGENCY_OBS_CODES)
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
       const isEmergencyMain = obsArrayMain.some(code => getEmergencyObsSet().has(code));
 
-      // ═══════════════════════════════════════════════════════════════════════
       // GRAPH CONTRACT — FINAL_RESPONSE + invariant assertions
-      // ═══════════════════════════════════════════════════════════════════════
       try {
         const evidence = classifyEvidence(obsArrayMain);
         const snapshot: InvariantSnapshot = {
@@ -11263,9 +9872,6 @@ export class AIAgentOrchestrator {
         checkGraphInvariants(snapshot);
 
         // FIX 5 (surgical) — final graph invariant. If we have real symptoms
-        // AND a crop, the farmer must NEVER receive a generic "provide more
-        // details" response — that's a symbolic-brain failure, not a farmer
-        // problem. Log loudly so it surfaces in every log scan.
         try {
           const respText = String(
             (farmerCommunication as any)?.message ??
@@ -11323,9 +9929,7 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Get current agricultural season based on date
-   */
+  // Get current agricultural season based on date
   private getCurrentSeason(): string {
     const month = new Date().getMonth() + 1;
     if (month >= 6 && month <= 9) return 'KHARIF';
@@ -11333,10 +9937,7 @@ export class AIAgentOrchestrator {
     return 'ZAID';
   }
   
-  /**
-   * Process NLU (now async for AI-powered understanding)
-   * CRITICAL FIX: Now accepts landContext to pre-populate crop/stage for rule matching
-   */
+  // Process NLU (now async for AI-powered understanding)
   private async processNLU(
     message: string,
     sessionId: string,
@@ -11365,18 +9966,14 @@ export class AIAgentOrchestrator {
     });
   }
   
-  /**
-   * Normalize crop name to crop code
-   */
+  // Normalize crop name to crop code
   private normalizeCropCode(cropName?: string): string | undefined {
     if (!cropName) return undefined;
     // Use the unified crop code normalizer (SSOT) instead of hardcoded map
     return unifiedNormalizeCropCode(cropName);
   }
   
-  /**
-   * Process Visual Analysis
-   */
+  // Process Visual Analysis
   private async processVisual(
     photoUrl: string,
     textContext: string
@@ -11392,10 +9989,7 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Load conversation context with comprehensive land data
-   * CRITICAL FIX: Now passes landId and fetches soil/NDVI/crop schedule data
-   */
+  // Load conversation context with comprehensive land data
   private async loadContext(
     sessionId: string,
     farmerId: string,
@@ -11449,15 +10043,8 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * CRITICAL FIX: Fetch comprehensive land context including soil, NDVI history, and crop schedule
-   * Now includes NDVI full history for trend analysis and rule evaluation
-   */
-  /**
-   * LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper.
-   * Delegates to fetchComprehensiveLandContextUncached at most once per
-   * (landId, farmerId) per turn. Memo is reset at the top of orchestrate().
-   */
+  // CRITICAL FIX: Fetch comprehensive land context including soil, NDVI history, and crop schedule
+  // LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper.
   private fetchComprehensiveLandContext(landId: string, farmerId: string): Promise<any> {
     const memo: Map<string, Promise<any>> | undefined = (this as any)._turnMemo;
     const key = `land:${landId}:${farmerId}`;
@@ -11474,10 +10061,7 @@ export class AIAgentOrchestrator {
 
   private async fetchComprehensiveLandContextUncached(landId: string, farmerId: string): Promise<any> {
     try {
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL SECURITY FIX: Validate farmer ownership FIRST before fetching data
-      // This prevents cross-farmer/cross-tenant data access attacks
-      // ═══════════════════════════════════════════════════════════════════════════
       
       // PARALLEL FETCHING: Fetch all data simultaneously for speed
       const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult] = await Promise.all([
@@ -11542,16 +10126,7 @@ export class AIAgentOrchestrator {
         return null;
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // PR-4a · SINGLE-BRAIN STAGE SSOT
-      // Stage is produced EXCLUSIVELY by resolve_crop_phenology() (RPC below).
-      // Any hardcoded DAS → stage ladder here would be a competing brain and
-      // is explicitly forbidden by the neuro-symbolic contract.
-      // We only compute DAS locally as a diagnostic fallback for logging and
-      // for the `authoritativeDas` chain when the RPC returns no row; the RPC
-      // itself coalesces lands.planting_date > lands.last_sowing_date >
-      // crop_schedules.sowing_date and remains the authoritative producer.
-      // ═══════════════════════════════════════════════════════════════════════════
       let daysSinceSowing: number | null = null;
       const growthStage: string | null = null; // never set locally — SSOT only
 
@@ -11577,11 +10152,7 @@ export class AIAgentOrchestrator {
       // CRITICAL FIX: Calculate NDVI trend from history
       const ndviTrend = this.calculateNDVITrend(ndviHistory || []);
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE A — Runtime SSOT: resolve_crop_phenology()
-      // Authoritative stage from crop_stage_master ontology.
-      // Overrides any client-heuristic stage stored on lands.crop_stage.
-      // ═══════════════════════════════════════════════════════════════════════════
       let phenology: any = null;
       let phenErr: any = null;
       let phenThrew: Error | null = null;
@@ -11631,15 +10202,7 @@ export class AIAgentOrchestrator {
         );
       }
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE 1 — Immutable BiologicalState (single writer = resolve_crop_phenology)
-      // Build EXACTLY ONCE here. Downstream code must read from
-      // landContext.biological_state instead of recomputing growth_stage.
-      // ═══════════════════════════════════════════════════════════════════════════
-      // BUG-2 FIX: adjudicate GDD-derived stage vs static-DAS stage BEFORE the
-      // BiologicalState invariant locks. Runtime only — no seed data, no
-      // per-crop branches. If a higher-confidence signal exists (GDD model,
-      // completed stage transitions) we overwrite the local phenology row.
       if (phenology) {
         try {
           const recon = await reconcilePhenology(this.supabase, {
@@ -11671,15 +10234,7 @@ export class AIAgentOrchestrator {
           console.warn(`[PHENOLOGY_RECONCILIATION] failed err=${(e as Error).message}`);
         }
       }
-      // ═════════════════════════════════════════════════════════════════════
       // v5-P8 — Biological Constraint Graph
-      // Build a lightweight canonical field-twin DRAFT from the data already
-      // loaded above (soil_health + ndvi_data + phenology + schedule + land).
-      // DB rules (decision_rules.category='BIOLOGICAL_CONSTRAINT') evaluate
-      // dotted-path predicates against this draft and emit constraints that
-      // decay predicted_stage_confidence inside buildBiologicalState().
-      // No agronomy in TS — all thresholds/codes/severities come from DB.
-      // ═════════════════════════════════════════════════════════════════════
       const bioCropCode: string | null =
         (phenology?.crop_code as string | null | undefined) ??
         (land?.current_crop as string | null | undefined) ??
@@ -11709,8 +10264,6 @@ export class AIAgentOrchestrator {
         } : { value: null, reliability: null, date: null },
         weather: {
           // rainfall_after_sowing_mm & forecast_7d are hydrated later in the
-          // full canonical_context; DB rules that need them will simply
-          // return undefined here and not match. Safe for v5-P8.
         },
         biological_state: {
           predicted_stage: phenology?.growth_stage ?? null,
@@ -11761,10 +10314,7 @@ export class AIAgentOrchestrator {
 
 
 
-      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Prioritize crop_schedules, but FALLBACK to lands.current_crop
-      // This ensures crop context is available even without a formal schedule
-      // ═══════════════════════════════════════════════════════════════════════════
       const effectiveCropName = cropSchedule?.crop_name || land.current_crop || null;
       const effectiveCropVariety = cropSchedule?.crop_variety || null;
 
@@ -11780,12 +10330,7 @@ export class AIAgentOrchestrator {
           `authority=${stageAuthority}`,
       );
 
-      // ═══════════════════════════════════════════════════════════════════════
       // PHASE C — Morphology reconciliation
-      // Compare observed NDVI (and any user-supplied height/leaf count later)
-      // against expected bands from the phenology SSOT. Result is EVIDENCE,
-      // not a decision — feeds symbolic facts + confidence chain only.
-      // ═══════════════════════════════════════════════════════════════════════
       const ndviLatestValue: number | null = Array.isArray(ndviHistory) && ndviHistory.length > 0
         ? (ndviHistory[0]?.ndvi_value ?? ndviHistory[0]?.value ?? null)
         : null;
@@ -11826,9 +10371,6 @@ export class AIAgentOrchestrator {
         // NEW: Track data source for debugging
         crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
         // PHASE-1 SSOT: NEVER silently fall back to LAND_DATA. When BiologicalState
-        // is unavailable, mark the source explicitly with a machine-readable reason
-        // so [STAGE_AUTHORITY_VIOLATION] fires and downstream cannot confuse a
-        // heuristic stage for the biological SSOT.
         source: biological_state ? 'BIOLOGICAL_STATE' : 'BIOLOGICAL_STATE_UNAVAILABLE',
         source_fallback_reason: biological_state
           ? null
@@ -11925,14 +10467,8 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Calculate NDVI trend from historical data
-   */
-  /**
-   * Calculate NDVI trend from historical data
-   * REFACTORED: Returns English canonical symbols (NDVI_IMPROVING, NDVI_DECLINING, NDVI_STABLE)
-   * Narration layer handles translation to farmer language
-   */
+  // Calculate NDVI trend from historical data
+  // Calculate NDVI trend from historical data
   private calculateNDVITrend(history: Array<{ ndvi_value?: number; mean_ndvi?: number; captured_at: string }>): {
     direction: 'IMPROVING' | 'STABLE' | 'DECLINING';
     slope: number;
@@ -11986,21 +10522,10 @@ export class AIAgentOrchestrator {
     return { direction, slope: -slope, description };  // Negate slope for intuitive interpretation
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PR-4a · REMOVED: private calculateGrowthStage(daysSinceSowing, cropName)
-  // Rationale: this 85-line ICAR ladder was a second brain competing with the
-  // authoritative SSOT `public.resolve_crop_phenology(land_id)` (which joins
-  // crop_stage_master + variety_phenology_profile + evaluate_stage_transitions
-  // and coalesces lands.planting_date > lands.last_sowing_date >
-  // crop_schedules.sowing_date). Any code path that needs a stage MUST read
-  // `biological_state.growth_stage` or the phenology RPC row. No local
-  // recomputation is permitted. See mem://architecture/single-brain-stage-ssot.
-  // ═══════════════════════════════════════════════════════════════════════════
 
   
-  /**
-   * Get NDVI health status
-   */
+  // Get NDVI health status
   private getNDVIHealthStatus(ndviValue: number): string {
     if (ndviValue >= 0.6) return 'excellent';
     if (ndviValue >= 0.4) return 'healthy';
@@ -12009,9 +10534,7 @@ export class AIAgentOrchestrator {
     return 'poor';
   }
   
-  /**
-   * Build data audit object for debugging - shows what data was found/missing
-   */
+  // Build data audit object for debugging - shows what data was found/missing
   private buildDataAudit(landContext: any, weatherData: any): DataAudit {
     const now = new Date();
     
@@ -12120,15 +10643,8 @@ export class AIAgentOrchestrator {
     };
   }
   
-  /**
-   * Fetch weather data - NOW CONNECTED TO REAL DATA
-   * CRITICAL FIX: Returns CANONICAL WeatherData format for MultiModalFusion
-   * Format: { current: { temperature_c, humidity_percent, wind_speed_kmh, rainfall_last_24h_mm },
-   *           forecast_24h: { rain_probability_percent, temperature_max_c, temperature_min_c, wind_max_kmh } }
-   */
-  /**
-   * LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper (see land ctx above).
-   */
+  // Fetch weather data - NOW CONNECTED TO REAL DATA
+  // LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper (see land ctx above).
   private fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
     const memo: Map<string, Promise<any>> | undefined = (this as any)._turnMemo;
     const key = `weather:${landId || 'none'}`;
@@ -12280,9 +10796,7 @@ export class AIAgentOrchestrator {
   // normalizeWeatherData removed — was dead code (never called). 
   // fetchWeatherData now returns canonical format directly from weather_current table.
   
-  /**
-   * Fetch historical data - ENHANCED: Now queries dedicated soil_health and ndvi_data tables
-   */
+  // Fetch historical data - ENHANCED: Now queries dedicated soil_health and ndvi_data tables
   private async fetchHistoricalData(farmerId: string, landId?: string): Promise<any> {
     try {
       const result: any = {
@@ -12381,10 +10895,7 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // P0-B: LAND-FILTER HISTORICAL ADVISORIES
-      // CRITICAL: Only fetch advisories for THIS LAND to prevent cross-land contamination
-      // ═══════════════════════════════════════════════════════════════════════════
       let advisoryQuery = this.supabase
         .from('advisory_audit_log')
         .select('advisory_id, causes, actions, risk_level, generated_at, land_id')
@@ -12420,11 +10931,7 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Build rule engine input from fused data
-   * ENHANCED: Uses land's current crop, crop-stage-specific NPK, and crop-specific NDVI thresholds
-   * CRITICAL FIX: Now accepts landContext directly since ContextState doesn't contain it
-   */
+  // Build rule engine input from fused data
   private buildRuleEngineInput(
     fused: FusedIntelligence,
     diagnostic: DiagnosticState,
@@ -12434,10 +10941,7 @@ export class AIAgentOrchestrator {
     landContext?: any,  // CRITICAL FIX: Accept landContext directly
     canonicalState?: any  // CRITICAL FIX: Accept enriched canonical state for crop fallback
   ): RuleExecutionInput {
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Use landContext parameter directly (NOT context.land_context)
-    // The ContextState type does NOT include land_context - this was the root cause bug!
-    // ═══════════════════════════════════════════════════════════════════════════
     
     const landCurrentCrop = landContext?.current_crop;
     // FIX 2 (STAGE INVARIANT): BiologicalState is the sole authority for stage.
@@ -12459,8 +10963,6 @@ export class AIAgentOrchestrator {
     const nluEntities = nluMapping?.entities || {};
     
     // CRITICAL FIX: Use canonical state crop (enriched from LLM semantic extractor + induction)
-    // as fallback when land context has no crop. This ensures the crop detected from the
-    // farmer's message (e.g., "my sugarcane...") flows to the rule engine.
     const canonicalCrop = canonicalState?.crop_type && canonicalState.crop_type !== 'UNKNOWN' 
       ? canonicalState.crop_type : undefined;
     
@@ -12486,11 +10988,7 @@ export class AIAgentOrchestrator {
                          context.crop_context?.stage || 
                          'VEGETATIVE';
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // P0-C: UNIFIED CODE NORMALIZATION via entity-code-mapper.ts
-    // This is the SINGLE CHOKE POINT for all entity code normalization
-    // Ensures decision graph receives expected codes (e.g., SHOOT_BORER not SUGARCANE_SHOOT_BORER)
-    // ═══════════════════════════════════════════════════════════════════════════
     
     // First normalize using type-mappers (basic normalization)
     const basicCropCode = normalizeTypeCropCode(rawCropCode);
@@ -12498,10 +10996,6 @@ export class AIAgentOrchestrator {
     const basicDiseaseCode = normalizeDiseaseCode(rawDiseaseCode);
     const severity = normalizeSeverity(rawSeverity);
     // FIX 2: normalizeCropStage() collapses distinct biological stages (e.g.
-    // ACTIVE_TILLERING/GRAND_GROWTH/RICE_TRANSPLANTING → VEGETATIVE), which
-    // silently overwrites BiologicalState. When BiologicalState is present,
-    // we KEEP its stage verbatim and only emit a normalized form for legacy
-    // fallback code paths (never used to override the authoritative value).
     const normalizedStage = normalizeCropStage(rawCropStage);
     const cropStage = bioStageAuthoritative
       ? String(bioStageAuthoritative).toUpperCase()
@@ -12544,9 +11038,7 @@ export class AIAgentOrchestrator {
       source: landCurrentCrop ? 'LAND_CONTEXT' : (nluEntities.crop_code ? 'NLU' : 'FUSION')
     });
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Calculate CROP + STAGE SPECIFIC field states using landContext
-    // ═══════════════════════════════════════════════════════════════════════════
     
     const fieldStates = calculateFieldStates(landContext, cropCode, cropStage);
     logStateCalculation(cropCode, fieldStates, cropStage);
@@ -12632,9 +11124,7 @@ export class AIAgentOrchestrator {
     };
   }
   
-  /**
-   * Get farmer profile
-   */
+  // Get farmer profile
   private async getFarmerProfile(
     farmerId: string,
     preferredLanguage?: string
@@ -12665,10 +11155,7 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Save complete decision flow - NON-BLOCKING with error tracing
-   * CRITICAL FIX: This method never throws - errors are logged to DB for debugging
-   */
+  // Save complete decision flow - NON-BLOCKING with error tracing
   private saveDecisionFlowNonBlocking(data: {
     session_id: string;
     farmer_id: string;
@@ -12744,9 +11231,7 @@ export class AIAgentOrchestrator {
     })();
   }
   
-  /**
-   * Log decision save errors for debugging
-   */
+  // Log decision save errors for debugging
   private async logDecisionSaveError(
     traceId: string,
     sessionId: string,
@@ -12773,9 +11258,7 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Schedule follow-up reminders
-   */
+  // Schedule follow-up reminders
   private async scheduleFollowUps(
     sessionId: string,
     decisionId: string,
@@ -12812,16 +11295,9 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Build NLU output with rule mapping for diagnostic controller
-   * CRITICAL GAP 1 FIX: Now properly calls resolveRuleModules() to populate requiredRuleModules
-   */
+  // Build NLU output with rule mapping for diagnostic controller
   private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence, frozenIntent?: string | null): any {
     // Extract intent for rule resolution
-    // FORENSIC FIX (2026-07): Prefer the frozen graph intent (set by intent
-    // freeze) over the raw NLU classifier. Without this, downstream logs
-    // "Resolved 6 rule modules for intent: UNKNOWN" even after we've locked
-    // intent=DIAGNOSTIC_INQUIRY.
     const nluIntent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
     const intent = (frozenIntent && frozenIntent !== 'UNKNOWN' ? frozenIntent : nluIntent) as NLUIntent;
     
@@ -12907,10 +11383,7 @@ export class AIAgentOrchestrator {
     };
   }
   
-  /**
-   * Create fallback NLU output when NLU agent fails (Gap 6 fix)
-   * CRITICAL FIX: Now accepts landContext to populate crop info even when NLU fails
-   */
+  // Create fallback NLU output when NLU agent fails (Gap 6 fix)
   private createFallbackNLUOutput(
     message: string, 
     language?: string,
@@ -12981,9 +11454,7 @@ export class AIAgentOrchestrator {
     } as NLUOutput;
   }
   
-  /**
-   * Map diagnostic action to mode
-   */
+  // Map diagnostic action to mode
   private mapDiagnosticAction(action: string): string {
     switch (action) {
       case 'ASK_CLARIFICATION': return 'GATHERING_INFO';
@@ -12995,9 +11466,7 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Create fallback context when Context Manager fails (Gap 6 fix)
-   */
+  // Create fallback context when Context Manager fails (Gap 6 fix)
   private createFallbackContext(sessionId: string, farmerId: string): ContextState {
     console.log('   📋 Creating fallback context');
     return {
@@ -13012,10 +11481,7 @@ export class AIAgentOrchestrator {
     } as ContextState;
   }
   
-  /**
-   * Create fallback fused intelligence when Fusion Engine fails (Gap 6 fix)
-   * CRITICAL FIX: Now accepts landContext to populate crop/soil/NDVI even when fusion fails
-   */
+  // Create fallback fused intelligence when Fusion Engine fails (Gap 6 fix)
   private createFallbackFusedIntelligence(
     sessionId: string, 
     message: string, 
@@ -13115,9 +11581,7 @@ export class AIAgentOrchestrator {
     } as FusedIntelligence;
   }
 
-  /**
-   * Handle orchestration errors - ENHANCED: Provides helpful advice instead of just error
-   */
+  // Handle orchestration errors - ENHANCED: Provides helpful advice instead of just error
   private handleOrchestrationError(
     error: Error,
     sessionId: string,
@@ -13130,17 +11594,7 @@ export class AIAgentOrchestrator {
     console.error('❌ Orchestration error:', error.message);
     console.error('   Stack:', error.stack?.substring(0, 500));
 
-    // ═══════════════════════════════════════════════════════════════════════
     // GRAPH_PIPELINE_BYPASSED invariant reconciliation.
-    // The [ORCHESTRATOR_EXIT] audit in index.ts fails closed when it sees
-    // `_evidenceFrozen=true` but `_graphExecuted=false` on a diagnostic
-    // intent, because that pattern normally means a silent early return
-    // skipped the hypothesis graph. A genuine SYSTEM_ERROR fallback (this
-    // path) is a legitimate exit that already emits FINAL_RESPONSE_CONTRACT
-    // with fallback_reason=SYSTEM_ERROR above. Reset the runtime flags so
-    // the audit does not double-report the failure as a bypass and mask
-    // the real error with a misleading 500 GRAPH_PIPELINE_BYPASSED.
-    // ═══════════════════════════════════════════════════════════════════════
     try {
       (this as any)._evidenceFrozen = false;
       (this as any)._graphExecuted  = false;
@@ -13150,8 +11604,6 @@ export class AIAgentOrchestrator {
 
 
     // GRAPH CONTRACT — system-error fallback is legitimate. Emit the contract
-    // line so downstream log analysis attributes the generic_template branch
-    // to SYSTEM_ERROR rather than a silent symbolic-decision swap.
     try {
       emitFinalResponseContract({
         trace_id: `err_${sessionId}`,
@@ -13184,10 +11636,7 @@ export class AIAgentOrchestrator {
       .then(() => console.log(`   📝 Error logged to ai_chat_messages.error_details`))
       .catch(() => {});
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PRODUCTION FIX: Generate context-aware helpful response even on error
-    // Instead of generic message, provide stage-aware monitoring advice
-    // ═══════════════════════════════════════════════════════════════════════════
     const safeErrorMessage = typeof farmerMessage === 'string' ? farmerMessage : '';
     const messageLower = safeErrorMessage.toLowerCase();
     let fallbackAdvice = '';
@@ -13198,11 +11647,7 @@ export class AIAgentOrchestrator {
       const stage = landContext.growth_stage;
       const days = landContext.days_since_sowing || '?';
       
-      // ═══════════════════════════════════════════════════════════════════════════
       // REFACTORED: Use i18n keys instead of hardcoded Marathi/Hindi text
-      // The actual text rendering happens in the narration/UI layer
-      // This ensures SSOT compliance and easier maintenance
-      // ═══════════════════════════════════════════════════════════════════════════
       
       const stageUpper = stage.toUpperCase();
       
@@ -13294,14 +11739,9 @@ export class AIAgentOrchestrator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // P0 HELPER METHODS - PHI, Pollinator, GDD Support
-  // ═══════════════════════════════════════════════════════════════════════════
   
-  /**
-   * Fetch weather history for GDD calculation (last 14 days)
-   * FIXED: Now uses weather_observations table (the correct one)
-   */
+  // Fetch weather history for GDD calculation (last 14 days)
   private async fetchWeatherHistoryForGDD(lat?: number, lon?: number, landId?: string): Promise<Array<{ date: string; tmax: number; tmin: number }>> {
     if (!lat || !lon) {
       // Return estimated average temperatures if no coordinates
@@ -13390,9 +11830,7 @@ export class AIAgentOrchestrator {
     return this.fetchWeatherHistoryForGDD(undefined, undefined);
   }
   
-  /**
-   * Get seasonal average temperatures for GDD fallback
-   */
+  // Get seasonal average temperatures for GDD fallback
   private getSeasonalAverageTemps(month: number): { tmax: number; tmin: number } {
     // Average temps for central/western India
     const seasonalTemps: Record<number, { tmax: number; tmin: number }> = {
@@ -13412,9 +11850,7 @@ export class AIAgentOrchestrator {
     return seasonalTemps[month] || { tmax: 32, tmin: 20 };
   }
   
-  /**
-   * Extract chemical recommendations from decision output
-   */
+  // Extract chemical recommendations from decision output
   private extractChemicalRecommendations(decisionOutput: DecisionOutput): string[] {
     const chemicals: string[] = [];
     
@@ -13438,9 +11874,7 @@ export class AIAgentOrchestrator {
     return [...new Set(chemicals)]; // Remove duplicates
   }
   
-  /**
-   * Calculate days to harvest from expected harvest date
-   */
+  // Calculate days to harvest from expected harvest date
   private calculateDaysToHarvest(expectedHarvestDate: string): number {
     const harvest = new Date(expectedHarvestDate);
     const today = new Date();
@@ -13452,10 +11886,7 @@ export class AIAgentOrchestrator {
   // owns product substitution and blocked_actions population end-to-end.
 
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 8: GREETING RESPONSE GENERATOR - SYMBOLIC ONLY
-  // REFACTORED: Returns i18n_key, narration layer handles text
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateGreetingResponse(
     sessionId: string,
@@ -13528,10 +11959,7 @@ export class AIAgentOrchestrator {
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // P1-2: AUTHORITY BLOCK MESSAGE GENERATOR - REFACTORED TO SYMBOLIC
-  // Returns i18n_key + reason_code, narration layer renders text
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private generateAuthorityBlockMessage(
     authority: string,
@@ -13548,9 +11976,7 @@ export class AIAgentOrchestrator {
     return `[i18n:${i18nKey}][reason:${reason}]`;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // P1-2: LAND STRESS WARNING - REFACTORED TO SYMBOLIC
-  // ═══════════════════════════════════════════════════════════════════════════
   
   private prependLandStressWarning(
     originalMessage: string,

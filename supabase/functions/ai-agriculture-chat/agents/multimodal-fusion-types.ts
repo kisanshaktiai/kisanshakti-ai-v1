@@ -1,15 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * MULTI-MODAL FUSION ENGINE - Type Definitions
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Types for intelligently combining text, images, sensor data, weather APIs,
- * and satellite imagery into unified agricultural intelligence.
- */
+// MULTI-MODAL FUSION ENGINE - Type Definitions
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT SOURCES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface MultiModalInput {
   session_id: string;
@@ -160,9 +151,7 @@ export interface HistoricalData {
   previous_crops?: Array<{ crop: string; year: number; yield_kg_per_acre?: number }>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONFLICT DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type ConflictType = 
   | 'TEXT_VS_VISUAL'
@@ -198,9 +187,7 @@ export interface ResolvedConflict extends DetectedConflict {
   confidence_after_resolution: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROSS-VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type AgreementLevel = 'STRONG' | 'MODERATE' | 'WEAK' | 'CONFLICTING';
 
@@ -225,9 +212,7 @@ export interface CrossValidationResult {
   average_confidence: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GAP FILLING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type InferenceMethod = 
   | 'DAYS_AFTER_SOWING'
@@ -257,9 +242,7 @@ export interface GapFillingResult {
   total_gaps_filled: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UNIFIED CONTEXT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface UnifiedCropContext {
   code: string;
@@ -343,9 +326,7 @@ export interface UnifiedContext {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DATA QUALITY ASSESSMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type DataSufficiency = 'SUFFICIENT' | 'MARGINAL' | 'INSUFFICIENT';
 
@@ -365,9 +346,7 @@ export interface DataQualityAssessment {
   reliability_score: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FUSION OUTPUT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FusionRecommendations {
   additional_data_needed: string[];
@@ -424,9 +403,7 @@ export interface FusedIntelligence {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TRUST HIERARCHY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const TRUST_HIERARCHY: { [key: string]: number } = {
   // Most trusted (objective measurements)
@@ -451,9 +428,7 @@ export const MODALITY_NAMES = {
   historical: 'Historical_Records'
 } as const;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONFIDENCE BOOST RULES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const CONFIDENCE_BOOST_RULES = {
   // When multiple sources agree
@@ -471,9 +446,7 @@ export const CONFIDENCE_BOOST_RULES = {
   HIGH_CONFIDENCE_THRESHOLD: 0.80
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP STAGE INFERENCE RULES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const CROP_STAGE_RULES: { [cropCode: string]: { [stage: string]: { minDays: number; maxDays: number } } } = {
   'COTTON': {

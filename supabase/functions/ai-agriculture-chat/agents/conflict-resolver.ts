@@ -1,11 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CONFLICT RESOLVER - Priority-Based Decision Resolution
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Resolves conflicts between multiple rule results using priority hierarchy.
- * P0 (Emergency) > P1 (Regulatory) > P2 (Weather) > P3 (Stage) > P4 (Economic) > P5 (IPM) > P6 (Optimization)
- */
+// CONFLICT RESOLVER - Priority-Based Decision Resolution
 
 import type {
   DecisionsByPriority,
@@ -33,18 +26,14 @@ export interface ResolvedDecision {
   next_safe_window?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN CONFLICT RESOLUTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecision {
   const blocked_actions: BlockedAction[] = [];
   const secondary_actions: SecondaryAction[] = [];
   const warnings: string[] = [];
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 1: Check P0 Emergency Rules - Block EVERYTHING if triggered
-  // ─────────────────────────────────────────────────────────────────────────
   const p0Block = findBlockingRule(decisions.P0_emergency);
   if (p0Block) {
     return {
@@ -61,9 +50,7 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
     };
   }
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 2: Check P1 Regulatory Rules - Block if violation
-  // ─────────────────────────────────────────────────────────────────────────
   const p1Block = findBlockingRule(decisions.P1_regulatory);
   if (p1Block) {
     return {
@@ -80,23 +67,17 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
     };
   }
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 3: Collect blocked actions from P3
-  // ─────────────────────────────────────────────────────────────────────────
   decisions.P3_crop_stage
     .filter(r => r.action === 'BLOCK')
     .forEach(r => blocked_actions.push(createBlockedAction(r, 'P3_CROP_STAGE')));
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 4: Collect warnings from P3-P6
-  // ─────────────────────────────────────────────────────────────────────────
   [...decisions.P3_crop_stage, ...decisions.P4_economic, ...decisions.P5_ipm, ...decisions.P6_optimization]
     .filter(r => r.action === 'WARN')
     .forEach(r => warnings.push(r.reason));
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 5: Collect viable recommendations from P3-P6
-  // ─────────────────────────────────────────────────────────────────────────
   const viableActions: RuleResult[] = [
     ...decisions.P3_crop_stage.filter(r => r.action === 'RECOMMEND'),
     ...decisions.P4_economic.filter(r => r.action === 'RECOMMEND'),
@@ -115,17 +96,10 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
     };
   }
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 6: SELECT BEST ACTION FIRST - then apply weather delay ONLY if it's spray
-  // CRITICAL FIX: This ensures non-spray actions (fertilizer, monitoring, cultural)
-  // are never blocked by weather when spray alternatives exist
-  // ─────────────────────────────────────────────────────────────────────────
   const selectedAction = selectBestAction(viableActions);
 
   // CRITICAL FIX (Forensic 2026-06-28): If no viable action has a real action_type,
-  // do NOT synthesise a URGENT_ACTION from product_type. Return a monitoring-only
-  // decision so the orchestrator's HARD INVARIANT fails the "has actionable rule"
-  // check and falls through to deferred clarification / chip rendering.
   if (!selectedAction) {
     return {
       status: 'SUCCESS',
@@ -140,9 +114,7 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
 
   console.log(`🎯 [ConflictResolver] Selected action: ${selectedAction.cause}, isSpray: ${selectedIsSpray}`);
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 7: Check P2 Weather Safety - ONLY delay if selected action is spray-type
-  // ─────────────────────────────────────────────────────────────────────────
   const p2Delay = findDelayRule(decisions.P2_weather_safety);
   
   if (p2Delay) {
@@ -219,9 +191,7 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
     }
   }
   
-  // ─────────────────────────────────────────────────────────────────────────
   // STEP 8: No weather delay applies - return selected action as SUCCESS
-  // ─────────────────────────────────────────────────────────────────────────
   
   // Convert remaining viable actions to secondary recommendations
   // CRITICAL FIX: Never use reason_mr/hi as action name - those are user messages, not product/action identifiers
@@ -249,9 +219,7 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function findBlockingRule(rules: RuleResult[]): RuleResult | undefined {
   return rules.find(r => r.action === 'BLOCK');
@@ -261,10 +229,7 @@ function findDelayRule(rules: RuleResult[]): RuleResult | undefined {
   return rules.find(r => r.action === 'DELAY');
 }
 
-/**
- * CRITICAL FIX: Check if a rule result is for a spray-type action
- * Weather delays should ONLY apply to spray actions, not fertilizer/monitoring/diagnosis
- */
+// CRITICAL FIX: Check if a rule result is for a spray-type action
 function isSprayAction(rule: RuleResult): boolean {
   const sprayTypes = ['CHEMICAL', 'BOTANICAL', 'BIOLOGICAL', 'BIOPESTICIDE'];
   const sprayKeywords = ['spray', 'फवारणी', 'छिड़काव', 'foliar', 'pesticide', 'insecticide', 'fungicide'];
@@ -291,10 +256,7 @@ function createBlockedAction(rule: RuleResult, priority: string): BlockedAction 
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PRODUCTION HARDENING: ACTION TYPE PRIORITY (STRICT ORDER)
-// This ensures deterministic primary decision selection
-// ═══════════════════════════════════════════════════════════════════════════
 const ACTION_TYPE_PRIORITY: Record<string, number> = {
   // BLOCKING actions are highest priority
   'BLOCK': 1,
@@ -348,10 +310,7 @@ function getActionTypePriority(actionType?: string): number {
 }
 
 function selectBestAction(viableActions: RuleResult[]): RuleResult | null {
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRODUCTION HARDENING: Filter out rules without valid action_type FIRST
-  // Then apply priority-based selection
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // Step 1: Filter out rules without action_type (these cannot become primary decisions)
   const validActions = viableActions.filter(a => {
@@ -363,11 +322,6 @@ function selectBestAction(viableActions: RuleResult[]): RuleResult | null {
   });
   
   // CRITICAL FIX (Forensic 2026-06-28): When NO rule has a real action_type,
-  // do NOT promote the first viable rule and let convertToPrimaryDecision
-  // synthesise a bogus URGENT_ACTION (root cause of "germination → flood prep
-  // / crop rotation" misfires). Return null so the caller can short-circuit
-  // to a monitoring-only response and let the orchestrator fall through to
-  // the deferred-clarification path.
   if (validActions.length === 0) {
     console.warn(`⚠️ [selectBestAction] No rules with action_type - returning null (no actionable rule synthesis)`);
     return null;
@@ -381,10 +335,7 @@ function selectBestAction(viableActions: RuleResult[]): RuleResult | null {
     const bcr = action.recommendation?.benefit_cost_ratio ?? 1;
     const confidence = action.confidence || 0;
     
-    // Score formula: 
-    // - Lower action_type priority = HIGHER score (we invert it)
-    // - Then lower IPM levels = higher score
-    // - Then higher confidence
+    // Score formula:
     const score = (100 - actionPriority) * 1000 + (6 - ipmLevel) * 100 + bcr * 10 + confidence * 5;
     
     return { action, score, actionPriority, actionType };
@@ -404,10 +355,7 @@ function selectBestAction(viableActions: RuleResult[]): RuleResult | null {
 function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   const rec = rule.recommendation;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRODUCTION HARDENING: action_type MUST come from rule, NOT derived from product_type
-  // This is the CRITICAL fix - action_type was being lost in the conversion
-  // ═══════════════════════════════════════════════════════════════════════════
   const actionType = rule.action_type || 
                      rec?.action_type || 
                      mapToActionType(rec?.product_type);
@@ -439,9 +387,7 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   console.log(`   pest=${pestCode}, disease=${diseaseCode}`);
   
   return {
-    // ═══════════════════════════════════════════════════════════════════════════
     // PRODUCTION HARDENING: These fields are REQUIRED for valid PrimaryDecision
-    // ═══════════════════════════════════════════════════════════════════════════
     action_type: actionType,
     rule_id: rule.rule_id, // CRITICAL: Include rule_id for traceability
     specific_action: productName || rule.cause,
@@ -472,9 +418,7 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
         interval_days: 7,
         max_applications_season: 3
       },
-      // ═══════════════════════════════════════════════════════════════════════════
       // NEW RESPONSE CONTRACT: Pass structured response fields
-      // ═══════════════════════════════════════════════════════════════════════════
       action_text: rec?.action_text || rule.action_text,
       reason_text: rec?.reason_text || rule.reason_text,
       knowledge_text: rec?.knowledge_text || rule.knowledge_text
@@ -495,10 +439,7 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   };
 }
 
-/**
- * CRITICAL FIX: Extract product name from reason text when not explicitly provided
- * Handles formats like "Apply XYZ @ dosage" or "Use ABC product"
- */
+// CRITICAL FIX: Extract product name from reason text when not explicitly provided
 function extractProductFromReason(reason?: string): string | undefined {
   if (!reason) return undefined;
   
@@ -519,10 +460,7 @@ function extractProductFromReason(reason?: string): string | undefined {
   return undefined;
 }
 
-/**
- * CRITICAL FIX: Extract dosage from reason text
- * Handles formats like "@ 3ml/10L" or "@ 25g/10L"
- */
+// CRITICAL FIX: Extract dosage from reason text
 function extractDosageFromReason(reason?: string): string | undefined {
   if (!reason) return undefined;
   
@@ -594,9 +532,7 @@ function createMonitoringDecision(): PrimaryDecision {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TREATMENT COMPATIBILITY CHECK
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function checkTreatmentCompatibility(
   treatments: string[]

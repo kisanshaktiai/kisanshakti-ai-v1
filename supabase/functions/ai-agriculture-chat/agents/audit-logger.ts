@@ -1,20 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FORENSIC AUDIT LOGGER - Complete Decision Trail
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * SYMBOLIC BRAIN PRINCIPLE: "Rules Decide, AI Only Explains"
- * This logger captures the COMPLETE decision trail for forensic analysis.
- * 
- * Captures:
- * - NLU output (observations only, no decisions)
- * - Intent lock (what actions are allowed)
- * - Rule engine input/output (the actual decisions)
- * - LLM formatter input/output (render-only verification)
- * - Validation gate results (source integrity)
- * 
- * Philosophy: 100% auditability - every recommendation traceable to rules
- */
+// FORENSIC AUDIT LOGGER - Complete Decision Trail
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { NLUDecisionGraphInput, SymbolicDecisionOutput } from './decision-representation.ts';
@@ -23,14 +7,7 @@ import { getKnowledgeVersions } from '../runtime/knowledge-versions.ts';
 
 export const AUDIT_LOGGER_VERSION = '2.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FIX 2: OBSERVATION CONTRACT — block raw vernacular text from leaking into
-// ai_chat_audit_logs.observations. Only canonical English codes allowed.
-// ═══════════════════════════════════════════════════════════════════════════
-// FIX 1 (surgical): ObservationContract must NEVER "block" raw farmer text
-// in any language. Raw vernacular strings arriving at the audit boundary are
-// pre-canonical noise (not corruption) — silently drop them. Only truly
-// suspicious entries (ASCII garbage) are worth a warning.
 const VERNACULAR_RE = /[\u0900-\u097F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0980-\u09FF\u0A80-\u0AFF\u0A00-\u0A7F\u0B00-\u0B7F]/;
 function filterCanonicalForAudit(obs: any): string[] {
   if (!Array.isArray(obs)) return [];
@@ -89,9 +66,7 @@ function isSchemaColumnError(error: any): boolean {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - Extended for Full Forensic Trail
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NLUContractOutput {
   intent_label: string;
@@ -266,9 +241,7 @@ export interface AuditValidation {
   severity: 'INFO' | 'WARNING' | 'CRITICAL';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AUDIT LOGGER CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class AuditLogger {
   private supabase: ReturnType<typeof createClient>;
@@ -281,9 +254,7 @@ export class AuditLogger {
     );
   }
   
-  /**
-   * Start a new audit turn
-   */
+  // Start a new audit turn
   startTurn(params: {
     turn_id: string;
     session_id: string;
@@ -316,9 +287,7 @@ export class AuditLogger {
     console.log(`📋 [Audit] Turn started: ${params.turn_id}`);
   }
   
-  /**
-   * Log observation extraction result (Stage 2)
-   */
+  // Log observation extraction result (Stage 2)
   logObservationExtraction(observations: {
     crop_mentioned?: string;
     raw_symptom_text: string[];
@@ -335,10 +304,7 @@ export class AuditLogger {
     console.log(`📋 [Audit] Observations: ${observations.raw_symptom_text.length} symptoms, crop=${observations.crop_mentioned || 'unknown'}`);
   }
   
-  /**
-   * Log ObservationKeys mapping result (Stage 2.5 - PHASE-8)
-   * This is REQUIRED for Phase-8 audit trail
-   */
+  // Log ObservationKeys mapping result (Stage 2.5 - PHASE-8)
   logObservationKeys(params: {
     before: string[];
     after?: string[];
@@ -354,9 +320,7 @@ export class AuditLogger {
     console.log(`📋 [Audit] ObservationKeys: ${params.before.length} keys, ${params.unknown_count} unknown, land_crop=${params.had_land_context_crop}`);
   }
   
-  /**
-   * Log clarification turn for loop safety tracking (PHASE-8)
-   */
+  // Log clarification turn for loop safety tracking (PHASE-8)
   logClarificationTurn(params: {
     scope: string;
     turn_count: number;
@@ -371,9 +335,7 @@ export class AuditLogger {
     console.log(`📋 [Audit] Clarification: scope=${params.scope}, turn=${params.turn_count}, loop=${params.loop_detected || false}`);
   }
   
-  /**
-   * Log CropContextAuthority usage (PHASE-8.1)
-   */
+  // Log CropContextAuthority usage (PHASE-8.1)
   logCropContextAuthority(cropContext: {
     crop: string;
     stage: string;
@@ -392,9 +354,7 @@ export class AuditLogger {
     }
   }
   
-  /**
-   * Log cross-crop symptoms detected (PHASE-9)
-   */
+  // Log cross-crop symptoms detected (PHASE-9)
   logCrossCropSymptoms(symptoms: string[]): void {
     this.currentTurn.cross_crop_symptoms_detected = symptoms;
     this.addAgent('CROSS_CROP_SYMPTOM_MAPPER');
@@ -402,9 +362,7 @@ export class AuditLogger {
     console.log(`📋 [Audit] CrossCropSymptoms: ${symptoms.length} detected - ${symptoms.slice(0, 5).join(', ')}${symptoms.length > 5 ? '...' : ''}`);
   }
   
-  /**
-   * Log understanding check result (Stage 4)
-   */
+  // Log understanding check result (Stage 4)
   logUnderstandingCheck(result: {
     understanding_confidence: 'VERY_LOW' | 'LOW' | 'MEDIUM' | 'HIGH';
     contradiction_detected: string[];
@@ -417,25 +375,19 @@ export class AuditLogger {
     console.log(`📋 [Audit] Understanding: ${result.understanding_confidence}, contradictions=${result.contradiction_detected.length}, clarify=${result.clarification_required}`);
   }
   
-  /**
-   * Log data confidence (Stage 5)
-   */
+  // Log data confidence (Stage 5)
   logDataConfidence(confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN'): void {
     this.currentTurn.data_confidence = confidence;
     console.log(`📋 [Audit] Data confidence: ${confidence}`);
   }
   
-  /**
-   * Log canonical state
-   */
+  // Log canonical state
   logCanonicalState(state: any): void {
     this.currentTurn.canonical_state = state;
     this.addAgent('CANONICAL_STATE_BUILDER');
   }
   
-  /**
-   * Log prescription gate result
-   */
+  // Log prescription gate result
   logPrescriptionGate(passed: boolean, reason?: string): void {
     this.currentTurn.prescription_gate_passed = passed;
     if (!passed && reason) {
@@ -445,18 +397,14 @@ export class AuditLogger {
     console.log(`📋 [Audit] Prescription gate: ${passed ? 'PASSED' : 'BLOCKED'} ${reason || ''}`);
   }
   
-  /**
-   * Log decision type and source
-   */
+  // Log decision type and source
   logDecision(type: 'CLARIFY' | 'PRESCRIBE' | 'MONITOR' | 'ESCALATE' | 'INFORM' | 'ERROR', source: 'RULE_ENGINE' | 'UNDERSTANDING_GATE' | 'DATA_GATE' | 'SAFETY_GATE' | 'DIRECT'): void {
     this.currentTurn.decision_type = type;
     this.currentTurn.decision_source = source;
     console.log(`📋 [Audit] Decision: ${type} from ${source}`);
   }
   
-  /**
-   * Log NLU output (Contract-compliant format)
-   */
+  // Log NLU output (Contract-compliant format)
   logNLUOutput(nlu: NLUContractOutput): void {
     this.currentTurn.nlu_output = nlu;
     this.addAgent('NLU');
@@ -465,9 +413,7 @@ export class AuditLogger {
     console.log(`   Observations: ${nlu.observations.slice(0, 3).join(', ')}`);
   }
   
-  /**
-   * Log intent lock
-   */
+  // Log intent lock
   logIntentLock(lock: {
     locked_intent: string;
     allowed_scopes: string[];
@@ -481,9 +427,7 @@ export class AuditLogger {
     console.log(`📋 [Audit] Intent LOCKED: ${lock.locked_intent}`);
   }
   
-  /**
-   * Log observation-to-cause mapping
-   */
+  // Log observation-to-cause mapping
   logObservationMapping(mapping: {
     cause_codes: string[];
     cause_type: string;
@@ -496,9 +440,7 @@ export class AuditLogger {
     console.log(`📋 [Audit] Causes: ${mapping.cause_codes.join(', ')} (${mapping.cause_type})`);
   }
   
-  /**
-   * Log symbolic decision output
-   */
+  // Log symbolic decision output
   logSymbolicDecision(decision: {
     decision_id: string;
     rules_fired: string[];
@@ -515,9 +457,7 @@ export class AuditLogger {
     console.log(`   Rules: ${decision.rules_fired.length}, Actions: ${decision.actions_returned.length}`);
   }
   
-  /**
-   * Log Rule Engine audit trail (NEW)
-   */
+  // Log Rule Engine audit trail (NEW)
   logRuleEngineAudit(audit: RuleEngineAudit): void {
     this.currentTurn.rule_engine_audit = audit;
     this.addAgent('RULE_ENGINE');
@@ -527,9 +467,7 @@ export class AuditLogger {
     console.log(`   Outputs: rules=${audit.output.rules_fired.length}, actions=${audit.output.actions_generated.length}`);
   }
   
-  /**
-   * Log LLM Formatter audit trail (NEW)
-   */
+  // Log LLM Formatter audit trail (NEW)
   logLLMFormatterAudit(audit: LLMFormatterAudit): void {
     this.currentTurn.llm_formatter_audit = audit;
     this.addAgent('LLM_FORMATTER');
@@ -542,9 +480,7 @@ export class AuditLogger {
     }
   }
   
-  /**
-   * Log response generation
-   */
+  // Log response generation
   logResponse(response: {
     source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR' | string;
     language_match: boolean;
@@ -557,18 +493,14 @@ export class AuditLogger {
     console.log(`📋 [Audit] Response: ${response.source}, language_match=${response.language_match}`);
   }
   
-  /**
-   * Log validation result (required by orchestrator)
-   */
+  // Log validation result (required by orchestrator)
   logValidation(result: { passed: boolean; errors: string[] }): void {
     this.currentTurn.validation_passed = result.passed;
     this.currentTurn.validation_errors = result.errors || [];
     console.log(`📋 [Audit] Validation: ${result.passed ? 'PASSED' : 'FAILED'}${result.errors?.length ? ` (${result.errors.join(', ')})` : ''}`);
   }
   
-  /**
-   * Log crop context
-   */
+  // Log crop context
   logCropContext(context: {
     crop_code?: string;
     growth_stage?: string;
@@ -577,18 +509,14 @@ export class AuditLogger {
     this.currentTurn.growth_stage = context.growth_stage;
   }
   
-  /**
-   * Add agent to used list
-   */
+  // Add agent to used list
   private addAgent(agent: string): void {
     if (!this.currentTurn.agents_used?.includes(agent)) {
       this.currentTurn.agents_used?.push(agent);
     }
   }
   
-  /**
-   * Complete and save the audit log
-   */
+  // Complete and save the audit log
   async completeTurn(processing_time_ms: number): Promise<void> {
     this.currentTurn.processing_time_ms = processing_time_ms;
     
@@ -617,11 +545,7 @@ export class AuditLogger {
     this.currentTurn = {};
   }
   
-  /**
-   * Save audit log to database.
-   * PHASE Y: First persists ai_decision_log (sourced from RuntimeTraceCollector
-   * if present), then stamps symbolic_decision_id onto the ai_chat_audit_logs row.
-   */
+  // Save audit log to database.
   private async saveToDatabase(log: TurnAuditLog): Promise<void> {
     // ─── PHASE Y: persist ai_decision_log first ─────────────────────────────
     const collector = getRuntimeTraceCollector();
@@ -727,9 +651,7 @@ export class AuditLogger {
     }
   }
   
-  /**
-   * Validate the audit log for compliance violations
-   */
+  // Validate the audit log for compliance violations
   validateCompliance(): AuditValidation {
     const violations: string[] = [];
     let severity: 'INFO' | 'WARNING' | 'CRITICAL' = 'INFO';
@@ -788,9 +710,7 @@ export class AuditLogger {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON INSTANCE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let auditLoggerInstance: AuditLogger | null = null;
 
@@ -801,13 +721,9 @@ export function getAuditLogger(): AuditLogger {
   return auditLoggerInstance;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Quick log function for one-off logging
- */
+// Quick log function for one-off logging
 export function logAuditEvent(
   event_type: string,
   details: Record<string, any>,
@@ -817,10 +733,7 @@ export function logAuditEvent(
   console.log(`   ${JSON.stringify(details)}`);
 }
 
-/**
- * PHASE-10: Log warning when no rules match but decision is made
- * This helps identify gaps in the rule engine
- */
+// PHASE-10: Log warning when no rules match but decision is made
 export function logZeroRuleMatchWarning(params: {
   trace_id: string;
   crop: string;
@@ -850,9 +763,7 @@ export function logZeroRuleMatchWarning(params: {
   `);
 }
 
-/**
- * PHASE-10: Log when cross-crop biocontrol agent is detected
- */
+// PHASE-10: Log when cross-crop biocontrol agent is detected
 export function logInvalidBiocontrolWarning(params: {
   trace_id: string;
   crop: string;
@@ -870,10 +781,7 @@ export function logInvalidBiocontrolWarning(params: {
   `);
 }
 
-/**
- * Check if NLU output complies with contract
- * Returns violations if any internal codes are present
- */
+// Check if NLU output complies with contract
 export function validateNLUContract(nluOutput: any): string[] {
   const violations: string[] = [];
   

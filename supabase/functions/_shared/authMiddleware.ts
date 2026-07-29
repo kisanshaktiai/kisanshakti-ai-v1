@@ -1,12 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { ResolvedTenant } from './tenantMiddleware.ts';
 
-/**
- * Auth Middleware - Enterprise Multi-Tenant SaaS
- * 
- * Validates JWT tokens and ensures tenant_id in token matches domain tenant
- * Prevents cross-tenant access attempts
- */
+// Auth Middleware - Enterprise Multi-Tenant SaaS
 
 export interface AuthContext {
   userId: string;
@@ -23,9 +18,7 @@ export interface ValidationResult {
   errorCode?: string;
 }
 
-/**
- * Extract and decode JWT from Authorization header
- */
+// Extract and decode JWT from Authorization header
 function extractJWT(req: Request): string | null {
   const authHeader = req.headers.get('authorization');
   if (!authHeader) {
@@ -42,9 +35,7 @@ function extractJWT(req: Request): string | null {
   return parts[1];
 }
 
-/**
- * Decode JWT payload (without verification - Supabase client handles that)
- */
+// Decode JWT payload (without verification - Supabase client handles that)
 function decodeJWT(token: string): any {
   try {
     const parts = token.split('.');
@@ -62,9 +53,7 @@ function decodeJWT(token: string): any {
   }
 }
 
-/**
- * Validate JWT and ensure tenant_id matches domain tenant
- */
+// Validate JWT and ensure tenant_id matches domain tenant
 export async function validateTenantAuth(
   req: Request,
   tenant: ResolvedTenant,
@@ -186,9 +175,7 @@ export async function validateTenantAuth(
   };
 }
 
-/**
- * Log security events for monitoring
- */
+// Log security events for monitoring
 async function logSecurityEvent(supabase: any, event: any): Promise<void> {
   try {
     await supabase.from('security_events').insert({
@@ -211,9 +198,7 @@ async function logSecurityEvent(supabase: any, event: any): Promise<void> {
   }
 }
 
-/**
- * Extract auth context from request without validation (for internal use)
- */
+// Extract auth context from request without validation (for internal use)
 export function extractAuthContext(req: Request): Partial<AuthContext> | null {
   const token = extractJWT(req);
   if (!token) return null;
@@ -229,13 +214,9 @@ export function extractAuthContext(req: Request): Partial<AuthContext> | null {
   };
 }
 
-// =============================================================================
 // HEADER-BASED AUTHENTICATION (for mobile/web apps)
-// =============================================================================
 
-/**
- * Header-based authentication context
- */
+// Header-based authentication context
 export interface HeaderAuthContext {
   tenantId: string;
   farmerId: string;
@@ -248,25 +229,7 @@ const corsHeaders = {
   'Content-Type': 'application/json'
 };
 
-/**
- * Validates authentication headers from incoming requests
- * 
- * @param req - The incoming HTTP request
- * @param options - Optional configuration
- * @param options.requireSessionToken - Whether to require x-session-token header (default: false)
- * @param options.allowMissingFarmerId - Whether farmerId is optional for background jobs (default: false)
- * 
- * @returns HeaderAuthContext object if valid, or Response with error if invalid
- * 
- * @example
- * ```typescript
- * const authResult = await validateAuthHeaders(req);
- * if (authResult instanceof Response) {
- *   return authResult; // Return error response
- * }
- * const { tenantId, farmerId, sessionToken } = authResult;
- * ```
- */
+// Validates authentication headers from incoming requests
 export async function validateAuthHeaders(
   req: Request,
   options?: {
@@ -378,27 +341,7 @@ export async function validateAuthHeaders(
   };
 }
 
-/**
- * Validates tenant-farmer association in the database
- * 
- * This ensures the farmer belongs to the specified tenant, preventing
- * cross-tenant data access attempts.
- * 
- * @param supabase - Supabase client instance
- * @param tenantId - Tenant ID from headers
- * @param farmerId - Farmer ID from headers
- * 
- * @returns true if valid, Response with error if invalid
- * 
- * @example
- * ```typescript
- * const validationResult = await validateTenantFarmerAssociation(supabase, tenantId, farmerId);
- * if (validationResult instanceof Response) {
- *   return validationResult;
- * }
- * // Continue with business logic
- * ```
- */
+// Validates tenant-farmer association in the database
 export async function validateTenantFarmerAssociation(
   supabase: any,
   tenantId: string,
@@ -415,10 +358,6 @@ export async function validateTenantFarmerAssociation(
       .maybeSingle();
 
     // Distinguish transient DB/network errors from a genuine "no matching row".
-    // PGRST116 = "Results contain 0 rows" (only surfaces with .single()); with
-    // .maybeSingle() a missing row returns data=null and error=null. Any other
-    // error is transient (proxy/network/DB) — return 503 so the client retries
-    // instead of blackholing the session with a spurious 403.
     if (error && error.code !== 'PGRST116') {
       console.error('🚨 [validateTenantFarmerAssociation] Transient lookup error:', {
         tenantId, farmerId, error: error.message, code: error.code,
@@ -474,11 +413,7 @@ export async function validateTenantFarmerAssociation(
   }
 }
 
-/**
- * Creates a standardized CORS response for OPTIONS requests
- * 
- * @returns Response object with CORS headers
- */
+// Creates a standardized CORS response for OPTIONS requests
 export function createCorsResponse(): Response {
   return new Response(null, { 
     status: 204,
@@ -486,15 +421,7 @@ export function createCorsResponse(): Response {
   });
 }
 
-/**
- * Creates a standardized error response with proper CORS headers
- * 
- * @param message - Error message
- * @param status - HTTP status code (default: 500)
- * @param code - Error code for client-side handling
- * 
- * @returns Response object with error details
- */
+// Creates a standardized error response with proper CORS headers
 export function createErrorResponse(
   message: string,
   status: number = 500,
@@ -513,14 +440,7 @@ export function createErrorResponse(
   );
 }
 
-/**
- * Creates a standardized success response with proper CORS headers
- * 
- * @param data - Response data
- * @param status - HTTP status code (default: 200)
- * 
- * @returns Response object with data
- */
+// Creates a standardized success response with proper CORS headers
 export function createSuccessResponse(
   data: any,
   status: number = 200

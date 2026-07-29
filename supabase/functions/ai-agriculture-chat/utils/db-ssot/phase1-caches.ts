@@ -102,11 +102,7 @@ function normUpper(v: unknown): string {
   return String(v ?? '').trim().toUpperCase();
 }
 
-/**
- * Load all four caches from Supabase. Idempotent + single-flight: concurrent
- * callers await the same in-flight promise. Safe to call at boot, on every
- * request, or lazily — the TTL gate prevents redundant round-trips.
- */
+// Load all four caches from Supabase. Idempotent + single-flight: concurrent
 export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolean } = {}): Promise<void> {
   if (!opts.force && isFresh()) return;
   if (state.loading) return state.loading;
@@ -259,9 +255,7 @@ export async function preloadPhase1Caches(supabase: Supa, opts: { force?: boolea
   return state.loading;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // SAFETY-CRITICAL ACCESSORS (Phase 3b: hard-fail when cache ready but empty)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class SafetyCacheUnavailableError extends Error {
   constructor(table: string) {
@@ -319,17 +313,7 @@ export function isWatchListChemical(name: string): boolean {
   return false;
 }
 
-/**
- * P4b (2026-07-24): safety-guardian emergency-branch helper. Scans a free-text
- * farmer input for any banned-chemical mention using the DB SSOT set. Returns
- * the matched canonical name (lower-case, as stored in DB) or null. Follows
- * the same hard-fail discipline as `isBannedChemical` — throws
- * `SafetyCacheUnavailableError` when the preload has completed but the banned
- * set is empty, so the reasoner refuses to declare "no banned mention" from
- * a stale/empty safety cache. During the cold-boot window we fall back to
- * `legacyMentionList` (typically the caller's built-in EMERGENCY_KEYWORDS
- * banned-name list) to avoid false negatives.
- */
+// P4b (2026-07-24): safety-guardian emergency-branch helper. Scans a free-text
 export function findBannedChemicalMention(
   text: string,
   legacyMentionList: readonly string[] = [],
@@ -348,9 +332,7 @@ export function findBannedChemicalMention(
   return null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // ENRICHMENT ACCESSORS (fail open: return empty Set on miss)
-// ─────────────────────────────────────────────────────────────────────────────
 
 function enrichmentMissWarnOnce(table: string): void {
   // Cheap dedup: only warn if never loaded.
@@ -359,23 +341,12 @@ function enrichmentMissWarnOnce(table: string): void {
   }
 }
 
-/**
- * True once the boot-time preload has populated caches at least once (and did
- * not fail leaving loadedAt=null). Used by callers with a legacy hardcoded
- * fallback so they only degrade during the pre-load window, never permanently.
- */
+// True once the boot-time preload has populated caches at least once (and did
 export function phase1CacheReady(): boolean {
   return state.loadedAt !== null;
 }
 
-/**
- * Phase 3b promotion (2026-07-24): emergency observation codes are SAFETY
- * critical (they gate P0 emergency treatment pathways). Once the preload has
- * completed, an empty set is a hard-fail — the reasoner MUST refuse to emit a
- * decision this turn rather than silently downgrading a life-critical field
- * signal to a routine observation. Legacy fallback retained ONLY for the
- * cold-boot window (phase1CacheReady()===false).
- */
+// Phase 3b promotion (2026-07-24): emergency observation codes are SAFETY
 export function getEmergencyObsCodes(legacyFallback: readonly string[] = []): Set<string> {
   if (state.emergencyObsCodes.size > 0) return state.emergencyObsCodes;
   if (phase1CacheReady()) {
@@ -414,13 +385,7 @@ export function isPestIndicator(code: string): boolean {
   return state.pestIndicators.has(k);
 }
 
-/**
- * P6 (2026-07-24): advisory DIRECT-mode intents from observation_intent_master.
- * Enrichment discipline. When the cache is warm the DB set is authoritative;
- * the caller-supplied `legacyFallback` is unioned in for safety-net coverage
- * so a DB row-removal cannot silently strip an intent from the direct route
- * before an agronomist has reconciled it. Cold-boot returns legacy only.
- */
+// P6 (2026-07-24): advisory DIRECT-mode intents from observation_intent_master.
 export function isAdvisoryDirectIntent(
   intent: unknown,
   legacyFallback: readonly string[] = [],
@@ -436,17 +401,9 @@ export function isAdvisoryDirectIntent(
   return legacyFallback.some((v) => normUpper(v) === k);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // TIER 1 CUTOVER ACCESSORS (audit plan v1) — enrichment discipline
-// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * V2: True when the chemical belongs to the queried class per
- * `chemical_regulatory_status.chemical_class`. During cold-boot (cache not yet
- * loaded) callers may pass `legacyFallback` — the union of hardcoded class
- * members preserved as a `_LEGACY_` array in the call site — so the pipeline
- * does not silently open a hole for a still-uncatalogued neonicotinoid.
- */
+// V2: True when the chemical belongs to the queried class per
 export function isChemicalClass(
   name: string,
   chemicalClass: string,
@@ -468,12 +425,7 @@ export function isChemicalClass(
   return false;
 }
 
-/**
- * V3: IRAC/FRAC rotation family lookup from `public.chemical_rotation_group`.
- * `moaSystem` MUST be either 'IRAC' or 'FRAC'. Returns the family label
- * (e.g. 'IRAC_1B', 'FRAC_M') or null if unknown. Cold-boot legacy fallback
- * accepts a `{chemical → family}` map to match the pre-cutover behaviour.
- */
+// V3: IRAC/FRAC rotation family lookup from `public.chemical_rotation_group`.
 export function getRotationFamily(
   chemical: string,
   moaSystem: 'IRAC' | 'FRAC',
@@ -502,12 +454,7 @@ export function getRotationFamily(
   return null;
 }
 
-/**
- * V1: Regulatory maximum-safe dose per hectare, keyed by active ingredient,
- * from `system_config.max_safe_doses`. Returns null when unknown. Legacy
- * fallback accepts the caller's pre-cutover `MAX_SAFE_DOSES` map (kept as
- * `_LEGACY_MAX_SAFE_DOSES`) used only during the cold-boot window.
- */
+// V1: Regulatory maximum-safe dose per hectare, keyed by active ingredient,
 export function getMaxDosePerHa(
   chemical: string,
   legacyFallback?: Record<string, { max_g_per_ha: number; unit: string }>,
@@ -533,11 +480,7 @@ export function getMaxDosePerHa(
   return null;
 }
 
-/**
- * V3 companion: enumerate distinct rotation families for a MoA system
- * ('IRAC' or 'FRAC'). Used by resistance-management alternatives selection.
- * Returns the caller-supplied legacy list only during cold-boot.
- */
+// V3 companion: enumerate distinct rotation families for a MoA system
 export function listRotationFamilies(
   moaSystem: 'IRAC' | 'FRAC',
   legacyFallback: readonly string[] = [],

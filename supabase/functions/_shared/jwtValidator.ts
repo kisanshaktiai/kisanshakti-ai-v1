@@ -1,13 +1,4 @@
-/**
- * Hybrid JWT Validator — 2030-Ready Edge Functions
- * 
- * Provides in-code JWT validation using getClaims() for authenticated routes
- * while maintaining header-based tenant isolation for multi-tenancy.
- * 
- * Usage:
- * - For authenticated routes: validateJWT(req, supabase) + validateAuthHeaders(req)
- * - For public routes: validateAuthHeaders(req) only (webhooks, etc.)
- */
+// Hybrid JWT Validator — 2030-Ready Edge Functions
 
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
@@ -18,9 +9,7 @@ const corsHeaders = {
   'Content-Type': 'application/json'
 };
 
-/**
- * JWT validation result
- */
+// JWT validation result
 export interface JWTValidationResult {
   valid: boolean;
   userId?: string;
@@ -30,9 +19,7 @@ export interface JWTValidationResult {
   errorCode?: 'NO_AUTH_HEADER' | 'INVALID_FORMAT' | 'INVALID_TOKEN' | 'EXPIRED_TOKEN' | 'VALIDATION_ERROR';
 }
 
-/**
- * Extract Bearer token from Authorization header
- */
+// Extract Bearer token from Authorization header
 function extractBearerToken(req: Request): string | null {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -41,26 +28,7 @@ function extractBearerToken(req: Request): string | null {
   return authHeader.replace('Bearer ', '');
 }
 
-/**
- * Validate JWT using Supabase getClaims()
- * 
- * This is the PRIMARY authentication method for routes that require user identity.
- * Use this BEFORE checking tenant headers for sensitive operations.
- * 
- * @param req - HTTP request
- * @param supabaseUrl - Supabase project URL (from env)
- * @param supabaseAnonKey - Supabase anon key (from env)
- * @returns JWTValidationResult with user claims or error
- * 
- * @example
- * ```typescript
- * const jwtResult = await validateJWT(req);
- * if (!jwtResult.valid) {
- *   return createJWTErrorResponse(jwtResult);
- * }
- * // Now use jwtResult.userId, jwtResult.claims
- * ```
- */
+// Validate JWT using Supabase getClaims()
 export async function validateJWT(req: Request): Promise<JWTValidationResult> {
   const token = extractBearerToken(req);
   
@@ -130,9 +98,7 @@ export async function validateJWT(req: Request): Promise<JWTValidationResult> {
   }
 }
 
-/**
- * Create error response for JWT validation failures
- */
+// Create error response for JWT validation failures
 export function createJWTErrorResponse(result: JWTValidationResult): Response {
   const status = result.errorCode === 'NO_AUTH_HEADER' ? 401 : 
                  result.errorCode === 'EXPIRED_TOKEN' ? 401 : 403;
@@ -147,16 +113,7 @@ export function createJWTErrorResponse(result: JWTValidationResult): Response {
   );
 }
 
-/**
- * Combined validation: JWT + Tenant Headers
- * 
- * For routes that require BOTH user authentication AND tenant context.
- * Validates JWT first, then checks tenant headers match user's allowed tenants.
- * 
- * @param req - HTTP request
- * @param options - Validation options
- * @returns Combined validation result
- */
+// Combined validation: JWT + Tenant Headers
 export interface CombinedAuthResult {
   valid: boolean;
   userId?: string;
@@ -225,19 +182,13 @@ export async function validateCombinedAuth(
   };
 }
 
-/**
- * Quick check if request has valid-looking JWT (without full validation)
- * Useful for routing decisions before expensive validation
- */
+// Quick check if request has valid-looking JWT (without full validation)
 export function hasAuthorizationHeader(req: Request): boolean {
   const authHeader = req.headers.get('Authorization');
   return !!authHeader?.startsWith('Bearer ');
 }
 
-/**
- * Create authenticated Supabase client from request
- * Uses the user's JWT token for RLS-scoped queries
- */
+// Create authenticated Supabase client from request
 export function createAuthenticatedClient(req: Request): SupabaseClient | null {
   const token = extractBearerToken(req);
   if (!token) return null;

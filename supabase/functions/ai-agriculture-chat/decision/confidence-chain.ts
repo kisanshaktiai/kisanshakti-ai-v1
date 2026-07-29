@@ -1,16 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CONFIDENCE CHAIN — Phase B
- * ═══════════════════════════════════════════════════════════════════════════
- * Single object carried through orchestrator context. Every stage multiplies
- * its factor in; no stage may reset another stage's factor.
- *
- *   final = intent × observation × semantic × hypothesis × rule × scientific × authority
- *
- * Authority and DiagnosticDecisionAuthority MUST read from this chain instead
- * of recomputing confidence in isolation.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CONFIDENCE CHAIN — Phase B
 
 export type ConfidenceFactor =
   | 'intent'

@@ -1,35 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * STAGE 4: UNDERSTANDING COMPLETENESS CHECKER (SYMBOLIC - NO LLM)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * MASTER PROMPT v3 - Stage 4
- * 
- * PURPOSE:
- * Symbolically (WITHOUT LLM) evaluate if we have enough information
- * to proceed with diagnosis and prescription.
- * 
- * REFACTORED: Phase-1 SSOT Compliance
- * - Removed hardcoded Marathi/Hindi/English urgency keywords
- * - Now uses pre-extracted urgency flags from Language Induction Layer
- * - Language-agnostic vague term detection using canonical patterns
- * 
- * RULES:
- * - Pure deterministic logic, no AI inference
- * - Returns structured result indicating what's missing
- * - If understanding insufficient → CLARIFY action
- * - Clarification questions come from database, not LLM
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// STAGE 4: UNDERSTANDING COMPLETENESS CHECKER (SYMBOLIC - NO LLM)
 
 import type { ObservationExtraction } from './observation-extractor.ts';
 
 export const UNDERSTANDING_CHECKER_VERSION = '2.0.0'; // SSOT-compliant version
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export enum UnderstandingConfidence {
   VERY_LOW = 'VERY_LOW',   // < 2 critical fields known
@@ -39,55 +14,35 @@ export enum UnderstandingConfidence {
 }
 
 export interface UnderstandingCheckResult {
-  /**
-   * Overall understanding confidence level
-   */
+  // Overall understanding confidence level
   understanding_confidence: UnderstandingConfidence;
   
-  /**
-   * List of critical fields that are UNKNOWN
-   */
+  // List of critical fields that are UNKNOWN
   unknown_critical_fields: string[];
   
-  /**
-   * Any contradictions detected in observations
-   */
+  // Any contradictions detected in observations
   contradiction_detected: string[];
   
-  /**
-   * Whether clarification is required before proceeding
-   */
+  // Whether clarification is required before proceeding
   clarification_required: boolean;
   
-  /**
-   * Specific reason why clarification is needed
-   */
+  // Specific reason why clarification is needed
   clarification_reason?: string;
   
-  /**
-   * What specific information is missing for diagnosis
-   */
+  // What specific information is missing for diagnosis
   missing_for_diagnosis: string[];
   
-  /**
-   * Score 0-100 for debugging/auditing
-   */
+  // Score 0-100 for debugging/auditing
   completeness_score: number;
   
-  /**
-   * Priority of missing information (what to ask first)
-   */
+  // Priority of missing information (what to ask first)
   clarification_priority: 'crop' | 'symptom' | 'severity' | 'location' | 'timing' | 'none';
   
-  /**
-   * Whether diagnosis rules have fired (used to gate clarification options)
-   */
+  // Whether diagnosis rules have fired (used to gate clarification options)
   diagnosis_rules_fired: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CRITICAL FIELDS DEFINITION
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface CriticalFieldCheck {
   field: string;
@@ -137,10 +92,7 @@ const CRITICAL_FIELDS: CriticalFieldCheck[] = [
   }
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VAGUE SYMPTOM DETECTION - CANONICAL OBSERVATION CODES
-// Uses canonical pest/disease observation patterns, NOT language strings
-// ═══════════════════════════════════════════════════════════════════════════
 
 const VAGUE_OBSERVATION_CODES = new Set([
   // Generic pest codes that need clarification
@@ -162,16 +114,7 @@ const VAGUE_OBSERVATION_CODES = new Set([
   'VISUAL_DAMAGE'
 ]);
 
-/**
- * Detects if symptoms are vague and need clarification to distinguish
- * between multiple possible diagnoses.
- * 
- * SSOT-COMPLIANT: Uses canonical observation codes, not language strings
- * 
- * Returns true if:
- * 1. A vague observation code is present
- * 2. Fewer than 2 distinguishing features are present
- */
+// Detects if symptoms are vague and need clarification to distinguish
 export function detectSymptomAmbiguity(observations: ObservationExtraction): boolean {
   // Check if any extracted observation codes are vague
   const observationCodes = observations.extracted_observations || [];
@@ -207,9 +150,7 @@ export function detectSymptomAmbiguity(observations: ObservationExtraction): boo
   return isAmbiguous;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTRADICTION DETECTION - USING CANONICAL FLAGS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function detectContradictions(obs: ObservationExtraction): string[] {
   const contradictions: string[] = [];
@@ -243,9 +184,7 @@ function detectContradictions(obs: ObservationExtraction): string[] {
   return contradictions;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONFIDENCE CALCULATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function calculateConfidenceLevel(score: number, unknownCount: number): UnderstandingConfidence {
   if (unknownCount >= 4 || score < 25) {
@@ -279,10 +218,7 @@ function determineClarificationPriority(unknownFields: string[]): 'crop' | 'symp
   return 'none';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // URGENCY DETECTION - USING CANONICAL FLAGS
-// SSOT-COMPLIANT: Uses pre-extracted urgency flag, NOT language keywords
-// ═══════════════════════════════════════════════════════════════════════════
 
 function detectUrgency(observations: ObservationExtraction): boolean {
   // Use urgency flag from Language Induction Layer (already extracted)
@@ -310,9 +246,7 @@ function detectUrgency(observations: ObservationExtraction): boolean {
   return false;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN CHECKER FUNCTION - WITH ADAPTIVE THRESHOLDS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function checkUnderstandingCompleteness(
   observations: ObservationExtraction,
@@ -347,9 +281,7 @@ export function checkUnderstandingCompleteness(
   // Detect contradictions using canonical flags
   const contradictions = detectContradictions(observations);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX (Issue #3): ADAPTIVE THRESHOLDS based on urgency & context
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const isUrgent = detectUrgency(observations);
   const hasCropAndSymptom = (observations.crop_mentioned || landContext?.current_crop) && 
@@ -383,11 +315,7 @@ export function checkUnderstandingCompleteness(
     (completenessScore < requiredThreshold && !isUrgent) || // Don't clarify if urgent
     contradictions.length > 0;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Force clarification for vague pest/disease symptoms
-  // This catches cases with vague observations that need clarification to 
-  // distinguish between aphids, whiteflies, thrips, jassids, etc.
-  // ═══════════════════════════════════════════════════════════════════════════
   if (!clarificationRequired && !isUrgent) {
     const isAmbiguous = detectSymptomAmbiguity(observations);
     if (isAmbiguous) {
@@ -420,9 +348,7 @@ export function checkUnderstandingCompleteness(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   checkUnderstandingCompleteness,

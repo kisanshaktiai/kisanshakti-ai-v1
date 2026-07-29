@@ -1,17 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * EVIDENCE LEDGER — Phase B
- * ═══════════════════════════════════════════════════════════════════════════
- * Per-request ledger that records every mutation to the symbolic evidence
- * stream. Records create/modify/lose/ignore/overwrite per stage so any
- * regression in evidence preservation is visible in `ai_decision_log` and
- * `[BRAIN_TRACE]` logs.
- *
- * This module is OBSERVATIONAL only — it does not change pipeline behavior.
- * Wiring: orchestrator instantiates one `EvidenceLedger` per request and
- *         passes it to each stage; stages call `ledger.record(...)`.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// EVIDENCE LEDGER — Phase B
 
 export type EvidenceAction =
   | 'CREATE'

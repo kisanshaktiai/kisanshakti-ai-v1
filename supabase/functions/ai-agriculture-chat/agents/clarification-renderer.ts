@@ -1,29 +1,6 @@
 // CHANGE LOG
 // 2026-07-09 19:36 UTC — Type contract widened for crop template registry.
-//   Flat/default crop templates can be indexed by any ClarificationScope;
-//   missing scopes fall through at runtime. This matches existing resolver
-//   behavior and unblocks clarification fallback validation.
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-8: CLARIFICATION RENDERER (LLM = TRANSLATOR ONLY)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Convert ObservationKeys to farmer-friendly language safely.
- * The LLM ONLY translates - it NEVER decides anything.
- * 
- * PHASE-8.1 UPDATE:
- * - Stage-aware framing when CropContextAuthority exists
- * - Prepend crop + stage info to clarification questions (NO DIAGNOSIS)
- * 
- * RULES:
- * - Input: ClarificationScope + ObservationKeys + Language + optional CropContext
- * - Output: Question + Options (validated for safety)
- * - LLM is a RENDERER ONLY - no decisions
- * - Hard validation gate rejects unsafe output
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE-8: CLARIFICATION RENDERER (LLM = TRANSLATOR ONLY)
 
 import { ObservationKey } from '../decision/observation-ontology.ts';
 import { type CropContextAuthority, formatCropContextFrame } from '../decision/context-authority.ts';
@@ -38,9 +15,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export const CLARIFICATION_RENDERER_VERSION = '3.0.0'; // Phase-18: DB-driven canonical observation keys
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION SCOPE ENUM (PHASE-8)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export enum ClarificationScope {
   IDENTIFY_CROP = 'IDENTIFY_CROP',
@@ -49,27 +24,17 @@ export enum ClarificationScope {
   IDENTIFY_SEVERITY = 'IDENTIFY_SEVERITY',
   IDENTIFY_TIMING = 'IDENTIFY_TIMING',
   IDENTIFY_INSECT_TYPE = 'IDENTIFY_INSECT_TYPE',  // PHASE-10: Before distribution for insects
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: Insect-First Clarification (Agronomically Correct Order)
-  // When farmer reports insect presence, ask about behavior and plant response
-  // BEFORE asking about field distribution (which is biologically premature)
-  // ═══════════════════════════════════════════════════════════════════════════
   IDENTIFY_INSECT_BEHAVIOR = 'IDENTIFY_INSECT_BEHAVIOR',   // Flying vs crawling
   IDENTIFY_PLANT_RESPONSE = 'IDENTIFY_PLANT_RESPONSE',     // Curling, yellowing, sticky, holes
-  // ═══════════════════════════════════════════════════════════════════════════
   // DIAGNOSTIC_CONFIRMATION (Trust-First Agronomist Mode)
-  // Activated when terminal/high-severity damage is reported (plant died, whole plant affected)
-  // Shows CAUSE-confirmation options (pest evidence, disease signs) NOT location questions
-  // ═══════════════════════════════════════════════════════════════════════════
   DIAGNOSTIC_CONFIRMATION = 'DIAGNOSTIC_CONFIRMATION',
   REFINE_OBSERVATION = 'REFINE_OBSERVATION',
   PHOTO_ONLY = 'PHOTO_ONLY',
   STOP_ESCALATE = 'STOP_ESCALATE'
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT/OUTPUT TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationRenderInput {
   scope: ClarificationScope;
@@ -103,20 +68,10 @@ export interface SafetyValidationResult {
   violations: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TEMPLATE-BASED RENDERER (Preferred - No LLM needed)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Pre-defined safe templates for each clarification scope.
- * These are diagnosis-neutral and safe to use without validation.
- */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DYNAMIC CLARIFICATION TEMPLATES v3.0
- * Templates are now CONTEXT-AWARE based on crop type and land data
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// Pre-defined safe templates for each clarification scope.
+// DYNAMIC CLARIFICATION TEMPLATES v3.0
 
 // Base templates - used when no context-specific template exists
 const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
@@ -214,16 +169,11 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP-SPECIFIC TEMPLATES - Different options for different crops
-// ═══════════════════════════════════════════════════════════════════════════
 
 type CropSpecificTemplate = Partial<Record<ClarificationScope, Record<string, { question: string; options: string[] }>>>;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP-STAGE-SPECIFIC TEMPLATES
-// Templates vary by crop AND growth stage for accurate clarification
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface StageSpecificTemplates {
   [stage: string]: Partial<Record<ClarificationScope, Record<string, { question: string; options: string[] }>>>;
@@ -348,10 +298,7 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT-AWARE TEMPLATE RESOLVER
-// Returns appropriate template based on crop type and land data
-// ═══════════════════════════════════════════════════════════════════════════
 
 function getContextAwareTemplate(
   scope: ClarificationScope,
@@ -359,15 +306,9 @@ function getContextAwareTemplate(
   cropContext?: CropContextAuthority | null,
   landData?: { soil_n?: string; ndvi_trend?: string } | null
 ): { question: string; options: string[] } {
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-14 FIX: Use CROP_STAGE_SPECIFIC_TEMPLATES (not the non-existent CROP_SPECIFIC_TEMPLATES)
-  // Priority: Stage-specific > Crop default > Base template > English fallback
-  // ═══════════════════════════════════════════════════════════════════════════
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL: Stage normalization for template lookup
-  // SEEDLING maps to GERMINATION for sugarcane (agronomically same)
-  // ═══════════════════════════════════════════════════════════════════════════
   const STAGE_TEMPLATE_ALIASES: Record<string, string> = {
     'SEEDLING': 'GERMINATION',
     'SEEDLING_STAGE': 'GERMINATION',
@@ -438,16 +379,9 @@ function getContextAwareTemplate(
 // Export the old name for backward compatibility
 const CLARIFICATION_TEMPLATES = BASE_TEMPLATES;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFETY VALIDATION (HARD GATE)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * FORBIDDEN patterns - if any match, the turn FAILS.
- * This is the HARD SAFETY GATE.
- * 
- * PHASE-9 UPDATE: Added additional pest patterns as per Task 8 requirements.
- */
+// FORBIDDEN patterns - if any match, the turn FAILS.
 const FORBIDDEN_PATTERNS: RegExp[] = [
   // Pest names (Marathi/Hindi/English) - PHASE-9 EXTENDED
   /बोरर|borer|छेदक|stem\s*borer|shoot\s*borer/i,
@@ -491,10 +425,7 @@ const FORBIDDEN_PATTERNS: RegExp[] = [
   /carbendazim|mancozeb|copper/i
 ];
 
-/**
- * Validate clarification output for safety.
- * If ANY forbidden pattern is found, the turn FAILS.
- */
+// Validate clarification output for safety.
 export function validateClarificationSafety(
   output: Pick<ClarificationRenderOutput, 'question' | 'options'>
 ): SafetyValidationResult {
@@ -522,16 +453,9 @@ export function validateClarificationSafety(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN RENDER FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Render clarification using templates (no LLM needed).
- * Templates are pre-validated and safe.
- * 
- * PHASE-8.1: Added crop context framing for stage-aware questions.
- */
+// Render clarification using templates (no LLM needed).
 export function renderClarification(
   input: ClarificationRenderInput
 ): ClarificationRenderOutput {
@@ -545,10 +469,7 @@ export function renderClarification(
   // Limit options to max_options
   const limitedOptions = template.options.slice(0, max_options);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-8.1: Stage-Aware Framing (NO DIAGNOSIS)
-  // If crop context exists, prepend crop + stage info to question
-  // ═══════════════════════════════════════════════════════════════════════════
   let finalQuestion = template.question;
   let cropFramingApplied = false;
   
@@ -579,9 +500,7 @@ export function renderClarification(
   };
 }
 
-/**
- * Get monitoring advice for when clarification limit is reached (STOP_ESCALATE).
- */
+// Get monitoring advice for when clarification limit is reached (STOP_ESCALATE).
 export function getMonitoringAdvice(language: string): string {
   // ✅ FIX: Remove numbered emojis - use bullet points for clear instructions
   const advice: Record<string, string> = {
@@ -591,14 +510,9 @@ export function getMonitoringAdvice(language: string): string {
   return advice[language] || advice['en'];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-18: DATABASE-DRIVEN CONTEXT-AWARE TEMPLATE RESOLVER
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get context-aware clarification options from database first, then templates.
- * This ensures options are sourced from decision_rules.observable_characteristics
- */
+// Get context-aware clarification options from database first, then templates.
 export async function getContextAwareTemplateFromDB(
   scope: ClarificationScope,
   language: string,
@@ -641,14 +555,7 @@ export async function getContextAwareTemplateFromDB(
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // R6 FIX — Options are sourced PURELY through observation_translations
-  // (observation-label-loader). The English BASE_TEMPLATES.options dictionary
-  // is no longer used as an option source for any language. Templates only
-  // provide the QUESTION text. This prevents English leakage to non-English
-  // farmers and removes the hardcoded "🔍 Insects visible / Yellow leaves / …"
-  // fallback list that bypassed the canonical DB ontology.
-  // ═══════════════════════════════════════════════════════════════════════════
   const lang = (language || 'en').toLowerCase();
   try {
     const url = Deno.env.get('SUPABASE_URL');
@@ -678,9 +585,7 @@ export async function getContextAwareTemplateFromDB(
   return { question: safeQuestion, options: [] };
 }
 
-/**
- * Get just the question text from templates (for use with DB-sourced options)
- */
+// Get just the question text from templates (for use with DB-sourced options)
 function getTemplateQuestion(
   scope: ClarificationScope,
   language: string,
@@ -729,10 +634,7 @@ function getTemplateQuestion(
          'Please describe what you observe:';
 }
 
-/**
- * PHASE-18: Async render clarification with DB lookup first.
- * Priority: DB rules > Templates > Fallback
- */
+// PHASE-18: Async render clarification with DB lookup first.
 export async function renderClarificationAsync(
   input: ClarificationRenderInput
 ): Promise<ClarificationRenderOutput> {

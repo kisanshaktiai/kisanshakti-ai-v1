@@ -1,11 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RULE ENGINE EXECUTOR - TYPE DEFINITIONS v3.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Types for the deterministic rule execution engine that processes
- * TypeScript rule modules from /src/decision-graph/safety-rules/
- */
+// RULE ENGINE EXECUTOR - TYPE DEFINITIONS v3.0
 
 import type { 
   DiagnosticHypothesis,
@@ -19,9 +12,7 @@ import type {
   SeverityLevel 
 } from './rule-module-types.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE EXECUTION INPUT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface RuleExecutionInput {
   session_id: string;
@@ -139,9 +130,7 @@ export interface Treatment {
 
 export type EquipmentType = 'KNAPSACK_SPRAYER' | 'POWER_SPRAYER' | 'BOOM_SPRAYER' | 'DRONE' | 'MANUAL_ONLY';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DECISION OUTPUT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DecisionOutput {
   decision_id: string;
@@ -259,9 +248,6 @@ export type DecisionStatus =
   | 'ESCALATED'
   | 'FALLBACK_MODE'
   // Step 1 — GraphTruth-compliant sentinel: the symbolic brain reached the
-  // node, but the observation graph does not carry enough distinguishing
-  // evidence to select a rule. Callers MUST render a differential question
-  // from `observation_differential_questions`, not a fake MONITOR advisory.
   | 'NEEDS_MORE_EVIDENCE';
 
 export interface PrimaryDecision {
@@ -389,9 +375,7 @@ export interface BlockedAction {
   alternatives: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ECONOMIC ASSESSMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EconomicAssessment {
   treatment_cost_inr: number;
@@ -421,9 +405,7 @@ export interface AffordabilityAssessment {
   budget_remaining_after_treatment_inr?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SCIENTIFIC JUSTIFICATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ScientificJustification {
   decision: string;
@@ -448,9 +430,7 @@ export interface AppliedRule {
   execution_time_ms?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTINGENCY & FOLLOW-UP
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ContingencyPlan {
   if_no_improvement: {
@@ -499,9 +479,7 @@ export interface FollowUpCheck {
   decision_if_unsuccessful?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AUDIT TRAIL
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface AuditTrail {
   input_hash: string;
@@ -533,9 +511,7 @@ export interface FarmerMessages {
   detailed_en?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTERNAL PROCESSING TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DecisionsByPriority {
   P0_emergency: RuleResult[];
@@ -573,9 +549,7 @@ export interface RecommendationDetails {
   benefit_cost_ratio?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP ECONOMICS DATA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CropEconomicsData {
   crop_code: string;
@@ -644,9 +618,7 @@ export const CROP_ECONOMICS: Record<string, CropEconomicsData> = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOSS PERCENTAGE BY SEVERITY
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const SEVERITY_LOSS_PERCENTAGE: Record<SeverityLevel, number> = {
   'LOW': 0.15,      // 15% yield loss if untreated
@@ -655,9 +627,7 @@ export const SEVERITY_LOSS_PERCENTAGE: Record<SeverityLevel, number> = {
   'CRITICAL': 0.85  // 85% yield loss
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ENGINE CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const RULE_ENGINE_VERSION = '3.0.0';
 

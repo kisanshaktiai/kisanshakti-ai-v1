@@ -1,18 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGENT 1B: VISUAL INTELLIGENCE AGENT - TYPE DEFINITIONS
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Advanced computer vision types for agricultural image analysis.
- * Handles pest detection, disease identification, severity quantification.
- * 
- * @version 3.0.1
- * @agent AGENT_1B_VISUAL_INTELLIGENCE
- */
+// AGENT 1B: VISUAL INTELLIGENCE AGENT - TYPE DEFINITIONS
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface VisualAgentInput {
   image_data: ImageData;
@@ -68,9 +56,7 @@ export interface DiagnosticGoals {
   specific_requirements: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // IMAGE QUALITY ASSESSMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type ImageUsability = 'USABLE' | 'MARGINAL' | 'UNUSABLE';
 export type QualityStatus = 'EXCELLENT' | 'GOOD' | 'ACCEPTABLE' | 'POOR' | 'UNUSABLE';
@@ -111,9 +97,7 @@ export interface ImageQualityAssessment {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VISUAL DETECTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type LifeStage = 'EGG' | 'LARVA' | 'NYMPH' | 'PUPA' | 'ADULT';
 export type Distribution = 'CLUSTERED' | 'SCATTERED' | 'WIDESPREAD' | 'LOCALIZED';
@@ -208,9 +192,7 @@ export interface VisualDetections {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXTUAL VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface TextVisualAgreement {
   pest_identification?: {
@@ -263,9 +245,7 @@ export interface ContextualValidation {
   overall_agreement_score: number; // 0-1
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SEVERITY QUANTIFICATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface EconomicThreshold {
   threshold_value: number;
@@ -314,9 +294,7 @@ export interface SeverityQuantification {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONFIDENCE ASSESSMENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface UncertaintyArea {
   aspect: string;
@@ -349,9 +327,7 @@ export interface ConfidenceAssessment {
   requires_better_photo: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTEGRATED DIAGNOSIS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface PrimaryIssue {
   type: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'PHYSIOLOGICAL';
@@ -395,9 +371,7 @@ export interface IntegratedDiagnosis {
   diagnosis_summary_en: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface VisualAgentOutput {
   analysis_metadata: {
@@ -432,9 +406,7 @@ export interface VisualAgentOutput {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PROCESSING INTERMEDIATE TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ImageAnalysisRequest {
   images: string[];

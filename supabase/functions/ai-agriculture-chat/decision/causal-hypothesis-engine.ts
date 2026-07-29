@@ -1,31 +1,9 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CAUSAL HYPOTHESIS ARBITRATION ENGINE v1.0.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Production-hardened causal reasoning layer that sits between observation
- * assembly and rule evaluation. Uses strict fail-closed HypothesisLedger
- * (mirroring ConditionLedger) with density weighting and contradiction
- * elimination.
- * 
- * Architecture:
- *   CanonicalState → Hypothesis Generator → HypothesisLedger Filter
- *   → Competing Arbitration → Best Hypothesis → Rule Scope Narrowing
- * 
- * All biological logic comes from database tables. Zero hardcoded rules.
- */
+// CAUSAL HYPOTHESIS ARBITRATION ENGINE v1.0.0
 
 import { SymbolContract } from '../runtime/symbol-contract.ts';
 import { stageCompatibility } from './stage-symbol-resolver.ts';
 
-/**
- * Graph-boundary symbol coercion — delegates identity to SymbolContract.
- * SymbolContract stays a pure identity layer (never throws, never decides
- * request failure). Here we log any [SYMBOL_CONTRACT_VIOLATION] (Promise
- * leak, unknown shape) so the leak surfaces in logs and route decisions
- * can be made upstream, then drop the offending element so raw string ops
- * on Promise / object values can never crash the graph runtime.
- */
+// Graph-boundary symbol coercion — delegates identity to SymbolContract.
 function coerceSymbolViaContract(x: unknown, site: string): string | null {
   const res = SymbolContract.extract(x);
   if (!res.symbol && res.violation && res.violation !== 'EMPTY') {
@@ -50,9 +28,7 @@ function coerceSymbolList(xs: unknown, site = 'causal-hypothesis-engine'): strin
 
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export enum HypothesisConditionStatus {
   PASSED = 'PASSED',
@@ -159,22 +135,14 @@ interface HypothesisRuleMappingRow {
   priority: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
 const ENGINE_VERSION = '1.2.0'; // v1.2.0: lowercase crop_group, ontology-bridged observations, SKIPPED penalty
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP GROUP NORMALIZER
-// DB `hypothesis_master.crop_group` stores lowercase canonical crop names
-// (rice, sugarcane, cotton, wheat, ...). We only normalize case + a tiny
-// alias set for short farmer codes; long-term source of truth is the crops
-// ontology in the DB, NOT this map.
-// ═══════════════════════════════════════════════════════════════════════════
 const CROP_CODE_ALIASES: Record<string, string> = {
   sc: 'sugarcane',
   ctn: 'cotton',
@@ -192,9 +160,7 @@ function normalizeCropGroup(input: string): string {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHE
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface CachedHypothesisData {
   hypotheses: HypothesisMasterRow[];
@@ -207,9 +173,7 @@ interface CachedHypothesisData {
 const hypothesisCache = new Map<string, CachedHypothesisData>();
 let loadingPromise: Map<string, Promise<CachedHypothesisData>> = new Map();
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DATA LOADER — FIX: Sequential 2-phase load (Supabase JS .in() requires array)
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function loadHypothesesForCrop(
   cropGroup: string,
@@ -238,9 +202,7 @@ async function _loadHypothesesImpl(
   cropGroup: string,
   supabase: any
 ): Promise<CachedHypothesisData> {
-  // ═══════════════════════════════════════════════════════════════════════
   // PHASE 1: Load master hypotheses to extract IDs
-  // ═══════════════════════════════════════════════════════════════════════
   const masterRes = await supabase.from('hypothesis_master')
     .select('*')
     .eq('crop_group', cropGroup)
@@ -262,10 +224,7 @@ async function _loadHypothesesImpl(
     return empty;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
   // PHASE 2: Load dependent tables in parallel using extracted ID array
-  // CRITICAL FIX: .in() requires a concrete string[] array, NOT a subquery
-  // ═══════════════════════════════════════════════════════════════════════
   const [condRes, contraRes, mappingRes] = await Promise.all([
     supabase.from('hypothesis_conditions')
       .select('*')
@@ -316,9 +275,7 @@ async function _loadHypothesesImpl(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONDITION EVALUATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 function evaluateCondition(
   condition: HypothesisConditionRow,
@@ -330,8 +287,6 @@ function evaluateCondition(
   switch (condition_type) {
     case 'OBSERVATION': {
       // Shape-agnostic reader — DB ontology stores value_json as either
-      // ["obs_code", ...] OR {code:"obs_code"} OR {codes:["obs_code", ...]}.
-      // No hardcoded observation names — pure JSON transport.
       const raw = value_json as any;
       const codes: string[] = Array.isArray(raw)
         ? raw.filter((x: any) => typeof x === 'string')
@@ -483,9 +438,7 @@ function evaluateCondition(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTRADICTION CHECKER
-// ═══════════════════════════════════════════════════════════════════════════
 
 function checkContradictions(
   contradictions: HypothesisContradictionRow[],
@@ -534,9 +487,7 @@ function checkContradictions(
   return found;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HYPOTHESIS SCORER
-// ═══════════════════════════════════════════════════════════════════════════
 
 function scoreHypothesis(
   hypothesis: HypothesisMasterRow,
@@ -576,10 +527,6 @@ function scoreHypothesis(
   const contradictionsFound = checkContradictions(contradictionRows, canonicalState, observations);
 
   // STRICT FAIL-CLOSED MATCH RULE (Phase 6: SKIPPED_NO_DATA no longer eliminates):
-  // 1. Zero required entries with FAILED
-  // 2. Zero CONTRADICTED entries
-  // 3. At least one PASSED entry
-  // Missing sensor/weather data is now a CONFIDENCE PENALTY, not elimination.
   const hasRequiredFailed = ledger.some(e => e.required && e.status === HypothesisConditionStatus.FAILED);
   const hasRequiredSkipped = ledger.some(e => e.required && e.status === HypothesisConditionStatus.SKIPPED_NO_DATA);
   const hasContradiction = contradictionsFound.length > 0;
@@ -676,9 +623,7 @@ function getInputValue(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DISCRIMINATOR QUESTION BUILDER
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildDiscriminatorQuestion(
   scoreA: HypothesisScore,
@@ -720,9 +665,7 @@ function buildDiscriminatorQuestion(
   return undefined;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // COMPETING ARBITRATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 function arbitrateHypotheses(
   scores: HypothesisScore[],
@@ -806,9 +749,7 @@ function arbitrateHypotheses(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // METRICS UPDATE (fire-and-forget)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function updateMetrics(
   result: ArbitrationResult,
@@ -849,9 +790,7 @@ function updateMetrics(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN ENTRY POINT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CausalHypothesisInput {
   crop_group: string;
@@ -859,11 +798,7 @@ export interface CausalHypothesisInput {
   observations: string[];
   supabase_client: any;
   trace_id?: string;
-  /**
-   * Step 3 — Frozen GraphTruth for the turn. When supplied it OVERRIDES the
-   * mutable `crop_group` and `observations` fields; drift is logged.
-   * Callers on the primary orchestrator path MUST supply this.
-   */
+  // Step 3 — Frozen GraphTruth for the turn. When supplied it OVERRIDES the
   graph_truth?: import('../runtime/graph-truth.ts').GraphTruth | null;
 }
 
@@ -878,9 +813,7 @@ export async function runCausalHypothesisArbitration(
   const startTime = Date.now();
 
 
-  // ═════════════════════════════════════════════════════════════════════════
   // Step 3 — HYPOTHESIS CONTRACT: GraphTruth is the sole authority.
-  // ═════════════════════════════════════════════════════════════════════════
   const gt = input.graph_truth ?? null;
   if (gt) {
     const { assertGraphTruthIntegrity } = await import('../runtime/graph-truth.ts');
@@ -919,10 +852,6 @@ export async function runCausalHypothesisArbitration(
   console.log(`[HYPOTHESIS_LOAD] input_crop=${crop_group} resolved_crop_group=${normalizedCropGroup} hypothesis_count=${data.hypotheses.length}`);
 
   // Phase 4: bridge extractor codes → crop-canonical IOM codes BEFORE evaluation.
-  // Ontology-driven: concept-bridge maps generic codes (poor_germination) to
-  // crop-specific canonicals (obs_rice_no_emergence). No hardcoded per-condition
-  // dictionaries — the bridge itself is data (small in-code table today,
-  // observation_aliases long-term).
   let bridgedObservations: string[] = observations;
   try {
     const { bridgeToCropVocab } = await import('./concept-bridge.ts');
@@ -931,8 +860,6 @@ export async function runCausalHypothesisArbitration(
     for (const raw of observations) {
       if (!raw) continue;
       // Async DB-backed bridge (observation_aliases). MUST be awaited — a
-      // missing await here leaks Promise objects into graph reasoning and
-      // SymbolContract.extract will flag it as PROMISE_LEAK.
       const bridged = await bridgeToCropVocab(supabase_client, normalizedCropGroup, raw);
       const canonical =
         coerceSymbolViaContract(bridged?.canonical_code, 'bridgeToCropVocab.canonical_code') ??
@@ -976,11 +903,7 @@ export async function runCausalHypothesisArbitration(
     )
   );
 
-  // ─────────────────────────────────────────────────────────────────────────
   // OBS_TO_HYP_TRACE — deterministic forensic trace of the observation→hypothesis
-  // edge resolution. Always emitted so zero-hypothesis outcomes are debuggable
-  // without changing runtime behavior. Purely observational.
-  // ─────────────────────────────────────────────────────────────────────────
   try {
     let searched_conditions = 0;
     let matched_conditions = 0;
@@ -1032,9 +955,7 @@ export async function runCausalHypothesisArbitration(
     result.clarification_reason = `Hypothesis ${result.best_hypothesis.hypothesis_id} matched but has no associated treatment rules`;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // OBSERVABILITY BLOCK
-  // ═══════════════════════════════════════════════════════════════════════════
   const elapsed = Date.now() - startTime;
   const eliminated = scores.filter(s => s.is_eliminated);
   const survived = scores.filter(s => !s.is_eliminated);

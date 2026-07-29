@@ -1,7 +1,4 @@
-/**
- * Safety Guardian & Escalation Manager Types
- * Final safety checkpoint before agricultural advice reaches farmers
- */
+// Safety Guardian & Escalation Manager Types
 
 // Safety Check Result
 export interface SafetyCheck {

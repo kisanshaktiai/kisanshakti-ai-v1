@@ -1,92 +1,45 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * STAGE 2: OBSERVATION EXTRACTOR (LLM, STRICT)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * MASTER PROMPT v3 - Stage 2
- * 
- * PURPOSE:
- * Extract ONLY what the farmer explicitly states.
- * 
- * RULES:
- * - If not explicitly stated → UNKNOWN
- * - NEVER return pest, disease, deficiency codes
- * - NEVER return canonical codes
- * - Only extract raw observations
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// STAGE 2: OBSERVATION EXTRACTOR (LLM, STRICT)
 
 export const OBSERVATION_EXTRACTOR_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - STRICT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type AffectedPart = 'leaf' | 'stem' | 'root' | 'whole' | 'fruit' | 'boll' | 'unknown';
 export type SymptomDistribution = 'uniform' | 'patchy' | 'border' | 'spreading' | 'unknown';
 
 export interface ObservationExtraction {
-  /**
-   * Raw crop name as mentioned by farmer (NOT code)
-   * Example: "sugarcane", "ऊस" - raw text, NOT code
-   */
+  // Raw crop name as mentioned by farmer (NOT code)
   crop_mentioned?: string;
   
-  /**
-   * EXACT farmer words describing symptoms
-   * Examples: ["मधली सुरळी वाळली", "dead heart", "पाने पिवळी"]
-   */
+  // EXACT farmer words describing symptoms
   raw_symptom_text: string[];
   
-  /**
-   * Which part of plant is affected
-   */
+  // Which part of plant is affected
   affected_part: AffectedPart;
   
-  /**
-   * How symptoms are distributed
-   */
+  // How symptoms are distributed
   symptom_distribution: SymptomDistribution;
   
-  /**
-   * Severity words used by farmer
-   * Examples: ["severe", "खूप", "थोडी", "very bad"]
-   */
+  // Severity words used by farmer
   severity_words: string[];
   
-  /**
-   * Time references mentioned
-   * Examples: ["yesterday", "2 days ago", "काल पासून"]
-   */
+  // Time references mentioned
   time_reference?: string;
   
-  /**
-   * Actions farmer has already taken
-   * Examples: ["sprayed", "फवारणी केली", "applied fertilizer"]
-   */
+  // Actions farmer has already taken
   action_taken: string[];
   
-  /**
-   * Words indicating farmer is uncertain
-   * Examples: ["maybe", "कदाचित", "I think"]
-   */
+  // Words indicating farmer is uncertain
   uncertainty_markers: string[];
   
-  /**
-   * Detected input language
-   */
+  // Detected input language
   detected_language: string;
   
-  /**
-   * Count of critical observations
-   */
+  // Count of critical observations
   observation_count: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PATTERN DICTIONARIES FOR EXTRACTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 const AFFECTED_PART_PATTERNS: Record<string, AffectedPart> = {
   // Marathi
@@ -160,9 +113,7 @@ const ACTION_PATTERNS: Record<string, string[]> = {
   en: ['sprayed', 'applied', 'gave water', 'fertilized', 'irrigated', 'treated']
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXTRACTION FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function extractAffectedPart(text: string): AffectedPart {
   const lowerText = text.toLowerCase();
@@ -325,10 +276,7 @@ function extractRawSymptomText(text: string): string[] {
   return symptoms;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN EXTRACTION FUNCTION
-// CRITICAL FIX: Now accepts landContext as PRIMARY crop source
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LandContextForExtraction {
   current_crop?: string;
@@ -371,9 +319,7 @@ export function extractObservations(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION - ENSURE NO FORBIDDEN FIELDS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function validateObservationExtraction(extraction: ObservationExtraction): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -399,9 +345,7 @@ export function validateObservationExtraction(extraction: ObservationExtraction)
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   extractObservations,

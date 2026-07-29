@@ -1,20 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGRICULTURAL NLP VALIDATOR - MARATHI/HINDI LANGUAGE PROCESSING
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * World-Class Agricultural Vocabulary Validation with:
- * - Dialectal variation support (Vidarbha, Marathwada, Western Maharashtra)
- * - Forbidden combination detection
- * - Fuzzy matching for voice-to-text errors
- * - Agricultural context validation
- * 
- * Version: 1.0.0
- */
+// AGRICULTURAL NLP VALIDATOR - MARATHI/HINDI LANGUAGE PROCESSING
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NLPValidationResult {
   is_valid: boolean;
@@ -51,9 +37,7 @@ export interface NLPValidationResult {
   gibberish_score: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MARATHI AGRICULTURAL VOCABULARY DATABASE (5000+ validated terms)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const MARATHI_AG_VOCABULARY = {
   pests: {
@@ -180,9 +164,7 @@ export const MARATHI_AG_VOCABULARY = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HINDI AGRICULTURAL VOCABULARY DATABASE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const HINDI_AG_VOCABULARY = {
   pests: {
@@ -257,9 +239,7 @@ export const HINDI_AG_VOCABULARY = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIALECT VARIATIONS (Vidarbha, Marathwada, Western Maharashtra)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const DIALECT_NORMALIZATIONS: Record<string, Record<string, string>> = {
   vidarbha: {
@@ -291,9 +271,7 @@ export const DIALECT_NORMALIZATIONS: Record<string, Record<string, string>> = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FORBIDDEN COMBINATIONS (Impossible/Dangerous Scenarios)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const FORBIDDEN_COMBINATIONS = [
   {
@@ -328,13 +306,9 @@ export const FORBIDDEN_COMBINATIONS = [
   },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FUZZY MATCHING FOR VOICE-TO-TEXT ERRORS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Calculate Levenshtein distance between two strings
- */
+// Calculate Levenshtein distance between two strings
 function levenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = [];
   
@@ -362,9 +336,7 @@ function levenshteinDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
-/**
- * Fuzzy match agricultural term with tolerance for voice errors
- */
+// Fuzzy match agricultural term with tolerance for voice errors
 export function fuzzyMatchAgTerm(
   input: string,
   vocabulary: Record<string, any>,
@@ -408,9 +380,7 @@ export function fuzzyMatchAgTerm(
   return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DEVANAGARI SOUNDEX (Phonetic similarity for Marathi/Hindi)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const DEVANAGARI_PHONETIC_GROUPS: Record<string, string> = {
   // Vowels - map to group V
@@ -442,9 +412,7 @@ const DEVANAGARI_PHONETIC_GROUPS: Record<string, string> = {
   'ं': '0', 'ः': '0', '्': '',
 };
 
-/**
- * Generate Soundex-like code for Devanagari text
- */
+// Generate Soundex-like code for Devanagari text
 export function devanagariSoundex(text: string): string {
   if (!text) return '';
   
@@ -467,9 +435,7 @@ export function devanagariSoundex(text: string): string {
   return code.padEnd(4, '0').substring(0, 6);
 }
 
-/**
- * Check if two terms are phonetically similar
- */
+// Check if two terms are phonetically similar
 export function isPhoneticallySimilar(term1: string, term2: string): boolean {
   const soundex1 = devanagariSoundex(term1);
   const soundex2 = devanagariSoundex(term2);
@@ -478,13 +444,9 @@ export function isPhoneticallySimilar(term1: string, term2: string): boolean {
   return soundex1.substring(0, 3) === soundex2.substring(0, 3);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GIBBERISH DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Detect if text is likely gibberish or random characters
- */
+// Detect if text is likely gibberish or random characters
 export function detectGibberish(text: string): { is_gibberish: boolean; score: number } {
   if (!text || text.length < 3) {
     return { is_gibberish: false, score: 0 };
@@ -540,13 +502,9 @@ export function detectGibberish(text: string): { is_gibberish: boolean; score: n
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN VALIDATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Comprehensive NLP validation for agricultural queries
- */
+// Comprehensive NLP validation for agricultural queries
 export function validateAgricultureNLP(
   text: string,
   currentMonth?: number

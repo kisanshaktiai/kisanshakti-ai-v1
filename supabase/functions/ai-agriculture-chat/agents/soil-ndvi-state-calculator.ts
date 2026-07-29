@@ -1,33 +1,13 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * ENHANCED SOIL & NDVI STATE CALCULATOR
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Converts raw soil test values and NDVI readings into categorical states
- * for rule engine consumption (based on ICAR standards)
- * 
- * CRITICAL: All calculations are CROP + STAGE SPECIFIC
- * Cotton at Vegetative needs different NPK than Cotton at Flowering!
- */
+// ENHANCED SOIL & NDVI STATE CALCULATOR
 
 export type NutrientState = 'LOW' | 'ADEQUATE' | 'HIGH';
 export type NDVIState = 'EXCELLENT' | 'HEALTHY' | 'MODERATE_STRESS' | 'HIGH_STRESS' | 'CRITICAL';
 export type NDVITrend = 'RISING' | 'STABLE' | 'DECLINING';
 export type SoilType = 'SANDY' | 'SANDY_LOAM' | 'LOAMY' | 'CLAY_LOAM' | 'CLAY' | 'BLACK_COTTON' | 'RED' | 'LATERITE';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP + STAGE SPECIFIC NITROGEN REQUIREMENTS (ICAR Standards)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Nitrogen requirements by crop and growth stage (kg/ha)
- * Source: ICAR Crop Production Guidelines 2024
- * 
- * CRITICAL: Same soil N=180 kg/ha means:
- * - LOW for Cotton at Vegetative (needs 200-400)
- * - ADEQUATE for Cotton at Fruiting (needs 100-200)
- * - HIGH for Soybean at Vegetative (needs 100-200)
- */
+// Nitrogen requirements by crop and growth stage (kg/ha)
 const NITROGEN_REQUIREMENTS_BY_STAGE: Record<string, {
   vegetative: { low: number; high: number };
   flowering: { low: number; high: number };
@@ -133,19 +113,9 @@ const POTASSIUM_REQUIREMENTS: Record<string, { low: number; high: number }> = {
   'POTATO': { low: 200, high: 400 }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP-SPECIFIC NDVI THRESHOLDS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * NDVI thresholds vary by crop type!
- * Dense canopy crops (Rice, Sugarcane) have higher baseline NDVI
- * Sparse crops (Onion, Potato) have lower baseline NDVI
- * 
- * CRITICAL: NDVI=0.50 means:
- * - MODERATE_STRESS for Rice (dense canopy expected)
- * - HEALTHY for Onion (lower baseline)
- */
+// NDVI thresholds vary by crop type!
 const NDVI_THRESHOLDS_BY_CROP: Record<string, {
   excellent: number;
   healthy: number;
@@ -170,13 +140,9 @@ const NDVI_THRESHOLDS_BY_CROP: Record<string, {
 // Default thresholds for unknown crops
 const DEFAULT_NDVI_THRESHOLDS = { excellent: 0.75, healthy: 0.60, moderate: 0.40, stress: 0.25 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP + STAGE SPECIFIC NITROGEN CALCULATION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Map crop stage string to normalized stage key
- */
+// Map crop stage string to normalized stage key
 function normalizeStageForNutrients(cropStage?: string): 'vegetative' | 'flowering' | 'fruiting' {
   if (!cropStage) return 'vegetative';
   
@@ -198,9 +164,7 @@ function normalizeStageForNutrients(cropStage?: string): 'vegetative' | 'floweri
   return 'vegetative';
 }
 
-/**
- * Calculate nitrogen state for specific crop and growth stage
- */
+// Calculate nitrogen state for specific crop and growth stage
 export function calculateNitrogenState(
   nitrogenKgPerHa: number | undefined | null,
   cropCode: string,
@@ -228,9 +192,7 @@ export function calculateNitrogenState(
   return 'ADEQUATE';
 }
 
-/**
- * Calculate phosphorus state (not stage-dependent)
- */
+// Calculate phosphorus state (not stage-dependent)
 export function calculatePhosphorusState(
   phosphorusKgPerHa: number | undefined | null,
   cropCode: string
@@ -245,9 +207,7 @@ export function calculatePhosphorusState(
   return 'ADEQUATE';
 }
 
-/**
- * Calculate potassium state (not stage-dependent)
- */
+// Calculate potassium state (not stage-dependent)
 export function calculatePotassiumState(
   potassiumKgPerHa: number | undefined | null,
   cropCode: string
@@ -262,13 +222,9 @@ export function calculatePotassiumState(
   return 'ADEQUATE';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP-SPECIFIC NDVI CALCULATION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Map NDVI value to health state (CROP-SPECIFIC)
- */
+// Map NDVI value to health state (CROP-SPECIFIC)
 export function mapNDVIToState(
   ndviValue: number | undefined | null,
   cropCode?: string
@@ -285,9 +241,7 @@ export function mapNDVIToState(
   return 'CRITICAL';
 }
 
-/**
- * Calculate NDVI trend from trend value or historical readings
- */
+// Calculate NDVI trend from trend value or historical readings
 export function calculateNDVITrend(
   trendValue?: number,
   ndviHistory?: Array<{ value: number; date: string }>
@@ -311,9 +265,7 @@ export function calculateNDVITrend(
   return 'STABLE';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SOIL TYPE NORMALIZATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function normalizeSoilType(soilType: string | undefined): SoilType {
   if (!soilType) return 'LOAMY';
@@ -331,9 +283,7 @@ export function normalizeSoilType(soilType: string | undefined): SoilType {
   return 'LOAMY';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FERTILIZER DOSAGE CALCULATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FertilizerDosage {
   deficiency_kg_per_ha: number;
@@ -343,9 +293,7 @@ export interface FertilizerDosage {
   recommendation: string;
 }
 
-/**
- * Calculate required fertilizer dosage based on deficiency
- */
+// Calculate required fertilizer dosage based on deficiency
 export function calculateFertilizerDosage(
   currentKgPerHa: number,
   cropCode: string,
@@ -392,9 +340,7 @@ export function calculateFertilizerDosage(
   return result;
 }
 
-/**
- * Calculate nutrient deficiency amount
- */
+// Calculate nutrient deficiency amount
 export function calculateNutrientDeficiency(
   currentKgPerHa: number,
   cropCode: string,
@@ -404,9 +350,7 @@ export function calculateNutrientDeficiency(
   return calculateFertilizerDosage(currentKgPerHa, cropCode, cropStage || 'VEGETATIVE', nutrientType).deficiency_kg_per_ha;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP CONTEXT VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CropValidation {
   valid: boolean;
@@ -415,9 +359,7 @@ export interface CropValidation {
   normalized_crop?: string;
 }
 
-/**
- * Validate that crop code is recognized - CRITICAL for training data quality
- */
+// Validate that crop code is recognized - CRITICAL for training data quality
 export function validateCropContext(
   cropCode: string | undefined,
   landId?: string
@@ -446,9 +388,7 @@ export function validateCropContext(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // COMPLETE STATE CALCULATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface CalculatedFieldStates {
   soil_nitrogen_state?: NutrientState;
@@ -467,10 +407,7 @@ export interface CalculatedFieldStates {
   potassium_dosage?: FertilizerDosage;
 }
 
-/**
- * Calculate all field states from land context
- * ENHANCED: Now includes crop stage for nitrogen calculation
- */
+// Calculate all field states from land context
 export function calculateFieldStates(
   landContext: any,
   cropCode: string,
@@ -481,8 +418,6 @@ export function calculateFieldStates(
   const stage = cropStage || landContext?.growth_stage || 'VEGETATIVE';
   
   // CRITICAL FIX: Support both old and new soil schema keys for backward compatibility
-  // New keys: nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level
-  // Old keys: nitrogen, phosphorus, potassium, ph
   const nitrogen = soilHealth?.nitrogen_kg_per_ha ?? soilHealth?.nitrogen;
   const phosphorus = soilHealth?.phosphorus_kg_per_ha ?? soilHealth?.phosphorus;
   const potassium = soilHealth?.potassium_kg_per_ha ?? soilHealth?.potassium;
@@ -529,13 +464,9 @@ export function calculateFieldStates(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Log complete state calculation for debugging
- */
+// Log complete state calculation for debugging
 export function logStateCalculation(
   cropCode: string,
   fieldStates: CalculatedFieldStates,
@@ -583,9 +514,7 @@ export function logStateCalculation(
   console.log('═══════════════════════════════════════════════════════════════');
 }
 
-/**
- * Log complete land-crop context for debugging
- */
+// Log complete land-crop context for debugging
 export function logLandCropStateCalculation(
   landId: string,
   cropCode: string,

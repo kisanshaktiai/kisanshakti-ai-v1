@@ -63,30 +63,15 @@ export interface BiologicalState {
   readonly land_id: string;
   readonly crop_code: string | null;
   readonly crop_variety: string | null;
-  /**
-   * v6 — cultivation_method carried through from `crop_schedules` via
-   * `resolve_crop_phenology`. Values: 'direct_seeded' | 'transplanted' |
-   * 'any' | null. Consumed by CANONICAL_CONTEXT_SRC and downstream logs.
-   * NEVER used to branch biology in TS — biology remains DB-owned.
-   */
+  // v6 — cultivation_method carried through from `crop_schedules` via
   readonly cultivation_method: string | null;
 
   readonly growth_stage: string | null;     // canonical label (e.g. TILLERING)
   readonly stage_code:   string | null;     // ontology code
   readonly stage_uuid:   string | null;
-  /**
-   * v6 — resolved_stage is an alias for `growth_stage` exposed under the
-   * name mandated by the biological-model contract. It always equals
-   * `growth_stage`. Kept as a distinct field so downstream code can assert
-   * it explicitly without depending on legacy field names.
-   */
+  // v6 — resolved_stage is an alias for `growth_stage` exposed under the
   readonly resolved_stage: string | null;
-  /**
-   * v6 — stage_source labels the authority behind the stage decision. Mirror
-   * of `source` (e.g. 'crop_stage_ssot', 'gdd_model',
-   * 'completed_stage_transitions'). Preserved separately so the canonical
-   * context can log a stable, contract-named field.
-   */
+  // v6 — stage_source labels the authority behind the stage decision. Mirror
   readonly stage_source: string;
 
   readonly das: number | null;              // days after sowing (authoritative)
@@ -97,29 +82,17 @@ export interface BiologicalState {
   readonly source: string;                  // 'phenology_ssot' | ...
   readonly resolver_version: string | null;
 
-  /**
-   * PATCH v4-P1 — Predicted-stage confidence (0..1). Starts at `confidence`
-   * and is decayed by biological_constraints[].severity via runtime graph
-   * math (SEVERITY_WEIGHTS). NEVER contains agronomy.
-   */
+  // PATCH v4-P1 — Predicted-stage confidence (0..1). Starts at `confidence`
   readonly predicted_stage_confidence: number;
 
-  /**
-   * PATCH v4-P1 — Biological CONSTRAINTS (not stages).
-   * Codes are emitted by DB constraint rules (e.g. decision_rules with
-   * category='BIOLOGICAL_CONSTRAINT'). Runtime NEVER invents these codes.
-   * Empty [] until DB rules are seeded — inert but downstream-readable.
-   */
+  // PATCH v4-P1 — Biological CONSTRAINTS (not stages).
   readonly biological_constraints: ReadonlyArray<BiologicalConstraint>;
 
   readonly raw: Readonly<Record<string, unknown>>;
 }
 
 
-/**
- * PATCH v4-P1 — Biological constraint DTO. `code` and `source` are opaque
- * strings owned by the DB. TS never synthesises these values.
- */
+// PATCH v4-P1 — Biological constraint DTO. `code` and `source` are opaque
 export interface BiologicalConstraint {
   readonly code: string;                                     // e.g. EMERGENCE_NOT_CONFIRMED
   readonly severity: 'INFO' | 'WARN' | 'BLOCK';
@@ -158,15 +131,7 @@ export interface RawPhenologyRow {
 }
 
 
-/**
- * Build an immutable BiologicalState from the phenology resolver row.
- * Returns `null` when the resolver produced no row — callers must treat this
- * as "no biological authority" and fall back to legacy heuristics safely.
- *
- * PATCH v4-P1 — optional `biologicalConstraints` are additive DB-emitted
- * constraint records; they DECAY predicted_stage_confidence but never
- * overwrite growth_stage. Defaults to [] (inert).
- */
+// Build an immutable BiologicalState from the phenology resolver row.
 export function buildBiologicalState(
   landId: string,
   phenology: RawPhenologyRow | null | undefined,
@@ -193,9 +158,6 @@ export function buildBiologicalState(
     : null;
 
   // FIX C1 (2026-07-28): removed setActiveCultivationMethod call —
-  // module-scope state was deleted to prevent cross-request contamination.
-  // cultivationMethod is now threaded through explicit function args when
-  // downstream lookups need lane-awareness.
 
   const state: BiologicalState = {
     is_locked: true,
@@ -257,10 +219,7 @@ export function buildBiologicalState(
   return Object.freeze(state);
 }
 
-/**
- * Returns true when the landContext carries a locked BiologicalState.
- * Downstream stage-writer paths call this and abort their write when true.
- */
+// Returns true when the landContext carries a locked BiologicalState.
 export function isBiologicalStateLocked(landContext: unknown): boolean {
   if (!landContext || typeof landContext !== 'object') return false;
   const bs = (landContext as Record<string, unknown>).biological_state as
@@ -269,10 +228,7 @@ export function isBiologicalStateLocked(landContext: unknown): boolean {
   return !!(bs && bs.is_locked === true);
 }
 
-/**
- * Fail-fast guard for code paths that MUST run before the biological state
- * is locked. Throws immediately if lock is already in place.
- */
+// Fail-fast guard for code paths that MUST run before the biological state
 export function assertBiologicalStateUnlocked(landContext: unknown, site: string): void {
   if (isBiologicalStateLocked(landContext)) {
     throw new Error(
@@ -282,11 +238,7 @@ export function assertBiologicalStateUnlocked(landContext: unknown, site: string
   }
 }
 
-/**
- * Log-only helper used at competing writer sites (GDD engine, reconcilers,
- * sanity-check overrides). Returns true when the caller should SKIP its
- * write because the biological state is already locked.
- */
+// Log-only helper used at competing writer sites (GDD engine, reconcilers,
 export function blockStageWriteIfLocked(
   landContext: unknown,
   site: string,
@@ -301,30 +253,7 @@ export function blockStageWriteIfLocked(
   return true;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // v5-P8 — Biological Constraint Producer (DB-driven, crop-agnostic)
-// ───────────────────────────────────────────────────────────────────────────
-// Reads `decision_rules WHERE category='BIOLOGICAL_CONSTRAINT'` and evaluates
-// each rule's `conditions_json.canonical` predicate map against a lightweight
-// canonical field-twin draft. Emits BiologicalConstraint[] whose codes,
-// severities, and thresholds all originate in DB rows.
-//
-// Runtime does NOT understand agronomy — it only:
-//   1. resolves dotted paths (`weather.rainfall_after_sowing_mm`, ...)
-//   2. compares against predicate literals (`{ eq }`, `{ in }`, `{ lt }`, ...)
-//   3. AND-matches all canonical predicates → emits the constraint row as-is.
-// Expected DB rule shape (owned by DB rule authors, not TS):
-//   conditions_json = {
-//     "constraint_code": "EMERGENCE_NOT_CONFIRMED",
-//     "severity":       "BLOCK" | "WARN" | "INFO",
-//     "canonical": {
-//       "weather.rainfall_after_sowing_mm": { "eq": 0 },
-//       "soil.moisture_status":              { "in": ["DRY","VERY_DRY"] },
-//       "ndvi.value":                        { "present": false }
-//     }
-//   }
-// Rules apply to a specific crop_code OR globally when crop_code IS NULL.
-// ═══════════════════════════════════════════════════════════════════════════
 export async function evaluateBiologicalConstraints(
   supabase: any,
   canonicalDraft: unknown,

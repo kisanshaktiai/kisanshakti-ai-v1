@@ -23,9 +23,7 @@
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import { getConfigJson } from '../utils/db-ssot/system-config-cache.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type WeatherSafetyStatus = 'SAFE' | 'UNSAFE' | 'CAUTION' | 'UNKNOWN';
 export type DiseaseRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
@@ -96,15 +94,7 @@ export interface WeatherSafetyInput {
   include_disease_risk?: boolean; // NEW: Flag to include disease assessment
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFETY THRESHOLDS — DB-SSOT (system_config), cold-boot legacy fallback
-// ───────────────────────────────────────────────────────────────────────────
-// Do NOT edit the numbers below. They are cold-boot fallbacks only; the
-// authoritative values live in public.system_config rows:
-//   spray_max_rain_probability_pct, spray_max_wind_kmh,
-//   spray_min_temperature_c,       spray_max_temperature_c.
-// Legacy values are byte-identical to the seeded DB rows.
-// ═══════════════════════════════════════════════════════════════════════════
 
 type SprayType = 'PESTICIDE' | 'FUNGICIDE' | 'HERBICIDE' | 'FOLIAR_FERTILIZER' | 'BIOLOGICAL';
 
@@ -134,13 +124,9 @@ function resolveSprayThresholds(sprayType: SprayType) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DISEASE RISK CALCULATION (for preventive spray recommendations)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Calculate Dew Point using Magnus-Tetens formula
- */
+// Calculate Dew Point using Magnus-Tetens formula
 function calculateDewPoint(tempC: number, humidityPercent: number): number {
   if (humidityPercent <= 0) return tempC - 20;
   if (humidityPercent >= 100) return tempC;
@@ -151,10 +137,7 @@ function calculateDewPoint(tempC: number, humidityPercent: number): number {
   return Math.round(((b * gamma) / (a - gamma)) * 10) / 10;
 }
 
-/**
- * Calculate disease risk based on weather conditions
- * High disease risk may indicate need for preventive fungicide spray
- */
+// Calculate disease risk based on weather conditions
 function calculateDiseaseRiskForSpray(
   tempC: number,
   humidityPercent: number,
@@ -230,9 +213,7 @@ function calculateDiseaseRiskForSpray(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN SAFETY CHECK
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResult {
   console.log('🌦️ [WeatherSafetyGate] Checking spray safety...');
@@ -291,9 +272,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   
   let blockedReasons: string[] = [];
   
-  // ═══════════════════════════════════════════════════════════════════════
   // CHECK 1: Rain Probability
-  // ═══════════════════════════════════════════════════════════════════════
   if (weatherData.rain_probability !== null) {
     if (weatherData.rain_probability > thresholds.max_rain_probability) {
       result.rain_check.passed = false;
@@ -311,9 +290,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // CHECK 2: Wind Speed
-  // ═══════════════════════════════════════════════════════════════════════
   if (weatherData.wind_speed_kmh !== null) {
     if (weatherData.wind_speed_kmh > thresholds.max_wind_speed) {
       result.wind_check.passed = false;
@@ -331,9 +308,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // CHECK 3: Temperature
-  // ═══════════════════════════════════════════════════════════════════════
   if (weatherData.temperature_c !== null) {
     if (weatherData.temperature_c < thresholds.min_temperature) {
       result.temperature_check.passed = false;
@@ -353,9 +328,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // GENERATE RESULT
-  // ═══════════════════════════════════════════════════════════════════════
   
   if (!result.spray_allowed) {
     result.status = 'UNSAFE';
@@ -408,9 +381,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
     result.alternative_actions.push('Good conditions for spraying');
   }
   
-  // ═══════════════════════════════════════════════════════════════════════
   // CHECK 4: Disease Risk Assessment (NEW - for preventive spray recommendations)
-  // ═══════════════════════════════════════════════════════════════════════
   if (input.include_disease_risk !== false && weatherData.temperature_c !== null && weatherData.humidity !== null) {
     const diseaseRisk = calculateDiseaseRiskForSpray(
       weatherData.temperature_c,
@@ -448,21 +419,15 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONVENIENCE FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Quick check if spraying is safe
- */
+// Quick check if spraying is safe
 export function isSpraySafe(landState: AuthoritativeLandState | null): boolean {
   const result = checkWeatherSafety({ land_state: landState });
   return result.spray_allowed;
 }
 
-/**
- * Get spray safety message in specified language
- */
+// Get spray safety message in specified language
 export function getSpraySafetyMessage(
   landState: AuthoritativeLandState | null, 
   language: string

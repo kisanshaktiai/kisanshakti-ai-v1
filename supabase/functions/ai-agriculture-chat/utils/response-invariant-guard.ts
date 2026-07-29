@@ -1,26 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RESPONSE INVARIANT GUARD v1.0.0
- * Ensures deterministic response delivery for the AI Agriculture Chat system
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Eliminate Edge Function timeouts by enforcing hard invariants that guarantee
- * a response is returned when certain conditions are met.
- * 
- * INVARIANTS:
- * 1. If PRIMARY_DECISION exists with valid rule_id → MUST return response
- * 2. If clarification completed AND rules fired → MUST return response
- * 3. Empty/undefined responses are FORBIDDEN when invariants are triggered
- * 
- * @version 1.0.0
- */
+// RESPONSE INVARIANT GUARD v1.0.0
 
 export const RESPONSE_INVARIANT_GUARD_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ResponseInvariantInput {
   /** Whether a PRIMARY_DECISION exists */
@@ -73,16 +55,9 @@ export interface ResponseInvariantContext {
   checkedAt: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INVARIANT CHECK FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if response invariants are triggered
- * 
- * @param input - The invariant check input
- * @returns InvariantCheckResult indicating whether response must be returned
- */
+// Check if response invariants are triggered
 export function checkResponseInvariant(input: ResponseInvariantInput): InvariantCheckResult {
   const { 
     hasPrimaryDecision, 
@@ -93,10 +68,7 @@ export function checkResponseInvariant(input: ResponseInvariantInput): Invariant
     traceId 
   } = input;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // INVARIANT 1 (CRITICAL): PRIMARY_DECISION with valid rule_id
-  // If we have a valid decision from the rule engine, we MUST return it
-  // ═══════════════════════════════════════════════════════════════════════════
   if (hasPrimaryDecision && primaryRuleId && primaryActionType) {
     console.log(`\n✅ [INVARIANT:CRITICAL] PRIMARY_DECISION valid - response REQUIRED`);
     console.log(`   [${traceId}] rule_id: ${primaryRuleId}`);
@@ -110,10 +82,7 @@ export function checkResponseInvariant(input: ResponseInvariantInput): Invariant
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // INVARIANT 2 (HIGH): Clarification completed AND rules fired
-  // Farmer answered clarification → we found rules → response expected
-  // ═══════════════════════════════════════════════════════════════════════════
   if (clarificationCompleted && rulesFired > 0) {
     console.log(`\n⚠️ [INVARIANT:HIGH] Clarification completed + rules fired - response REQUIRED`);
     console.log(`   [${traceId}] clarificationCompleted: true`);
@@ -127,10 +96,7 @@ export function checkResponseInvariant(input: ResponseInvariantInput): Invariant
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // INVARIANT 3 (HIGH): PRIMARY_DECISION exists but incomplete
-  // Partial decision exists - log warning but allow continuation
-  // ═══════════════════════════════════════════════════════════════════════════
   if (hasPrimaryDecision && (primaryRuleId || primaryActionType)) {
     console.log(`\n⚠️ [INVARIANT:HIGH] Partial PRIMARY_DECISION - response ADVISED`);
     console.log(`   [${traceId}] rule_id: ${primaryRuleId || 'MISSING'}`);
@@ -144,9 +110,7 @@ export function checkResponseInvariant(input: ResponseInvariantInput): Invariant
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // NO INVARIANT TRIGGERED - Normal flow continues
-  // ═══════════════════════════════════════════════════════════════════════════
   return {
     mustReturnResponse: false,
     reason: 'No response invariant triggered',
@@ -155,19 +119,9 @@ export function checkResponseInvariant(input: ResponseInvariantInput): Invariant
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ASSERTION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Assert that a response was returned when invariant required it
- * THROWS if invariant was triggered but no response was returned
- * 
- * @param responseReturned - Whether a response was actually returned
- * @param invariant - The invariant check result
- * @param traceId - Trace ID for logging
- * @throws Error if invariant was violated
- */
+// Assert that a response was returned when invariant required it
 export function assertResponseReturned(
   responseReturned: boolean,
   invariant: InvariantCheckResult,
@@ -186,16 +140,9 @@ export function assertResponseReturned(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT BUILDER
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Build invariant context for tracking throughout the orchestration flow
- * 
- * @param input - The invariant check input
- * @returns ResponseInvariantContext for tracking
- */
+// Build invariant context for tracking throughout the orchestration flow
 export function buildInvariantContext(input: ResponseInvariantInput): ResponseInvariantContext {
   const invariant = checkResponseInvariant(input);
   
@@ -207,22 +154,15 @@ export function buildInvariantContext(input: ResponseInvariantInput): ResponseIn
   };
 }
 
-/**
- * Mark response as returned in the context
- * Call this right before returning a response
- */
+// Mark response as returned in the context
 export function markResponseReturned(context: ResponseInvariantContext): void {
   context.responseReturned = true;
   console.log(`   ✅ [INVARIANT] Response marked as returned for ${context.traceId}`);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Log invariant check result for audit trail
- */
+// Log invariant check result for audit trail
 export function logInvariantCheck(
   invariant: InvariantCheckResult,
   traceId: string,

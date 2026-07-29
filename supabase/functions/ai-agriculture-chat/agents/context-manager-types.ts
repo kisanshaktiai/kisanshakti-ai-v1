@@ -1,15 +1,6 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGENT 2A: CONTEXT-AWARE CONVERSATION MANAGER - TYPE DEFINITIONS
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Maintains state across multiple conversation turns, detects context switches,
- * and ensures continuity in multi-session farmer interactions.
- */
+// AGENT 2A: CONTEXT-AWARE CONVERSATION MANAGER - TYPE DEFINITIONS
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SESSION STATE MACHINE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type SessionState = 
   | 'NEW_CONVERSATION'
@@ -47,9 +38,7 @@ export const STATE_TRANSITIONS: Record<SessionState, SessionState[]> = {
   ESCALATED: []
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ContextManagerInput {
   farmer_id: string;
@@ -79,9 +68,7 @@ export interface PhotoUploadData {
   dimensions?: { width: number; height: number };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SESSION CONTEXT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SessionContext {
   session_id: string;
@@ -126,9 +113,7 @@ export interface ConversationHistory {
   avg_response_time_minutes: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ACCUMULATED KNOWLEDGE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface AccumulatedKnowledge {
   confirmed_facts: ConfirmedFacts;
@@ -158,9 +143,7 @@ export interface PhotoAnalysisResult {
   requires_expert: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FARMER BEHAVIOR PATTERNS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FarmerBehaviorPatterns {
   response_speed: 'FAST' | 'MODERATE' | 'SLOW';
@@ -172,9 +155,7 @@ export interface FarmerBehaviorPatterns {
   cooperation_level: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MULTI-LAND TRACKING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LandIssueStatus {
   land_id: string;
@@ -201,9 +182,7 @@ export interface MultiLandTracking {
   total_active_issues: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONTEXT SWITCH DETECTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ContextSwitchDetection {
   switch_detected: boolean;
@@ -225,9 +204,7 @@ export type ContextSwitchType =
   | 'RELATED_ISSUE'
   | 'SESSION_RESUME';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT SCHEMA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ContextManagerOutput {
   session_management: SessionManagement;
@@ -289,9 +266,7 @@ export type NextAction =
   | 'ESCALATE_TO_EXPERT'
   | 'ACKNOWLEDGE_AND_CLOSE';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION QUESTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationQuestionBank {
   id: string;
@@ -311,9 +286,7 @@ export interface ClarificationQuestionBank {
   skip_if_known: string[]; // Skip if these facts are already known
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FULL SESSION DATA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface FullSessionData {
   session_context: SessionContext;

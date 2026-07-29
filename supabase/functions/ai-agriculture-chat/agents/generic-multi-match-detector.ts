@@ -1,41 +1,12 @@
 // CHANGE LOG
 // 2026-07-09 21:15 UTC — getDefaultClarificationOptionsFallback() now
-//   returns []. The hardcoded English list ("Insects Visible / Leaf
-//   Yellowing / Leaf Spots / Send Photo") was a second source of the
-//   universal-generic-options bug. Empty[] forces upstream callers to
-//   fall through to the hypothesis-graph clarification contract or the
-//   neutral photo-only prompt.
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * GENERIC MULTI-MATCH DETECTOR - World-Class Clarification System
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Detect when multiple rules match with similar confidence and generate
- * clarification questions dynamically from database metadata.
- * 
- * PHILOSOPHY:
- * - 100% database-driven (zero hardcoding)
- * - Works for ALL crops (cotton, wheat, vegetables, fruits, pulses)
- * - Based on observable characteristics (farmers can answer)
- * - Language agnostic (mr/hi/en templates)
- * 
- * SCALABILITY:
- * - Add new pest → Update database → Auto-generates clarifications
- * - Add new crop → No code changes needed
- * - Add new language → Update templates only
- * 
- * VERSION: 1.0.0
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// GENERIC MULTI-MATCH DETECTOR - World-Class Clarification System
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export const MULTI_MATCH_DETECTOR_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ObservableCharacteristics {
   size?: 'SMALL' | 'MEDIUM' | 'LARGE' | 'TINY';
@@ -91,15 +62,9 @@ export interface MultiMatchResult {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TRANSLATION TEMPLATES
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Observable characteristic templates — English-only canonical labels.
- * LLM narration layer translates at runtime into farmer's language.
- * Previously contained 140+ lines of hardcoded Marathi/Hindi text.
- */
+// Observable characteristic templates — English-only canonical labels.
 const TEMPLATES: Record<string, Record<string, Record<string, string>>> = {
   en: {
     color: {
@@ -128,9 +93,7 @@ const TEMPLATES: Record<string, Record<string, Record<string, string>>> = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE 1: DETECT COMPETING MATCHES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function detectCompetingMatches(
   firedRules: any[],
@@ -211,9 +174,7 @@ export async function detectCompetingMatches(
   return enrichedMatches;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE 2: GENERATE CLARIFICATION FROM RULE METADATA
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function generateDifferentialClarificationFromRules(
   competingMatches: CompetingMatch[],
@@ -281,9 +242,7 @@ export function generateDifferentialClarificationFromRules(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE 3: BUILD DESCRIPTIONS FROM DATABASE CHARACTERISTICS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildDescriptionFromCharacteristics(
   chars: ObservableCharacteristics,
@@ -340,9 +299,7 @@ function buildDescriptionFromCharacteristics(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER: EXTRACT OBSERVATION KEYS FROM CHARACTERISTICS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function extractObservationKeys(chars: ObservableCharacteristics): string[] {
   const keys: string[] = [];
@@ -382,10 +339,7 @@ function extractObservationKeys(chars: ObservableCharacteristics): string[] {
   return keys;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FALLBACK CLARIFICATION: Generate options when no rules matched
-// Used when symbolic brain returns 0 rules but we have low confidence
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function generateFallbackClarificationOptions(
   cropCode: string | undefined,
@@ -471,18 +425,11 @@ export async function generateFallbackClarificationOptions(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SSOT: Default clarification options now loaded from database
-// Import from observation-label-loader for consistent translations
-// ═══════════════════════════════════════════════════════════════════════════
 
 import { loadObservationLabels, DEFAULT_CLARIFICATION_CODES, getObservationIcon } from '../i18n/observation-label-loader.ts';
 
-/**
- * Get default clarification options from database
- * SSOT: All display text comes from observation_translations table
- * Falls back to formatted English codes if database unavailable
- */
+// Get default clarification options from database
 async function getDefaultClarificationOptionsFromDB(
   supabaseClient: any,
   language: string
@@ -516,26 +463,12 @@ async function getDefaultClarificationOptionsFromDB(
   }
 }
 
-/**
- * Fallback when database unavailable.
- * 2026-07-09 21:15 UTC — Returns [] instead of the hardcoded English
- *   pest/leaf list. That legacy list ("Insects Visible / Leaf Yellowing /
- *   Leaf Spots / Send Photo") was the second source of the "same 3
- *   options for every clarification" bug: it fired whenever the primary
- *   DB label load failed or returned nothing, injecting a context-blind
- *   generic list into REFINE_OBSERVATION responses regardless of intent.
- *   Neuro-symbolic invariant: no TypeScript-authored option list may
- *   reach the farmer. Callers already handle empty[] by falling through
- *   to loadClarificationCandidates (hypothesis graph) or a photo-only
- *   neutral prompt.
- */
+// Fallback when database unavailable.
 function getDefaultClarificationOptionsFallback(_language: string): string[] {
   return [];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN EXPORT: COMPLETE MULTI-MATCH DETECTION FLOW
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function performMultiMatchDetection(
   firedRules: any[],
@@ -575,9 +508,7 @@ export async function performMultiMatchDetection(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DEFAULT EXPORT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   performMultiMatchDetection,

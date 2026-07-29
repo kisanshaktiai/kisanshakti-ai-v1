@@ -1,31 +1,7 @@
 // ✅ FORENSIC REFACTOR COMPLETE
 // Authority: SINGLE SOURCE OF TRUTH for NDVI interpretation, soil interpretation, and land state assembly
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AUTHORITATIVE STATE LOADER v2.0.0 - SSOT ENFORCED
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * ROLE: Single Source of Truth for all agronomic data interpretation
- * 
- * DOES:
- * - Load land state from authoritative database tables
- * - Interpret NDVI values → canonical status codes (ONCE, here only)
- * - Interpret soil nutrients → canonical level codes (ONCE, here only)
- * - Calculate derived metrics (water stress, crop health)
- * - Export canonical state object for all downstream consumers
- * 
- * DOES NOT:
- * - Generate language-specific text (→ LLM narration layer)
- * - Provide agronomic recommendations (→ symbolic decision brain)
- * - Classify queries or intents (→ LIL layer)
- * 
- * CONSUMERS MUST:
- * - Use this module's interpretation functions, NOT implement their own
- * - Consume AuthoritativeLandState.derived for all interpreted values
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// AUTHORITATIVE STATE LOADER v2.0.0 - SSOT ENFORCED
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getConfigJson, getConfigNumber } from '../utils/db-ssot/system-config-cache.ts';
@@ -33,22 +9,11 @@ import { getConfigJson, getConfigNumber } from '../utils/db-ssot/system-config-c
 export const AUTHORITATIVE_STATE_LOADER_VERSION = '2.1.0';
 
 // CHANGE LOG (newest first)
-//   2026-07-24 — P7: NDVI status bands, soil nutrient bands, and freshness
-//     windows now resolve through system_config (M2 cache). Legacy TS
-//     constants remain as cold-boot fallbacks and are byte-identical to the
-//     seeded rows (ndvi_status_thresholds, soil_nutrient_thresholds,
-//     soil_data_freshness_days, ndvi_staleness_days_kharif). No interpretation
-//     logic changed.
+// 2026-07-24 — P7: NDVI status bands, soil nutrient bands, and freshness
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL INTERPRETATION ENUMS - SINGLE SOURCE OF TRUTH
-// These are the ONLY valid values for interpreted agronomic data
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Canonical NDVI status - SSOT interpretation
- * All NDVI interpretation in the system MUST use these values
- */
+// Canonical NDVI status - SSOT interpretation
 export enum NDVIStatus {
   EXCELLENT = 'EXCELLENT',      // >= 0.7
   GOOD = 'GOOD',                // 0.55 - 0.69
@@ -58,10 +23,7 @@ export enum NDVIStatus {
   UNKNOWN = 'UNKNOWN'           // No data
 }
 
-/**
- * Canonical soil nutrient level - SSOT interpretation
- * All soil interpretation in the system MUST use these values
- */
+// Canonical soil nutrient level - SSOT interpretation
 export enum SoilNutrientLevel {
   HIGH = 'HIGH',
   ADEQUATE = 'ADEQUATE',
@@ -70,9 +32,7 @@ export enum SoilNutrientLevel {
   UNKNOWN = 'UNKNOWN'
 }
 
-/**
- * Canonical water stress level - derived from NDVI + rainfall
- */
+// Canonical water stress level - derived from NDVI + rainfall
 export enum WaterStressLevel {
   NONE = 'NONE',
   MILD = 'MILD',
@@ -81,9 +41,7 @@ export enum WaterStressLevel {
   UNKNOWN = 'UNKNOWN'
 }
 
-/**
- * Canonical NDVI trend - calculated from historical data
- */
+// Canonical NDVI trend - calculated from historical data
 export enum NDVITrend {
   IMPROVING = 'IMPROVING',
   STABLE = 'STABLE',
@@ -91,10 +49,7 @@ export enum NDVITrend {
   UNKNOWN = 'UNKNOWN'
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INTERPRETATION THRESHOLDS - SINGLE SOURCE OF TRUTH
-// These are the ONLY thresholds used for interpretation
-// ═══════════════════════════════════════════════════════════════════════════
 
 // Cold-boot legacy fallbacks. Values are byte-identical to seeded DB rows.
 // Do NOT tune here — edit system_config rows instead.
@@ -133,15 +88,9 @@ function ndviFreshnessDays() {
   return getConfigNumber('ndvi_staleness_days_kharif', 7);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SSOT INTERPRETATION FUNCTIONS
-// These are the ONLY functions that interpret agronomic values
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Interpret NDVI value to canonical status
- * THIS IS THE ONLY PLACE where NDVI is interpreted
- */
+// Interpret NDVI value to canonical status
 export function interpretNDVI(value: number | null | undefined): NDVIStatus {
   if (value === null || value === undefined || isNaN(value)) {
     return NDVIStatus.UNKNOWN;
@@ -154,10 +103,7 @@ export function interpretNDVI(value: number | null | undefined): NDVIStatus {
   return NDVIStatus.CRITICAL;
 }
 
-/**
- * Interpret nitrogen value to canonical level
- * THIS IS THE ONLY PLACE where nitrogen is interpreted
- */
+// Interpret nitrogen value to canonical level
 export function interpretNitrogen(value: number | null | undefined): SoilNutrientLevel {
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
@@ -169,10 +115,7 @@ export function interpretNitrogen(value: number | null | undefined): SoilNutrien
   return SoilNutrientLevel.CRITICAL;
 }
 
-/**
- * Interpret phosphorus value to canonical level
- * THIS IS THE ONLY PLACE where phosphorus is interpreted
- */
+// Interpret phosphorus value to canonical level
 export function interpretPhosphorus(value: number | null | undefined): SoilNutrientLevel {
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
@@ -184,10 +127,7 @@ export function interpretPhosphorus(value: number | null | undefined): SoilNutri
   return SoilNutrientLevel.CRITICAL;
 }
 
-/**
- * Interpret potassium value to canonical level
- * THIS IS THE ONLY PLACE where potassium is interpreted
- */
+// Interpret potassium value to canonical level
 export function interpretPotassium(value: number | null | undefined): SoilNutrientLevel {
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
@@ -199,10 +139,7 @@ export function interpretPotassium(value: number | null | undefined): SoilNutrie
   return SoilNutrientLevel.CRITICAL;
 }
 
-/**
- * Calculate water stress level from NDVI and rainfall
- * THIS IS THE ONLY PLACE where water stress is calculated
- */
+// Calculate water stress level from NDVI and rainfall
 export function calculateWaterStress(
   ndviValue: number | null | undefined,
   recentRainfall: number | null | undefined
@@ -219,10 +156,7 @@ export function calculateWaterStress(
   return WaterStressLevel.NONE;
 }
 
-/**
- * Calculate NDVI trend from historical readings
- * THIS IS THE ONLY PLACE where NDVI trend is calculated
- */
+// Calculate NDVI trend from historical readings
 export function calculateNDVITrend(
   readings: { value: number; date: string }[]
 ): NDVITrend {
@@ -246,9 +180,7 @@ export function calculateNDVITrend(
   return NDVITrend.STABLE;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - AUTHORITATIVE LAND STATE
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface AuthoritativeLandState {
   // Identity
@@ -266,9 +198,6 @@ export interface AuthoritativeLandState {
   state: string | null;
   
   // Crop Schedule (AUTHORITATIVE) — PR-4d: extended with canonical identity
-  // (crop_id, variety_id), variety-aware phenology anchor (stage_uuid),
-  // and every SSOT date/counter on `public.lands`. Downstream MUST prefer
-  // these over any recomputation.
   crop: {
     current_crop: string | null;
     crop_code: string | null;
@@ -362,9 +291,7 @@ export interface StateLoadingResult {
   loading_time_ms: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN LOADER FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function loadAuthoritativeLandState(
   landId: string,
@@ -381,9 +308,7 @@ export async function loadAuthoritativeLandState(
   );
   
   try {
-    // ═══════════════════════════════════════════════════════════════════════════
     // PARALLEL DATA LOADING - Query all authoritative tables simultaneously
-    // ═══════════════════════════════════════════════════════════════════════════
     const [
       landResult,
       cropScheduleResult,
@@ -393,10 +318,6 @@ export async function loadAuthoritativeLandState(
       phenologyResult
     ] = await Promise.all([
       // 1. Land base data — PR-4d: pull the authoritative SSOT columns
-      // (das, stage_uuid, crop_stage, stage_source, current_crop_id,
-      // current_crop_variety_id, planting_date, last_sowing_date,
-      // transplant_date, crop_cycle, current_gdd) so downstream consumers
-      // NEVER need to recompute them.
       supabase
         .from('lands')
         .select(
@@ -412,8 +333,6 @@ export async function loadAuthoritativeLandState(
         .single(),
 
       // 2. Crop schedule (active season) — PR-4d: include variety_id,
-      // transplant_date and stages_covered so downstream rule scoping has
-      // full schedule authority without a second round-trip.
       supabase
         .from('crop_schedules')
         .select('crop_name, crop_variety, variety_id, sowing_date, transplant_date, stages_covered, expected_harvest_date, status, is_active')
@@ -450,16 +369,10 @@ export async function loadAuthoritativeLandState(
         .maybeSingle(),
 
       // 6. PR-1 · Crop-stage SSOT — variety-aware phenology resolver.
-      // v7 — composed wrapper: resolve_biological_profile assembles the
-      // authoritative biological context from lands + crop_schedules and
-      // hands it to the pure resolve_crop_phenology, which no longer
-      // reads any lands/schedule tables. Frontend uses the same wrapper.
       supabase.rpc('resolve_crop_phenology_for_land', { p_land_id: landId })
     ]);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATE LAND ACCESS
-    // ═══════════════════════════════════════════════════════════════════════════
     if (landResult.error || !landResult.data) {
       console.error(`❌ [AuthoritativeStateLoader] Land not found or access denied: ${landId}`);
       return {
@@ -471,20 +384,10 @@ export async function loadAuthoritativeLandState(
     }
     
     // Supabase generated types may lag newly-added lands SSOT columns and
-    // otherwise infer GenericStringError for the expanded select. Runtime shape
-    // is validated above by landResult.data; keep this loader structurally typed.
     const land: any = landResult.data as any;
     const now = new Date();
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS CROP SCHEDULE
-    // PR-4d: DAS SSOT precedence — lands.das (precomputed by RPC/cron) wins
-    // over any locally-computed value. Only compute from sowing_date when
-    // lands.das is null AND we have a schedule date to anchor from. The
-    // anchor date itself now coalesces lands.planting_date >
-    // lands.last_sowing_date > crop_schedules.transplant_date >
-    // crop_schedules.sowing_date to match resolve_crop_phenology().
-    // ═══════════════════════════════════════════════════════════════════════════
     const cropSchedule = cropScheduleResult.data;
     const precomputedDas: number | null =
       typeof (land as any)?.das === 'number' ? (land as any).das : null;
@@ -502,9 +405,7 @@ export async function loadAuthoritativeLandState(
       daysSinceSowing = Math.floor((now.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS SOIL HEALTH
-    // ═══════════════════════════════════════════════════════════════════════════
     const soilHealth = soilHealthResult.data;
     let soilTestAgeDays: number | null = null;
     let soilDataFresh = false;
@@ -515,9 +416,7 @@ export async function loadAuthoritativeLandState(
       soilDataFresh = soilTestAgeDays <= soilFreshnessDays();
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS NDVI DATA WITH SSOT INTERPRETATION
-    // ═══════════════════════════════════════════════════════════════════════════
     const ndviReadings = ndviResult.data || [];
     let ndviLatest: number | null = null;
     let ndviLatestDate: string | null = null;
@@ -542,11 +441,7 @@ export async function loadAuthoritativeLandState(
     }));
     const ndviTrend = calculateNDVITrend(ndviHistory);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS WEATHER DATA
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Primary: weather_observations by land_id
-    // Fallback: weather_current by location_key (rounded lat/lon)
     let weather = weatherResult.data;
     let weatherAgeHours: number | null = null;
     let weatherDataFresh = false;
@@ -628,9 +523,7 @@ export async function loadAuthoritativeLandState(
       weatherDataFresh = weatherAgeHours <= FRESHNESS_THRESHOLDS.WEATHER_HOURS;
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CALCULATE DERIVED METRICS USING SSOT INTERPRETATION FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════════════════
     const sourcesAvailable: string[] = [];
     const sourcesMissing: string[] = [];
     
@@ -675,15 +568,7 @@ export async function loadAuthoritativeLandState(
     if (!weatherDataFresh && weather) criticalMissing.push('Weather data stale');
     if (!soilHealth) criticalMissing.push('No soil test data');
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // BUILD AUTHORITATIVE STATE OBJECT
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PR-4b · Growth stage comes EXCLUSIVELY from resolve_crop_phenology (SSOT).
-    // The previous 7-line DAS→stage ladder fallback (GERMINATION/EARLY_VEGETATIVE/
-    // VEGETATIVE/GRAND_GROWTH/MATURITY/HARVEST based on hardcoded day thresholds)
-    // has been DELETED. When the RPC returns no row, we emit null +
-    // stage_source='UNKNOWN' so downstream consumers must resolve stage via
-    // biological_state / explicit clarification — never a crop-agnostic ladder.
     const phenologyRow: any = Array.isArray(phenologyResult?.data)
       ? (phenologyResult.data[0] ?? null)
       : (phenologyResult?.data ?? null);
@@ -692,8 +577,6 @@ export async function loadAuthoritativeLandState(
     }
 
     // PR-4d: stage precedence — RPC row > persisted lands.crop_stage.
-    // Neither path invents a value; both are authored by resolve_crop_phenology
-    // (RPC on request; cron for lands.crop_stage). Falls through to null.
     const computedGrowthStage: string | null =
       phenologyRow?.growth_stage
         ?? phenologyRow?.stage_code
@@ -824,9 +707,7 @@ export async function loadAuthoritativeLandState(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONFIDENCE CALCULATION - Based on data completeness and freshness
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function calculateDecisionConfidence(
   state: AuthoritativeLandState,
@@ -874,10 +755,7 @@ export function calculateDecisionConfidence(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STRUCTURED FOLLOW-UP QUESTION GENERATOR
-// Returns language-neutral question codes, NOT text
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface StructuredQuestion {
   fact_type: string;

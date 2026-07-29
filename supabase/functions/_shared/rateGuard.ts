@@ -1,15 +1,4 @@
-/**
- * Sprint 5 — Rate Guard
- * Thin wrapper around the existing checkRateLimit utility.
- *
- * Returns a 429 Response when the caller is over budget, otherwise null.
- * Designed to be FAIL-OPEN: any error inside checkRateLimit returns
- * { allowed: true }, so a misconfigured rate-limit table can never block
- * legitimate farmer traffic. This is critical for production safety.
- *
- * Identifier preference: x-farmer-id → x-tenant-id → IP. Falls back to
- * 'anonymous' as a last resort so the function continues to work.
- */
+// Sprint 5 — Rate Guard
 import { checkRateLimit, RateLimitConfig } from './rateLimiter.ts';
 import { corsHeaders } from './cors.ts';
 

@@ -1,52 +1,18 @@
-/**
- * ARCHITECTURAL CONTRACT — SEMANTIC EXTRACTOR v5.1.0
- *
- * This module:
- * - Converts raw farmer language (ANY language) → intent_code
- * - Provides backward-compatible fields with safe defaults
- *
- * This module MUST NOT:
- * - extract detailed observations (deprecated in v5.0)
- * - describe symptoms (moved to intent-resolver.ts)
- * - infer severity (derived from intent_code downstream)
- * - map to crops or stages (context-authority.ts handles this)
- * - perform diagnosis (symbolic-reasoner.ts handles this)
- * - generate user-facing text (narration layer handles this)
- *
- * All biological meaning is resolved downstream via:
- * intent-resolver.ts → symbolic decision brain → LLM narration
- * 
- * @version 5.1.0 - Added backward-compatible defaults to prevent orchestrator crashes
- */
+// ARCHITECTURAL CONTRACT — SEMANTIC EXTRACTOR v5.1.0
 
 import { classifyFarmerIntent, type IntentLandContext } from './intent-classifier.ts';
 
 export const SEMANTIC_EXTRACTOR_VERSION = '5.1.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE - PURE INTENT + BACKWARD-COMPATIBLE DEFAULTS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * SemanticExtraction v5.1.0
- * 
- * Primary output: intent_code + intent_confidence
- * Backward-compatible defaults: All legacy fields have safe empty/default values
- * 
- * This prevents crashes in code that still accesses deprecated fields.
- */
+// SemanticExtraction v5.1.0
 export interface SemanticExtraction {
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRIMARY OUTPUT (v5.0.0+)
-  // ═══════════════════════════════════════════════════════════════════════════
   intent_code: string;
   intent_confidence: number;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // BACKWARD-COMPATIBLE DEFAULTS (all deprecated, but safe to access)
-  // These fields are NOT populated by the extractor but have safe defaults
-  // to prevent crashes in legacy code that accesses them.
-  // ═══════════════════════════════════════════════════════════════════════════
   
   /** @deprecated Use intent_code instead. Empty string default. */
   farmer_concern: string;
@@ -73,14 +39,9 @@ export interface SemanticExtraction {
   extraction_method: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFE DEFAULT BUILDER
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Build a SemanticExtraction with all required fields having safe defaults.
- * This guarantees no undefined access errors.
- */
+// Build a SemanticExtraction with all required fields having safe defaults.
 function buildSafeSemanticExtraction(
   intent_code: string,
   intent_confidence: number
@@ -102,18 +63,9 @@ function buildSafeSemanticExtraction(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN EXTRACTION FUNCTION - STATELESS, PURE INTENT
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Extract intent_code from farmer message in ANY language.
- * 
- * @param farmerMessage - Raw farmer input in any language
- * @param _detectedLanguage - Optional language hint (not used in v5.x)
- * @param landContext - Optional land context for prompt enrichment
- * @returns SemanticExtraction - { intent_code, intent_confidence, ...backward-compatible defaults }
- */
+// Extract intent_code from farmer message in ANY language.
 export async function extractSemanticMeaning(
   farmerMessage: string,
   _detectedLanguage?: string,
@@ -149,9 +101,7 @@ export async function extractSemanticMeaning(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   extractSemanticMeaning,

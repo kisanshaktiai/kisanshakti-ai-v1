@@ -47,9 +47,6 @@ export interface ContradictionInput {
 }
 
 // ─── BIOLOGICAL_IMPOSSIBILITY: observation ↔ stage incompatibilities ──────
-// Crop-agnostic biological invariants. If the farmer asserts observation X
-// but the frozen BiologicalState says stage Y, the assertion is impossible.
-// Stage family names are matched via STAGE_FAMILIES equivalence below.
 interface StageIncompat {
   readonly obs_pattern: RegExp;               // matches farmer observation code
   readonly incompat_stages: readonly string[]; // stage families that make obs impossible
@@ -79,19 +76,12 @@ const OBSERVATION_STAGE_INCOMPATIBILITIES: readonly StageIncompat[] = Object.fre
 ]);
 
 // [GRAPH_TRUTH_PENDING] Step 6 — stage equivalence collapsed to a single
-// source (stage-family-shim.ts). Previously this file carried its own copy
-// of STAGE_FAMILIES that had drifted from navigator-adapter.ts. The shim
-// itself is a placeholder awaiting the crop_stage_graph reader.
 import { stagesEquivalent } from './stage-family-shim.ts';
 
 const norm = (s: unknown): string =>
   String(s || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 
-/**
- * Returns the first contradiction found, or null if context and utterance
- * are consistent. Currently checks STAGE_MISMATCH only; CROP_MISMATCH and
- * DAS_OUT_OF_RANGE wired but rely on DB columns added later.
- */
+// Returns the first contradiction found, or null if context and utterance
 export async function detectContradiction(
   input: ContradictionInput,
 ): Promise<Contradiction | null> {
@@ -101,10 +91,6 @@ export async function detectContradiction(
   const stageLower  = norm(growth_stage);
 
   // ─── BIOLOGICAL_IMPOSSIBILITY: crop-agnostic observation ↔ stage check ─
-  // Runs BEFORE DB lookups so it fires even when intent_assertion_pattern
-  // has no row for this intent. Prevents impossible facts (e.g. farmer
-  // says "not germinated" while BiologicalState says TILLERING) from
-  // entering rule scoring.
   if (stageLower && Array.isArray(observations) && observations.length > 0) {
     const obsUpper = observations.map(o => String(o || '').trim().toUpperCase()).filter(Boolean);
     for (const rule of OBSERVATION_STAGE_INCOMPATIBILITIES) {
@@ -133,12 +119,6 @@ export async function detectContradiction(
 
   try {
     // intent_assertion_pattern schema (as of 2026-07-04):
-    //   id, intent_code, obs_code_regex, assertion_strength, notes, is_active, ...
-    // Compatibility columns (stage_compatibility, crop_compatibility, das_min/max)
-    // are NOT present on this table — treat them as absent and rely on
-    // assertion_strength + notes for labelling. Selecting only real columns
-    // stops the "column ... does not exist" error that silently disabled the
-    // contradiction engine on every request.
     const { data, error } = await supabase
       .from('intent_assertion_pattern')
       .select('intent_code, assertion_strength, notes, obs_code_regex')

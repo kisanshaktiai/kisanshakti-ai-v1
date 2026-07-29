@@ -1,7 +1,4 @@
 // ============= DIAGNOSIS CONFLICT RESOLVER =============
-// Resolves conflicts between multiple diagnoses from the canonical state
-// Uses explicit priority hierarchy and contextual resolution
-// Integrates with the existing conflict-resolver.ts for action-level conflicts
 
 import { 
   CanonicalState, 
@@ -141,8 +138,6 @@ export function resolveDiagnosisConflicts(
   }
   
   // Single diagnosis - no conflict
-  // NOTE: Clarification options use canonical observation codes (language-agnostic)
-  // Display text is resolved at runtime from observation_translations DB table
   if (diagnoses.length === 1) {
     return {
       primary_diagnosis: diagnoses[0],

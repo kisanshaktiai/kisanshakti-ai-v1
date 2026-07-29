@@ -1,34 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * LLM OUTPUT VALIDATOR v1.0.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Validates LLM-extracted intents and observations against database tables.
- * Ensures the perception layer (LLM) does not inject invalid symbols into
- * the reasoning core (symbolic engine).
- * 
- * Validations:
- * 1. Intent codes must exist in observation_intent_master
- * 2. Observation codes must exist in observation_master
- * 3. Crop-applicability: observations must be valid for the current crop
- * 4. Crop override prevention: LLM cannot change canonicalContext.crop_code
- * 
- * Performance: In-memory caches with 15-min TTL, concurrency-safe loading.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// LLM OUTPUT VALIDATOR v1.0.0
 
 import { resolveAliasCanonical, observationIndexReady } from './db-ssot/observation-index.ts';
 
 export const LLM_OUTPUT_VALIDATOR_VERSION = '1.1.0';
 
-/**
- * ONTOLOGY-INVARIANT PAGINATED LOADER
- * PostgREST caps rows at 1000 by default and any explicit `.limit(N)` also
- * silently truncates the neuro-symbolic vocabulary. Both are catastrophic for
- * this validator: a missing observation row = evidence deletion downstream.
- * We enumerate the full result set with an ordered keyset scan.
- */
+// ONTOLOGY-INVARIANT PAGINATED LOADER
 async function paginateAll<T = any>(
   buildQuery: (offset: number, limit: number) => any,
   pageSize = 1000
@@ -47,20 +23,9 @@ async function paginateAll<T = any>(
   return rows;
 }
 
-/**
- * ONTOLOGY ALIAS TABLE
- * Farmer-observable generic codes that historically flowed from the
- * observation mapper but are not per-crop rows in
- * intent_observation_mapping. Aliasing preserves evidence instead of
- * silently deleting it downstream — the aliased canonical code is what
- * hypothesis conditions and decision rules are authored against.
- * DB-driven aliases from `observation_aliases` (when present) always win
- * over this in-code fallback.
- */
+// ONTOLOGY ALIAS TABLE
 const CANONICAL_OBSERVATION_ALIASES: Record<string, string> = {
   // Emergence-failure family — canonical peer is POOR_GERMINATION, which is
-  // a LITERAL member of intent_observation_mapping for EMERGENCE_FAILURE
-  // across every crop that authors that intent.
   SEEDLING_DIED: 'POOR_GERMINATION',
   PLANT_DIED: 'POOR_GERMINATION',
   DEAD_SEEDLINGS: 'POOR_GERMINATION',
@@ -70,9 +35,7 @@ const CANONICAL_OBSERVATION_ALIASES: Record<string, string> = {
   POOR_TILLERING: 'STUNTED_GROWTH',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHE INFRASTRUCTURE
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface CacheEntry<T> {
   data: T;
@@ -86,9 +49,7 @@ const intentCache: { entry: CacheEntry<Set<string>> | null } = { entry: null };
 const observationCache: { entry: CacheEntry<Set<string>> | null } = { entry: null };
 const cropApplicabilityCache = new Map<string, CacheEntry<Set<string>>>();
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHED LOADERS
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function loadValidIntentCodes(supabase: any): Promise<Set<string>> {
   const now = Date.now();
@@ -273,29 +234,19 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION RESULT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LLMValidationResult {
   valid: boolean;
   rejected_intents: string[];
   rejected_observations: string[];
   crop_applicable_rejections: string[];
-  /**
-   * ONTOLOGY ALIASING: generic codes that were not applicable/known for the
-   * crop but were successfully re-mapped to a canonical peer via the alias
-   * table. Callers MUST substitute { [original]: canonical } in the working
-   * observation list instead of dropping the original — this preserves
-   * neuro-symbolic evidence rather than silently deleting it.
-   */
+  // ONTOLOGY ALIASING: generic codes that were not applicable/known for the
   aliased_observations: Record<string, string>;
   reason: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN VALIDATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function validateLLMOutputAgainstDB(params: {
   intent_code: string;
@@ -331,20 +282,11 @@ export async function validateLLMOutputAgainstDB(params: {
     const upper = String(code || '').toUpperCase();
 
     // FIX (DB-SSOT alias resolution): the neuro-symbolic contract requires
-    // the DB observation_aliases table (14,063 curated entries) to be the
-    // authoritative resolver. The prior code only consulted the 5-entry
-    // CANONICAL_OBSERVATION_ALIASES in-code map, silently dropping every
-    // LLM-emitted alias the DB already knows how to canonicalize. We now
-    // try the DB path FIRST via the observation-index cache (preloaded at
-    // boot, sync, 14k+ alias keys). The in-code map remains ONLY as a
-    // cold-boot fallback while the index is still warming.
     if (observationIndexReady()) {
       const dbCanonical = resolveAliasCanonical(code);
       if (dbCanonical) {
         const dbCanonicalUpper = dbCanonical.toUpperCase();
         // Same validity gates as before: canonical must be a real
-        // observation_master row AND applicable for the crop (when a
-        // crop-applicability set is known).
         if (validObservations.has(dbCanonicalUpper) &&
             (applicableObs.size === 0 || applicableObs.has(dbCanonicalUpper))) {
           return dbCanonicalUpper;
@@ -353,8 +295,6 @@ export async function validateLLMOutputAgainstDB(params: {
     }
 
     // Cold-boot / DB-miss fallback: consult the tiny in-code map. This path
-    // stays for defense-in-depth only; production traffic should hit the
-    // DB path above once the observation-index preload is warm.
     const alias = CANONICAL_OBSERVATION_ALIASES[upper];
     if (!alias) return null;
     if (!validObservations.has(alias)) return null;

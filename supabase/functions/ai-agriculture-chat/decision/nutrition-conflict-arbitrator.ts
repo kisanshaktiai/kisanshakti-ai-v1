@@ -1,28 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * NUTRITION CONFLICT ARBITRATION LAYER
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Prevents false micronutrient dominance and improper observation collapse.
- * Enforces diagnostic specificity hierarchy before PRIMARY_DECISION selection.
- * 
- * RULES:
- * 1. WATER_STRESS_CONFIRMED blocks ALL nutrient urgent treatments
- * 2. NITROGEN_DEFICIENCY_CONFIRMED blocks micronutrient urgent treatments
- *    (unless soil micronutrient deficiency explicitly confirmed)
- * 3. Multiple nutrition rules → select highest diagnostic specificity
- * 4. Equal specificity → prefer macronutrient over micronutrient
- * 5. Only generic symptoms → downgrade ALL to MONITOR + trigger clarification
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// NUTRITION CONFLICT ARBITRATION LAYER
 
 export const NUTRITION_ARBITRATOR_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // GENERIC SYMPTOMS - Non-diagnostic, shared across many causes
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const GENERIC_SYMPTOM_KEYS = new Set([
   'LEAF_YELLOWING',
@@ -37,9 +17,7 @@ export const GENERIC_SYMPTOM_KEYS = new Set([
   'GENERAL_YELLOWING',
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ZINC-SPECIFIC SYMPTOMS - Required for zinc deficiency diagnosis
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const ZINC_SPECIFIC_MARKERS = new Set([
   'INTERVEINAL_CHLOROSIS',
@@ -52,9 +30,7 @@ export const ZINC_SPECIFIC_MARKERS = new Set([
   'ZINC_DEFICIENCY_CONFIRMED',
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MACRONUTRIENT vs MICRONUTRIENT CLASSIFICATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 const MACRONUTRIENT_PATTERNS = [
   'NITROGEN', 'PHOSPHORUS', 'POTASSIUM', 'NPK',
@@ -76,9 +52,7 @@ export function isMicronutrientRule(ruleId: string, cause: string): boolean {
   return MICRONUTRIENT_PATTERNS.some(p => combined.includes(p));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC SPECIFICITY SCORING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SpecificityScore {
   rule_id: string;
@@ -88,15 +62,7 @@ export interface SpecificityScore {
   reason: string;
 }
 
-/**
- * Calculate diagnostic specificity score for a nutrition rule.
- * 
- * Rules with ONLY generic symptoms (LEAF_YELLOWING, STUNTED_GROWTH, POOR_TILLERING)
- * get a LOW specificity score, meaning they should NOT dominate.
- * 
- * Rules with nutrient-specific markers (INTERVEINAL_CHLOROSIS, soil Zn deficiency)
- * get a HIGH specificity score.
- */
+// Calculate diagnostic specificity score for a nutrition rule.
 export function calculateDiagnosticSpecificity(
   ruleId: string,
   cause: string,
@@ -182,19 +148,9 @@ export function calculateDiagnosticSpecificity(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ZINC RULE SPECIFICITY GATE
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Zinc Rule Restriction: SC_MICRO_ZN_DEFICIENCY_URGENT_001
- * 
- * MUST NOT fire on LEAF_YELLOWING alone.
- * Requires at least ONE of:
- *   - Zinc-specific symptom (INTERVEINAL_CHLOROSIS, KHAIRA, SMALL_LEAVES, etc.)
- *   - Soil Zn deficiency evidence (soil_zn < threshold)
- *   - Specificity score >= 30
- */
+// Zinc Rule Restriction: SC_MICRO_ZN_DEFICIENCY_URGENT_001
 export function passesZincSpecificityGate(
   ruleId: string,
   matchedObservations: string[],
@@ -228,14 +184,9 @@ export function passesZincSpecificityGate(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MICRONUTRIENT SPECIFICITY GATE (Fe, Mn, S, and generic MICRO rules)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Symptoms that are specific to micronutrient deficiency.
- * A micronutrient rule MUST have at least one of these OR soil evidence to fire.
- */
+// Symptoms that are specific to micronutrient deficiency.
 export const MICRONUTRIENT_SPECIFIC_MARKERS = new Set([
   'INTERVEINAL_CHLOROSIS',
   'YOUNG_LEAF_YELLOWING',
@@ -257,10 +208,7 @@ export const MICRONUTRIENT_SPECIFIC_MARKERS = new Set([
   'NUTRIENT_STRESS_SIGNAL',
 ]);
 
-/**
- * Observations that have NO biological relationship to micronutrient deficiency.
- * If ONLY these are present, micronutrient rules MUST NOT fire.
- */
+// Observations that have NO biological relationship to micronutrient deficiency.
 const NON_NUTRIENT_OBSERVATIONS = new Set([
   'GAPS_IN_FIELD',
   'HOLES_VISIBLE',
@@ -280,13 +228,7 @@ const NON_NUTRIENT_OBSERVATIONS = new Set([
   'INSECT_PRESENT',
 ]);
 
-/**
- * Micronutrient Specificity Gate: Blocks Fe/Mn/S/generic MICRO deficiency rules
- * when there is no specific nutrient-deficiency evidence.
- * 
- * PRINCIPLE: Absence of soil test data is NOT evidence of deficiency.
- * Micronutrient rules MUST require positive evidence before firing as URGENT treatments.
- */
+// Micronutrient Specificity Gate: Blocks Fe/Mn/S/generic MICRO deficiency rules
 export function passesMicronutrientSpecificityGate(
   ruleId: string,
   matchedObservations: string[],
@@ -356,9 +298,7 @@ export function passesMicronutrientSpecificityGate(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DOMINANCE BLOCKING RULES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface DominanceBlockResult {
   blocked: boolean;
@@ -366,11 +306,7 @@ export interface DominanceBlockResult {
   reason: string;
 }
 
-/**
- * Water Stress Dominance:
- * If WATER_STRESS_CONFIRMED exists → block ALL nutrient urgent treatments
- * until irrigation is normalized.
- */
+// Water Stress Dominance:
 export function checkWaterStressDominance(
   observations: string[],
   ruleActionType: string,
@@ -401,11 +337,7 @@ export function checkWaterStressDominance(
   return { blocked: false, blocker: '', reason: 'nutrient_rule_not_urgent' };
 }
 
-/**
- * Macronutrient Dominance:
- * If NITROGEN_DEFICIENCY_CONFIRMED exists → block micronutrient urgent treatments
- * UNLESS soil micronutrient deficiency is explicitly confirmed.
- */
+// Macronutrient Dominance:
 export function checkMacronutrientDominance(
   observations: string[],
   ruleId: string,
@@ -439,9 +371,7 @@ export function checkMacronutrientDominance(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NUTRITION CONFLICT ARBITRATION (Main Entry Point)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface NutritionCandidate {
   rule_id: string;
@@ -463,17 +393,7 @@ export interface ArbitrationResult {
   reason: string;
 }
 
-/**
- * Arbitrate between multiple nutrition rule candidates.
- * 
- * Pipeline:
- * 1. Apply water stress dominance block
- * 2. Apply macronutrient dominance block
- * 3. Apply zinc specificity gate
- * 4. Score remaining by diagnostic specificity
- * 5. If equal specificity → prefer macro over micro
- * 6. If only generic symptoms → downgrade ALL to MONITOR
- */
+// Arbitrate between multiple nutrition rule candidates.
 export function arbitrateNutritionRules(
   candidates: NutritionCandidate[],
   allObservations: string[],
@@ -592,9 +512,7 @@ export function arbitrateNutritionRules(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE AUDIT: Flag nutrition rules with only generic symptoms
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface GenericRuleAuditResult {
   rule_id: string;
@@ -607,12 +525,7 @@ export interface GenericRuleAuditResult {
   recommendation: string;
 }
 
-/**
- * Audit a nutrition rule for generic-only symptom conditions.
- * Flags rules where conditions_json contains ONLY generic symptoms
- * (LEAF_YELLOWING, STUNTED_GROWTH, POOR_TILLERING) without
- * nutrient-specific markers.
- */
+// Audit a nutrition rule for generic-only symptom conditions.
 export function auditNutritionRuleSpecificity(
   ruleId: string,
   cause: string,
@@ -658,9 +571,7 @@ export function auditNutritionRuleSpecificity(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function normalizeObservableChars(raw: unknown): string[] {
   if (!raw) return [];

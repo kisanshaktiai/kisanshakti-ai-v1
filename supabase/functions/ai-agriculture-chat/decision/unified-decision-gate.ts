@@ -1,21 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * UNIFIED DECISION GATE - Single Point of Treatment Validation
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * P1-4 GOVERNANCE FIX: Consolidates prescription-gate and decision-readiness-gate
- * into a single unified gate that:
- * 
- * 1. Validates authority (from authority-resolver)
- * 2. Checks crop stage safety
- * 3. Validates symptom specificity
- * 4. Enforces symbolic decision requirements
- * 5. Applies PHI/pollinator safety (delegated to existing safety modules)
- * 
- * RULE: There is exactly ONE gate. All treatment decisions pass through here.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// UNIFIED DECISION GATE - Single Point of Treatment Validation
 
 import {
   DecisionAuthority,
@@ -37,9 +20,7 @@ import {
 
 export const UNIFIED_GATE_VERSION = '2.1.0'; // v2.1.0: DAS-first young crop logic + SSOT fixes
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RECOMMENDATION SUPPRESSION GUARD
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SuppressionGuardResult {
   should_allow: boolean;
@@ -51,15 +32,7 @@ export interface SuppressionGuardResult {
   suppression_prevented: boolean;
 }
 
-/**
- * validateRecommendationSuppression
- * 
- * PRODUCTION BUG FIX: Ensures that if prescription-level rules fire AND 
- * authority is not blocking AND no clarification is triggered, 
- * recommendations MUST NOT be dropped silently.
- * 
- * Call this AFTER evaluateUnifiedGate to detect potential silent suppression.
- */
+// validateRecommendationSuppression
 export function validateRecommendationSuppression(
   gateResult: UnifiedGateResult,
   symbolicDecision: {
@@ -84,9 +57,6 @@ export function validateRecommendationSuppression(
   const clarificationPending = gateResult.response_mode === ResponseMode.CLARIFICATION;
   
   // SUPPRESSION DETECTION:
-  // If rules fired AND (has treatment actions OR products OR matched_responses)
-  // AND authority NOT blocking AND NO clarification pending
-  // BUT gate returned FAIL or no recommendations → SILENT SUPPRESSION
   
   const rulesIndicateTreatment = rulesFiredCount > 0 && (hasTreatmentActions || hasProducts || hasMatchedResponses);
   const gateDenied = !gateResult.treatments_allowed && 
@@ -120,12 +90,7 @@ export function validateRecommendationSuppression(
   };
 }
 
-/**
- * applySuppressionGuard
- * 
- * Applies the suppression guard to a gate result, potentially upgrading
- * the response mode if silent suppression is detected.
- */
+// applySuppressionGuard
 export function applySuppressionGuard(
   gateResult: UnifiedGateResult,
   symbolicDecision: {
@@ -164,9 +129,7 @@ export function applySuppressionGuard(
   return gateResult;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT CONTRACT
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface UnifiedGateInput {
   // Authority decision (MANDATORY - must be resolved before calling)
@@ -221,9 +184,7 @@ export interface UnifiedGateInput {
   // Land context
   land_id?: string;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // NEW: Confidence-driven fields (CRITICAL FOR MODE RESOLUTION)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   /** Decision confidence from semantic extraction (0-100) */
   decision_confidence?: number;
@@ -237,9 +198,7 @@ export interface UnifiedGateInput {
   /** Observation certainty from prior clarification */
   observation_certainty?: number;
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // P3-1: Weather safety gate result (BLOCKING for spray/treatment actions)
-  // ═══════════════════════════════════════════════════════════════════════════
   weather_safety?: {
     safe_to_spray: boolean;
     risk_level?: string;
@@ -250,17 +209,9 @@ export interface UnifiedGateInput {
   } | null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TREATMENT ACTION CLASSIFICATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 // CRITICAL FIX: Include new symbolic action_types that indicate treatment/prescription
-// These come from the decision_rules table action_type column
-// ═══════════════════════════════════════════════════════════════════════════
-// PHASE 3: Strict action_type classification using DB canonical types
-// Database uses 5 types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
-// Legacy types kept for backward compatibility during transition
-// ═══════════════════════════════════════════════════════════════════════════
 const TREATMENT_ACTIONS = new Set([
   // DB canonical types that indicate treatment/prescription
   'RECOMMEND',
@@ -287,17 +238,7 @@ const OBSERVATION_ACTIONS = new Set([
   'DIAGNOSIS',
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // YOUNG CROP DEFINITIONS — PR-2: DB-DRIVEN
-// ───────────────────────────────────────────────────────────────────────────
-// YOUNG_CROP_STAGES Set DELETED. Stage-based youngness now derives from
-// `crop_stage_master.das_max` via StageKnowledgeCache (SSOT).
-// VAGUE_SYMPTOM_PATTERNS Set DELETED. Vagueness now derives from
-// `observation_master.is_diagnostic` + `clarity_score` via
-// `isVagueObservation()` on the observation-classification-cache.
-// YOUNG_CROP_MAX_DAYS remains until `crop_baseline_guidelines_v2` gets a
-// `young_crop_max_das` column (see HARDCODE_TO_DB_MAPPING #19 / MISSING report).
-// ═══════════════════════════════════════════════════════════════════════════
 
 import { getStageRow as getStageRowFromCache } from '../utils/stage-knowledge-cache.ts';
 import { isVagueObservation } from '../utils/observation-classification-cache.ts';
@@ -318,19 +259,9 @@ const YOUNG_CROP_MAX_DAYS: Record<string, number> = {
 };
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN UNIFIED GATE FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * evaluateUnifiedGate
- * 
- * The SINGLE gate that all treatment decisions must pass through.
- * Combines authority validation, stage safety, and symbolic decision validation.
- * 
- * @param input - UnifiedGateInput with authority decision and context
- * @returns UnifiedGateResult with gate status and allowed actions
- */
+// evaluateUnifiedGate
 export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult {
   const checkedAt = new Date().toISOString();
   const { authority_decision, symbolic_decision } = input;
@@ -339,12 +270,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   console.log(`   Authority: ${authority_decision.authority} (${authority_decision.authority_status})`);
   console.log(`   Treatments Allowed by Authority: ${authority_decision.treatments_allowed}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CALCULATE DECISION CONFIDENCE (CRITICAL FOR MODE RESOLUTION)
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SSOT: Confidence comes from symbolic layer only (via decision_confidence)
-  // DEPRECATED: semantic_confidence and observation_certainty are kept for backward compat
-  // but are NOT used in mode resolution. The symbolic ledger score IS the confidence.
   let calculatedConfidence = input.decision_confidence ?? 0;
   
   // Composite confidence: hypothesis causal certainty × rule treatment suitability
@@ -367,9 +293,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   console.log(`   Has Symptoms: ${hasSymptoms}`);
   console.log(`   Has Visual Ambiguity: ${hasVisualAmbiguity}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 1: EMERGENCY BYPASS CHECK
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (input.has_emergency_indicators) {
     console.log(`   🚨 EMERGENCY BYPASS - Fast-tracking`);
@@ -403,9 +327,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 2: AUTHORITY VALIDATION (FROM RESOLVER)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const authorityResolved = authority_decision.authority !== DecisionAuthority.NONE;
   const authorityAllowsTreatment = authority_decision.treatments_allowed;
@@ -448,9 +370,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 3: CLARIFICATION CHECK
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (input.pending_clarification || symbolic_decision?.clarification_needed) {
     console.log(`   ⏳ CLARIFICATION PENDING`);
@@ -484,9 +404,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 4: SYMBOLIC DECISION VALIDATION + CONFIDENCE-DRIVEN MODE RESOLUTION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const hasSymbolicDecision = symbolic_decision?.decision_brain_source === true;
   const hasTreatmentActions = checkHasTreatmentActions(symbolic_decision);
@@ -500,9 +418,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   if (!hasSymbolicDecision) {
     console.log(`   🚫 NO SYMBOLIC DECISION - Applying confidence-driven mode`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Confidence-Driven Mode Resolution (NOT always INFORMATION)
-    // ═══════════════════════════════════════════════════════════════════════════
     let resolvedMode: ResponseMode;
     let resolvedReason: string;
     
@@ -563,9 +479,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 5: YOUNG CROP PROTECTION (Stage × Authority)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const isYoungCrop = checkIfYoungCrop(
     input.growth_stage,
@@ -662,9 +576,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 6: PRODUCT/DOSAGE VALIDATION
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (hasTreatmentActions && products.length === 0 && dosages.length === 0) {
     console.log(`   ⚠️ NO PRODUCTS/DOSAGES - Observation only`);
@@ -698,10 +610,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 7 (P3-1): WEATHER SAFETY GATE - BLOCKING for spray/treatment
-  // If weather is unsafe for spraying, block treatment and advise waiting
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (input.weather_safety && !input.weather_safety.safe_to_spray && hasTreatmentActions) {
     const blockingFactors = input.weather_safety.blocking_factors || [];
@@ -736,9 +645,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE PASSED: Allow Treatments
-  // ═══════════════════════════════════════════════════════════════════════════
   
   console.log(`   ✅ GATE PASSED - Treatments allowed`);
   
@@ -773,19 +680,14 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function checkIfYoungCrop(
   cropStage?: string | null,
   daysSinceSowing?: number | null,
   cropName?: string | null
 ): boolean {
-  // ═══════════════════════════════════════════════════════════════════════════
   // FIX: PRIORITIZE days_since_sowing OVER stage label
-  // A crop at 59 DAS is NOT young even if stage says SEEDLING (data might be stale)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // PRIORITY 1: If we have reliable days_since_sowing, use it as primary indicator
   if (daysSinceSowing !== undefined && daysSinceSowing !== null) {
@@ -805,8 +707,6 @@ function checkIfYoungCrop(
   }
   
   // PRIORITY 2: DB-driven stage-based fallback when DAS is unknown.
-  // A stage counts as "young" iff the DB row's das_max is within the crop's
-  // young-crop threshold (defaults to 30 days).
   if (cropStage && cropName) {
     const row = getStageRowFromCache(cropName, cropStage);
     const threshold = YOUNG_CROP_MAX_DAYS[cropName.toUpperCase()] ?? 30;

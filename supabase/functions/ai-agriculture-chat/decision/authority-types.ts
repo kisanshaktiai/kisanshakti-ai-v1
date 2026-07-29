@@ -1,38 +1,10 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CANONICAL AUTHORITY TYPES - Single Source of Truth
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * P1-1 GOVERNANCE FIX: All authority-related enums are consolidated here.
- * NO other module may define its own authority enums.
- * 
- * USAGE:
- * - authority-resolver.ts MUST return these types
- * - prescription-gate-enforcer.ts MUST consume these types
- * - decision-readiness-gate.ts MUST consume these types
- * - unified-decision-gate.ts MUST use these types
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// CANONICAL AUTHORITY TYPES - Single Source of Truth
 
 export const AUTHORITY_TYPES_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL DECISION AUTHORITY ENUM (Domain Level)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * DecisionAuthority represents the DOMAIN that has the legal right to decide.
- * This is based on the type of stress/issue detected.
- * 
- * PRECEDENCE (Strict Order):
- * 1. SAFETY - Overrides everything
- * 2. LAND - Overrides CROP, CLIMATE, SYSTEM
- * 3. CLIMATE - Overrides CROP only
- * 4. SYSTEM - Overrides CROP only
- * 5. CROP - Default (pests, diseases, nutrients)
- * 6. NONE - No authority confirmed, observation only
- */
+// DecisionAuthority represents the DOMAIN that has the legal right to decide.
 export enum DecisionAuthority {
   SAFETY = 'SAFETY',     // Human/livestock risk - blocks all treatments
   LAND = 'LAND',         // Soil/salinity/waterlogging - blocks crop treatments
@@ -42,14 +14,9 @@ export enum DecisionAuthority {
   NONE = 'NONE'          // No authority confirmed - observation only
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL AUTHORITY STATUS ENUM (Confirmation State)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * AuthorityStatus represents the CONFIRMATION STATE of an authority decision.
- * This determines whether treatments can proceed.
- */
+// AuthorityStatus represents the CONFIRMATION STATE of an authority decision.
 export enum AuthorityStatus {
   CONFIRMED = 'CONFIRMED',                         // Authority explicitly confirmed
   UNCONFIRMED = 'UNCONFIRMED',                     // No diagnosis yet
@@ -57,16 +24,9 @@ export enum AuthorityStatus {
   BLOCKED = 'BLOCKED'                              // Higher authority blocking
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL RESPONSE MODE ENUM
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * ResponseMode determines what type of response is allowed based on
- * authority status and gate validation.
- * 
- * LOCKED ENUM - Changes require version bump in authority-types.ts
- */
+// ResponseMode determines what type of response is allowed based on
 export enum ResponseMode {
   // Core modes
   TREATMENT = 'TREATMENT',                       // Full treatment recommendations allowed
@@ -82,14 +42,9 @@ export enum ResponseMode {
   ERROR = 'ERROR'                                // Error state
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL GATE STATUS ENUM
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * GateStatus is the unified status from the Decision Gate.
- * Replaces separate statuses from prescription-gate and decision-readiness-gate.
- */
+// GateStatus is the unified status from the Decision Gate.
 export enum GateStatus {
   PASS = 'PASS',                     // All criteria met, treatment allowed
   FAIL = 'FAIL',                     // Criteria not met, treatment blocked
@@ -97,13 +52,9 @@ export enum GateStatus {
   EMERGENCY_BYPASS = 'EMERGENCY_BYPASS' // Emergency fast-tracked
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL GATE ACTION ENUM
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * GateAction specifies what action the gate recommends.
- */
+// GateAction specifies what action the gate recommends.
 export enum GateAction {
   ALLOW_TREATMENT = 'ALLOW_TREATMENT',
   REQUIRE_CLARIFICATION = 'REQUIRE_CLARIFICATION',
@@ -115,14 +66,9 @@ export enum GateAction {
   DIAGNOSTIC_ESCALATION = 'DIAGNOSTIC_ESCALATION' // Expert-level response with hypotheses
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AUTHORITY DECISION OUTPUT INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * AuthorityDecision is the output from the Authority Resolver.
- * This is the canonical structure that all downstream modules must use.
- */
+// AuthorityDecision is the output from the Authority Resolver.
 export interface AuthorityDecision {
   /** The single domain with legal authority to decide */
   authority: DecisionAuthority;
@@ -152,14 +98,9 @@ export interface AuthorityDecision {
   resolved_at: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // UNIFIED DECISION GATE RESULT INTERFACE
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * UnifiedGateResult is the output from the Unified Decision Gate.
- * It combines the checks from prescription-gate and decision-readiness-gate.
- */
+// UnifiedGateResult is the output from the Unified Decision Gate.
 export interface UnifiedGateResult {
   /** Overall gate status */
   gate_status: GateStatus;
@@ -206,28 +147,16 @@ export interface UnifiedGateResult {
   /** Confidence level */
   confidence_level: 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW';
   
-  /**
-   * CRITICAL: Numeric decision confidence (0-100) for response mode resolution
-   * Populated from semantic extractor, observation certainty, and diagnosis confirmation
-   */
+  // CRITICAL: Numeric decision confidence (0-100) for response mode resolution
   decision_confidence: number;
   
-  /**
-   * Whether symptoms were detected in the farmer message
-   * Used by response mode resolver to avoid OBSERVATION for symptomatic queries
-   */
+  // Whether symptoms were detected in the farmer message
   has_symptoms: boolean;
   
-  /**
-   * Whether visual ambiguity was detected (photo would help)
-   * Triggers PHOTO_REQUIRED mode when combined with low confidence
-   */
+  // Whether visual ambiguity was detected (photo would help)
   has_visual_ambiguity: boolean;
   
-  /**
-   * Clarification options to display when mode is CLARIFICATION
-   * Must be populated when response_mode === CLARIFICATION
-   */
+  // Clarification options to display when mode is CLARIFICATION
   clarification_options?: Array<{
     label: string;
     value: string;
@@ -245,14 +174,9 @@ export interface UnifiedGateResult {
   diagnostic_escalation?: DiagnosticEscalationData;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC ESCALATION TYPES (NEW)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Hypothesis represents a possible cause identified by symptom matching
- * but not yet confirmed with sufficient evidence.
- */
+// Hypothesis represents a possible cause identified by symptom matching
 export interface DiagnosticHypothesis {
   /** Cause code from symbolic brain (e.g., 'APHID_INFESTATION', 'NITROGEN_DEFICIENCY') */
   cause_code: string;
@@ -282,9 +206,7 @@ export interface DiagnosticHypothesis {
   potential_treatments?: string[];
 }
 
-/**
- * Required input specifies what specific data is needed to increase confidence
- */
+// Required input specifies what specific data is needed to increase confidence
 export interface RequiredInput {
   /** Type of input needed */
   type: 'PHOTO' | 'SEVERITY_ASSESSMENT' | 'DISTRIBUTION_PATTERN' | 'TIMING' | 'HISTORY' | 'LAB_TEST';
@@ -310,9 +232,7 @@ export interface RequiredInput {
   };
 }
 
-/**
- * DiagnosticEscalationData - the complete structure for expert-level responses
- */
+// DiagnosticEscalationData - the complete structure for expert-level responses
 export interface DiagnosticEscalationData {
   /** All possible causes ranked by likelihood */
   hypotheses: DiagnosticHypothesis[];
@@ -342,24 +262,16 @@ export interface DiagnosticEscalationData {
   created_at: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if authority allows treatments
- */
+// Check if authority allows treatments
 export function isTreatmentAuthority(authority: DecisionAuthority): boolean {
   return authority === DecisionAuthority.CROP;
 }
 
-/**
- * Check if authority blocks crop-level treatments
- */
+// Check if authority blocks crop-level treatments
 export function blocksCtopTreatments(authority: DecisionAuthority): boolean {
   // FIX 1 (v6.1): NONE and UNCONFIRMED must NEVER block crop treatments.
-  // They mean "no authority decision made yet" — the farmer should still get
-  // symptom-driven prescriptions. Only explicit blocking authorities block.
   return [
     DecisionAuthority.SAFETY,
     DecisionAuthority.LAND,
@@ -369,9 +281,7 @@ export function blocksCtopTreatments(authority: DecisionAuthority): boolean {
   ].includes(authority);
 }
 
-/**
- * Get response mode from authority
- */
+// Get response mode from authority
 export function getResponseModeFromAuthority(
   authority: DecisionAuthority,
   status: AuthorityStatus

@@ -1,17 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * GRAPH INVARIANTS — Runtime assertions guarding the symbolic pipeline
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * These invariants encode the "generic fallback is forbidden when the graph
- * produced a decision" contract. Violations do NOT throw (that would take
- * a turn down) — they log `[GRAPH_INVARIANT_VIOLATION]` at error level and
- * return a corrective directive the orchestrator applies before delivery.
- *
- * The orchestrator calls these AFTER Communication Generator returns and
- * BEFORE the final Response Validation Gate persists the message.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// GRAPH INVARIANTS — Runtime assertions guarding the symbolic pipeline
 
 export interface InvariantSnapshot {
   trace_id: string;
@@ -34,11 +21,7 @@ export type FallbackReason =
   | 'NO_HYPOTHESIS'
   | 'SYSTEM_ERROR';
 
-/**
- * Only these four reasons legitimately produce `generic_template`.
- * Every other trigger (low confidence, missing product, treatment blocked)
- * MUST fall back to the symbolic decision the graph already produced.
- */
+// Only these four reasons legitimately produce `generic_template`.
 export function isLegitimateFallback(reason: string | null | undefined): reason is FallbackReason {
   if (!reason) return false;
   return ['NO_CROP', 'NO_OBSERVATION', 'NO_HYPOTHESIS', 'SYSTEM_ERROR'].includes(reason);
@@ -101,9 +84,7 @@ export function checkGraphInvariants(s: InvariantSnapshot): InvariantResult {
   return { ok: violations.length === 0, violations, force_source };
 }
 
-/**
- * Emit the FINAL_RESPONSE_CONTRACT trace exactly once per turn.
- */
+// Emit the FINAL_RESPONSE_CONTRACT trace exactly once per turn.
 export function emitFinalResponseContract(s: InvariantSnapshot): void {
   console.log(
     `[FINAL_RESPONSE_CONTRACT][${s.trace_id}] ` +

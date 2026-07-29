@@ -1,9 +1,4 @@
-/**
- * LANGUAGE INDUCTION LAYER v3.1 — DEPRECATED LEGACY FALLBACK
- * Enums/types extracted to symptom-enums.ts. This file keeps only
- * the runtime induction logic (keyword dictionaries + functions).
- * @deprecated Use semantic-extractor.ts for language understanding
- */
+// LANGUAGE INDUCTION LAYER v3.1 — DEPRECATED LEGACY FALLBACK
 
 // Re-export enums for backward compatibility
 export {
@@ -28,9 +23,7 @@ import type { InducedSymbol, LanguageInductionResult } from './symptom-enums.ts'
 
 export const LANGUAGE_INDUCTION_VERSION = '3.1.0';
 
-// ============================================================================
 // MULTILINGUAL MAPPING DICTIONARIES
-// ============================================================================
 
 interface SymbolMapping {
   symbol: CanonicalSymptomSymbol;
@@ -81,10 +74,7 @@ const MARATHI_SYMPTOM_MAP: Record<string, SymbolMapping> = {
   'ठिकठिकाणी मेले': { symbol: CanonicalSymptomSymbol.PATCHY_DEATH, confidence: 0.95 },
   'उगवण कमी': { symbol: CanonicalSymptomSymbol.POOR_GERMINATION, confidence: 0.90 },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Additional Marathi growth patterns (common farmer phrases)
-  // These patterns were causing symptoms=[] and blocking the symbolic brain
-  // ═══════════════════════════════════════════════════════════════════════════
   'वाढ होत नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.95 },  // "Growth is not happening" - MOST COMMON
   'वाढ नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },       // "No growth"
   'वाढत नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },      // "Not growing"
@@ -96,11 +86,7 @@ const MARATHI_SYMPTOM_MAP: Record<string, SymbolMapping> = {
   'वाढ झाली नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 }, // "Growth did not happen"
   'वाढ रखडली': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },     // "Growth stalled"
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // P0 FIX: Critical single-word symptom patterns (common farmer phrases)
-  // These were causing symptoms=[] when farmer uses short descriptions
-  // Example: "नवीन लावण केलेला ऊस काही ठिकाणी वाळला" → missed "वाळला" (dried)
-  // ═══════════════════════════════════════════════════════════════════════════
   'वाळला': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },           // "dried" - CRITICAL single word
   'वाळले': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },           // "dried" (plural)
   'वाळलेला': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },         // "dried" (adj)
@@ -163,10 +149,7 @@ const HINDI_SYMPTOM_MAP: Record<string, SymbolMapping> = {
   'पौधा मर गया': { symbol: CanonicalSymptomSymbol.PLANT_DEATH, confidence: 0.95 },
   'बढ़वार रुक गई': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Additional Hindi growth patterns (common farmer phrases)
-  // Ensures Hindi growth queries also trigger symbolic brain correctly
-  // ═══════════════════════════════════════════════════════════════════════════
   'बढ़ नहीं रहा': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },   // "Not growing"
   'वृद्धि नहीं': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },    // "No growth"
   'धीमी वृद्धि': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },    // "Slow growth"
@@ -366,9 +349,7 @@ const DISTRIBUTION_MAP: Record<string, CanonicalDistributionSymbol> = {
 
 // Interfaces are now in symptom-enums.ts (re-exported above)
 
-// ============================================================================
 // LANGUAGE DETECTION
-// ============================================================================
 
 function detectLanguage(text: string): string {
   const marathiPattern = /[\u0900-\u097F]/; // Devanagari
@@ -385,25 +366,9 @@ function detectLanguage(text: string): string {
   return marathiScore >= hindiScore ? 'mr' : 'hi';
 }
 
-// ============================================================================
 // CORE INDUCTION FUNCTION
-// ============================================================================
 
-/**
- * Induce canonical symbols from raw farmer text.
- *
- * Phase 4 · Land-Context Authority Override
- * ─────────────────────────────────────────
- * When `landAuthority.current_crop` is provided (i.e. we are inside a
- * land-specific chat), the DB-authoritative crop wins. The hardcoded
- * CROP_MAP is downgraded to a contradiction-check aid only — it can no
- * longer inject UNKNOWN_CROP or a wording-derived crop that overrides
- * the land's actual crop.
- *
- * Emits `[ONTOLOGY_SOURCE=land_context]` when the override fires so the
- * canonical-state hash stays identical across wording variants
- * ("भात … नाही", "पिक … नाही", "खराब उगवण").
- */
+// Induce canonical symbols from raw farmer text.
 export function induceCanonicalSymbols(
   farmerInput: string,
   landAuthority?: { current_crop?: string | null } | null,
@@ -453,8 +418,6 @@ export function induceCanonicalSymbols(
     console.log(`[ONTOLOGY_SOURCE=land_context] crop=${crop.symbol} — CROP_MAP bypassed`);
   } else {
     // Fallback ONLY when there is no land-specific context (crop-agnostic
-    // entry point). CROP_MAP is retained here for backward compatibility
-    // and MUST NOT override an authoritative land crop.
     for (const [pattern, cropSymbol] of Object.entries(CROP_MAP)) {
       if (normalizedText.includes(pattern.toLowerCase())) {
         crop = {
@@ -564,31 +527,19 @@ export function induceCanonicalSymbols(
   };
 }
 
-// ============================================================================
 // UTILITY FUNCTIONS
-// ============================================================================
 
-/**
- * Get all symptom symbols as a simple string array for rule matching
- */
+// Get all symptom symbols as a simple string array for rule matching
 export function getSymptomSymbolsForRules(result: LanguageInductionResult): string[] {
   return result.symptoms.map(s => s.symbol);
 }
 
-/**
- * Get canonical crop code for rule matching
- */
+// Get canonical crop code for rule matching
 export function getCropSymbolForRules(result: LanguageInductionResult): string {
   return result.crop?.symbol || 'UNKNOWN_CROP';
 }
 
-/**
- * Check if induction result has sufficient coverage for rule evaluation
- * 
- * SSOT PRINCIPLE: Symbolic brain requires SYMPTOMS, not just crop detection.
- * A crop symbol alone (e.g., SUGARCANE) is NOT sufficient for rule matching.
- * We must have at least 1 symptom to run the symbolic decision brain.
- */
+// Check if induction result has sufficient coverage for rule evaluation
 export function hasMinimumCoverage(
   result: LanguageInductionResult, 
   minCoverage: number = 0.3
@@ -602,9 +553,7 @@ export function hasMinimumCoverage(
   return hasSymptoms && (hasSufficientCoverage || hasMultipleSymbols);
 }
 
-/**
- * Get a summary for logging
- */
+// Get a summary for logging
 export function getInductionSummary(result: LanguageInductionResult): string {
   const symptoms = result.symptoms.map(s => s.symbol).join(', ') || 'none';
   const crop = result.crop?.symbol || 'unknown';
@@ -616,9 +565,7 @@ export function getInductionSummary(result: LanguageInductionResult): string {
     `Confidence: ${(result.aggregated_confidence * 100).toFixed(0)}%`;
 }
 
-// ============================================================================
 // EXPORTS
-// ============================================================================
 
 export default {
   induceCanonicalSymbols,

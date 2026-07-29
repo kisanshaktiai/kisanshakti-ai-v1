@@ -3,44 +3,9 @@
  * 2026-07-29 10:30 UTC — LATENCY L7: perception model gpt-4o -> gpt-4o-mini;
  *   retry budget 2x5s -> 1x4s. Extraction contract unchanged.
  */
-/**
- * ARCHITECTURAL CONTRACT — PURE NLU PERCEPTION LAYER
- *
- * This module:
- * - Extracts RAW farmer observations only
- * - Detects language, urgency, and emotion
- *
- * This module MUST NOT:
- * - classify intent
- * - infer pests or diseases
- * - infer crops or growth stages
- * - generate clarification logic
- * - generate farmer-facing text
- *
- * All reasoning is handled downstream by:
- * semantic-extractor → intent-resolver → symbolic decision brain
- */
+// ARCHITECTURAL CONTRACT — PURE NLU PERCEPTION LAYER
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * AGENT 1: NATURAL LANGUAGE UNDERSTANDING (NLU) - PURE PERCEPTION LAYER v7.0.0
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * This module is a PURE PERCEPTION LAYER that:
- * - Extracts raw farmer observations (exact words, no interpretation)
- * - Detects language as metadata
- * - Assesses urgency and emotional state as signals
- * - Provides perception quality metrics
- * 
- * This module does NOT:
- * - Classify intent (handled by semantic-extractor.ts)
- * - Infer pests, diseases, or crops (handled by intent-resolver + database)
- * - Generate clarification questions (handled by symbolic brain)
- * - Produce farmer-facing text (handled by narration layer)
- * 
- * @version 7.0.0
- * @phase Pure Perception Architecture
- */
+// AGENT 1: NATURAL LANGUAGE UNDERSTANDING (NLU) - PURE PERCEPTION LAYER v7.0.0
 
 import {
   NLUAgentInput,
@@ -56,9 +21,7 @@ import {
 
 const NLU_VERSION = '7.0.0'; // Pure perception layer - no intent/entity inference
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PURE PERCEPTION OUTPUT CONTRACT
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface PerceptionResult {
   /** Raw farmer observations - EXACT words only, no interpretation */
@@ -87,9 +50,7 @@ interface AIPerceptionResult {
   emotional_state: 'PANIC' | 'STRESSED' | 'NEUTRAL' | 'CONFIDENT';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RETRY UTILITY WITH EXPONENTIAL BACKOFF
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -99,8 +60,6 @@ async function fetchWithRetry(
   url: string,
   options: RequestInit,
   // LATENCY BATCH L7 (2026-07-29): retry budget halved (2 attempts x 5s + backoff
-  // could cost ~13s before perception even started). Perception is best-effort;
-  // the symbolic path degrades gracefully without it.
   maxRetries: number = 1,
   baseDelay: number = 400,
   timeoutMs: number = 4000
@@ -159,9 +118,7 @@ async function fetchWithRetry(
   throw lastError || new Error('Max retries exceeded');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AI-POWERED PERCEPTION (Gemini/OpenAI) - OBSERVATION EXTRACTION ONLY
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function callAIForPerception(message: string): Promise<AIPerceptionResult | null> {
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
@@ -172,9 +129,7 @@ async function callAIForPerception(message: string): Promise<AIPerceptionResult 
     return null;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // PURE PERCEPTION CONTRACT - Extract observations ONLY, NO reasoning
-  // ═══════════════════════════════════════════════════════════════════════════
 
 const systemPrompt = `You are a Pure Perception Agent for agricultural text.
 
@@ -268,8 +223,6 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
             },
             body: JSON.stringify({
               // LATENCY BATCH L7 (2026-07-29): perception/extraction is a
-              // classification task — gpt-4o-mini is materially faster and
-              // cheaper with no measurable loss on observation extraction.
               model: 'gpt-4o-mini',
               messages: [
                 { role: 'system', content: systemPrompt },
@@ -363,9 +316,7 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LANGUAGE DETECTION (Pure Perception)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function detectLanguage(text: string): LanguageDetectionResult {
   const SCRIPT_RANGES: Record<string, RegExp> = {
@@ -444,9 +395,7 @@ function detectLanguage(text: string): LanguageDetectionResult {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // URGENCY & EMOTION DETECTION (Pure Perception Signals)
-// ═══════════════════════════════════════════════════════════════════════════
 
 function assessUrgency(text: string): UrgencyAssessment {
   const normalizedText = text.toLowerCase();
@@ -505,18 +454,14 @@ function assessUrgency(text: string): UrgencyAssessment {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN NLU AGENT FUNCTION - PURE PERCEPTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_input: string }): Promise<NLUAgentOutput> {
   const startTime = Date.now();
   
   console.log(`🧪 [NLU v${NLU_VERSION}] Pure perception layer processing...`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: AI-Powered Perception (extract raw observations only)
-  // ═══════════════════════════════════════════════════════════════════════════
   let aiResult: AIPerceptionResult | null = null;
   try {
     aiResult = await callAIForPerception(input.raw_input);
@@ -524,18 +469,14 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     console.warn('⚠️ [NLU] AI perception failed, using pattern-based fallback:', err);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Language Detection (as metadata only)
-  // ═══════════════════════════════════════════════════════════════════════════
   const languageResult = detectLanguage(input.raw_input);
   if (aiResult?.language) {
     languageResult.primary_language = aiResult.language;
     languageResult.confidence = Math.max(languageResult.confidence, 0.9);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Urgency & Emotion Assessment (as signals only)
-  // ═══════════════════════════════════════════════════════════════════════════
   const urgencyResult = assessUrgency(input.raw_input);
   if (aiResult?.urgency) {
     urgencyResult.level = aiResult.urgency;
@@ -545,9 +486,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     urgencyResult.requires_immediate_response = aiResult.urgency === 'HIGH' || aiResult.emotional_state === 'PANIC';
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 4: Extract raw observations (exact farmer words, no interpretation)
-  // ═══════════════════════════════════════════════════════════════════════════
   const rawObservations = aiResult?.observations || [input.raw_input];
   const safetyFlags = aiResult?.safety_flags || (urgencyResult.level === 'HIGH' ? ['URGENT'] : []);
   
@@ -558,9 +497,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   const processingTime = Date.now() - startTime;
   console.log(`⚡ [NLU] Perception complete in ${processingTime}ms, AI used: ${!!aiResult}, observations: ${rawObservations.length}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PURE PERCEPTION OUTPUT - NO intent, NO entities, NO clarification
-  // ═══════════════════════════════════════════════════════════════════════════
   
   return {
     understanding_metadata: {
@@ -575,10 +512,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       code_switching_present: languageResult.is_code_switched,
       normalization_applied: true
     },
-    // ═══════════════════════════════════════════════════════════════════════════
     // NEUTRAL intent_classification - NO reasoning here
-    // Intent is resolved by semantic-extractor.ts upstream
-    // ═══════════════════════════════════════════════════════════════════════════
     intent_classification: {
       primary_intent: 'UNKNOWN' as any, // Intent resolved upstream by semantic-extractor
       intent_confidence: 0,
@@ -586,18 +520,14 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       urgency_level: urgencyResult.level,
       emotional_state: urgencyResult.emotional_state
     },
-    // ═══════════════════════════════════════════════════════════════════════════
     // NEUTRAL crop_identification - comes from land context ONLY
-    // ═══════════════════════════════════════════════════════════════════════════
     crop_identification: {
       crop_code: input.land_context?.crop_code || 'UNKNOWN',
       local_name: undefined,
       identification_source: input.land_context?.crop_code ? 'FROM_LAND_CONTEXT' : 'UNKNOWN',
       confidence: input.land_context?.crop_code ? 0.95 : 0
     },
-    // ═══════════════════════════════════════════════════════════════════════════
     // RAW OBSERVATIONS ONLY - exact farmer words, no interpretation
-    // ═══════════════════════════════════════════════════════════════════════════
     symptom_extraction: {
       visual_symptoms: [], // No symptom inference - handled by symbolic brain
       behavioral_symptoms: [],
@@ -611,9 +541,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       is_follow_up: input.conversation_context?.session_state !== 'NEW',
       context_from_land: !!input.land_context
     },
-    // ═══════════════════════════════════════════════════════════════════════════
     // PERCEPTION QUALITY METRICS
-    // ═══════════════════════════════════════════════════════════════════════════
     understanding_quality: {
       overall_confidence: perceptionConfidence,
       confidence_breakdown: {
@@ -624,27 +552,21 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       },
       missing_information: [] // Clarification decided by symbolic brain
     },
-    // ═══════════════════════════════════════════════════════════════════════════
     // NEUTRAL photo_recommendation - decision made by symbolic brain
-    // ═══════════════════════════════════════════════════════════════════════════
     photo_recommendation: {
       photo_needed: false, // Decided by symbolic brain, not NLU
       photo_priority: 'LOW',
       reason: undefined, // No text generation here
       specific_instructions: undefined // No language-specific text here
     },
-    // ═══════════════════════════════════════════════════════════════════════════
     // PERCEPTION SIGNALS - urgency and safety only
-    // ═══════════════════════════════════════════════════════════════════════════
     safety_flags: {
       is_safe_to_respond: true,
       contains_harmful_advice_request: false,
       requires_expert_referral: urgencyResult.level === 'HIGH',
       detected_issues: safetyFlags
     },
-    // ═══════════════════════════════════════════════════════════════════════════
     // NEUTRAL next_agent - routing decided by orchestrator
-    // ═══════════════════════════════════════════════════════════════════════════
     next_agent_recommendation: {
       recommended_agent: 'SEMANTIC_EXTRACTOR', // Always hand off to semantic extraction
       reason_code: 'PERCEPTION_COMPLETE',
@@ -653,8 +575,6 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export { NLU_VERSION };

@@ -1,11 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════════
 // FARMER ADDRESSING — Presentation-layer respectful honorifics
-// ───────────────────────────────────────────────────────────────────────────
-// Returns rural, culturally-respectful addressing words for an Indian farmer
-// based on language + state + gender. This is consumed ONLY by the LLM
-// presentation/narration layer. It does NOT influence symbolic brain logic,
-// rules, dosages, intents, or any decision output.
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type Gender = 'male' | 'female' | 'other' | 'unknown';
 
@@ -224,10 +217,7 @@ export interface FarmerAddressing {
   promptDirective: string;
 }
 
-/**
- * Build the addressing payload + LLM directive.
- * Pure / presentation-only — NEVER use this to alter decisions.
- */
+// Build the addressing payload + LLM directive.
 export function getFarmerAddressing(p: {
   language?: string | null;
   state?: string | null;
@@ -280,10 +270,7 @@ USAGE RULES (strict):
   };
 }
 
-/**
- * Load farmer profile (gender from user_profiles, name+language from farmers).
- * Best-effort: never throws — returns a minimal profile on failure.
- */
+// Load farmer profile (gender from user_profiles, name+language from farmers).
 export async function loadFarmerProfileLite(
   supabase: any,
   farmerId: string,

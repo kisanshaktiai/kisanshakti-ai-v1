@@ -1,26 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * NAVIGATOR RESPONSE — v3 Phase 4 (flag-gated active mode)
- * ═══════════════════════════════════════════════════════════════════════════
- * Converts a NavigationResult from the Decision Graph Navigator into
- * farmer-ready clarification options (vocabulary + i18n only, via
- * `clarification-contract.buildOptions`) and applies the outbound contract
- * guard. This is the SOLE adapter for active-mode response emission.
- *
- * When `navOutput.flag.active === true` AND `navOutput.result` is present,
- * orchestrator emission sites delegate option production here instead of
- * the legacy producers.
- *
- * Decisions handled:
- *   - ASK                    → built+gated options ranked by graph-pruning score
- *   - INSUFFICIENT_EVIDENCE  → deterministic empty + override flag
- *   - CONTEXT_CONTRADICTION  → deterministic reconciliation flag (no options)
- *   - PROCEED                → no override (let downstream rule evaluator run)
- *
- * Failure is non-fatal: returns `{ override: false }` and lets the legacy
- * path run.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// NAVIGATOR RESPONSE — v3 Phase 4 (flag-gated active mode)
 
 import { buildOptions, assertClarificationContract } from './clarification-contract.ts';
 import type { NavigatorAdapterOutput } from './navigator-adapter.ts';
@@ -144,8 +122,6 @@ export async function buildNavigatorOverride(
     });
   } catch (e) {
     // v4.0: FAIL-CLOSED. Graph errors MUST NOT silently fall back to the
-    // legacy chatbot path — that would let the LLM narrate diagnosis without
-    // graph authority. Surface as INSUFFICIENT_EVIDENCE with a visible reason.
     console.error(
       `[NAV_OVERRIDE] GRAPH_RESPONSE_FAILURE: ${e instanceof Error ? e.message : String(e)} — failing closed`,
     );

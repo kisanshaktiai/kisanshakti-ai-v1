@@ -1,24 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CROP CODE NORMALIZER - Single Source of Truth
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Converts any crop name/code (English, Hindi, Marathi, short code) to
- * the canonical DB short code used in decision_rules table.
- * 
- * REPLACES: 
- * - CROP_TO_DB in symbolic-reasoner.ts
- * - DB_CROP_CODE_MAP in type-mappers.ts
- * - entity-code-mapper.ts crop mappings
- * 
- * @version 1.0.0
- */
+// CROP CODE NORMALIZER - Single Source of Truth
 
 export const CROP_CODE_NORMALIZER_VERSION = '1.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FORWARD MAP: Any crop name → DB short code
-// ═══════════════════════════════════════════════════════════════════════════
 
 const CROP_TO_SHORT: Record<string, string> = {
   // English full names
@@ -110,12 +94,10 @@ const CROP_TO_SHORT: Record<string, string> = {
   'भिंडी': 'OKRA',
   'बंदगोभी': 'CAB',
   'फूलगोभी': 'CFL',
-  'सोयाबीन': 'SOY',
+
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // REVERSE MAP: DB short code → full English name
-// ═══════════════════════════════════════════════════════════════════════════
 
 const SHORT_TO_FULL: Record<string, string> = {
   'SC': 'SUGARCANE', 'CTN': 'COTTON', 'SOY': 'SOYBEAN',
@@ -130,14 +112,9 @@ const SHORT_TO_FULL: Record<string, string> = {
   'POT': 'POTATO', 'ALL': 'ALL',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Normalize any crop name/code to the DB short code.
- * Returns 'ALL' for unknown/empty input.
- */
+// Normalize any crop name/code to the DB short code.
 export function normalizeCropCode(raw: string | undefined | null): string {
   if (!raw || raw.trim() === '') return 'ALL';
   
@@ -156,19 +133,14 @@ export function normalizeCropCode(raw: string | undefined | null): string {
   return 'ALL';
 }
 
-/**
- * Get full English crop name from DB short code.
- */
+// Get full English crop name from DB short code.
 export function getFullCropName(shortCode: string | undefined | null): string {
   if (!shortCode) return 'UNKNOWN';
   const upper = shortCode.toUpperCase().trim();
   return SHORT_TO_FULL[upper] || upper;
 }
 
-/**
- * Get all possible crop code variants for flexible DB matching.
- * Returns [shortCode, fullName, 'ALL'] for use in .or() queries.
- */
+// Get all possible crop code variants for flexible DB matching.
 export function getCropCodeVariants(raw: string | undefined | null): string[] {
   const short = normalizeCropCode(raw);
   const full = getFullCropName(short);

@@ -166,11 +166,7 @@ export function scoreEvidence(
   };
 }
 
-/**
- * Score a candidate set and return it ordered by evidence confidence.
- * NOTHING is dropped — ordering only. Duplicate codes collapse to the
- * highest-scoring instance.
- */
+// Score a candidate set and return it ordered by evidence confidence.
 export function scoreEvidenceSet(
   candidates: ReadonlyArray<EvidenceCandidate>,
   weights: EvidenceWeights = getEvidenceWeights(),

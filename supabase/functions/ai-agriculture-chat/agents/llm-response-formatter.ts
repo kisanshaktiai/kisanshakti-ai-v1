@@ -4,35 +4,7 @@
  *   (tiers 8s/6s/5s, rate-limit sleeps removed). Cascade previously cost up to
  *   56s before falling back to template. Render-only contract unchanged.
  */
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * SYMBOLIC BRAIN PRINCIPLE: "Rules Decide, AI Only Explains"
- * 
- * This module takes SYMBOLIC DECISION OUTPUT and renders it into
- * natural, empathetic, farmer-friendly language.
- * 
- * CRITICAL CONSTRAINTS:
- * - LLM can ONLY render what Rule Engine decided
- * - LLM CANNOT add products, dosages, or actions
- * - LLM CANNOT modify timing, quantities, or safety instructions
- * - Every output must pass SOURCE VALIDATION
- * 
- * KEY FEATURES:
- * - Input Validation Gate (blocks invalid symbolic input)
- * - Output Validation Gate (blocks unauthorized additions)
- * - Decision Readiness Gate Integration (blocks treatments when gate fails)
- * - 25-second timeout with structured fallback
- * - Full audit trail for compliance
- * 
- * PHASE-12 GOVERNANCE UPDATE:
- * - Hard enforcement of render-only mode
- * - Integration with Decision Readiness Gate
- * - Clarification state awareness (never treat clarification as task complete)
- * - Reasoning-for-result requirement
- */
+// PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
 
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
@@ -83,9 +55,7 @@ import {
   generateCompleteFollowUp
 } from './follow-up-generator.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFE STRING UTILITIES - Crash-proof text operations
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   safePreviewText,
   safeTrim,
@@ -102,9 +72,7 @@ import {
 // Static import for i18n resolution (replaces dynamic await import)
 import { getTranslation as resolveI18nFromCache } from '../i18n/translation-loader.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE MODE RENDERER - Mode-driven output generation
-// ═══════════════════════════════════════════════════════════════════════════
 import {
   renderByMode,
   resolveResponseMode,
@@ -112,9 +80,7 @@ import {
 } from '../utils/response-mode-renderer.ts';
 import type { ModeRenderedOutput } from '../utils/response-mode-renderer.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface LLMFormatterInput {
   farmer_message: string;
@@ -141,10 +107,7 @@ export interface LLMFormatterInput {
   data_audit?: DataAudit;
   trace_id?: string;
   supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
-  /**
-   * Presentation-only addressing payload (rural honorifics).
-   * MUST NOT affect symbolic decisions, products, dosages or any logic.
-   */
+  // Presentation-only addressing payload (rural honorifics).
   farmer_addressing?: {
     primary: string;
     alternatives: string[];
@@ -174,10 +137,7 @@ export interface LLMFormatterOutput {
   tokens_used?: number;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // IPM LEVEL TRANSLATIONS — Now handled by LLM narration layer
-// Hardcoded dict removed to support all languages dynamically
-// ═══════════════════════════════════════════════════════════════════════════
 
 const IPM_URGENCY_LABELS: Record<string, string> = {
   'LEVEL_1': 'Monitor only',
@@ -187,25 +147,15 @@ const IPM_URGENCY_LABELS: Record<string, string> = {
   'LEVEL_5': 'Immediate chemical action required',
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TECHNICAL TERM TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 // AUDIT FIX: PEST_TRANSLATIONS and DISEASE_TRANSLATIONS removed
-// These hardcoded dictionaries violated SSOT - translations come from observation_translations table
-// Use loadObservationLabels() from i18n/observation-label-loader.ts at runtime
-// Kept as empty fallback maps for any remaining references
 const PEST_TRANSLATIONS: Record<string, Record<string, string>> = {};
 const DISEASE_TRANSLATIONS: Record<string, Record<string, string>> = {};
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE SANITIZATION (MODULE SCOPE - exported for use in index.ts fallbacks)
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Known agrochemical product names that should NOT be stripped even though
- * they may appear in ALL_CAPS. Add to this list as needed.
- */
+// Known agrochemical product names that should NOT be stripped even though
 const ALLOWED_PRODUCT_NAMES = new Set([
   'CHLORPYRIFOS', 'FIPRONIL', 'IMIDACLOPRID', 'THIAMETHOXAM', 'CARBENDAZIM',
   'MANCOZEB', 'PROPICONAZOLE', 'HEXACONAZOLE', 'TRICHODERMA', 'BEAUVERIA',
@@ -216,11 +166,7 @@ const ALLOWED_PRODUCT_NAMES = new Set([
   'BACILLUS', 'NPV', 'ICAR', 'IPM', 'PHI', 'SC', 'EC', 'WP', 'SL', 'SP', 'WG',
 ]);
 
-/**
- * Sanitize LLM output to remove any leaked technical identifiers,
- * monitoring codes, confidence scores, and internal metadata.
- * Runs AFTER LLM call, BEFORE returning to farmer.
- */
+// Sanitize LLM output to remove any leaked technical identifiers,
 export function sanitizeFarmerResponse(text: string): string {
   if (!text) return text;
   
@@ -249,9 +195,7 @@ export function sanitizeFarmerResponse(text: string): string {
   // 5. Strip "Priority: HIGH" / "IPM Level: LEVEL_3" patterns
   sanitized = sanitized.replace(/\b(?:Priority|IPM Level)\s*:\s*\S+/g, '');
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 6. AGRONOMIC SAFETY GUARDRAILS - Block unrealistic claims
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // 6a. Block unrealistic growth rate claims (>5 cm/day for sugarcane)
   sanitized = sanitized.replace(/(\d+)\s*(?:cm|सेमी|से\.मी\.)\s*(?:per|\/|प्रति)\s*(?:day|दिवस|दिन)/gi, (match, num) => {
@@ -285,9 +229,7 @@ export function sanitizeFarmerResponse(text: string): string {
   return sanitized;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN LLM FORMATTER FUNCTION - RENDER-ONLY MODE (WITH MODE-DRIVEN FALLBACK)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export async function formatRecommendationsWithLLM(
   input: LLMFormatterInput
@@ -295,9 +237,7 @@ export async function formatRecommendationsWithLLM(
   const startTime = Date.now();
   const traceId = input.trace_id || `fmt_${Date.now().toString(36)}`;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // SAFE INPUT NORMALIZATION - Prevent crashes from undefined text
-  // ═══════════════════════════════════════════════════════════════════════════
   const safeFarmerMessage = normalizeFarmerMessage(input.farmer_message);
   const hasText = hasTextContent(safeFarmerMessage);
   
@@ -307,9 +247,7 @@ export async function formatRecommendationsWithLLM(
   console.log(`   Has Text Input: ${hasText}`);
   console.log(`   Message Preview: ${safePreviewText(safeFarmerMessage)}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // RESOLVE RESPONSE MODE - CONFIDENCE-DRIVEN (CRITICAL FIX)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // CRASH-PROOF: Extract confidence data with safe defaults
   // BUG-D FIX: Add weighted_confidence fallback from primary_decision
@@ -360,11 +298,7 @@ export async function formatRecommendationsWithLLM(
   console.log(`   Action Codes: ${actionCodes.length > 0 ? actionCodes.join(', ') : '[none]'}`);
   console.log(`   Severity: ${severity}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // P1-4: GATE CHECK REMOVED - NOW HAPPENS IN index.ts VIA evaluateUnifiedGate()
-  // The LLM formatter only runs AFTER the unified gate has already passed.
-  // This prevents double-gate conflicts.
-  // ═══════════════════════════════════════════════════════════════════════════
   
   console.log(`   📋 [LLM Formatter] Gate pre-validated by index.ts - proceeding with formatting`);
   
@@ -374,10 +308,7 @@ export async function formatRecommendationsWithLLM(
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PRODUCTION HARDENING: PRIMARY ACTION CONTRACT VALIDATION (CRITICAL)
-  // Validate that primary_decision has required fields BEFORE formatting
-  // ═══════════════════════════════════════════════════════════════════════════
   const primary = input.decision_output?.primary_decision;
   if (hasPrimaryDecision && primary) {
     if (!primary.action_type || !primary.rule_id) {
@@ -456,10 +387,7 @@ export async function formatRecommendationsWithLLM(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 6: PRE-LLM GATE - If action_list is empty, force INFORMATION_ONLY mode
-  // The LLM must NEVER generate treatment content when symbolic engine has no actions
-  // ═══════════════════════════════════════════════════════════════════════════
   let suppressHowSection = false;
   if (!hasPrimaryDecision && (!actions || actions.length === 0)) {
     console.warn(`
@@ -480,11 +408,7 @@ export async function formatRecommendationsWithLLM(
     suppressHowSection = true;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // STRUCTURED PRODUCT VALIDATION - Use decision.products[] array ONLY
-  // Products validated from structured symbolic output, not parsed from action_text
-  // SKIP validation entirely for safety_gate rules (they have no products)
-  // ═══════════════════════════════════════════════════════════════════════════
   const SAFETY_GATE_TYPES = new Set(['safety_gate', 'SAFETY_GATE', 'BLOCK', 'URGENT_BLOCK', 'weather_block', 'WEATHER_BLOCK']);
   const isSafetyGateRule = primary?.action_type ? SAFETY_GATE_TYPES.has(primary.action_type) : false;
   
@@ -492,12 +416,7 @@ export async function formatRecommendationsWithLLM(
   const allowedDosages: string[] = [];
   
   if (!isSafetyGateRule) {
-    // ═══════════════════════════════════════════════════════════════════════════
     // P0 FIX: HELPER that adds product_name AND active_ingredient to allowed list
-    // ROOT CAUSE: active_ingredient (e.g., "Chlorpyrifos 20% EC") was NEVER added
-    // to allowedProducts, causing CHECK 5 to flag the rule engine's own product
-    // as "Unauthorized product mentioned: chlorpyrifos"
-    // ═══════════════════════════════════════════════════════════════════════════
     const addToAllowed = (source: any) => {
       if (!source) return;
       const names = [
@@ -612,15 +531,7 @@ export async function formatRecommendationsWithLLM(
   let aiModelUsed = '';
   let tokensUsed = 0;  // NEW: Track token usage
   
-  // ─────────────────────────────────────────────────────────────────────────
   // LATENCY BATCH L1 (2026-07-29): narration budget capped.
-  // Previous cascade cost up to 20s + 3s + 18s + 3s + 12s = 56s of wall clock
-  // before falling back to the template. Audit of ai_chat_audit_logs showed the
-  // full cascade being paid and then DISCARDED (36 SYMBOLIC_TEMPLATE turns with
-  // llm_model_used = NULL, avg 37.7s). Narration is render-only, so a short
-  // budget is strictly better than a long one: tiers now 8s / 6s / 5s with NO
-  // rate-limit sleeps (a 3s sleep before another timeout only burns budget).
-  // ─────────────────────────────────────────────────────────────────────────
   const NARRATION_BUDGET_MS = 14_000;
   const narrationStart = Date.now();
   const remaining = () => NARRATION_BUDGET_MS - (Date.now() - narrationStart);
@@ -685,18 +596,13 @@ export async function formatRecommendationsWithLLM(
     return buildTemplateFallback(input, startTime);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // OUTPUT VALIDATION GATE - Ensure LLM didn't add unauthorized content
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // PHASE-10 + PROMPT-2: Pass crop type and full input for enhanced validation
   const cropType = input.land_context?.current_crop;
   const outputValidation = validateLLMOutput(formattedResponse, allowedProducts, allowedDosages, cropType, input);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // P4-1 + P6-3: WHAT-WHY-HOW STRUCTURAL VALIDATOR
-  // Ensures LLM output contains all 3 mandatory sections
-  // ═══════════════════════════════════════════════════════════════════════════
   const whatWhyHowResult = validateWhatWhyHow(formattedResponse, input);
   if (!whatWhyHowResult.valid) {
     // BUG 7 FIX: If HOW is missing but we have no actions, that's expected — don't flag it
@@ -707,25 +613,16 @@ export async function formatRecommendationsWithLLM(
       const filteredMissing = whatWhyHowResult.missing_sections.filter(s => s !== 'HOW');
       if (filteredMissing.length > 0) {
         // CRITICAL FIX: WHAT-WHY-HOW is WARNING ONLY — do NOT block LLM response
-        // The validator markers are too narrow for Marathi/Hindi Devanagari output
-        // Blocking here caused 317-char incomplete English fallback responses
         console.warn(`⚠️ [WHAT-WHY-HOW] Structural warning (non-blocking): ${filteredMissing.join(', ')}`);
       }
     } else {
       // CRITICAL FIX: Downgrade from hard-block to warning
-      // The WHAT-WHY-HOW detector has narrow keyword matching that frequently
-      // misses valid Marathi/Hindi patterns, causing valid LLM responses to be
-      // discarded in favor of 317-char English-only template fallbacks.
-      // This is the ROOT CAUSE of incomplete farmer responses.
       console.warn(`⚠️ [WHAT-WHY-HOW] Structural warning (non-blocking): ${whatWhyHowResult.missing_sections.join(', ')}`);
       console.warn(`   Response length: ${formattedResponse.length} chars — LLM content preserved`);
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // P5-1: CROP NAME CONSISTENCY CHECK
-  // Verify LLM output does not mention wrong crop names
-  // ═══════════════════════════════════════════════════════════════════════════
   if (cropType) {
     const cropConsistencyResult = validateCropNameConsistency(formattedResponse, cropType);
     if (!cropConsistencyResult.valid) {
@@ -736,15 +633,7 @@ export async function formatRecommendationsWithLLM(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Only block on HARD safety violations, not structural warnings
-  // Hard violations: unauthorized products, dosage tampering, crop mismatch
-  // Soft violations: WHAT-WHY-HOW missing sections (detection is unreliable for Devanagari)
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LANGUAGE-AGNOSTIC FIX: 'Missing product from symbolic' and 'PHI value modified'
-  // are downgraded to soft warnings — LLM transliterates product names and uses
-  // Devanagari/regional numerals, causing false positives on English substring checks.
-  // Safety is enforced deterministically by the builder, not by output validation.
   const HARD_VIOLATION_PATTERNS = [
     'Unauthorized product', 'unauthorized product',
     'Leaked internal code',
@@ -837,20 +726,9 @@ export async function formatRecommendationsWithLLM(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT VALIDATION - Ensure LLM didn't add products/dosages/internal codes
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Enhanced LLM Output Validation (PROMPT 2 Implementation)
- * 
- * Validates that the LLM response:
- * 1. Contains all products from symbolic decision (stricter check)
- * 2. Dosage numbers are unchanged (new check)
- * 3. No internal rule IDs leaked (new check)
- * 4. No unauthorized products added
- * 5. Cross-crop biocontrol validation
- */
+// Enhanced LLM Output Validation (PROMPT 2 Implementation)
 export interface ValidationResult {
   passed: boolean;
   errors: string[];
@@ -874,13 +752,7 @@ function validateLLMOutput(
     'lambda-cyhalothrin', 'deltamethrin', 'bifenthrin', 'emamectin'
   ];
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: All products present (FIXED - skip generic action types)
-  // CRITICAL FIX: Generic action types like "Cultural practice", "Monitoring", 
-  // "Mechanical control" are NOT product names and should NOT require verbatim matching
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BUG FIX: For MONITOR/monitoring rules, skip product validation entirely
-  // These rules have action_text like "Monitor pest population..." which is NOT a product
   const primaryActionType = (decisionInput?.decision_output?.primary_decision?.action_type || '').toLowerCase();
   const MONITOR_ACTION_TYPES = ['monitor', 'monitoring', 'observation', 'scouting', 'monitoring_advice'];
   if (MONITOR_ACTION_TYPES.includes(primaryActionType)) {
@@ -917,8 +789,6 @@ function validateLLMOutput(
     'pest population', 'monitor pest', 'no treatment required',
     'regularly', 'at this stage', 'continue observation',
     // CRITICAL FIX: NDVI/diagnostic phrases that are NOT product names
-    // These were being extracted from action_text and treated as product names,
-    // causing false "Product partially matched (single word only)" warnings
     'ndvi decline', 'ndvi drop', 'ndvi', 'decline', 'poor tillering',
     'growth retardation', 'stunted growth', 'yellowing', 'wilting',
     'poor germination', 'leaf curl', 'leaf spot', 'nutrient deficiency',
@@ -968,9 +838,6 @@ function validateLLMOutput(
         console.warn(`⚠️ [VALIDATION] Product partially matched (single word only, likely transliterated): ${primaryProductName}`);
       } else {
         // LANGUAGE-AGNOSTIC FIX: Check if any product keyword is in allowedProducts.
-        // If so, the product IS from the symbolic decision — the LLM just transliterated it
-        // into the farmer's language (e.g., "क्लोरँट्रानिलिप्रोल" for "Chlorantraniliprole").
-        // Downgrade to soft warning instead of hard error.
         const productKeywords = primaryProductName.toLowerCase().split(/[\s+@\/]+/).filter((w: string) => w.length > 3);
         const keywordInAllowed = productKeywords.some((kw: string) => allowedProducts.includes(kw));
         if (keywordInAllowed) {
@@ -992,9 +859,7 @@ function validateLLMOutput(
     }
   }
   
-   // ═══════════════════════════════════════════════════════════════════════════
    // CHECK 2: Dosages unchanged (extract numbers and verify)
-   // ═══════════════════════════════════════════════════════════════════════════
    const dosagePerAcre = decisionInput?.decision_output?.primary_decision?.product_details?.dosage_per_acre ||
                         decisionInput?.decision_output?.primary_decision?.application_details?.dosage ||
                         decisionInput?.decision_output?.primary_decision?.application_details?.concentration;
@@ -1036,10 +901,7 @@ function validateLLMOutput(
      }
    }
    
-   // ═══════════════════════════════════════════════════════════════════════════
    // CHECK 2b: Secondary product/dosage validation (FIX 1 - CRITICAL)
-   // Secondary actions injected at prompt build but NEVER validated until now.
-   // ═══════════════════════════════════════════════════════════════════════════
    const secondaryActions = decisionInput?.decision_output?.secondary_actions || 
                             decisionInput?.decision_output?.secondary_recommendations || [];
    for (const sec of secondaryActions) {
@@ -1062,10 +924,7 @@ function validateLLMOutput(
      }
    }
    
-   // ═══════════════════════════════════════════════════════════════════════════
    // CHECK 2c: PHI value validation (FIX 3 - CRITICAL)
-   // Ensure LLM preserved PHI days exactly as provided by rule engine.
-   // ═══════════════════════════════════════════════════════════════════════════
    const phiDays = decisionInput?.decision_output?.primary_decision?.application_details?.phi_days;
    if (phiDays && typeof phiDays === 'number' && phiDays > 0) {
      const phiString = String(phiDays);
@@ -1088,9 +947,7 @@ function validateLLMOutput(
      }
    }
    
-   // ═══════════════════════════════════════════════════════════════════════════
    // CHECK 3: No rule IDs leaked (forbidden internal patterns)
-   // ═══════════════════════════════════════════════════════════════════════════
   const forbiddenPatterns = [
     { pattern: /SUGARCANE_TERMITE/i, name: 'SUGARCANE_TERMITE' },
     { pattern: /COTTON_BOLLWORM/i, name: 'COTTON_BOLLWORM' },
@@ -1113,10 +970,7 @@ function validateLLMOutput(
     }
   }
   
-   // ═══════════════════════════════════════════════════════════════════════════
    // CHECK 4: Unauthorized percentage claims (FIX 4 + FIX 12 - enhanced regex + efficacy exclusion)
-   // ═══════════════════════════════════════════════════════════════════════════
-   // Extract allowed efficacy values from rule engine to avoid false positives
    const allowedEfficacy: number[] = [];
    const ruleEfficacy = decisionInput?.decision_output?.primary_decision?.application_details?.efficacy_percent;
    const outcomeEfficacy = decisionInput?.decision_output?.primary_decision?.expected_outcomes?.efficacy_percent;
@@ -1132,19 +986,14 @@ function validateLLMOutput(
      }
    }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 5: Unauthorized products (uses hoisted commonPesticides)
-  // ═══════════════════════════════════════════════════════════════════════════
   for (const pesticide of commonPesticides) {
     if (lowerOutput.includes(pesticide) && !allowedProducts.includes(pesticide)) {
       errors.push(`Unauthorized product mentioned: ${pesticide}`);
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 6: Cross-crop biocontrol validation (existing)
-  // ═══════════════════════════════════════════════════════════════════════════
-   // FIX 11: Extended cross-crop biocontrol validation
    const cropLower = (cropType || '').toLowerCase();
    const CROP_INVALID_BIOCONTROLS: Record<string, string[]> = {
      'wheat': ['trichogramma', 'ट्रायकोग्रामा', 'trichogramma chilonis', 'cotesia', 'कोटेशिया', 'cotesia flavipes'],
@@ -1166,9 +1015,7 @@ function validateLLMOutput(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 7: Dosage patterns validation (existing - enhanced)
-  // ═══════════════════════════════════════════════════════════════════════════
   const dosagePattern = /(\d+)\s*(ml|l|g|kg|gm)\s*(per|\/)\s*(acre|hectare|ha|bigha)/gi;
   const dosageMatches = llmOutput.matchAll(dosagePattern);
   
@@ -1200,9 +1047,7 @@ function validateLLMOutput(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PROMPT BUILDERS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   const LANG_NAMES: Record<string, string> = {
@@ -1217,9 +1062,7 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   // Get crop stage constraints
   const cropStageConstraints = getCropStageConstraints(input);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PART 4: Determine response format type from action_type
-  // ═══════════════════════════════════════════════════════════════════════════
   const primary = input.decision_output?.primary_decision;
   const actionTypeUpper = (primary?.action_type || '').toUpperCase();
   const riskLevel = (primary?.risk_level || input.decision_output?.metadata?.risk_level || '').toUpperCase();
@@ -1243,9 +1086,7 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
     formatType = 'FORMAT_4';
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // FORMAT-SPECIFIC INSTRUCTIONS (from PART 4 specification)
-  // ═══════════════════════════════════════════════════════════════════════════
   if (formatType === 'FORMAT_1') {
     formatInstruction = `
 ═══ MANDATORY FORMAT: TYPE 1 — DIRECT PRESCRIPTION (8-SECTION) ═══
@@ -1385,11 +1226,7 @@ RULES:
 - NEVER literally translate English pest/disease names — use local ${langName} farming terms`;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // AUTHORITATIVE_CONTEXT — Crop Lock Block (CRITICAL FIX)
-  // Previously missing from formatter system prompt, causing LLM to mention
-  // wrong crop names (e.g., wheat in a sugarcane chat room)
-  // ═══════════════════════════════════════════════════════════════════════════
   let cropLockBlock = '';
   if (input.land_context?.current_crop) {
     const cropCode = input.land_context.current_crop.toLowerCase();
@@ -1478,9 +1315,7 @@ Speak naturally. Use the words farmers actually use. Never start with "Dear farm
 You are EXPLAINING advice face-to-face, not translating a document.`
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP STAGE CONSTRAINTS GENERATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 function getCropStageConstraints(input: LLMFormatterInput): string {
   const cropStage = input.land_context?.growth_stage?.toUpperCase() || '';
@@ -1588,11 +1423,7 @@ ${recData}
 FORMAT this into natural, empathetic farmer advice in ${getLanguageName(input.language)}.`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TOKEN OPTIMIZATION: Filter matched responses to max N relevant ones
-// Previously ALL 73 matched responses were dumped into the prompt (~8,000 tokens).
-// Now only the primary + top high-priority alternatives are included (~450 tokens).
-// ═══════════════════════════════════════════════════════════════════════════
 
 function filterRelevantResponses(
   responses: any[],
@@ -1629,20 +1460,13 @@ function filterRelevantResponses(
   return result;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RECOMMENDATION DATA EXTRACTOR
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function buildRecommendationSummary(input: LLMFormatterInput): Promise<string> {
   const decision = input.decision_output;
   const primary = decision.primary_decision;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // v2.0: DETERMINISTIC RESPONSE BUILDER INTEGRATION
-  // If primary_decision exists with rich data, use the deterministic builder
-  // instead of manual prompt assembly. This ensures ALL agronomic content
-  // comes from decision_rules columns, not LLM generation.
-  // ═══════════════════════════════════════════════════════════════════════════
   if (primary && primary.rule_id) {
     const appDetails = primary.application_details || {};
     const richData = extractRichRuleData(primary, appDetails);
@@ -1695,9 +1519,6 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       if (marketProductsLine) parts.push(marketProductsLine);
       
       // ═══ RULE ATOMICITY: Secondary actions stripped of treatment data ═══
-      // Secondary rules may ONLY contribute monitoring/context — never
-      // product_name or dosage, which would contaminate the primary rule's
-      // treatment and cause chemical/dosage mismatches in LLM output.
       const secondary = decision.secondary_actions || decision.secondary_recommendations;
       if (secondary && secondary.length > 0) {
         parts.push(`\n═══ ADDITIONAL OBSERVATION ═══`);
@@ -1724,10 +1545,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     console.warn(`⚠️ [DeterministicBuilder] Inadequate rule content for ${primary.rule_id}, falling back to legacy assembly`);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LEGACY FALLBACK: Manual prompt assembly (only when deterministic builder
-  // cannot produce output due to missing rule content)
-  // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
   // Status
@@ -1912,9 +1730,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
   return parts.join('\n');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LLM API CALLS WITH TIMEOUT
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function callGeminiWithTimeout(
   systemPrompt: string, 
@@ -2077,17 +1893,13 @@ async function callLovableAIWithTimeout(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TEMPLATE FALLBACK (when LLM unavailable) - MODE-DRIVEN
-// ═══════════════════════════════════════════════════════════════════════════
 
 async function buildTemplateFallback(input: LLMFormatterInput, startTime: number): Promise<LLMFormatterOutput> {
   const lang = input.language || 'mr';
   const decision = input.decision_output;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CRASH-PROOF: Safe extraction with guaranteed defaults
-  // ═══════════════════════════════════════════════════════════════════════════
   const decisionConfidence = decision?.metadata?.decision_confidence ?? decision?.confidence ?? 0;
   const hasSymptoms = decision?.metadata?.has_symptoms ?? !!(decision?.symptom_keys?.length);
   const hasVisualAmbiguity = decision?.metadata?.has_visual_ambiguity ?? decision?.needs_photo_for_diagnosis ?? false;
@@ -2099,9 +1911,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
     'system.monitoring.default'
   );
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // RESOLVE RESPONSE MODE - Confidence-driven with invariant check
-  // ═══════════════════════════════════════════════════════════════════════════
   const responseMode = resolveResponseMode({
     response_mode: decision?.metadata?.response_mode,
     gate_action: decision?.metadata?.gate_action,
@@ -2126,9 +1936,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   console.log(`   📋 Primary action: ${decision?.primary_decision?.action_type || '[none]'}`);
   console.log(`   📋 Land crop: ${input.land_context?.current_crop || '[none]'}`);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: CLARIFICATION - Render options without requiring text
-  // ═══════════════════════════════════════════════════════════════════════════
   if (responseMode === ResponseMode.CLARIFICATION || decision?.clarification_needed) {
     const modeOutput = renderByMode(ResponseMode.CLARIFICATION, lang, {
       options: decision?.clarification_options?.map((opt: any) => ({
@@ -2152,9 +1960,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: PHOTO_REQUIRED - Camera prompt
-  // ═══════════════════════════════════════════════════════════════════════════
   if (decision?.needs_photo_for_diagnosis) {
     const modeOutput = renderByMode('PHOTO_REQUIRED', lang, {});
     
@@ -2172,9 +1978,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: OBSERVATION/MONITORING - Simple reassurance
-  // ═══════════════════════════════════════════════════════════════════════════
   if (responseMode === ResponseMode.OBSERVATION || !decision?.primary_decision) {
     const modeOutput = renderByMode(ResponseMode.OBSERVATION, lang, {
       monitoring_message: decision?.monitoring_note
@@ -2194,10 +1998,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: TREATMENT — Use Deterministic Response Builder v2.0
-  // Instead of legacy template assembly, use the structured builder
-  // ═══════════════════════════════════════════════════════════════════════════
   const primary = decision?.primary_decision;
   
   if (primary && primary.rule_id) {
@@ -2230,12 +2031,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LEGACY TEMPLATE FALLBACK — only when deterministic builder has no content
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LANGUAGE-AGNOSTIC LEGACY TEMPLATE FALLBACK
-  // English structural content — forceTranslateResponse() handles localization downstream
-  // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
   // English structural template — downstream forceTranslateResponse() will localize
@@ -2278,9 +2074,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function extractSections(text: string): string[] {
   // LANGUAGE-AGNOSTIC: Use emoji anchors only — works for ANY language
@@ -2296,10 +2090,7 @@ function extractSections(text: string): string[] {
 
 export default formatRecommendationsWithLLM;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P4-1 + P6-3: WHAT-WHY-HOW STRUCTURAL VALIDATOR
-// Validates that LLM output contains all 3 mandatory response sections
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface WhatWhyHowValidationResult {
   valid: boolean;
@@ -2326,9 +2117,6 @@ function validateWhatWhyHow(
   }
   
   // LANGUAGE-AGNOSTIC FIX: Use ONLY emoji anchors for section detection.
-  // The LLM output can be in ANY language (mr, hi, ta, te, bn, gu, kn, pa, ml, or, en).
-  // Hardcoded Marathi/Hindi keywords violated the language-agnostic architecture.
-  // Emoji anchors are language-neutral and reliably inserted by the FORMAT templates.
   
   // WHAT detection: diagnosis/problem identification (emoji anchors)
   const hasWhat = llmOutput.includes('🎯') || llmOutput.includes('🔍') || llmOutput.includes('📋') ||
@@ -2373,14 +2161,9 @@ function validateWhatWhyHow(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P5-1: CROP NAME CONSISTENCY VALIDATOR
-// Ensures LLM output doesn't mention wrong/unauthorized crop names
-// ═══════════════════════════════════════════════════════════════════════════
 
 // MULTILINGUAL: Crop name aliases in English + Marathi + Hindi for validation.
-// CRITICAL FIX: Previously English-only, causing Devanagari crop mentions 
-// (e.g., "गहू" for wheat in a sugarcane chat) to bypass validation entirely.
 const CROP_NAME_ALIASES: Record<string, string[]> = {
   'SUGARCANE': ['sugarcane', 'sugar cane', 'cane', 'ऊस', 'गन्ना', 'गन्ने', 'ईख', 'उस'],
   'COTTON': ['cotton', 'कापूस', 'कपास', 'रुई', 'kapus', 'kapas'],
@@ -2431,8 +2214,6 @@ function validateCropNameConsistency(
       if (alias.length < 3) continue; // Skip very short aliases to avoid false positives
       
       // ENHANCED: Direct substring match for Devanagari crop names
-      // Previously only checked English patterns like "your wheat", "wheat crop"
-      // This catches "गहू" in Marathi output when crop should be "ऊस"
       const isDevanagari = /[\u0900-\u097F]/.test(alias);
       
       if (isDevanagari) {

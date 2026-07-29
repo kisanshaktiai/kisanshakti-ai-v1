@@ -1,28 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PRESCRIPTION GATE ENFORCER - Symbolic-Only Output Control
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * PURPOSE:
- * Ensures that ONLY actions explicitly approved by the Symbolic Decision Brain
- * can reach the LLM formatting layer. This is the FINAL gate before response.
- * 
- * SAFETY RULE (NON-NEGOTIABLE):
- * The LLM must NEVER compensate for missing symbolic decisions by guessing
- * agronomy actions. If the decision graph output contains:
- * - No primary decision
- * - No allowed products  
- * - No allowed dosages
- * → The response MUST be informational or monitoring-only.
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PRESCRIPTION GATE ENFORCER - Symbolic-Only Output Control
 
 export const PRESCRIPTION_GATE_VERSION = '1.2.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // P1-1 FIX: Import canonical types from authority-types.ts
-// ═══════════════════════════════════════════════════════════════════════════
 
 import {
   AuthorityStatus,
@@ -34,11 +14,7 @@ import {
 // Re-export for backward compatibility
 export { AuthorityStatus, ResponseMode, GateStatus, GateAction };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LEGACY BRIDGE: AuthorityConfirmation maps to AuthorityStatus
-// This enum is kept for backward compatibility with legacy gate logic
-// New code should use AuthorityStatus from authority-types.ts
-// ═══════════════════════════════════════════════════════════════════════════
 
 export enum AuthorityConfirmation {
   CONFIRMED_PEST = 'CONFIRMED_PEST',
@@ -48,9 +24,7 @@ export enum AuthorityConfirmation {
   PENDING_CLARIFICATION = 'PENDING_CLARIFICATION'
 }
 
-/**
- * Convert AuthorityConfirmation to canonical AuthorityStatus
- */
+// Convert AuthorityConfirmation to canonical AuthorityStatus
 export function toAuthorityStatus(confirmation: AuthorityConfirmation): AuthorityStatus {
   switch (confirmation) {
     case AuthorityConfirmation.CONFIRMED_PEST:
@@ -65,9 +39,7 @@ export function toAuthorityStatus(confirmation: AuthorityConfirmation): Authorit
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SYMBOLIC DECISION VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SymbolicDecision {
   decision_id: string;
@@ -123,9 +95,7 @@ export interface PrescriptionGateResult {
   checked_at: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP STAGE SAFETY DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 const YOUNG_CROP_STAGES = new Set([
   'GERMINATION',
@@ -151,9 +121,7 @@ const YOUNG_CROP_MAX_DAYS: Record<string, number> = {
   'CHILLI': 30
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ACTION TYPE CLASSIFICATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 const TREATMENT_ACTIONS = new Set([
   'APPLY_PESTICIDE',
@@ -185,31 +153,14 @@ const INFORMATION_ACTIONS = new Set([
   'EXPLAIN'
 ]);
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN PRESCRIPTION GATE FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * enforcePrescriptionGate
- * 
- * Validates whether treatment actions can proceed based on:
- * 1. Symbolic brain approval (mandatory)
- * 2. Confirmed diagnosis (mandatory for treatments)
- * 3. Crop stage safety (blocks young crops without confirmed pest/disease)
- * 
- * @param input - PrescriptionGateInput with symbolic decision and context
- * @returns PrescriptionGateResult with allowed/blocked actions
- */
+// enforcePrescriptionGate
 export function enforcePrescriptionGate(input: PrescriptionGateInput): PrescriptionGateResult {
   const checkedAt = new Date().toISOString();
   const { symbolic_decision, crop_stage, days_since_sowing, crop_name, has_confirmed_diagnosis, land_id } = input;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 0a: INTENT-GATE LEAKAGE GUARD (FIX 4)
-  // If the winning symbolic rule was flagged _noTreatmentEligible by
-  // filterRulesByIntent() (kept=0, demoted>0), no prescription may proceed
-  // regardless of downstream scoring. Route to clarification/information.
-  // ═══════════════════════════════════════════════════════════════════════════
   const winningRule: any =
     (symbolic_decision as any)?.primary_decision?._sourceRule ||
     (symbolic_decision as any)?.primary_decision;
@@ -233,10 +184,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 0: PRIMARY ACTION TYPE VALIDATION (CRITICAL - MUST BE FIRST)
-  // PRODUCTION HARDENING: Block invalid rule output BEFORE any other gate
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (symbolic_decision?.primary_decision) {
     const primary = symbolic_decision.primary_decision;
@@ -259,9 +207,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 1: No Symbolic Decision = No Treatments
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (!symbolic_decision || !symbolic_decision.decision_brain_source) {
     return {
@@ -279,9 +225,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 2: Clarification Needed = No Treatments
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (symbolic_decision.clarification_needed) {
     return {
@@ -299,15 +243,11 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 3: Check Authority Confirmation
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const authorityConfirmation = determineAuthorityConfirmation(symbolic_decision);
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 4: Stage × Authority Hard Gate (Young Crop Protection)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const isYoungCrop = checkIfYoungCrop(crop_stage, days_since_sowing, crop_name);
   const hasTreatmentActions = checkHasTreatmentActions(symbolic_decision);
@@ -329,9 +269,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 5: Extract Allowed Products & Dosages (Strict from Symbolic Output)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const { allowedProducts, allowedDosages, allowedActions } = extractAllowedFromSymbolic(symbolic_decision);
   
@@ -352,9 +290,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE PASSED: Allow Treatments with Strict Product/Dosage Constraints
-  // ═══════════════════════════════════════════════════════════════════════════
   
   return {
     allowed: true,
@@ -371,9 +307,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 function determineAuthorityConfirmation(decision: SymbolicDecision): AuthorityConfirmation {
   const primary = decision.primary_decision;
@@ -515,9 +449,7 @@ function extractAllowedFromSymbolic(decision: SymbolicDecision): {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // AUDIT LOG BUILDER
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface PrescriptionGateAudit {
   gate_result: PrescriptionGateResult;
@@ -548,13 +480,9 @@ export function buildPrescriptionGateAudit(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OBSERVATION-ONLY RESPONSE GENERATOR
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Generate observation-only response when treatments are blocked
- */
+// Generate observation-only response when treatments are blocked
 export function generateObservationOnlyResponse(
   language: string,
   cropName?: string,
@@ -564,9 +492,7 @@ export function generateObservationOnlyResponse(
   return `🌾 Hello!\n\nUnderstood about your ${cropName || 'crop'}.\n\n📋 **What to do now:**\n• Carefully observe the crop\n• Take photos of affected areas\n• Watch if symptoms are spreading\n\n🔍 We'll suggest proper treatment once we have more information.\n\n👉 Please send a photo if possible.`;
 }
 
-/**
- * Generate monitoring-only response for young crops
- */
+// Generate monitoring-only response for young crops
 export function generateYoungCropMonitoringResponse(
   language: string,
   cropName?: string,
@@ -577,9 +503,7 @@ export function generateYoungCropMonitoringResponse(
   return `🌱 Hello!\n\nYour ${cropName || 'crop'} is currently in ${cropStage || 'early'} stage (${daysSinceSowing || '?'} days).\n\n📋 **What to do at this stage:**\n• Regularly monitor the crop\n• Maintain proper water management\n• Inform us if symptoms increase\n\n⚠️ Young crops require careful treatment approach.\n\n👉 Tell us what you see or send a photo.`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default {
   enforcePrescriptionGate,

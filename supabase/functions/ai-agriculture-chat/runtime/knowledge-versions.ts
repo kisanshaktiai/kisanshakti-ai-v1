@@ -1,9 +1,4 @@
-/**
- * PHASE Y — knowledge-versions probe.
- * Cheap max(updated_at) per knowledge source, cached per isolate (5min TTL).
- * Used to stamp ai_decision_log.knowledge_versions so a row can be replayed
- * even after upstream data changes.
- */
+// PHASE Y — knowledge-versions probe.
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 

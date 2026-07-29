@@ -1,15 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
-/**
- * Tenant Middleware - Enterprise Multi-Tenant SaaS
- * 
- * Resolves tenant from incoming request headers:
- * - Host header (primary)
- * - X-Forwarded-Host header (behind proxy)
- * - x-tenant-id header (explicit override for testing)
- * 
- * Caches tenant data in-memory for performance
- */
+// Tenant Middleware - Enterprise Multi-Tenant SaaS
 
 export interface ResolvedTenant {
   id: string;
@@ -32,9 +23,7 @@ export interface ResolvedTenant {
 const tenantCache = new Map<string, { tenant: ResolvedTenant; expires: number }>();
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
-/**
- * Extract domain from request headers
- */
+// Extract domain from request headers
 export function extractDomain(req: Request): string {
   // Priority 0: URL query parameter. This keeps browser calls "simple"
   // and avoids CORS preflight failures caused by custom tenant headers.
@@ -82,9 +71,7 @@ export function extractDomain(req: Request): string {
   return 'localhost';
 }
 
-/**
- * Resolve tenant from domain with multi-stage lookup
- */
+// Resolve tenant from domain with multi-stage lookup
 export async function resolveTenantFromRequest(
   req: Request,
   supabaseUrl: string,
@@ -231,9 +218,7 @@ export async function resolveTenantFromRequest(
   }
 }
 
-/**
- * Fetch tenant by ID (for explicit tenant header)
- */
+// Fetch tenant by ID (for explicit tenant header)
 async function fetchTenantById(
   tenantId: string,
   supabaseUrl: string,
@@ -252,9 +237,7 @@ async function fetchTenantById(
   return await enrichTenantData(tenantData, supabase);
 }
 
-/**
- * Enrich tenant data with branding and features
- */
+// Enrich tenant data with branding and features
 async function enrichTenantData(
   tenantData: any,
   supabase: any,
@@ -293,9 +276,7 @@ async function enrichTenantData(
   };
 }
 
-/**
- * Clear cache for a specific domain (useful for testing)
- */
+// Clear cache for a specific domain (useful for testing)
 export function clearTenantCache(domain?: string) {
   if (domain) {
     tenantCache.delete(domain);
@@ -306,9 +287,7 @@ export function clearTenantCache(domain?: string) {
   }
 }
 
-/**
- * Get cache statistics (for monitoring)
- */
+// Get cache statistics (for monitoring)
 export function getTenantCacheStats() {
   return {
     size: tenantCache.size,

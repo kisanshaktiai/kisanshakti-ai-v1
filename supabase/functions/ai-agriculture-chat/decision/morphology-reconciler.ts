@@ -1,22 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * MORPHOLOGY RECONCILER — Phase C
- * ═══════════════════════════════════════════════════════════════════════════
- * Pure, language-agnostic module that reconciles OBSERVED morphology
- * (NDVI, plant height, leaf count) against EXPECTED bands sourced from
- * variety_phenology_profile via resolve_crop_phenology().
- *
- * The output feeds two consumers:
- *   1. Symbolic reasoner — adds a `morphology_evidence` fact so rules can
- *      key off `stage_shift_hint` or `overall_status`.
- *   2. Hypothesis / confidence chain — supplies a bounded confidence_delta
- *      so an on-band crop nudges confidence up, and an off-band crop nudges
- *      it down without ever driving the deterministic response by itself.
- *
- * NEVER used to generate agronomic advice by itself — it is EVIDENCE, not
- * a decision. Deterministic advice still originates from decision_rules.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// MORPHOLOGY RECONCILER — Phase C
 
 export const MORPHOLOGY_RECONCILER_VERSION = '1.0.0';
 
@@ -114,10 +96,7 @@ function checkBand(
   return { observed: obs, expected_min: lo, expected_max: hi, status, z_deviation: z };
 }
 
-/**
- * Reconcile observed morphology against expected phenology bands.
- * Returns a bounded evidence packet. Pure — no I/O, no LLM.
- */
+// Reconcile observed morphology against expected phenology bands.
 export function reconcileMorphology(
   phenology: PhenologyExpectedBands | null | undefined,
   observed: ObservedMorphology | null | undefined
@@ -194,8 +173,6 @@ export function reconcileMorphology(
   if (gdd !== null) evidence.push(`gdd=${gdd.toFixed(1)}`);
   if (gdd !== null && phenIdx !== null && das !== null && das > 0) {
     // Rough DAS-based progress within a season heuristic (0..1 clipped).
-    // If GDD-driven phen_index disagrees with linear DAS position by >25%,
-    // emit a stage-shift hint (only when morphology gave none).
     const dasProgress = Math.max(0, Math.min(1, das / 180));
     const drift = phenIdx - dasProgress;
     evidence.push(`gdd_vs_das_drift=${drift.toFixed(2)}`);

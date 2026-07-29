@@ -1,20 +1,8 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 2: TEMPORAL CONSTRAINT VALIDATOR (v2.0.0 - English-only)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * v2.0.0: Removed hardcoded mr/hi templates.
- * All temporal violation messages are English-only.
- * LLM narration layer translates at runtime via forceTranslateResponse().
- * 
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// PHASE 2: TEMPORAL CONSTRAINT VALIDATOR (v2.0.0 - English-only)
 
 export const TEMPORAL_CONSTRAINT_VERSION = '2.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface TemporalValidationInput {
   rule_id: string;
@@ -37,9 +25,7 @@ export interface TemporalContext {
   sowing_date?: Date;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function validateCropAge(
   daysSinceSowing: number | null | undefined,
@@ -101,9 +87,7 @@ export function validateCropAge(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RULE FILTERING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function filterRulesByAge<T extends TemporalValidationInput>(
   rules: T[],
@@ -131,9 +115,7 @@ export function filterRulesByAge<T extends TemporalValidationInput>(
   return { valid, filtered, reasons };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // HUMAN-READABLE EXPLANATIONS (English-only; LLM translates at runtime)
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function getAgeViolationReason(
   result: TemporalValidationResult,
@@ -152,9 +134,7 @@ export function getAgeViolationReason(
   return result.reason;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LOGGING
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function logTemporalValidation(
   ruleId: string,

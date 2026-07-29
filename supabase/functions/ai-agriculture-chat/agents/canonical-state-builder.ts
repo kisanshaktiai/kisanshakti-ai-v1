@@ -12,9 +12,6 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 // ============= CANONICAL STATE BUILDER =============
-// Creates a unified, deterministic state object for the Symbolic Decision Brain
-// LLM understands → CanonicalState → Rules decide → LLM explains
-// This is the ONLY object allowed into the Decision Brain
 
 import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 import { classifyEvidence } from '../runtime/evidence-classifier.ts';
@@ -131,10 +128,7 @@ export enum VisualSymptom {
   SILVERING = 'SILVERING',
   LEAF_DISTORTION = 'LEAF_DISTORTION',
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-12: GENERIC INSECT OBSERVATION SYMPTOMS (Crop-Agnostic)
-  // These work for ALL crops, vegetables, fruits - no hardcoded crop logic
-  // ═══════════════════════════════════════════════════════════════════════════
   SMALL_INSECTS_VISIBLE = 'SMALL_INSECTS_VISIBLE',       // Generic - visible small insects
   FLYING_INSECTS_VISIBLE = 'FLYING_INSECTS_VISIBLE',     // Behavior observed - flying
   CRAWLING_INSECTS_VISIBLE = 'CRAWLING_INSECTS_VISIBLE', // Behavior observed - crawling
@@ -314,24 +308,12 @@ export enum DiseasePresence {
 
 export interface CanonicalState {
   // Crop Context (MANDATORY)
-  // NEURO-SYMBOLIC CONTRACT: crop_type / crop_stage / visual_symptom are PASSTHROUGH
-  // strings sourced from the DB ontology (crop_ontology, crop_stage_master,
-  // observation_master). The enum members remain for legacy compatibility only —
-  // they are NOT the authority. Any canonical UPPER_SNAKE string produced by the
-  // ontology MUST flow through unchanged.
   crop_type: CropType | string;
   crop_stage: CropStage | string;
   days_after_sowing: DaysAfterSowingBucket;
   days_after_sowing_exact?: number;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // NEURO-SYMBOLIC PASSTHROUGH — FIRST-CLASS OBSERVATION CODES
-  // Ontology (observation_master / observation_aliases) is the SSOT. These are
-  // the ORIGINAL canonical codes as produced by language-induction — the rule
-  // engine and hypothesis evaluator MUST read from here, NOT from
-  // visual_symptom. Codes like `poor_germination`, `germination_failure`,
-  // `POOR_GERMINATION`, `DEAD_HEART_SC` are preserved verbatim.
-  // ═══════════════════════════════════════════════════════════════════════════
   observation_codes: string[];
 
   // Visual Symptom State — LEGACY COMPATIBILITY LABELS ONLY.
@@ -535,31 +517,16 @@ export function mapHumidityToEnum(humidity: number | undefined): HumidityLevel {
   return HumidityLevel.VERY_HIGH;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CROP RESOLVER — DB ONTOLOGY PASSTHROUGH
-// Authority: crop_ontology / normalizer. No hardcoded enum map.
-// Returns the canonical DB crop code (string). If it happens to coincide with
-// a CropType enum member, TS accepts the assignment because enum values ARE
-// strings — but the function never "picks" an enum. It transports symbols.
-// ═══════════════════════════════════════════════════════════════════════════
 export function mapCropNameToEnum(cropName: string | undefined): CropType | string {
   if (!cropName) return CropType.UNKNOWN;
   const shortCode = unifiedNormalizeCropCode(cropName);
   const fullName = getFullCropName(shortCode);
   // Pure passthrough: return the DB canonical string. No hidden alias map.
-  // Consumers comparing `state.crop_type === CropType.RICE` still work because
-  // CropType.RICE === 'RICE'.
   return (fullName && fullName !== 'UNKNOWN') ? fullName : CropType.UNKNOWN;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE RESOLVER — STRICT DB PASSTHROUGH
-// Authority for crop stage lives in BiologicalState / crop_stage_master.
-// This function ONLY normalizes casing/whitespace and returns the DB stage
-// string unchanged. Stages like `transplanting`, `panicle_initiation`,
-// `booting`, `grand_growth` MUST pass through — the closed enum is NOT the
-// authority. It is retained solely for legacy typing compatibility.
-// ═══════════════════════════════════════════════════════════════════════════
 export function mapStageToEnum(stage: string | undefined): CropStage | string {
   if (!stage) return CropStage.UNKNOWN;
   const normalized = String(stage).trim().toUpperCase().replace(/[\s-]/g, '_');
@@ -569,13 +536,7 @@ export function mapStageToEnum(stage: string | undefined): CropStage | string {
   return normalized;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OBSERVATION → SYMBOL — STRICT DB PASSTHROUGH
-// Authority: observation_master / observation_aliases / observation_translations.
-// By the time codes arrive here, the language-induction layer + alias resolver
-// have already produced canonical UPPER_SNAKE codes. This function only
-// transports them. Any code that fails the UPPER_SNAKE shape is dropped.
-// ═══════════════════════════════════════════════════════════════════════════
 export function mapObservationsToSymptom(observations: string[]): { primary: VisualSymptom | string; secondary: (VisualSymptom | string)[] } {
   if (!Array.isArray(observations) || observations.length === 0) {
     return { primary: VisualSymptom.UNKNOWN, secondary: [] };
@@ -590,8 +551,6 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
     if (!raw) continue;
     const normalized = raw.toUpperCase().replace(/[\s-]/g, '_');
     // Accept ANY canonical UPPER_SNAKE code produced by the ontology layer.
-    // Do NOT restrict to the closed VisualSymptom enum — the DB ontology is
-    // the authority (e.g. POOR_GERMINATION, DEAD_HEART_SC, etc.).
     if (!/^[A-Z][A-Z0-9_]*$/.test(normalized)) continue;
     if (seen.has(normalized)) continue;
     seen.add(normalized);
@@ -605,11 +564,7 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
 }
 
 
-/**
- * Map a symptom string to a canonical symbol. PASSTHROUGH ONLY — no vernacular
- * dictionaries. Vernacular resolution belongs to the language-induction layer
- * and observation_translations / observation_aliases.
- */
+// Map a symptom string to a canonical symbol. PASSTHROUGH ONLY — no vernacular
 export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSymptom | string {
   if (!symptom) return VisualSymptom.UNKNOWN;
   const normalized = symptom.toUpperCase().replace(/-/g, '_').replace(/\s+/g, '_');
@@ -626,10 +581,7 @@ export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSympt
 // Extended input interface that supports both flat properties AND nested objects
 // This ensures the function works with the orchestrator's actual call pattern
 export interface BuildCanonicalStateInput {
-  // ═══════════════════════════════════════════════════════════════════════════
   // NEW: CANONICAL CONTEXT (HIGHEST AUTHORITY when provided)
-  // Pass from Phase-1 locked context to ensure alignment
-  // ═══════════════════════════════════════════════════════════════════════════
   canonicalContext?: {
     readonly crop_code: string;
     readonly crop_name: string;
@@ -648,9 +600,7 @@ export interface BuildCanonicalStateInput {
     readonly is_locked: boolean;
   };
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // NESTED OBJECTS (from orchestrator - THESE ARE THE PRIMARY SOURCES)
-  // ═══════════════════════════════════════════════════════════════════════════
   landContext?: {
     current_crop?: string;
     crop?: string;
@@ -729,9 +679,7 @@ export interface BuildCanonicalStateInput {
     };
   };
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // FLAT PROPERTIES (legacy support - FALLBACK only if nested not provided)
-  // ═══════════════════════════════════════════════════════════════════════════
   cropName?: string;
   cropStage?: string;
   daysAfterSowing?: number;
@@ -778,10 +726,7 @@ export interface BuildCanonicalStateInput {
 export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalState {
   const now = new Date();
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 2.5 FIX: AUTHORITATIVE SOURCE EXTRACTION
-  // NEW PRIORITY: canonicalContext → landContext → gddResult → nluOutput → flat
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const canonicalCtx = input.canonicalContext;
   const landContext = input.landContext;
@@ -791,9 +736,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const ndviData = input.ndviData || landContext?.ndvi;
   const weatherData = input.weatherData;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 1. CROP SOURCE PRIORITY (UPDATED: canonicalContext is HIGHEST when locked)
-  // ═══════════════════════════════════════════════════════════════════════════
   const cropNameRaw = 
     (canonicalCtx?.is_locked && canonicalCtx?.crop_code && canonicalCtx.crop_code !== 'UNKNOWN')
       ? canonicalCtx.crop_code :           // ✅ HIGHEST: Locked canonical context
@@ -815,13 +758,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       ? 'flat_input' 
       : 'none';
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 2. STAGE SOURCE PRIORITY — BIOLOGICAL AUTHORITY FIRST
-  //   canonicalContext(locked) > landContext.biological_state(locked) >
-  //   landContext.growth_stage (crop_stage_master) > GDD (evidence, not authority) > flat
-  // GDD is DEMOTED: it may inform transitions/confidence but MUST NOT overwrite
-  // an authoritative stage produced by the phenology SSOT.
-  // ═══════════════════════════════════════════════════════════════════════════
   const bioState = landContext?.biological_state;
   const bioStageLocked =
     !!bioState?.is_locked && !!bioState?.growth_stage &&
@@ -852,9 +789,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       ? 'flat_input'
       : 'none';
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 3. DAYS AFTER SOWING (bioState locked > canonicalContext > landContext > flat)
-  // ═══════════════════════════════════════════════════════════════════════════
   const daysAfterSowing = 
     (bioState?.is_locked && bioState.das !== null && bioState.das !== undefined)
       ? bioState.das :
@@ -865,17 +800,13 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     input.daysAfterSowing ??
     null;  // ✅ FIX: null = unknown, NOT 0 (which triggers young crop logic)
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 4. NDVI SOURCE (per requirement: NOT_AVAILABLE vs UNKNOWN distinction)
-  // ═══════════════════════════════════════════════════════════════════════════
   const ndviValue = ndviData?.value ?? ndviData?.mean_ndvi ?? input.ndviValue;
   const ndviTrend = ndviData?.trend || ndviData?.ndvi_trend || input.ndviTrend;
   const ndviTimestamp = ndviData?.captured_at || input.ndviDataTimestamp;
   const ndviAvailable = ndviValue !== undefined && ndviValue !== null;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 5. SOIL SOURCE (per requirement: NOT_TESTED vs missing distinction)
-  // ═══════════════════════════════════════════════════════════════════════════
   const soilN = soilData?.nitrogen_kg_per_ha ?? input.nitrogenKgHa;
   const soilP = soilData?.phosphorus_kg_per_ha ?? input.phosphorusKgHa;
   const soilK = soilData?.potassium_kg_per_ha ?? input.potassiumKgHa;
@@ -884,17 +815,13 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const soilTimestamp = soilData?.test_date || input.soilDataTimestamp;
   const soilTested = soilN !== undefined || soilP !== undefined || soilK !== undefined;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 6. WEATHER DATA
-  // ═══════════════════════════════════════════════════════════════════════════
   const tempC = weatherData?.temperature ?? input.currentTempC;
   const humidity = weatherData?.humidity ?? input.humidityPercent;
   const rainfall = weatherData?.rainfall_last_7_days ?? input.rainfallLast7DaysMm;
   const weatherTimestamp = weatherData?.timestamp || input.weatherDataTimestamp;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // 7. OTHER CONTEXT
-  // ═══════════════════════════════════════════════════════════════════════════
   const landId = landContext?.land_id || input.landId;
   const farmerId = landContext?.farmer_id || input.farmerId;
   const district = landContext?.district || input.district;
@@ -903,9 +830,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const farmingMode = landContext?.farming_mode || input.farmingMode;
   const areaAcres = landContext?.area_acres;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // LOG AUTHORITATIVE SOURCE SELECTION (for debugging)
-  // ═══════════════════════════════════════════════════════════════════════════
   console.log(`📊 [CanonicalState] Built from authoritative sources:
     Crop: ${cropNameRaw} (source: ${cropSource})
     Stage: ${cropStageRaw} (source: ${stageSource})
@@ -919,11 +844,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const cropType = mapCropNameToEnum(cropNameRaw);
   const cropStage = mapStageToEnum(cropStageRaw);
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // CANONICAL_MUTATION_CHECK — STAGE
-  // If BiologicalState / canonical-context locked a stage, the resolver MUST
-  // pass it through unchanged. Any mutation is an architectural violation.
-  // ═══════════════════════════════════════════════════════════════════════════
   const lockedStageRaw =
     (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
       ? String(canonicalCtx.growth_stage)
@@ -951,13 +872,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // OBSERVATION_CODES — FIRST-CLASS ONTOLOGY PASSTHROUGH (SSOT)
-  // Preserve every canonical code exactly as delivered by the language-
-  // induction layer. Rules and hypothesis evaluators MUST read this array.
-  // We keep BOTH the caller's original casing (e.g. `poor_germination`) AND
-  // the UPPER_SNAKE form so downstream comparators of either style match.
-  // ═══════════════════════════════════════════════════════════════════════════
   const rawObservations = [
     ...(input.farmerObservations || []),
     ...(input.imageAnalysisSymptoms || []),
@@ -999,9 +914,6 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
 
   // GRAPH_AUTHORITY_VIOLATION — input observation set must survive intact.
-  // If a caller supplied N real ontology codes but we transported 0, we have
-  // silently dropped facts. Fail loudly so the pipeline never proceeds on a
-  // mutated graph (e.g. GERMINATION_FAILURE → UNKNOWN).
   if (evidenceClass.real_symptom_count > 0 && observationCodes.length === 0) {
     throw new Error(
       `GRAPH_AUTHORITY_VIOLATION: real_symptom_count=${evidenceClass.real_symptom_count} ` +
@@ -1010,11 +922,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   }
 
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // CANONICAL_MUTATION_CHECK — OBSERVATION
-  // Input observation code A must emerge as primary symbol A. Any silent
-  // rewrite (e.g. POOR_GERMINATION → GENERAL_YELLOWING) is a hard violation.
-  // ═══════════════════════════════════════════════════════════════════════════
   const firstRealCode = evidenceClass.real_codes[0];
   if (firstRealCode) {
     const beforeNorm = firstRealCode.toUpperCase();
@@ -1221,8 +1129,6 @@ export interface PrescriptionGateResult {
 
 export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateResult {
   // BUG-3 FIX: confirmed_observation_count MUST derive from real farmer/sensor
-  // evidence only (via classifyEvidence). Never trust array.length or a raw
-  // symptom_count that may have been inflated by metadata markers.
   const gateCodes: string[] = [
     state.visual_symptom as any,
     ...((state.secondary_symptoms as any[]) || []),
@@ -1313,19 +1219,7 @@ export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateRe
 }
 
 // ==================== STATE SYNC (FIX 1) ====================
-/**
- * SINGLE writer of graph-derived counts onto CanonicalState.
- *
- * The prescription gate reads `candidate_hypothesis_count` /
- * `matched_rules_count`. Before this helper existed nothing wrote those
- * fields, so a graph result of `{hyp:1, rules:4}` degraded to `0/0`
- * downstream — the split-brain the runtime log documents.
- *
- * Idempotent. First call stamps `__graphStateSynced=true`. A second call
- * with matching counts is a no-op. A second call with *different* counts
- * logs `GRAPH_CONTRACT_VIOLATION` and rewrites (never silently repair;
- * upstream is the bug).
- */
+// SINGLE writer of graph-derived counts onto CanonicalState.
 export function syncCanonicalStateFromSnapshot(
   state: CanonicalState,
   snapshot: GraphRuntimeSnapshot | null | undefined,
@@ -1411,19 +1305,7 @@ export const CanonicalStateBuilder = {
   mapObservations: mapObservationsToSymptom
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PHASE 5 — CANONICAL PROJECTION FROM GRAPH TRUTH
-// The CanonicalState for crop / stage / observations MUST be a projection of
-// the frozen GraphTruth node — never a re-inference. This helper overwrites
-// those three authoritative fields on an already-built CanonicalState with
-// the values from GraphTruth, and separates real observations from context
-// metadata so downstream engines only ever see real symptoms.
-//
-// Metadata codes (CROP_IDENTIFIED, PHOTO_NOT_PROVIDED, *_UNKNOWN, ACTION_*,
-// CONTEXT_*) are stripped from `observation_codes` via classifyEvidence and
-// attached to a non-authoritative `context_metadata` bag on the state for
-// UI/telemetry use only.
-// ═══════════════════════════════════════════════════════════════════════════
 export interface CanonicalContextMetadata {
   crop_identified: boolean;
   photo: boolean;

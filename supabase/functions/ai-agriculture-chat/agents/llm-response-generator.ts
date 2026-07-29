@@ -1,36 +1,11 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * LLM RESPONSE GENERATOR v2.0.0 - NARRATION-ONLY LAYER
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * CRITICAL CONTRACT: This module is a PURE NARRATION LAYER.
- * 
- * ❌ FORBIDDEN:
- *   - Intent detection / classification
- *   - Language-specific patterns or regex
- *   - Crop-specific logic or recommendations
- *   - Advisory behavior or follow-up generation
- *   - Direct answering without symbolic decision
- *   - Diagnosis, prescription, or dosage generation
- * 
- * ✅ ALLOWED:
- *   - Accept symbolic decision payload
- *   - Convert structured decision to natural language
- *   - Validate LLM output matches symbolic input
- *   - Return fallback_text if validation fails
- * 
- * @version 2.0.0
- * @see memory/architecture/symbolic-decision-brain-architecture-v1
- */
+// LLM RESPONSE GENERATOR v2.0.0 - NARRATION-ONLY LAYER
 
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
 import { getAllCropNames, getCropDisplayName, getCropCanonical } from '../utils/crop-names-cache.ts';
 import { getLanguageName } from '../utils/language-utils.ts';
 import { getSafeAskMoreInfoMessage } from './language-quality-validator.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STRICT INPUT CONTRACT - Symbolic Decision Payload
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface SymbolicNarrationInput {
   /** Language for narration output */
@@ -106,9 +81,7 @@ export interface NarrationOutput {
   validation_errors?: string[];
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // NARRATION-ONLY SYSTEM PROMPT v1.0
-// ═══════════════════════════════════════════════════════════════════════════
 
 const NARRATION_SYSTEM_PROMPT = `
 ═══════════════════════════════════════════════════════════════════════════
@@ -198,18 +171,14 @@ FORBIDDEN IN OUTPUT:
 - ❌ New diagnostic questions
 - ❌ Crop names not matching AUTHORITATIVE_CONTEXT`;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION GATE - Ensures LLM didn't add unauthorized content
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
 
-/**
- * Validates that LLM output doesn't contain unauthorized content
- */
+// Validates that LLM output doesn't contain unauthorized content
 function validateNarrationOutput(
   symbolicInput: SymbolicNarrationInput,
   llmOutput: string
@@ -217,9 +186,7 @@ function validateNarrationOutput(
   const errors: string[] = [];
   const output = llmOutput.toLowerCase();
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CROP INTEGRITY VALIDATION - Detect wrong crop names in LLM output
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const expectedCrop = symbolicInput.land_context?.current_crop?.toLowerCase() || '';
   
@@ -277,9 +244,7 @@ function validateNarrationOutput(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // EXISTING VALIDATIONS - Products, dosages, efficacy claims, questions
-  // ═══════════════════════════════════════════════════════════════════════════
   
   // Common pesticide/fungicide names that should only appear if in payload
   const KNOWN_PRODUCTS = [
@@ -342,9 +307,7 @@ function validateNarrationOutput(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // INPUT VALIDATION GATE - Rejects invalid symbolic input
-// ═══════════════════════════════════════════════════════════════════════════
 
 function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult {
   const errors: string[] = [];
@@ -387,9 +350,7 @@ function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult 
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // BUILD NARRATION PROMPT - Converts symbolic decision to LLM input
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   const { symbolic_decision, language, land_context } = input;
@@ -397,9 +358,7 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   
   let prompt = '';
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // AUTHORITATIVE_CONTEXT — Structured crop lock block (IMMUTABLE)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   if (land_context?.current_crop) {
     const cropCode = land_context.current_crop.toLowerCase();
@@ -420,9 +379,7 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
     prompt += `CRITICAL: You MUST use "${cropLocalName}" as the crop name. DO NOT use any other crop name.\n\n`;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // SYMBOLIC DECISION PAYLOAD
-  // ═══════════════════════════════════════════════════════════════════════════
   
   prompt += `Convert this symbolic decision to farmer-friendly ${langName} text.\n\n`;
   prompt += `DECISION STATUS: ${symbolic_decision.status}\n\n`;
@@ -468,23 +425,14 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   return prompt;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN NARRATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Generate narrated response from symbolic decision
- * 
- * CRITICAL: This function can ONLY be called AFTER symbolic brain completes.
- * It does NOT make decisions - it only narrates decisions already made.
- */
+// Generate narrated response from symbolic decision
 export async function generateNarratedResponse(
   input: SymbolicNarrationInput
 ): Promise<NarrationOutput> {
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 1: Validate symbolic input exists and is complete
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const inputValidation = validateSymbolicInput(input);
   if (!inputValidation.valid) {
@@ -498,10 +446,7 @@ export async function generateNarratedResponse(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 2: For simple statuses, use fallback directly (no LLM needed)
-  // EXPANDED: All monitoring/observation modes use fallback (v2.0.0)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const statusesThatUseFallback = [
     'BLOCKED', 'ESCALATE', 'NO_MATCH', 
@@ -539,9 +484,7 @@ export async function generateNarratedResponse(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 3: Build narration prompt and call LLM
-  // ═══════════════════════════════════════════════════════════════════════════
   
   try {
     const { provider, model, apiKey } = getBestAvailableProvider();
@@ -623,9 +566,7 @@ export async function generateNarratedResponse(
       };
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // GATE 4: Validate LLM output didn't add unauthorized content
-    // ═══════════════════════════════════════════════════════════════════════════
     
     const outputValidation = validateNarrationOutput(input, llmOutput);
     
@@ -659,21 +600,13 @@ export async function generateNarratedResponse(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTED TYPES FOR UPSTREAM MODULES
-// ═══════════════════════════════════════════════════════════════════════════
 
 export type { SymbolicNarrationInput, NarrationOutput, ValidationResult };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LEGACY EXPORTS - BACKWARD COMPATIBILITY FOR ORCHESTRATOR
-// These functions exist ONLY to prevent import errors during migration
-// They should be removed once orchestrator is refactored
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * @deprecated Legacy interface - use SymbolicNarrationInput instead
- */
+// @deprecated Legacy interface - use SymbolicNarrationInput instead
 export interface LLMResponseInput {
   farmer_message: string;
   language: string;
@@ -691,10 +624,7 @@ export interface LLMResponseInput {
   };
 }
 
-/**
- * @deprecated This function should not be used - routing decisions belong in orchestrator
- * Returns false to force symbolic path for all queries (safe default)
- */
+// @deprecated This function should not be used - routing decisions belong in orchestrator
 export function canAnswerDirectly(intent: string, farmerMessage: string): boolean {
   console.warn('[DEPRECATED] canAnswerDirectly called - always returns false to force symbolic path');
   // SAFETY GUARD: Handle undefined/empty input
@@ -705,10 +635,7 @@ export function canAnswerDirectly(intent: string, farmerMessage: string): boolea
   return isGreetingOnly && intent === 'GREETING';
 }
 
-/**
- * @deprecated This function should not be used - routing decisions belong in orchestrator
- * Returns true to force symbolic path for all agricultural queries (safe default)
- */
+// @deprecated This function should not be used - routing decisions belong in orchestrator
 export function requiresRuleEngine(intent: string, farmerMessage: string): boolean {
   console.warn('[DEPRECATED] requiresRuleEngine called - returns true for most intents');
   // All agricultural intents require rule engine
@@ -716,10 +643,7 @@ export function requiresRuleEngine(intent: string, farmerMessage: string): boole
   return !nonRuleIntents.includes(intent);
 }
 
-/**
- * @deprecated Use generateNarratedResponse with SymbolicNarrationInput instead
- * This is a compatibility wrapper that creates a minimal symbolic input
- */
+// @deprecated Use generateNarratedResponse with SymbolicNarrationInput instead
 export async function generateLLMResponse(input: LLMResponseInput): Promise<{ response_text: string; source: string }> {
   console.warn('[DEPRECATED] generateLLMResponse called - should migrate to generateNarratedResponse');
   

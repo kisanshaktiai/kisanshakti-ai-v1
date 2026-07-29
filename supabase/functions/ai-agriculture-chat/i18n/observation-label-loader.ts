@@ -1,27 +1,6 @@
 // CHANGE LOG
 // 2026-07-26 17:10 UTC — RC-2/RC-3: label map is now keyed by canonicalObsCode
-//   (lower_snake, the DB truth) with an UPPERCASE alias for legacy callers,
-//   queries observation_translations with canonical codes only, and selects
-//   crop-specific rows over crop-agnostic ones. Fixes raw-code / i18n-key leak
-//   in mr/hi clarification cards.
-// 2026-07-09 21:15 UTC — DEFAULT_CLARIFICATION_CODES neutralized to [].
-//   Removes the universal INSECTS/YELLOW/SPOTS/STUNTED trio that the
-//   clarification renderer and multi-match detector were injecting for
-//   every farmer question regardless of intent/crop/stage. Options must
-//   now come exclusively from the hypothesis-graph clarification
-//   contract; renderer already handles empty[] by returning a neutral
-//   photo-only prompt.
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION LABEL LOADER - SSOT-COMPLIANT
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Loads observation display labels from observation_translations table.
- * Falls back to formatted English code if translation missing.
- * NEVER returns hardcoded regional text - all text from database.
- * 
- * @version 1.0.0
- */
+// OBSERVATION LABEL LOADER - SSOT-COMPLIANT
 
 export const OBSERVATION_LOADER_VERSION = '1.0.0';
 
@@ -82,12 +61,7 @@ export interface ObservationLabel {
   icon: string;
 }
 
-/**
- * Strip technical artifacts (Latin binomials, parenthetical scientific names,
- * trailing "— Pathogen + Pathogen" clauses) from a label that may have been
- * sourced from `description_text`. Defensive safety net so chips never render
- * with scientific jargon even if a future caller passes the long form.
- */
+// Strip technical artifacts (Latin binomials, parenthetical scientific names,
 export function stripTechnicalArtifacts(text: string): string {
   if (!text) return '';
   let out = text;
@@ -101,10 +75,7 @@ export function stripTechnicalArtifacts(text: string): string {
   return out || text.trim();
 }
 
-/**
- * Load observation labels from database for given codes and language
- * SSOT: All display text comes from observation_translations table
- */
+// Load observation labels from database for given codes and language
 export async function loadObservationLabels(
   supabaseClient: any,
   observationCodes: string[],
@@ -120,11 +91,6 @@ export async function loadObservationLabels(
   }
 
   // RC-2 (2026-07-26) — canonical-code SSOT. `observation_translations`
-  // .observation_code is lower_snake in 5172/5172 rows. The map is now keyed
-  // by `canonicalObsCode`; an UPPERCASE alias key is also written so legacy
-  // callers that still look up uppercase keys keep resolving. Previously the
-  // map was keyed ONLY by uppercase, so every lower_snake lookup missed and
-  // the UI rendered raw codes / i18n keys.
   const setBoth = (canon: string, value: ObservationLabel) => {
     labelMap.set(canon, value);
     const upper = canon.toUpperCase();
@@ -162,8 +128,6 @@ export async function loadObservationLabels(
     };
 
     // `display_text` is the short farmer-facing chip label; `description_text`
-    // is an agronomic note kept for tooltips only. Priority is strictly:
-    // display_text → description_text → language-aware code fallback.
     for (const code of observationCodes) {
       const canon = canonicalObsCode(code);
       if (!canon) continue;
@@ -215,11 +179,7 @@ export async function loadObservationLabels(
 }
 
 
-/**
- * Format observation code as human-readable label
- * - en: STUNTED_GROWTH → Stunted Growth
- * - non-en: STUNTED_GROWTH → STUNTED GROWTH (avoid mixing English into Marathi/Hindi UI)
- */
+// Format observation code as human-readable label
 function formatCodeAsLabel(code: string, language: string): string {
   if (language !== 'en') {
     return code.replace(/_/g, ' ');
@@ -232,9 +192,7 @@ function formatCodeAsLabel(code: string, language: string): string {
     .join(' ');
 }
 
-/**
- * Get icon for an observation code (language-neutral)
- */
+// Get icon for an observation code (language-neutral)
 export function getObservationIcon(code: string): string {
   return OBSERVATION_ICONS[code.toUpperCase()] || '❓';
 }
@@ -242,17 +200,6 @@ export function getObservationIcon(code: string): string {
 // ─────────────────────────────────────────────────────────────────────────
 // CHANGE LOG
 // 2026-07-09 21:15 UTC — Neutralized DEFAULT_CLARIFICATION_CODES to [].
-//   Root cause of "every clarification shows the same INSECTS_VISIBLE /
-//   LEAF_YELLOWING / LEAF_SPOTS trio regardless of intent, crop or stage":
-//   this static list was used as a universal fallback by clarification-
-//   renderer.getContextAwareTemplateFromDB and generic-multi-match-detector,
-//   bypassing the hypothesis-graph clarification contract. Empty array
-//   forces every caller through loadClarificationCandidates (hypothesis
-//   graph) or the neutral photo-only prompt. Neuro-symbolic invariant:
-//   farmer options MUST originate from hypothesis_master ×
-//   hypothesis_conditions × observation_master for the locked (intent,
-//   crop, stage, DAS) cell — never from a hardcoded TypeScript array.
-// ─────────────────────────────────────────────────────────────────────────
 export const DEFAULT_CLARIFICATION_CODES: string[] = [];
 
 export default {

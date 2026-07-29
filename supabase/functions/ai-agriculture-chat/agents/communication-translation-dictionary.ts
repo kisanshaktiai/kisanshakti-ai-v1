@@ -1,18 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * COMMUNICATION TRANSLATION DICTIONARY v2.0 — DB-DRIVEN
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * REFACTORED: All hardcoded Marathi/Hindi/English dictionaries REMOVED.
- * Translation now flows from:
- *   1. observation_translations DB table (via i18n cache)
- *   2. English fallback (formatted code)
- *   3. LLM narration layer translates at runtime
- * 
- * This file retains the same exported function signatures for backward
- * compatibility but resolves translations from the centralized i18n cache.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// COMMUNICATION TRANSLATION DICTIONARY v2.0 — DB-DRIVEN
 
 import {
   getTranslation,
@@ -23,23 +9,16 @@ import {
 export type SupportedLanguage = string;
 export type TrilingualText = Record<string, string>;
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CORE RESOLUTION: DB-first, English fallback
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Resolve a symbolic code to a farmer-friendly label via DB cache.
- * Fallback chain: DB translation → English formatted code
- */
+// Resolve a symbolic code to a farmer-friendly label via DB cache.
 function resolveFromDB(code: string, lang: SupportedLanguage): string {
   if (!code) return '';
   const normalized = normalizeI18nKey(code);
   return getTranslation(normalized, lang);
 }
 
-/**
- * Format a code for human display when no translation exists
- */
+// Format a code for human display when no translation exists
 function formatCodeForDisplay(code: string): string {
   return code
     .replace(/_/g, ' ')
@@ -48,13 +27,9 @@ function formatCodeForDisplay(code: string): string {
     .join(' ');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API — Same signatures, DB-driven implementation
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Translate any text using DB cache
- */
+// Translate any text using DB cache
 export function translateText(
   key: string,
   _dictionary: Record<string, TrilingualText>,
@@ -64,9 +39,7 @@ export function translateText(
   return resolveFromDB(key, lang);
 }
 
-/**
- * Get product name with local translation
- */
+// Get product name with local translation
 export function getProductName(
   productName: string,
   lang: SupportedLanguage
@@ -79,9 +52,7 @@ export function getProductName(
   return dbResult;
 }
 
-/**
- * Get cause translation with fallback
- */
+// Get cause translation with fallback
 export function getCauseTranslation(
   causeCode: string,
   lang: SupportedLanguage
@@ -89,9 +60,7 @@ export function getCauseTranslation(
   return resolveFromDB(causeCode, lang);
 }
 
-/**
- * Get action translation with fallback
- */
+// Get action translation with fallback
 export function getActionTranslation(
   actionType: string,
   lang: SupportedLanguage
@@ -99,9 +68,7 @@ export function getActionTranslation(
   return resolveFromDB(actionType, lang);
 }
 
-/**
- * Get method translation
- */
+// Get method translation
 export function getMethodTranslation(
   method: string,
   lang: SupportedLanguage
@@ -109,9 +76,7 @@ export function getMethodTranslation(
   return resolveFromDB(method, lang);
 }
 
-/**
- * Get urgency translation
- */
+// Get urgency translation
 export function getUrgencyTranslation(
   urgency: string,
   lang: SupportedLanguage
@@ -119,9 +84,7 @@ export function getUrgencyTranslation(
   return resolveFromDB(urgency, lang);
 }
 
-/**
- * Get safety gear translation
- */
+// Get safety gear translation
 export function getSafetyGearTranslation(
   gear: string,
   lang: SupportedLanguage
@@ -129,9 +92,7 @@ export function getSafetyGearTranslation(
   return resolveFromDB(gear, lang);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // ENGLISH LEAKAGE DETECTION — Script-aware
-// ═══════════════════════════════════════════════════════════════════════════
 
 const SCRIPT_RANGES: Record<string, RegExp> = {
   mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
@@ -140,9 +101,7 @@ const SCRIPT_RANGES: Record<string, RegExp> = {
   pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
 };
 
-/**
- * Check if response contains significant untranslated English text
- */
+// Check if response contains significant untranslated English text
 export function hasUntranslatedEnglish(text: string, lang: SupportedLanguage): boolean {
   if (lang === 'en') return false;
   
@@ -165,10 +124,7 @@ export function hasUntranslatedEnglish(text: string, lang: SupportedLanguage): b
   return englishRatio > 0.3;
 }
 
-/**
- * Post-process response to fix English leakage
- * Delegates to LLM narration layer — no hardcoded replacements
- */
+// Post-process response to fix English leakage
 export function ensureFullTranslation(
   text: string,
   lang: SupportedLanguage
@@ -178,11 +134,7 @@ export function ensureFullTranslation(
   return text;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // DEPRECATED CONSTANTS — Empty, retained for import compatibility
-// These were previously 963 lines of hardcoded mr/hi/en dictionaries.
-// All translations now come from observation_translations DB table.
-// ═══════════════════════════════════════════════════════════════════════════
 
 /** @deprecated Use resolveFromDB() - translations come from observation_translations table */
 export const CAUSE_TRANSLATIONS: Record<string, TrilingualText> = {};

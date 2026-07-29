@@ -59,17 +59,7 @@ export function canonicalStageKey(s: unknown): string {
   return foldSnake(s).toLowerCase();
 }
 
-/**
- * Canonical rule / hypothesis identifier.
- *
- * 2026-07-26 (RC-2): DB-VERIFIED — `decision_rules.rule_id` (1853/1853) and
- * `hypothesis_rule_mapping.rule_id` (1820/1820) are **UPPER_SNAKE**, as are
- * `hypothesis_master.hypothesis_id`. The original lower_snake spec below was
- * factually wrong. `canonicalSymbolCode` is retained (still lower_snake) only
- * so legacy both-sides-lowered comparisons keep working; ANY comparison that
- * touches a raw DB identifier MUST use `canonicalRuleId` /
- * `canonicalHypothesisId`.
- */
+// Canonical rule / hypothesis identifier.
 export function canonicalRuleId(s: unknown): string {
   return foldSnake(s).toUpperCase();
 }
@@ -79,11 +69,7 @@ export function canonicalHypothesisId(s: unknown): string {
   return foldSnake(s).toUpperCase();
 }
 
-/**
- * @deprecated Use `canonicalRuleId` / `canonicalHypothesisId` for DB
- * identifiers. Safe ONLY when both operands are folded through this same
- * function.
- */
+// @deprecated Use `canonicalRuleId` / `canonicalHypothesisId` for DB
 export function canonicalSymbolCode(s: unknown): string {
   return foldSnake(s).toLowerCase();
 }
@@ -110,11 +96,7 @@ export function obsCodeList(list: ReadonlyArray<unknown> | null | undefined): st
   return Array.from(obsCodeSet(list));
 }
 
-/**
- * Drift probe. Logs `[CODE_NORM_MISMATCH]` when the legacy uppercase form
- * would have produced a different match outcome than the canonical form.
- * Kept for one release so residual drift is visible in production logs.
- */
+// Drift probe. Logs `[CODE_NORM_MISMATCH]` when the legacy uppercase form
 export function assertNoNormDrift(site: string, code: unknown, pool: ReadonlyArray<unknown>): void {
   const canon = canonicalObsCode(code);
   if (!canon) return;

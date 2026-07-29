@@ -1,14 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * Phase H — CANONICAL CONVERSATION STATE (Single Runtime Authority)
- * ═══════════════════════════════════════════════════════════════════════════
- * Computed exactly once per request, immediately after observation extraction.
- * Frozen. Every downstream module reads from this object instead of
- * independently recomputing intent / clarification / coverage / stage / mode.
- *
- * No DB IO. No mutation. Pure function.
- * ═══════════════════════════════════════════════════════════════════════════
- */
+// Phase H — CANONICAL CONVERSATION STATE (Single Runtime Authority)
 
 import { computeCoverage, INFORMATIVE_PLACEHOLDERS } from './evidence-coverage.ts';
 

@@ -1,18 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * FACT EXTRACTOR - OBSERVATION TO SYMBOLIC FACT CONVERSION
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Converts farmer observations + authoritative state into structured symbolic
- * facts that can be evaluated by the rule engine.
- * 
- * REFACTORED: Phase-1 SSOT Compliance
- * - Removed hardcoded Marathi/Hindi/English symptom mappings
- * - Now relies on pre-extracted canonical symptoms from Language Induction Layer
- * - Language-agnostic logic for production readiness
- * 
- * VERSION: 3.0.0
- */
+// FACT EXTRACTOR - OBSERVATION TO SYMBOLIC FACT CONVERSION
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
@@ -20,13 +6,7 @@ import type { SymbolicFact } from './symbolic-reasoner.ts';
 
 export const FACT_EXTRACTOR_VERSION = '3.0.0';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // PEST INDICATORS - Phase 1 DB-SSOT
-// ───────────────────────────────────────────────────────────────────────────
-// Source: observation_master WHERE semantic_class='pest' AND is_diagnostic=true
-// (248 rows verified 2026-07-22). The tiny legacy set below is retained ONLY
-// as cold-boot fallback used while the DB cache preloads.
-// ═══════════════════════════════════════════════════════════════════════════
 import { isPestIndicator as _isPestIndicatorDb, phase1CacheReady as _phase1CacheReady } from '../utils/db-ssot/phase1-caches.ts';
 
 const _LEGACY_PEST_INDICATORS: ReadonlySet<string> = new Set([
@@ -44,15 +24,11 @@ function isPestIndicator(code: string): boolean {
   return _LEGACY_PEST_INDICATORS.has(key);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // FACT EXTRACTOR CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class FactExtractor {
   
-  /**
-   * Extract structured facts from observations and authoritative state
-   */
+  // Extract structured facts from observations and authoritative state
   extractFacts(
     observation: any,
     canonicalState: CanonicalState,
@@ -114,10 +90,7 @@ export class FactExtractor {
     };
   }
   
-  /**
-   * Extract core context facts from authoritative sources
-   * CRITICAL: Normalizes crop_code and growth_stage to lowercase for rule matching
-   */
+  // Extract core context facts from authoritative sources
   private extractCoreFacts(
     canonicalState: CanonicalState,
     landState: AuthoritativeLandState | null
@@ -126,11 +99,7 @@ export class FactExtractor {
     const rawCrop = landState?.crop?.current_crop || canonicalState.crop_type || 'UNKNOWN';
     const rawStage = landState?.crop?.growth_stage || canonicalState.crop_stage || 'UNKNOWN';
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // CANONICAL-TO-RULE NORMALIZATION
-    // Database rules use lowercase snake_case (e.g., "sugarcane", "grand_growth")
-    // CanonicalState uses UPPERCASE enums (e.g., "SUGARCANE", "GRAND_GROWTH")
-    // ═══════════════════════════════════════════════════════════════════════════
     const normalizedCropCode = rawCrop === 'UNKNOWN' ? '' : rawCrop.toLowerCase().replace(/-/g, '_');
     const normalizedStage = rawStage === 'UNKNOWN' ? 'unknown' : rawStage.toLowerCase().replace(/-/g, '_');
     
@@ -145,10 +114,7 @@ export class FactExtractor {
     };
   }
   
-  /**
-   * Extract symptom facts from canonical state (already extracted by Language Induction Layer)
-   * SSOT-COMPLIANT: No language-specific keyword matching here
-   */
+  // Extract symptom facts from canonical state (already extracted by Language Induction Layer)
   private extractSymptomFacts(
     observation: any,
     canonicalState: CanonicalState
@@ -165,9 +131,7 @@ export class FactExtractor {
     };
   }
   
-  /**
-   * Extract environmental facts from authoritative state
-   */
+  // Extract environmental facts from authoritative state
   private extractEnvironmentalFacts(
     landState: AuthoritativeLandState | null
   ): Pick<SymbolicFact, 'ndvi' | 'ndvi_trend' | 'ndvi_status' | 'temperature' | 'humidity' | 'recent_rain' | 'soil_moisture_estimated'> {
@@ -203,9 +167,7 @@ export class FactExtractor {
     };
   }
   
-  /**
-   * Extract soil facts from authoritative state
-   */
+  // Extract soil facts from authoritative state
   private extractSoilFacts(
     landState: AuthoritativeLandState | null
   ): Pick<SymbolicFact, 'soil_n' | 'soil_n_status' | 'soil_p' | 'soil_p_status' | 'soil_k' | 'soil_k_status' | 'soil_ph'> {
@@ -228,9 +190,7 @@ export class FactExtractor {
     };
   }
   
-  /**
-   * Calculate derived facts from primary facts
-   */
+  // Calculate derived facts from primary facts
   private calculateDerivedFacts(
     coreFacts: any,
     symptomFacts: any,
@@ -284,9 +244,7 @@ export class FactExtractor {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON INSTANCE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let extractorInstance: FactExtractor | null = null;
 

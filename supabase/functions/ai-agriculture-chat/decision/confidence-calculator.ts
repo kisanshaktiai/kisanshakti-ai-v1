@@ -1,24 +1,9 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CONFIDENCE CALCULATOR - MULTI-FACTOR CONFIDENCE SCORING
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Calculates systematic confidence scores based on:
- * - Rule matching quality
- * - Data completeness
- * - Data freshness
- * - Symptom specificity
- * - Historical success rates
- * 
- * VERSION: 1.0.0
- */
+// CONFIDENCE CALCULATOR - MULTI-FACTOR CONFIDENCE SCORING
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { SymbolicFact, Hypothesis, FiredRule } from './symbolic-reasoner.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ConfidenceScore {
   overall: number;  // 0-1
@@ -32,12 +17,7 @@ export interface ConfidenceScore {
   level: ConfidenceLevel;
   explanation: string;
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // PART 8: DUAL INDEPENDENT CONFIDENCE SIGNALS
-  // data_quality_confidence: Affects dosage precision (soil test, weather, NDVI)
-  // symptom_diagnosis_confidence: Affects cause identification (symptom specificity + rule matching)
-  // These are computed INDEPENDENTLY — low data quality must NOT block high symptom confidence
-  // ═══════════════════════════════════════════════════════════════════════════
   data_quality_confidence: number;      // 0-1: How well we can recommend specific doses
   symptom_diagnosis_confidence: number; // 0-1: How confidently we can name the cause
 }
@@ -51,10 +31,7 @@ export interface ConfidenceInput {
   landState: AuthoritativeLandState | null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // STAGE-SPECIFIC CONFIDENCE THRESHOLDS (ICAR-aligned)
-// Higher thresholds for young crops where wrong treatment = crop loss
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const STAGE_CONFIDENCE_THRESHOLDS: Record<string, number> = {
   'GERMINATION': 0.90,      // Critical - wrong treatment kills seedlings
@@ -86,9 +63,7 @@ export const CROP_CONFIDENCE_ADJUSTMENTS: Record<string, number> = {
   'DEFAULT': 0
 };
 
-/**
- * Get calibrated confidence threshold for specific crop + stage combination
- */
+// Get calibrated confidence threshold for specific crop + stage combination
 export function getCalibratedThreshold(cropCode: string, growthStage: string): number {
   const baseThreshold = STAGE_CONFIDENCE_THRESHOLDS[growthStage?.toUpperCase()] || 
                         STAGE_CONFIDENCE_THRESHOLDS['DEFAULT'];
@@ -99,15 +74,11 @@ export function getCalibratedThreshold(cropCode: string, growthStage: string): n
   return Math.min(0.95, Math.max(0.60, baseThreshold + cropAdjustment));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // CONFIDENCE CALCULATOR CLASS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export class ConfidenceCalculator {
   
-  /**
-   * Calculate comprehensive confidence score with stage-aware thresholds
-   */
+  // Calculate comprehensive confidence score with stage-aware thresholds
   calculateConfidence(input: ConfidenceInput): ConfidenceScore {
     console.log('📊 [ConfidenceCalculator] Calculating multi-factor confidence...');
     
@@ -132,9 +103,7 @@ export class ConfidenceCalculator {
     // 5. Historical success (placeholder - would query from feedback table)
     const historicalSuccess = 0.7; // Default 70% when no historical data
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PART 8: DUAL INDEPENDENT CONFIDENCE COMPUTATION
-    // ═══════════════════════════════════════════════════════════════════════════
     
     // Signal 1: Symptom Diagnosis Confidence (can we NAME the cause?)
     // Based on rule matching + symptom specificity (NOT data quality)
@@ -198,9 +167,7 @@ export class ConfidenceCalculator {
     };
   }
   
-  /**
-   * Calculate confidence from rule matching
-   */
+  // Calculate confidence from rule matching
   private calculateRuleConfidence(firedRules: FiredRule[], diagnosis: Hypothesis | null): number {
     if (!firedRules || firedRules.length === 0) {
       return 0.3; // No rules = low confidence
@@ -228,9 +195,7 @@ export class ConfidenceCalculator {
     return Math.min(confidence, 0.95);
   }
   
-  /**
-   * Calculate data quality score
-   */
+  // Calculate data quality score
   private calculateDataQuality(facts: SymbolicFact, landState: AuthoritativeLandState | null): number {
     // BUG 1 FIX: Defensive null safety - prevent crash when facts is undefined/empty
     if (!facts || !facts.crop) {
@@ -277,9 +242,7 @@ export class ConfidenceCalculator {
     return maxScore > 0 ? score / maxScore : 0;
   }
   
-  /**
-   * Calculate data freshness score
-   */
+  // Calculate data freshness score
   private calculateDataFreshness(landState: AuthoritativeLandState | null): number {
     if (!landState) {
       return 0.5; // No land state = moderate freshness
@@ -321,9 +284,7 @@ export class ConfidenceCalculator {
     return totalPoints > 0 ? freshnessPoints / totalPoints : 0.5;
   }
   
-  /**
-   * Calculate symptom specificity score
-   */
+  // Calculate symptom specificity score
   private calculateSymptomSpecificity(facts: SymbolicFact): number {
     // Defensive null safety
     if (!facts) {
@@ -354,9 +315,6 @@ export class ConfidenceCalculator {
     }
     
     // NOTE: Diagnostic confidence boost (1.4x multiplicative) is applied
-    // in SymbolicReasoner.executeRules() using observation_master.is_diagnostic
-    // from the database, not hardcoded here. The highlySpecificSymptoms list
-    // below is a fallback for when observation_master metadata is not available.
     const highlySpecificSymptoms = [
       'DEAD_HEART', 'HONEYDEW', 'WEBBING', 'GALLS', 'TUNNELS_IN_STEM',
       'TERMITE_SUSPECTED', 'BORER_SUSPECTED',
@@ -371,9 +329,7 @@ export class ConfidenceCalculator {
     return Math.min(score, 1.0);
   }
   
-  /**
-   * Categorize confidence level
-   */
+  // Categorize confidence level
   categorizeConfidence(score: number): ConfidenceLevel {
     if (score >= 0.85) return 'VERY_HIGH';
     if (score >= 0.70) return 'HIGH';
@@ -382,9 +338,7 @@ export class ConfidenceCalculator {
     return 'VERY_LOW';
   }
   
-  /**
-   * Generate human-readable explanation
-   */
+  // Generate human-readable explanation
   private generateExplanation(
     level: ConfidenceLevel,
     factors: {
@@ -413,9 +367,7 @@ export class ConfidenceCalculator {
     return parts.join(', ');
   }
   
-  /**
-   * Get confidence stars for display
-   */
+  // Get confidence stars for display
   getConfidenceStars(score: number): string {
     if (score >= 0.85) return '⭐⭐⭐⭐⭐';
     if (score >= 0.70) return '⭐⭐⭐⭐';
@@ -425,9 +377,7 @@ export class ConfidenceCalculator {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SINGLETON INSTANCE
-// ═══════════════════════════════════════════════════════════════════════════
 
 let calculatorInstance: ConfidenceCalculator | null = null;
 

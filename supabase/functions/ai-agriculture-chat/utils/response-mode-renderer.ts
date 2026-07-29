@@ -1,29 +1,4 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * RESPONSE MODE RENDERER v2.0.0 - CRASH-PROOF CONFIDENCE-DRIVEN OUTPUT
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * CRITICAL: This module renders responses based on RESPONSE MODE, not text presence.
- * 
- * INVARIANT: Farmer-facing responses are mode-driven, not text-assumed.
- * 
- * KEY v2.0.0 CHANGES:
- * - Confidence-driven mode resolution (LOW → CLARIFICATION, not OBSERVATION)
- * - Invariant guard: Low confidence + symptoms never returns OBSERVATION
- * - Integration with FarmerResponseContract
- * 
- * SUPPORTED MODES (Aligned with FarmerResponseContract):
- * - OBSERVATION: Watch and wait (HIGH confidence only)
- * - CLARIFICATION_REQUIRED / CLARIFICATION: Render options array
- * - PHOTO_REQUIRED: Camera prompt
- * - MONITORING_ADVISED: Simple reassurance, no LLM required
- * - TREATMENT_ALLOWED / TREATMENT: Full explanation + steps
- * - INFORMATION: General info for medium confidence
- * - NO_ACTION_NEEDED: Healthy crop, no action required
- * - ERROR: Error state with recovery message
- * 
- * @version 2.0.0
- */
+// RESPONSE MODE RENDERER v2.0.0 - CRASH-PROOF CONFIDENCE-DRIVEN OUTPUT
 
 import { ResponseMode } from '../decision/authority-types.ts';
 import { safePreviewText, safeTrim, hasTextContent } from './safe-string.ts';
@@ -31,9 +6,7 @@ import { safePreviewText, safeTrim, hasTextContent } from './safe-string.ts';
 // Re-export for compatibility
 export { ResponseMode };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT CONTRACT - Explicit response structure
-// ═══════════════════════════════════════════════════════════════════════════
 
 export interface ModeRenderedOutput {
   /** Response mode that determined rendering */
@@ -90,9 +63,7 @@ export interface TreatmentDetails {
   knowledge_text?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // LANGUAGE-SPECIFIC TEMPLATES (Mode-Driven, Not Text-Dependent)
-// ═══════════════════════════════════════════════════════════════════════════
 
 const MODE_TEMPLATES: Record<string, string> = {
   MONITORING_ADVISED: '✅ Your crop is currently healthy. Continue regular monitoring.',
@@ -113,20 +84,9 @@ const PHOTO_GUIDANCE_TEMPLATE: PhotoGuidance = {
   tips: ['Take photo in good lighting', 'Choose an angle where symptoms are clearly visible']
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE MODE RESOLVER - Determines mode from decision context
-// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CONFIDENCE-DRIVEN RESPONSE MODE RESOLUTION (CRITICAL FIX)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * BUG FIX: Previously defaulted to OBSERVATION for all unknown cases.
- * NOW: Uses decision_confidence to determine appropriate mode.
- * 
- * INVARIANT: Low confidence (<50%) with symptoms → CLARIFICATION or PHOTO_REQUIRED
- */
+// CONFIDENCE-DRIVEN RESPONSE MODE RESOLUTION (CRITICAL FIX)
 export interface ResponseModeContext {
   gate_action?: string;
   response_mode?: string | ResponseMode;
@@ -174,9 +134,7 @@ export function resolveResponseMode(context: ResponseModeContext): ResponseMode 
     return ResponseMode.INFORMATION;
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // CONFIDENCE-DRIVEN RESOLUTION (CRITICAL BUG FIX)
-  // ═══════════════════════════════════════════════════════════════════════════
   
   const confidence = context.decision_confidence ?? 0;
   const hasSymptoms = context.has_symptoms || (context.symptom_keys && context.symptom_keys.length > 0);
@@ -211,9 +169,6 @@ export function resolveResponseMode(context: ResponseModeContext): ResponseMode 
   }
   
   // Only use OBSERVATION when:
-  // - No symptoms detected
-  // - No uncertainty
-  // - No actionable intent
   if (!hasSymptoms && confidence >= 50) {
     return ResponseMode.OBSERVATION;
   }
@@ -229,10 +184,7 @@ export function resolveResponseMode(context: ResponseModeContext): ResponseMode 
   return ResponseMode.INFORMATION;
 }
 
-/**
- * INVARIANT VALIDATOR: Throws if low confidence results in OBSERVATION with symptoms
- * Call this to detect architectural violations during development
- */
+// INVARIANT VALIDATOR: Throws if low confidence results in OBSERVATION with symptoms
 export function assertResponseModeInvariant(
   mode: ResponseMode | string,
   confidence: number,
@@ -249,9 +201,7 @@ export function assertResponseModeInvariant(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN RENDERER - Mode-Driven, Crash-Proof
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function renderByMode(
   mode: ResponseMode | string,
@@ -267,9 +217,7 @@ export function renderByMode(
   const modeStr = (mode || 'OBSERVATION').toString().toUpperCase();
   const lang = language || 'mr';
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: MONITORING_ADVISED - Simple reassurance, no text required
-  // ═══════════════════════════════════════════════════════════════════════════
   if (modeStr === 'MONITORING_ADVISED' || modeStr === 'MONITORING') {
     return {
       response_mode: modeStr,
@@ -282,9 +230,7 @@ export function renderByMode(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: CLARIFICATION_REQUIRED - Render options, text is optional
-  // ═══════════════════════════════════════════════════════════════════════════
   if (modeStr === 'CLARIFICATION_REQUIRED' || modeStr === 'CLARIFICATION') {
     const options = content.options || [];
     const headerText = hasTextContent(content.primary_text) 
@@ -300,9 +246,7 @@ export function renderByMode(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: PHOTO_REQUIRED - Camera prompt, minimal text
-  // ═══════════════════════════════════════════════════════════════════════════
   if (modeStr === 'PHOTO_REQUIRED' || modeStr === 'PHOTO') {
     return {
       response_mode: 'PHOTO_REQUIRED',
@@ -314,9 +258,7 @@ export function renderByMode(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: OBSERVATION - 1-2 short sentences only
-  // ═══════════════════════════════════════════════════════════════════════════
   if (modeStr === 'OBSERVATION' || modeStr === 'OBSERVATION_ONLY') {
     return {
       response_mode: ResponseMode.OBSERVATION,
@@ -329,9 +271,7 @@ export function renderByMode(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: TREATMENT - Full explanation with steps
-  // ═══════════════════════════════════════════════════════════════════════════
   if (modeStr === 'TREATMENT' || modeStr === 'TREATMENT_ALLOWED') {
     const treatment = content.treatment || {};
     const treatmentText = hasTextContent(content.primary_text)
@@ -347,9 +287,7 @@ export function renderByMode(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // MODE: INFORMATION - General info response
-  // ═══════════════════════════════════════════════════════════════════════════
   if (modeStr === 'INFORMATION' || modeStr === 'INFORMATION_ONLY') {
     return {
       response_mode: ResponseMode.INFORMATION,
@@ -363,9 +301,7 @@ export function renderByMode(
     };
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
   // FALLBACK: Default to OBSERVATION mode
-  // ═══════════════════════════════════════════════════════════════════════════
   console.warn(`[ResponseModeRenderer] Unknown mode '${modeStr}', defaulting to OBSERVATION`);
   return {
     response_mode: ResponseMode.OBSERVATION,
@@ -375,9 +311,7 @@ export function renderByMode(
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // TREATMENT MESSAGE BUILDER - Safe text construction
-// ═══════════════════════════════════════════════════════════════════════════
 
 function buildTreatmentMessage(
   treatment: TreatmentDetails,
@@ -412,9 +346,7 @@ function buildTreatmentMessage(
   return parts.length > 0 ? parts.join('\n') : MODE_TEMPLATES.TREATMENT;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // SAFE OUTPUT VALIDATOR - Ensures response is valid before sending
-// ═══════════════════════════════════════════════════════════════════════════
 
 export function validateRenderedOutput(output: ModeRenderedOutput): {
   valid: boolean;
@@ -446,8 +378,6 @@ export function validateRenderedOutput(output: ModeRenderedOutput): {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const RESPONSE_MODE_RENDERER_VERSION = '2.0.0';
