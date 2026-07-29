@@ -1,5 +1,10 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:50 UTC — FIX C1-b: optional trailing `cultivationMethod` on
+ *   areStagesCompatible / calculateStageRelevanceScore, forwarded to
+ *   stagesEquivalent. Omitted → request-scoped lane (AsyncLocalStorage).
  * ═══════════════════════════════════════════════════════════════════════════
+
  * CENTRALIZED STAGE NORMALIZER (v2.0.0 — DB stage graph is the only authority)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
