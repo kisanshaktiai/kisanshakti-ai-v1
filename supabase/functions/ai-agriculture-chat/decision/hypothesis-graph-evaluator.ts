@@ -317,7 +317,60 @@ type CanonicalCodeMap = Map<string, string>;
 // PUBLIC API
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function evaluateHypothesisGraph(
+/**
+ * LATENCY BATCH L2 (2026-07-29): single graph traversal per turn.
+ * The graph was evaluated 2-3x per turn — orchestrator (6369), the
+ * clarification builder (291) and the tiered seed expander (129) each ran a
+ * full traversal (6+ sequential DB round-trips) over the SAME evidence.
+ * Results are memoized on a short TTL keyed by the semantic inputs
+ * (crop, group, stage, das, sorted observation set, stage confidence bucket).
+ * The key deliberately EXCLUDES trace_id so cross-module callers within a turn
+ * share the result; the TTL keeps it from behaving like a session cache.
+ */
+const GRAPH_MEMO_TTL_MS = 20_000;
+const graphMemo = new Map<string, { at: number; result: Promise<GraphHypothesisResult> }>();
+
+function graphMemoKey(input: GraphHypothesisInput): string {
+  const obs = [...new Set((input.observation_codes || []).map((c) => String(c).toLowerCase()))]
+    .sort()
+    .join('|');
+  const conf = typeof input.predicted_stage_confidence === 'number'
+    ? input.predicted_stage_confidence.toFixed(2)
+    : 'na';
+  return [
+    String(input.crop_code ?? ''),
+    String(input.crop_group ?? ''),
+    String(input.growth_stage ?? ''),
+    String(input.das ?? ''),
+    conf,
+    obs,
+  ].join('::').toLowerCase();
+}
+
+export function evaluateHypothesisGraph(
+  input: GraphHypothesisInput,
+): Promise<GraphHypothesisResult> {
+  const key = graphMemoKey(input);
+  const now = Date.now();
+  // Opportunistic eviction — the map is tiny and bounded by TTL.
+  for (const [k, v] of graphMemo) if (now - v.at > GRAPH_MEMO_TTL_MS) graphMemo.delete(k);
+
+  const hit = graphMemo.get(key);
+  if (hit) {
+    console.log(`[GRAPH_MEMO_HIT] trace=${input.trace_id ?? 'n/a'} key=${key.slice(0, 120)} age_ms=${now - hit.at}`);
+    return hit.result;
+  }
+
+  const result = evaluateHypothesisGraphUncached(input).catch((e) => {
+    // Never cache a rejection — drop it so the next caller retries.
+    graphMemo.delete(key);
+    throw e;
+  });
+  graphMemo.set(key, { at: now, result });
+  return result;
+}
+
+async function evaluateHypothesisGraphUncached(
   input: GraphHypothesisInput,
 ): Promise<GraphHypothesisResult> {
   const started = Date.now();
