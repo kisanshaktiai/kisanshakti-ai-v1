@@ -1383,6 +1383,11 @@ export class AIAgentOrchestrator {
     try { await _preloadSystemConfig(this.supabase); } catch (e) {
       console.warn(`[SYSCFG_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
     }
+    // Phase 0′ DB-SSOT: biotic/abiotic/weed taxonomy (observation_master.semantic_class +
+    // decision_rules.biological_group + system_config.taxonomy_*). TTL-cached, non-fatal.
+    try { await loadTaxonomies(this.supabase); } catch (e) {
+      console.warn(`[TAXONOMY_LOAD_FAILED] trace=${traceId} err=${(e as Error).message}`);
+    }
     let response: OrchestratorResponse;
     try {
       response = await this._orchestrateImpl(farmerMessage, sessionId, farmerId, tenantId, options);
