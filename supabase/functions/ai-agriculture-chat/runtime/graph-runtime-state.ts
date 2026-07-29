@@ -407,7 +407,11 @@ export class GraphRuntimeState {
         snap,
       );
     }
-    const codes = Array.from(new Set((snap.selected_observations || []).filter(Boolean)));
+    // FIX (2026-07-29): fold through the canonical-code SSOT so the frozen
+    // round carries the SAME identities as the observation ledger.
+    const codes = Array.from(
+      new Set((snap.selected_observations || []).map((c) => canonicalObsCode(c)).filter(Boolean)),
+    );
     for (const c of codes) assertCanonicalCode('evidence_round.selected_observations', c);
     const frozen: EvidenceRoundSnapshot = Object.freeze({
       crop_code: snap.crop_code ?? null,
