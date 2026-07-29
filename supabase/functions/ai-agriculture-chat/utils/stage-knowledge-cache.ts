@@ -1,9 +1,18 @@
 /**
  * CHANGE LOG
+ * 2026-07-29 10:20 UTC — FIX C1-b: request-scoped cultivation lane via
+ *   AsyncLocalStorage (`runWithCultivationLane` / `enterCultivationLane` /
+ *   `currentLane`). All lookups resolve the lane from the explicit arg first,
+ *   then the request store. `byCropStage` is now lane-keyed (rice DSR vs
+ *   transplanted no longer collide), `getStageByDAS` lost its "first hit"
+ *   branch (deterministic: exact lane → 'any' → lowest das_min, logged as
+ *   [STAGE_LANE_UNKNOWN]), and `laneMatches` degrades NULL row methods to
+ *   'any' so the 134 NULL-lane crop_stage_graph edges stay visible.
  * 2026-07-28 04:45 UTC — FIX C1: deleted module-scope `activeCultivationMethod`
  *   (cross-request contamination hazard). Setter/getter are deprecated stubs;
  *   stage lookups default to lane-agnostic when no explicit method is passed.
  * ═══════════════════════════════════════════════════════════════════════════
+
  * STAGE KNOWLEDGE CACHE — Phase E SSOT
  * ═══════════════════════════════════════════════════════════════════════════
  * Single runtime source for crop growth-stage data. Loads:
