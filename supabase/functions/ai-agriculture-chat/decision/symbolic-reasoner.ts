@@ -13,6 +13,12 @@
  * - LLM is strictly prohibited from inventing treatments
  * 
  * CHANGE LOG (newest first)
+ *   2026-07-29 10:55 UTC — PHASE 0′ STEP 4: removed hardcoded BIOTIC_OBS_KEYS
+ *     and the inline abiotic-category list from the BioticGuard. Rule class now
+ *     resolves via utils/db-driven-taxonomies.ts (decision_rules
+ *     .biological_group) and observation class via observation_master
+ *     .semantic_class after alias canonicalization (exact match, no substring).
+ *     Guard degrades to NO FILTER when the taxonomy cache is unloaded.
  *   2026-07-27 23:45 UTC — SINGLE OBSERVATION STREAM (read-path only).
  *     (a) Ontology join corrected: observation_master.canonical_group IS the
  *         engine group, so engine_groups is seeded from it directly and
