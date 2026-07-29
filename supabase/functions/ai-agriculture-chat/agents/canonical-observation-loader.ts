@@ -340,11 +340,11 @@ const STAGE_NORMALIZATION_MAP: Record<string, string> = {
 // Cache miss (unloaded cache, or no curated row for this crop×stage) degrades to
 // the singleton `[stage, 'all']` and logs `[CANON_LOADER_STAGE_MISS]`. We NEVER
 // substitute a static family.
-function expandStageSynonyms(stage: string, crop?: string | null): string[] {
+function expandStageSynonyms(stage: string, crop?: string | null, cultivationMethod?: string | null): string[] {
   const key = canonicalStageKey(stage);
   if (!key) return ['all'];
   const cropKey = canonicalCropCode(crop);
-  const fam = cropKey ? getStageFamilyFromDB(cropKey, key) : null;
+  const fam = cropKey ? getStageFamilyFromDB(cropKey, key, cultivationMethod) : null;
   if (!fam || fam.length === 0) {
     console.log(
       `[CANON_LOADER_STAGE_MISS] crop=${cropKey || 'none'} stage=${key} ` +

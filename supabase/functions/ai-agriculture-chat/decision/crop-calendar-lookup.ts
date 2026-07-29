@@ -117,12 +117,14 @@ function unknownResult(daysSinceSowing: number, reason: string): StageCalculatio
 export function calculateGrowthStageFromDAS(
   cropCode: string,
   daysSinceSowing: number,
+  // FIX C1-b: explicit lane wins; omitted → request-scoped lane (ALS).
+  cultivationMethod?: string | null,
 ): StageCalculationResult {
   if (!isStageKnowledgeLoaded()) {
     return unknownResult(daysSinceSowing, 'stage_knowledge_cache_not_loaded');
   }
   const crop = (cropCode || '').toLowerCase().trim();
-  const row = getStageByDAS(crop, daysSinceSowing);
+  const row = getStageByDAS(crop, daysSinceSowing, cultivationMethod);
   if (!row || !row.growth_stage) {
     return unknownResult(daysSinceSowing, `no_stage_row crop=${crop}`);
   }
@@ -176,8 +178,8 @@ export function getStageWatchLists(
  * True when at least one crop_stage_master row exists for the crop.
  * Replaces the hardcoded `!!ICAR_CALENDARS[cropCode]` check.
  */
-export function hasICARCalendar(cropCode: string): boolean {
+export function hasICARCalendar(cropCode: string, cultivationMethod?: string | null): boolean {
   const crop = (cropCode || '').toLowerCase().trim();
   // Probe the SSOT — any DAS window covers a stage row.
-  return !!getStageByDAS(crop, 0) || !!getStageRow(crop, 'GERMINATION');
+  return !!getStageByDAS(crop, 0, cultivationMethod) || !!getStageRow(crop, 'GERMINATION', cultivationMethod);
 }

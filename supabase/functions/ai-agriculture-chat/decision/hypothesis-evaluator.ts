@@ -529,9 +529,11 @@ function calculateStageRelevance(
   stageApplicable: string[] | null,
   currentStage: string,
   crop?: string | null,
+  cultivationMethod?: string | null,
 ): number {
-  // Delegate to centralized normalizer (DB stage graph authority)
-  return calculateStageRelevanceScore(stageApplicable, currentStage, crop);
+  // Delegate to centralized normalizer (DB stage graph authority).
+  // FIX C1-b: lane forwarded; omitted → request-scoped lane (ALS).
+  return calculateStageRelevanceScore(stageApplicable, currentStage, crop, cultivationMethod);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

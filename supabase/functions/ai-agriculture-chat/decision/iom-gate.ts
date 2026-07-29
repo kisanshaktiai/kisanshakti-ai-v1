@@ -72,10 +72,10 @@ export interface IOMAllowedResult {
  * On cache miss we degrade to `[stage, 'all']` and log
  * `[IOM_GATE_STAGE_MISS]`. We NEVER substitute a hardcoded family.
  */
-function expandStageFamily(crop: string, stage?: string | null): string[] {
+function expandStageFamily(crop: string, stage?: string | null, cultivationMethod?: string | null): string[] {
   const key = canonicalStageKey(stage);
   if (!key) return ['all'];
-  const fam = getStageFamilyFromDB(crop, key);
+  const fam = getStageFamilyFromDB(crop, key, cultivationMethod);
   if (!fam || fam.length === 0) {
     console.log(`[IOM_GATE_STAGE_MISS] crop=${crop} stage=${key} source=crop_stage_graph action=singleton_plus_all`);
     return Array.from(new Set([key, 'all']));
