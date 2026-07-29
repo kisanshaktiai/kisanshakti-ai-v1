@@ -320,31 +320,50 @@ export function getStageRow(
   cultivationMethod?: string | null,
 ): StageMasterRow | null {
   if (!cache) return null;
-  // FIX C1 (2026-07-28): no module-scope fallback. When the caller omits
-  // cultivationMethod (undefined) OR passes null, use lane-agnostic matching
-  // — safe default, no cross-request contamination.
-  const resolved = cultivationMethod === undefined ? null : cultivationMethod;
-  const lane = resolved ? String(resolved).toLowerCase() : null;
+export function getStageRow(
+  crop: string,
+  stage: string,
+  cultivationMethod?: string | null,
+): StageMasterRow | null {
+  if (!cache) return null;
+  // FIX C1-b: explicit arg wins; otherwise the REQUEST-SCOPED lane.
+  const lane = resolveLane(cultivationMethod);
   const cropKey = (crop || '').toLowerCase();
   const stageKey = (stage || '').toLowerCase();
+
   if (lane) {
-    let anyRow: StageMasterRow | null = null;
-    for (const r of cache.master) {
-      if (r.crop_code?.toLowerCase() !== cropKey) continue;
-      if (r.growth_stage?.toLowerCase() !== stageKey) continue;
-      const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
-      if (m === lane) return r;
-      if (m === 'any' && !anyRow) anyRow = r;
-    }
-    return anyRow;
+    const exact = cache.byCropStage.get(ak(cropKey, lane, stageKey));
+    if (exact) return exact;
+    return cache.byCropStage.get(ak(cropKey, 'any', stageKey)) ?? null;
   }
-  return cache.byCropStage.get(k(crop, stage)) ?? null;
+
+  // Lane unknown → scan master deterministically ('any' first, then lowest
+  // das_min). NEVER rely on a lane-agnostic map key (that was the collision).
+  let anyRow: StageMasterRow | null = null;
+  let best: StageMasterRow | null = null;
+  for (const r of cache.master) {
+    if (r.crop_code?.toLowerCase() !== cropKey) continue;
+    if (r.growth_stage?.toLowerCase() !== stageKey) continue;
+    const m = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
+    if (m === 'any' && !anyRow) anyRow = r;
+    if (!best || (r.das_min ?? Infinity) < (best.das_min ?? Infinity)) best = r;
+  }
+  const picked = anyRow ?? best;
+  if (picked) {
+    warnOnce(
+      `row:${cropKey}:${stageKey}`,
+      `[STAGE_LANE_UNKNOWN] crop=${cropKey} stage=${stageKey} ` +
+      `picked=${picked.growth_stage} method=${picked.cultivation_method ?? 'any'}`,
+    );
+  }
+  return picked;
 }
 
 export function getStageKnowledge(crop: string, stage: string): StageKnowledgeRow | null {
   if (!cache) return null;
   return cache.knowledgeByCropStage.get(k(crop, stage)) ?? null;
 }
+
 
 /** DB-first stage category lookup. Returns null when DB has no row.
  *  Note: crop_stage_master has no `stage_category` column — returns the
