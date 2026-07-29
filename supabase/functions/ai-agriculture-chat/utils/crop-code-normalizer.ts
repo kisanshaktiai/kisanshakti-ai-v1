@@ -94,7 +94,7 @@ const CROP_TO_SHORT: Record<string, string> = {
   'भिंडी': 'OKRA',
   'बंदगोभी': 'CAB',
   'फूलगोभी': 'CFL',
-  'सोयाबीन': 'SOY',
+
 };
 
 // REVERSE MAP: DB short code → full English name
