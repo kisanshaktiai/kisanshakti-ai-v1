@@ -1,4 +1,9 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:30 UTC — LATENCY L7: perception model gpt-4o -> gpt-4o-mini;
+ *   retry budget 2x5s -> 1x4s. Extraction contract unchanged.
+ */
+/**
  * ARCHITECTURAL CONTRACT — PURE NLU PERCEPTION LAYER
  *
  * This module:

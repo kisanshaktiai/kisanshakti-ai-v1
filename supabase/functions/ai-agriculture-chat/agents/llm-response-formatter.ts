@@ -1,4 +1,10 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:30 UTC — LATENCY L1: narration budget capped at 14s total
+ *   (tiers 8s/6s/5s, rate-limit sleeps removed). Cascade previously cost up to
+ *   56s before falling back to template. Render-only contract unchanged.
+ */
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
  * ═══════════════════════════════════════════════════════════════════════════

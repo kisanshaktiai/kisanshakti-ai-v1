@@ -1,4 +1,11 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:30 UTC — LATENCY L2: evaluateHypothesisGraph memoized (20s TTL)
+ *   on (crop, group, stage, das, obs-set, stage-conf). One traversal per turn
+ *   shared by orchestrator / clarification builder / seed expander. Callers get
+ *   a cloned envelope; rejections are never cached.
+ */
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────

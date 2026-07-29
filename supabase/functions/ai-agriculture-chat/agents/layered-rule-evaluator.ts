@@ -1,4 +1,9 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:30 UTC — LATENCY L3: converted-rule cache per crop (5min TTL);
+ *   getAllRulesWithBundled no longer rebuilds every rule closure twice a turn.
+ */
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts
  * ROLE:      Layered rule evaluation pipeline — graph control, temporal

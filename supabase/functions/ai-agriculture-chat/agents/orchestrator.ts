@@ -1,6 +1,9 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:30 UTC — LATENCY L5: per-turn memo (_turnMemo, reset in
+ *   orchestrate) for fetchComprehensiveLandContext / fetchWeatherData; each was
+ *   re-executed 2-3x per turn with identical arguments.
  * 2026-07-29 00:00 UTC — F1a: deleted dead generateCropHealthResponse (embedded
  *   hardcoded ICAR NDVI/N thresholds + fabricated urea dosage). Zero callers.
  * ───────────────────────────────────────────────────────────────────────────
