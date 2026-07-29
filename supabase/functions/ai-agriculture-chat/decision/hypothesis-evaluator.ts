@@ -1,4 +1,6 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:55 UTC — FIX C1-b: calculateStageRelevance forwards cultivationMethod to calculateStageRelevanceScore.
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG
  * 2026-07-11 UTC — v4-P2: generic dotted-path predicate resolver.

@@ -1,4 +1,6 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:55 UTC — FIX C1-b: isEarly/isVegetativeStageFromDB accept cultivationMethod and forward it to getStageRow.
  * ═══════════════════════════════════════════════════════════════════════════
  * FAILURE CLASS DETECTOR - CANONICAL SYMBOL VERSION
  * ═══════════════════════════════════════════════════════════════════════════

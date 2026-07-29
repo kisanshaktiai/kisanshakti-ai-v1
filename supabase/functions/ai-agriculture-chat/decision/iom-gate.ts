@@ -1,4 +1,6 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:55 UTC — FIX C1-b: expandStageFamily accepts/forwards cultivationMethod to getStageFamilyFromDB; omitted → request-scoped lane.
  * ═══════════════════════════════════════════════════════════════════════════
  * IOM GATE — Intent×Observation×Stage×DAS allowlist filter
  * ═══════════════════════════════════════════════════════════════════════════

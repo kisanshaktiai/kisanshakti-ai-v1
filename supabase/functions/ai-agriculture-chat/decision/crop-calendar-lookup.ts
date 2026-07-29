@@ -1,4 +1,6 @@
 /**
+ * CHANGE LOG
+ * 2026-07-29 10:55 UTC — FIX C1-b: optional cultivationMethod on calculateGrowthStageFromDAS/hasICARCalendar, forwarded to getStageByDAS/getStageRow; omitted → request-scoped lane.
  * ═══════════════════════════════════════════════════════════════════════════
  * CROP CALENDAR LOOKUP — DB-driven Growth Stage Determination
  * ═══════════════════════════════════════════════════════════════════════════
