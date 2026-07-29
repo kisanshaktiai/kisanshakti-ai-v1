@@ -373,13 +373,15 @@ export function getStageCategoryFromDB(
 /**
  * DB-first DAS → stage lookup.
  *
- * v7 — NULL cultivation_method is treated as a data-quality issue and is
- * NEVER matched at runtime (mirrors the SQL resolver). A row qualifies iff
- * its own `cultivation_method` is 'any' OR equals the requested method
- * (case-insensitive). Exact match is preferred over 'any'.
+ * Lane resolution: explicit `cultivationMethod` wins (including an explicit
+ * null = lane-agnostic); otherwise the request-scoped lane. A row qualifies
+ * iff its own method equals the lane or is 'any'/NULL, exact preferred.
  *
- * When `cultivationMethod` is undefined the legacy first-hit behaviour is
- * preserved so pre-v6 callers stay green.
+ * FIX C1-b: the legacy "return first hit" branch is DELETED. With rice
+ * direct_seeded (10-160 DAS) and transplanted (0-125 DAS) both present, first
+ * hit meant a direct-seeded field could be scored on the transplanted
+ * timeline. When the lane is unknown we now pick deterministically
+ * ('any' → lowest das_min) and log [STAGE_LANE_UNKNOWN] once per request.
  */
 export function getStageByDAS(
   crop: string,
@@ -388,31 +390,35 @@ export function getStageByDAS(
 ): StageMasterRow | null {
   if (!cache) return null;
   const cropKey = (crop || '').toLowerCase();
-  // FIX C1 (2026-07-28): no module-scope fallback. Lane-agnostic default
-  // when caller omits cultivationMethod — prevents cross-request contamination.
-  const resolvedMethod = cultivationMethod === undefined ? null : cultivationMethod;
-  const method = resolvedMethod ? String(resolvedMethod).toLowerCase() : null;
+  const method = resolveLane(cultivationMethod);
 
   let exact: StageMasterRow | null = null;
   let anyRow: StageMasterRow | null = null;
+  let earliest: StageMasterRow | null = null;
 
   for (const r of cache.master) {
     if (r.crop_code?.toLowerCase() !== cropKey) continue;
     if (!((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das)) continue;
-    const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
+    const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
 
-    if (method) {
-      // NULL rows are excluded — treated as data-quality issue.
-      if (rowMethod === null) continue;
-      if (rowMethod === method && !exact) exact = r;
-      else if (rowMethod === 'any' && !anyRow) anyRow = r;
-    } else {
-      // Legacy path — return first hit as before.
-      return r;
-    }
+    if (rowMethod === 'any' && !anyRow) anyRow = r;
+    if (method && rowMethod === method && !exact) exact = r;
+    if (!earliest || (r.das_min ?? Infinity) < (earliest.das_min ?? Infinity)) earliest = r;
   }
-  return exact ?? anyRow;
+
+  if (method) return exact ?? anyRow;
+
+  const picked = anyRow ?? earliest;
+  if (picked) {
+    warnOnce(
+      `das:${cropKey}:${das}`,
+      `[STAGE_LANE_UNKNOWN] crop=${cropKey} das=${das} ` +
+      `picked=${picked.growth_stage} method=${picked.cultivation_method ?? 'any'}`,
+    );
+  }
+  return picked;
 }
+
 
 
 
