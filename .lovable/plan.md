@@ -1,86 +1,76 @@
-## Forensic Audit — Actual Runtime Data Pipeline (read-only, no code changed)
 
-Scope: `supabase/functions/ai-agriculture-chat/`. Every claim below has a file:line from the code, not the schema.
+# AI Chat Latency Forensic Audit (read-only, no code changed)
 
----
+## 0. Measured regression (hard evidence, `ai_chat_audit_logs.processing_time_ms`)
 
-### 1. Actual call graph
+| Day | turns | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| 2026-06-24 | 18 | 10,142 | 16,456 | 16,710 |
+| 2026-07-05 | 40 | 9,344 | 14,168 | 33,811 |
+| 2026-07-09 | 38 | 29,472 | 43,867 | 46,712 |
+| 2026-07-25 | 17 | 30,903 | 60,385 | 66,194 |
+| 2026-07-27 | 13 | 46,598 | 67,807 | 69,609 |
+| 2026-07-28 | 9 | 44,498 | 82,641 | 87,681 |
+| 2026-07-29 | 2 | 68,608 | 70,969 | 71,231 |
 
-| Step | Intended | Actual entry point (file:line / fn) |
-|---|---|---|
-| 0 | HTTP | `index.ts:394` `Deno.serve` → `index.ts:1119` `orch.orchestrate()` |
-| 1–2 | Native text → normalize/translate | `agents/orchestrator.ts:3792` `normalizeLanguage()` → `agents/language-normalizer.ts` |
-| 3 | Intent + confidence | `orchestrator.ts:3848` `extractSemanticMeaning()` → `agents/semantic-extractor.ts:117` → `classifyFarmerIntent()` (`agents/intent-classifier.ts`, imported `semantic-extractor.ts:22`). Intent chosen at `orchestrator.ts:7545-7548` |
-| 4 | Candidate observations | `orchestrator.ts:7932` `loadClarificationCandidates()` → `runtime/clarification-contract.ts:100` → `decision/hypothesis-clarification-builder.ts` (queries `hypothesis_conditions`/`hypothesis_master` at `:319,:335,:475,:653`) |
-| 5 | Farmer selects | `orchestrator.ts:2569-2578` (`option_selected=true`, `awaiting_clarification → decision_in_progress`) → `orchestrator.ts:2840` `resolveHypothesesFromObservations()` |
-| 6 | Confidence update | `decision/evidence-confidence.ts:159` `scoreEvidenceSet` (wired `orchestrator.ts:824`) |
-| 7 | hypothesis_conditions → hypothesis_master | `decision/hypothesis-graph-evaluator.ts:855,906,944` |
-| 8 | Biological gates | `hypothesis-graph-evaluator.ts:367` (BIO_STAGE_AUTHORITY), `:421` soft/hard stage gate, APPLICABILITY_GATE |
-| 9 | hypothesis_rule_mapping → decision_rules | `hypothesis-graph-evaluator.ts:997` and `agents/layered-rule-evaluator.ts:1957` |
-| 10 | Conflict resolution / decision | `agents/conflict-resolver.ts`, `decision/unified-decision-gate.ts:531`, `agents/deterministic-response-builder.ts` |
-| 11 | LLM narration | `index.ts:2297` → `agents/llm-response-formatter.ts:286` `formatRecommendationsWithLLM()` |
+~5-7x regression, stepping up around Jul 8-9 and again Jul 25-27 (the graph-gate / SSOT patch series).
 
-The intended flow does exist end-to-end. The problems are everything running *beside* it.
+Split by response source, last 7 days:
+- `CLARIFICATION` — 35 turns, **avg 44.8 s**
+- `SYMBOLIC_TEMPLATE` — 36 turns, **avg 37.7 s**, `llm_model_used = NULL`
 
----
+This is decisive: **clarification turns run no narration LLM yet still cost 45 s**, and every "final answer" turn in the window fell back to the template (LLM formatter produced nothing). So the slowdown is **not** in narration quality — it is symbolic-path work plus burned LLM timeout budget.
 
-### 2. Divergences from the intended pipeline
+## 1. Real request path
+`index.ts:394 serve()` → `runPipelineSelfCheck` (`index.ts:408`) → auth/quota (`549`) → session resolve (`589/638/724`) → history load (`790`) → `orch.orchestrate()` (`index.ts:1119`) → cache preloads (`orchestrator.ts:1367,1371,1687,1696`) → land context (`1816`) → semantic extraction (`3851`) → observation bridge/alias (`2809, 3874, 6234`) → `resolveHypothesesFromObservations` (`2843`) → `evaluateHypothesisGraph` (`6363`) → `runGraphRuntime` (`6722`) → rules (`3114, 8767, 10743`) → clarification builders (`2931, 3015, 6911, 7151, 7836`) → return → `ensureObservationSelectorContract` (`index.ts:1177`, again `2183`) → `formatRecommendationsWithLLM` (`index.ts:2302`) → persist (`2571/2597`).
 
-**D1 — Step 3 has two competing intent producers.** `agents/nlu-agent.ts` is declared pure perception (`nlu-agent.ts:52`, always emits `primary_intent:'UNKNOWN'` at `:572`) yet still computes its own confidence (`nlu-agent.ts:391-427`), and the orchestrator calls it (`orchestrator.ts:7429`, `:11278`) before preferring `semanticExtraction.intent_code`. A third scorer, `agents/query-router.ts:297-425`, assigns hardcoded intent confidences (0.95/0.85/0.7/0.5) with no DB backing.
+## 2. Bottlenecks, ordered by latency impact
 
-**D2 — Step 4 does not use `observation_intent_master` + `intent_observation_mapping` + `intent_assertion_pattern` as the generator.** Candidates are synthesized from `hypothesis_conditions`; IOM is only a "discovery seed" (`runtime/clarification-contract.ts:14-16`) and, per the current architecture, a weight not a filter. `intent_assertion_pattern` is read in exactly **one** place — `runtime/contradiction-engine.ts:133` — and that file states the compatibility columns it wants are absent, so the intended assertion-pattern gating is effectively inert.
+**B1 — LLM formatter tier cascade (up to ~56 s, currently mostly wasted).**
+`agents/llm-response-formatter.ts:610-650`: OpenAI 20 s timeout → sleep 3 s → Gemini 18 s → sleep 3 s → Lovable 12 s → template fallback (`656`). The 36 `SYMBOLIC_TEMPLATE` rows with `llm_model_used = NULL` prove the full cascade is being paid and then discarded. `index.ts:2302` races it against `remainingTime-2000`, so the turn simply burns until the outer budget expires.
 
-**D3 — Step 11 gating is post-hoc, not preventive.** `llm-response-formatter.ts:1625` takes the deterministic path only when `primary && primary.rule_id && hasAdequateRuleContent(richData)`. Otherwise it still builds an LLM prompt; the only protection is the SOURCE VALIDATION GATE after the call (`index.ts:2308-2317`), which downgrades to a template only if `validation_passed === false`.
+**B2 — Repeated full graph traversals inside one turn.**
+`evaluateHypothesisGraph` is invoked from `orchestrator.ts:6363`, from `runGraphRuntime` (`6722`), and again inside `hypothesis-clarification-builder.ts:291`; `resolveHypothesesFromObservations` runs at `orchestrator.ts:2843` and `builder:274`. Each traversal is 6+ sequential DB round-trips (`hypothesis-graph-evaluator.ts:341,357,360,373,376,660,905,943,969,996`). Clarification turns therefore pay the graph 2-3x.
 
-**D4 — Hardcoded confidence floor at the exit.** Final `metadata.confidence` = `diagnosticState.hypotheses?.[0]?.confidence || 0.7` (`orchestrator.ts:11232`). A graph that produced nothing still reports 0.7.
+**B3 — Full-table `decision_rules` reads, 13 call sites.**
+`pg_stat_statements`: `SELECT decision_rules.*` — 402 calls @ **334 ms**, and an unfiltered variant 339 calls @ **338 ms** (~250 s total). Sites: `bundled-rules/loader.ts:129`, `symbolic-reasoner.ts:682`, `hypothesis-graph-evaluator.ts:970`, `hypothesis-evaluator.ts:850`, `orchestrator.ts:2776,10743`, `canonical-observation-loader.ts:396`, `generic-multi-match-detector.ts:179,400`, `llm-output-validator.ts:209`, `biological-state.ts:340`, `translation-loader.ts:263`, `pipeline-self-check.ts:88`. `getAllRulesWithBundled` (`layered-rule-evaluator.ts:1305`) is called twice per turn (`orchestrator.ts:3114`, `8767`) and re-maps every rule into closures each call — no converted-rule cache (`cachedConvertedRules` declared at `:1297` but never used).
 
----
+**B4 — Duplicated alias/index warmups across four independent caches.**
+`observation_aliases` is loaded by `bundled-rules/loader.ts:1212` (14 paged reads of ~14k rows), `observation-code-mapper.ts:505`, `observation-classification-cache.ts:193`, and `utils/db-ssot/observation-index.ts`. pg_stat: 2,835 + 2,250 + 1,005 calls @ 14-29 ms. TTLs differ (1 h vs 10 min vs 15 min), so refreshes are staggered and land on random farmer turns.
 
-### 3. Duplicate / parallel execution paths
+**B5 — Cold-start tax on every isolate.**
+`index.ts:408` self-check + `orchestrator.ts:1367-1371,1687-1696` preloads + `stage-knowledge-cache.ts:136-185` (four queries, limits 5k-10k rows) run before any farmer work. With 10-min TTLs and low traffic, most turns are effectively cold.
 
-- **Three live hypothesis producers.** (a) `decision/hypothesis-graph-evaluator.ts` (DB graph, authoritative); (b) `decision/causal-hypothesis-engine.ts` — *is* live, imported at `orchestrator.ts:441` as `runCausalHypothesisArbitration`, and independently queries `hypothesis_master`/`hypothesis_conditions`/`hypothesis_rule_mapping` (`:244,:270,:276`); (c) `decision/symbolic-reasoner.ts` — *is* live as a value import in `agents/layered-rule-evaluator.ts:62` and `layers/rule-evaluation-layer.ts:18`, and derives its own hypothesis map from fired rules (`symbolic-reasoner.ts:1619,1679`) with no `hypothesis_conditions` read at all. That third path is the one that can produce a hypothesis the graph never authorized.
-- **Two rule loaders.** `bundled-rules/loader.ts:129` bulk-loads the whole active `decision_rules` table into memory, which `layered-rule-evaluator` then filters — in parallel with the HRM-scoped path.
-- **Two decision-graph entries.** `agents/decision-graph-bridge.ts` `evaluateDecisionGraph` is reached from `agents/diagnostic-flow-controller.ts:460,519` and `agents/rule-engine-executor.ts:152`, independently of the graph evaluator.
+**B6 — Clarification loop multiplies everything.**
+Session `bb9c239e`: **71 turns, 35 of them CLARIFICATION**, avg 41 s. Wall-clock cost to the farmer is loop_length x 45 s, which is the actual perceived slowness. Loop-guard/rescue paths add work: `ensureObservationSelectorContract` runs twice (`index.ts:1177`, `2183`), plus `attemptDbClarificationRescue` (`2081`).
 
----
+**B7 — NLU retry budget.** `agents/nlu-agent.ts:96-146` — `gpt-4o` (not a mini/flash model), 5 s timeout x 2 attempts + backoff ≈ up to 13 s before `processNLU` (`orchestrator.ts:7432`) returns.
 
-### 4. Modules bypassing `hypothesis_rule_mapping`
+**B8 — Tiered seed expansion re-runs the graph.** `observation-hypothesis-resolver.ts:151-200`: on empty candidates, alias closure runs the graph again, then intent-peers runs it a third time — exactly the path taken on the looping clarification turns.
 
-Only two call sites honor the edge (`hypothesis-graph-evaluator.ts:997`, `layered-rule-evaluator.ts:1957`). These reach `decision_rules` without it:
+**B9 — Dynamic imports on the hot path.** ~18 `await import()` inside `orchestrate()` (e.g. `5001, 5760, 6175, 6233, 6338, 6797, 7217, 8647, 9371, 10775`) despite `orchestrator.ts:417` stating static imports only.
 
-- `agents/orchestrator.ts:2773` (confirmed-rule lookup), `agents/orchestrator.ts:10740` (universal fallback)
-- `decision/symbolic-reasoner.ts:682`
-- `decision/hypothesis-evaluator.ts:850` (bulk paginated load)
-- `agents/generic-multi-match-detector.ts:179,400`
-- `agents/canonical-observation-loader.ts:396` (crop/stage filter)
-- `agents/biological-state.ts:340` (category filter only)
-- `bundled-rules/loader.ts:129` (whole table)
-- Non-decisional, acceptable: `i18n/translation-loader.ts:263`, `utils/llm-output-validator.ts:209`, `decision/pipeline-self-check.ts:88`
+## 3. Answers to the specific questions
+- **Where is the slowdown?** Not narration quality, not serialization. It is (a) burned LLM timeout budget in the formatter cascade, (b) repeated hypothesis-graph traversal + rule loading per turn, (c) clarification looping multiplying both.
+- **Duplicate paths that don't change the answer:** three graph-traversal producers (B2), two rule loaders (B3), four alias caches (B4), double observation-contract pass (B6), shadow-diff loop in `observation-code-mapper.ts:527`.
+- **Repeated reads / recomputation in one turn:** `fetchComprehensiveLandContext` at `orchestrator.ts:1816, 2632, 11352`; `fetchWeatherData` at `8119, 8291, 11132`; `getCropVocabulary` at `2046, 2049, 3822, 3825`; `getAllRulesWithBundled` at `3114, 8767`.
+- **State leakage / fallback loops:** confirmed loop behavior in B6; no cross-request leak observed after the C1/C2 module-scope removal.
+- **Over-broad rule evaluation:** yes — unfiltered `decision_rules` selects (339 calls) and per-call closure rebuild in `convertBundledToRule`.
 
-Note `agents/layered-rule-evaluator.ts:1913` explicitly forbids the `decision_rules.hypothesis_code` fallback — but the loaders above sidestep the edge by filtering on crop/stage/rule_id instead, achieving the same masking of curation gaps.
+## 4. Minimal fix batches, ordered by latency impact (not implemented)
 
----
+**Batch L1 — formatter budget (expected -15 to -35 s/turn).** Single-tier narration with one 8 s timeout; drop the 3 s sleeps; skip the formatter entirely when `response_source` will be CLARIFICATION.
 
-### 5. Confidence computation / overwrite / reset points
+**Batch L2 — one graph traversal per turn (-5 to -12 s).** Memoize `evaluateHypothesisGraph` by `(observation_set, crop, stage, das)` for the turn; have the clarification builder consume the orchestrator's snapshot instead of re-running.
 
-| Site | Behaviour |
-|---|---|
-| `agents/nlu-agent.ts:391-427,522` | perception confidence seeded at 0.5, heuristically raised by script/word counts |
-| `agents/intent-classifier.ts:273,287` | LLM confidence, defaults 0.6 / 0.5 on retry |
-| `agents/query-router.ts:297-425` | hardcoded ladder, terminal `result.confidence = 0.5` |
-| `agents/nlp-agriculture-validator.ts:587` | hard **reset** `result.confidence = 0.1` |
-| `decision/evidence-confidence.ts:159` | intended Step-6 stage: product of five weights |
-| `decision/hypothesis-graph-evaluator.ts:593-594` | graph score; `:691` hard **reset** `c.confidence = 0` on elimination |
-| `decision/symbolic-reasoner.ts:1619,1679` | **overwrites** graph confidence: `+= conf*0.2`, then `Math.max(confidence, hypotheses[0].confidence)` |
-| `decision/confidence-calculator.ts:210,214` | recomputes from fired-rule count, then `Math.max` with diagnosis |
-| `agents/multimodal-fusion.ts:276-339` | re-derives from text understanding |
-| `index.ts:1999-2004` | ConfidenceBridge maps symbolic → decision confidence; logs an invariant breach rather than failing |
-| `agents/orchestrator.ts:11232` | final **fallback 0.7** |
+**Batch L3 — rule-load consolidation (-1.5 to -3 s).** Single crop-scoped rule cache; activate `cachedConvertedRules`; remove unfiltered `SELECT decision_rules.*` from non-boot paths.
 
-`decision/confidence-chain.ts` / `decision/request-context.ts` exist as the intended single backbone but are only consumed as optional fields in `semantic-validator.ts:44` and `scientific-validator.ts:49` — they do not gate anything.
+**Batch L4 — collapse the four alias/observation caches into `utils/db-ssot/observation-index.ts` with one TTL; delete the shadow-diff loop (-0.5 to -2 s, plus fewer TTL-refresh spikes).**
 
----
+**Batch L5 — per-turn memo for land context, weather, crop vocabulary; make hot-path imports static (-0.5 to -1.5 s).**
 
-### Proposed follow-up (not executed)
+**Batch L6 — clarification-loop cap.** Terminate to a decision or structured no-decision after N rounds; this is the largest *perceived* win since it removes whole 45 s turns.
 
-If you want repairs, I'd batch them: **B1** collapse the three hypothesis producers to graph-only (behaviour-preserving under logging first); **B2** make `hypothesis_rule_mapping` mandatory for every decisional `decision_rules` read; **B3** make `ConfidenceChain` the only writer and delete the 0.7/0.5/0.1 constants; **B4** turn the formatter gate preventive. Tell me which batches to run.
+**Batch L7 — swap NLU to a flash/mini model, 1 retry (-3 to -8 s on retry paths).**
+
+Suggested execution order: L1 → L6 → L2 → L3 → L4 → L5 → L7, with `processing_time_ms` p50/p95 re-measured after each batch.

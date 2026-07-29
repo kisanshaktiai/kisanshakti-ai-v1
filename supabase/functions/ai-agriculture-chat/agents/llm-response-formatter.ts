@@ -1,4 +1,10 @@
 /**
+ * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-07-29 10:30 UTC — LATENCY L1: narration budget capped at 14s total
+ *   (tiers 8s/6s/5s, rate-limit sleeps removed). Cascade previously cost up to
+ *   56s before falling back to template. Render-only contract unchanged.
+ */
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
  * ═══════════════════════════════════════════════════════════════════════════
@@ -606,51 +612,66 @@ export async function formatRecommendationsWithLLM(
   let aiModelUsed = '';
   let tokensUsed = 0;  // NEW: Track token usage
   
+  // ─────────────────────────────────────────────────────────────────────────
+  // LATENCY BATCH L1 (2026-07-29): narration budget capped.
+  // Previous cascade cost up to 20s + 3s + 18s + 3s + 12s = 56s of wall clock
+  // before falling back to the template. Audit of ai_chat_audit_logs showed the
+  // full cascade being paid and then DISCARDED (36 SYMBOLIC_TEMPLATE turns with
+  // llm_model_used = NULL, avg 37.7s). Narration is render-only, so a short
+  // budget is strictly better than a long one: tiers now 8s / 6s / 5s with NO
+  // rate-limit sleeps (a 3s sleep before another timeout only burns budget).
+  // ─────────────────────────────────────────────────────────────────────────
+  const NARRATION_BUDGET_MS = 14_000;
+  const narrationStart = Date.now();
+  const remaining = () => NARRATION_BUDGET_MS - (Date.now() - narrationStart);
+
   try {
-    // TIER 1: Try OpenAI FIRST with 20-second timeout (user preference)
-    if (OPENAI_API_KEY) {
-      console.log(`   🔄 Trying OpenAI (primary)...`);
-      const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 20000);
+    // TIER 1: OpenAI (primary) — 8s cap
+    if (OPENAI_API_KEY && remaining() > 1500) {
+      console.log(`   🔄 Trying OpenAI (primary, ${Math.min(8000, remaining())}ms cap)...`);
+      const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, Math.min(8000, remaining()));
       if (result.success) {
         formattedResponse = result.text;
         aiModelUsed = 'gpt-4o-mini';  // COST OPTIMIZED: Using GPT-4o-mini
         tokensUsed = result.tokens_used || 0;
-        console.log(`   ✅ OpenAI formatting successful (gpt-4o-mini)`);
+        console.log(`   ✅ OpenAI formatting successful (gpt-4o-mini) in ${Date.now() - narrationStart}ms`);
       } else if (result.error === 'RATE_LIMIT') {
-        console.warn(`   ⚠️ OpenAI rate limited, waiting 3s before fallback...`);
-        await new Promise(r => setTimeout(r, 3000));
+        console.warn(`   ⚠️ OpenAI rate limited — failing over immediately (no sleep)`);
       }
     }
-    
-    // TIER 2: Fallback to Gemini if OpenAI failed (18-second timeout)
-    if (!formattedResponse && GEMINI_API_KEY) {
-      console.log(`   🔄 Trying Gemini (fallback)...`);
-      const result = await callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, 18000);
+
+    // TIER 2: Gemini — 6s cap, only if budget remains
+    if (!formattedResponse && GEMINI_API_KEY && remaining() > 1500) {
+      console.log(`   🔄 Trying Gemini (fallback, ${Math.min(6000, remaining())}ms cap)...`);
+      const result = await callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, Math.min(6000, remaining()));
       if (result.success) {
         formattedResponse = result.text;
         aiModelUsed = 'gemini-2.0-flash';
         tokensUsed = result.tokens_used || 0;
-        console.log(`   ✅ Gemini formatting successful`);
+        console.log(`   ✅ Gemini formatting successful in ${Date.now() - narrationStart}ms`);
       } else if (result.error === 'RATE_LIMIT') {
-        console.warn(`   ⚠️ Gemini rate limited (429), waiting 3s before fallback...`);
-        await new Promise(r => setTimeout(r, 3000));
+        console.warn(`   ⚠️ Gemini rate limited (429) — failing over immediately (no sleep)`);
       }
     }
-    
-    // TIER 3: Fallback to Lovable AI (12-second timeout)
-    if (!formattedResponse && LOVABLE_API_KEY) {
-      console.log(`   🔄 Trying Lovable AI (tertiary)...`);
-      const result = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 12000);
+
+    // TIER 3: Lovable AI — 5s cap, only if budget remains
+    if (!formattedResponse && LOVABLE_API_KEY && remaining() > 1500) {
+      console.log(`   🔄 Trying Lovable AI (tertiary, ${Math.min(5000, remaining())}ms cap)...`);
+      const result = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, Math.min(5000, remaining()));
       if (result.success) {
         formattedResponse = result.text;
         aiModelUsed = 'lovable-gemini-2.5-flash';
-        console.log(`   ✅ Lovable AI formatting successful`);
+        console.log(`   ✅ Lovable AI formatting successful in ${Date.now() - narrationStart}ms`);
       }
     }
-    
+
+    if (!formattedResponse) {
+      console.warn(`   ⏱️ [NARRATION_BUDGET_EXHAUSTED] no tier produced text in ${Date.now() - narrationStart}ms (budget ${NARRATION_BUDGET_MS}ms)`);
+    }
   } catch (error) {
     console.error(`   ❌ LLM formatting error:`, error);
   }
+
   
   // If LLM formatting failed, use template fallback
   if (!formattedResponse || formattedResponse.length < 50) {
