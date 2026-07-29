@@ -109,27 +109,96 @@ export function setActiveCultivationMethod(method: string | null | undefined): v
   console.warn(
     `[STAGE_LANE_DEPRECATED] setActiveCultivationMethod called with method=${raw ?? 'null'}; ` +
     `module-scope state was removed to prevent cross-request contamination. ` +
-    `Pass cultivationMethod explicitly to getStageRow/getStageByDAS/getStageFamilyFromDB instead.`,
+    `Use runWithCultivationLane()/enterCultivationLane() or pass cultivationMethod ` +
+    `explicitly to getStageRow/getStageByDAS/getStageFamilyFromDB instead.`,
   );
 }
 
 export function getActiveCultivationMethod(): string | null {
-  console.warn(
-    `[STAGE_LANE_DEPRECATED] getActiveCultivationMethod called — module-scope state was ` +
-    `removed to prevent cross-request contamination. Callers must resolve the ` +
-    `cultivation method from BiologicalState per request.`,
-  );
-  return null;
+  // FIX C1-b: now backed by the REQUEST-SCOPED store (AsyncLocalStorage), not
+  // by module-scope mutable state. Safe under concurrency.
+  return currentLane();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIX C1-b (2026-07-29) — REQUEST-SCOPED CULTIVATION LANE
+// ───────────────────────────────────────────────────────────────────────────
+// AsyncLocalStorage gives every in-flight request its own lane. Unlike the
+// module-scope variable deleted by FIX C1, a store entered inside request A's
+// async context is invisible to request B, so concurrent farmers can never
+// read each other's cultivation lane.
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface LaneStore {
+  lane: string | null;
+  warned: Set<string>;
+}
+
+const laneALS = new AsyncLocalStorage<LaneStore>();
+
+function normLane(method: string | null | undefined): string | null {
+  const raw = method ? String(method).trim().toLowerCase() : '';
+  return raw ? raw : null;
+}
+
+/** Run `fn` with `method` as the active cultivation lane for this request. */
+export function runWithCultivationLane<T>(
+  method: string | null | undefined,
+  fn: () => T,
+): T {
+  return laneALS.run({ lane: normLane(method), warned: new Set<string>() }, fn);
+}
+
+/**
+ * Set the lane for the CURRENT async context onward (no callback wrapping).
+ * Used by the orchestrator the moment SessionSSOT resolves the lane mid-turn.
+ * Falls back to a warning (lane-agnostic behaviour) if the runtime does not
+ * implement `enterWith`.
+ */
+export function enterCultivationLane(method: string | null | undefined): void {
+  const lane = normLane(method);
+  try {
+    laneALS.enterWith({ lane, warned: new Set<string>() });
+  } catch (e) {
+    console.warn(
+      `[STAGE_LANE_ENTER_FAILED] method=${lane ?? 'null'} err=${(e as Error).message} ` +
+      `→ lookups fall back to lane-agnostic`,
+    );
+  }
+}
+
+/** The lane bound to the current request context, or null when unknown. */
+export function currentLane(): string | null {
+  return laneALS.getStore()?.lane ?? null;
+}
+
+/** Explicit arg wins (including an explicit null); otherwise the request store. */
+function resolveLane(cultivationMethod: string | null | undefined): string | null {
+  if (cultivationMethod === undefined) return currentLane();
+  return normLane(cultivationMethod);
+}
+
+/** Log a lane-ambiguity warning at most once per request context. */
+function warnOnce(key: string, message: string): void {
+  const store = laneALS.getStore();
+  if (store) {
+    if (store.warned.has(key)) return;
+    store.warned.add(key);
+  }
+  console.warn(message);
 }
 
 /** A stage-graph / stage-master row belongs to the requested lane when its own
- *  method equals the lane or is the universal 'any'. Unknown lane → all rows. */
+ *  method equals the lane or is the universal 'any'. Unknown lane → all rows.
+ *  FIX C1-b: a NULL row method degrades to 'any' — crop_stage_graph has 134
+ *  NULL-lane edges covering every non-rice crop; rejecting them would delete
+ *  those stage families entirely. */
 function laneMatches(rowMethod: unknown, lane: string | null): boolean {
-  const m = rowMethod ? String(rowMethod).toLowerCase() : null;
+  const m = rowMethod ? String(rowMethod).toLowerCase() : 'any';
   if (!lane) return true;
-  if (m === null) return false; // NULL = data-quality issue, never matched
   return m === lane || m === 'any';
 }
+
 
 export async function loadStageKnowledge(supabase: any): Promise<void> {
   const now = Date.now();
