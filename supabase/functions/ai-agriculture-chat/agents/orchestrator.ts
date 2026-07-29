@@ -5693,18 +5693,37 @@ export class AIAgentOrchestrator {
       // symbolic graph. This is the single SSOT entry-point for observations.
       // ═══════════════════════════════════════════════════════════════════════════
       try {
-        const CANON_RE = /^[A-Z0-9_]+$/;
+        // ─────────────────────────────────────────────────────────────────
+        // FIX (2026-07-29) — EVIDENCE IDENTITY REPAIR.
+        // This seed loop previously validated observation codes against
+        // /^[A-Z0-9_]+$/ (UPPER_SNAKE). Observation codes are DB-canonical
+        // lower_snake (observation_master.observation_code 2549/2549
+        // lowercase) and ObservationLedger enforces lower_snake on
+        // observation slots. Result: EVERY code was either rejected here as
+        // "non_canonical" or thrown out by append() — the graph observation
+        // ledger was NEVER seeded from the main evidence stream.
+        // Codes are now folded through the canonical-code SSOT before the
+        // shape check, and deduplicated on the CANONICAL form (not the raw
+        // string) so casing/separator variants can no longer create two
+        // identities for one observation.
+        // Intent keeps the UPPER_SNAKE contract (intent codes are uppercase).
+        // ─────────────────────────────────────────────────────────────────
+        const CANON_RE = /^[A-Z0-9_]+$/;           // intent / rule identifiers
+        const CANON_OBS_RE = /^[a-z0-9_]+$/;       // observation identifiers
         const seenSeed = new Set<string>();
+        let _seedRejected = 0;
         for (const raw of allObservationsForPreAuth) {
-          const code = typeof raw === 'string' ? raw : String(raw ?? '');
+          const rawCode = typeof raw === 'string' ? raw : String(raw ?? '');
+          const code = canonicalObsCode(rawCode);
           if (!code || seenSeed.has(code)) continue;
           seenSeed.add(code);
-          if (!CANON_RE.test(code)) {
+          if (!CANON_OBS_RE.test(code)) {
+            _seedRejected++;
             try {
               requestCtx.ledger.lose(
                 'OBSERVATION_LEDGER_SEED',
-                `non_canonical:${code}`,
-                { code },
+                `non_canonical:${rawCode}`,
+                { raw: rawCode, canonical: code },
                 'SYMBOLIC_ID_LEAK: non-canonical observation code rejected from graph ledger'
               );
             } catch {/* non-fatal */}
@@ -5723,7 +5742,12 @@ export class AIAgentOrchestrator {
             );
           }
         }
-        if (intentCode && CANON_RE.test(intentCode) && !graph.intent_node) {
+        console.log(
+          `[EVIDENCE_IDENTITY][${traceId}] seed_input=${allObservationsForPreAuth.length} ` +
+            `canonical_unique=${seenSeed.size} rejected=${_seedRejected} ` +
+            `ledger_size=${graph.observation_ledger.size()}`
+        );
+        if (intentCode && CANON_RE.test(canonicalIntentCode(intentCode)) && !graph.intent_node) {
           try {
             graph.setIntent({
               intent_code: intentCode,
