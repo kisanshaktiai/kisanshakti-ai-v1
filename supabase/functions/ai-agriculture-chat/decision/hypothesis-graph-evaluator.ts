@@ -271,15 +271,23 @@ function graphMemoKey(input: GraphHypothesisInput): string {
   const conf = typeof input.predicted_stage_confidence === 'number'
     ? input.predicted_stage_confidence.toFixed(2)
     : 'na';
+  // 2026-07-30 — the S2 applicability gate reads these fields off
+  // canonical_context, so they MUST be part of the cache identity. Without them
+  // a DSR farmer could inherit a transplanted-rice farmer's eliminated set.
+  const applicability = APPLICABILITY_DIMENSIONS
+    .map((d) => `${d.contextField}=${_readCanonicalContextField(input.canonical_context, d.contextField) ?? ''}`)
+    .join(',');
   return [
     String(input.crop_code ?? ''),
     String(input.crop_group ?? ''),
     String(input.growth_stage ?? ''),
     String(input.das ?? ''),
     conf,
+    applicability,
     obs,
   ].join('::').toLowerCase();
 }
+
 
 export function evaluateHypothesisGraph(
   input: GraphHypothesisInput,
