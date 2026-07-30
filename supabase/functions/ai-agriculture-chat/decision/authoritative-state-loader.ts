@@ -66,8 +66,6 @@ const _LEGACY_SOIL_THRESHOLDS = {
   POTASSIUM:  { HIGH: 200, ADEQUATE: 130, LOW: 80 },
 } as const;
 
-// Legacy freshness. WEATHER_HOURS and SCHEDULE_DAYS stay in-code (no seeded
-// system_config keys yet); soil/NDVI resolve via system_config every call.
 // F5 (2026-07-29): NOT externalized to system_config by design.
 // weather_current / weather_observations / weather_aggregates are the ONLY
 // weather SSOT — a second weather config source is forbidden. These are pure
