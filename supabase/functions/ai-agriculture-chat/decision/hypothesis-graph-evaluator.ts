@@ -76,7 +76,7 @@ interface ApplicabilityDimension {
   readonly contextField: string;
   readonly reasonTag: string;
 }
-const APPLICABILITY_DIMENSIONS: readonly ApplicabilityDimension[] = [
+export const APPLICABILITY_DIMENSIONS: readonly ApplicabilityDimension[] = [
   { conditionType: 'CULTIVATION_METHOD', contextField: 'cultivation_method', reasonTag: 'cultivation_mismatch' },
   { conditionType: 'SEASON',             contextField: 'season',             reasonTag: 'season_mismatch' },
   { conditionType: 'CLIMATE_ZONE',       contextField: 'climate_zone',       reasonTag: 'climate_zone_mismatch' },
@@ -86,7 +86,7 @@ const APPLICABILITY_DIMENSIONS: readonly ApplicabilityDimension[] = [
   { conditionType: 'VARIETY_TYPE',       contextField: 'variety_type',       reasonTag: 'variety_type_mismatch' },
 ];
 
-function _readCanonicalContextField(ctx: unknown, field: string): string | null {
+export function _readCanonicalContextField(ctx: unknown, field: string): string | null {
   if (!ctx || typeof ctx !== 'object') return null;
   const rec = ctx as Record<string, unknown>;
   // Direct field on the frozen field-twin (e.g. cultivation_method).
@@ -104,7 +104,7 @@ function _readCanonicalContextField(ctx: unknown, field: string): string | null 
   return s;
 }
 
-function _extractApplicabilityAllowedValues(rows: ConditionRow[]): string[] {
+export function _extractApplicabilityAllowedValues(rows: ConditionRow[]): string[] {
   const out = new Set<string>();
   for (const r of rows) {
     const v = r.value_json;
@@ -126,7 +126,7 @@ function _extractApplicabilityAllowedValues(rows: ConditionRow[]): string[] {
   return [...out];
 }
 
-interface ApplicabilityGateResult {
+export interface ApplicabilityGateResult {
   eliminated: boolean;
   dimension?: string;
   reasonTag?: string;
@@ -134,7 +134,7 @@ interface ApplicabilityGateResult {
   got?: string;
 }
 
-function checkApplicabilityConditions(
+export function checkApplicabilityConditions(
   conds: ConditionRow[],
   canonicalContext: unknown,
 ): ApplicabilityGateResult {
