@@ -2582,8 +2582,25 @@ export class AIAgentOrchestrator {
             optionGraphResolution.hypotheses.length === 0
           ) {
             const graphClarification = await buildHypothesisClarificationOptions({
-              // FIX D1 (2026-07-28): lane from SessionSSOT — never a module global
-              cultivation_method: (this as any)._sessionSSOT?.cultivation_method ?? null,
+              // 2026-08-01: explicit lane precedence (ASL → SSOT → bio-state → land)
+              cultivation_method: (
+                (this as any)._aslPreloaded?.crop?.cultivation_method
+                ?? (this as any)._sessionSSOT?.cultivation_method
+                ?? ((landContextForOptionSelection as any)?.biological_state as any)?.cultivation_method
+                ?? (landContextForOptionSelection as any)?.cultivation_method
+                ?? null
+              ),
+              canonical_context: {
+                crop_code: cropName,
+                growth_stage: growthStage,
+                cultivation_method: (
+                (this as any)._aslPreloaded?.crop?.cultivation_method
+                ?? (this as any)._sessionSSOT?.cultivation_method
+                ?? ((landContextForOptionSelection as any)?.biological_state as any)?.cultivation_method
+                ?? (landContextForOptionSelection as any)?.cultivation_method
+                ?? null
+              ),
+              },
               supabase: this.supabase,
               intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
               crop_code: cropName,
@@ -2664,8 +2681,25 @@ export class AIAgentOrchestrator {
             optionGraphRuleIds.length === 0
           ) {
             const graphClarification = await buildHypothesisClarificationOptions({
-              // FIX D1 (2026-07-28): lane from SessionSSOT — never a module global
-              cultivation_method: (this as any)._sessionSSOT?.cultivation_method ?? null,
+              // 2026-08-01: explicit lane precedence (ASL → SSOT → bio-state → land)
+              cultivation_method: (
+                (this as any)._aslPreloaded?.crop?.cultivation_method
+                ?? (this as any)._sessionSSOT?.cultivation_method
+                ?? ((landContextForOptionSelection as any)?.biological_state as any)?.cultivation_method
+                ?? (landContextForOptionSelection as any)?.cultivation_method
+                ?? null
+              ),
+              canonical_context: {
+                crop_code: cropName,
+                growth_stage: growthStage,
+                cultivation_method: (
+                (this as any)._aslPreloaded?.crop?.cultivation_method
+                ?? (this as any)._sessionSSOT?.cultivation_method
+                ?? ((landContextForOptionSelection as any)?.biological_state as any)?.cultivation_method
+                ?? (landContextForOptionSelection as any)?.cultivation_method
+                ?? null
+              ),
+              },
               supabase: this.supabase,
               intent_code: (options.sessionState as any)?.last_intent || 'CLARIFICATION_REPLY',
               crop_code: cropName,
@@ -3599,6 +3633,7 @@ export class AIAgentOrchestrator {
         // FIX D1 (2026-07-28): cultivation lane threaded per request (no globals)
         const _cultivationMethodForSsot =
           ((landContext as any)?.biological_state as any)?.cultivation_method
+          ?? (this as any)._aslPreloaded?.crop?.cultivation_method
           ?? (canonicalContext as any)?.cultivation_method
           ?? (landContext as any)?.cultivation_method
           ?? null;
@@ -6056,8 +6091,25 @@ export class AIAgentOrchestrator {
             // GRAPH CONTRACT — Clarification options must originate from the
             try {
               const graphClarification = await buildHypothesisClarificationOptions({
-              // FIX D1 (2026-07-28): lane from SessionSSOT — never a module global
-              cultivation_method: (this as any)._sessionSSOT?.cultivation_method ?? null,
+              // 2026-08-01: explicit lane precedence (ASL → SSOT → bio-state → land)
+              cultivation_method: (
+                (this as any)._aslPreloaded?.crop?.cultivation_method
+                ?? (this as any)._sessionSSOT?.cultivation_method
+                ?? ((landContext as any)?.biological_state as any)?.cultivation_method
+                ?? (landContext as any)?.cultivation_method
+                ?? null
+              ),
+              canonical_context: {
+                crop_code: cropCode,
+                growth_stage: growthStage,
+                cultivation_method: (
+                (this as any)._aslPreloaded?.crop?.cultivation_method
+                ?? (this as any)._sessionSSOT?.cultivation_method
+                ?? ((landContext as any)?.biological_state as any)?.cultivation_method
+                ?? (landContext as any)?.cultivation_method
+                ?? null
+              ),
+              },
                 supabase: this.supabase,
                 intent_code: intentCode,
                 crop_code: cropCode,

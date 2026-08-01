@@ -44,7 +44,7 @@
 import { loadIOMAllowed } from './iom-gate.ts';
 import { canonicalObsCode } from '../utils/canonical-code.ts';
 import { resolveHypothesesFromObservations } from './observation-hypothesis-resolver.ts';
-import { evaluateHypothesisGraph } from './hypothesis-graph-evaluator.ts';
+import { evaluateHypothesisGraph, checkApplicabilityConditions } from './hypothesis-graph-evaluator.ts';
 import { resolveObservationSymbols } from './symbol-resolver.ts';
 import { normalizeStageForDB } from '../utils/stage-normalizer.ts';
 import { stagesEquivalent } from '../runtime/stage-family-shim.ts';
@@ -71,6 +71,10 @@ export interface HypothesisClarificationInput {
   session_ssot?: SessionSSOT | null;
   // FIX D1 (2026-07-28) — per-request cultivation lane (e.g. 'direct_seeded',
   cultivation_method?: string | null;
+  /** 2026-08-01 — canonical field-twin used by the generic applicability gate. */
+  canonical_context?: any;
+  /** Locked BiologicalState (fallback lane source when SSOT is null). */
+  biological_state?: any;
 }
 
 
@@ -171,14 +175,26 @@ export async function buildHypothesisClarificationOptions(
   const stage = input.crop_stage ?? _ssot?.growth_stage ?? input.land_context?.growth_stage ?? null;
   const das = input.DAS ?? _ssot?.days_since_sowing ?? input.land_context?.days_since_sowing ?? null;
   const lang = String(input.language || _ssot?.language || 'en').toLowerCase();
-  // FIX D1 (2026-07-28) — cultivation lane, SessionSSOT is the authority.
+  // 2026-08-01 — explicit lane precedence chain (NO module-scope state).
   const cultivationMethod =
     (input as any).cultivation_method
+    ?? (input as any).canonical_context?.cultivation_method
     ?? (_ssot as any)?.cultivation_method
+    ?? (input as any).biological_state?.cultivation_method
     ?? null;
+
+  const _gateContext = {
+    ...((input as any).canonical_context ?? {}),
+    cultivation_method: cultivationMethod,
+  };
+
+  console.log(
+    `[HYP_CLARIFICATION_LANE] trace=${trace} crop=${crop} stage=${stage} das=${das} ` +
+    `cultivation=${cultivationMethod ?? 'null'} source=explicit_arg`,
+  );
   console.log(
     `[CULTIVATION_LANE] trace=${trace} crop=${crop} stage=${stage} das=${das} ` +
-    `cultivation=${cultivationMethod ?? 'null'} source=session_ssot`,
+    `cultivation=${cultivationMethod ?? 'null'} source=explicit_arg`,
   );
 
   const renderMaxIn = input.max ?? 4;
@@ -247,7 +263,27 @@ export async function buildHypothesisClarificationOptions(
 
   // Patch C — union matched + nearest hypotheses so competing lineage survives.
   const matchedIds = resolver.hypotheses.map((h) => h.hypothesis_id);
-  const nearestIds = resolver.nearest_hypotheses
+  // DEFECT C (2026-08-01) — the "nearest" pool exists to recover hypotheses
+  // eliminated for INCOMPLETE EVIDENCE only. Candidates eliminated by a
+  // DB-backed contradiction must never be resurrected into farmer cards.
+  const CONTRADICTION_PREFIXES = [
+    'APPLICABILITY_MISMATCH',
+    'IMPOSSIBLE_CROP',
+    'REQUIRED_STAGE_FAILED',
+    'REQUIRED_DAS_FAILED',
+    'RULE_SCOPE_INCOHERENT',
+  ];
+  const _nearestAll = resolver.nearest_hypotheses;
+  const _nearestKept = _nearestAll.filter((h) => {
+    const reason = String((h as any).eliminated_reason ?? '').toUpperCase();
+    if (!reason) return true;
+    return !CONTRADICTION_PREFIXES.some((p) => reason.startsWith(p));
+  });
+  console.log(
+    `[HYP_CLARIFICATION_NEAREST_FILTER] trace=${trace} nearest_in=${_nearestAll.length} ` +
+    `nearest_out=${_nearestKept.length} dropped_contradictions=${_nearestAll.length - _nearestKept.length}`,
+  );
+  const nearestIds = _nearestKept
     .map((h) => h.hypothesis_id)
     .slice(0, tun.nearest_expansion);
   let hypothesisIds = Array.from(new Set([...matchedIds, ...nearestIds]));
@@ -322,7 +358,44 @@ export async function buildHypothesisClarificationOptions(
     return { options: [], source: 'hypothesis_graph', graph_gap: 'NO_STAGE_VALID_HYPOTHESES', candidate_hypotheses: 0 };
   }
 
-  const conditions = await loadConditions(input.supabase, hypothesisIds);
+  const conditionsAll = await loadConditions(input.supabase, hypothesisIds);
+
+  // 2026-08-01 — GENERIC APPLICABILITY GATE at the clarification surface.
+  // Same DB-driven gate the main graph runs; reuses the rows already in memory.
+  const condsByHyp = new Map<string, ConditionRow[]>();
+  for (const c of conditionsAll) {
+    const k = String(c.hypothesis_id);
+    const arr = condsByHyp.get(k);
+    if (arr) arr.push(c); else condsByHyp.set(k, [c]);
+  }
+  const survivingHypothesisIds: string[] = [];
+  for (const hypId of hypothesisIds) {
+    const hypConditions = condsByHyp.get(hypId) ?? [];
+    const _appGate = checkApplicabilityConditions(hypConditions as any, _gateContext);
+    if (_appGate.eliminated) {
+      console.warn(
+        `[HYP_CLARIFICATION_APPLICABILITY_ELIMINATED] hypothesis=${hypId} ` +
+        `reason=${_appGate.reasonTag ?? 'applicability_mismatch'} ` +
+        `dimension=${_appGate.dimension} ` +
+        `expected=[${(_appGate.expected ?? []).join('|')}] got=${_appGate.got} ` +
+        `trace=${trace}`,
+      );
+      continue;
+    }
+    survivingHypothesisIds.push(hypId);
+  }
+  hypothesisIds = survivingHypothesisIds;
+
+  if (hypothesisIds.length === 0) {
+    console.warn(
+      `[HYP_CLARIFICATION] trace=${trace} graph_gap=NO_APPLICABLE_HYPOTHESES ` +
+      `intent=${input.intent_code ?? '?'} crop=${crop || '?'} stage=${stage ?? '?'} ` +
+      `cultivation=${cultivationMethod ?? 'null'}`,
+    );
+    return { options: [], source: 'hypothesis_graph', graph_gap: 'NO_APPLICABLE_HYPOTHESES', candidate_hypotheses: 0 };
+  }
+
+  const conditions = conditionsAll.filter((c) => hypothesisIds.includes(String(c.hypothesis_id)));
   const observationConditions = conditions.filter((c) => c.condition_type === 'OBSERVATION');
   const optionEdges: Array<{ code: string; condition: ConditionRow }> = [];
   const confirmedSet = new Set(confirmedCodes.map((c) => c.toLowerCase()));
