@@ -2,6 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-02 — P0-B.1/B.2: (1) the canonical code list handed to the LLM is
+ *   now intersected with the intents that `intent_observation_mapping` scopes
+ *   to the LOCKED crop, so a cotton-scoped intent can never be returned for a
+ *   rice field; (2) emergency keyword matching is Unicode-mark-insensitive
+ *   (NFC + anusvara/candrabindu/nukta stripped on BOTH sides) so spelling
+ *   variants like तन/तण match.
  * 2026-07-22 — Phase 2 expansion: added SHADOW dual-read against the shared
  *   observation-index (utils/db-ssot/observation-index.ts). Compares the
  *   legacy `observation_intent_master` load against `getObservationIntent()`
@@ -28,6 +34,7 @@
 import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { registerIntentCodeSet } from '../runtime/graph-runtime.ts';
+import { getIntentCodesForCrop } from '../utils/observation-mapping-cache.ts';
 
 export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 
@@ -297,26 +304,39 @@ function emit(code: string, conf: number, validCodes: Set<string>): IntentClassi
   return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.15 };
 }
 
+/**
+ * P0-B.2 — Unicode-mark-insensitive folding. NFC-normalises, then strips the
+ * combining marks that farmers routinely omit or add: anusvara (U+0902),
+ * candrabindu (U+0901) and nukta (U+093C), plus their Indic-block siblings
+ * (U+0981/0982, U+0A01/0A02, U+0B01/0B02, U+0C01/0C02, U+0C82, U+0CBC,
+ * U+0D02, U+0A3C, U+0B3C). Retroflex vs dental phonemes (ण vs न) are NOT
+ * folded — that would collapse genuinely distinct words.
+ */
+const MARK_RE = /[\u0901\u0902\u093C\u0981\u0982\u09BC\u0A01\u0A02\u0A3C\u0B01\u0B02\u0B3C\u0C00\u0C01\u0C02\u0C3C\u0C81\u0C82\u0CBC\u0D01\u0D02]/g;
+function foldMarks(s: string): string {
+  return (s || '').normalize('NFC').replace(MARK_RE, '');
+}
+
 function emergencyFallback(message: string, validCodes: Set<string>): IntentClassification {
-  const original = message || '';
+  const original = foldMarks(message || '');
   if (!original.trim()) return emit('UNKNOWN_OBSERVATION', 0.0, validCodes);
 
   // Fertilizer
   if (/खत|खते|खाद|उर्वरक|fertiliz|\bkhat\b|\bkhaad\b/i.test(original)) return emit('FERTILIZER_SCHEDULE', 0.6, validCodes);
   // Spray
-  if (/फवारणी|छिड़काव|spray/i.test(original)) return emit('SPRAY_TIMING_QUERY', 0.6, validCodes);
+  if (/फवारणी|छिडकाव|spray/i.test(original)) return emit('SPRAY_TIMING_QUERY', 0.6, validCodes);
   // Irrigation
-  if (/पाणी|पानी|सिंचन|सिंचाई|irrigat|\bpani\b|\bpaani\b/i.test(original)) return emit('IRRIGATION_QUERY', 0.55, validCodes);
+  if (/पाणी|पानी|सिचन|सिचाई|irrigat|\bpani\b|\bpaani\b/i.test(original)) return emit('IRRIGATION_QUERY', 0.55, validCodes);
   // Harvest
   if (/कापणी|काटाई|harvest|तोड/i.test(original)) return emit('HARVEST_TIMING', 0.55, validCodes);
   // Weed
-  if (/तण|खरपतवार|weed|निंदणी|निराई/i.test(original)) return emit('WEED_PROBLEM', 0.55, validCodes);
+  if (/तण|खरपतवार|weed|निदणी|निराई/i.test(original)) return emit('WEED_PROBLEM', 0.55, validCodes);
   // Death/dying
   if (/मेला|मेले|मरत|सुकल|सुकत|वाळल|dried|dead|dying|wilt|droop|कोमेज/i.test(original)) return emit('WILTING_OR_DROOPING', 0.5, validCodes);
   // Pest
-  if (/किडा|किडे|कीट|कीड़|insect|pest|अळी|बोंड/i.test(original)) return emit('PEST_PRESENCE_VISIBLE', 0.5, validCodes);
+  if (/किडा|किडे|कीट|कीड|insect|pest|अळी|बोड/i.test(original)) return emit('PEST_PRESENCE_VISIBLE', 0.5, validCodes);
   // Disease
-  if (/रोग|बीमारी|disease|fungus|करपा|तांबेरा/i.test(original)) return emit('DISEASE_LIKE_PATTERN', 0.5, validCodes);
+  if (/रोग|बीमारी|disease|fungus|करपा|ताबेरा/i.test(original)) return emit('DISEASE_LIKE_PATTERN', 0.5, validCodes);
   // Yellowing
   if (/पिवळ|पीला|yellow/i.test(original)) return emit('COLOR_CHANGE', 0.5, validCodes);
   // Leaf spots
