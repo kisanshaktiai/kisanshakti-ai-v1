@@ -747,6 +747,10 @@ import { resolveHypothesesFromObservations } from '../decision/observation-hypot
 import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
 import { logDebug } from '../utils/log.ts';
 import { getRuleById, getRulesForCrop } from '../data/rule-repository.ts';
+
+// Request-local so concurrent turns handled by the module-level orchestrator
+// singleton can never share memoized farmer/land/weather data.
+const turnMemoStorage = new AsyncLocalStorage<Map<string, Promise<any>>>();
 import {
   loadTaxonomies,
   isTaxonomyLoaded,
