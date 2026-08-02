@@ -21,6 +21,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import {
+  getAllRules,
+  normalizeActionType,
+  normalizeCanonicalGroup,
+  normalizeStages,
+  normalizeObservableChars,
+  normalizeBeeToxicity,
+} from '../data/rule-repository.ts';
 
 // TYPES
 
