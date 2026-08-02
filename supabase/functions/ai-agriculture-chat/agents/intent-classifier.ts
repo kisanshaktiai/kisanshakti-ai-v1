@@ -220,7 +220,8 @@ function buildLexicalEvidenceBlock(
   if (!labels || labels.size === 0) return '';
   const msgTokens = tokenize(farmerMessage);
   if (msgTokens.length === 0) return '';
-  const hits: string[] = [];
+  // token -> [{code, labelToken, exact}]
+  const byToken = new Map<string, Array<{ code: string; lt: string; exact: boolean }>>();
   for (const code of validCodes) {
     const t = labels.get(code);
     if (!t) continue;
@@ -229,18 +230,31 @@ function buildLexicalEvidenceBlock(
     for (const txt of texts) for (const tok of tokenize(txt)) labelTokens.add(tok);
     for (const lt of labelTokens) {
       const m = msgTokens.find((mt) => editDistanceAtMost1(mt, lt));
-      if (m) { hits.push(`- "${m}" ≈ "${lt}" → ${code}`); break; }
+      if (!m) continue;
+      const arr = byToken.get(m) || [];
+      arr.push({ code, lt, exact: m === lt });
+      byToken.set(m, arr);
+      break;
     }
   }
+  // Inverse-document-frequency filter: a farmer word that matches many codes
+  // (generic verbs, "is", "what") carries no signal — keep only discriminative
+  // words. Pure IR statistics over DB rows, no curated stopword list.
+  const hits: string[] = [];
+  for (const [tok, matches] of byToken) {
+    if (matches.length > 3) continue;
+    for (const m of matches) hits.push(`- "${tok}"${m.exact ? '' : ` ≈ "${m.lt}"`} → ${m.code}`);
+  }
   if (hits.length === 0) return '';
-  console.log(`[INTENT_LEXICAL_EVIDENCE] hits=${hits.length}`);
+  console.log(`[INTENT_LEXICAL_EVIDENCE] tokens=${byToken.size} kept=${hits.length}`);
   return [
     '═══════════════════════════════════════════════════════════════════════',
     'LEXICAL EVIDENCE (farmer word ≈ DB vocabulary, spelling-tolerant):',
-    ...hits.slice(0, 12),
+    ...hits.slice(0, 8),
     'Prefer one of these codes unless the full sentence clearly means otherwise.',
     '═══════════════════════════════════════════════════════════════════════',
   ].join('\n');
+
 }
 
 function buildConstrainedPrompt(
