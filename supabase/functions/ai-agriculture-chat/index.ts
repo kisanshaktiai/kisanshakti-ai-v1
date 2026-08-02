@@ -2226,6 +2226,51 @@ serve(async (req) => {
       }
     }
     
+    // ─────────────────────────────────────────────────────────────────────
+    // P0-B.3 + P0-C — ZERO-CODE HONESTY GUARD (no generic English template).
+    // When the symbolic brain produced NOTHING (no DB actions, no decision
+    // output, no clarification options and no symbolic codes) we must not ship
+    // a confident-looking generic answer. Emit an honest, DB-sourced message
+    // ALREADY IN THE FARMER'S LANGUAGE (system_config not_understood_<lang>)
+    // so forceTranslate never has to run. No agronomy is asserted here.
+    try {
+      const _zc: any = orchestratorResponse as any;
+      const _noActions = !Array.isArray(actions_returned) || actions_returned.length === 0;
+      const _noDecision = !_zc?.decision_output
+        || Object.keys(_zc.decision_output || {}).length === 0;
+      const _noOptions = !(Array.isArray(_zc?.options) && _zc.options.length > 0)
+        && !(Array.isArray(_zc?.question?.options) && _zc.question.options.length > 0);
+      const _noCodes = !(Array.isArray(_zc?.observation_codes) && _zc.observation_codes.length > 0);
+
+      if (_noActions && _noDecision && _noOptions && _noCodes) {
+        const _lang = (detectedLanguage || 'en').toLowerCase();
+        let _msg: string | null = null;
+        try {
+          const { data: _rows } = await supabase
+            .from('system_config')
+            .select('config_key, config_value')
+            .in('config_key', [`not_understood_${_lang}`, 'not_understood_en']);
+          const _byKey = new Map<string, any>();
+          for (const r of _rows ?? []) _byKey.set(String(r.config_key), r.config_value);
+          const _pick = _byKey.get(`not_understood_${_lang}`) ?? _byKey.get('not_understood_en') ?? null;
+          _msg = typeof _pick === 'object' && _pick !== null ? (_pick.value ?? null) : (_pick ?? null);
+        } catch (_e) { /* non-fatal — guard still downgrades the response type */ }
+
+        console.warn(
+          `[ZERO_CODE_GUARD][${traceId}] no_actions=1 no_decision=1 no_options=1 no_codes=1 ` +
+            `lang=${_lang} db_message=${_msg ? 'hit' : 'miss'} action=downgrade_to_clarification`,
+        );
+        if (_msg) {
+          responseContent = String(_msg);
+          // Already in the farmer's language → skip the 2.3 s forceTranslate hop.
+          try { (orchestratorResponse as any)._skipForceTranslate = true; } catch { /* noop */ }
+        }
+        (orchestratorResponse as any).type = 'CLARIFICATION_NEEDED';
+      }
+    } catch (_zcErr) {
+      console.warn(`[ZERO_CODE_GUARD_SKIP][${traceId}] err=${(_zcErr as Error).message}`);
+    }
+
     // VALIDATION GATE: Prevent silent failures before saving response
     const decision_brain_source = true;
     
