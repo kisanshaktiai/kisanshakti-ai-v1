@@ -7161,6 +7161,7 @@ export type Database = {
           cultivation_method: string
           das_max: number
           das_min: number
+          das_reference: string | null
           expected_height_cm_max: number | null
           expected_height_cm_min: number | null
           expected_leaf_count_max: number | null
@@ -7194,6 +7195,7 @@ export type Database = {
           cultivation_method?: string
           das_max: number
           das_min: number
+          das_reference?: string | null
           expected_height_cm_max?: number | null
           expected_height_cm_min?: number | null
           expected_leaf_count_max?: number | null
@@ -7227,6 +7229,7 @@ export type Database = {
           cultivation_method?: string
           das_max?: number
           das_min?: number
+          das_reference?: string | null
           expected_height_cm_max?: number | null
           expected_height_cm_min?: number | null
           expected_leaf_count_max?: number | null
