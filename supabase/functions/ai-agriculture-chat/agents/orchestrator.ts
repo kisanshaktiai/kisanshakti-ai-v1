@@ -4714,7 +4714,13 @@ export class AIAgentOrchestrator {
         const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
 
         // PR-7 F3: IOM-fallback preconditions.
-        const iomLockConfidence = Number((this as any)._intentLock?.confidence ?? intentConfidence ?? 0);
+        // TDZ FIX: `intentConfidence` is declared later in this same function
+        // scope; reading it here threw ReferenceError and aborted the turn.
+        const iomLockConfidence = Number(
+          (this as any)._intentLock?.confidence
+            ?? semanticExtraction?.intent_confidence
+            ?? 0,
+        );
         const iomCropRejected = Boolean((this as any)._intentLock?.crop_scope_rejected);
         const iomIsDiagnosticNoSymptoms =
           (queryRoute?.route === 'DIAGNOSTIC') && (hasSymptoms === false);
