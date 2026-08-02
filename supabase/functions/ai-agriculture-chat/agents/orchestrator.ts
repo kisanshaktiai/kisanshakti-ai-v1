@@ -1,6 +1,9 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-02 18:02 UTC — PERF: request-scoped AsyncLocalStorage memo now
+ *   launches land/weather/universal-vocabulary reads in parallel and reuses
+ *   their promises at existing consumption points; no decision logic changed.
  * 2026-07-29 15:00 UTC — S3: persist confirmed biological stage transitions.
  *   After phenology reconciliation we call apply_stage_transitions(land) so the
  *   winning transition is written to stage_transition_log; when a non-calendar
@@ -122,6 +125,7 @@
 // FILE:      supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getLanguageName } from '../utils/language-utils.ts';
 
 // Phase H — Canonical Conversation State (single runtime authority)
@@ -742,7 +746,7 @@ import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clar
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
 import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
 import { logDebug } from '../utils/log.ts';
-import { getRuleById } from '../data/rule-repository.ts';
+import { getRuleById, getRulesForCrop } from '../data/rule-repository.ts';
 import {
   loadTaxonomies,
   isTaxonomyLoaded,
@@ -1213,6 +1217,8 @@ export class AIAgentOrchestrator {
     options: any = {},
   ): Promise<OrchestratorResponse> {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    const requestMemo = new Map<string, Promise<any>>();
+    const run = async (): Promise<OrchestratorResponse> => {
     // Phase 1 DB-SSOT: preload (TTL-gated, single-flight; ~0ms warm, ~50-150ms cold)
     try { await _preloadPhase1Caches(this.supabase); } catch (e) {
       console.warn(`[DB_SSOT_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
@@ -1400,6 +1406,8 @@ export class AIAgentOrchestrator {
     } catch { /* attach is additive; never fatal */ }
 
     return response;
+    };
+    return await turnMemoStorage.run(requestMemo, run);
 
   }
 
@@ -1487,8 +1495,13 @@ export class AIAgentOrchestrator {
     (this as any)._graphTruth = null;
     console.log(`[RC1_BUILD_MARKER] v=rc1-2026-07-25T11:42 trace=${traceId} _graphTruth cleared per turn`);
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
-    // LATENCY BATCH L5 (2026-07-29): per-turn memo for idempotent context reads.
-    (this as any)._turnMemo = new Map<string, Promise<any>>();
+    // LATENCY: launch independent request context reads immediately. Crop-specific
+    // vocabulary remains chained to resolved land/canonical crop context.
+    const landContextPromise = options.landId
+      ? this.fetchComprehensiveLandContext(options.landId, farmerId)
+      : Promise.resolve(null);
+    const weatherPromise = this.fetchWeatherData(sessionId, options.landId);
+    const universalVocabPromise = getCropVocabulary('ALL', this.supabase);
 
 
     // PHASE B WIRING — per-request EvidenceLedger + ConfidenceChain
@@ -1617,7 +1630,7 @@ export class AIAgentOrchestrator {
     try {
       // PHASE 0: FETCH LAND CONTEXT FIRST (Single Source of Truth)
       if (options.landId) {
-        landContext = await this.fetchComprehensiveLandContext(options.landId, farmerId);
+        landContext = await landContextPromise;
         console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
         if (landContext) {
           console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
@@ -1812,7 +1825,7 @@ export class AIAgentOrchestrator {
         try {
           const msgLower = farmerMessage.toLowerCase();
           // Load universal vocabulary (crop_code='ALL') for cross-crop terms
-          const allVocab = await getCropVocabulary('ALL', this.supabase);
+          const allVocab = await universalVocabPromise;
           // Also load crop-specific vocab if we have a crop context
           const cropCode = landContext?.current_crop || options.sessionState?.previousCrop;
           const cropVocab = cropCode ? await getCropVocabulary(cropCode, this.supabase) : [];
@@ -3442,7 +3455,7 @@ export class AIAgentOrchestrator {
           ? await getCropVocabulary(canonicalContext.crop_code, this.supabase)
           : [];
         // Always load universal vocabulary (crop_code='ALL') for cross-crop terms
-        const universalEntries = await getCropVocabulary('ALL', this.supabase);
+        const universalEntries = await universalVocabPromise;
         const allEntries = [...cropSpecificEntries, ...universalEntries];
         
         if (allEntries.length > 0) {
@@ -7182,7 +7195,7 @@ export class AIAgentOrchestrator {
 
         
         // Build data audit for LLM-direct path too
-        const weatherData = await this.fetchWeatherData(sessionId, options.landId);
+        const weatherData = await weatherPromise;
         const dataAudit = this.buildDataAudit(landContext, weatherData);
         
         return {
@@ -7348,7 +7361,7 @@ export class AIAgentOrchestrator {
           } : undefined,
           
           // WEATHER DATA
-          weather_data: await this.fetchWeatherData(sessionId, options.landId),
+          weather_data: await weatherPromise,
           
           // SATELLITE DATA with NDVI history (Context Contract)
           satellite_data: landContext?.ndvi ? {
@@ -9535,16 +9548,12 @@ export class AIAgentOrchestrator {
         const userLanguage = options.language || 'mr';
         
         // SSOT: Load top observable_characteristics for this crop/stage from decision_rules
-        let rulesQuery = this.supabase
-          .from('decision_rules')
-          .select('observable_characteristics')
-          .eq('is_active', true)
-          .not('observable_characteristics', 'is', null)
-          .limit(10);
-        rulesQuery = cropCode
-          ? rulesQuery.or(`crop_code.eq.${cropCode},crop_code.eq.all`)
-          : rulesQuery.eq('crop_code', 'all');
-        const { data: topRules } = await rulesQuery;
+        const topRules = (await getRulesForCrop(
+          cropCode ? [cropCode, 'all'] : ['all'],
+          this.supabase,
+        ))
+          .filter((rule: any) => rule.observable_characteristics != null)
+          .slice(0, 10);
 
         console.log(`[FALLBACK_RULE_SCOPE] crop=${cropCode || 'ALL_ONLY'} rows=${(topRules || []).length}`);
         
@@ -9901,7 +9910,7 @@ export class AIAgentOrchestrator {
       console.log(`   Total processing time: ${processingTime}ms\n`);
       
       // Build data audit for debugging - shows what data was found/missing
-      const weatherData = await this.fetchWeatherData(sessionId, options.landId);
+      const weatherData = await weatherPromise;
       const dataAudit = this.buildDataAudit(landContext, weatherData);
       console.log(`   📊 Data Quality Score: ${dataAudit.summary.data_quality_score}%`);
       console.log(`   📊 Available Sources: ${dataAudit.summary.available_sources}/${dataAudit.summary.total_data_sources}`);
@@ -10143,7 +10152,7 @@ export class AIAgentOrchestrator {
   // CRITICAL FIX: Fetch comprehensive land context including soil, NDVI history, and crop schedule
   // LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper.
   private fetchComprehensiveLandContext(landId: string, farmerId: string): Promise<any> {
-    const memo: Map<string, Promise<any>> | undefined = (this as any)._turnMemo;
+    const memo = turnMemoStorage.getStore();
     const key = `land:${landId}:${farmerId}`;
     if (!memo) return this.fetchComprehensiveLandContextUncached(landId, farmerId);
     const hit = memo.get(key);
@@ -10801,7 +10810,7 @@ export class AIAgentOrchestrator {
   // Fetch weather data - NOW CONNECTED TO REAL DATA
   // LATENCY BATCH L5 (2026-07-29): per-turn memoized wrapper (see land ctx above).
   private fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
-    const memo: Map<string, Promise<any>> | undefined = (this as any)._turnMemo;
+    const memo = turnMemoStorage.getStore();
     const key = `weather:${landId || 'none'}`;
     if (!memo) return this.fetchWeatherDataUncached(sessionId, landId);
     const hit = memo.get(key);
