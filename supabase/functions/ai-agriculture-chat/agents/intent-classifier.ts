@@ -206,8 +206,10 @@ function editDistanceAtMost1(a: string, b: string): boolean {
 }
 
 function tokenize(s: string): string[] {
-  return (s || '').normalize('NFC').toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
+  // \p{M} MUST stay inside the token class: Devanagari vowel signs are marks,
+  // and excluding them shreds every word into single consonants.
+  return foldMarks(s || '').toLowerCase()
+    .split(/[^\p{L}\p{N}\p{M}]+/u)
     .filter((t) => t.length >= 2);
 }
 
