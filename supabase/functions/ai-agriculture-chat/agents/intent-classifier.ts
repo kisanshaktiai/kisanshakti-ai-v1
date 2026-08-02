@@ -259,12 +259,35 @@ export async function classifyFarmerIntent(
     return emergencyFallback(farmerMessage, new Set());
   }
 
-  const prompt = buildConstrainedPrompt(farmerMessage, validCodes, landContext);
+  // P0-B.1 — CROP SCOPE GUARD (DB-SSOT, no hardcoded crop or intent lists).
+  // `intent_observation_mapping` is the authority on which intents apply to
+  // which crop. Intersect the canonical registry with the intents scoped to
+  // the LOCKED crop and constrain the FIRST classifier call with that subset,
+  // so an intent belonging to another crop can never be produced or accepted.
+  let allowedCodes = validCodes;
+  const lockedCrop = landContext?.current_crop || null;
+  if (lockedCrop) {
+    const cropScoped = getIntentCodesForCrop(lockedCrop);
+    if (cropScoped) {
+      const inter = new Set<string>();
+      for (const c of validCodes) if (cropScoped.has(c)) inter.add(c);
+      if (inter.size > 0) {
+        allowedCodes = inter;
+        console.log(`   🔒 [INTENT_CROP_SCOPE] crop=${lockedCrop} eligible=${inter.size}/${validCodes.size}`);
+      } else {
+        console.warn(`[INTENT_CROP_SCOPE] no DB-scoped intents for crop=${lockedCrop} — falling back to full registry`);
+      }
+    } else {
+      console.warn('[INTENT_CROP_SCOPE] IOM cache cold — crop scoping skipped this turn');
+    }
+  }
+
+  const prompt = buildConstrainedPrompt(farmerMessage, allowedCodes, landContext);
 
   try {
     let result = await callClassifierLLM(prompt, false);
 
-    if (result && validCodes.has(result.intent_code)) {
+    if (result && allowedCodes.has(result.intent_code)) {
       const conf = typeof result.confidence === 'number' ? Math.max(0, Math.min(1, result.confidence)) : 0.6;
       console.log(`   ✅ Intent: ${result.intent_code} (${(conf * 100).toFixed(0)}%)`);
       return { intent_code: result.intent_code, confidence: conf };
@@ -278,14 +301,14 @@ export async function classifyFarmerIntent(
 
     const retryPrompt = prompt + `\n\nYour previous response was INVALID. Return ONLY a code from the canonical list above.`;
     const retry = await callClassifierLLM(retryPrompt, true);
-    if (retry && validCodes.has(retry.intent_code)) {
+    if (retry && allowedCodes.has(retry.intent_code)) {
       const conf = typeof retry.confidence === 'number' ? Math.max(0, Math.min(1, retry.confidence)) : 0.5;
       console.log(`   ✅ Intent (retry): ${retry.intent_code} (${(conf * 100).toFixed(0)}%)`);
       return { intent_code: retry.intent_code, confidence: conf };
     }
 
     console.error(`[IntentValidator] Retry also failed. Trying keyword fallback, then GENERAL_CROP_INFO.`);
-    const kw = emergencyFallback(farmerMessage, validCodes);
+    const kw = emergencyFallback(farmerMessage, allowedCodes);
     if (kw.intent_code !== 'UNKNOWN_OBSERVATION') return kw;
     return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3 };
   } catch (e) {
