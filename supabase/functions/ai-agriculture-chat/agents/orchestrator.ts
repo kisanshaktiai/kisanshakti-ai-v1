@@ -741,6 +741,8 @@ import {
 import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clarification-builder.ts';
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
 import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
+import { logDebug } from '../utils/log.ts';
+import { getRuleById } from '../data/rule-repository.ts';
 import {
   loadTaxonomies,
   isTaxonomyLoaded,
@@ -10146,7 +10148,7 @@ export class AIAgentOrchestrator {
     if (!memo) return this.fetchComprehensiveLandContextUncached(landId, farmerId);
     const hit = memo.get(key);
     if (hit) {
-      console.log(`[TURN_MEMO_HIT] ${key}`);
+      logDebug(`[TURN_MEMO_HIT] ${key}`);
       return hit;
     }
     const p = this.fetchComprehensiveLandContextUncached(landId, farmerId);
@@ -10804,7 +10806,7 @@ export class AIAgentOrchestrator {
     if (!memo) return this.fetchWeatherDataUncached(sessionId, landId);
     const hit = memo.get(key);
     if (hit) {
-      console.log(`[TURN_MEMO_HIT] ${key}`);
+      logDebug(`[TURN_MEMO_HIT] ${key}`);
       return hit;
     }
     const p = this.fetchWeatherDataUncached(sessionId, landId);
