@@ -64,6 +64,24 @@ export interface MarketProductResult {
   source: 'cache' | 'db' | 'fallback';
 }
 
+export type MarketProductMemo = Map<string, Promise<MarketProductResult>>;
+
+/** Request-local promise memo. The caller owns the Map, so results cannot leak
+ * across requests while duplicate formatter/fallback lookups coalesce. */
+export function lookupMarketProductsMemoized(
+  memo: MarketProductMemo,
+  supabase: SupabaseClient,
+  activeIngredient: string,
+  cropCode: string,
+): Promise<MarketProductResult> {
+  const key = `${activeIngredient.trim().toLowerCase()}::${cropCode.trim().toLowerCase()}`;
+  const existing = memo.get(key);
+  if (existing) return existing;
+  const pending = lookupMarketProducts(supabase, activeIngredient, cropCode);
+  memo.set(key, pending);
+  return pending;
+}
+
 // Look up market product brand names for a given active ingredient and crop.
 export async function lookupMarketProducts(
   supabase: SupabaseClient,

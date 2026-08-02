@@ -2,6 +2,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-02 18:02 UTC — PERF: start farmer-profile read alongside orchestrator
+ *   and share request-local market-product promises with formatter fallbacks.
  * 2026-07-28 14:35 UTC — FIX E2: fresh-query clarification state reset
  *   (round counter + asked keys cleared when no pending options, no option
  *   tap and intent is not CLARIFICATION_REPLY/OPTION_SELECTED).
@@ -73,7 +75,11 @@ import {
 } from './agents/communication-translation-dictionary.ts';
 
 // PRODUCT MAPPING: Ingredient → Market Product brand names
-import { lookupMarketProducts, formatMarketProducts } from './agents/market-product-lookup.ts';
+import {
+  lookupMarketProductsMemoized,
+  formatMarketProducts,
+  type MarketProductMemo,
+} from './agents/market-product-lookup.ts';
 
 // SYMBOLIC BRAIN: Import validation from decision representation
 import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
@@ -1016,6 +1022,8 @@ serve(async (req) => {
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
     const orch = getOrchestrator();
     currentSessionIdForError = currentSessionId;
+    const farmerProfilePromise = loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+    const marketProductMemo: MarketProductMemo = new Map();
     
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
@@ -2041,7 +2049,7 @@ serve(async (req) => {
           // ── Load farmer profile + respectful addressing (presentation-only)
           let farmerAddressing: FarmerAddressing | undefined;
           try {
-            const profile = await loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+            const profile = await farmerProfilePromise;
             farmerAddressing = getFarmerAddressing({
               language: profile.language || detectedLanguage,
               state: profile.state,
@@ -2061,6 +2069,7 @@ serve(async (req) => {
             data_audit: orchestratorResponse.dataAudit,
             trace_id: traceId,
             supabase_client: supabase,
+            market_product_memo: marketProductMemo,
             farmer_addressing: farmerAddressing,
           };
           
@@ -2089,7 +2098,8 @@ serve(async (req) => {
               responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
                 orchestratorResponse.decision_output, 
                 detectedLanguage,
-                supabase
+                supabase,
+                marketProductMemo
               ));
             } else {
               responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
@@ -2109,7 +2119,8 @@ serve(async (req) => {
           responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
             orchestratorResponse.decision_output, 
             detectedLanguage,
-            supabase
+            supabase,
+            marketProductMemo
           ));
         } else {
           responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
@@ -3777,7 +3788,12 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
 }
 
 // Build formatted numbered list from decision output
-async function buildFormattedRecommendationsList(decision: any, lang: string, supabaseClient?: any): Promise<string> {
+async function buildFormattedRecommendationsList(
+  decision: any,
+  lang: string,
+  supabaseClient?: any,
+  marketProductMemo: MarketProductMemo = new Map(),
+): Promise<string> {
   const parts: string[] = [];
   
   // Greeting
@@ -3834,7 +3850,12 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     if (richData.active_ingredient && supabaseClient) {
       try {
         const cropCode = decision.metadata?.crop_code || decision.primary_decision?.target?.crop || '';
-        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        const marketResult = await lookupMarketProductsMemoized(
+          marketProductMemo,
+          supabaseClient,
+          richData.active_ingredient,
+          cropCode,
+        );
         marketProductLine = formatMarketProducts(marketResult.products, lang);
       } catch (err) {
         console.warn(`[ProductMapping] Lookup failed, continuing without market products:`, err);
@@ -3941,7 +3962,12 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please 
 }
 
 // Fallback: Build natural language response directly from DecisionOutput
-async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
+async function buildResponseFromDecisionOutput(
+  decision: any,
+  language: string,
+  supabaseClient?: any,
+  marketProductMemo: MarketProductMemo = new Map(),
+): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
   }
@@ -3996,7 +4022,12 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
     if (richData.active_ingredient && supabaseClient) {
       try {
         const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
-        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        const marketResult = await lookupMarketProductsMemoized(
+          marketProductMemo,
+          supabaseClient,
+          richData.active_ingredient,
+          cropCode,
+        );
         const marketLine = formatMarketProducts(marketResult.products, language);
         if (marketLine) parts.push(marketLine);
       } catch (err) {
