@@ -1223,22 +1223,23 @@ export class AIAgentOrchestrator {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     const requestMemo = new Map<string, Promise<any>>();
     const run = async (): Promise<OrchestratorResponse> => {
-    // Phase 1 DB-SSOT: preload (TTL-gated, single-flight; ~0ms warm, ~50-150ms cold)
-    try { await _preloadPhase1Caches(this.supabase); } catch (e) {
-      console.warn(`[DB_SSOT_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
-    }
-    // Phase 2 DB-SSOT: shadow observation-index preload (non-authoritative, dual-read window).
-    try { await _preloadObservationIndex(this.supabase); } catch (e) {
-      console.warn(`[OBS_INDEX] preload_failed trace=${traceId} err=${(e as Error).message}`);
-    }
-    // M2 DB-SSOT: system_config tunables (spray thresholds, NDVI/soil bands, freshness windows).
-    try { await _preloadSystemConfig(this.supabase); } catch (e) {
-      console.warn(`[SYSCFG_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
-    }
-    // Phase 0′ DB-SSOT: biotic/abiotic/weed taxonomy (observation_master.semantic_class +
-    // decision_rules.biological_group + system_config.taxonomy_*). TTL-cached, non-fatal.
-    try { await loadTaxonomies(this.supabase); } catch (e) {
-      console.warn(`[TAXONOMY_LOAD_FAILED] trace=${traceId} err=${(e as Error).message}`);
+    // P0-A.2 — the four boot caches have no load-time interdependency (each
+    // takes only `supabase` and writes its own module state), so they run
+    // CONCURRENTLY. Per-cache try/catch semantics preserved via allSettled.
+    {
+      const _preloads: Array<[string, Promise<unknown>]> = [
+        ['DB_SSOT_CACHE', _preloadPhase1Caches(this.supabase)],
+        ['OBS_INDEX', _preloadObservationIndex(this.supabase)],
+        ['SYSCFG_CACHE', _preloadSystemConfig(this.supabase)],
+        ['TAXONOMY', loadTaxonomies(this.supabase)],
+      ];
+      const _settled = await Promise.allSettled(_preloads.map(([, p]) => p));
+      _settled.forEach((s, i) => {
+        if (s.status === 'rejected') {
+          const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+          console.warn(`[${_preloads[i][0]}] preload_failed trace=${traceId} err=${msg}`);
+        }
+      });
     }
     let response: OrchestratorResponse;
     try {
