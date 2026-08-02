@@ -112,31 +112,74 @@ function isFresh(): boolean {
   return state.loadedAt !== null && Date.now() - state.loadedAt < TTL_MS;
 }
 
+// PARALLEL PAGINATION — PostgREST caps responses at 1000 rows; pages are
+// fetched concurrently (bounded) instead of serially. Identical row set/order.
+const MAX_CONCURRENT_PAGES = 6;
+
 async function pagedLoad<T>(
   supabase: Supa,
   table: string,
   columns: string,
   extra: (q: any) => any = (q) => q,
 ): Promise<{ rows: T[]; partial: boolean }> {
-  const rows: T[] = [];
   let partial = false;
-  for (let offset = 0; ; offset += PAGE) {
+  let total = -1;
+  try {
+    const { count, error } = await extra(
+      supabase.from(table).select(columns, { count: 'exact', head: true }),
+    );
+    if (error) throw new Error(error.message);
+    total = Number(count ?? 0);
+  } catch (e) {
+    console.warn(`[OBS_INDEX_COUNT_ERR] table=${table} err=${(e as Error).message} — serial fallback`);
+    total = -1;
+  }
+
+  const fetchPage = async (offset: number): Promise<T[] | null> => {
     try {
-      const q = extra(supabase.from(table).select(columns)).range(offset, offset + PAGE - 1);
-      const { data, error } = await q;
+      const { data, error } = await extra(supabase.from(table).select(columns))
+        .range(offset, offset + PAGE - 1);
       if (error) {
         console.warn(`[OBS_INDEX_LOAD_ERR] table=${table} offset=${offset} err=${error.message}`);
-        partial = true;
-        break;
+        return null;
       }
-      const batch = (data as T[] | null) ?? [];
-      rows.push(...batch);
-      if (batch.length < PAGE) break;
+      return (data as T[] | null) ?? [];
     } catch (e) {
       console.warn(`[OBS_INDEX_LOAD_ERR] table=${table} offset=${offset} exception=${(e as Error).message}`);
-      partial = true;
-      break;
+      return null;
     }
+  };
+
+  if (total < 0) {
+    const rows: T[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const batch = await fetchPage(offset);
+      if (batch === null) { partial = true; break; }
+      rows.push(...batch);
+      if (batch.length < PAGE) break;
+    }
+    return { rows, partial };
+  }
+
+  const offsets: number[] = [];
+  for (let o = 0; o < total; o += PAGE) offsets.push(o);
+  const pages: (T[] | null)[] = new Array(offsets.length).fill(null);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= offsets.length) return;
+      pages[i] = await fetchPage(offsets[i]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(MAX_CONCURRENT_PAGES, offsets.length) }, worker),
+  );
+
+  const rows: T[] = [];
+  for (const p of pages) {
+    if (p === null) { partial = true; continue; }
+    rows.push(...p);
   }
   return { rows, partial };
 }
