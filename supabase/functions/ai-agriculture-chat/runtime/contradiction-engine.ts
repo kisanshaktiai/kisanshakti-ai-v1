@@ -10,11 +10,17 @@
  * generation. Halts the brain with a deterministic reconciliation prompt
  * (rendered by orchestrator) instead of synthesizing symptoms.
  *
- * Reads `intent_assertion_pattern.stage_compatibility` if present;
- * otherwise applies built-in stage-family logic mirroring
- * `clarification-contract.STAGE_SYNONYMS`.
+ * Reads the per-assertion compatibility envelope from
+ * `intent_assertion_pattern` — `stage_compatibility`, `crop_compatibility`,
+ * `das_min`, `das_max` — and raises STAGE_MISMATCH / CROP_MISMATCH /
+ * DAS_OUT_OF_RANGE when the frozen context falls outside it. Stage equivalence
+ * is resolved through the DB-backed `crop_stage_graph` (via `stagesEquivalent`),
+ * NOT a hardcoded stage map. When a compatibility field is NULL/empty the
+ * corresponding check is skipped (fail-open) — the DB is the sole authority for
+ * what an assertion is compatible with, so no agronomy is hardcoded here.
+ * BIOLOGICAL_IMPOSSIBILITY is the one crop-agnostic, code-level guard.
  *
- * NO DB writes. ONE indexed `.in()` read.
+ * NO DB writes. ONE indexed read.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -118,10 +124,12 @@ export async function detectContradiction(
   if (!intentUpper || !cropLower || !stageLower || !supabase) return null;
 
   try {
-    // intent_assertion_pattern schema (as of 2026-07-04):
+    // Full compatibility envelope. stage_compatibility / crop_compatibility are
+    // text[] and das_min/das_max integer (added 2026-08-02); NULL/empty ⇒ the
+    // matching contradiction check is skipped downstream.
     const { data, error } = await supabase
       .from('intent_assertion_pattern')
-      .select('intent_code, assertion_strength, notes, obs_code_regex')
+      .select('intent_code, assertion_strength, notes, obs_code_regex, stage_compatibility, crop_compatibility, das_min, das_max')
       .eq('is_active', true)
       .eq('intent_code', intentUpper)
       .limit(5);
@@ -134,6 +142,23 @@ export async function detectContradiction(
 
 
     for (const row of data) {
+      // obs_code_regex PRECISION GATE — an assertion row may be scoped to the
+      // specific farmer observation(s) that evidence it. When the row carries a
+      // regex AND the turn supplied observations, only apply this row if at
+      // least one observation matches; otherwise this assertion is not in play
+      // this turn. When there is no regex, or no observations, the assertion is
+      // intent-level and applies as before (default behaviour unchanged).
+      const obsRegexRaw = typeof (row as any).obs_code_regex === 'string'
+        ? (row as any).obs_code_regex.trim()
+        : '';
+      if (obsRegexRaw && Array.isArray(observations) && observations.length > 0) {
+        let re: RegExp | null = null;
+        try { re = new RegExp(obsRegexRaw, 'i'); } catch { re = null; }
+        if (re && !observations.some(o => re!.test(String(o || '')))) {
+          continue; // assertion not evidenced by this turn's observations
+        }
+      }
+
       // STAGE_MISMATCH
       const allowedStages: string[] = Array.isArray((row as any).stage_compatibility)
         ? (row as any).stage_compatibility.map(norm).filter(Boolean)

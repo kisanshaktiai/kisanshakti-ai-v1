@@ -5634,6 +5634,17 @@ export class AIAgentOrchestrator {
               `hyp=0 rules_pre=0 rules_post=0 winner=none`,
           );
 
+          // GRAPH_NODE_TRACE — EVIDENCE (uniform pipeline line; was previously
+          // declared in GraphNodeName but never emitted).
+          emitNodeTrace(traceId, 'EVIDENCE', {
+            intent: intentCode,
+            crop: cropCode,
+            frozen: canonical_observation_codes.length,
+            farmer_literal: real_codes.length,
+            inferred: ledger.filter((l) => l.source === 'INFERRED').length,
+            codes: canonical_observation_codes,
+            metadata_codes: (frozenContext as any)?.metadata ?? [],
+          });
 
           const currentObservations = canonical_observation_codes;
           if (real_codes.length !== currentObservations.length ||
@@ -5945,6 +5956,20 @@ export class AIAgentOrchestrator {
           console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
           console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
+
+          // GRAPH_NODE_TRACE — STAGE_DECISION (uniform pipeline line; was
+          // previously declared in GraphNodeName but never emitted). Records the
+          // stage the graph commits to reasoning at and its provenance.
+          emitNodeTrace(traceId, 'STAGE_DECISION', {
+            crop: cropCode,
+            stage: growthStage,
+            das: resolvedDAS,
+            stage_source: (canonicalContext as any)?.sources?.stage ?? null,
+            das_canonical: canonicalContext?.days_since_sowing ?? null,
+            das_land: landContext?.days_since_sowing ?? null,
+            das_locked: (lockedCropContext as any)?.days_since_sowing ?? null,
+            bio_locked: !!(canonicalContext as any)?.biological_state?.is_locked,
+          });
 
           // T1 — GraphTruth integrity check before hypothesis engine
           assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
