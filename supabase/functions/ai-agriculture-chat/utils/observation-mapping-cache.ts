@@ -59,6 +59,11 @@ interface ObsMasterRow {
   affected_plant_part: string | null;
 }
 
+import {
+  loadObservationSource,
+  observationMasterRows,
+} from './db-ssot/observation-source.ts';
+
 export interface IntentMappingScope {
   crop_code?: string | null;
   growth_stage?: string | null;
@@ -122,25 +127,14 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
     console.warn('[OBS_MAPPING_CACHE] IOM load failed', e);
   }
 
-  // Load affected_plant_part for all observation codes seen — one small
-  const codes = Array.from(new Set(iom.map((r) => r.observation_code).filter(Boolean)));
+  // P0-A.1: affected_plant_part now comes from the shared single-read
+  // observation_master source instead of chunked `.in()` re-reads.
   const partByCode = new Map<string, string>();
   try {
-    const CHUNK = 500;
-    for (let i = 0; i < codes.length; i += CHUNK) {
-      const slice = codes.slice(i, i + CHUNK);
-      const { data, error } = await supabase
-        .from('observation_master')
-        .select('observation_code, affected_plant_part')
-        .in('observation_code', slice);
-      if (error) {
-        console.warn(`[OBS_MAPPING_CACHE] observation_master select error @${i}:`, error.message);
-        continue;
-      }
-      for (const r of (data as ObsMasterRow[] | null) ?? []) {
-        if (r?.observation_code && r.affected_plant_part) {
-          partByCode.set(String(r.observation_code).toLowerCase(), r.affected_plant_part);
-        }
+    await loadObservationSource(supabase);
+    for (const r of observationMasterRows()) {
+      if (r?.observation_code && r.affected_plant_part) {
+        partByCode.set(String(r.observation_code).toLowerCase(), r.affected_plant_part);
       }
     }
   } catch (e) {
@@ -281,4 +275,27 @@ export function isObservationMappingLoaded(): boolean {
 /** Test-only cache reset. */
 export function __resetObservationMappingCache(): void {
   cache = null;
+}
+
+/**
+ * P0-B.1 — DB-SSOT crop scope for intents.
+ * Returns the set of intent codes that have at least one active
+ * `intent_observation_mapping` row applicable to `cropCode`. Rows with a NULL
+ * crop_code are crop-agnostic and therefore eligible for every crop.
+ * Returns null when the cache is cold (caller must not filter in that case).
+ */
+export function getIntentCodesForCrop(cropCode?: string | null): Set<string> | null {
+  if (!cache) return null;
+  const crop = String(cropCode || '').trim().toLowerCase();
+  const out = new Set<string>();
+  for (const [intent, rows] of cache.rowsByIntent) {
+    for (const r of rows) {
+      const rc = r.crop_code == null ? null : String(r.crop_code).trim().toLowerCase();
+      if (rc === null || rc === '' || rc === 'all' || (crop && rc === crop)) {
+        out.add(intent);
+        break;
+      }
+    }
+  }
+  return out.size > 0 ? out : null;
 }
