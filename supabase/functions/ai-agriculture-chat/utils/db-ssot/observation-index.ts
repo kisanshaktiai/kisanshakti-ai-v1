@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-02 — P0-A.1: observation_master / observation_aliases are no longer
+ *   read here. Both come from the shared `db-ssot/observation-source.ts`
+ *   loader (one read per isolate); the projections below are unchanged —
+ *   `is_active === true` is now applied in memory instead of in SQL.
  * 2026-07-22 — Phase 2 initial: unified observation index (SHADOW mode).
  *   Boot-time paginated load of four observation tables into a single
  *   in-memory index with sync accessors. Publishes `observationIndexDiff()`
