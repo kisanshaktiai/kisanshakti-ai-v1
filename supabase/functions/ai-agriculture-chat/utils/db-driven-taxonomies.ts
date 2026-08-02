@@ -82,11 +82,14 @@ export async function loadTaxonomies(supabase: any, force = false): Promise<void
 
   _inflight = (async () => {
     try {
-      const [obsRows, aliasRows, cfgRes] = await Promise.all([
-        pagedSelect(supabase, 'observation_master', 'observation_code, semantic_class'),
-        pagedSelect(supabase, 'observation_aliases', 'alias_code, canonical_code, active', (q) => q.eq('active', true)),
-        supabase.from('system_config').select('config_key, config_value').like('config_key', 'taxonomy_%'),
-      ]);
+      // P0-A.1: observation_master / observation_aliases come from the shared
+      // single-read source. Taxonomy intentionally uses ALL master rows
+      // (no is_active filter) — unchanged from the previous direct query.
+      await loadObservationSource(supabase, {});
+      const obsRows = observationMasterRows() as any[];
+      const aliasRows = observationAliasRows() as any[];
+      const cfgRes = await supabase
+        .from('system_config').select('config_key, config_value').like('config_key', 'taxonomy_%');
 
       const obsClass = new Map<string, string>();
       for (const r of obsRows) {
