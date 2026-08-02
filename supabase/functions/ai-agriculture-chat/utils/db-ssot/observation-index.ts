@@ -33,6 +33,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import {
+  loadObservationSource,
+  observationMasterRows,
+  observationAliasRows,
+} from './observation-source.ts';
+
 type Supa = any;
 
 export interface ObservationMasterRow {
