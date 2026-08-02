@@ -1223,10 +1223,20 @@ export class AIAgentOrchestrator {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     const requestMemo = new Map<string, Promise<any>>();
     const run = async (): Promise<OrchestratorResponse> => {
-    // P0-A.2 — the four boot caches have no load-time interdependency (each
-    // takes only `supabase` and writes its own module state), so they run
-    // CONCURRENTLY. Per-cache try/catch semantics preserved via allSettled.
+    // P0-A — boot caches.
+    // Wave A: the shared observation_master / observation_aliases read runs
+    // FIRST and ALONE. Every downstream cache consumes it from memory, so it
+    // must not compete with them for PostgREST throughput.
+    // Wave B: the remaining caches have no load-time interdependency (each
+    // takes only `supabase` and writes its own module state) → concurrent.
     {
+      const _srcT0 = Date.now();
+      try {
+        await _loadObservationSource(this.supabase);
+        console.log(`[OBS_SOURCE] shared_load_ms=${Date.now() - _srcT0}`);
+      } catch (e) {
+        console.warn(`[OBS_SOURCE] preload_failed trace=${traceId} err=${(e as Error).message}`);
+      }
       const _preloads: Array<[string, Promise<unknown>]> = [
         ['DB_SSOT_CACHE', _preloadPhase1Caches(this.supabase)],
         ['OBS_INDEX', _preloadObservationIndex(this.supabase)],
