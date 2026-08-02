@@ -272,6 +272,27 @@ import {
 
 // CAUSE NORMALIZATION FOR DEDUPLICATION
 
+// PERF: hoisted to module scope — pure constants, previously rebuilt per rule
+// evaluation (~180x/request). Values and order are unchanged.
+const HIGH_POWER_OBS = [
+  'DEAD_HEART', 'DEADHEART', 'DEAD_HEART_PRESENT',
+  'TUNNELS_IN_STEM', 'TUNNELING', 'BORE_HOLE',
+  'FRASS', 'FRASS_VISIBLE', 'FRASS_NEAR_BASE',
+  'MUD_TUNNELS', 'TERMITE_MUD_TUBES', 'MUD_GALLERIES',
+  'HONEYDEW', 'SOOTY_MOLD',
+  'PINK_LARVAE', 'LARVAE_PRESENT', 'LARVAE_VISIBLE',
+  'WHITE_POWDER', 'WOOLLY_MASS', 'COTTONY_MASS'
+];
+const LOW_POWER_OBS = [
+  'YELLOWING', 'LEAF_YELLOWING', 'GENERAL_YELLOWING',
+  'WILTING', 'LEAF_WILTING', 'PLANT_WILTING',
+  'STUNTED', 'STUNTED_GROWTH', 'POOR_GROWTH',
+  'DRYING', 'LEAF_DRYING', 'TIP_DRYING',
+  'BROWNING', 'LEAF_BROWNING', 'EDGE_BROWNING',
+  'GAPS', 'PATCHY_DAMAGE', 'GAPS_IN_FIELD'
+];
+
+
 // PERF: hoisted to module scope — pure constant, previously rebuilt per call.
 const DEDUP_PATTERNS: [RegExp, string][] = [
   // PEST patterns (existing)
