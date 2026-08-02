@@ -243,7 +243,6 @@ export async function formatRecommendationsWithLLM(
 ): Promise<LLMFormatterOutput> {
   const startTime = Date.now();
   const traceId = input.trace_id || `fmt_${Date.now().toString(36)}`;
-  const marketProductMemo: MarketProductMemo = input.market_product_memo ?? new Map();
   
   // SAFE INPUT NORMALIZATION - Prevent crashes from undefined text
   const safeFarmerMessage = normalizeFarmerMessage(input.farmer_message);
@@ -479,7 +478,7 @@ export async function formatRecommendationsWithLLM(
       try {
         const cropCode = input.decision_output?.metadata?.crop_code || primary?.target?.crop || '';
         const marketResult = await lookupMarketProductsMemoized(
-          marketProductMemo,
+          input.market_product_memo ?? new Map(),
           input.supabase_client,
           primary.application_details.active_ingredient,
           cropCode,
@@ -1513,7 +1512,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
         try {
           const cropCode = decision?.metadata?.crop_code || primary?.target?.crop || '';
           const marketResult = await lookupMarketProductsMemoized(
-            marketProductMemo,
+            input.market_product_memo ?? new Map(),
             input.supabase_client,
             richData.active_ingredient,
             cropCode,
