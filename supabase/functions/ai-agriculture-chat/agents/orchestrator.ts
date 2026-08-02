@@ -2436,12 +2436,10 @@ export class AIAgentOrchestrator {
           // FIX #1: If cause was confirmed, add cause-specific observations from the confirmed rule
           if (confirmedRuleId && confirmedRuleId !== 'UNKNOWN_FALLBACK' && confirmedRuleId !== 'PHOTO_FALLBACK') {
             try {
-              const { data: confirmedRule } = await this.supabase
-                .from('decision_rules')
-                .select('observable_characteristics, conditions_json')
-                .eq('rule_id', confirmedRuleId)
-                .eq('is_active', true)
-                .single();
+              // PERF: served from the shared rule snapshot (no extra DB round-trip).
+              // Exact rule_id equality preserved to match the previous .eq() filter.
+              const _snapRule = await getRuleById(confirmedRuleId, this.supabase);
+              const confirmedRule = (_snapRule && _snapRule.rule_id === confirmedRuleId) ? _snapRule : null;
               
               if (confirmedRule) {
                 // Add ALL observable characteristics from the confirmed rule
