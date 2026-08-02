@@ -75,7 +75,11 @@ import {
 } from './agents/communication-translation-dictionary.ts';
 
 // PRODUCT MAPPING: Ingredient → Market Product brand names
-import { lookupMarketProducts, formatMarketProducts } from './agents/market-product-lookup.ts';
+import {
+  lookupMarketProductsMemoized,
+  formatMarketProducts,
+  type MarketProductMemo,
+} from './agents/market-product-lookup.ts';
 
 // SYMBOLIC BRAIN: Import validation from decision representation
 import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
@@ -1019,7 +1023,7 @@ serve(async (req) => {
     const orch = getOrchestrator();
     currentSessionIdForError = currentSessionId;
     const farmerProfilePromise = loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
-    const marketProductMemo = new Map<string, Promise<Awaited<ReturnType<typeof lookupMarketProducts>>>>();
+    const marketProductMemo: MarketProductMemo = new Map();
     
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
@@ -3788,7 +3792,7 @@ async function buildFormattedRecommendationsList(
   decision: any,
   lang: string,
   supabaseClient?: any,
-  marketProductMemo = new Map<string, Promise<Awaited<ReturnType<typeof lookupMarketProducts>>>>(),
+  marketProductMemo: MarketProductMemo = new Map(),
 ): Promise<string> {
   const parts: string[] = [];
   
@@ -3846,13 +3850,12 @@ async function buildFormattedRecommendationsList(
     if (richData.active_ingredient && supabaseClient) {
       try {
         const cropCode = decision.metadata?.crop_code || decision.primary_decision?.target?.crop || '';
-        const marketKey = `${richData.active_ingredient.trim().toLowerCase()}::${cropCode.trim().toLowerCase()}`;
-        let marketPending = marketProductMemo.get(marketKey);
-        if (!marketPending) {
-          marketPending = lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
-          marketProductMemo.set(marketKey, marketPending);
-        }
-        const marketResult = await marketPending;
+        const marketResult = await lookupMarketProductsMemoized(
+          marketProductMemo,
+          supabaseClient,
+          richData.active_ingredient,
+          cropCode,
+        );
         marketProductLine = formatMarketProducts(marketResult.products, lang);
       } catch (err) {
         console.warn(`[ProductMapping] Lookup failed, continuing without market products:`, err);
@@ -3963,7 +3966,7 @@ async function buildResponseFromDecisionOutput(
   decision: any,
   language: string,
   supabaseClient?: any,
-  marketProductMemo = new Map<string, Promise<Awaited<ReturnType<typeof lookupMarketProducts>>>>(),
+  marketProductMemo: MarketProductMemo = new Map(),
 ): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
@@ -4019,13 +4022,12 @@ async function buildResponseFromDecisionOutput(
     if (richData.active_ingredient && supabaseClient) {
       try {
         const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
-        const marketKey = `${richData.active_ingredient.trim().toLowerCase()}::${cropCode.trim().toLowerCase()}`;
-        let marketPending = marketProductMemo.get(marketKey);
-        if (!marketPending) {
-          marketPending = lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
-          marketProductMemo.set(marketKey, marketPending);
-        }
-        const marketResult = await marketPending;
+        const marketResult = await lookupMarketProductsMemoized(
+          marketProductMemo,
+          supabaseClient,
+          richData.active_ingredient,
+          cropCode,
+        );
         const marketLine = formatMarketProducts(marketResult.products, language);
         if (marketLine) parts.push(marketLine);
       } catch (err) {

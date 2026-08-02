@@ -20,7 +20,11 @@ import {
 } from './communication-translation-dictionary.ts';
 
 // PRODUCT MAPPING: Ingredient → Market Product brand names
-import { lookupMarketProducts, formatMarketProducts } from './market-product-lookup.ts';
+import {
+  lookupMarketProductsMemoized,
+  formatMarketProducts,
+  type MarketProductMemo,
+} from './market-product-lookup.ts';
 
 // v2.0: Import deterministic response builder
 import {
@@ -109,7 +113,7 @@ export interface LLMFormatterInput {
   data_audit?: DataAudit;
   trace_id?: string;
   supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
-  market_product_memo?: Map<string, Promise<Awaited<ReturnType<typeof lookupMarketProducts>>>>;
+  market_product_memo?: MarketProductMemo;
   // Presentation-only addressing payload (rural honorifics).
   farmer_addressing?: {
     primary: string;
@@ -239,15 +243,6 @@ export async function formatRecommendationsWithLLM(
 ): Promise<LLMFormatterOutput> {
   const startTime = Date.now();
   const traceId = input.trace_id || `fmt_${Date.now().toString(36)}`;
-  const marketProductMemo = input.market_product_memo ?? new Map();
-  const lookupMarketProductsOnce = (activeIngredient: string, cropCode: string) => {
-    const key = `${activeIngredient.trim().toLowerCase()}::${cropCode.trim().toLowerCase()}`;
-    const existing = marketProductMemo.get(key);
-    if (existing) return existing;
-    const pending = lookupMarketProducts(input.supabase_client, activeIngredient, cropCode);
-    marketProductMemo.set(key, pending);
-    return pending;
-  };
   
   // SAFE INPUT NORMALIZATION - Prevent crashes from undefined text
   const safeFarmerMessage = normalizeFarmerMessage(input.farmer_message);
@@ -482,7 +477,12 @@ export async function formatRecommendationsWithLLM(
     if (primary?.application_details?.active_ingredient && input.supabase_client) {
       try {
         const cropCode = input.decision_output?.metadata?.crop_code || primary?.target?.crop || '';
-        const marketResult = await lookupMarketProductsOnce(primary.application_details.active_ingredient, cropCode);
+        const marketResult = await lookupMarketProductsMemoized(
+          input.market_product_memo ?? new Map(),
+          input.supabase_client,
+          primary.application_details.active_ingredient,
+          cropCode,
+        );
         if (marketResult.found) {
           for (const brandName of marketResult.products) {
             const lower = brandName.toLowerCase();
@@ -1511,7 +1511,12 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       if (richData.active_ingredient && input.supabase_client) {
         try {
           const cropCode = decision?.metadata?.crop_code || primary?.target?.crop || '';
-          const marketResult = await lookupMarketProductsOnce(richData.active_ingredient, cropCode);
+          const marketResult = await lookupMarketProductsMemoized(
+            input.market_product_memo ?? new Map(),
+            input.supabase_client,
+            richData.active_ingredient,
+            cropCode,
+          );
           if (marketResult.found) {
             marketProductsLine = `\nRECOMMENDED_MARKET_PRODUCTS: ${marketResult.products.join(', ')}`;
             console.log(`[LLMFormatter] Market products for ${richData.active_ingredient}: ${marketResult.products.join(', ')}`);
