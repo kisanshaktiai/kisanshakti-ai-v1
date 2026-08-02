@@ -2,6 +2,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-02 19:05 UTC — P0-B.1 (amended): the crop-scoped candidate list is
+ *   now labelled from `intent_translations` in the farmer's language
+ *   ("WEED_PROBLEM — तण समस्या / Weed problem") so vernacular queries bind to
+ *   the right code on the FIRST call; added `[INTENT_CROP_SCOPE_REJECT]`
+ *   backstop log and CODE-token extraction. No second classifier call.
  * 2026-08-02 — P0-B.1/B.2: (1) the canonical code list handed to the LLM is
  *   now intersected with the intents that `intent_observation_mapping` scopes
  *   to the LOCKED crop, so a cotton-scoped intent can never be returned for a
@@ -91,7 +96,52 @@ export interface IntentLandContext {
   days_since_sowing?: number;
   ndvi_value?: number;
   soil_type?: string;
+  /** Farmer language (e.g. 'mr' | 'hi' | 'en') — selects DB intent labels. */
+  language?: string;
 }
+
+// INTENT LABEL REGISTRY (DB-SSOT) — `intent_translations` is the authority on
+// how each canonical intent reads in the farmer's own language. Loaded once
+// per cold start; used ONLY to label the candidate list handed to the LLM so
+// vernacular queries ("तण" = weeds) bind to the right code. No agronomic
+// knowledge, crop list or synonym table lives in TypeScript.
+let _intentLabels: Map<string, Record<string, string>> | null = null;
+let _intentLabelsPromise: Promise<Map<string, Record<string, string>>> | null = null;
+
+async function loadIntentLabels(): Promise<Map<string, Record<string, string>>> {
+  if (_intentLabels) return _intentLabels;
+  if (_intentLabelsPromise) return _intentLabelsPromise;
+  _intentLabelsPromise = (async () => {
+    const out = new Map<string, Record<string, string>>();
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (!supabaseUrl || !serviceKey) return out;
+      const client = createClient(supabaseUrl, serviceKey);
+      const { data, error } = await client
+        .from('intent_translations')
+        .select('intent_code,language_code,display_text');
+      if (error || !data) {
+        console.warn(`[INTENT_LABELS] load_failed err=${error?.message || 'no rows'}`);
+        return out;
+      }
+      for (const r of data as any[]) {
+        if (!r?.intent_code || !r?.language_code || !r?.display_text) continue;
+        const cur = out.get(r.intent_code) || {};
+        cur[String(r.language_code).toLowerCase()] = String(r.display_text);
+        out.set(r.intent_code, cur);
+      }
+      _intentLabels = out;
+      console.log(`[INTENT_LABELS] loaded codes=${out.size}`);
+      return out;
+    } catch (e) {
+      console.warn(`[INTENT_LABELS] exception ${(e as Error).message}`);
+      return out;
+    }
+  })();
+  return _intentLabelsPromise;
+}
+
 
 export interface IntentClassification {
   intent_code: string;
@@ -126,9 +176,110 @@ function buildLandContextBlock(landContext?: IntentLandContext): string {
   return lines.join('\n');
 }
 
-function buildConstrainedPrompt(farmerMessage: string, validCodes: Set<string>, landContext?: IntentLandContext): string {
-  const codesList = Array.from(validCodes).sort().join(', ');
+/**
+ * Generic (language-agnostic) fuzzy lexical bridge. Tokens of the farmer's
+ * message are matched against the DB vocabulary in `intent_translations`
+ * (display_text) exactly, or with Levenshtein distance 1 — which covers the
+ * phonetic near-misses farmers type. This is a STRING algorithm over DB rows:
+ * no crop list, synonym table or agronomic knowledge lives in TypeScript, and
+ * no phoneme class (e.g. ण↔न) is folded. The matches are surfaced to the LLM
+ * as evidence; the LLM still chooses the code.
+ */
+function editDistanceAtMost1(a: string, b: string): boolean {
+  if (a === b) return true;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  // Short tokens are only fuzzy-matched when they share the leading character,
+  // so a 1-edit window cannot collapse two unrelated 2-letter words.
+  if (Math.min(la, lb) < 4 && a[0] !== b[0]) return false;
+
+  let i = 0, j = 0, edits = 0;
+  while (i < la && j < lb) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (la === lb) { i++; j++; }
+    else if (la > lb) i++;
+    else j++;
+  }
+  if (i < la || j < lb) edits++;
+  return edits <= 1;
+}
+
+function tokenize(s: string): string[] {
+  // \p{M} MUST stay inside the token class: Devanagari vowel signs are marks,
+  // and excluding them shreds every word into single consonants.
+  return foldMarks(s || '').toLowerCase()
+    .split(/[^\p{L}\p{N}\p{M}]+/u)
+    .filter((t) => t.length >= 2);
+}
+
+function buildLexicalEvidenceBlock(
+  farmerMessage: string,
+  validCodes: Set<string>,
+  labels?: Map<string, Record<string, string>>,
+  lang?: string,
+): string {
+  if (!labels || labels.size === 0) return '';
+  const msgTokens = tokenize(farmerMessage);
+  if (msgTokens.length === 0) return '';
+  // token -> [{code, labelToken, exact}]
+  const byToken = new Map<string, Array<{ code: string; lt: string; exact: boolean }>>();
+  for (const code of validCodes) {
+    const t = labels.get(code);
+    if (!t) continue;
+    const texts = [lang ? t[lang] : undefined, t['en'], t['hi'], t['mr']].filter(Boolean) as string[];
+    const labelTokens = new Set<string>();
+    for (const txt of texts) for (const tok of tokenize(txt)) labelTokens.add(tok);
+    for (const lt of labelTokens) {
+      const m = msgTokens.find((mt) => editDistanceAtMost1(mt, lt));
+      if (!m) continue;
+      const arr = byToken.get(m) || [];
+      arr.push({ code, lt, exact: m === lt });
+      byToken.set(m, arr);
+      break;
+    }
+  }
+  // Inverse-document-frequency filter: a farmer word that matches many codes
+  // (generic verbs, "is", "what") carries no signal — keep only discriminative
+  // words. Pure IR statistics over DB rows, no curated stopword list.
+  const hits: string[] = [];
+  for (const [tok, matches] of byToken) {
+    if (matches.length > 3) continue;
+    for (const m of matches) hits.push(`- "${tok}"${m.exact ? '' : ` ≈ "${m.lt}"`} → ${m.code}`);
+  }
+  if (hits.length === 0) return '';
+  console.log(`[INTENT_LEXICAL_EVIDENCE] tokens=${byToken.size} kept=${hits.length}`);
+  return [
+    '═══════════════════════════════════════════════════════════════════════',
+    'LEXICAL EVIDENCE (farmer word ≈ DB vocabulary, spelling-tolerant):',
+    ...hits.slice(0, 8),
+    'Prefer one of these codes unless the full sentence clearly means otherwise.',
+    '═══════════════════════════════════════════════════════════════════════',
+  ].join('\n');
+
+}
+
+function buildConstrainedPrompt(
+
+  farmerMessage: string,
+  validCodes: Set<string>,
+  landContext?: IntentLandContext,
+  labels?: Map<string, Record<string, string>>,
+): string {
+  const lang = (landContext?.language || '').toLowerCase().slice(0, 2);
+  const codesList = Array.from(validCodes).sort().map((code) => {
+    const t = labels?.get(code);
+    if (!t) return code;
+    const native = lang && lang !== 'en' ? t[lang] : undefined;
+    const en = t['en'];
+    const gloss = [native, en].filter(Boolean).join(' / ');
+    return gloss ? `${code} — ${gloss}` : code;
+  }).join('\n');
   const landBlock = buildLandContextBlock(landContext);
+  const lexBlock = buildLexicalEvidenceBlock(farmerMessage, validCodes, labels, lang);
+
+
+
   return `You are a language-understanding component for an agricultural decision system.
 
 YOUR ONLY JOB: translate the farmer's natural-language query into ONE canonical intent_code.
@@ -138,14 +289,28 @@ The farmer may write in ANY language (Marathi, Hindi, English, Tamil, Telugu, Ka
 Bengali, Punjabi) including ROMANIZED scripts (e.g. "mazya usala kide lagale",
 "pani kab dena hai", "kapus la rog lagla").
 
+Farmers type PHONETICALLY on small keyboards: a word may be spelled with a
+near-miss consonant, a missing/extra diacritic, or a dropped nasal mark
+compared with the dictionary form. Read the sentence as a whole and choose the
+meaning the farmer plainly intends, not the literal dictionary sense of a
+misspelled token.
+
 ═══════════════════════════════════════════════════════════════════════
 HARD CONSTRAINT — intent_code MUST be EXACTLY one of these canonical codes
-(do NOT invent new codes, do NOT change capitalization, do NOT abbreviate):
+(do NOT invent new codes, do NOT change capitalization, do NOT abbreviate).
+Each line is "CANONICAL_CODE — meaning in the farmer's language / English".
+Return ONLY the CANONICAL_CODE part (everything before the dash).
+Match the farmer's own words against these meanings FIRST — this labelled list
+is the authority. Only if NOTHING in it fits, use the routing hints below.
+
 
 ${codesList}
 ═══════════════════════════════════════════════════════════════════════
 
+
 ${landBlock}
+
+${lexBlock}
 
 ROUTING HINTS:
 - "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
@@ -253,7 +418,10 @@ export async function classifyFarmerIntent(
     console.log(`   📋 Land context: ${landContext.current_crop}/${landContext.growth_stage || '?'} DAS=${landContext.days_since_sowing || '?'}`);
   }
 
-  const validCodes = await loadCanonicalIntentCodes();
+  const [validCodes, intentLabels] = await Promise.all([
+    loadCanonicalIntentCodes(),
+    loadIntentLabels(),
+  ]);
   if (validCodes.size === 0) {
     console.error('[IntentClassifier] Canonical registry empty — emergency fallback only');
     return emergencyFallback(farmerMessage, new Set());
@@ -282,10 +450,16 @@ export async function classifyFarmerIntent(
     }
   }
 
-  const prompt = buildConstrainedPrompt(farmerMessage, allowedCodes, landContext);
+  const prompt = buildConstrainedPrompt(farmerMessage, allowedCodes, landContext, intentLabels);
+
 
   try {
     let result = await callClassifierLLM(prompt, false);
+
+    // The model may echo "CODE — label"; keep only the canonical code token.
+    if (result?.intent_code) {
+      result.intent_code = String(result.intent_code).split('—')[0].split(' - ')[0].trim().toUpperCase();
+    }
 
     if (result && allowedCodes.has(result.intent_code)) {
       const conf = typeof result.confidence === 'number' ? Math.max(0, Math.min(1, result.confidence)) : 0.6;
@@ -294,10 +468,15 @@ export async function classifyFarmerIntent(
     }
 
     if (result) {
+      // BACKSTOP only — the first prompt already carries the crop-scoped list.
+      if (validCodes.has(result.intent_code)) {
+        console.error(`[INTENT_CROP_SCOPE_REJECT] crop=${lockedCrop || 'none'} rejected=${result.intent_code} eligible=${allowedCodes.size}`);
+      }
       console.error(`[IntentValidator] LLM emitted non-canonical intent: "${result.intent_code}". Retrying with stricter prompt.`);
     } else {
       console.warn('[IntentValidator] LLM returned no parseable JSON. Retrying.');
     }
+
 
     const retryPrompt = prompt + `\n\nYour previous response was INVALID. Return ONLY a code from the canonical list above.`;
     const retry = await callClassifierLLM(retryPrompt, true);

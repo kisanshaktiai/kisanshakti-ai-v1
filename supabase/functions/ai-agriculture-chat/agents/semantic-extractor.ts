@@ -82,7 +82,13 @@ export async function extractSemanticMeaning(
   }
   
   try {
-    const intentResult = await classifyFarmerIntent(safeMessage, landContext);
+    // P0-B.1 — thread the farmer language so the classifier can label the
+    // crop-scoped candidate list with DB `intent_translations` display text.
+    const lcWithLang = _detectedLanguage
+      ? { ...(landContext || {}), language: _detectedLanguage }
+      : landContext;
+    const intentResult = await classifyFarmerIntent(safeMessage, lcWithLang);
+
     
     // Validate intent_code is non-empty
     const intent_code = intentResult.intent_code && intentResult.intent_code.trim() !== ''
