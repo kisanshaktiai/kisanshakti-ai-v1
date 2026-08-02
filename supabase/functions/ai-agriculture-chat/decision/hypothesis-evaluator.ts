@@ -60,6 +60,7 @@ import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 // Step 3 — Hypothesis contract tightening.
 import type { GraphTruth } from '../runtime/graph-truth.ts';
 import { assertGraphTruthIntegrity } from '../runtime/graph-truth.ts';
+import { getRulesForCrop } from '../data/rule-repository.ts';
 
 export interface HypothesisEvaluationInput {
   // Frozen GraphTruth for the turn. When present it OVERRIDES every mutable
@@ -778,7 +779,7 @@ export async function evaluateCandidateHypotheses(
     console.log(`   📦 [HypothesisEval] Loaded ${rulesRaw.length} candidate rules from database`);
     console.log(`   📊 [Debug] First 3 rule crop_codes: ${rulesRaw.slice(0, 3).map((r: any) => r.cause).join(', ')}`);
     
-    // STEP 1.6: FILTER BY STAGE_APPLICABLE (in-code filtering)
+    // STEP 1.6: FILTER BY STAGE_APPLICABLE (in-memory)
     const stageFilteredRules = rulesRaw.filter((rule: any) => {
       const stageApplicable = rule.stage_applicable;
       
