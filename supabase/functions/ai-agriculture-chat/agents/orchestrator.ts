@@ -163,6 +163,7 @@ import {
   isAdvisoryDirectIntent as _isAdvisoryDirectIntentDb,
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
+import { loadObservationSource as _loadObservationSource } from '../utils/db-ssot/observation-source.ts';
 import {
   preloadObservationIndex as _preloadObservationIndex,
   getObservationMaster as _getObservationMaster,
