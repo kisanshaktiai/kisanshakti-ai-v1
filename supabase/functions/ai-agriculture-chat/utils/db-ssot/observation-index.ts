@@ -144,19 +144,17 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
     const started = Date.now();
     let anyPartial = false;
     try {
-      const [masterR, aliasR, transR, intentR] = await Promise.all([
-        pagedLoad<ObservationMasterRow>(
-          supabase,
-          'observation_master',
-          'observation_code, semantic_class, canonical_group, observation_category, affected_plant_part, is_diagnostic, is_farmer_observable, can_generate_question, clarity_score, applies_to_stages, is_active',
-          (q) => q.eq('is_active', true).order('observation_code', { ascending: true }),
-        ),
-        pagedLoad<ObservationAliasRow>(
-          supabase,
-          'observation_aliases',
-          'alias_code, alias_normalized, alias_text, canonical_code, active',
-          (q) => q.eq('active', true),
-        ),
+      // P0-A.1: master/alias rows come from the shared single-read source.
+      await loadObservationSource(supabase);
+      const masterR = {
+        rows: observationMasterRows().filter((r) => r?.is_active === true) as ObservationMasterRow[],
+        partial: false,
+      };
+      const aliasR = {
+        rows: observationAliasRows() as unknown as ObservationAliasRow[],
+        partial: false,
+      };
+      const [transR, intentR] = await Promise.all([
         pagedLoad<any>(
           supabase,
           'observation_translations',
