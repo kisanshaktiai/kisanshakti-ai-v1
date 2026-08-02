@@ -1,102 +1,57 @@
-## Scope
+## Verified current state (checked before planning)
 
-Read-only inventory of every file and DB object involved in cultivation method + biological stage (phenology) logic. No code changed.
+- `decision_rules`: 1855 active-eligible rows, **12 distinct `crop_code` values, 0 mixed-case** (`count(*) filter (where crop_code <> lower(crop_code)) = 0`). So no `LOWER()` UPDATE is needed — but `getCropCodeVariantsForDB()` returns **uppercase** variants (`SC`, `RICE`, `ALL`), so the `.in()` list must be lowercased+deduped at query build time.
+- The 13 named indexes all show `idx_scan = 0` in `pg_stat_user_indexes` (confirmed), totalling ~2 MB. `idx_decision_rules_stage_applicable_gin` (6 scans) and `idx_decision_rules_version_hash` (3 scans) exist and stay.
+- `hypothesis-evaluator.ts:737` builds the `crop_code.ilike.*` OR-filter; selects 15 columns; paginates 1000/page.
+- `bundled-rules/loader.ts:107` does `select('*')`, paginated, then normalizes.
+- Direct `decision_rules` reads inside the orchestrator are at **lines 2440 and 9539** (not 1809/6620 as stated in the brief); line 2440 is a single-rule fetch by `rule_id`, 9539 is a crop-scoped fetch. Both will be re-pointed at the repository where semantics allow.
+- `lookupMarketProducts` is called **4×** — `agents/llm-response-formatter.ts:473,1502` and `index.ts:3837,3999` (the brief said twice, in the formatter only).
+- Nine other modules also query `decision_rules` (`symbolic-reasoner`, `hypothesis-graph-evaluator`, `canonical-observation-loader`, etc.). **Out of scope** for this task — they stay untouched.
 
----
+## Work plan
 
-## 1. Database layer (stage SSOT)
+### 1. SQL migration (one migration)
+- `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dr_crop_lower_active ON decision_rules (lower(crop_code), is_active);`
+- `DROP INDEX CONCURRENTLY IF EXISTS` for the 13 verified zero-scan indexes.
+- No case-normalization UPDATE (verified unnecessary).
+- Note: `CONCURRENTLY` cannot run inside a transaction block; the migration will be authored as standalone statements and I will confirm the runner accepts it — if it rejects `CONCURRENTLY`, I will fall back to plain `CREATE INDEX` / `DROP INDEX` (table is small, 1855 rows, lock is sub-second).
 
-**Functions found in `public` (verified via pg_proc):**
+### 2. `data/rule-repository.ts` (new)
+- Single in-memory snapshot of active rules; `loadingPromise` in-flight lock copied verbatim in shape from `utils/crop-vocabulary-cache.ts`.
+- Column set = `select('*')` (loader's current set) — trivially a superset of the evaluator's 15 columns and both orchestrator selects.
+- Normalization functions (`normalizeActionType`, `normalizeCanonicalGroup`, `normalizeStages`, `normalizeObservableChars`, `normalizeBeeToxicity`) **moved as-is** out of `loader.ts` and imported back by it — no rewrite.
+- Pre-bucketed `Map<cropCodeLower, Map<canonicalGroup, Rule[]>>` plus a per-crop flat list, built once per snapshot.
+- Invalidation: max `version_hash` probe + TTL backstop (5 min, matching the vocabulary cache).
+- API: `getSnapshot()`, `getRulesForCrop(cropCode)`, `getRulesForCropAndGroup(cropCode, group)`, `getRuleById(ruleId)`.
 
-| Function | Signature | Role |
-|---|---|---|
-| `resolve_crop_phenology` | `(p_crop_code, p_crop_cycle, p_cultivation_method, p_variety_id, p_sow_date, p_transplant_date, p_current_gdd, p_as_of, p_land_id)` | Core stage resolver — cultivation-method aware |
-| `resolve_crop_phenology` | `(p_land_id)` | Overload |
-| `resolve_crop_phenology_for_land` | `(p_land_id, p_as_of)` | The only resolver actually called from code (4 call sites) |
-| `resolve_crop_stage_full` | `(p_land_id, p_as_of)` | Extended resolution (no code call sites found) |
-| `apply_stage_transitions` | `(p_land_id)` | Persists confirmed transitions |
-| `evaluate_stage_transitions` | `(p_land_id, p_from_stage)` | Per-edge trigger evaluation |
-| `evaluate_stage_validation` | `(p_land_id, p_target_stage)` | Validates a candidate stage |
-| `derive_stage_transition_conditions` / `derive_biological_stage_transitions` | `(p_crop_code)` | Seeders for transition rules |
-| `initialize_crop_cycle_stage` | `(p_land_id)` | Autonomous cycle anchoring (S4) |
-| `accumulate_gdd_for_land` / `accumulate_gdd_batch` | | GDD accumulation feeding non-DAS triggers |
-| `sync_land_stage_cache` | `()` | Cache sync |
+### 3. Consumers
+- `hypothesis-evaluator.ts`: replace the paged `.or(ilike)` query with `getRulesForCrop()` over the same variant list (lowercased). Downstream filtering/scoring untouched. Delete the misleading STEP 1.6 comment only.
+- `bundled-rules/loader.ts`: `loadRulesFromDatabase()` delegates to the repository.
+- `orchestrator.ts:9539`: read from repository. `orchestrator.ts:2440` (single rule by id): `getRuleById()` from the snapshot.
 
-**Tables read by stage modules (from source):** `crop_stage_master`, `crop_stage_graph`, `crop_stage_knowledge`, `stage_transition_log`, `land_gdd_daily`, `crop_growth_analysis`, `crop_schedules`, `lands`, `ndvi_data`, `soil_health`, `weather_current`, `weather_observations`, `intent_observation_mapping`, `decision_rules`.
+### 4. Hot-loop hoists (`hypothesis-evaluator.ts`)
+- `HIGH_POWER` / `LOW_POWER` (lines 542/551) and the `patterns` array in `normalizeCauseForDedup()` (line 275) → module-scope `const`. Identical values, identical order.
 
-**Migrations carrying cultivation/stage DDL:** `20260712183336`, `20260729144228`, `20260729145903`, `20260729153551`, `20260729154106`, `20260729165059`, `20260730173557`, `20260730173811`, plus earlier stage seeds (`20260703*`, `20260704*`).
+### 5. Orchestrator concurrency + per-request memoization
+- Kick off `fetchComprehensiveLandContext()`, `fetchWeatherData()`, `getCropVocabulary('ALL')`, `loadFarmerProfileLite()` as promises at the top of `orchestrate()`; await at point of use. `getCropVocabulary(landContext.crop_code)` stays chained (real dependency).
+- Per-request `Map` cache (created inside `orchestrate()`, passed down; **never module-level**) for `fetchComprehensiveLandContext`, `fetchWeatherData`, and `lookupMarketProducts` (all 4 sites).
 
----
+### 6. Level-gated logging
+- Small `runtime/log.ts` reading `LOG_LEVEL` (default `INFO`).
+- INFO retained: `trace_id`, five `layerTimings`, `[TOKEN_METRICS]`, every `console.error`.
+- Everything else rewritten to `debug(...)` — no statement deleted.
 
-## 2. Edge runtime — `supabase/functions/ai-agriculture-chat`
+## Acceptance test — how I will verify identical `rule_id` sets
 
-### 2a. Stage authority core
-| File | Lines | Role |
-|---|---|---|
-| `utils/stage-knowledge-cache.ts` | 410 | DB-only stage SSOT cache. Owns the `AsyncLocalStorage` cultivation lane (`enterCultivationLane`, `runWithCultivationLane`, `currentLane`, `setActiveCultivationMethod`). Loads `crop_stage_master` / `crop_stage_graph` / `crop_stage_knowledge`; exposes `getStageRow`, `getStageByDAS`, `getStageFamilyFromDB`, `stagesEquivalentFromDB` |
-| `utils/stage-normalizer.ts` | 209 | Canonical stage keys + `StageCategory`, `areStagesCompatible`, `calculateStageRelevanceScore` |
-| `runtime/stage-family-shim.ts` | 105 | `stageFamily` / `stagesEquivalent` delegates; `STAGE_FAMILIES` is intentionally frozen-empty (DB-only) |
-| `runtime/phenology-reconciler.ts` | — | Multi-tier inference: morphology (`crop_growth_analysis`) → GDD (`land_gdd_daily`) → `crop_stage_master` → DAS fallback (0.5); writes `stage_transition_log` |
-| `agents/biological-state.ts` | 322 | `buildBiologicalState`, lock/assert helpers, `evaluateBiologicalConstraints` (reads `decision_rules`) |
-| `decision/stage-symbol-resolver.ts` | 84 | `resolveStageSymbol`, `sameStageNode`, `sameStageFamily`, `stageCompatibility` |
-| `decision/crop-calendar-lookup.ts` | — | Calendar/DAS lookups, cultivation-aware |
-| `decision/authoritative-state-loader.ts` | 864 | ASL: calls `resolve_crop_phenology_for_land`, merges land/soil/NDVI/weather/schedule into `AuthoritativeLandState` |
-| `decision/canonical-context-contract.ts` | 581 | Immutable `CanonicalContext` incl. stage + cultivation_method |
+Two checks, both concrete:
 
-### 2b. Consumers of stage / cultivation lane
-`agents/orchestrator.ts` (central binder — 18 cultivation refs, 134 DAS refs, lane binding + `apply_stage_transitions` at ~L10289), `agents/canonical-observation-loader.ts`, `agents/layered-rule-evaluator.ts`, `agents/canonical-state-builder.ts`, `agents/crop-stage-advisor.ts`, `agents/static-data-gate.ts`, `agents/soil-ndvi-state-calculator.ts`, `agents/clarification-*` (generator / renderer / strategy / scope-resolver), `decision/hypothesis-evaluator.ts`, `decision/hypothesis-graph-evaluator.ts`, `decision/hypothesis-clarification-builder.ts`, `decision/iom-gate.ts`, `decision/failure-class-detector.ts`, `decision/symbolic-reasoner.ts`, `decision/morphology-reconciler.ts`, `decision/temporal-constraint-validator.ts`, `decision/context-authority.ts`, `decision/unified-decision-gate.ts`, `decision/prescription-gate-enforcer.ts`, `runtime/contradiction-engine.ts`, `runtime/session-ssot.ts`, `runtime/graph-truth.ts`, `runtime/graph-runtime*.ts`, `runtime/observation-selector-contract.ts`, `index.ts`.
+1. **SQL equivalence proof for the query swap.** For each of the 12 distinct `crop_code` values plus a representative variant list, run in production:
+   `SELECT rule_id FROM decision_rules WHERE is_active AND (crop_code ILIKE ANY($variants))` vs `... WHERE is_active AND lower(crop_code) = ANY($lowered)` and assert the symmetric difference is empty. This is exact and I can run it.
+2. **Runtime snapshot diff.** Behind a temporary `RULE_REPO_SHADOW=1` env flag, run the old query path and the repository path on the same turn, sort both `rule_id` lists, and log a hash + any diff. Run 3–5 live turns (rice/direct_seeded and sugarcane), confirm zero diffs, then remove the flag.
 
-### 2c. Other edge functions
-- `ai-smart-schedule/index.ts` (80 DAS refs) and `ai-smart-schedule/agro-knowledge-base.ts` — **hardcoded DAS/stage split schedules in TS**, not DB-sourced.
-- `ai-smart-schedule/decision-graph-integration.ts`, `proactive-evaluator/index.ts`, `ai-crop-scan/index.ts`, `ai-query-understanding/index.ts` — read stage/cultivation context.
-- `seed-decision-rules/rules/sugarcane/*.json` — stage-keyed rule seeds.
-- `weather/agricultural-calculations.ts` — GDD inputs.
+**Honest caveat:** check 1 proves the DB-filter swap exactly. Check 2 covers only the turns I actually exercise — it is a strong sample, not an exhaustive proof over all inputs. The stronger structural guarantee is that no filtering/scoring code is edited: post-fetch logic operates on the same rows because the repository's column set is `select('*')` and the crop filter is proven equivalent. I will not claim exhaustive verification.
 
----
-
-## 3. Frontend
-
-| File | Role |
-|---|---|
-| `src/hooks/useLandChatContext.ts` | Only client caller of `resolve_crop_phenology_for_land`; documents "never derive stage on the client" |
-| `src/lib/cropStage.ts` | **Client-side stage derivation from sowing date + duration** (`stageFromProgress` hardcoded thresholds) — used by `SmartLandConfirmCard` |
-| `src/components/land/SmartLandConfirmCard.tsx` | Writes `crop_stage`, planting/sowing/cultivation dates |
-| `src/components/chat/*` (`LandContextCard`, `DataAuditCards`, `DecisionBrainCards`, `DiagnosticResponseCard`, `EnhancedAIChatInterface`, `GeneralChatLandPicker`) | Display stage/context |
-| `src/components/crop-growth/*`, `src/hooks/useCropGrowthTracking.ts` | Morphology capture feeding `crop_growth_analysis` |
-| `src/components/schedule/*` (`CropDateInput`, `CropScheduleView`, `ModernScheduleCard`), `src/hooks/useSchedules.ts`, `src/services/schedulesApi.ts` | Schedule surface |
-| `src/hooks/useLands.ts`, `src/services/landsApi.ts`, `src/pages/LandDetails.tsx`, `LandManagement.tsx`, `NDVIAnalysis.tsx` | Land stage fields |
-| `src/decision-graph/{types,fact-extractor,audit-logger}.ts`, `src/types/decision-rules.types.ts` | Client mirror of graph types |
-| `src/services/{localDB,offlineDataService,syncService}.ts` | Offline cache of stage fields |
-
----
-
-## 4. Architecture map
-
-```text
-                 crop_stage_master / crop_stage_graph / crop_stage_knowledge
-                 stage_transition_conditions | land_gdd_daily | crop_growth_analysis
-                                     |
-        resolve_crop_phenology(_for_land) <— cultivation_method, variety, GDD, DAS(fallback 0.5)
-                                     |
-   +-------------------------------- + --------------------------------+
-   |                                                                   |
-   v                                                                   v
-EDGE: authoritative-state-loader.ts  ->  orchestrator.ts        CLIENT: useLandChatContext.ts
-        (ASL: land/soil/ndvi/weather)      | enterCultivationLane()        (read-only display)
-                                           | phenology-reconciler.ts
-                                           | apply_stage_transitions()
-                                           v
-                     stage-knowledge-cache.ts  (AsyncLocalStorage lane, DB-only families)
-                          |            |                |
-              stage-normalizer   stage-family-shim   stage-symbol-resolver
-                          |            |                |
-        hypothesis-graph-evaluator / iom-gate / symbolic-reasoner / clarification-builder
-                                           |
-                                    decision output
-```
-
-## 5. Observations worth flagging (not yet fixed)
-
-- `src/lib/cropStage.ts` derives a stage client-side from progress thresholds, contradicting the "DB is the only stage authority" rule in `useLandChatContext.ts`.
-- `ai-smart-schedule` carries hardcoded per-crop DAS/stage split schedules in TS rather than reading `crop_stage_master`.
-- `resolve_crop_stage_full` and the 9-arg `resolve_crop_phenology` overload have no code call sites — only `resolve_crop_phenology_for_land` is used.
+## Not doing
+- No changes to scoring, `evaluateConditionsJson`, conflict resolution, safety gates, or formatter validation.
+- No agronomic constants moved into TypeScript.
+- No changes to the nine out-of-scope modules that query `decision_rules`.
