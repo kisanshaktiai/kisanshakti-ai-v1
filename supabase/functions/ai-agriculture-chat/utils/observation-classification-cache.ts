@@ -1,4 +1,16 @@
 // OBSERVATION CLASSIFICATION CACHE — DB-backed SSOT
+//
+// CHANGE LOG (newest first)
+//   2026-08-02 (P0-A.1) — observation_master / observation_aliases are read
+//     from the shared `db-ssot/observation-source.ts` loader (one read per
+//     isolate). Projections are unchanged: is_active===true is applied in
+//     memory; aliases are already active-only at the source.
+
+import {
+  loadObservationSource,
+  observationMasterRows,
+  observationAliasRows,
+} from './db-ssot/observation-source.ts';
 
 export type FailureClassEnum =
   | 'ESTABLISHMENT_FAILURE'
@@ -96,45 +108,30 @@ export async function loadObservationClassification(supabase: any): Promise<void
   const byCanonical = new Map<string, ObservationClassification>();
   const aliasToCanonical = new Map<string, string>();
 
-  // Paginate observation_master (2540 rows > 1000 default cap).
-  const PAGE = 1000;
+  // P0-A.1: rows come from the shared single-read source (filtered in memory).
   try {
-    for (let offset = 0; ; offset += PAGE) {
-      const { data, error } = await supabase
-        .from('observation_master')
-        .select(
-          'observation_code, semantic_class, canonical_group, observation_category, is_diagnostic, clarity_score, applies_to_stages'
-        )
-        .eq('is_active', true)
-        .order('observation_code', { ascending: true })
-        .range(offset, offset + PAGE - 1);
-      if (error) {
-        console.warn(`[OBS_CLASSIFICATION_CACHE] observation_master @${offset}:`, error.message);
-        break;
-      }
-      const rows = (data as OMRow[] | null) ?? [];
-      for (const r of rows) {
-        if (!r?.observation_code) continue;
-        const key = norm(r.observation_code);
-        const failure_class = deriveFailureClass(r);
-        const authority_domain = deriveAuthorityDomain(r);
-        const clarity = typeof r.clarity_score === 'number' ? r.clarity_score : null;
-        const is_diag = r.is_diagnostic !== false; // treat null as diagnostic to avoid false vagueness
-        const is_vague = !is_diag || (clarity !== null && clarity < 30);
-        byCanonical.set(key, {
-          observation_code: r.observation_code,
-          semantic_class: r.semantic_class,
-          canonical_group: r.canonical_group,
-          observation_category: r.observation_category,
-          is_diagnostic: is_diag,
-          clarity_score: clarity,
-          applies_to_stages: r.applies_to_stages,
-          failure_class,
-          authority_domain,
-          is_vague,
-        });
-      }
-      if (rows.length < PAGE) break;
+    await loadObservationSource(supabase);
+    const rows = observationMasterRows().filter((r) => r?.is_active === true) as unknown as OMRow[];
+    for (const r of rows) {
+      if (!r?.observation_code) continue;
+      const key = norm(r.observation_code);
+      const failure_class = deriveFailureClass(r);
+      const authority_domain = deriveAuthorityDomain(r);
+      const clarity = typeof r.clarity_score === 'number' ? r.clarity_score : null;
+      const is_diag = r.is_diagnostic !== false; // treat null as diagnostic to avoid false vagueness
+      const is_vague = !is_diag || (clarity !== null && clarity < 30);
+      byCanonical.set(key, {
+        observation_code: r.observation_code,
+        semantic_class: r.semantic_class,
+        canonical_group: r.canonical_group,
+        observation_category: r.observation_category,
+        is_diagnostic: is_diag,
+        clarity_score: clarity,
+        applies_to_stages: r.applies_to_stages,
+        failure_class,
+        authority_domain,
+        is_vague,
+      });
     }
   } catch (e) {
     console.warn('[OBS_CLASSIFICATION_CACHE] observation_master load failed', e);
@@ -142,22 +139,10 @@ export async function loadObservationClassification(supabase: any): Promise<void
 
   // Aliases — bridge ALL_CAPS upstream tokens to lowercase canonical codes.
   try {
-    for (let offset = 0; ; offset += PAGE) {
-      const { data, error } = await supabase
-        .from('observation_aliases')
-        .select('alias_code, canonical_code, active')
-        .eq('active', true)
-        .range(offset, offset + PAGE - 1);
-      if (error) {
-        console.warn(`[OBS_CLASSIFICATION_CACHE] observation_aliases @${offset}:`, error.message);
-        break;
-      }
-      const rows = (data as AliasRow[] | null) ?? [];
-      for (const r of rows) {
-        if (!r?.alias_code || !r?.canonical_code) continue;
-        aliasToCanonical.set(norm(r.alias_code), norm(r.canonical_code));
-      }
-      if (rows.length < PAGE) break;
+    const rows = observationAliasRows() as unknown as AliasRow[];
+    for (const r of rows) {
+      if (!r?.alias_code || !r?.canonical_code) continue;
+      aliasToCanonical.set(norm(r.alias_code), norm(r.canonical_code));
     }
   } catch (e) {
     console.warn('[OBS_CLASSIFICATION_CACHE] observation_aliases load failed', e);

@@ -163,6 +163,7 @@ import {
   isAdvisoryDirectIntent as _isAdvisoryDirectIntentDb,
   phase1CacheReady as _phase1CacheReady,
 } from '../utils/db-ssot/phase1-caches.ts';
+import { loadObservationSource as _loadObservationSource } from '../utils/db-ssot/observation-source.ts';
 import {
   preloadObservationIndex as _preloadObservationIndex,
   getObservationMaster as _getObservationMaster,
@@ -1223,22 +1224,33 @@ export class AIAgentOrchestrator {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     const requestMemo = new Map<string, Promise<any>>();
     const run = async (): Promise<OrchestratorResponse> => {
-    // Phase 1 DB-SSOT: preload (TTL-gated, single-flight; ~0ms warm, ~50-150ms cold)
-    try { await _preloadPhase1Caches(this.supabase); } catch (e) {
-      console.warn(`[DB_SSOT_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
-    }
-    // Phase 2 DB-SSOT: shadow observation-index preload (non-authoritative, dual-read window).
-    try { await _preloadObservationIndex(this.supabase); } catch (e) {
-      console.warn(`[OBS_INDEX] preload_failed trace=${traceId} err=${(e as Error).message}`);
-    }
-    // M2 DB-SSOT: system_config tunables (spray thresholds, NDVI/soil bands, freshness windows).
-    try { await _preloadSystemConfig(this.supabase); } catch (e) {
-      console.warn(`[SYSCFG_CACHE] preload_failed trace=${traceId} err=${(e as Error).message}`);
-    }
-    // Phase 0′ DB-SSOT: biotic/abiotic/weed taxonomy (observation_master.semantic_class +
-    // decision_rules.biological_group + system_config.taxonomy_*). TTL-cached, non-fatal.
-    try { await loadTaxonomies(this.supabase); } catch (e) {
-      console.warn(`[TAXONOMY_LOAD_FAILED] trace=${traceId} err=${(e as Error).message}`);
+    // P0-A — boot caches.
+    // Wave A: the shared observation_master / observation_aliases read runs
+    // FIRST and ALONE. Every downstream cache consumes it from memory, so it
+    // must not compete with them for PostgREST throughput.
+    // Wave B: the remaining caches have no load-time interdependency (each
+    // takes only `supabase` and writes its own module state) → concurrent.
+    {
+      const _srcT0 = Date.now();
+      try {
+        await _loadObservationSource(this.supabase);
+        console.log(`[OBS_SOURCE] shared_load_ms=${Date.now() - _srcT0}`);
+      } catch (e) {
+        console.warn(`[OBS_SOURCE] preload_failed trace=${traceId} err=${(e as Error).message}`);
+      }
+      const _preloads: Array<[string, Promise<unknown>]> = [
+        ['DB_SSOT_CACHE', _preloadPhase1Caches(this.supabase)],
+        ['OBS_INDEX', _preloadObservationIndex(this.supabase)],
+        ['SYSCFG_CACHE', _preloadSystemConfig(this.supabase)],
+        ['TAXONOMY', loadTaxonomies(this.supabase)],
+      ];
+      const _settled = await Promise.allSettled(_preloads.map(([, p]) => p));
+      _settled.forEach((s, i) => {
+        if (s.status === 'rejected') {
+          const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+          console.warn(`[${_preloads[i][0]}] preload_failed trace=${traceId} err=${msg}`);
+        }
+      });
     }
     let response: OrchestratorResponse;
     try {
@@ -1522,46 +1534,42 @@ export class AIAgentOrchestrator {
       execution_mode: options.photoUrl ? 'live-vision' : 'live',
       started_at_ms: startTime,
     });
-    // Pre-load stage knowledge cache (idempotent, 10min TTL).
-    try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
-    // Pre-load DB-backed intent→observation mapping (replaces the deleted
-    try {
-      const { loadObservationMapping } = await import('../utils/observation-mapping-cache.ts');
-      await loadObservationMapping(this.supabase);
-    } catch (_e) { /* non-fatal — mapper will log [OBS_MAPPING_CACHE_MISS] */ }
-    // PR-2: Pre-load DB-backed observation & hypothesis classification caches
-    try {
-      const { loadObservationClassification, loadHypothesisTypes } =
-        await import('../utils/observation-classification-cache.ts');
-      await Promise.all([
-        loadObservationClassification(this.supabase),
-        loadHypothesisTypes(this.supabase),
-      ]);
-    } catch (_e) { /* non-fatal — classifiers log [OBS_CLASSIFICATION_MISS] on lookup */ }
-
-    // Phase H — Fix 7 (Knowledge Initialization)
+    // P0-A.2 — ALL request-boot knowledge caches run CONCURRENTLY. Verified:
+    // each loader takes only `supabase`, writes its own module state and reads
+    // no other cache at load time, so there is no ordering dependency.
     try {
       const [
+        { loadObservationMapping },
+        { loadObservationClassification, loadHypothesisTypes },
         { loadETLStandards },
         { loadAgroZones },
         { loadBaselineGuidelines },
         { loadCropSynonyms },
-        { loadCropNames }
+        { loadCropNames },
       ] = await Promise.all([
+        import('../utils/observation-mapping-cache.ts'),
+        import('../utils/observation-classification-cache.ts'),
         import('../decision/etl-gate.ts'),
         import('../utils/agro-zone-cache.ts'),
         import('../utils/baseline-guidelines-cache.ts'),
         import('../utils/crop-synonyms-cache.ts'),
-        import('../utils/crop-names-cache.ts')
+        import('../utils/crop-names-cache.ts'),
       ]);
+      const names = [
+        'stage-knowledge', 'observation-mapping', 'observation-classification', 'hypothesis-types',
+        'etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms', 'crop-names',
+      ];
       const settled = await Promise.allSettled([
+        StageKnowledgeCache.loadStageKnowledge(this.supabase),
+        loadObservationMapping(this.supabase),
+        loadObservationClassification(this.supabase),
+        loadHypothesisTypes(this.supabase),
         loadETLStandards(this.supabase),
         loadAgroZones(this.supabase),
         loadBaselineGuidelines(this.supabase),
         loadCropSynonyms(this.supabase),
-        loadCropNames(this.supabase)
+        loadCropNames(this.supabase),
       ]);
-      const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms', 'crop-names'];
       settled.forEach((s, i) => {
         if (s.status === 'rejected') {
           const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
@@ -4717,7 +4725,13 @@ export class AIAgentOrchestrator {
         const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
 
         // PR-7 F3: IOM-fallback preconditions.
-        const iomLockConfidence = Number((this as any)._intentLock?.confidence ?? intentConfidence ?? 0);
+        // TDZ FIX: `intentConfidence` is declared later in this same function
+        // scope; reading it here threw ReferenceError and aborted the turn.
+        const iomLockConfidence = Number(
+          (this as any)._intentLock?.confidence
+            ?? semanticExtraction?.intent_confidence
+            ?? 0,
+        );
         const iomCropRejected = Boolean((this as any)._intentLock?.crop_scope_rejected);
         const iomIsDiagnosticNoSymptoms =
           (queryRoute?.route === 'DIAGNOSTIC') && (hasSymptoms === false);

@@ -3,6 +3,9 @@
  * DB-DRIVEN TAXONOMIES — biotic / abiotic / weed classification SSOT
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ *   2026-08-02 (P0-A.1) — observation_master / observation_aliases now come
+ *     from the shared `db-ssot/observation-source.ts` single-read loader.
+ *     Projections unchanged (master still UNFILTERED here).
  *   2026-07-29 (Phase 0′ Step 3) — CREATED. Replaces the hardcoded
  *     PEST_EVIDENCE_CODES / PEST_RULE_CATEGORIES / BIOTIC_INDICATORS /
  *     ABIOTIC_CATEGORIES / BIOTIC_OBS_KEYS lists in `agents/orchestrator.ts`
@@ -23,6 +26,11 @@
  */
 
 import { canonicalObsCode } from './canonical-code.ts';
+import {
+  loadObservationSource,
+  observationMasterRows,
+  observationAliasRows,
+} from './db-ssot/observation-source.ts';
 
 export type BiologicalClass = 'BIOTIC' | 'ABIOTIC' | 'WEED' | 'UNKNOWN';
 
@@ -55,26 +63,6 @@ function jsonArraySet(raw: unknown, fallbackEmpty = true): Set<string> {
   return out;
 }
 
-async function pagedSelect(
-  supabase: any,
-  table: string,
-  columns: string,
-  filter?: (q: any) => any,
-): Promise<any[]> {
-  const rows: any[] = [];
-  const PAGE = 1000;
-  for (let from = 0; ; from += PAGE) {
-    let q = supabase.from(table).select(columns).range(from, from + PAGE - 1);
-    if (filter) q = filter(q);
-    const { data, error } = await q;
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    rows.push(...data);
-    if (data.length < PAGE) break;
-  }
-  return rows;
-}
-
 /** Load (or refresh) the taxonomy cache. Safe to call on every turn. */
 export async function loadTaxonomies(supabase: any, force = false): Promise<void> {
   if (!force && _cache && Date.now() - _cache.loadedAt < TTL_MS) return;
@@ -82,11 +70,14 @@ export async function loadTaxonomies(supabase: any, force = false): Promise<void
 
   _inflight = (async () => {
     try {
-      const [obsRows, aliasRows, cfgRes] = await Promise.all([
-        pagedSelect(supabase, 'observation_master', 'observation_code, semantic_class'),
-        pagedSelect(supabase, 'observation_aliases', 'alias_code, canonical_code, active', (q) => q.eq('active', true)),
-        supabase.from('system_config').select('config_key, config_value').like('config_key', 'taxonomy_%'),
-      ]);
+      // P0-A.1: observation_master / observation_aliases come from the shared
+      // single-read source. Taxonomy intentionally uses ALL master rows
+      // (no is_active filter) — unchanged from the previous direct query.
+      await loadObservationSource(supabase, {});
+      const obsRows = observationMasterRows() as any[];
+      const aliasRows = observationAliasRows() as any[];
+      const cfgRes = await supabase
+        .from('system_config').select('config_key, config_value').like('config_key', 'taxonomy_%');
 
       const obsClass = new Map<string, string>();
       for (const r of obsRows) {
