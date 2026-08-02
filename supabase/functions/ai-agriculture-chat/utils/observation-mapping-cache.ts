@@ -104,24 +104,60 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
   if (cache && now - cache.loadedAt < TTL_MS) return;
 
   // Paginate IOM to bypass the PostgREST 1000-row cap — 13k+ rows expected.
+  // Pages are fetched CONCURRENTLY (bounded) after an exact count; ordering is
+  // preserved by writing each page into its slot. Same rows, same order.
   const iom: IOMRow[] = [];
   const PAGE = 1000;
+  const COLS = 'intent_code, crop_code, growth_stage, das_min, das_max, observation_code, assertion_strength, confidence_rank';
+  const base = () => supabase
+    .from('intent_observation_mapping')
+    .select(COLS)
+    .eq('is_active', true)
+    .order('intent_code', { ascending: true })
+    .order('confidence_rank', { ascending: true, nullsFirst: false });
   try {
-    for (let offset = 0; ; offset += PAGE) {
-      const { data, error } = await supabase
+    let total = -1;
+    try {
+      const { count, error } = await supabase
         .from('intent_observation_mapping')
-        .select('intent_code, crop_code, growth_stage, das_min, das_max, observation_code, assertion_strength, confidence_rank')
-        .eq('is_active', true)
-        .order('intent_code', { ascending: true })
-        .order('confidence_rank', { ascending: true, nullsFirst: false })
-        .range(offset, offset + PAGE - 1);
+        .select(COLS, { count: 'exact', head: true })
+        .eq('is_active', true);
+      if (error) throw new Error(error.message);
+      total = Number(count ?? 0);
+    } catch (e) {
+      console.warn('[OBS_MAPPING_CACHE] count failed — serial fallback', (e as Error).message);
+    }
+
+    const fetchPage = async (offset: number): Promise<IOMRow[] | null> => {
+      const { data, error } = await base().range(offset, offset + PAGE - 1);
       if (error) {
         console.warn(`[OBS_MAPPING_CACHE] intent_observation_mapping paged select error @${offset}:`, error.message);
-        break;
+        return null;
       }
-      const rows = (data as IOMRow[] | null) ?? [];
-      iom.push(...rows);
-      if (rows.length < PAGE) break;
+      return (data as IOMRow[] | null) ?? [];
+    };
+
+    if (total < 0) {
+      for (let offset = 0; ; offset += PAGE) {
+        const rows = await fetchPage(offset);
+        if (rows === null) break;
+        iom.push(...rows);
+        if (rows.length < PAGE) break;
+      }
+    } else {
+      const offsets: number[] = [];
+      for (let o = 0; o < total; o += PAGE) offsets.push(o);
+      const pages: (IOMRow[] | null)[] = new Array(offsets.length).fill(null);
+      let next = 0;
+      const worker = async () => {
+        for (;;) {
+          const i = next++;
+          if (i >= offsets.length) return;
+          pages[i] = await fetchPage(offsets[i]);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, offsets.length) }, worker));
+      for (const p of pages) if (p) iom.push(...p);
     }
   } catch (e) {
     console.warn('[OBS_MAPPING_CACHE] IOM load failed', e);
