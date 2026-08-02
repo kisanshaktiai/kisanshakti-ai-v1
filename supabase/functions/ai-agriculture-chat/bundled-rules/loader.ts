@@ -21,6 +21,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import {
+  getAllRules,
+  normalizeActionType,
+  normalizeCanonicalGroup,
+  normalizeStages,
+  normalizeObservableChars,
+  normalizeBeeToxicity,
+} from '../data/rule-repository.ts';
 
 // TYPES
 
@@ -87,134 +95,15 @@ const META_RUNTIME_KEYS = new Set([
 
 async function loadRulesFromDatabase(): Promise<BundledRule[]> {
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.warn('⚠️ [RuleLoader] Missing Supabase credentials - returning empty rules');
-      return [];
-    }
-    
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    // PERF: single shared snapshot (data/rule-repository.ts) — no direct DB read here.
+    const data = await getAllRules();
 
-    // Phase-Z FIX 1 — Paginate decision_rules.
-    const PAGE = 1000;
-    const MAX_PAGES = 5; // safety cap (5000 rules)
-    const allRows: any[] = [];
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const from = page * PAGE;
-      const { data: pageRows, error } = await supabase
-        .from('decision_rules')
-        .select('*')
-        .eq('is_active', true)
-        .order('rule_id', { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) {
-        console.error(`❌ [RuleLoader] Database error on page ${page}:`, error.message);
-        if (allRows.length === 0) return [];
-        break;
-      }
-      const chunk = pageRows || [];
-      allRows.push(...chunk);
-      if (chunk.length < PAGE) break;
-    }
-    const data = allRows;
-
-    console.log(`✅ [RuleLoader] Loaded ${data.length} rules from database (paginated)`);
+    console.log(`✅ [RuleLoader] Loaded ${data.length} rules from shared snapshot`);
     return (data || []).map(row => {
       // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
-      
-      // ON-THE-FLY NORMALIZATION (Alternative to migrations)
-      
-      // Normalize action_type to standard enums
-      const normalizeActionType = (action: string | null): string => {
-        if (!action) return 'RECOMMEND';
-        const upper = action.toUpperCase().trim();
-        const VALID_DB_TYPES = ['RECOMMEND', 'MONITOR', 'BLOCK', 'NO_ACTION_REQUIRED', 'URGENT_ACTION'];
-        if (VALID_DB_TYPES.includes(upper)) return upper;
-        // Legacy reverse mapping for any old data still using lowercase types
-        const legacyMapping: Record<string, string> = {
-          'treatment': 'RECOMMEND', 'monitoring': 'MONITOR', 'safety_gate': 'BLOCK',
-          'advisory': 'NO_ACTION_REQUIRED', 'urgent_treatment': 'URGENT_ACTION',
-          'APPLY_TREATMENT': 'RECOMMEND', 'prevention': 'RECOMMEND',
-          'diagnosis': 'MONITOR', 'clarification': 'MONITOR',
-        };
-        return legacyMapping[action] || legacyMapping[upper] || 'RECOMMEND';
-      };
-      
-      // Normalize canonical_group to 13-group system
-      const normalizeCanonicalGroup = (group: string | null): string => {
-        if (!group) return '12_monitoring';
-        const g = group.toLowerCase();
-        
-        // Handle SC_PEST_*, CT_PEST_* patterns
-        if (g.startsWith('sc_pest_') || g.startsWith('ct_pest_')) return '03_pest';
-        if (g.startsWith('sc_disease_') || g.startsWith('ct_disease_')) return '04_disease';
-        if (g.startsWith('sc_nutrient_') || g.startsWith('ct_nutrient_')) return '05_nutrition';
-        if (g.startsWith('sc_stress_') || g.startsWith('ct_stress_')) return '08_stress';
-        if (g.startsWith('sc_irrigation_') || g.startsWith('ct_irrigation_')) return '10_irrigation';
-        if (g.startsWith('sc_safety_') || g.startsWith('ct_safety_')) return '11_safety';
-        if (g.startsWith('sc_weather_') || g.startsWith('ct_weather_')) return '09_weather';
-        
-        // Direct mapping for short names
-        const mapping: Record<string, string> = {
-          'pest': '03_pest',
-          'disease': '04_disease',
-          'nutrition': '05_nutrition',
-          'nutrient': '05_nutrition',
-          'weed': '06_weed',
-          'clarification': '07_clarification',
-          'stress': '08_stress',
-          'weather': '09_weather',
-          'weather_alert': '09_weather',
-          'irrigation': '10_irrigation',
-          'safety': '11_safety',
-          'monitoring': '12_monitoring',
-          'treatment': '13_treatment',
-          'identity': '01_crop_identity',
-          'crop_identity': '01_crop_identity',
-          'growth_stage': '02_growth_stage',
-        };
-        
-        return mapping[g] || (g.match(/^\d{2}_/) ? g : '12_monitoring');
-      };
-      
-      // AUDIT FIX: Preserve UPPERCASE stages from DB, normalize synonyms only
-      // DB stores UPPERCASE (TILLERING, GRAND_GROWTH) - comparisons must be case-insensitive at match time
-      const normalizeStages = (stages: string[] | null): string[] => {
-        if (!stages || !Array.isArray(stages)) return ['ALL'];
-        const stageMapping: Record<string, string> = {
-          'PLANTING': 'GERMINATION',
-          'RATOON': 'POST_HARVEST',
-          'CANE_FORMATION': 'GRAND_GROWTH',
-          'EARLY_GROWTH': 'SEEDLING',
-          'RATOON_INIT': 'POST_HARVEST',
-        };
-        return stages.map(s => {
-          const upper = s.toUpperCase();
-          return stageMapping[upper] || upper;
-        });
-      };
-      
-      // Normalize observable_characteristics to array
-      const normalizeObservableChars = (chars: unknown): string[] | null => {
-        if (!chars) return null;
-        if (Array.isArray(chars)) return chars.map(c => String(c).toUpperCase());
-        if (typeof chars === 'object') {
-          return Object.keys(chars).map(k => k.toUpperCase());
-        }
-        return null;
-      };
-      
-      // Normalize bee_toxicity
-      const normalizeBeeToxicity = (val: string | null): string | null => {
-        if (!val) return null;
-        const upper = val.toUpperCase();
-        if (['HIGH', 'MODERATE', 'LOW', 'SAFE'].includes(upper)) return upper;
-        if (upper === 'NONE') return 'SAFE';
-        return null;
-      };
+
+
       
       return {
         rule_id: row.rule_id,

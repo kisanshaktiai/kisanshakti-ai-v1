@@ -60,6 +60,7 @@ import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 // Step 3 — Hypothesis contract tightening.
 import type { GraphTruth } from '../runtime/graph-truth.ts';
 import { assertGraphTruthIntegrity } from '../runtime/graph-truth.ts';
+import { getRulesForCrop } from '../data/rule-repository.ts';
 
 export interface HypothesisEvaluationInput {
   // Frozen GraphTruth for the turn. When present it OVERRIDES every mutable
@@ -272,6 +273,69 @@ import {
 
 // CAUSE NORMALIZATION FOR DEDUPLICATION
 
+// PERF: hoisted to module scope — pure constants, previously rebuilt per rule
+// evaluation (~180x/request). Values and order are unchanged.
+const HIGH_POWER_OBS = [
+  'DEAD_HEART', 'DEADHEART', 'DEAD_HEART_PRESENT',
+  'TUNNELS_IN_STEM', 'TUNNELING', 'BORE_HOLE',
+  'FRASS', 'FRASS_VISIBLE', 'FRASS_NEAR_BASE',
+  'MUD_TUNNELS', 'TERMITE_MUD_TUBES', 'MUD_GALLERIES',
+  'HONEYDEW', 'SOOTY_MOLD',
+  'PINK_LARVAE', 'LARVAE_PRESENT', 'LARVAE_VISIBLE',
+  'WHITE_POWDER', 'WOOLLY_MASS', 'COTTONY_MASS'
+];
+const LOW_POWER_OBS = [
+  'YELLOWING', 'LEAF_YELLOWING', 'GENERAL_YELLOWING',
+  'WILTING', 'LEAF_WILTING', 'PLANT_WILTING',
+  'STUNTED', 'STUNTED_GROWTH', 'POOR_GROWTH',
+  'DRYING', 'LEAF_DRYING', 'TIP_DRYING',
+  'BROWNING', 'LEAF_BROWNING', 'EDGE_BROWNING',
+  'GAPS', 'PATCHY_DAMAGE', 'GAPS_IN_FIELD'
+];
+
+
+// PERF: hoisted to module scope — pure constant, previously rebuilt per call.
+const DEDUP_PATTERNS: [RegExp, string][] = [
+  // PEST patterns (existing)
+  [/early\s*shoot\s*borer/i, 'early shoot borer'],
+  [/shoot\s*borer/i, 'shoot borer'],
+  [/stem\s*borer/i, 'stem borer'],
+  [/top\s*borer/i, 'top borer'],
+  [/internode\s*borer/i, 'internode borer'],
+  [/root\s*borer/i, 'root borer'],
+  [/white\s*grub/i, 'white grub'],
+  [/root\s*grub/i, 'root grub'],
+  [/termite/i, 'termite'],
+  [/aphid/i, 'aphid'],
+  [/whitefly/i, 'whitefly'],
+  [/thrips/i, 'thrips'],
+  [/mealybug/i, 'mealybug'],
+  [/red\s*rot/i, 'red rot'],
+  [/smut/i, 'smut'],
+  [/wilt/i, 'wilt'],
+  [/rust/i, 'rust'],
+
+  // FORENSIC AUDIT FIX v8.0: NUTRIENT dedup patterns
+  [/nitrogen/i, 'nitrogen deficiency'],
+  [/phosphorus|phospho/i, 'phosphorus deficiency'],
+  [/potassium|potash/i, 'potassium deficiency'],
+  [/micronutrient/i, 'micronutrient deficiency'],
+  [/iron\s*(deficiency|chlorosis)?/i, 'iron deficiency'],
+  [/zinc\s*(deficiency)?/i, 'zinc deficiency'],
+  [/boron\s*(deficiency)?/i, 'boron deficiency'],
+  [/manganese\s*(deficiency)?/i, 'manganese deficiency'],
+  [/sulphur|sulfur/i, 'sulphur deficiency'],
+  [/nutrient\s*deficiency/i, 'nutrient deficiency'],
+  // REMOVED: Over-broad yellowing|chlorosis pattern that collapsed ALL nutrient
+
+  // DISEASE dedup patterns
+  [/leaf\s*spot/i, 'leaf spot'],
+  [/blight/i, 'blight'],
+  [/mosaic/i, 'mosaic virus'],
+  [/grassy\s*shoot/i, 'grassy shoot'],
+  [/pokkah\s*boeng/i, 'pokkah boeng'],
+];
+
 function normalizeCauseForDedup(cause: string): string {
   if (!cause) return 'unknown';
   
@@ -293,48 +357,7 @@ function normalizeCauseForDedup(cause: string): string {
     .trim();
   
   // Apply pattern-based normalization for known variations
-  const patterns: [RegExp, string][] = [
-    // PEST patterns (existing)
-    [/early\s*shoot\s*borer/i, 'early shoot borer'],
-    [/shoot\s*borer/i, 'shoot borer'],
-    [/stem\s*borer/i, 'stem borer'],
-    [/top\s*borer/i, 'top borer'],
-    [/internode\s*borer/i, 'internode borer'],
-    [/root\s*borer/i, 'root borer'],
-    [/white\s*grub/i, 'white grub'],
-    [/root\s*grub/i, 'root grub'],
-    [/termite/i, 'termite'],
-    [/aphid/i, 'aphid'],
-    [/whitefly/i, 'whitefly'],
-    [/thrips/i, 'thrips'],
-    [/mealybug/i, 'mealybug'],
-    [/red\s*rot/i, 'red rot'],
-    [/smut/i, 'smut'],
-    [/wilt/i, 'wilt'],
-    [/rust/i, 'rust'],
-    
-    // FORENSIC AUDIT FIX v8.0: NUTRIENT dedup patterns
-    [/nitrogen/i, 'nitrogen deficiency'],
-    [/phosphorus|phospho/i, 'phosphorus deficiency'],
-    [/potassium|potash/i, 'potassium deficiency'],
-    [/micronutrient/i, 'micronutrient deficiency'],
-    [/iron\s*(deficiency|chlorosis)?/i, 'iron deficiency'],
-    [/zinc\s*(deficiency)?/i, 'zinc deficiency'],
-    [/boron\s*(deficiency)?/i, 'boron deficiency'],
-    [/manganese\s*(deficiency)?/i, 'manganese deficiency'],
-    [/sulphur|sulfur/i, 'sulphur deficiency'],
-    [/nutrient\s*deficiency/i, 'nutrient deficiency'],
-    // REMOVED: Over-broad yellowing|chlorosis pattern that collapsed ALL nutrient
-    
-    // DISEASE dedup patterns
-    [/leaf\s*spot/i, 'leaf spot'],
-    [/blight/i, 'blight'],
-    [/mosaic/i, 'mosaic virus'],
-    [/grassy\s*shoot/i, 'grassy shoot'],
-    [/pokkah\s*boeng/i, 'pokkah boeng'],
-  ];
-  
-  for (const [pattern, replacement] of patterns) {
+  for (const [pattern, replacement] of DEDUP_PATTERNS) {
     if (pattern.test(normalized)) {
       return replacement;
     }
@@ -539,25 +562,8 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
     }
     
     // FALLBACK: Hardcoded pathognomonic indicators
-    const HIGH_POWER = [
-      'DEAD_HEART', 'DEADHEART', 'DEAD_HEART_PRESENT',
-      'TUNNELS_IN_STEM', 'TUNNELING', 'BORE_HOLE',
-      'FRASS', 'FRASS_VISIBLE', 'FRASS_NEAR_BASE',
-      'MUD_TUNNELS', 'TERMITE_MUD_TUBES', 'MUD_GALLERIES',
-      'HONEYDEW', 'SOOTY_MOLD',
-      'PINK_LARVAE', 'LARVAE_PRESENT', 'LARVAE_VISIBLE',
-      'WHITE_POWDER', 'WOOLLY_MASS', 'COTTONY_MASS'
-    ];
-    const LOW_POWER = [
-      'YELLOWING', 'LEAF_YELLOWING', 'GENERAL_YELLOWING',
-      'WILTING', 'LEAF_WILTING', 'PLANT_WILTING',
-      'STUNTED', 'STUNTED_GROWTH', 'POOR_GROWTH',
-      'DRYING', 'LEAF_DRYING', 'TIP_DRYING',
-      'BROWNING', 'LEAF_BROWNING', 'EDGE_BROWNING',
-      'GAPS', 'PATCHY_DAMAGE', 'GAPS_IN_FIELD'
-    ];
-    if (HIGH_POWER.some(p => normalized.includes(p))) return 'HIGH';
-    if (LOW_POWER.some(p => normalized.includes(p))) return 'LOW';
+    if (HIGH_POWER_OBS.some(p => normalized.includes(p))) return 'HIGH';
+    if (LOW_POWER_OBS.some(p => normalized.includes(p))) return 'LOW';
     return 'MEDIUM';
   };
   
@@ -731,45 +737,19 @@ export async function evaluateCandidateHypotheses(
     console.log(`   [HypothesisEval] Stage variants for query: [${stageVariants.slice(0, 5).join(', ')}...]`);
     console.log(`   [HypothesisEval] DB stage normalized: ${growth_stage} → ${dbStage}`);
     
-    // STEP 1.5: BUILD DYNAMIC QUERY WITH CROP AND STAGE FILTERING
-    
-    // Build crop filter: match any of the crop variants
-    const cropFilter = cropVariants.map(v => `crop_code.ilike.${v}`).join(',');
-    
-    // Query with both crop AND stage filtering for better precision
-    const PAGE_SIZE = 1000;
-    const rulesRaw: any[] = [];
+    // STEP 1.5: LOAD CROP-SCOPED RULES FROM THE SHARED SNAPSHOT
+    // PERF: replaces a paged `.or(crop_code.ilike.<v>)` query (Seq Scan, ~571 ms).
+    // ILIKE without wildcards == case-insensitive equality, and crop_code is
+    // stored lowercase, so bucket lookup on lower(crop_code) yields the
+    // IDENTICAL row set. Rule matching/scoring below is unchanged.
+    let rulesRaw: any[] = [];
     let error: any = null;
-    for (let page = 0; page < 20; page++) {
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      const { data, error: pageError } = await supabaseClient
-        .from('decision_rules')
-        .select(`
-          rule_id,
-          cause,
-          canonical_group,
-          category,
-          action_type,
-          priority,
-          stage_applicable,
-          conditions_json,
-          observable_characteristics,
-          differentiating_questions,
-          action_text,
-          crop_age_days_min,
-          crop_age_days_max,
-          required_observation_category,
-          required_plant_part
-        `)
-        .eq('is_active', true)
-        .or(cropFilter)
-        .range(from, to);
-      if (pageError) { error = pageError; break; }
-      const batch = Array.isArray(data) ? data : [];
-      rulesRaw.push(...batch);
-      if (batch.length < PAGE_SIZE) break;
+    try {
+      rulesRaw = await getRulesForCrop(cropVariants, supabaseClient);
+    } catch (e) {
+      error = e;
     }
+
 
     
     if (error) {
@@ -799,7 +779,7 @@ export async function evaluateCandidateHypotheses(
     console.log(`   📦 [HypothesisEval] Loaded ${rulesRaw.length} candidate rules from database`);
     console.log(`   📊 [Debug] First 3 rule crop_codes: ${rulesRaw.slice(0, 3).map((r: any) => r.cause).join(', ')}`);
     
-    // STEP 1.6: FILTER BY STAGE_APPLICABLE (in-code filtering)
+    // STEP 1.6: FILTER BY STAGE_APPLICABLE (in-memory)
     const stageFilteredRules = rulesRaw.filter((rule: any) => {
       const stageApplicable = rule.stage_applicable;
       
