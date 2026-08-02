@@ -272,6 +272,48 @@ import {
 
 // CAUSE NORMALIZATION FOR DEDUPLICATION
 
+// PERF: hoisted to module scope — pure constant, previously rebuilt per call.
+const DEDUP_PATTERNS: [RegExp, string][] = [
+  // PEST patterns (existing)
+  [/early\s*shoot\s*borer/i, 'early shoot borer'],
+  [/shoot\s*borer/i, 'shoot borer'],
+  [/stem\s*borer/i, 'stem borer'],
+  [/top\s*borer/i, 'top borer'],
+  [/internode\s*borer/i, 'internode borer'],
+  [/root\s*borer/i, 'root borer'],
+  [/white\s*grub/i, 'white grub'],
+  [/root\s*grub/i, 'root grub'],
+  [/termite/i, 'termite'],
+  [/aphid/i, 'aphid'],
+  [/whitefly/i, 'whitefly'],
+  [/thrips/i, 'thrips'],
+  [/mealybug/i, 'mealybug'],
+  [/red\s*rot/i, 'red rot'],
+  [/smut/i, 'smut'],
+  [/wilt/i, 'wilt'],
+  [/rust/i, 'rust'],
+
+  // FORENSIC AUDIT FIX v8.0: NUTRIENT dedup patterns
+  [/nitrogen/i, 'nitrogen deficiency'],
+  [/phosphorus|phospho/i, 'phosphorus deficiency'],
+  [/potassium|potash/i, 'potassium deficiency'],
+  [/micronutrient/i, 'micronutrient deficiency'],
+  [/iron\s*(deficiency|chlorosis)?/i, 'iron deficiency'],
+  [/zinc\s*(deficiency)?/i, 'zinc deficiency'],
+  [/boron\s*(deficiency)?/i, 'boron deficiency'],
+  [/manganese\s*(deficiency)?/i, 'manganese deficiency'],
+  [/sulphur|sulfur/i, 'sulphur deficiency'],
+  [/nutrient\s*deficiency/i, 'nutrient deficiency'],
+  // REMOVED: Over-broad yellowing|chlorosis pattern that collapsed ALL nutrient
+
+  // DISEASE dedup patterns
+  [/leaf\s*spot/i, 'leaf spot'],
+  [/blight/i, 'blight'],
+  [/mosaic/i, 'mosaic virus'],
+  [/grassy\s*shoot/i, 'grassy shoot'],
+  [/pokkah\s*boeng/i, 'pokkah boeng'],
+];
+
 function normalizeCauseForDedup(cause: string): string {
   if (!cause) return 'unknown';
   
@@ -293,48 +335,7 @@ function normalizeCauseForDedup(cause: string): string {
     .trim();
   
   // Apply pattern-based normalization for known variations
-  const patterns: [RegExp, string][] = [
-    // PEST patterns (existing)
-    [/early\s*shoot\s*borer/i, 'early shoot borer'],
-    [/shoot\s*borer/i, 'shoot borer'],
-    [/stem\s*borer/i, 'stem borer'],
-    [/top\s*borer/i, 'top borer'],
-    [/internode\s*borer/i, 'internode borer'],
-    [/root\s*borer/i, 'root borer'],
-    [/white\s*grub/i, 'white grub'],
-    [/root\s*grub/i, 'root grub'],
-    [/termite/i, 'termite'],
-    [/aphid/i, 'aphid'],
-    [/whitefly/i, 'whitefly'],
-    [/thrips/i, 'thrips'],
-    [/mealybug/i, 'mealybug'],
-    [/red\s*rot/i, 'red rot'],
-    [/smut/i, 'smut'],
-    [/wilt/i, 'wilt'],
-    [/rust/i, 'rust'],
-    
-    // FORENSIC AUDIT FIX v8.0: NUTRIENT dedup patterns
-    [/nitrogen/i, 'nitrogen deficiency'],
-    [/phosphorus|phospho/i, 'phosphorus deficiency'],
-    [/potassium|potash/i, 'potassium deficiency'],
-    [/micronutrient/i, 'micronutrient deficiency'],
-    [/iron\s*(deficiency|chlorosis)?/i, 'iron deficiency'],
-    [/zinc\s*(deficiency)?/i, 'zinc deficiency'],
-    [/boron\s*(deficiency)?/i, 'boron deficiency'],
-    [/manganese\s*(deficiency)?/i, 'manganese deficiency'],
-    [/sulphur|sulfur/i, 'sulphur deficiency'],
-    [/nutrient\s*deficiency/i, 'nutrient deficiency'],
-    // REMOVED: Over-broad yellowing|chlorosis pattern that collapsed ALL nutrient
-    
-    // DISEASE dedup patterns
-    [/leaf\s*spot/i, 'leaf spot'],
-    [/blight/i, 'blight'],
-    [/mosaic/i, 'mosaic virus'],
-    [/grassy\s*shoot/i, 'grassy shoot'],
-    [/pokkah\s*boeng/i, 'pokkah boeng'],
-  ];
-  
-  for (const [pattern, replacement] of patterns) {
+  for (const [pattern, replacement] of DEDUP_PATTERNS) {
     if (pattern.test(normalized)) {
       return replacement;
     }
