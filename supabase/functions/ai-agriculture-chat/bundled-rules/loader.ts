@@ -6,8 +6,8 @@
  * STATUS:    ACTIVE
  *
  * CHANGE LOG (newest first):
- *   2026-08-02 18:02 UTC — removed unused direct Supabase client import;
- *       database loading remains delegated exclusively to rule-repository.
+ *   2026-08-02 18:02 UTC — decision-rule loading remains delegated exclusively
+ *       to rule-repository; the client import is retained for alias loading.
  *   2026-07-17 08:55 UTC — filterRulesByIntent: forensic fix. `rule_intent`
  *       (action type: recommendation/command/block/education/warning) was
  *       being compared to farmer diagnostic intent codes, guaranteeing
@@ -20,6 +20,7 @@
  */
 
 
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
 import {
