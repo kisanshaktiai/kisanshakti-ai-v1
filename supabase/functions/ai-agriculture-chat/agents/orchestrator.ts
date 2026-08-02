@@ -1523,46 +1523,42 @@ export class AIAgentOrchestrator {
       execution_mode: options.photoUrl ? 'live-vision' : 'live',
       started_at_ms: startTime,
     });
-    // Pre-load stage knowledge cache (idempotent, 10min TTL).
-    try { await StageKnowledgeCache.loadStageKnowledge(this.supabase); } catch (_e) { /* non-fatal */ }
-    // Pre-load DB-backed intent→observation mapping (replaces the deleted
-    try {
-      const { loadObservationMapping } = await import('../utils/observation-mapping-cache.ts');
-      await loadObservationMapping(this.supabase);
-    } catch (_e) { /* non-fatal — mapper will log [OBS_MAPPING_CACHE_MISS] */ }
-    // PR-2: Pre-load DB-backed observation & hypothesis classification caches
-    try {
-      const { loadObservationClassification, loadHypothesisTypes } =
-        await import('../utils/observation-classification-cache.ts');
-      await Promise.all([
-        loadObservationClassification(this.supabase),
-        loadHypothesisTypes(this.supabase),
-      ]);
-    } catch (_e) { /* non-fatal — classifiers log [OBS_CLASSIFICATION_MISS] on lookup */ }
-
-    // Phase H — Fix 7 (Knowledge Initialization)
+    // P0-A.2 — ALL request-boot knowledge caches run CONCURRENTLY. Verified:
+    // each loader takes only `supabase`, writes its own module state and reads
+    // no other cache at load time, so there is no ordering dependency.
     try {
       const [
+        { loadObservationMapping },
+        { loadObservationClassification, loadHypothesisTypes },
         { loadETLStandards },
         { loadAgroZones },
         { loadBaselineGuidelines },
         { loadCropSynonyms },
-        { loadCropNames }
+        { loadCropNames },
       ] = await Promise.all([
+        import('../utils/observation-mapping-cache.ts'),
+        import('../utils/observation-classification-cache.ts'),
         import('../decision/etl-gate.ts'),
         import('../utils/agro-zone-cache.ts'),
         import('../utils/baseline-guidelines-cache.ts'),
         import('../utils/crop-synonyms-cache.ts'),
-        import('../utils/crop-names-cache.ts')
+        import('../utils/crop-names-cache.ts'),
       ]);
+      const names = [
+        'stage-knowledge', 'observation-mapping', 'observation-classification', 'hypothesis-types',
+        'etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms', 'crop-names',
+      ];
       const settled = await Promise.allSettled([
+        StageKnowledgeCache.loadStageKnowledge(this.supabase),
+        loadObservationMapping(this.supabase),
+        loadObservationClassification(this.supabase),
+        loadHypothesisTypes(this.supabase),
         loadETLStandards(this.supabase),
         loadAgroZones(this.supabase),
         loadBaselineGuidelines(this.supabase),
         loadCropSynonyms(this.supabase),
-        loadCropNames(this.supabase)
+        loadCropNames(this.supabase),
       ]);
-      const names = ['etl-standards', 'agro-zones', 'baseline-guidelines', 'crop-synonyms', 'crop-names'];
       settled.forEach((s, i) => {
         if (s.status === 'rejected') {
           const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
