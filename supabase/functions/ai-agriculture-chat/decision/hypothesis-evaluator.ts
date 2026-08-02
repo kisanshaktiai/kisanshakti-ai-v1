@@ -736,45 +736,19 @@ export async function evaluateCandidateHypotheses(
     console.log(`   [HypothesisEval] Stage variants for query: [${stageVariants.slice(0, 5).join(', ')}...]`);
     console.log(`   [HypothesisEval] DB stage normalized: ${growth_stage} → ${dbStage}`);
     
-    // STEP 1.5: BUILD DYNAMIC QUERY WITH CROP AND STAGE FILTERING
-    
-    // Build crop filter: match any of the crop variants
-    const cropFilter = cropVariants.map(v => `crop_code.ilike.${v}`).join(',');
-    
-    // Query with both crop AND stage filtering for better precision
-    const PAGE_SIZE = 1000;
-    const rulesRaw: any[] = [];
+    // STEP 1.5: LOAD CROP-SCOPED RULES FROM THE SHARED SNAPSHOT
+    // PERF: replaces a paged `.or(crop_code.ilike.<v>)` query (Seq Scan, ~571 ms).
+    // ILIKE without wildcards == case-insensitive equality, and crop_code is
+    // stored lowercase, so bucket lookup on lower(crop_code) yields the
+    // IDENTICAL row set. Rule matching/scoring below is unchanged.
+    let rulesRaw: any[] = [];
     let error: any = null;
-    for (let page = 0; page < 20; page++) {
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      const { data, error: pageError } = await supabaseClient
-        .from('decision_rules')
-        .select(`
-          rule_id,
-          cause,
-          canonical_group,
-          category,
-          action_type,
-          priority,
-          stage_applicable,
-          conditions_json,
-          observable_characteristics,
-          differentiating_questions,
-          action_text,
-          crop_age_days_min,
-          crop_age_days_max,
-          required_observation_category,
-          required_plant_part
-        `)
-        .eq('is_active', true)
-        .or(cropFilter)
-        .range(from, to);
-      if (pageError) { error = pageError; break; }
-      const batch = Array.isArray(data) ? data : [];
-      rulesRaw.push(...batch);
-      if (batch.length < PAGE_SIZE) break;
+    try {
+      rulesRaw = await getRulesForCrop(cropVariants, supabaseClient);
+    } catch (e) {
+      error = e;
     }
+
 
     
     if (error) {
