@@ -540,25 +540,8 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
     }
     
     // FALLBACK: Hardcoded pathognomonic indicators
-    const HIGH_POWER = [
-      'DEAD_HEART', 'DEADHEART', 'DEAD_HEART_PRESENT',
-      'TUNNELS_IN_STEM', 'TUNNELING', 'BORE_HOLE',
-      'FRASS', 'FRASS_VISIBLE', 'FRASS_NEAR_BASE',
-      'MUD_TUNNELS', 'TERMITE_MUD_TUBES', 'MUD_GALLERIES',
-      'HONEYDEW', 'SOOTY_MOLD',
-      'PINK_LARVAE', 'LARVAE_PRESENT', 'LARVAE_VISIBLE',
-      'WHITE_POWDER', 'WOOLLY_MASS', 'COTTONY_MASS'
-    ];
-    const LOW_POWER = [
-      'YELLOWING', 'LEAF_YELLOWING', 'GENERAL_YELLOWING',
-      'WILTING', 'LEAF_WILTING', 'PLANT_WILTING',
-      'STUNTED', 'STUNTED_GROWTH', 'POOR_GROWTH',
-      'DRYING', 'LEAF_DRYING', 'TIP_DRYING',
-      'BROWNING', 'LEAF_BROWNING', 'EDGE_BROWNING',
-      'GAPS', 'PATCHY_DAMAGE', 'GAPS_IN_FIELD'
-    ];
-    if (HIGH_POWER.some(p => normalized.includes(p))) return 'HIGH';
-    if (LOW_POWER.some(p => normalized.includes(p))) return 'LOW';
+    if (HIGH_POWER_OBS.some(p => normalized.includes(p))) return 'HIGH';
+    if (LOW_POWER_OBS.some(p => normalized.includes(p))) return 'LOW';
     return 'MEDIUM';
   };
   
