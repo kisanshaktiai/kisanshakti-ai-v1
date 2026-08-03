@@ -3441,7 +3441,7 @@ export class AIAgentOrchestrator {
       console.log('   📝 Stage 1: Language Normalization...');
       
       // Static import at top of file
-      const normalizedInput = normalizeLanguage(processedFarmerMessage);
+      const normalizedInput = normalizeLanguage(processedFarmerMessage, options.language || 'mr');
       agentsUsed.push('LANGUAGE_NORMALIZER');
       
       // FIX 8: Canonical language enforcement — options.language (from app) is SSOT
