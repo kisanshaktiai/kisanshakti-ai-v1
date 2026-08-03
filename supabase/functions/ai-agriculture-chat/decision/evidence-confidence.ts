@@ -75,6 +75,8 @@ export interface EvidenceWeights {
   sourceDefault: number;
   /** Bounded injection cap for zero-observation intent fallbacks. */
   fallbackMaxInject: number;
+  qualityScaleMax: number;
+  minInjectConfidence: number;
 }
 
 const CFG = {
