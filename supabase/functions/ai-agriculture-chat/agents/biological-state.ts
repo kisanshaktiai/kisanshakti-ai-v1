@@ -124,6 +124,7 @@ export interface RawPhenologyRow {
   stage_code?: string | null;
   stage_uuid?: string | null;
   current_das?: number | null;
+  current_dat?: number | null;
   gdd_accumulated?: number | null;
   sowing_date?: string | null;
   confidence?: number | null;
@@ -178,6 +179,7 @@ export function buildBiologicalState(
     stage_source:  stageSource,
 
     das: typeof phenology.current_das === 'number' ? phenology.current_das : null,
+    dat: typeof phenology.current_dat === 'number' ? phenology.current_dat : null,
     gdd_accumulated:
       typeof phenology.gdd_accumulated === 'number' ? phenology.gdd_accumulated : null,
     sowing_date: phenology.sowing_date ?? null,
