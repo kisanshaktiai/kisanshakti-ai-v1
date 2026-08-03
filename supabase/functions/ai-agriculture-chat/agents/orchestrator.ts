@@ -8589,48 +8589,65 @@ export class AIAgentOrchestrator {
               
               // Also merge recommendations if any
               if (symbolicResult.recommendations && symbolicResult.recommendations.length > 0) {
-                layeredRuleResult.prescriptions = symbolicResult.recommendations.map((r: any) => ({
-                  action_type: r.action || 'RECOMMEND',
-                  action_details: {
-                    action_text: r.description,
-                    product: r.product,
-                    dosage: r.dosage
-                  },
-                  product_reference: r.rule_id || 'SYMBOLIC'
-                }));
+                // P0-1: FiredRule nests its payload under `.actions`. Reading r.action /
+                // r.description / r.product / r.dosage yielded undefined for every rule,
+                // discarding action_type, narration, product and dosage from all rules.
+                // The `any` cast is removed so the compiler enforces FiredRule from here on.
+                layeredRuleResult.prescriptions = [
+                  ...(layeredRuleResult.prescriptions || []),
+                  ...symbolicResult.recommendations.map((r) => ({
+                    action_type: r.actions.action_type,
+                    action_details: {
+                      action_text:         r.actions.action_text,
+                      reason_text:         r.actions.reason_text,
+                      knowledge_text:      r.actions.knowledge_text,
+                      i18n_key:            r.actions.i18n_key,
+                      active_ingredient:   r.actions.active_ingredient,
+                      phi_days:            r.actions.phi_days,
+                      bee_toxicity:        r.actions.bee_toxicity,
+                      ipm_level:           r.actions.ipm_level,
+                      organic_alternative: r.actions.organic_alternative,
+                    },
+                    product_reference: r.actions.product_reference || r.rule_id
+                  }))
+                ];
                 
-                // CRITICAL FIX v5.3: Merge symbolic recommendations into matched_responses
-                for (const rec of symbolicResult.recommendations) {
+                // P0-1: matched_responses is already flat and populated straight from the
+                // DB row (symbolic-reasoner.ts ~line 496), alongside firedRules.push().
+                for (const mr of (symbolicResult.matched_responses || [])) {
                   layeredRuleResult.matched_responses.push({
-                    rule_id: rec.rule_id || 'SYMBOLIC',
-                    cause: rec.cause || symbolicResult.diagnosis?.cause_name || 'DIAGNOSIS',
-                    action_type: rec.action || 'RECOMMEND',
-                    priority: rec.priority || 80,
-                    confidence_score: symbolicResult.confidence || 0.8,
-                    action_text: rec.description || rec.action_text || null,
-                    reason_text: rec.reason_text || null,
-                    knowledge_text: rec.knowledge_text || null,
-                    i18n_key: rec.i18n_key || null
+                    rule_id: mr.rule_id,
+                    cause: mr.cause || symbolicResult.diagnosis?.cause_name || 'DIAGNOSIS',
+                    action_type: mr.action_type,
+                    priority: mr.priority ?? 80,
+                    confidence_score: symbolicResult.confidence ?? 0.8,
+                    action_text:    mr.action_text    ?? null,
+                    reason_text:    mr.reason_text    ?? null,
+                    knowledge_text: mr.knowledge_text ?? null,
+                    i18n_key:       mr.i18n_key       ?? null
                   });
                 }
                 
                 // Build primary_decision from best symbolic recommendation
                 const bestRec = symbolicResult.recommendations[0];
+                const bestResp = (symbolicResult.matched_responses || [])
+                  .find(m => m.rule_id === bestRec?.rule_id);
                 if (bestRec && !layeredRuleResult.primary_decision) {
+                  const matchedCount = bestRec.conditions_matched?.length ?? 0;
                   console.log(`   🔧 [SymbolicMerge] Building primary_decision from symbolic: ${bestRec.rule_id}`);
                   layeredRuleResult.primary_decision = {
-                    rule_id: bestRec.rule_id || 'SYMBOLIC',
-                    action_type: bestRec.action || 'RECOMMEND',
+                    rule_id: bestRec.rule_id,
+                    action_type: bestResp?.action_type ?? bestRec.actions.action_type,
                     priority: bestRec.priority || 80,
                     confidence_score: symbolicResult.confidence || 0.8,
                     normalized_score: symbolicResult.confidence || 0.8,
-                    total_required: 1,
-                    passed_required: 1,
+                    total_required: matchedCount,   // P0-1: was hardcoded 1/1
+                    passed_required: matchedCount,
                     weighted_confidence: symbolicResult.confidence || 0.8,
-                    action_text: bestRec.description || bestRec.action_text || null,
-                    reason_text: bestRec.reason_text || null,
-                    knowledge_text: bestRec.knowledge_text || null,
-                    i18n_key: bestRec.i18n_key || null
+                    action_text: bestResp?.action_text ?? bestRec.actions.action_text ?? null,
+                    reason_text: bestResp?.reason_text ?? bestRec.actions.reason_text ?? null,
+                    knowledge_text: bestResp?.knowledge_text ?? bestRec.actions.knowledge_text ?? null,
+                    i18n_key: bestResp?.i18n_key ?? bestRec.actions.i18n_key ?? null
                   };
                 }
               }
