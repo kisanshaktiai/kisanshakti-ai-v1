@@ -140,7 +140,7 @@ interface HypothesisRuleMappingRow {
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
-const ENGINE_VERSION = '1.2.0'; // v1.2.0: lowercase crop_group, ontology-bridged observations, SKIPPED penalty
+const ENGINE_VERSION = '1.2.1'; // v1.2.1: DAT_RANGE condition support, WEATHER BETWEEN operator
 
 // CROP GROUP NORMALIZER
 const CROP_CODE_ALIASES: Record<string, string> = {
@@ -352,6 +352,39 @@ function evaluateCondition(
       return HypothesisConditionStatus.SKIPPED_NO_DATA;
     }
 
+    // DAT_RANGE — days AFTER TRANSPLANT clock. Distinct from DAS (differs by
+    // nursery age, 18–30 days in rice). Never conflate with DAS_RANGE.
+    case 'DAT_RANGE': {
+      const dat = canonicalState.days_after_transplant ?? canonicalState.current_dat;
+      if (dat === null || dat === undefined) {
+        return HypothesisConditionStatus.SKIPPED_NO_DATA;
+      }
+      const min = (value_json as any)?.min;
+      const max = (value_json as any)?.max;
+
+      if (operator === 'BETWEEN' && min !== undefined && max !== undefined) {
+        return (dat >= min && dat <= max)
+          ? HypothesisConditionStatus.PASSED
+          : HypothesisConditionStatus.FAILED;
+      }
+      if (operator === 'GT' || operator === 'GTE') {
+        const t = min ?? (value_json as any)?.value;
+        if (t === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+        return (operator === 'GT' ? dat > t : dat >= t)
+          ? HypothesisConditionStatus.PASSED
+          : HypothesisConditionStatus.FAILED;
+      }
+      if (operator === 'LT' || operator === 'LTE') {
+        const t = max ?? (value_json as any)?.value;
+        if (t === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+        return (operator === 'LT' ? dat < t : dat <= t)
+          ? HypothesisConditionStatus.PASSED
+          : HypothesisConditionStatus.FAILED;
+      }
+      return HypothesisConditionStatus.SKIPPED_NO_DATA;
+    }
+
+
     case 'STAGE': {
       const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
       if (!currentStage) return HypothesisConditionStatus.SKIPPED_NO_DATA;
@@ -383,8 +416,9 @@ function evaluateCondition(
     case 'WEATHER': {
       const field = (value_json as any)?.field;
       const threshold = (value_json as any)?.value;
-      if (!field || threshold === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
-      
+      if (!field) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+      if (operator !== 'BETWEEN' && threshold === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+
       const weather = canonicalState.weather;
       if (!weather) return HypothesisConditionStatus.SKIPPED_NO_DATA;
       
@@ -397,6 +431,14 @@ function evaluateCondition(
         case 'LT': return actual < threshold ? HypothesisConditionStatus.PASSED : HypothesisConditionStatus.FAILED;
         case 'LTE': return actual <= threshold ? HypothesisConditionStatus.PASSED : HypothesisConditionStatus.FAILED;
         case 'EQUALS': return actual === threshold ? HypothesisConditionStatus.PASSED : HypothesisConditionStatus.FAILED;
+        case 'BETWEEN': {
+          const lo = (value_json as any)?.min;
+          const hi = (value_json as any)?.max;
+          if (lo === undefined || hi === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+          return (actual >= lo && actual <= hi)
+            ? HypothesisConditionStatus.PASSED
+            : HypothesisConditionStatus.FAILED;
+        }
         default: return HypothesisConditionStatus.SKIPPED_NO_DATA;
       }
     }
@@ -614,6 +656,7 @@ function getInputValue(
   switch (cond.condition_type) {
     case 'OBSERVATION': return observations;
     case 'DAS_RANGE': return state.days_since_sowing;
+    case 'DAT_RANGE': return state.days_after_transplant ?? state.current_dat;
     case 'STAGE': return state.crop_stage || state.growth_stage;
     case 'NDVI_PATTERN': return state.ndvi_trend || state.ndvi_level;
     case 'WEATHER': return state.weather;
