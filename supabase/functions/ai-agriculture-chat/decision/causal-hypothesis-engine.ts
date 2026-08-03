@@ -352,6 +352,39 @@ function evaluateCondition(
       return HypothesisConditionStatus.SKIPPED_NO_DATA;
     }
 
+    // DAT_RANGE — days AFTER TRANSPLANT clock. Distinct from DAS (differs by
+    // nursery age, 18–30 days in rice). Never conflate with DAS_RANGE.
+    case 'DAT_RANGE': {
+      const dat = canonicalState.days_after_transplant ?? canonicalState.current_dat;
+      if (dat === null || dat === undefined) {
+        return HypothesisConditionStatus.SKIPPED_NO_DATA;
+      }
+      const min = (value_json as any)?.min;
+      const max = (value_json as any)?.max;
+
+      if (operator === 'BETWEEN' && min !== undefined && max !== undefined) {
+        return (dat >= min && dat <= max)
+          ? HypothesisConditionStatus.PASSED
+          : HypothesisConditionStatus.FAILED;
+      }
+      if (operator === 'GT' || operator === 'GTE') {
+        const t = min ?? (value_json as any)?.value;
+        if (t === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+        return (operator === 'GT' ? dat > t : dat >= t)
+          ? HypothesisConditionStatus.PASSED
+          : HypothesisConditionStatus.FAILED;
+      }
+      if (operator === 'LT' || operator === 'LTE') {
+        const t = max ?? (value_json as any)?.value;
+        if (t === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+        return (operator === 'LT' ? dat < t : dat <= t)
+          ? HypothesisConditionStatus.PASSED
+          : HypothesisConditionStatus.FAILED;
+      }
+      return HypothesisConditionStatus.SKIPPED_NO_DATA;
+    }
+
+
     case 'STAGE': {
       const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
       if (!currentStage) return HypothesisConditionStatus.SKIPPED_NO_DATA;
