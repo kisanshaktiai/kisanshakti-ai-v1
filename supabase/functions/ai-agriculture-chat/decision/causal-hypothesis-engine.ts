@@ -441,7 +441,6 @@ function evaluateCondition(
         }
         default: return HypothesisConditionStatus.SKIPPED_NO_DATA;
       }
-      }
     }
 
     case 'SOIL': {
