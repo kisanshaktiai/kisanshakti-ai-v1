@@ -4762,40 +4762,44 @@ export class AIAgentOrchestrator {
               const cropScoped = iomRows.filter((r: any) => canonicalCropCode(r.crop_code) === cropCodeLower);
               const chosen = cropScoped.length > 0 ? cropScoped : iomRows;
 
-              // P0-13: assertion_strength is an EVIDENCE CLASS, not just an ordering hint.
-              // DIFFERENTIAL rows are "ask about this to distinguish" candidates — they are
-              // NOT farmer-asserted observations. Injecting them fabricated 13 symptoms for a
-              // weed query (including fe_deficiency_rice AND iron_toxicity_bronze together,
-              // which is biologically impossible) and produced ZERO RULES MATCHED.
-              // Only LITERAL and STRONG_HYPOTHESIS may enter the observation set.
-              // DIFFERENTIAL rows remain available to the clarification engine, which reads
-              // this same table via loadClarificationCandidates().
-              const IOM_ASSERTABLE = new Set(['LITERAL', 'STRONG_HYPOTHESIS']);
-              const assertable = (chosen as any[]).filter((r) =>
-                IOM_ASSERTABLE.has(String(r.assertion_strength || '').toUpperCase())
-              );
-              const heldDifferential = (chosen as any[]).length - assertable.length;
-              if (heldDifferential > 0) {
-                console.log(
-                  `🔬 [IOM_DIFFERENTIAL_HELD] intent=${intentCode} held=${heldDifferential} ` +
-                  `assertable=${assertable.length} — DIFFERENTIAL rows are clarification candidates, not evidence`
-                );
-              }
-
               // Evidence confidence ORDERS the candidates (assertion_strength is a
               const weights = getEvidenceWeights();
               const scored = scoreEvidenceSet(
-                assertable.map((r: any) => ({
-                  observation_code: r.observation_code,
-                  assertion_strength: r.assertion_strength ?? null,
-                  confidence_rank: typeof r.confidence_rank === 'number' ? r.confidence_rank : null,
-                  source: 'INFERRED_PEER' as const,
-                })),
+                (chosen as any[]).map((r) => {
+                  // Enrich from observation_master so `quality` and `diagnostic` are
+                  // real signals rather than constants. `_getObservationMaster` is the
+                  // preloaded in-memory index; a miss simply leaves the fields null.
+                  const om = _getObservationMaster(r.observation_code);
+                  return {
+                    observation_code: r.observation_code,
+                    assertion_strength: r.assertion_strength ?? null,
+                    confidence_rank: typeof r.confidence_rank === 'number' ? r.confidence_rank : null,
+                    is_diagnostic: om?.is_diagnostic ?? null,
+                    clarity_score: om?.clarity_score ?? null,
+                    discriminator_score: om?.discriminator_score ?? null,
+                    frequency_score: om?.frequency_score ?? null,
+                    source: 'INFERRED_PEER' as const,
+                  };
+                }),
                 weights,
               );
+              // Confidence floor is a NUMBER from system_config, never an enum list.
+              // A new assertion_strength value needs no code change: it receives
+              // `assertionDefault` and is judged on its computed confidence.
+              // Default 0 = admit everything (no behaviour change until configured).
+              const minConf = weights.minInjectConfidence;
+              const admitted = minConf > 0
+                ? scored.filter((s) => s.evidence_confidence >= minConf)
+                : scored;
+              if (admitted.length !== scored.length) {
+                console.log(
+                  `🔬 [IOM_CONFIDENCE_FLOOR] intent=${intentCode} min=${minConf.toFixed(2)} ` +
+                  `scored=${scored.length} admitted=${admitted.length}`
+                );
+              }
               const cap = Math.max(1, Math.floor(weights.fallbackMaxInject));
               const injected: string[] = [];
-              for (const s of scored) {
+              for (const s of admitted) {
                 if (injected.length >= cap) break;
                 const obs = s.observation_code;
                 if (!obs) continue;

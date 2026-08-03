@@ -36,6 +36,8 @@ export interface ObservationMasterSourceRow {
   is_farmer_observable: boolean | null;
   can_generate_question: boolean | null;
   clarity_score: number | null;
+  discriminator_score: number | null;
+  frequency_score: number | null;
   applies_to_stages: string[] | null;
   is_active: boolean | null;
 }
@@ -51,7 +53,7 @@ export interface ObservationAliasSourceRow {
 
 const MASTER_COLUMNS =
   'observation_code, semantic_class, canonical_group, observation_category, affected_plant_part, ' +
-  'is_diagnostic, is_farmer_observable, can_generate_question, clarity_score, applies_to_stages, is_active';
+  'is_diagnostic, is_farmer_observable, can_generate_question, clarity_score, discriminator_score, frequency_score, applies_to_stages, is_active';
 const ALIAS_COLUMNS = 'alias_code, alias_normalized, alias_text, canonical_code, active, language';
 
 const TTL_MS = 10 * 60 * 1000;

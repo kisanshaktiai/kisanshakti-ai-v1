@@ -51,6 +51,8 @@ export interface ObservationMasterRow {
   is_farmer_observable: boolean | null;
   can_generate_question: boolean | null;
   clarity_score: number | null;
+  discriminator_score: number | null;
+  frequency_score: number | null;
   applies_to_stages: string[] | null;
   is_active: boolean | null;
 }

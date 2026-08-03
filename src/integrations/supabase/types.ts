@@ -31720,6 +31720,46 @@ export type Database = {
           },
         ]
       }
+      v_contradiction_unresolvable: {
+        Row: {
+          contradiction_key: string | null
+          contradiction_type: string | null
+          contradiction_value: string | null
+          crop_group: string | null
+          hypothesis_id: string | null
+          problem: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "v_unfirable_hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
       v_crop_gate_coverage: {
         Row: {
           blocking_gates: number | null
