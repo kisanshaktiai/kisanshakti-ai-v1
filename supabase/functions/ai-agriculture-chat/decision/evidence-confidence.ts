@@ -127,10 +127,15 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
-function normScore(v: number | null | undefined): number | null {
+function normScore(v: number | null | undefined, scaleMax: number): number | null {
   if (typeof v !== 'number' || !Number.isFinite(v)) return null;
-  // observation_master quality scores are curated on either 0–1 or 0–10.
-  return v > 1 ? clamp01(v / 10) : clamp01(v);
+  // Values already on 0–1 pass through. Anything larger is divided by the
+  // configured scale maximum (system_config: evidence_quality_score_scale_max).
+  // observation_master curates these on 0–100; dividing by 10 saturated 99.9%
+  // of rows to 1.0 and made `quality` a constant.
+  if (v <= 1) return clamp01(v);
+  const max = Number.isFinite(scaleMax) && scaleMax > 0 ? scaleMax : 100;
+  return clamp01(v / max);
 }
 
 /** Score a single evidence candidate. Never returns 0 for a real code. */
