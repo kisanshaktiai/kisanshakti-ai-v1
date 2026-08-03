@@ -45,6 +45,18 @@ import {
 } from '../bundled-rules/loader.ts';
 
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
+
+/** P3 — best-effort warm of the rule_category_master cache (never throws). */
+async function warmCategorySemantics(): Promise<void> {
+  if (categoryMapCache && Date.now() - categoryMapCache.at < CATEGORY_CACHE_TTL) return;
+  try {
+    const url = Deno.env.get('SUPABASE_URL');
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!url || !key) return;
+    await loadCategorySemantics(createClient(url, key));
+  } catch { /* literal fallback map remains in force */ }
+}
 
 // PHASE-16: Import SymbolicReasoner for proper JSON condition evaluation
 import {
@@ -1195,7 +1207,9 @@ export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]>
   }
 
   // If crop-specific, don't use global cache - filter from loaded rules
+  // P3: warm the DB-SSOT category semantics before any rule is converted.
   const allRules = await loadAllRules();
+  await warmCategorySemantics();
   
   let rulesToConvert: ExecutableRule[];
   if (cropCode) {
@@ -1511,7 +1525,42 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
   };
 }
 
+// ─── P3: rule_category_master is the SSOT for rule semantics ────────────────
+// The literal map below is retained ONLY as an offline fallback when the DB
+// read fails. New categories go in public.rule_category_master, never here.
+let categoryMapCache: { at: number; map: Map<string, RuleCategory> } | null = null;
+const CATEGORY_CACHE_TTL = 300_000;
+
+export async function loadCategorySemantics(supabase: any): Promise<Map<string, RuleCategory>> {
+  if (categoryMapCache && Date.now() - categoryMapCache.at < CATEGORY_CACHE_TTL) {
+    return categoryMapCache.map;
+  }
+  const map = new Map<string, RuleCategory>();
+  try {
+    const { data, error } = await supabase
+      .from('rule_category_master')
+      .select('category, semantic_class')
+      .eq('is_active', true);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      const key = String(r.category ?? '').toLowerCase().trim();
+      if (!key || !r.semantic_class) continue;
+      map.set(key, r.semantic_class as RuleCategory);
+    }
+    if (map.size === 0) throw new Error('empty rule_category_master');
+    categoryMapCache = { at: Date.now(), map };
+    console.log(`📚 [RULE_CATEGORY_SSOT] loaded ${map.size} categories from rule_category_master`);
+  } catch (e) {
+    console.warn(`⚠️ [RULE_CATEGORY_SSOT] DB load failed (${(e as Error).message}) → literal fallback map`);
+  }
+  return categoryMapCache?.map ?? map;
+}
+
 function mapBundledCategory(category: string): RuleCategory {
+  const norm0 = category?.toLowerCase()?.trim();
+  const dbMapped = norm0 ? categoryMapCache?.map.get(norm0) : undefined;
+  if (dbMapped) return dbMapped;
+
   const map: Record<string, RuleCategory> = {
     // OBSERVATION rules - gather facts
     'observation': RuleCategory.OBSERVATION,
