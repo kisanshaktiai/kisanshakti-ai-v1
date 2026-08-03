@@ -93,6 +93,8 @@ const CFG = {
   srcInferredPeer: 'evidence_weight_source_inferred_peer',
   srcDefault: 'evidence_weight_source_default',
   fallbackMaxInject: 'evidence_iom_fallback_max_inject',
+  qualityScaleMax: 'evidence_quality_score_scale_max',
+  minInjectConfidence: 'evidence_min_confidence_for_injection',
 } as const;
 
 /** Reads all weights from the preloaded system_config cache (sync). */
