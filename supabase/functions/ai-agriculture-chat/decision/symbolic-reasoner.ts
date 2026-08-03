@@ -1022,7 +1022,12 @@ export class SymbolicReasoner {
     }
     
     // OBSERVATION KEYS: observations, symptom, primary_symptom (aliases)
-    const obsValue = cond.observations || cond.symptom || cond.primary_symptom;
+    // P0-9: accept singular 'observation' (65 active rules) and 'required_symptoms'
+    // (16 active rules). Both carry real observation evidence; loader.ts already
+    // recognises required_symptoms, this evaluator did not.
+    const obsValue = cond.observations || cond.observation
+                  || cond.symptom || cond.primary_symptom
+                  || cond.required_symptoms;
     if (obsValue) {
       totalConditions++;
       const obsList = Array.isArray(obsValue) ? obsValue : [obsValue];
@@ -1106,6 +1111,13 @@ export class SymbolicReasoner {
     // BOOLEAN OBSERVATION FLAGS: keys like black_whip_like_structure, dead_heart,
     const SKIP_KEYS = new Set([
       'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
+      // P0-9: observation aliases — consumed by the obsValue matcher above,
+      // must not be re-counted in the generic loop below.
+      'observation', 'required_symptoms',
+      // P0-9: rule METADATA, not field conditions. These describe the rule's own
+      // trigger/output and were inflating the denominator, capping 890+ rules at
+      // score 0.5 against the 0.6 threshold — i.e. permanently unfireable.
+      'trigger', 'recommendation', 'action', 'diagnosis',
       'ndvi_level', 'ndvi_trend', 'severity', 'trigger_keywords',
       'all', 'any', 'fact', 'operator', 'value',
       'crop_code', 'crop_type', // Already filtered at query level
@@ -1127,6 +1139,9 @@ export class SymbolicReasoner {
     
     for (const key of Object.keys(cond)) {
       if (SKIP_KEYS.has(key)) continue;
+      // P0-9: '_'-prefixed keys are authoring metadata (_status, _deprecation_note,
+      // _legacy_id_prefix). They are never field conditions.
+      if (key.startsWith('_')) continue;
       
       // Handle contextual/expanded keys with soft evaluation
       if (CONTEXTUAL_KEYS.has(key)) {

@@ -7046,6 +7046,42 @@ export type Database = {
         }
         Relationships: []
       }
+      crop_trait_master: {
+        Row: {
+          crop_group: string
+          gates_what: string
+          is_active: boolean
+          measurement_method: string | null
+          relevant_when: string
+          score_scale: string
+          trait_code: string
+          trait_definition: string
+          trait_name_en: string
+        }
+        Insert: {
+          crop_group?: string
+          gates_what: string
+          is_active?: boolean
+          measurement_method?: string | null
+          relevant_when: string
+          score_scale?: string
+          trait_code: string
+          trait_definition: string
+          trait_name_en: string
+        }
+        Update: {
+          crop_group?: string
+          gates_what?: string
+          is_active?: boolean
+          measurement_method?: string | null
+          relevant_when?: string
+          score_scale?: string
+          trait_code?: string
+          trait_definition?: string
+          trait_name_en?: string
+        }
+        Relationships: []
+      }
       crop_vocabulary: {
         Row: {
           created_at: string | null
@@ -9357,6 +9393,42 @@ export type Database = {
         }
         Relationships: []
       }
+      establishment_implement: {
+        Row: {
+          applies_to_method: string
+          disadvantages: string | null
+          field_emergence_factor: number
+          implement_code: string
+          implement_name_en: string
+          is_active: boolean
+          row_spacing_cm: number | null
+          seed_rate_factor: number
+          when_to_use: string
+        }
+        Insert: {
+          applies_to_method: string
+          disadvantages?: string | null
+          field_emergence_factor: number
+          implement_code: string
+          implement_name_en: string
+          is_active?: boolean
+          row_spacing_cm?: number | null
+          seed_rate_factor: number
+          when_to_use: string
+        }
+        Update: {
+          applies_to_method?: string
+          disadvantages?: string | null
+          field_emergence_factor?: number
+          implement_code?: string
+          implement_name_en?: string
+          is_active?: boolean
+          row_spacing_cm?: number | null
+          seed_rate_factor?: number
+          when_to_use?: string
+        }
+        Relationships: []
+      }
       etl_standards: {
         Row: {
           action_threshold: number | null
@@ -11476,6 +11548,27 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      grain_type_tgw_band: {
+        Row: {
+          grain_type: string
+          notes: string | null
+          tgw_max_g: number
+          tgw_min_g: number
+        }
+        Insert: {
+          grain_type: string
+          notes?: string | null
+          tgw_max_g: number
+          tgw_min_g: number
+        }
+        Update: {
+          grain_type?: string
+          notes?: string | null
+          tgw_max_g?: number
+          tgw_min_g?: number
         }
         Relationships: []
       }
@@ -15890,6 +15983,7 @@ export type Database = {
           agro_ecological_suitability: Json | null
           ai_metadata: Json | null
           ai_recommendable: boolean | null
+          anaerobic_germination_score: number | null
           application_method: string | null
           application_timing: Json | null
           approval_authority: string | null
@@ -15927,11 +16021,14 @@ export type Database = {
           documents: Json | null
           dosage_instructions: string | null
           dose_unit: string | null
+          dsr_trait_source: string | null
+          early_vigour_score: number | null
           effectiveness_rating: number | null
           environmental_impact: Json | null
           expiry_date: string | null
           first_aid_measures: string | null
           germination_rate: number | null
+          grain_type: string | null
           handling_precautions: string | null
           herbicide_tolerance_source: string | null
           herbicide_tolerance_trait: string | null
@@ -15946,6 +16043,7 @@ export type Database = {
           lab_test_reports: Json | null
           label_hi: string | null
           label_mr: string | null
+          lodging_resistance_score: number | null
           manufacturer_id: string | null
           manufacturing_date: string | null
           market_availability: string | null
@@ -15968,6 +16066,7 @@ export type Database = {
           pest_tolerance: Json | null
           ph_range: Json | null
           photoperiod_note: string | null
+          plant_height_class: string | null
           popularity_score: number | null
           pre_harvest_interval_days: number | null
           price_per_unit: number | null
@@ -16005,6 +16104,9 @@ export type Database = {
           tax_rate: number | null
           technical_data_sheet_url: string | null
           tenant_scope_id: string | null
+          thousand_grain_weight_g: number | null
+          thousand_grain_weight_source: string | null
+          tillering_class: string | null
           translations: Json | null
           unit_of_measure: string | null
           updated_at: string | null
@@ -16021,6 +16123,7 @@ export type Database = {
           water_demand_mm_per_season: number | null
           water_solubility: string | null
           weather_conditions: Json | null
+          weed_competitiveness_score: number | null
           weed_targets: Json | null
           yield_irrigated_qtl_per_acre: number | null
           yield_potential_qtl_per_acre: number | null
@@ -16032,6 +16135,7 @@ export type Database = {
           agro_ecological_suitability?: Json | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
+          anaerobic_germination_score?: number | null
           application_method?: string | null
           application_timing?: Json | null
           approval_authority?: string | null
@@ -16069,11 +16173,14 @@ export type Database = {
           documents?: Json | null
           dosage_instructions?: string | null
           dose_unit?: string | null
+          dsr_trait_source?: string | null
+          early_vigour_score?: number | null
           effectiveness_rating?: number | null
           environmental_impact?: Json | null
           expiry_date?: string | null
           first_aid_measures?: string | null
           germination_rate?: number | null
+          grain_type?: string | null
           handling_precautions?: string | null
           herbicide_tolerance_source?: string | null
           herbicide_tolerance_trait?: string | null
@@ -16088,6 +16195,7 @@ export type Database = {
           lab_test_reports?: Json | null
           label_hi?: string | null
           label_mr?: string | null
+          lodging_resistance_score?: number | null
           manufacturer_id?: string | null
           manufacturing_date?: string | null
           market_availability?: string | null
@@ -16110,6 +16218,7 @@ export type Database = {
           pest_tolerance?: Json | null
           ph_range?: Json | null
           photoperiod_note?: string | null
+          plant_height_class?: string | null
           popularity_score?: number | null
           pre_harvest_interval_days?: number | null
           price_per_unit?: number | null
@@ -16147,6 +16256,9 @@ export type Database = {
           tax_rate?: number | null
           technical_data_sheet_url?: string | null
           tenant_scope_id?: string | null
+          thousand_grain_weight_g?: number | null
+          thousand_grain_weight_source?: string | null
+          tillering_class?: string | null
           translations?: Json | null
           unit_of_measure?: string | null
           updated_at?: string | null
@@ -16163,6 +16275,7 @@ export type Database = {
           water_demand_mm_per_season?: number | null
           water_solubility?: string | null
           weather_conditions?: Json | null
+          weed_competitiveness_score?: number | null
           weed_targets?: Json | null
           yield_irrigated_qtl_per_acre?: number | null
           yield_potential_qtl_per_acre?: number | null
@@ -16174,6 +16287,7 @@ export type Database = {
           agro_ecological_suitability?: Json | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
+          anaerobic_germination_score?: number | null
           application_method?: string | null
           application_timing?: Json | null
           approval_authority?: string | null
@@ -16211,11 +16325,14 @@ export type Database = {
           documents?: Json | null
           dosage_instructions?: string | null
           dose_unit?: string | null
+          dsr_trait_source?: string | null
+          early_vigour_score?: number | null
           effectiveness_rating?: number | null
           environmental_impact?: Json | null
           expiry_date?: string | null
           first_aid_measures?: string | null
           germination_rate?: number | null
+          grain_type?: string | null
           handling_precautions?: string | null
           herbicide_tolerance_source?: string | null
           herbicide_tolerance_trait?: string | null
@@ -16230,6 +16347,7 @@ export type Database = {
           lab_test_reports?: Json | null
           label_hi?: string | null
           label_mr?: string | null
+          lodging_resistance_score?: number | null
           manufacturer_id?: string | null
           manufacturing_date?: string | null
           market_availability?: string | null
@@ -16252,6 +16370,7 @@ export type Database = {
           pest_tolerance?: Json | null
           ph_range?: Json | null
           photoperiod_note?: string | null
+          plant_height_class?: string | null
           popularity_score?: number | null
           pre_harvest_interval_days?: number | null
           price_per_unit?: number | null
@@ -16289,6 +16408,9 @@ export type Database = {
           tax_rate?: number | null
           technical_data_sheet_url?: string | null
           tenant_scope_id?: string | null
+          thousand_grain_weight_g?: number | null
+          thousand_grain_weight_source?: string | null
+          tillering_class?: string | null
           translations?: Json | null
           unit_of_measure?: string | null
           updated_at?: string | null
@@ -16305,6 +16427,7 @@ export type Database = {
           water_demand_mm_per_season?: number | null
           water_solubility?: string | null
           weather_conditions?: Json | null
+          weed_competitiveness_score?: number | null
           weed_targets?: Json | null
           yield_irrigated_qtl_per_acre?: number | null
           yield_potential_qtl_per_acre?: number | null
@@ -22099,6 +22222,41 @@ export type Database = {
           validation_trial_count?: number | null
         }
         Relationships: []
+      }
+      rule_trait_requirement: {
+        Row: {
+          consequence_if_absent: string
+          fail_mode: string
+          id: string
+          min_score: number
+          required_trait_code: string
+          rule_id: string
+        }
+        Insert: {
+          consequence_if_absent: string
+          fail_mode?: string
+          id?: string
+          min_score?: number
+          required_trait_code: string
+          rule_id: string
+        }
+        Update: {
+          consequence_if_absent?: string
+          fail_mode?: string
+          id?: string
+          min_score?: number
+          required_trait_code?: string
+          rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_trait_requirement_required_trait_code_fkey"
+            columns: ["required_trait_code"]
+            isOneToOne: false
+            referencedRelation: "crop_trait_master"
+            referencedColumns: ["trait_code"]
+          },
+        ]
       }
       rule_versions: {
         Row: {
@@ -28468,22 +28626,27 @@ export type Database = {
           id: string
           is_active: boolean
           is_suitable: boolean
+          limiting_factor: string | null
           nursery_area_guntha_per_acre: number | null
           seed_quality_correction_note: string | null
           seed_rate_basis: string | null
+          seed_rate_basis_code: string | null
           seed_rate_broadcast_kg_per_acre_max: number | null
           seed_rate_broadcast_kg_per_acre_min: number | null
           seed_rate_kg_per_acre_max: number | null
           seed_rate_kg_per_acre_min: number | null
           seed_rate_kg_per_ha_max: number | null
           seed_rate_kg_per_ha_min: number | null
+          seed_rate_rationale: string | null
           seed_rate_variety_type: string | null
           seedling_age_days_max: number | null
           seedling_age_days_min: number | null
           source: string | null
           spacing_plant_cm: number | null
           spacing_row_cm: number | null
+          suitability_grade: string | null
           suitability_note: string | null
+          target_plants_per_m2: number | null
           updated_at: string
           variety_id: string
         }
@@ -28498,22 +28661,27 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_suitable?: boolean
+          limiting_factor?: string | null
           nursery_area_guntha_per_acre?: number | null
           seed_quality_correction_note?: string | null
           seed_rate_basis?: string | null
+          seed_rate_basis_code?: string | null
           seed_rate_broadcast_kg_per_acre_max?: number | null
           seed_rate_broadcast_kg_per_acre_min?: number | null
           seed_rate_kg_per_acre_max?: number | null
           seed_rate_kg_per_acre_min?: number | null
           seed_rate_kg_per_ha_max?: number | null
           seed_rate_kg_per_ha_min?: number | null
+          seed_rate_rationale?: string | null
           seed_rate_variety_type?: string | null
           seedling_age_days_max?: number | null
           seedling_age_days_min?: number | null
           source?: string | null
           spacing_plant_cm?: number | null
           spacing_row_cm?: number | null
+          suitability_grade?: string | null
           suitability_note?: string | null
+          target_plants_per_m2?: number | null
           updated_at?: string
           variety_id: string
         }
@@ -28528,22 +28696,27 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_suitable?: boolean
+          limiting_factor?: string | null
           nursery_area_guntha_per_acre?: number | null
           seed_quality_correction_note?: string | null
           seed_rate_basis?: string | null
+          seed_rate_basis_code?: string | null
           seed_rate_broadcast_kg_per_acre_max?: number | null
           seed_rate_broadcast_kg_per_acre_min?: number | null
           seed_rate_kg_per_acre_max?: number | null
           seed_rate_kg_per_acre_min?: number | null
           seed_rate_kg_per_ha_max?: number | null
           seed_rate_kg_per_ha_min?: number | null
+          seed_rate_rationale?: string | null
           seed_rate_variety_type?: string | null
           seedling_age_days_max?: number | null
           seedling_age_days_min?: number | null
           source?: string | null
           spacing_plant_cm?: number | null
           spacing_row_cm?: number | null
+          suitability_grade?: string | null
           suitability_note?: string | null
+          target_plants_per_m2?: number | null
           updated_at?: string
           variety_id?: string
         }
@@ -28683,6 +28856,71 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      variety_qtl_profile: {
+        Row: {
+          donor_source: string | null
+          effect_summary: string | null
+          evidence_ref: string | null
+          id: string
+          is_confirmed: boolean
+          linked_markers: string | null
+          qtl_or_gene: string
+          trait_code: string | null
+          variety_id: string
+        }
+        Insert: {
+          donor_source?: string | null
+          effect_summary?: string | null
+          evidence_ref?: string | null
+          id?: string
+          is_confirmed?: boolean
+          linked_markers?: string | null
+          qtl_or_gene: string
+          trait_code?: string | null
+          variety_id: string
+        }
+        Update: {
+          donor_source?: string | null
+          effect_summary?: string | null
+          evidence_ref?: string | null
+          id?: string
+          is_confirmed?: boolean
+          linked_markers?: string | null
+          qtl_or_gene?: string
+          trait_code?: string | null
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_qtl_profile_trait_code_fkey"
+            columns: ["trait_code"]
+            isOneToOne: false
+            referencedRelation: "crop_trait_master"
+            referencedColumns: ["trait_code"]
+          },
+          {
+            foreignKeyName: "variety_qtl_profile_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_qtl_profile_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_qtl_profile_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
         ]
       }
@@ -31378,6 +31616,21 @@ export type Database = {
           },
         ]
       }
+      v_dsr_suitability_trait_conflict: {
+        Row: {
+          conflict_reason: string | null
+          early_vigour_score: number | null
+          limiting_factor: string | null
+          lodging_resistance_score: number | null
+          name: string | null
+          plant_height_class: string | null
+          suitability_grade: string | null
+          trait_total: number | null
+          variety_code: string | null
+          weed_competitiveness_score: number | null
+        }
+        Relationships: []
+      }
       v_hypothesis_broken_observation_refs: {
         Row: {
           condition_key: string | null
@@ -31513,6 +31766,14 @@ export type Database = {
           },
         ]
       }
+      v_seed_rate_null_trap: {
+        Row: {
+          name: string | null
+          variety_code: string | null
+          warning: string | null
+        }
+        Relationships: []
+      }
       v_stage_clock_method_mismatch: {
         Row: {
           crop_code: string | null
@@ -31627,6 +31888,30 @@ export type Database = {
             referencedColumns: ["method_code"]
           },
         ]
+      }
+      v_vpp_unlinked_to_stage: {
+        Row: {
+          crop_code: string | null
+          das_max_override: number | null
+          das_min_override: number | null
+          stage_code: string | null
+          variety_name: string | null
+        }
+        Insert: {
+          crop_code?: string | null
+          das_max_override?: number | null
+          das_min_override?: number | null
+          stage_code?: string | null
+          variety_name?: string | null
+        }
+        Update: {
+          crop_code?: string | null
+          das_max_override?: number | null
+          das_min_override?: number | null
+          stage_code?: string | null
+          variety_name?: string | null
+        }
+        Relationships: []
       }
       vw_latest_soil_data: {
         Row: {
@@ -32576,6 +32861,27 @@ export type Database = {
           tile_id: string
         }[]
       }
+      fn_calculate_seed_rate: {
+        Args: {
+          p_cultivation_method: string
+          p_germination_pct?: number
+          p_implement_code?: string
+          p_purity_pct?: number
+          p_variety_id: string
+        }
+        Returns: {
+          field_emergence_factor: number
+          germination_pct: number
+          implement_factor: number
+          purity_pct: number
+          rationale: string
+          seed_rate_kg_per_acre: number
+          seed_rate_kg_per_ha: number
+          target_plants_per_m2: number
+          tgw_source: string
+          tgw_used_g: number
+        }[]
+      }
       fn_effective_method: {
         Args: { p_crop_code: string; p_method_code: string }
         Returns: string
@@ -32586,6 +32892,10 @@ export type Database = {
           p_crop_code: string
           p_variety_id: string
         }
+        Returns: boolean
+      }
+      fn_is_rule_trait_safe: {
+        Args: { p_rule_id: string; p_variety_id: string }
         Returns: boolean
       }
       fn_observations_for_intent_ci: {
