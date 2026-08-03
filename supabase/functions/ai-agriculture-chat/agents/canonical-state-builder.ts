@@ -312,6 +312,8 @@ export interface CanonicalState {
   crop_stage: CropStage | string;
   days_after_sowing: DaysAfterSowingBucket;
   days_after_sowing_exact?: number;
+  /** days after transplant (nursery-independent clock); null when not transplanted */
+  days_after_transplant?: number | null;
   
   // NEURO-SYMBOLIC PASSTHROUGH — FIRST-CLASS OBSERVATION CODES
   observation_codes: string[];
@@ -789,6 +791,12 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       ? 'flat_input'
       : 'none';
   
+  // 3b. DAYS AFTER TRANSPLANT (bioState locked > landContext). Distinct clock.
+  const daysAfterTransplant =
+    (bioState?.is_locked && (bioState as any).dat !== null && (bioState as any).dat !== undefined)
+      ? (bioState as any).dat
+      : ((landContext as any)?.days_after_transplant ?? (landContext as any)?.current_dat ?? null);
+
   // 3. DAYS AFTER SOWING (bioState locked > canonicalContext > landContext > flat)
   const daysAfterSowing = 
     (bioState?.is_locked && bioState.das !== null && bioState.das !== undefined)
@@ -1008,6 +1016,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     crop_stage: cropStage,
     days_after_sowing: mapDaysToSowingBucket(daysAfterSowing),
     days_after_sowing_exact: daysAfterSowing,
+    days_after_transplant: daysAfterTransplant,
     
     // Observation codes (FIRST-CLASS ontology passthrough — SSOT for rules)
     observation_codes: observationCodes,
