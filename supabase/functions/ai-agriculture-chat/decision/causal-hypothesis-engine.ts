@@ -140,7 +140,7 @@ interface HypothesisRuleMappingRow {
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
-const ENGINE_VERSION = '1.2.0'; // v1.2.0: lowercase crop_group, ontology-bridged observations, SKIPPED penalty
+const ENGINE_VERSION = '1.2.1'; // v1.2.1: DAT_RANGE condition support, WEATHER BETWEEN operator
 
 // CROP GROUP NORMALIZER
 const CROP_CODE_ALIASES: Record<string, string> = {
