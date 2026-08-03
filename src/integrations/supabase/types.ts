@@ -9412,6 +9412,45 @@ export type Database = {
         }
         Relationships: []
       }
+      epidemiology_threshold_evidence: {
+        Row: {
+          confidence: string
+          created_at: string
+          crop_code: string
+          evidence_ref: string
+          favourable_range: string
+          hypothesis_id: string
+          id: string
+          parameter: string
+          rationale: string
+          threshold_used: string
+        }
+        Insert: {
+          confidence?: string
+          created_at?: string
+          crop_code: string
+          evidence_ref: string
+          favourable_range: string
+          hypothesis_id: string
+          id?: string
+          parameter: string
+          rationale: string
+          threshold_used: string
+        }
+        Update: {
+          confidence?: string
+          created_at?: string
+          crop_code?: string
+          evidence_ref?: string
+          favourable_range?: string
+          hypothesis_id?: string
+          id?: string
+          parameter?: string
+          rationale?: string
+          threshold_used?: string
+        }
+        Relationships: []
+      }
       establishment_implement: {
         Row: {
           applies_to_method: string
@@ -12686,6 +12725,13 @@ export type Database = {
             referencedColumns: ["intent_code"]
           },
           {
+            foreignKeyName: "intent_observation_mapping_intent_code_fkey"
+            columns: ["intent_code"]
+            isOneToOne: false
+            referencedRelation: "v_intent_missing_vernacular"
+            referencedColumns: ["intent_code"]
+          },
+          {
             foreignKeyName: "intent_observation_mapping_observation_code_fkey"
             columns: ["observation_code"]
             isOneToOne: false
@@ -12785,6 +12831,13 @@ export type Database = {
             columns: ["intent_code"]
             isOneToOne: false
             referencedRelation: "observation_intent_master"
+            referencedColumns: ["intent_code"]
+          },
+          {
+            foreignKeyName: "intent_translations_intent_code_fkey"
+            columns: ["intent_code"]
+            isOneToOne: false
+            referencedRelation: "v_intent_missing_vernacular"
             referencedColumns: ["intent_code"]
           },
         ]
@@ -30343,6 +30396,30 @@ export type Database = {
           },
         ]
       }
+      weather_field_master: {
+        Row: {
+          description: string
+          field_code: string
+          is_active: boolean
+          supplied_by: string
+          unit: string
+        }
+        Insert: {
+          description: string
+          field_code: string
+          is_active?: boolean
+          supplied_by: string
+          unit: string
+        }
+        Update: {
+          description?: string
+          field_code?: string
+          is_active?: boolean
+          supplied_by?: string
+          unit?: string
+        }
+        Relationships: []
+      }
       weather_forecasts: {
         Row: {
           cloud_cover_percent: number | null
@@ -31603,6 +31680,46 @@ export type Database = {
         }
         Relationships: []
       }
+      v_condition_key_schema_token_leak: {
+        Row: {
+          condition_key: string | null
+          condition_type: string | null
+          crop_group: string | null
+          hypothesis_id: string | null
+          problem: string | null
+          value_json: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "v_unfirable_hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
       v_crop_gate_coverage: {
         Row: {
           blocking_gates: number | null
@@ -31958,6 +32075,16 @@ export type Database = {
           },
         ]
       }
+      v_intent_missing_vernacular: {
+        Row: {
+          crop_code: string | null
+          hi: number | null
+          intent_category: string | null
+          intent_code: string | null
+          mr: number | null
+        }
+        Relationships: []
+      }
       v_missing_translations: {
         Row: {
           description: string | null
@@ -31966,6 +32093,14 @@ export type Database = {
           has_mr: string | null
           obs_code: string | null
           observation_category: string | null
+        }
+        Relationships: []
+      }
+      v_observation_missing_farmer_alias: {
+        Row: {
+          crop_group: string | null
+          description: string | null
+          observation_code: string | null
         }
         Relationships: []
       }
@@ -32103,6 +32238,54 @@ export type Database = {
         }
         Relationships: []
       }
+      v_translation_transliteration_smell: {
+        Row: {
+          display_text: string | null
+          language_code: string | null
+          observation_code: string | null
+          problem: string | null
+        }
+        Insert: {
+          display_text?: string | null
+          language_code?: string | null
+          observation_code?: string | null
+          problem?: never
+        }
+        Update: {
+          display_text?: string | null
+          language_code?: string | null
+          observation_code?: string | null
+          problem?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "observation_translations_observation_code_fkey"
+            columns: ["observation_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
+          },
+        ]
+      }
+      v_translation_truncated_label: {
+        Row: {
+          description_len: number | null
+          display_text: string | null
+          language_code: string | null
+          len: number | null
+          observation_code: string | null
+          problem: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "observation_translations_observation_code_fkey"
+            columns: ["observation_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
+          },
+        ]
+      }
       v_unfirable_hypotheses: {
         Row: {
           cause_name_en: string | null
@@ -32211,6 +32394,124 @@ export type Database = {
           variety_name?: string | null
         }
         Relationships: []
+      }
+      v_weather_condition_wrongly_required: {
+        Row: {
+          condition_key: string | null
+          crop_group: string | null
+          hypothesis_id: string | null
+          problem: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "v_unfirable_hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
+      v_weather_field_not_supplied: {
+        Row: {
+          crop_group: string | null
+          field: string | null
+          hypothesis_id: string | null
+          operator: string | null
+          problem: string | null
+          threshold: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "v_unfirable_hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
+      v_weather_threshold_without_evidence: {
+        Row: {
+          crop_group: string | null
+          hypothesis_id: string | null
+          operator: string | null
+          parameter: string | null
+          problem: string | null
+          threshold: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "v_unfirable_hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
       }
       vw_latest_soil_data: {
         Row: {
