@@ -657,6 +657,7 @@ function getInputValue(
   switch (cond.condition_type) {
     case 'OBSERVATION': return observations;
     case 'DAS_RANGE': return state.days_since_sowing;
+    case 'DAT_RANGE': return state.days_after_transplant ?? state.current_dat;
     case 'STAGE': return state.crop_stage || state.growth_stage;
     case 'NDVI_PATTERN': return state.ndvi_trend || state.ndvi_level;
     case 'WEATHER': return state.weather;
