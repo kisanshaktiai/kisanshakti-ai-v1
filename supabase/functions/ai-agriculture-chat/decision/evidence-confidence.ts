@@ -117,6 +117,8 @@ export function getEvidenceWeights(): EvidenceWeights {
     },
     sourceDefault: getConfigNumber(CFG.srcDefault, 0.7),
     fallbackMaxInject: getConfigNumber(CFG.fallbackMaxInject, 12),
+    qualityScaleMax: getConfigNumber(CFG.qualityScaleMax, 100),
+    minInjectConfidence: getConfigNumber(CFG.minInjectConfidence, 0),
   };
 }
 
