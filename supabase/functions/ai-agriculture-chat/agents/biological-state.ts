@@ -75,6 +75,8 @@ export interface BiologicalState {
   readonly stage_source: string;
 
   readonly das: number | null;              // days after sowing (authoritative)
+  // days AFTER TRANSPLANT — distinct clock from DAS (differs by nursery age).
+  readonly dat: number | null;
   readonly gdd_accumulated: number | null;
   readonly sowing_date: string | null;      // ISO yyyy-mm-dd
 
