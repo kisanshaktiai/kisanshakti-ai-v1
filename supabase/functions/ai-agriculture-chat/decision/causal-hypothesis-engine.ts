@@ -416,8 +416,9 @@ function evaluateCondition(
     case 'WEATHER': {
       const field = (value_json as any)?.field;
       const threshold = (value_json as any)?.value;
-      if (!field || threshold === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
-      
+      if (!field) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+      if (operator !== 'BETWEEN' && threshold === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+
       const weather = canonicalState.weather;
       if (!weather) return HypothesisConditionStatus.SKIPPED_NO_DATA;
       
@@ -430,7 +431,16 @@ function evaluateCondition(
         case 'LT': return actual < threshold ? HypothesisConditionStatus.PASSED : HypothesisConditionStatus.FAILED;
         case 'LTE': return actual <= threshold ? HypothesisConditionStatus.PASSED : HypothesisConditionStatus.FAILED;
         case 'EQUALS': return actual === threshold ? HypothesisConditionStatus.PASSED : HypothesisConditionStatus.FAILED;
+        case 'BETWEEN': {
+          const lo = (value_json as any)?.min;
+          const hi = (value_json as any)?.max;
+          if (lo === undefined || hi === undefined) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+          return (actual >= lo && actual <= hi)
+            ? HypothesisConditionStatus.PASSED
+            : HypothesisConditionStatus.FAILED;
+        }
         default: return HypothesisConditionStatus.SKIPPED_NO_DATA;
+      }
       }
     }
 
