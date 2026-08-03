@@ -156,9 +156,9 @@ export function scoreEvidence(
   const diagnostic = candidate.is_diagnostic === true ? weights.diagnosticBoost : 1;
 
   const qualityParts = [
-    normScore(candidate.clarity_score),
-    normScore(candidate.discriminator_score),
-    normScore(candidate.frequency_score),
+    normScore(candidate.clarity_score, weights.qualityScaleMax),
+    normScore(candidate.discriminator_score, weights.qualityScaleMax),
+    normScore(candidate.frequency_score, weights.qualityScaleMax),
   ].filter((n): n is number => n !== null);
   const quality = qualityParts.length === 0
     ? 1
