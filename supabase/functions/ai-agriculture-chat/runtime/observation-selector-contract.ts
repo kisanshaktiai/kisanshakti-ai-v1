@@ -86,6 +86,9 @@ export async function loadObservationSelectorOptions(
       perceived_observations: ctx.perceivedObservationCodes ?? [],
       trace_id: ctx.traceId,
       session_ssot: ctx.session_ssot ?? null,
+      cultivation_method: ctx.cultivation_method ?? null,
+      canonical_context: ctx.canonical_context ?? null,
+      biological_state: ctx.biological_state ?? null,
 
     });
     return graph.options.map((o) => ({
