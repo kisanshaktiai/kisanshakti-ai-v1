@@ -280,7 +280,7 @@ export function getObservationsForIntent(
   // Lane allow-set: the caller's lane plus every ancestor from the DB master.
   // Empty = no lane known → do not filter (fail-open, matching crop/stage).
   const laneAllowed = resolveLaneChain(scope?.cultivation_method);
-  for (const w of laneWildcards) laneAllowed.size > 0 && laneAllowed.add(w);
+  if (laneAllowed.size > 0) for (const w of laneWildcards) laneAllowed.add(w);
 
   // Dedup by observation_code; keep best row (lowest assertion priority, then
   // lowest confidence_rank).
