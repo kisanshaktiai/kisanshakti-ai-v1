@@ -76,6 +76,8 @@ export interface ObservationIntentRow {
   intent_code: string;
   routing_target: string | null;
   is_active: boolean | null;
+  /** DB-SSOT establishment lanes this intent is meaningful for; '{any}' = wildcard. */
+  cultivation_method_applicable: string[] | null;
 }
 
 interface IndexState {
