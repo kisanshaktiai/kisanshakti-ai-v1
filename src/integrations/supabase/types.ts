@@ -29133,10 +29133,12 @@ export type Database = {
         Row: {
           canonical_observation_code: string | null
           created_at: string
+          hypothesis_id: string | null
           id: string
           notes: string | null
           observation_code: string | null
           resistance_level: string
+          score_modifier: number | null
           source: string | null
           threat_name: string
           threat_type: string
@@ -29147,10 +29149,12 @@ export type Database = {
         Insert: {
           canonical_observation_code?: string | null
           created_at?: string
+          hypothesis_id?: string | null
           id?: string
           notes?: string | null
           observation_code?: string | null
           resistance_level: string
+          score_modifier?: number | null
           source?: string | null
           threat_name: string
           threat_type: string
@@ -29161,10 +29165,12 @@ export type Database = {
         Update: {
           canonical_observation_code?: string | null
           created_at?: string
+          hypothesis_id?: string | null
           id?: string
           notes?: string | null
           observation_code?: string | null
           resistance_level?: string
+          score_modifier?: number | null
           source?: string | null
           threat_name?: string
           threat_type?: string
@@ -31977,6 +31983,44 @@ export type Database = {
         }
         Relationships: []
       }
+      v_etl_stage_not_in_vocabulary: {
+        Row: {
+          crop_code: string | null
+          invalid_stage: string | null
+          pest_code: string | null
+        }
+        Relationships: []
+      }
+      v_etl_threshold_inconsistent: {
+        Row: {
+          action_threshold: number | null
+          crop_code: string | null
+          etl_unit: string | null
+          etl_value: number | null
+          pest_code: string | null
+          pest_name_en: string | null
+          problem: string | null
+        }
+        Insert: {
+          action_threshold?: number | null
+          crop_code?: string | null
+          etl_unit?: string | null
+          etl_value?: number | null
+          pest_code?: string | null
+          pest_name_en?: string | null
+          problem?: never
+        }
+        Update: {
+          action_threshold?: number | null
+          crop_code?: string | null
+          etl_unit?: string | null
+          etl_value?: number | null
+          pest_code?: string | null
+          pest_name_en?: string | null
+          problem?: never
+        }
+        Relationships: []
+      }
       v_gate_taxonomy_drift: {
         Row: {
           canonical_group: string | null
@@ -32278,6 +32322,18 @@ export type Database = {
         }
         Relationships: []
       }
+      v_stage_transition_invalid: {
+        Row: {
+          confidence: number | null
+          crop_code: string | null
+          from_stage: string | null
+          priority: number | null
+          problem: string | null
+          to_stage: string | null
+          trigger_type: string | null
+        }
+        Relationships: []
+      }
       v_translation_transliteration_smell: {
         Row: {
           display_text: string | null
@@ -32410,6 +32466,17 @@ export type Database = {
             referencedColumns: ["method_code"]
           },
         ]
+      }
+      v_variety_resistance_unwired: {
+        Row: {
+          observation_code: string | null
+          problem: string | null
+          resistance_level: string | null
+          threat_name: string | null
+          threat_type: string | null
+          variety_code: string | null
+        }
+        Relationships: []
       }
       v_vpp_unlinked_to_stage: {
         Row: {
@@ -33642,6 +33709,10 @@ export type Database = {
           is_gate: boolean
           semantic_class: string
         }[]
+      }
+      fn_variety_resistance_modifier: {
+        Args: { p_hypothesis_id: string; p_variety_id: string }
+        Returns: number
       }
       generate_credit_note_number: { Args: never; Returns: string }
       generate_farmer_code: { Args: { p_tenant_id: string }; Returns: string }
