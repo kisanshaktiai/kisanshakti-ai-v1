@@ -63,12 +63,14 @@ interface ObsMasterRow {
 import {
   loadObservationSource,
   observationMasterRows,
-} from './db-ssot/observation-source.ts';
+  } from './db-ssot/observation-source.ts';
+import { getObservationIntent } from './db-ssot/observation-index.ts';
 
 export interface IntentMappingScope {
   crop_code?: string | null;
   growth_stage?: string | null;
   das?: number | null;
+  cultivation_method?: string | null;   // NEW — field lane from crop_schedules SSOT
 }
 
 export interface IntentMappingEntry {
