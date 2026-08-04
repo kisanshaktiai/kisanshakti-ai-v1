@@ -63,6 +63,7 @@ export async function loadClarificationCandidates(
 ): Promise<ClarificationOption[]> {
   const {
     supabase, intent_code, crop_code, growth_stage, das, language, max = 4, confirmed = [], pending = [],
+    trace_id, cultivation_method, canonical_context, session_ssot, biological_state,
   } = input;
 
   try {
@@ -76,6 +77,11 @@ export async function loadClarificationCandidates(
       max,
       confirmed_observations: confirmed,
       pending_obs_keys: pending,
+      trace_id: trace_id ?? null,
+      cultivation_method: cultivation_method ?? null,
+      canonical_context: canonical_context ?? null,
+      session_ssot: session_ssot ?? null,
+      biological_state: biological_state ?? null,
     });
 
     return graph.options.map((o, idx) => ({
