@@ -102,8 +102,56 @@ const ASSERTION_PRIORITY: Record<string, number> = {
 let cache: Cache | null = null;
 const TTL_MS = 10 * 60 * 1000;
 
+// ── CULTIVATION LANE HIERARCHY (DB-SSOT) ─────────────────────────────────────
+// `cultivation_method_master.parent_method_code` is the ONLY authority on lane
+// ancestry (sri → transplanted, direct_seeded_dry → direct_seeded, …). Nothing
+// about lanes is hardcoded here.
+const laneParent = new Map<string, string | null>();
+const laneWildcards = new Set<string>();
+let laneLoadedAt = 0;
+
+async function loadCultivationLanes(supabase: any): Promise<void> {
+  if (laneLoadedAt && Date.now() - laneLoadedAt < TTL_MS) return;
+  try {
+    const { data, error } = await supabase
+      .from('cultivation_method_master')
+      .select('method_code, parent_method_code, is_wildcard');
+    if (error) throw new Error(error.message);
+    const rows = (data as any[] | null) ?? [];
+    if (rows.length === 0) return;
+    laneParent.clear();
+    laneWildcards.clear();
+    for (const r of rows) {
+      const code = String(r?.method_code ?? '').trim().toLowerCase();
+      if (!code) continue;
+      const parent = r?.parent_method_code ? String(r.parent_method_code).trim().toLowerCase() : null;
+      laneParent.set(code, parent);
+      if (r?.is_wildcard === true) laneWildcards.add(code);
+    }
+    laneLoadedAt = Date.now();
+    console.log(`[LANE_MASTER] loaded methods=${laneParent.size} wildcards=${laneWildcards.size}`);
+  } catch (e) {
+    console.warn('[LANE_MASTER] cultivation_method_master load failed', (e as Error).message);
+  }
+}
+
+/** Lane + all its ancestors (via parent_method_code). Empty when no lane known. */
+function resolveLaneChain(cultivationMethod?: string | null): Set<string> {
+  const out = new Set<string>();
+  let m: string | null = cultivationMethod ? String(cultivationMethod).trim().toLowerCase() : null;
+  let guard = 0;
+  while (m && !out.has(m) && guard++ < 16) {
+    out.add(m);
+    m = laneParent.get(m) ?? null;
+  }
+  return out;
+}
+
 export async function loadObservationMapping(supabase: any): Promise<void> {
   const now = Date.now();
+  // Lane master is cheap and independently TTL-gated; keep it warm even when
+  // the IOM cache is still fresh.
+  await loadCultivationLanes(supabase);
   if (cache && now - cache.loadedAt < TTL_MS) return;
 
   // Paginate IOM to bypass the PostgREST 1000-row cap — 13k+ rows expected.
@@ -111,7 +159,7 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
   // preserved by writing each page into its slot. Same rows, same order.
   const iom: IOMRow[] = [];
   const PAGE = 1000;
-  const COLS = 'intent_code, crop_code, growth_stage, das_min, das_max, observation_code, assertion_strength, confidence_rank';
+  const COLS = 'intent_code, crop_code, growth_stage, das_min, das_max, observation_code, assertion_strength, confidence_rank, cultivation_method';
   const base = () => supabase
     .from('intent_observation_mapping')
     .select(COLS)
