@@ -8316,6 +8316,13 @@ export class AIAgentOrchestrator {
                 crop_code: _routerCrop,
                 growth_stage: _routerStage,
                 das: _routerDAS,
+                cultivation_method: (
+                  (this as any)._aslPreloaded?.crop?.cultivation_method
+                  ?? (this as any)._sessionSSOT?.cultivation_method
+                  ?? ((landContext as any)?.biological_state as any)?.cultivation_method
+                  ?? (landContext as any)?.cultivation_method
+                  ?? null
+                ),
               });
               const candidateCodes = iomEntry?.observation_codes ?? [];
               (this as any).__observationRequired = true;
