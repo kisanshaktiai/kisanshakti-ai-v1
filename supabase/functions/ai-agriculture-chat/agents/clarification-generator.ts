@@ -207,6 +207,19 @@ export async function generateScopedClarification(
           max: 4,
           // Rule 2: never re-ask evidence the farmer has already confirmed.
           confirmed: conversationState?.confirmed ?? [],
+          // 2026-08-04 — thread cultivation lane + context into the gate.
+          // This function holds no orchestrator locals: trace_id/session_ssot
+          // are unavailable here, biological_state is read off canonicalContext.
+          trace_id: (canonicalContext as any)?.trace_id ?? null,
+          cultivation_method: (
+            (canonicalContext as any)?.cultivation_method
+            ?? (canonicalContext as any)?.biological_state?.cultivation_method
+            ?? (conversationState as any)?.cultivation_method
+            ?? null
+          ),
+          canonical_context: (canonicalContext as any) ?? null,
+          session_ssot: (conversationState as any)?.session_ssot ?? null,
+          biological_state: (canonicalContext as any)?.biological_state ?? null,
         });
 
         console.log(
