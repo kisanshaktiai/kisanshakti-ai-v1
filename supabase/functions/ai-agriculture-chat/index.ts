@@ -29,7 +29,7 @@
 
 // BUILD_TAG bumps force the edge runtime to pick up dependent module changes
 // (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
-const BUILD_TAG = "ai-agri-chat::cultivation-lane-scope::2026-08-04T17:40Z";
+const BUILD_TAG = "ai-agri-chat::clarification-lane-threading::2026-08-04T18:10Z";
 console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
 // [GRAPH_GATE_BUILD] — grep marker so an uploaded log can prove whether the
 console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=true hasSequenceGuard=true hasOrchestratorExit=true');
@@ -1884,6 +1884,19 @@ serve(async (req) => {
               try {
                 const _rescue = await attemptDbClarificationRescue(orchestratorResponse, {
                   supabase,
+                  // 2026-08-04 — lane + context threading so the applicability gate can enforce.
+                  // Mirrors the resolution chain used at orchestrator.ts:3486.
+                  cultivation_method:
+                    (orchestratorResponse as any)?.metadata?.canonicalContext?.cultivation_method ??
+                    (orchestratorResponse as any)?.metadata?.biological_state?.cultivation_method ??
+                    (orchestratorResponse as any)?.dataAudit?.land?.cultivation_method ??
+                    null,
+                  canonical_context:
+                    (orchestratorResponse as any)?.metadata?.canonicalContext ?? null,
+                  biological_state:
+                    (orchestratorResponse as any)?.metadata?.biological_state ??
+                    (orchestratorResponse as any)?.dataAudit?.land?.biological_state ??
+                    null,
                   cropCode: _q3Crop,
                   growthStage: _q3Stage,
                   language: _q3Ssot?.language ?? detectedLanguage,
@@ -1976,6 +1989,19 @@ serve(async (req) => {
                   : 0);
             const _postGate = await ensureObservationSelectorContract(orchestratorResponse, {
               supabase,
+              // 2026-08-04 — lane + context threading so the applicability gate can enforce.
+              // Mirrors the resolution chain used at orchestrator.ts:3486.
+              cultivation_method:
+                (orchestratorResponse as any)?.metadata?.canonicalContext?.cultivation_method ??
+                (orchestratorResponse as any)?.metadata?.biological_state?.cultivation_method ??
+                (orchestratorResponse as any)?.dataAudit?.land?.cultivation_method ??
+                null,
+              canonical_context:
+                (orchestratorResponse as any)?.metadata?.canonicalContext ?? null,
+              biological_state:
+                (orchestratorResponse as any)?.metadata?.biological_state ??
+                (orchestratorResponse as any)?.dataAudit?.land?.biological_state ??
+                null,
               cropCode:
                 finalCropName ??
                 (orchestratorResponse as any)?.dataAudit?.land?.current_crop ??
@@ -2157,6 +2183,19 @@ serve(async (req) => {
           // 1. Load fallback questions using the same DB-driven mapper as R3.
           const _rescueResult = await attemptDbClarificationRescue(response, {
             supabase,
+            // 2026-08-04 — lane + context threading so the applicability gate can enforce.
+            // Mirrors the resolution chain used at orchestrator.ts:3486.
+            cultivation_method:
+              (response as any)?.metadata?.canonicalContext?.cultivation_method ??
+              (response as any)?.metadata?.biological_state?.cultivation_method ??
+              (response as any)?.dataAudit?.land?.cultivation_method ??
+              null,
+            canonical_context:
+              (response as any)?.metadata?.canonicalContext ?? null,
+            biological_state:
+              (response as any)?.metadata?.biological_state ??
+              (response as any)?.dataAudit?.land?.biological_state ??
+              null,
             cropCode: _l14Ssot.crop_code,
             growthStage: _l14Ssot.growth_stage,
             language: _lang,
