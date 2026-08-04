@@ -212,6 +212,7 @@ export interface ObservationMappingScope {
   crop_code?: string | null;
   growth_stage?: string | null;
   das?: number | null;
+  cultivation_method?: string | null;
 }
 
 export function mapToObservationCodes(
