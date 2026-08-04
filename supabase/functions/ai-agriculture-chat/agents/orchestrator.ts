@@ -1682,6 +1682,9 @@ export class AIAgentOrchestrator {
       }
       
       const canonicalContext = buildCanonicalContextContract(landContext, !!landContext);
+      // 2026-08-04 — expose the frozen canonical context to the single orchestrate() exit so
+      // EVERY response type carries it, not just the 3 of 17 return sites that set it inline.
+      (this as any).__canonicalContextForExit = canonicalContext;
       
       // PHASE-25: TRACE POINT 2 - After CanonicalContext build
       if (canonicalContext) {
