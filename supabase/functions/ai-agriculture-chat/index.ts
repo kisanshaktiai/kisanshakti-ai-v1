@@ -1080,6 +1080,19 @@ serve(async (req) => {
             : 0);
       _observationContract = await ensureObservationSelectorContract(orchestratorResponse, {
         supabase,
+        // 2026-08-04 — lane + context threading so the applicability gate can enforce.
+        // Mirrors the resolution chain used at orchestrator.ts:3486.
+        cultivation_method:
+          (orchestratorResponse as any)?.metadata?.canonicalContext?.cultivation_method ??
+          (orchestratorResponse as any)?.metadata?.biological_state?.cultivation_method ??
+          (orchestratorResponse as any)?.dataAudit?.land?.cultivation_method ??
+          null,
+        canonical_context:
+          (orchestratorResponse as any)?.metadata?.canonicalContext ?? null,
+        biological_state:
+          (orchestratorResponse as any)?.metadata?.biological_state ??
+          (orchestratorResponse as any)?.dataAudit?.land?.biological_state ??
+          null,
         cropCode:
           (orchestratorResponse as any)?.dataAudit?.land?.current_crop ??
           (orchestratorResponse as any)?.metadata?.canonicalContext?.crop_code ??
