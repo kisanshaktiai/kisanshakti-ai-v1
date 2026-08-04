@@ -63,7 +63,7 @@ interface ObsMasterRow {
 import {
   loadObservationSource,
   observationMasterRows,
-  } from './db-ssot/observation-source.ts';
+} from './db-ssot/observation-source.ts';
 import { getObservationIntent } from './db-ssot/observation-index.ts';
 
 export interface IntentMappingScope {
