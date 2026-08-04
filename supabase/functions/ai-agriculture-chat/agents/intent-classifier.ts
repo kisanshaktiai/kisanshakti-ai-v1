@@ -96,6 +96,8 @@ export interface IntentLandContext {
   days_since_sowing?: number;
   ndvi_value?: number;
   soil_type?: string;
+  /** Establishment lane (crop_schedules SSOT) — gates lane-specific intents. */
+  cultivation_method?: string | null;
   /** Farmer language (e.g. 'mr' | 'hi' | 'en') — selects DB intent labels. */
   language?: string;
 }
