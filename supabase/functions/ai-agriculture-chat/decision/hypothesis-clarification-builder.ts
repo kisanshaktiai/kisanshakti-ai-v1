@@ -368,6 +368,7 @@ export async function buildHypothesisClarificationOptions(
     const arr = condsByHyp.get(k);
     if (arr) arr.push(c); else condsByHyp.set(k, [c]);
   }
+  const _hypIdsBeforeGate = hypothesisIds.slice();
   const survivingHypothesisIds: string[] = [];
   for (const hypId of hypothesisIds) {
     const hypConditions = condsByHyp.get(hypId) ?? [];
@@ -385,6 +386,16 @@ export async function buildHypothesisClarificationOptions(
     survivingHypothesisIds.push(hypId);
   }
   hypothesisIds = survivingHypothesisIds;
+
+  console.warn(
+    `[HYP_CLARIFICATION_APPLICABILITY_SUMMARY] trace=${trace} ` +
+    `cultivation=${cultivationMethod ?? 'null'} in=${_hypIdsBeforeGate.length} ` +
+    `out=${survivingHypothesisIds.length} ` +
+    `eliminated=${_hypIdsBeforeGate.length - survivingHypothesisIds.length} ` +
+    `enforced=${cultivationMethod ? 'true' : 'false'}`,
+  );
+
+
 
   if (hypothesisIds.length === 0) {
     console.warn(
