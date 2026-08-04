@@ -217,7 +217,7 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
         pagedLoad<ObservationIntentRow>(
           supabase,
           'observation_intent_master',
-          'intent_code, routing_target, is_active',
+          'intent_code, routing_target, is_active, cultivation_method_applicable',
           (q) => q.eq('is_active', true),
         ),
       ]);
