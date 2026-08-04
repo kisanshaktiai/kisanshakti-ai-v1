@@ -29,7 +29,7 @@
 
 // BUILD_TAG bumps force the edge runtime to pick up dependent module changes
 // (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
-const BUILD_TAG = "ai-agri-chat::clarification-lane-threading::2026-08-04T18:10Z";
+const BUILD_TAG = "ai-agri-chat::canonical-context-exit::2026-08-04T18:40Z";
 console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
 // [GRAPH_GATE_BUILD] — grep marker so an uploaded log can prove whether the
 console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=true hasSequenceGuard=true hasOrchestratorExit=true');
