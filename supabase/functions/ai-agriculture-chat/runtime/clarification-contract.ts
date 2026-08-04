@@ -33,6 +33,12 @@ export interface ClarificationCandidateInput {
   confirmed?: ReadonlyArray<string>;
   // FIX 3 — observation keys still pending farmer confirmation from a
   pending?: ReadonlyArray<string>;
+  // 2026-08-04 — lane/context threading so the applicability gate can enforce.
+  trace_id?: string | null;
+  cultivation_method?: string | null;
+  canonical_context?: any;
+  session_ssot?: any;
+  biological_state?: any;
 }
 
 
