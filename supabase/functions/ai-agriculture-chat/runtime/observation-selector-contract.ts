@@ -60,6 +60,10 @@ export interface ObservationContractContext {
   session_ssot?: SessionSSOT | null;
   /** Optional orchestrator instance/state used to resolve the SSOT lazily. */
   orchestratorState?: any;
+  // 2026-08-04 — lane/context threading for the applicability gate.
+  cultivation_method?: string | null;
+  canonical_context?: any;
+  biological_state?: any;
 
 }
 
