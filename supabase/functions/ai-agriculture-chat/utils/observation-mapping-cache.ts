@@ -397,3 +397,37 @@ export function getIntentCodesForCrop(cropCode?: string | null): Set<string> | n
   }
   return out.size > 0 ? out : null;
 }
+
+/**
+ * Intents eligible for a given cultivation lane.
+ * Reads observation_intent_master.cultivation_method_applicable via the
+ * observation-index cache. '{any}' (is_wildcard) is always eligible.
+ * Returns null if the intent cache is cold, so callers can fail open.
+ */
+export function getIntentCodesForLane(cultivationMethod?: string | null): Set<string> | null {
+  if (!cache) return null;
+  const laneChain = resolveLaneChain(cultivationMethod);
+  if (laneChain.size === 0) return null;
+
+  const out = new Set<string>();
+  let sawIntentRow = false;
+  for (const intent of cache.rowsByIntent.keys()) {
+    const row = getObservationIntent(intent);
+    if (!row) continue;
+    sawIntentRow = true;
+    const applicable = Array.isArray(row.cultivation_method_applicable)
+      ? row.cultivation_method_applicable
+      : null;
+    // No curated array = unscoped intent, eligible everywhere.
+    if (!applicable || applicable.length === 0) { out.add(intent); continue; }
+    let eligible = false;
+    for (const raw of applicable) {
+      const v = String(raw ?? '').trim().toLowerCase();
+      if (!v) continue;
+      if (laneWildcards.has(v) || v === 'any' || laneChain.has(v)) { eligible = true; break; }
+    }
+    if (eligible) out.add(intent);
+  }
+  if (!sawIntentRow) return null;   // observation-index cold → fail open
+  return out.size > 0 ? out : null;
+}
