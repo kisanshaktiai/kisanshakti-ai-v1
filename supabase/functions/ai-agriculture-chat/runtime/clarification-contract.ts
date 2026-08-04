@@ -33,6 +33,12 @@ export interface ClarificationCandidateInput {
   confirmed?: ReadonlyArray<string>;
   // FIX 3 — observation keys still pending farmer confirmation from a
   pending?: ReadonlyArray<string>;
+  // 2026-08-04 — lane/context threading so the applicability gate can enforce.
+  trace_id?: string | null;
+  cultivation_method?: string | null;
+  canonical_context?: any;
+  session_ssot?: any;
+  biological_state?: any;
 }
 
 
@@ -57,6 +63,7 @@ export async function loadClarificationCandidates(
 ): Promise<ClarificationOption[]> {
   const {
     supabase, intent_code, crop_code, growth_stage, das, language, max = 4, confirmed = [], pending = [],
+    trace_id, cultivation_method, canonical_context, session_ssot, biological_state,
   } = input;
 
   try {
@@ -70,6 +77,11 @@ export async function loadClarificationCandidates(
       max,
       confirmed_observations: confirmed,
       pending_obs_keys: pending,
+      trace_id: trace_id ?? null,
+      cultivation_method: cultivation_method ?? null,
+      canonical_context: canonical_context ?? null,
+      session_ssot: session_ssot ?? null,
+      biological_state: biological_state ?? null,
     });
 
     return graph.options.map((o, idx) => ({

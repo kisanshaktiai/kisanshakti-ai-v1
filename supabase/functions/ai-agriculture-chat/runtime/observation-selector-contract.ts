@@ -60,6 +60,10 @@ export interface ObservationContractContext {
   session_ssot?: SessionSSOT | null;
   /** Optional orchestrator instance/state used to resolve the SSOT lazily. */
   orchestratorState?: any;
+  // 2026-08-04 — lane/context threading for the applicability gate.
+  cultivation_method?: string | null;
+  canonical_context?: any;
+  biological_state?: any;
 
 }
 
@@ -82,6 +86,9 @@ export async function loadObservationSelectorOptions(
       perceived_observations: ctx.perceivedObservationCodes ?? [],
       trace_id: ctx.traceId,
       session_ssot: ctx.session_ssot ?? null,
+      cultivation_method: ctx.cultivation_method ?? null,
+      canonical_context: ctx.canonical_context ?? null,
+      biological_state: ctx.biological_state ?? null,
 
     });
     return graph.options.map((o) => ({

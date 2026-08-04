@@ -188,14 +188,19 @@ export async function buildHypothesisClarificationOptions(
     cultivation_method: cultivationMethod,
   };
 
-  console.log(
-    `[HYP_CLARIFICATION_LANE] trace=${trace} crop=${crop} stage=${stage} das=${das} ` +
-    `cultivation=${cultivationMethod ?? 'null'} source=explicit_arg`,
-  );
-  console.log(
-    `[CULTIVATION_LANE] trace=${trace} crop=${crop} stage=${stage} das=${das} ` +
-    `cultivation=${cultivationMethod ?? 'null'} source=explicit_arg`,
-  );
+  if (!cultivationMethod) {
+    console.warn(
+      `[CLARIFICATION_LANE_MISSING] trace=${trace} crop=${crop} stage=${stage} das=${das} ` +
+      `has_explicit=${(input as any).cultivation_method != null} ` +
+      `has_ctx=${!!(input as any).canonical_context} has_ssot=${!!_ssot} ` +
+      `has_bio=${!!(input as any).biological_state} — APPLICABILITY GATE WILL NOT ENFORCE`,
+    );
+  } else {
+    console.warn(
+      `[HYP_CLARIFICATION_LANE] trace=${trace} crop=${crop} stage=${stage} das=${das} ` +
+      `cultivation=${cultivationMethod} source=explicit_arg`,
+    );
+  }
 
   const renderMaxIn = input.max ?? 4;
   const tun = await readTunables(input.supabase, renderMaxIn);
@@ -368,6 +373,7 @@ export async function buildHypothesisClarificationOptions(
     const arr = condsByHyp.get(k);
     if (arr) arr.push(c); else condsByHyp.set(k, [c]);
   }
+  const _hypIdsBeforeGate = hypothesisIds.slice();
   const survivingHypothesisIds: string[] = [];
   for (const hypId of hypothesisIds) {
     const hypConditions = condsByHyp.get(hypId) ?? [];
@@ -385,6 +391,16 @@ export async function buildHypothesisClarificationOptions(
     survivingHypothesisIds.push(hypId);
   }
   hypothesisIds = survivingHypothesisIds;
+
+  console.warn(
+    `[HYP_CLARIFICATION_APPLICABILITY_SUMMARY] trace=${trace} ` +
+    `cultivation=${cultivationMethod ?? 'null'} in=${_hypIdsBeforeGate.length} ` +
+    `out=${survivingHypothesisIds.length} ` +
+    `eliminated=${_hypIdsBeforeGate.length - survivingHypothesisIds.length} ` +
+    `enforced=${cultivationMethod ? 'true' : 'false'}`,
+  );
+
+
 
   if (hypothesisIds.length === 0) {
     console.warn(

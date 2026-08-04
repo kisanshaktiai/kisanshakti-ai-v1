@@ -7076,6 +7076,20 @@ export class AIAgentOrchestrator {
               // FIX 3 — carry forward pending keys from the previous turn
               // so we never re-offer the exact option the farmer just tapped.
               pending: (options.sessionState as any)?.pendingClarificationObservationKeys ?? [],
+              // 2026-08-04 — thread the cultivation lane + context so the
+              // applicability gate can enforce (was blind → transplant-only
+              // hypotheses survived on direct-seeded fields).
+              trace_id: traceId,
+              cultivation_method: (
+                (this as any)._aslPreloaded?.crop?.cultivation_method
+                ?? (this as any)._sessionSSOT?.cultivation_method
+                ?? (landContext as any)?.biological_state?.cultivation_method
+                ?? (landContext as any)?.cultivation_method
+                ?? null
+              ),
+              canonical_context: (canonicalContext as any) ?? null,
+              session_ssot: (this as any)._sessionSSOT ?? null,
+              biological_state: (landContext as any)?.biological_state ?? null,
             }).catch((e: unknown) => {
 
               console.warn(`[OBS_GATE] candidate load failed: ${e instanceof Error ? e.message : String(e)}`);
