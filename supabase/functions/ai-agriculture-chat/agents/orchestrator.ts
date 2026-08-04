@@ -3483,12 +3483,20 @@ export class AIAgentOrchestrator {
       
       // STEP 1: LLM extracts semantic meaning (any language → English)
       // v3.0.0: Pass land context so LLM can interpret romanized regional language
+      const _laneForIntent = (
+        (this as any)._aslPreloaded?.crop?.cultivation_method
+        ?? (this as any)._sessionSSOT?.cultivation_method
+        ?? ((landContext as any)?.biological_state as any)?.cultivation_method
+        ?? (landContext as any)?.cultivation_method
+        ?? null
+      );
       const intentLandContext = landContext ? {
         current_crop: landContext.current_crop,
         growth_stage: landContext.growth_stage,
         days_since_sowing: landContext.days_since_sowing,
         ndvi_value: landContext.ndvi_value,
         soil_type: landContext.soil_type,
+        cultivation_method: _laneForIntent,
         // STABILIZATION v4.0: Inject crop vocabulary for romanized input enrichment
         crop_vocabulary_hint: cropVocabularyBlock || undefined
       } : (cropVocabularyBlock ? { crop_vocabulary_hint: cropVocabularyBlock } as any : undefined);
@@ -3507,6 +3515,7 @@ export class AIAgentOrchestrator {
         das: typeof landContext?.days_since_sowing === 'number'
           ? landContext.days_since_sowing
           : null,
+        cultivation_method: _laneForIntent,
       });
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
 
@@ -8307,6 +8316,13 @@ export class AIAgentOrchestrator {
                 crop_code: _routerCrop,
                 growth_stage: _routerStage,
                 das: _routerDAS,
+                cultivation_method: (
+                  (this as any)._aslPreloaded?.crop?.cultivation_method
+                  ?? (this as any)._sessionSSOT?.cultivation_method
+                  ?? ((landContext as any)?.biological_state as any)?.cultivation_method
+                  ?? (landContext as any)?.cultivation_method
+                  ?? null
+                ),
               });
               const candidateCodes = iomEntry?.observation_codes ?? [];
               (this as any).__observationRequired = true;

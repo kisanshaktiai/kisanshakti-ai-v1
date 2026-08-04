@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      _archive_crop_schedules_cultivation_method: {
+        Row: {
+          archived_at: string | null
+          crop_name: string | null
+          crop_variety: string | null
+          cultivation_method: string | null
+          id: string | null
+          is_active: boolean | null
+          land_id: string | null
+          sowing_date: string | null
+          transplant_date: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          crop_name?: string | null
+          crop_variety?: string | null
+          cultivation_method?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          land_id?: string | null
+          sowing_date?: string | null
+          transplant_date?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          crop_name?: string | null
+          crop_variety?: string | null
+          cultivation_method?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          land_id?: string | null
+          sowing_date?: string | null
+          transplant_date?: string | null
+        }
+        Relationships: []
+      }
       _audit_manual_review: {
         Row: {
           audit_batch: string
@@ -6184,6 +6220,7 @@ export type Database = {
           cost_by_stage: Json | null
           country: string | null
           created_at: string | null
+          crop_cycle: string
           crop_name: string
           crop_variety: string | null
           cultivation_method: string | null
@@ -6299,6 +6336,7 @@ export type Database = {
           cost_by_stage?: Json | null
           country?: string | null
           created_at?: string | null
+          crop_cycle?: string
           crop_name: string
           crop_variety?: string | null
           cultivation_method?: string | null
@@ -6414,6 +6452,7 @@ export type Database = {
           cost_by_stage?: Json | null
           country?: string | null
           created_at?: string | null
+          crop_cycle?: string
           crop_name?: string
           crop_variety?: string | null
           cultivation_method?: string | null
@@ -12185,6 +12224,7 @@ export type Database = {
           cause_name_hi: string | null
           cause_name_mr: string | null
           created_at: string | null
+          crop_code: string
           crop_group: string
           engine_min_version: string | null
           hypothesis_id: string
@@ -12208,6 +12248,7 @@ export type Database = {
           cause_name_hi?: string | null
           cause_name_mr?: string | null
           created_at?: string | null
+          crop_code: string
           crop_group: string
           engine_min_version?: string | null
           hypothesis_id: string
@@ -12231,6 +12272,7 @@ export type Database = {
           cause_name_hi?: string | null
           cause_name_mr?: string | null
           created_at?: string | null
+          crop_code?: string
           crop_group?: string
           engine_min_version?: string | null
           hypothesis_id?: string
@@ -12679,6 +12721,7 @@ export type Database = {
           confidence_rank: number | null
           created_at: string | null
           crop_code: string
+          cultivation_method: string | null
           das_max: number
           das_min: number
           growth_stage: string
@@ -12693,6 +12736,7 @@ export type Database = {
           confidence_rank?: number | null
           created_at?: string | null
           crop_code: string
+          cultivation_method?: string | null
           das_max: number
           das_min: number
           growth_stage: string
@@ -12707,6 +12751,7 @@ export type Database = {
           confidence_rank?: number | null
           created_at?: string | null
           crop_code?: string
+          cultivation_method?: string | null
           das_max?: number
           das_min?: number
           growth_stage?: string
@@ -12717,6 +12762,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_iom_cultivation_method"
+            columns: ["cultivation_method"]
+            isOneToOne: false
+            referencedRelation: "cultivation_method_master"
+            referencedColumns: ["method_code"]
+          },
           {
             foreignKeyName: "intent_observation_mapping_intent_code_fkey"
             columns: ["intent_code"]
@@ -17497,6 +17549,7 @@ export type Database = {
           allowed_observation_groups: string[] | null
           clarification_mode: string | null
           created_at: string | null
+          cultivation_method_applicable: string[]
           intent_category: string
           intent_code: string
           intent_description: string
@@ -17512,6 +17565,7 @@ export type Database = {
           allowed_observation_groups?: string[] | null
           clarification_mode?: string | null
           created_at?: string | null
+          cultivation_method_applicable?: string[]
           intent_category: string
           intent_code: string
           intent_description: string
@@ -17527,6 +17581,7 @@ export type Database = {
           allowed_observation_groups?: string[] | null
           clarification_mode?: string | null
           created_at?: string | null
+          cultivation_method_applicable?: string[]
           intent_category?: string
           intent_code?: string
           intent_description?: string

@@ -52,6 +52,7 @@ interface IOMRow {
   observation_code: string;
   assertion_strength: string | null;
   confidence_rank: number | null;
+  cultivation_method?: string | null;
 }
 
 interface ObsMasterRow {
@@ -63,11 +64,13 @@ import {
   loadObservationSource,
   observationMasterRows,
 } from './db-ssot/observation-source.ts';
+import { getObservationIntent } from './db-ssot/observation-index.ts';
 
 export interface IntentMappingScope {
   crop_code?: string | null;
   growth_stage?: string | null;
   das?: number | null;
+  cultivation_method?: string | null;   // NEW — field lane from crop_schedules SSOT
 }
 
 export interface IntentMappingEntry {
@@ -99,8 +102,56 @@ const ASSERTION_PRIORITY: Record<string, number> = {
 let cache: Cache | null = null;
 const TTL_MS = 10 * 60 * 1000;
 
+// ── CULTIVATION LANE HIERARCHY (DB-SSOT) ─────────────────────────────────────
+// `cultivation_method_master.parent_method_code` is the ONLY authority on lane
+// ancestry (sri → transplanted, direct_seeded_dry → direct_seeded, …). Nothing
+// about lanes is hardcoded here.
+const laneParent = new Map<string, string | null>();
+const laneWildcards = new Set<string>();
+let laneLoadedAt = 0;
+
+async function loadCultivationLanes(supabase: any): Promise<void> {
+  if (laneLoadedAt && Date.now() - laneLoadedAt < TTL_MS) return;
+  try {
+    const { data, error } = await supabase
+      .from('cultivation_method_master')
+      .select('method_code, parent_method_code, is_wildcard');
+    if (error) throw new Error(error.message);
+    const rows = (data as any[] | null) ?? [];
+    if (rows.length === 0) return;
+    laneParent.clear();
+    laneWildcards.clear();
+    for (const r of rows) {
+      const code = String(r?.method_code ?? '').trim().toLowerCase();
+      if (!code) continue;
+      const parent = r?.parent_method_code ? String(r.parent_method_code).trim().toLowerCase() : null;
+      laneParent.set(code, parent);
+      if (r?.is_wildcard === true) laneWildcards.add(code);
+    }
+    laneLoadedAt = Date.now();
+    console.log(`[LANE_MASTER] loaded methods=${laneParent.size} wildcards=${laneWildcards.size}`);
+  } catch (e) {
+    console.warn('[LANE_MASTER] cultivation_method_master load failed', (e as Error).message);
+  }
+}
+
+/** Lane + all its ancestors (via parent_method_code). Empty when no lane known. */
+function resolveLaneChain(cultivationMethod?: string | null): Set<string> {
+  const out = new Set<string>();
+  let m: string | null = cultivationMethod ? String(cultivationMethod).trim().toLowerCase() : null;
+  let guard = 0;
+  while (m && !out.has(m) && guard++ < 16) {
+    out.add(m);
+    m = laneParent.get(m) ?? null;
+  }
+  return out;
+}
+
 export async function loadObservationMapping(supabase: any): Promise<void> {
   const now = Date.now();
+  // Lane master is cheap and independently TTL-gated; keep it warm even when
+  // the IOM cache is still fresh.
+  await loadCultivationLanes(supabase);
   if (cache && now - cache.loadedAt < TTL_MS) return;
 
   // Paginate IOM to bypass the PostgREST 1000-row cap — 13k+ rows expected.
@@ -108,7 +159,7 @@ export async function loadObservationMapping(supabase: any): Promise<void> {
   // preserved by writing each page into its slot. Same rows, same order.
   const iom: IOMRow[] = [];
   const PAGE = 1000;
-  const COLS = 'intent_code, crop_code, growth_stage, das_min, das_max, observation_code, assertion_strength, confidence_rank';
+  const COLS = 'intent_code, crop_code, growth_stage, das_min, das_max, observation_code, assertion_strength, confidence_rank, cultivation_method';
   const base = () => supabase
     .from('intent_observation_mapping')
     .select(COLS)
@@ -226,6 +277,11 @@ export function getObservationsForIntent(
 
   const das = typeof scope?.das === 'number' && isFinite(scope!.das!) ? scope!.das! : null;
 
+  // Lane allow-set: the caller's lane plus every ancestor from the DB master.
+  // Empty = no lane known → do not filter (fail-open, matching crop/stage).
+  const laneAllowed = resolveLaneChain(scope?.cultivation_method);
+  if (laneAllowed.size > 0) for (const w of laneWildcards) laneAllowed.add(w);
+
   // Dedup by observation_code; keep best row (lowest assertion priority, then
   // lowest confidence_rank).
   const bestByCode = new Map<string, IOMRow>();
@@ -241,6 +297,12 @@ export function getObservationsForIntent(
       const hi = typeof r.das_max === 'number' ? r.das_max : 9999;
       if (das < lo || das > hi) continue;
     }
+
+    // Lane scoping. NULL cultivation_method = applies to every lane.
+    // If the caller supplied no lane we do NOT filter (fail-open), matching the
+    // existing crop/stage behaviour.
+    const rowLane = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
+    if (rowLane && laneAllowed.size > 0 && !laneAllowed.has(rowLane)) continue;
 
     const code = canonicalObsCode(r.observation_code);
     if (!code) continue;
@@ -264,7 +326,7 @@ export function getObservationsForIntent(
   if (bestByCode.size === 0) {
     console.log(
       `[OBS_MAPPING_SCOPE] intent=${key} crop=${cropRaw || 'null'} ` +
-      `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} returned=0`
+      `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} lane=${scope?.cultivation_method ?? 'null'} returned=0`
     );
     return EMPTY_ENTRY;
   }
@@ -294,7 +356,7 @@ export function getObservationsForIntent(
 
   console.log(
     `[OBS_MAPPING_SCOPE] intent=${key} crop=${cropRaw || 'null'} ` +
-    `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} returned=${observation_codes.length}`
+    `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} lane=${scope?.cultivation_method ?? 'null'} returned=${observation_codes.length}`
   );
 
   return {
@@ -333,5 +395,39 @@ export function getIntentCodesForCrop(cropCode?: string | null): Set<string> | n
       }
     }
   }
+  return out.size > 0 ? out : null;
+}
+
+/**
+ * Intents eligible for a given cultivation lane.
+ * Reads observation_intent_master.cultivation_method_applicable via the
+ * observation-index cache. '{any}' (is_wildcard) is always eligible.
+ * Returns null if the intent cache is cold, so callers can fail open.
+ */
+export function getIntentCodesForLane(cultivationMethod?: string | null): Set<string> | null {
+  if (!cache) return null;
+  const laneChain = resolveLaneChain(cultivationMethod);
+  if (laneChain.size === 0) return null;
+
+  const out = new Set<string>();
+  let sawIntentRow = false;
+  for (const intent of cache.rowsByIntent.keys()) {
+    const row = getObservationIntent(intent);
+    if (!row) continue;
+    sawIntentRow = true;
+    const applicable = Array.isArray(row.cultivation_method_applicable)
+      ? row.cultivation_method_applicable
+      : null;
+    // No curated array = unscoped intent, eligible everywhere.
+    if (!applicable || applicable.length === 0) { out.add(intent); continue; }
+    let eligible = false;
+    for (const raw of applicable) {
+      const v = String(raw ?? '').trim().toLowerCase();
+      if (!v) continue;
+      if (laneWildcards.has(v) || v === 'any' || laneChain.has(v)) { eligible = true; break; }
+    }
+    if (eligible) out.add(intent);
+  }
+  if (!sawIntentRow) return null;   // observation-index cold → fail open
   return out.size > 0 ? out : null;
 }

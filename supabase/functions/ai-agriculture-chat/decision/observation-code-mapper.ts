@@ -212,6 +212,7 @@ export interface ObservationMappingScope {
   crop_code?: string | null;
   growth_stage?: string | null;
   das?: number | null;
+  cultivation_method?: string | null;
 }
 
 export function mapToObservationCodes(
@@ -247,6 +248,7 @@ export function mapToObservationCodes(
         crop_code: scope.crop_code,
         growth_stage: scope.growth_stage ?? null,
         das: typeof scope.das === 'number' ? scope.das : null,
+        cultivation_method: scope.cultivation_method ?? null,
       });
       if (entry && entry.observation_codes.length > 0) {
         usedIntentMapping = true;

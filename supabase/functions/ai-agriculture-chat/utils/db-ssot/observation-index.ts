@@ -76,6 +76,8 @@ export interface ObservationIntentRow {
   intent_code: string;
   routing_target: string | null;
   is_active: boolean | null;
+  /** DB-SSOT establishment lanes this intent is meaningful for; '{any}' = wildcard. */
+  cultivation_method_applicable: string[] | null;
 }
 
 interface IndexState {
@@ -215,7 +217,7 @@ export async function preloadObservationIndex(supabase: Supa, opts: { force?: bo
         pagedLoad<ObservationIntentRow>(
           supabase,
           'observation_intent_master',
-          'intent_code, routing_target, is_active',
+          'intent_code, routing_target, is_active, cultivation_method_applicable',
           (q) => q.eq('is_active', true),
         ),
       ]);

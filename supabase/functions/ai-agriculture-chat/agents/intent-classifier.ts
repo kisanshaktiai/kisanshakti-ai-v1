@@ -39,7 +39,7 @@
 import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { registerIntentCodeSet } from '../runtime/graph-runtime.ts';
-import { getIntentCodesForCrop } from '../utils/observation-mapping-cache.ts';
+import { getIntentCodesForCrop, getIntentCodesForLane } from '../utils/observation-mapping-cache.ts';
 
 export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 
@@ -96,6 +96,8 @@ export interface IntentLandContext {
   days_since_sowing?: number;
   ndvi_value?: number;
   soil_type?: string;
+  /** Establishment lane (crop_schedules SSOT) — gates lane-specific intents. */
+  cultivation_method?: string | null;
   /** Farmer language (e.g. 'mr' | 'hi' | 'en') — selects DB intent labels. */
   language?: string;
 }
@@ -450,6 +452,29 @@ export async function classifyFarmerIntent(
     }
   }
 
+  // P0-C — CULTIVATION LANE GUARD (DB-SSOT).
+  // observation_intent_master.cultivation_method_applicable is the authority on which
+  // intents are meaningful for the field's establishment lane. A transplant intent must
+  // never be produced for a direct-seeded field.
+  const lane = landContext?.cultivation_method || null;
+  if (lane) {
+    const laneScoped = getIntentCodesForLane(lane);
+    if (laneScoped) {
+      const laneInter = new Set<string>();
+      for (const c of allowedCodes) if (laneScoped.has(c)) laneInter.add(c);
+      if (laneInter.size > 0) {
+        allowedCodes = laneInter;
+        console.log(`   🔒 [INTENT_LANE_SCOPE] lane=${lane} eligible=${laneInter.size}`);
+      } else {
+        console.warn(`[INTENT_LANE_SCOPE] no intents for lane=${lane} — keeping crop scope`);
+      }
+    } else {
+      console.warn('[INTENT_LANE_SCOPE] intent cache cold — lane scoping skipped this turn');
+    }
+  }
+
+
+
   const prompt = buildConstrainedPrompt(farmerMessage, allowedCodes, landContext, intentLabels);
 
 
@@ -468,9 +493,9 @@ export async function classifyFarmerIntent(
     }
 
     if (result) {
-      // BACKSTOP only — the first prompt already carries the crop-scoped list.
+      // BACKSTOP only — the first prompt already carries the crop+lane-scoped list.
       if (validCodes.has(result.intent_code)) {
-        console.error(`[INTENT_CROP_SCOPE_REJECT] crop=${lockedCrop || 'none'} rejected=${result.intent_code} eligible=${allowedCodes.size}`);
+        console.error(`[INTENT_CROP_SCOPE_REJECT] crop=${lockedCrop || 'none'} lane=${lane || 'none'} rejected=${result.intent_code} eligible=${allowedCodes.size}`);
       }
       console.error(`[IntentValidator] LLM emitted non-canonical intent: "${result.intent_code}". Retrying with stricter prompt.`);
     } else {
