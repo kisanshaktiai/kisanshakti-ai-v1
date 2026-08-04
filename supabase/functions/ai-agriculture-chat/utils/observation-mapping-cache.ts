@@ -277,6 +277,11 @@ export function getObservationsForIntent(
 
   const das = typeof scope?.das === 'number' && isFinite(scope!.das!) ? scope!.das! : null;
 
+  // Lane allow-set: the caller's lane plus every ancestor from the DB master.
+  // Empty = no lane known → do not filter (fail-open, matching crop/stage).
+  const laneAllowed = resolveLaneChain(scope?.cultivation_method);
+  for (const w of laneWildcards) laneAllowed.size > 0 && laneAllowed.add(w);
+
   // Dedup by observation_code; keep best row (lowest assertion priority, then
   // lowest confidence_rank).
   const bestByCode = new Map<string, IOMRow>();
@@ -292,6 +297,12 @@ export function getObservationsForIntent(
       const hi = typeof r.das_max === 'number' ? r.das_max : 9999;
       if (das < lo || das > hi) continue;
     }
+
+    // Lane scoping. NULL cultivation_method = applies to every lane.
+    // If the caller supplied no lane we do NOT filter (fail-open), matching the
+    // existing crop/stage behaviour.
+    const rowLane = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : null;
+    if (rowLane && laneAllowed.size > 0 && !laneAllowed.has(rowLane)) continue;
 
     const code = canonicalObsCode(r.observation_code);
     if (!code) continue;
