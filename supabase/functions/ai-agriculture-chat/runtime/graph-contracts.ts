@@ -161,13 +161,16 @@ export async function resolveCropGroup(
     // `crops.value` holds the machine code (e.g. 'rice'), joined to crop_groups.
     const { data, error } = await supabase
       .from('crops')
-      .select('value, crop_group_id, crop_groups:crop_group_id(name, code)')
+      // crop_groups exposes `group_key` (machine code, e.g. 'cereals') and
+      // `group_name` (display label). The previous probe read `name`/`code` —
+      // neither column exists, so this function returned null for every crop.
+      .select('value, crop_group_id, crop_groups:crop_group_id(group_key, group_name)')
       .ilike('value', key)
       .limit(1)
       .maybeSingle();
     if (error || !data) return null;
-    const grp = (data as any)?.crop_groups?.code
-      ?? (data as any)?.crop_groups?.name
+    const grp = (data as any)?.crop_groups?.group_key
+      ?? (data as any)?.crop_groups?.group_name
       ?? null;
     return grp ? String(grp).toLowerCase() : null;
   } catch {
