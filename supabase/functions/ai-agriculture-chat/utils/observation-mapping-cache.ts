@@ -356,7 +356,7 @@ export function getObservationsForIntent(
 
   console.log(
     `[OBS_MAPPING_SCOPE] intent=${key} crop=${cropRaw || 'null'} ` +
-    `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} returned=${observation_codes.length}`
+    `stage=${scope?.growth_stage ?? 'null'} das=${das ?? 'null'} lane=${scope?.cultivation_method ?? 'null'} returned=${observation_codes.length}`
   );
 
   return {
