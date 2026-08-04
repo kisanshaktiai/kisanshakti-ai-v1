@@ -1378,6 +1378,23 @@ export class AIAgentOrchestrator {
           `winner=${(existing as any)?.primary_decision?.rule_id ?? snapExit?.hypotheses?.[0]?.id ?? 'none'}`,
       );
 
+      // Ensure metadata.canonicalContext is present on EVERY response type. Only 3 of the 17
+      // CLARIFICATION_QUESTION return sites set it inline, so downstream consumers
+      // (index.ts -> ensureObservationSelectorContract / attemptDbClarificationRescue ->
+      // buildHypothesisClarificationOptions) were receiving null and the cultivation-lane
+      // applicability gate could not enforce on the second clarification pass.
+      const _ccExit = (this as any).__canonicalContextForExit ?? null;
+      if (_ccExit) {
+        (response as any).metadata = (response as any).metadata ?? {};
+        if (!(response as any).metadata.canonicalContext) {
+          (response as any).metadata.canonicalContext = _ccExit;
+          console.log(
+            `[CANONICAL_CONTEXT_EXIT_ATTACHED] trace=${traceId} type=${(response as any)?.type} ` +
+            `cultivation=${(_ccExit as any)?.cultivation_method ?? 'null'}`,
+          );
+        }
+      }
+
       // Soft-fail assertions — structured error lines, never thrown.
       if (started && !graphRan) {
         console.error(`[INVARIANT_SOFT_FAIL] site=orchestrate_exit trace=${traceId} rule=graph_executed_before_assembly`);
