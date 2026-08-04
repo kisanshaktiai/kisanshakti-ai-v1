@@ -52,6 +52,7 @@ interface IOMRow {
   observation_code: string;
   assertion_strength: string | null;
   confidence_rank: number | null;
+  cultivation_method?: string | null;
 }
 
 interface ObsMasterRow {
