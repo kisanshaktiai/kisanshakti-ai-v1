@@ -452,6 +452,29 @@ export async function classifyFarmerIntent(
     }
   }
 
+  // P0-C — CULTIVATION LANE GUARD (DB-SSOT).
+  // observation_intent_master.cultivation_method_applicable is the authority on which
+  // intents are meaningful for the field's establishment lane. A transplant intent must
+  // never be produced for a direct-seeded field.
+  const lane = landContext?.cultivation_method || null;
+  if (lane) {
+    const laneScoped = getIntentCodesForLane(lane);
+    if (laneScoped) {
+      const laneInter = new Set<string>();
+      for (const c of allowedCodes) if (laneScoped.has(c)) laneInter.add(c);
+      if (laneInter.size > 0) {
+        allowedCodes = laneInter;
+        console.log(`   🔒 [INTENT_LANE_SCOPE] lane=${lane} eligible=${laneInter.size}`);
+      } else {
+        console.warn(`[INTENT_LANE_SCOPE] no intents for lane=${lane} — keeping crop scope`);
+      }
+    } else {
+      console.warn('[INTENT_LANE_SCOPE] intent cache cold — lane scoping skipped this turn');
+    }
+  }
+
+
+
   const prompt = buildConstrainedPrompt(farmerMessage, allowedCodes, landContext, intentLabels);
 
 
