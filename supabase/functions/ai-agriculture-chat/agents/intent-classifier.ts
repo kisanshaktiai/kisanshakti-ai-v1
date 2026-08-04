@@ -39,7 +39,7 @@
 import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { registerIntentCodeSet } from '../runtime/graph-runtime.ts';
-import { getIntentCodesForCrop } from '../utils/observation-mapping-cache.ts';
+import { getIntentCodesForCrop, getIntentCodesForLane } from '../utils/observation-mapping-cache.ts';
 
 export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 
