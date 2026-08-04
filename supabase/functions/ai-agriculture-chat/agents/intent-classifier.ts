@@ -493,9 +493,9 @@ export async function classifyFarmerIntent(
     }
 
     if (result) {
-      // BACKSTOP only — the first prompt already carries the crop-scoped list.
+      // BACKSTOP only — the first prompt already carries the crop+lane-scoped list.
       if (validCodes.has(result.intent_code)) {
-        console.error(`[INTENT_CROP_SCOPE_REJECT] crop=${lockedCrop || 'none'} rejected=${result.intent_code} eligible=${allowedCodes.size}`);
+        console.error(`[INTENT_CROP_SCOPE_REJECT] crop=${lockedCrop || 'none'} lane=${lane || 'none'} rejected=${result.intent_code} eligible=${allowedCodes.size}`);
       }
       console.error(`[IntentValidator] LLM emitted non-canonical intent: "${result.intent_code}". Retrying with stricter prompt.`);
     } else {
