@@ -1496,6 +1496,7 @@ export class AIAgentOrchestrator {
     const agentsUsed: string[] = [];
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     (this as any).__decisionGraphSequence = 0;
+    (this as any).__canonicalContextForExit = null;
     (this as any)._evidenceFrozen = false;
     (this as any)._graphExecuted = false;
     (this as any)._graphExecutionStarted = false;
