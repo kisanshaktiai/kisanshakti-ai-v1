@@ -1,57 +1,150 @@
-## Verified current state (checked before planning)
+# Forensic Audit — AI Chat Neuro-Symbolic Decision Brain
 
-- `decision_rules`: 1855 active-eligible rows, **12 distinct `crop_code` values, 0 mixed-case** (`count(*) filter (where crop_code <> lower(crop_code)) = 0`). So no `LOWER()` UPDATE is needed — but `getCropCodeVariantsForDB()` returns **uppercase** variants (`SC`, `RICE`, `ALL`), so the `.in()` list must be lowercased+deduped at query build time.
-- The 13 named indexes all show `idx_scan = 0` in `pg_stat_user_indexes` (confirmed), totalling ~2 MB. `idx_decision_rules_stage_applicable_gin` (6 scans) and `idx_decision_rules_version_hash` (3 scans) exist and stay.
-- `hypothesis-evaluator.ts:737` builds the `crop_code.ilike.*` OR-filter; selects 15 columns; paginates 1000/page.
-- `bundled-rules/loader.ts:107` does `select('*')`, paginated, then normalizes.
-- Direct `decision_rules` reads inside the orchestrator are at **lines 2440 and 9539** (not 1809/6620 as stated in the brief); line 2440 is a single-rule fetch by `rule_id`, 9539 is a crop-scoped fetch. Both will be re-pointed at the repository where semantics allow.
-- `lookupMarketProducts` is called **4×** — `agents/llm-response-formatter.ts:473,1502` and `index.ts:3837,3999` (the brief said twice, in the formatter only).
-- Nine other modules also query `decision_rules` (`symbolic-reasoner`, `hypothesis-graph-evaluator`, `canonical-observation-loader`, etc.). **Out of scope** for this task — they stay untouched.
+Audit only. No code changes, no DB changes. Everything below was verified against the live database and the deployed function tree (`supabase/functions/ai-agriculture-chat`, 91,844 lines / 178 TypeScript modules, BUILD_TAG `ai-agri-chat::canonical-context-exit::2026-08-04T18:40Z`).
 
-## Work plan
+## 1. Knowledge base — tables actually read at runtime
 
-### 1. SQL migration (one migration)
-- `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dr_crop_lower_active ON decision_rules (lower(crop_code), is_active);`
-- `DROP INDEX CONCURRENTLY IF EXISTS` for the 13 verified zero-scan indexes.
-- No case-normalization UPDATE (verified unnecessary).
-- Note: `CONCURRENTLY` cannot run inside a transaction block; the migration will be authored as standalone statements and I will confirm the runner accepts it — if it rejects `CONCURRENTLY`, I will fall back to plain `CREATE INDEX` / `DROP INDEX` (table is small, 1855 rows, lock is sub-second).
+59 distinct tables and 5 RPCs are touched by the chat function. Verified live row counts for the symbolic core:
 
-### 2. `data/rule-repository.ts` (new)
-- Single in-memory snapshot of active rules; `loadingPromise` in-flight lock copied verbatim in shape from `utils/crop-vocabulary-cache.ts`.
-- Column set = `select('*')` (loader's current set) — trivially a superset of the evaluator's 15 columns and both orchestrator selects.
-- Normalization functions (`normalizeActionType`, `normalizeCanonicalGroup`, `normalizeStages`, `normalizeObservableChars`, `normalizeBeeToxicity`) **moved as-is** out of `loader.ts` and imported back by it — no rewrite.
-- Pre-bucketed `Map<cropCodeLower, Map<canonicalGroup, Rule[]>>` plus a per-crop flat list, built once per snapshot.
-- Invalidation: max `version_hash` probe + TTL backstop (5 min, matching the vocabulary cache).
-- API: `getSnapshot()`, `getRulesForCrop(cropCode)`, `getRulesForCropAndGroup(cropCode, group)`, `getRuleById(ruleId)`.
+| Layer | Table | Rows | Role |
+|---|---|---|---|
+| Perception | observation_master | 2,550 | Observation ontology SSOT (semantic_class, discriminator/frequency/clarity score, polarity, applies_to_stages, is_farmer_observable) |
+| Perception | observation_aliases | 11,161 | Surface text / alias -> canonical_code |
+| Perception | observation_translations | 5,429 | Farmer-language display text |
+| Intent | observation_intent_master | 98 | Intent SSOT (routing_target, clarification_mode, max_clarification_rounds, cultivation_method_applicable) |
+| Intent | intent_observation_mapping | 14,023 | Intent -> observation retrieval keys, scoped by crop/stage/DAS/cultivation_method + assertion_strength |
+| Intent | intent_assertion_pattern | 76 | Regex-driven assertion strength by intent |
+| Intent | intent_semantic_class_allowlist | 90 | Semantic gate allowlist |
+| Hypothesis | hypothesis_master | 364 | Causal hypotheses (canonical_group, applicability JSONB, severity_model) |
+| Hypothesis | hypothesis_conditions | 794 | Predicates (STAGE, DAS_RANGE, DAT_RANGE, WEATHER, NDVI…), is_required / is_discriminator / weight |
+| Hypothesis | hypothesis_rule_mapping | 1,844 | Hypothesis -> rule bridge |
+| Prescription | decision_rules | 1,866 | 171-column action/prescription SSOT |
+| Prescription | master_products | 210 | Dose/PHI/product resolution |
+| Phenology | crop_stage_master / crop_stage_graph | 231 / 155 | Stage nodes + typed transition edges |
+| Phenology | cultivation_method_master | 17 | Lane hierarchy via parent_method_code |
 
-### 3. Consumers
-- `hypothesis-evaluator.ts`: replace the paged `.or(ilike)` query with `getRulesForCrop()` over the same variant list (lowercased). Downstream filtering/scoring untouched. Delete the misleading STEP 1.6 comment only.
-- `bundled-rules/loader.ts`: `loadRulesFromDatabase()` delegates to the repository.
-- `orchestrator.ts:9539`: read from repository. `orchestrator.ts:2440` (single rule by id): `getRuleById()` from the snapshot.
+Context feeds: `lands`, `crop_schedules`, `crops`, `weather_current/forecasts/observations/aggregates/historical`, `ndvi_data`, `soil_health`, `land_gdd_daily`, `agro_climatic_zones`, `crop_baseline_guidelines_v2`, `variety_resistance`, `chemical_regulatory_status`, `chemical_rotation_group`.
+Telemetry/learning: `ai_chat_sessions`, `ai_chat_messages`, `ai_chat_audit_logs`, `ai_decision_log`, `advisory_audit_log`, `hypothesis_metrics`, `rule_performance`, `treatment_outcomes`, `confidence_adjustments`, `learning_suggestions`, `observation_vocabulary_gaps`, `expert_escalations`, `stage_transition_log`.
+RPCs: `resolve_crop_phenology_for_land` (x3), `apply_stage_transitions`, `increment_hypothesis_metric`, `check_farmer_quota`, `jsonb_set_nested`.
 
-### 4. Hot-loop hoists (`hypothesis-evaluator.ts`)
-- `HIGH_POWER` / `LOW_POWER` (lines 542/551) and the `patterns` array in `normalizeCauseForDedup()` (line 275) → module-scope `const`. Identical values, identical order.
+## 2. Referential integrity (verified via pg_constraint)
 
-### 5. Orchestrator concurrency + per-request memoization
-- Kick off `fetchComprehensiveLandContext()`, `fetchWeatherData()`, `getCropVocabulary('ALL')`, `loadFarmerProfileLite()` as promises at the top of `orchestrate()`; await at point of use. `getCropVocabulary(landContext.crop_code)` stays chained (real dependency).
-- Per-request `Map` cache (created inside `orchestrate()`, passed down; **never module-level**) for `fetchComprehensiveLandContext`, `fetchWeatherData`, and `lookupMarketProducts` (all 4 sites).
+Real FKs exist and form the graph spine:
 
-### 6. Level-gated logging
-- Small `runtime/log.ts` reading `LOG_LEVEL` (default `INFO`).
-- INFO retained: `trace_id`, five `layerTimings`, `[TOKEN_METRICS]`, every `console.error`.
-- Everything else rewritten to `debug(...)` — no statement deleted.
+```text
+observation_master.observation_code
+  <- observation_aliases.canonical_code
+  <- observation_translations.observation_code
+  <- intent_observation_mapping.observation_code
+  <- decision_rules.condition_code            (ON UPDATE CASCADE, ON DELETE RESTRICT)
 
-## Acceptance test — how I will verify identical `rule_id` sets
+observation_intent_master.intent_code
+  <- intent_observation_mapping.intent_code
+  <- intent_translations.intent_code
 
-Two checks, both concrete:
+hypothesis_master.hypothesis_id
+  <- hypothesis_conditions.hypothesis_id
+  <- hypothesis_rule_mapping.hypothesis_id -> decision_rules.rule_id
 
-1. **SQL equivalence proof for the query swap.** For each of the 12 distinct `crop_code` values plus a representative variant list, run in production:
-   `SELECT rule_id FROM decision_rules WHERE is_active AND (crop_code ILIKE ANY($variants))` vs `... WHERE is_active AND lower(crop_code) = ANY($lowered)` and assert the symmetric difference is empty. This is exact and I can run it.
-2. **Runtime snapshot diff.** Behind a temporary `RULE_REPO_SHADOW=1` env flag, run the old query path and the repository path on the same turn, sort both `rule_id` lists, and log a hash + any diff. Run 3–5 live turns (rice/direct_seeded and sugarcane), confirm zero diffs, then remove the flag.
+crop_stage_master.id  <- crop_stage_graph.from_stage_id / to_stage_id
+                      <- crop_stage_aliases.canonical_id
+                      <- self: parent/prev/next/canonical_stage_id
+crop_stage_master.cultivation_method -> cultivation_method_master.method_code
+intent_observation_mapping.cultivation_method -> cultivation_method_master.method_code
+cultivation_method_master.parent_method_code -> self (lane hierarchy)
+decision_rules.category -> rule_category_master.category (NOT VALID)
+```
 
-**Honest caveat:** check 1 proves the DB-filter swap exactly. Check 2 covers only the turns I actually exercise — it is a strong sample, not an exhaustive proof over all inputs. The stronger structural guarantee is that no filtering/scoring code is edited: post-fetch logic operates on the same rows because the repository's column set is `select('*')` and the crop filter is proven equivalent. I will not claim exhaustive verification.
+Integrity gaps found (audit finding, not fixed here):
+- `hypothesis_master.crop_code` / `crop_group` and `observation_master.crop_group` / `applicable_crop_groups` have **no FK** to `crops` or `crop_groups` — crop scoping is string-matched, so casing/synonym drift is only guarded in TypeScript (`utils/canonical-code.ts`, `crop-code-normalizer.ts`).
+- `observation_intent_master.cultivation_method_applicable` (text[]) has no referential guard against `cultivation_method_master`.
+- `decision_rules.category` FK is `NOT VALID` — unregistered categories are possible and only caught at runtime by `mapBundledCategory`.
 
-## Not doing
-- No changes to scoring, `evaluateConditionsJson`, conflict resolution, safety gates, or formatter validation.
-- No agronomic constants moved into TypeScript.
-- No changes to the nine out-of-scope modules that query `decision_rules`.
+## 3. Graph node data flow (in -> out, with owning file and function)
+
+```text
+HTTP  index.ts:serve
+  -> guardTenantAccess / checkRateLimit / check_farmer_quota
+  -> AIAgentOrchestrator.orchestrate            agents/orchestrator.ts (12,266 lines)
+
+N0 CONTEXT       in: land_id, farmer_id  out: CanonicalContext v2.1.0 (frozen)
+   files: decision/canonical-context-contract.ts, decision/authoritative-state-loader.ts,
+          agents/canonical-state-builder.ts, runtime/session-ssot.ts
+   reads: lands, crop_schedules, weather_*, ndvi_data, soil_health, agro_climatic_zones
+
+N1 PHENOLOGY     in: canonical ctx, GDD/NDVI  out: growth_stage + confidence, lane
+   files: runtime/phenology-reconciler.ts, utils/stage-knowledge-cache.ts,
+          runtime/stage-family-shim.ts, decision/crop-calendar-lookup.ts
+   reads: crop_stage_master, crop_stage_graph, land_gdd_daily; RPC resolve_crop_phenology_for_land
+   note: DAS demoted to 0.5-confidence fallback; families come only from crop_stage_graph
+
+N2 LANGUAGE      in: farmer text  out: normalized text + language
+   files: agents/language-normalizer.ts (v2.0.0), agents/language-induction-layer.ts,
+          utils/crop-synonyms-cache.ts, utils/crop-vocabulary-cache.ts
+
+N3 INTENT        in: text + crop + lane  out: intent_code, intent_confidence
+   files: agents/intent-classifier.ts:classifyFarmerIntent, agents/semantic-extractor.ts,
+          agents/query-router.ts, agents/intent-lock.ts
+   reads: observation_intent_master, intent_translations, intent_observation_mapping
+   gate: [INTENT_LANE_SCOPE] via getIntentCodesForLane()
+
+N4 OBSERVATION   in: intent + text + lane  out: confirmed/candidate observation codes
+   files: utils/observation-mapping-cache.ts:getObservationsForIntent,
+          utils/db-ssot/observation-source.ts, utils/db-ssot/observation-index.ts,
+          agents/observation-extractor.ts, decision/observation-code-mapper.ts
+   gates: decision/semantic-validator.ts (allowlist, fail-closed),
+          decision/evidence-confidence.ts:scoreEvidenceSet (minInjectConfidence),
+          runtime/farmer-observable-gate.ts, decision/iom-gate.ts
+
+N5 HYPOTHESIS    in: observations + canonical ctx  out: scored candidates + winner
+   files: runtime/graph-runtime.ts:runGraphRuntime (SOLE entry),
+          decision/hypothesis-evaluator.ts:evaluateCandidateHypotheses,
+          decision/hypothesis-graph-evaluator.ts, decision/causal-hypothesis-engine.ts (v1.2.1)
+   reads: hypothesis_master, hypothesis_conditions
+   invariant: zero confirmed observations -> WAITING_FOR_OBSERVATION, evaluator not called
+
+N6 CLARIFICATION in: surviving hypotheses + lane  out: discriminating option set
+   files: decision/hypothesis-clarification-builder.ts, decision/differential-diagnosis-clarifier.ts,
+          agents/clarification-strategy.ts, agents/clarification-generator.ts,
+          runtime/observation-selector-contract.ts, runtime/decision-graph-navigator.ts:navigate
+
+N7 RULE          in: winner hypothesis  out: prescriptions (actions, dosage, PHI)
+   files: decision/symbolic-reasoner.ts:executeSymbolicReasoning, data/rule-repository.ts,
+          agents/layered-rule-evaluator.ts, agents/rule-engine-executor.ts,
+          agents/product-repository.ts
+   reads: hypothesis_rule_mapping, decision_rules, master_products, chemical_regulatory_status
+
+N8 SAFETY/GATE   in: prescriptions  out: PASS / suppressed / escalation
+   files: decision/unified-decision-gate.ts:evaluateUnifiedGate, agents/safety-guardian.ts,
+          decision/prescription-gate-enforcer.ts, decision/weather-safety-gate.ts,
+          decision/scientific-validator.ts
+
+N9 NARRATION     in: symbolic decision  out: farmer-language text (no new agronomy)
+   files: agents/deterministic-response-builder.ts, agents/llm-response-formatter.ts,
+          agents/communication-generator.ts, utils/llm-output-validator.ts,
+          agents/decision-representation.ts:validateLLMOutputIntegrity
+
+N10 PERSIST      ai_chat_messages, ai_chat_audit_logs, ai_decision_log, advisory_audit_log
+    files: agents/audit-logger.ts, runtime/runtime-trace-collector.ts, agents/feedback-learning.ts
+```
+
+Cross-cutting invariant enforcement: `runtime/graph-truth.ts`, `runtime/graph-invariants.ts`, `runtime/graph-runtime-state.ts` (drift/checkpoint), `runtime/graph-snapshot.ts`, `runtime/graph-node-trace.ts`, `decision/pipeline-self-check.ts` (cold-start assertion).
+
+## 4. Instrumentation coverage gap
+
+`emitNodeTrace` is called at only **5 sites** in orchestrator.ts, covering 3 node labels: `INTENT` (x2), `OBSERVATION` (x2), `FINAL_RESPONSE` (x1). Nodes N0/N1/N5/N6/N7/N8 emit their own ad-hoc `[BRAIN_TRACE]` / `[GRAPH_RUNTIME]` / `[HYP_*]` lines instead of the uniform node-trace envelope. A single turn therefore cannot be reconstructed from one grep key — this is the largest observability weakness found.
+
+## 5. Structural findings
+
+1. `agents/orchestrator.ts` is 12,266 lines with ~70 numbered phase markers whose ordinals are non-monotonic (0, B, C, 1, H, 5, Y, A, 8, 0.3, 0.4B, 9.1, 1.2, …). Phase numbering no longer reflects execution order; this is a comprehension and regression-risk hotspot.
+2. Retrieval fan-out is heavily denormalized: 14,023 IOM rows and 11,161 alias rows are cached in memory per cold start (`utils/observation-mapping-cache.ts`, `utils/db-ssot/*`). Any loader that does a single `.select()` without pagination silently truncates at PostgREST's 1000-row cap.
+3. `hypothesis_conditions` carries `is_quarantined` / `quarantine_reason`, evidence of live data-quality remediation inside the hypothesis layer rather than in a curation pipeline.
+4. Duplicate/parallel implementations coexist: `hypothesis-evaluator.ts` vs `hypothesis-graph-evaluator.ts` vs `causal-hypothesis-engine.ts`; `llm-response-formatter.ts` vs `llm-response-generator.ts` vs `communication-generator.ts` vs `deterministic-response-builder.ts`. Only `runGraphRuntime` is contractually the sole hypothesis entry; the narration side has no equivalent single-entry contract.
+5. Lane (cultivation_method) is now enforced at three layers (intent scope, IOM retrieval, hypothesis applicability) but is threaded through call sites manually rather than carried on the frozen canonical context as a required field.
+
+## 6. Suggested next steps (not executed)
+
+- Route every node through `emitNodeTrace` so one trace_id reconstructs a full turn.
+- Promote `cultivation_method` to a required field on the frozen CanonicalContext instead of per-call-site threading.
+- Add validation FKs for crop scoping columns and validate the `decision_rules.category` FK.
+- Split orchestrator.ts along the N0–N10 node boundaries above.
