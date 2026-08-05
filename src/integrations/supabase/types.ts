@@ -140,6 +140,186 @@ export type Database = {
         }
         Relationships: []
       }
+      _bak_iap_orphans: {
+        Row: {
+          assertion_strength: string | null
+          created_at: string | null
+          crop_compatibility: string[] | null
+          das_max: number | null
+          das_min: number | null
+          id: string | null
+          intent_code: string | null
+          is_active: boolean | null
+          notes: string | null
+          obs_code_regex: string | null
+          stage_compatibility: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          assertion_strength?: string | null
+          created_at?: string | null
+          crop_compatibility?: string[] | null
+          das_max?: number | null
+          das_min?: number | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          notes?: string | null
+          obs_code_regex?: string | null
+          stage_compatibility?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          assertion_strength?: string | null
+          created_at?: string | null
+          crop_compatibility?: string[] | null
+          das_max?: number | null
+          das_min?: number | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          notes?: string | null
+          obs_code_regex?: string | null
+          stage_compatibility?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _bak_iap_v5: {
+        Row: {
+          assertion_strength: string | null
+          backed_up_at: string | null
+          created_at: string | null
+          crop_compatibility: string[] | null
+          das_max: number | null
+          das_min: number | null
+          id: string | null
+          intent_code: string | null
+          is_active: boolean | null
+          notes: string | null
+          obs_code_regex: string | null
+          stage_compatibility: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          assertion_strength?: string | null
+          backed_up_at?: string | null
+          created_at?: string | null
+          crop_compatibility?: string[] | null
+          das_max?: number | null
+          das_min?: number | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          notes?: string | null
+          obs_code_regex?: string | null
+          stage_compatibility?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          assertion_strength?: string | null
+          backed_up_at?: string | null
+          created_at?: string | null
+          crop_compatibility?: string[] | null
+          das_max?: number | null
+          das_min?: number | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          notes?: string | null
+          obs_code_regex?: string | null
+          stage_compatibility?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _bak_intent_category: {
+        Row: {
+          backed_up_at: string | null
+          intent_category: string | null
+          intent_code: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          intent_category?: string | null
+          intent_code?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          intent_category?: string | null
+          intent_code?: string | null
+        }
+        Relationships: []
+      }
+      _bak_m6_narration: {
+        Row: {
+          action_text: string | null
+          backed_up_at: string | null
+          i18n_key: string | null
+          is_active: boolean | null
+          rule_id: string | null
+        }
+        Insert: {
+          action_text?: string | null
+          backed_up_at?: string | null
+          i18n_key?: string | null
+          is_active?: boolean | null
+          rule_id?: string | null
+        }
+        Update: {
+          action_text?: string | null
+          backed_up_at?: string | null
+          i18n_key?: string | null
+          is_active?: boolean | null
+          rule_id?: string | null
+        }
+        Relationships: []
+      }
+      _migration_baseline_b2: {
+        Row: {
+          captured_at: string | null
+          intents_before: number | null
+          orphans_before: number | null
+          patterns_before: number | null
+        }
+        Insert: {
+          captured_at?: string | null
+          intents_before?: number | null
+          orphans_before?: number | null
+          patterns_before?: number | null
+        }
+        Update: {
+          captured_at?: string | null
+          intents_before?: number | null
+          orphans_before?: number | null
+          patterns_before?: number | null
+        }
+        Relationships: []
+      }
+      _migration_baseline_intent_completion: {
+        Row: {
+          captured_at: string | null
+          categories_before: number | null
+          empty_groups_before: number | null
+          intents_before: number | null
+          translations_before: number | null
+        }
+        Insert: {
+          captured_at?: string | null
+          categories_before?: number | null
+          empty_groups_before?: number | null
+          intents_before?: number | null
+          translations_before?: number | null
+        }
+        Update: {
+          captured_at?: string | null
+          categories_before?: number | null
+          empty_groups_before?: number | null
+          intents_before?: number | null
+          translations_before?: number | null
+        }
+        Relationships: []
+      }
       account_lockouts: {
         Row: {
           created_at: string | null
@@ -6677,6 +6857,27 @@ export type Database = {
           },
         ]
       }
+      crop_scope_master: {
+        Row: {
+          description: string | null
+          is_active: boolean
+          scope_code: string
+          scope_type: string
+        }
+        Insert: {
+          description?: string | null
+          is_active?: boolean
+          scope_code: string
+          scope_type: string
+        }
+        Update: {
+          description?: string | null
+          is_active?: boolean
+          scope_code?: string
+          scope_type?: string
+        }
+        Relationships: []
+      }
       crop_stage_aliases: {
         Row: {
           alias_text: string
@@ -8309,6 +8510,7 @@ export type Database = {
           observation_confidence_weight: number | null
           organic_alternative: string | null
           owner_tenant_id: string | null
+          pest_code: string | null
           phi_days: number | null
           prediction_type: string | null
           prerequisite_rule_ids: string[] | null
@@ -8482,6 +8684,7 @@ export type Database = {
           observation_confidence_weight?: number | null
           organic_alternative?: string | null
           owner_tenant_id?: string | null
+          pest_code?: string | null
           phi_days?: number | null
           prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
@@ -8655,6 +8858,7 @@ export type Database = {
           observation_confidence_weight?: number | null
           organic_alternative?: string | null
           owner_tenant_id?: string | null
+          pest_code?: string | null
           phi_days?: number | null
           prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
@@ -8729,6 +8933,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "rule_category_master"
             referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_pest_code_fk"
+            columns: ["pest_code"]
+            isOneToOne: false
+            referencedRelation: "pest_master"
+            referencedColumns: ["pest_code"]
           },
           {
             foreignKeyName: "fk_decision_rules_condition_code"
@@ -9620,7 +9831,15 @@ export type Database = {
           sampling_unit?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "etl_standards_pest_code_fk"
+            columns: ["pest_code"]
+            isOneToOne: false
+            referencedRelation: "pest_master"
+            referencedColumns: ["pest_code"]
+          },
+        ]
       }
       executive_dashboard_metrics: {
         Row: {
@@ -12155,6 +12374,54 @@ export type Database = {
           },
         ]
       }
+      hypothesis_conditions_archive: {
+        Row: {
+          archive_id: number
+          archived_at: string
+          change_reason: string | null
+          condition_key: string | null
+          condition_type: string | null
+          hypothesis_id: string | null
+          id: string | null
+          is_discriminator: boolean | null
+          is_required: boolean | null
+          migration_tag: string
+          operator: string | null
+          value_json: Json | null
+          weight: number | null
+        }
+        Insert: {
+          archive_id?: number
+          archived_at?: string
+          change_reason?: string | null
+          condition_key?: string | null
+          condition_type?: string | null
+          hypothesis_id?: string | null
+          id?: string | null
+          is_discriminator?: boolean | null
+          is_required?: boolean | null
+          migration_tag: string
+          operator?: string | null
+          value_json?: Json | null
+          weight?: number | null
+        }
+        Update: {
+          archive_id?: number
+          archived_at?: string
+          change_reason?: string | null
+          condition_key?: string | null
+          condition_type?: string | null
+          hypothesis_id?: string | null
+          id?: string | null
+          is_discriminator?: boolean | null
+          is_required?: boolean | null
+          migration_tag?: string
+          operator?: string | null
+          value_json?: Json | null
+          weight?: number | null
+        }
+        Relationships: []
+      }
       hypothesis_contradictions: {
         Row: {
           contradiction_key: string
@@ -12323,7 +12590,22 @@ export type Database = {
           version?: string | null
           version_hash?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_master_crop_code_scope_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
+        ]
       }
       hypothesis_metrics: {
         Row: {
@@ -12752,6 +13034,42 @@ export type Database = {
           stage_compatibility?: string[] | null
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "intent_assertion_pattern_intent_fk"
+            columns: ["intent_code"]
+            isOneToOne: false
+            referencedRelation: "observation_intent_master"
+            referencedColumns: ["intent_code"]
+          },
+          {
+            foreignKeyName: "intent_assertion_pattern_intent_fk"
+            columns: ["intent_code"]
+            isOneToOne: false
+            referencedRelation: "v_intent_missing_vernacular"
+            referencedColumns: ["intent_code"]
+          },
+        ]
+      }
+      intent_category_master: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          is_active: boolean
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+        }
         Relationships: []
       }
       intent_observation_mapping: {
@@ -12889,7 +13207,22 @@ export type Database = {
           notes?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "intent_allowlist_intent_fk"
+            columns: ["intent_code"]
+            isOneToOne: true
+            referencedRelation: "observation_intent_master"
+            referencedColumns: ["intent_code"]
+          },
+          {
+            foreignKeyName: "intent_allowlist_intent_fk"
+            columns: ["intent_code"]
+            isOneToOne: true
+            referencedRelation: "v_intent_missing_vernacular"
+            referencedColumns: ["intent_code"]
+          },
+        ]
       }
       intent_translations: {
         Row: {
@@ -17553,6 +17886,51 @@ export type Database = {
           },
         ]
       }
+      observation_aliases_archive: {
+        Row: {
+          active: boolean | null
+          alias_code: string | null
+          alias_normalized: string | null
+          alias_text: string | null
+          archive_id: number
+          archived_at: string
+          canonical_code: string | null
+          change_reason: string | null
+          confidence: number | null
+          language: string | null
+          migration_tag: string
+          source: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          alias_code?: string | null
+          alias_normalized?: string | null
+          alias_text?: string | null
+          archive_id?: number
+          archived_at?: string
+          canonical_code?: string | null
+          change_reason?: string | null
+          confidence?: number | null
+          language?: string | null
+          migration_tag: string
+          source?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          alias_code?: string | null
+          alias_normalized?: string | null
+          alias_text?: string | null
+          archive_id?: number
+          archived_at?: string
+          canonical_code?: string | null
+          change_reason?: string | null
+          confidence?: number | null
+          language?: string | null
+          migration_tag?: string
+          source?: string | null
+        }
+        Relationships: []
+      }
       observation_differential_questions: {
         Row: {
           created_at: string
@@ -17632,7 +18010,15 @@ export type Database = {
           routing_target?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "observation_intent_master_category_fk"
+            columns: ["intent_category"]
+            isOneToOne: false
+            referencedRelation: "intent_category_master"
+            referencedColumns: ["category"]
+          },
+        ]
       }
       observation_master: {
         Row: {
@@ -17716,6 +18102,47 @@ export type Database = {
           updated_at?: string | null
           version_hash?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: "observation_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
+        ]
+      }
+      observation_master_archive: {
+        Row: {
+          archive_id: number
+          archived_at: string
+          can_generate_question: boolean | null
+          change_reason: string | null
+          is_active: boolean | null
+          is_farmer_observable: boolean | null
+          migration_tag: string
+          observation_code: string | null
+        }
+        Insert: {
+          archive_id?: number
+          archived_at?: string
+          can_generate_question?: boolean | null
+          change_reason?: string | null
+          is_active?: boolean | null
+          is_farmer_observable?: boolean | null
+          migration_tag: string
+          observation_code?: string | null
+        }
+        Update: {
+          archive_id?: number
+          archived_at?: string
+          can_generate_question?: boolean | null
+          change_reason?: string | null
+          is_active?: boolean | null
+          is_farmer_observable?: boolean | null
+          migration_tag?: string
+          observation_code?: string | null
+        }
         Relationships: []
       }
       observation_translations: {
@@ -17755,6 +18182,48 @@ export type Database = {
             referencedColumns: ["observation_code"]
           },
         ]
+      }
+      observation_translations_archive: {
+        Row: {
+          archive_id: number
+          archived_at: string
+          change_reason: string | null
+          created_at: string | null
+          crop_code: string | null
+          description_text: string | null
+          display_text: string | null
+          id: string | null
+          language_code: string | null
+          migration_tag: string
+          observation_code: string | null
+        }
+        Insert: {
+          archive_id?: number
+          archived_at?: string
+          change_reason?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          description_text?: string | null
+          display_text?: string | null
+          id?: string | null
+          language_code?: string | null
+          migration_tag: string
+          observation_code?: string | null
+        }
+        Update: {
+          archive_id?: number
+          archived_at?: string
+          change_reason?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          description_text?: string | null
+          display_text?: string | null
+          id?: string | null
+          language_code?: string | null
+          migration_tag?: string
+          observation_code?: string | null
+        }
+        Relationships: []
       }
       observation_versions: {
         Row: {
@@ -19208,6 +19677,30 @@ export type Database = {
           pest_code?: string
           resistance_level?: string
           resistance_ratio_range?: string | null
+        }
+        Relationships: []
+      }
+      pest_master: {
+        Row: {
+          is_active: boolean
+          pest_code: string
+          pest_name_en: string | null
+          pest_name_hi: string | null
+          pest_name_mr: string | null
+        }
+        Insert: {
+          is_active?: boolean
+          pest_code: string
+          pest_name_en?: string | null
+          pest_name_hi?: string | null
+          pest_name_mr?: string | null
+        }
+        Update: {
+          is_active?: boolean
+          pest_code?: string
+          pest_name_en?: string | null
+          pest_name_hi?: string | null
+          pest_name_mr?: string | null
         }
         Relationships: []
       }
@@ -31455,7 +31948,15 @@ export type Database = {
           updated_at?: string | null
           version?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
+        ]
       }
       land_agent_context: {
         Row: {
@@ -31818,6 +32319,13 @@ export type Database = {
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
           },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
         ]
       }
       v_contradiction_unresolvable: {
@@ -31857,6 +32365,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
           },
         ]
       }
@@ -32083,7 +32598,15 @@ export type Database = {
           invalid_stage: string | null
           pest_code: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "etl_standards_pest_code_fk"
+            columns: ["pest_code"]
+            isOneToOne: false
+            referencedRelation: "pest_master"
+            referencedColumns: ["pest_code"]
+          },
+        ]
       }
       v_etl_threshold_inconsistent: {
         Row: {
@@ -32113,7 +32636,15 @@ export type Database = {
           pest_name_en?: string | null
           problem?: never
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "etl_standards_pest_code_fk"
+            columns: ["pest_code"]
+            isOneToOne: false
+            referencedRelation: "pest_master"
+            referencedColumns: ["pest_code"]
+          },
+        ]
       }
       v_gate_taxonomy_drift: {
         Row: {
@@ -32136,6 +32667,7 @@ export type Database = {
       }
       v_hypothesis_broken_observation_refs: {
         Row: {
+          breakage_reason: string | null
           condition_key: string | null
           condition_type: string | null
           crop_group: string | null
@@ -32172,6 +32704,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
           },
         ]
       }
@@ -32214,6 +32753,13 @@ export type Database = {
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
           },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
         ]
       }
       v_hypothesis_invalid_stage_refs: {
@@ -32251,6 +32797,13 @@ export type Database = {
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
           },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
         ]
       }
       v_intent_missing_vernacular: {
@@ -32261,7 +32814,15 @@ export type Database = {
           intent_code: string | null
           mr: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "observation_intent_master_category_fk"
+            columns: ["intent_category"]
+            isOneToOne: false
+            referencedRelation: "intent_category_master"
+            referencedColumns: ["category"]
+          },
+        ]
       }
       v_missing_translations: {
         Row: {
@@ -32280,7 +32841,15 @@ export type Database = {
           description: string | null
           observation_code: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
+        ]
       }
       v_recent_scraper_runs: {
         Row: {
@@ -32483,7 +33052,15 @@ export type Database = {
           hypothesis_id: string | null
           unreachable_required_obs: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
+        ]
       }
       v_variety_data_quality: {
         Row: {
@@ -32632,6 +33209,13 @@ export type Database = {
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
           },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
         ]
       }
       v_weather_field_not_supplied: {
@@ -32672,6 +33256,13 @@ export type Database = {
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
           },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
+          },
         ]
       }
       v_weather_threshold_without_evidence: {
@@ -32711,6 +33302,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_unfirable_hypotheses"
             referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_master_crop_group_scope_fk"
+            columns: ["crop_group"]
+            isOneToOne: false
+            referencedRelation: "crop_scope_master"
+            referencedColumns: ["scope_code"]
           },
         ]
       }
