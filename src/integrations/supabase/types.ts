@@ -50,6 +50,45 @@ export type Database = {
         }
         Relationships: []
       }
+      _archive_obs_can_generate_question: {
+        Row: {
+          archived_at: string | null
+          can_generate_question: boolean | null
+          observation_code: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          can_generate_question?: boolean | null
+          observation_code?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          can_generate_question?: boolean | null
+          observation_code?: string | null
+        }
+        Relationships: []
+      }
+      _archive_obs_translations: {
+        Row: {
+          archived_at: string | null
+          display_text: string | null
+          language_code: string | null
+          observation_code: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          display_text?: string | null
+          language_code?: string | null
+          observation_code?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          display_text?: string | null
+          language_code?: string | null
+          observation_code?: string | null
+        }
+        Relationships: []
+      }
       _audit_manual_review: {
         Row: {
           audit_batch: string
