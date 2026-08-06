@@ -17276,6 +17276,7 @@ export type Database = {
           collection_id: string | null
           computed_at: string | null
           confidence_level: string | null
+          confidence_score: number | null
           coverage: number | null
           coverage_percentage: number | null
           created_at: string
@@ -17283,6 +17284,7 @@ export type Database = {
           date: string
           evi_value: number | null
           field_area_m2: number | null
+          geometry_confidence: string | null
           id: string
           image_url: string | null
           is_interpolated: boolean
@@ -17296,6 +17298,7 @@ export type Database = {
           mndwi_water: number | null
           ndmi_value: number | null
           ndre_value: number | null
+          ndvi_histogram: Json | null
           ndvi_max: number | null
           ndvi_min: number | null
           ndvi_p10: number | null
@@ -17311,16 +17314,19 @@ export type Database = {
           observation_type: Database["public"]["Enums"]["ndvi_observation_type"]
           platform: string | null
           processing_baseline: string | null
+          processing_duration_ms: number | null
           processing_level: string | null
           quality_score: number | null
           relative_orbit: number | null
           rvi_std: number | null
           rvi_value: number | null
           satellite_source: string | null
+          saturated_fraction: number | null
           savi_value: number | null
           scene_cloud_cover: number | null
           scene_id: string | null
           shadow_fraction: number | null
+          snow_fraction: number | null
           soil_moisture: number | null
           source_scene_count: number
           spatial_resolution: number | null
@@ -17329,6 +17335,7 @@ export type Database = {
           total_pixels: number | null
           uniformity_cv: number | null
           updated_at: string | null
+          valid_fraction: number | null
           valid_pixels: number | null
           water_fraction: number | null
         }
@@ -17341,6 +17348,7 @@ export type Database = {
           collection_id?: string | null
           computed_at?: string | null
           confidence_level?: string | null
+          confidence_score?: number | null
           coverage?: number | null
           coverage_percentage?: number | null
           created_at?: string
@@ -17348,6 +17356,7 @@ export type Database = {
           date: string
           evi_value?: number | null
           field_area_m2?: number | null
+          geometry_confidence?: string | null
           id?: string
           image_url?: string | null
           is_interpolated?: boolean
@@ -17361,6 +17370,7 @@ export type Database = {
           mndwi_water?: number | null
           ndmi_value?: number | null
           ndre_value?: number | null
+          ndvi_histogram?: Json | null
           ndvi_max?: number | null
           ndvi_min?: number | null
           ndvi_p10?: number | null
@@ -17376,16 +17386,19 @@ export type Database = {
           observation_type?: Database["public"]["Enums"]["ndvi_observation_type"]
           platform?: string | null
           processing_baseline?: string | null
+          processing_duration_ms?: number | null
           processing_level?: string | null
           quality_score?: number | null
           relative_orbit?: number | null
           rvi_std?: number | null
           rvi_value?: number | null
           satellite_source?: string | null
+          saturated_fraction?: number | null
           savi_value?: number | null
           scene_cloud_cover?: number | null
           scene_id?: string | null
           shadow_fraction?: number | null
+          snow_fraction?: number | null
           soil_moisture?: number | null
           source_scene_count?: number
           spatial_resolution?: number | null
@@ -17394,6 +17407,7 @@ export type Database = {
           total_pixels?: number | null
           uniformity_cv?: number | null
           updated_at?: string | null
+          valid_fraction?: number | null
           valid_pixels?: number | null
           water_fraction?: number | null
         }
@@ -17406,6 +17420,7 @@ export type Database = {
           collection_id?: string | null
           computed_at?: string | null
           confidence_level?: string | null
+          confidence_score?: number | null
           coverage?: number | null
           coverage_percentage?: number | null
           created_at?: string
@@ -17413,6 +17428,7 @@ export type Database = {
           date?: string
           evi_value?: number | null
           field_area_m2?: number | null
+          geometry_confidence?: string | null
           id?: string
           image_url?: string | null
           is_interpolated?: boolean
@@ -17426,6 +17442,7 @@ export type Database = {
           mndwi_water?: number | null
           ndmi_value?: number | null
           ndre_value?: number | null
+          ndvi_histogram?: Json | null
           ndvi_max?: number | null
           ndvi_min?: number | null
           ndvi_p10?: number | null
@@ -17441,16 +17458,19 @@ export type Database = {
           observation_type?: Database["public"]["Enums"]["ndvi_observation_type"]
           platform?: string | null
           processing_baseline?: string | null
+          processing_duration_ms?: number | null
           processing_level?: string | null
           quality_score?: number | null
           relative_orbit?: number | null
           rvi_std?: number | null
           rvi_value?: number | null
           satellite_source?: string | null
+          saturated_fraction?: number | null
           savi_value?: number | null
           scene_cloud_cover?: number | null
           scene_id?: string | null
           shadow_fraction?: number | null
+          snow_fraction?: number | null
           soil_moisture?: number | null
           source_scene_count?: number
           spatial_resolution?: number | null
@@ -17459,6 +17479,7 @@ export type Database = {
           total_pixels?: number | null
           uniformity_cv?: number | null
           updated_at?: string | null
+          valid_fraction?: number | null
           valid_pixels?: number | null
           water_fraction?: number | null
         }
