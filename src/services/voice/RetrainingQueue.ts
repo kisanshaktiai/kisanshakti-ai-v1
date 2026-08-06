@@ -273,7 +273,7 @@ export class RetrainingQueue {
 
       const { error } = await supabase
         .from('voice_error_corrections')
-        .insert(corrections);
+        .insert(corrections as any);
 
       if (error) {
         throw error;
