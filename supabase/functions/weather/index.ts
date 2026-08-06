@@ -1242,7 +1242,11 @@ serve(async (req: Request): Promise<Response> => {
             const v = req.headers.get(h);
             if (v) fwd[h] = v;
           }
-          const res = await fetch(req.url, {
+          const selfUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/weather`;
+          if (!fwd["authorization"]) {
+            fwd["authorization"] = `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
+          }
+          const res = await fetch(selfUrl, {
             method: "POST",
             headers: fwd,
             body: JSON.stringify({ action: "all", lat: c.lat, lon: c.lon }),
