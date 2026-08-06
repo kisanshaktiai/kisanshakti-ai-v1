@@ -195,9 +195,14 @@ async function fetchLandChatContext(
       .order('observation_time', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    (client as any)
-      .from('land_weather_metrics')
-      .select('metric_date, gdd_accumulated, et0_mm, total_rainfall_mm, irrigation_urgency, disease_risk_level')
+    client
+      .from('land_weather_state')
+      .select(
+        'metric_date, gdd_daily, et0_mm, vpd_kpa, total_rainfall_mm, ' +
+        'effective_rainfall_mm, water_deficit_mm, irrigation_needed, ' +
+        'irrigation_urgency, disease_risk_score, disease_risk_level, ' +
+        'crop_stress_level, water_balance_status, computed_at'
+      )
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
       .order('metric_date', { ascending: false })
