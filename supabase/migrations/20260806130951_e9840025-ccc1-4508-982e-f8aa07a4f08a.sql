@@ -1,0 +1,1 @@
+UPDATE public.weather_provider_token SET expires_at = now() - interval '1 minute' WHERE provider = 'IMD';
