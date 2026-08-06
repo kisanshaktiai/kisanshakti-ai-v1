@@ -217,9 +217,21 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
       const weatherClient = user?.id && tenant?.id 
         ? supabaseWithAuth(user.id, tenant.id)
         : supabase;
-      
+
+      // MODEL A: proximity-first display provenance (freshness first, then distance)
+      if (!landId) {
+        const near = await findNearbyFresh(rounded.lat, rounded.lon);
+        setNearby(near
+          ? { distanceKm: Math.round(near.d * 10) / 10, stationName: (near.row as any).station_name ?? null }
+          : null);
+      } else {
+        setNearby(null);
+      }
+
       // NEW: Single combined API call for all weather data
       console.log('📡 [useWeather] Fetching ALL weather data (current + forecast + hourly) in one call...');
+      
+
       
       const { data, error: fetchError } = await weatherClient.functions.invoke('weather', {
         body: {
