@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { toastManager } from '@/utils/ToastManager';
 import { useLocation } from '@/hooks/useLocation';
@@ -115,9 +115,42 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
   
   // Use the centralized location service
   const { location: deviceLocation } = useLocation();
-  
-  // Default location (India - New Delhi)
-  const defaultLocation = { lat: 28.6139, lon: 77.2090 };
+
+  // Regional fallback: Kolhapur district HQ — 72% of active lands are there.
+  // Used ONLY when there is no explicit location, no GPS, and no farm on record.
+  // Must be surfaced in the UI as regional, never as the farmer's own weather.
+  const REGIONAL_FALLBACK = { lat: 16.7050, lon: 74.2433, label: 'Kolhapur (regional)' };
+
+  const [farmLocation, setFarmLocation] = useState<{ lat: number; lon: number } | null>(null);
+
+  useEffect(() => {
+    if (!user?.id || !tenant?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('lands')
+        .select('center_lat, center_lon')
+        .eq('farmer_id', user.id)
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .not('center_lat', 'is', null)
+        .not('center_lon', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      setFarmLocation({ lat: Number(data.center_lat), lon: Number(data.center_lon) });
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, tenant?.id]);
+
+  type LocationSource = 'explicit' | 'gps' | 'farm' | 'regional';
+
+  const resolveLocation = (): { lat: number; lon: number; source: LocationSource } => {
+    if (location) return { ...location, source: 'explicit' };
+    if (deviceLocation) return { lat: deviceLocation.lat, lon: deviceLocation.lon, source: 'gps' };
+    if (farmLocation) return { ...farmLocation, source: 'farm' };
+    return { lat: REGIONAL_FALLBACK.lat, lon: REGIONAL_FALLBACK.lon, source: 'regional' };
+  };
 
   const fetchWeatherData = async (forceRefresh: boolean = false) => {
     // Don't fetch if tenant isn't loaded yet
