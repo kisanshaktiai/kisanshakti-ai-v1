@@ -54,20 +54,54 @@ function extractToken(payload: unknown): string | null {
   return null;
 }
 
+/**
+ * Extract the expiry claim from IMD's token.
+ *
+ * IMD does NOT issue a standard 3-segment JWT. Its format is:
+ *     base64url(payload) "." hex_hmac_signature
+ * e.g. eyJ1aWQiOjY3LCJleHAiOjE3ODYwMjMxMDd9.a93b3b...  (2 segments, 101 chars)
+ * where segment[0] decodes to {"uid":67,"exp":1786023107}.
+ *
+ * A standard JWT (header.payload.signature) carries claims in segment[1].
+ * We therefore try every segment and use the first that decodes to JSON
+ * containing a usable `exp`. This handles IMD's 2-segment format today and a
+ * standard 3-segment JWT if IMD ever migrates, without further code changes.
+ *
+ * The token's own `exp` is authoritative — it is what the server enforces —
+ * so it is preferred over the advertised `expires_in`.
+ */
 function expiryFromJwtClaim(token: string): Date | null {
-  try {
-    const part = token.split(".")[1];
-    if (!part) return null;
-    const b64 = part.replace(/-/g, "+").replace(/_/g, "/")
-      .padEnd(Math.ceil(part.length / 4) * 4, "=");
-    const claims = JSON.parse(atob(b64)) as Record<string, unknown>;
-    const exp = Number(claims.exp);
-    if (!Number.isFinite(exp)) return null;
-    const d = new Date(exp > 1e11 ? exp : exp * 1000);
-    return isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
+  const segments = token.split(".");
+  if (segments.length < 2) return null;
+
+  for (const seg of segments) {
+    // A hex signature contains no base64url payload; skip cheaply.
+    if (!seg || /^[0-9a-f]{32,}$/i.test(seg)) continue;
+    try {
+      const b64 = seg.replace(/-/g, "+").replace(/_/g, "/")
+        .padEnd(Math.ceil(seg.length / 4) * 4, "=");
+      const decoded = atob(b64);
+      if (!decoded.trimStart().startsWith("{")) continue;
+
+      const claims = JSON.parse(decoded) as Record<string, unknown>;
+      const exp = Number(claims.exp);
+      if (!Number.isFinite(exp) || exp <= 0) continue;
+
+      // exp is seconds since epoch; guard against milliseconds.
+      const d = new Date(exp > 1e11 ? exp : exp * 1000);
+      if (isNaN(d.getTime())) continue;
+
+      // Reject an already-expired or absurdly distant claim rather than
+      // trusting it blindly.
+      const ms = d.getTime() - Date.now();
+      if (ms <= 0 || ms > 30 * 24 * 3600_000) continue;
+
+      return d;
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 function expiryFromBody(payload: unknown): Date | null {
