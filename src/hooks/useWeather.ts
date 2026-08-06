@@ -373,5 +373,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     locationSource: actualLocation.source, // 'explicit' | 'gps' | 'farm' | 'regional'
     regionalFallbackLabel: REGIONAL_FALLBACK.label,
     isStale: isStale(), // NEW: Return staleness status
+    weatherDistanceKm: nearby?.distanceKm ?? null, // MODEL A provenance
+    weatherStationName: nearby?.stationName ?? null,
   };
 };
