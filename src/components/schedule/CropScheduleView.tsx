@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
-import ClimateAlertBanner from './ClimateAlertBanner';
+import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
