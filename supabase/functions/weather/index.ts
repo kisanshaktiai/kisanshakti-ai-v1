@@ -1237,13 +1237,26 @@ serve(async (req: Request): Promise<Response> => {
           const r = roundCoordinates(c.lat, c.lon);
           const fresh = await checkCache(supabase, r.key, "all", runId);
           if (fresh && !fresh.stale) { results.push({ cell: cellKey, ok: true, skipped: true }); continue; }
+          const fwd: Record<string, string> = { "Content-Type": "application/json" };
+          for (const h of ["authorization", "apikey", "x-tenant-id", "x-client-domain"]) {
+            const v = req.headers.get(h);
+            if (v) fwd[h] = v;
+          }
           const res = await fetch(req.url, {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...Object.fromEntries(req.headers) },
+            headers: fwd,
             body: JSON.stringify({ action: "all", lat: c.lat, lon: c.lon }),
           });
+          if (!res.ok) {
+            log(runId, "warn", "land_cell_refresh_failed", {
+              cell: cellKey, status: res.status, body: (await res.text()).slice(0, 200),
+            });
+          }
           results.push({ cell: cellKey, ok: res.ok });
-        } catch { results.push({ cell: cellKey, ok: false }); }
+        } catch (e) {
+          log(runId, "warn", "land_cell_refresh_exception", { cell: cellKey, error: String(e) });
+          results.push({ cell: cellKey, ok: false });
+        }
       }
 
       log(runId, "info", "land_cells_refreshed", {
