@@ -185,7 +185,8 @@ async function imdFetch(
         path,
         status: 403,
         observed_egress_ip: ipMatch ? ipMatch[1] : undefined,
-        registered_ip: "178.16.136.31",
+        api_key_source: creds.apiKeySource ?? "unknown",
+        registered_ip: Deno.env.get("IMD_REGISTERED_IP") ?? undefined,
         body: body.slice(0, 200),
         hint: ipMatch
           ? "IMD binds X-API-KEY to a registered server IP. The Supabase Edge Function egress IP does not match the registered one. Requires an IMD-side allowlist change or a fixed-IP relay - no code change will fix it."
