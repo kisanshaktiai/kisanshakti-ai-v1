@@ -214,14 +214,32 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         setTasks(tasksData || []);
       }
 
-      // Fetch latest climate monitoring data
-      const { data: climateMonitoring } = await (client as any)
-        .from('schedule_climate_monitoring')
-        .select('*')
-        .eq('schedule_id', scheduleId)
-        .order('monitoring_date', { ascending: false })
-        .limit(1)
+      // schedule_climate_monitoring was retired (0 rows for its entire
+      // lifetime, no writer). Climate context now comes from the weather
+      // pipeline via land_weather_state, keyed by land_id rather than
+      // schedule_id.
+      const { data: schedule } = await client
+        .from('crop_schedules')
+        .select('land_id')
+        .eq('id', scheduleId)
         .maybeSingle();
+
+      let climateMonitoring = null;
+      if (schedule?.land_id) {
+        const { data: landClimate } = await client
+          .from('land_weather_state')
+          .select(
+            'metric_date, temperature_c, humidity_percent, total_rainfall_mm, ' +
+            'et0_mm, vpd_kpa, water_deficit_mm, irrigation_needed, ' +
+            'irrigation_urgency, disease_risk_level, crop_stress_level, ' +
+            'water_balance_status'
+          )
+          .eq('land_id', schedule.land_id)
+          .order('metric_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        climateMonitoring = landClimate;
+      }
 
       setClimateData(climateMonitoring);
     } catch (error) {
