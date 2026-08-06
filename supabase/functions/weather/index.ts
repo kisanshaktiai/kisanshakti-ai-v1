@@ -731,6 +731,7 @@ async function cacheWeatherData(
         tenant_id: tenantId,
         farmer_id: farmerId ?? null,
         land_id: landId ?? null,
+        location_key: locationKey,
         observation_date: istDate(now), // FIX: IST, not UTC
         observation_time: new Date(current.dt * 1000).toISOString(),
         temperature_celsius: current.temp,
@@ -830,7 +831,7 @@ async function cacheWeatherData(
 
     // ---- 5. daily aggregate --------------------------------------------------
     if (tenantId) {
-      await updateWeatherAggregate(supabase, runId, tenantId, farmerId, landId, current, now, rounded.lat, rounded.lon, dewPointC, rain24);
+      await updateWeatherAggregate(supabase, runId, tenantId, farmerId, landId, locationKey, current, now, rounded.lat, rounded.lon, dewPointC, rain24);
     }
 
     // ---- 6. per-land derived metrics ----------------------------------------
@@ -852,6 +853,7 @@ async function updateWeatherAggregate(
   tenantId: string,
   farmerId: string | undefined,
   landId: string | undefined,
+  locationKey: string,
   current: CurrentWeatherData,
   now: Date,
   latitude: number,
@@ -885,7 +887,9 @@ async function updateWeatherAggregate(
     // Measured impact before the fix: 981 rows / 162 duplicate groups, every
     // row observation_count = 1, so daily rain totals never accumulated.
     let q = supabase.from("weather_aggregates").select("*")
-      .eq("tenant_id", tenantId).eq("aggregate_date", today);
+      .eq("tenant_id", tenantId)
+      .eq("aggregate_date", today)
+      .eq("location_key", locationKey); // prevents city mixing
     q = landId ? q.eq("land_id", landId) : q.is("land_id", null);
     const { data: existing } = await q.maybeSingle();
 
@@ -954,6 +958,7 @@ async function updateWeatherAggregate(
         tenant_id: tenantId,
         farmer_id: farmerId ?? null,
         land_id: landId ?? null,
+        location_key: locationKey,
         aggregate_date: today,
         rain_mm_total: rain24,
         [rainColumn]: rain24,
@@ -972,13 +977,13 @@ async function updateWeatherAggregate(
         sunshine_hours: sunshine,
         created_at: now.toISOString(),
         updated_at: now.toISOString(),
-      }, { onConflict: "tenant_id,aggregate_date,land_id", ignoreDuplicates: false });
+      }, { onConflict: "tenant_id,location_key,aggregate_date,land_id", ignoreDuplicates: false });
 
       if (error) log(runId, "warn", "aggregate_insert_failed", { error: error.message });
       else log(runId, "info", "aggregate_created", { date: today });
     }
 
-    await archiveToWeatherHistorical(supabase, runId, tenantId, landId, latitude, _longitude);
+    await archiveToWeatherHistorical(supabase, runId, tenantId, landId, locationKey, latitude, _longitude);
   } catch (e) {
     log(runId, "warn", "aggregate_exception", { error: String(e) });
   }
@@ -995,6 +1000,7 @@ async function archiveToWeatherHistorical(
   runId: string,
   tenantId: string,
   landId: string | undefined,
+  locationKey: string,
   latitude: number,
   longitude: number,
 ) {
@@ -1008,7 +1014,8 @@ async function archiveToWeatherHistorical(
     if (exists) return;
 
     let aq = supabase.from("weather_aggregates").select("*")
-      .eq("tenant_id", tenantId).eq("aggregate_date", yStr);
+      .eq("tenant_id", tenantId).eq("aggregate_date", yStr)
+      .eq("location_key", locationKey);
     aq = landId ? aq.eq("land_id", landId) : aq.is("land_id", null); // FIX
     const { data: agg } = await aq.limit(1).maybeSingle();
 

@@ -17852,6 +17852,7 @@ export type Database = {
           observations_written: number
           run_started_at: string
           skip_rate_pct: number | null
+          tenant_id: string | null
         }
         Insert: {
           created_at?: string
@@ -17869,6 +17870,7 @@ export type Database = {
           observations_written?: number
           run_started_at: string
           skip_rate_pct?: number | null
+          tenant_id?: string | null
         }
         Update: {
           created_at?: string
@@ -17886,6 +17888,7 @@ export type Database = {
           observations_written?: number
           run_started_at?: string
           skip_rate_pct?: number | null
+          tenant_id?: string | null
         }
         Relationships: []
       }
@@ -30666,6 +30669,7 @@ export type Database = {
           humidity_avg_percent: number | null
           id: string
           land_id: string | null
+          location_key: string | null
           observation_count: number | null
           rain_mm_afternoon: number | null
           rain_mm_evening: number | null
@@ -30694,6 +30698,7 @@ export type Database = {
           humidity_avg_percent?: number | null
           id?: string
           land_id?: string | null
+          location_key?: string | null
           observation_count?: number | null
           rain_mm_afternoon?: number | null
           rain_mm_evening?: number | null
@@ -30722,6 +30727,7 @@ export type Database = {
           humidity_avg_percent?: number | null
           id?: string
           land_id?: string | null
+          location_key?: string | null
           observation_count?: number | null
           rain_mm_afternoon?: number | null
           rain_mm_evening?: number | null
@@ -31323,6 +31329,7 @@ export type Database = {
           humidity_percent: number | null
           id: string
           land_id: string | null
+          location_key: string | null
           metadata: Json | null
           observation_date: string
           observation_time: string
@@ -31347,6 +31354,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           land_id?: string | null
+          location_key?: string | null
           metadata?: Json | null
           observation_date: string
           observation_time?: string
@@ -31371,6 +31379,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           land_id?: string | null
+          location_key?: string | null
           metadata?: Json | null
           observation_date?: string
           observation_time?: string
@@ -31935,6 +31944,96 @@ export type Database = {
           tenant_id?: string
           video_id?: string
           watched_seconds?: number | null
+        }
+        Relationships: []
+      }
+      zz_weather_aggregates_prefix_backup: {
+        Row: {
+          aggregate_date: string | null
+          agricultural_alerts: Json | null
+          created_at: string | null
+          disease_risk_level: string | null
+          evapotranspiration_mm: number | null
+          farmer_id: string | null
+          frost_risk: boolean | null
+          gdd_accumulated: number | null
+          heat_stress_risk: boolean | null
+          humidity_avg_percent: number | null
+          id: string | null
+          land_id: string | null
+          location_key: string | null
+          observation_count: number | null
+          rain_mm_afternoon: number | null
+          rain_mm_evening: number | null
+          rain_mm_morning: number | null
+          rain_mm_night: number | null
+          rain_mm_total: number | null
+          sunshine_hours: number | null
+          temp_avg_celsius: number | null
+          temp_max_celsius: number | null
+          temp_min_celsius: number | null
+          tenant_id: string | null
+          updated_at: string | null
+          wind_speed_avg_kmh: number | null
+          wind_speed_max_kmh: number | null
+        }
+        Insert: {
+          aggregate_date?: string | null
+          agricultural_alerts?: Json | null
+          created_at?: string | null
+          disease_risk_level?: string | null
+          evapotranspiration_mm?: number | null
+          farmer_id?: string | null
+          frost_risk?: boolean | null
+          gdd_accumulated?: number | null
+          heat_stress_risk?: boolean | null
+          humidity_avg_percent?: number | null
+          id?: string | null
+          land_id?: string | null
+          location_key?: string | null
+          observation_count?: number | null
+          rain_mm_afternoon?: number | null
+          rain_mm_evening?: number | null
+          rain_mm_morning?: number | null
+          rain_mm_night?: number | null
+          rain_mm_total?: number | null
+          sunshine_hours?: number | null
+          temp_avg_celsius?: number | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          wind_speed_avg_kmh?: number | null
+          wind_speed_max_kmh?: number | null
+        }
+        Update: {
+          aggregate_date?: string | null
+          agricultural_alerts?: Json | null
+          created_at?: string | null
+          disease_risk_level?: string | null
+          evapotranspiration_mm?: number | null
+          farmer_id?: string | null
+          frost_risk?: boolean | null
+          gdd_accumulated?: number | null
+          heat_stress_risk?: boolean | null
+          humidity_avg_percent?: number | null
+          id?: string | null
+          land_id?: string | null
+          location_key?: string | null
+          observation_count?: number | null
+          rain_mm_afternoon?: number | null
+          rain_mm_evening?: number | null
+          rain_mm_morning?: number | null
+          rain_mm_night?: number | null
+          rain_mm_total?: number | null
+          sunshine_hours?: number | null
+          temp_avg_celsius?: number | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          wind_speed_avg_kmh?: number | null
+          wind_speed_max_kmh?: number | null
         }
         Relationships: []
       }
