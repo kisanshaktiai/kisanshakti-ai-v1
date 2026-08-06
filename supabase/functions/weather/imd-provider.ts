@@ -143,21 +143,42 @@ function normalizeTime(raw: string | null): string | null {
   return null;
 }
 
-async function imdFetch(path: string, apiKey: string): Promise<unknown> {
-  const url = new URL(`${IMD_BASE}/${path}`);
-  url.searchParams.set("api_key", apiKey);
+async function imdFetch(
+  path: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
+  isRetry = false,
+): Promise<unknown> {
+  const token = await getImdToken(supabase, creds, log, isRetry);
+  if (!token) {
+    throw new Error("IMD authentication unavailable (no valid session token)");
+  }
 
+  const url = new URL(`${IMD_BASE}/${path}`);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+
   try {
     const res = await fetch(url.toString(), {
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/json",
+        ...imdAuthHeaders(creds.apiKey, token),
+      },
       signal: ctrl.signal,
     });
+
+    if ((res.status === 401 || res.status === 403) && !isRetry) {
+      await invalidateImdToken(supabase, log);
+      clearTimeout(timer);
+      return await imdFetch(path, creds, supabase, log, true);
+    }
+
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(`IMD ${path} error: ${res.status} - ${body.slice(0, 200)}`);
     }
+
     const text = await res.text();
     if (!text.trim()) throw new Error(`IMD ${path} returned an empty body`);
     return JSON.parse(text);
@@ -165,6 +186,7 @@ async function imdFetch(path: string, apiKey: string): Promise<unknown> {
     clearTimeout(timer);
   }
 }
+
 
 function asArray(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) return payload as Record<string, unknown>[];
