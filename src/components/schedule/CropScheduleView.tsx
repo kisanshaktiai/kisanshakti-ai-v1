@@ -215,7 +215,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       }
 
       // Fetch latest climate monitoring data
-      const { data: climateMonitoring } = await client
+      const { data: climateMonitoring } = await (client as any)
         .from('schedule_climate_monitoring')
         .select('*')
         .eq('schedule_id', scheduleId)

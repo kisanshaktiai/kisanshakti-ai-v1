@@ -76,7 +76,7 @@ export const WeatherAlerts: React.FC = () => {
       threshold_value: newAlert.threshold_value,
       comparison_operator: newAlert.comparison_operator,
       is_active: newAlert.is_active,
-    });
+    } as any);
 
     if (!error) {
       toast({

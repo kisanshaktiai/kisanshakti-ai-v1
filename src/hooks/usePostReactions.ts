@@ -122,7 +122,7 @@ export function useToggleReaction() {
         if (post) {
           await authClient
             .from('social_posts')
-            .update({ [countColumn]: Math.max(0, ((post as any)[countColumn] || 1) - 1) })
+            .update({ [countColumn]: Math.max(0, ((post as any)[countColumn] || 1) - 1) } as any)
             .eq('id', postId);
         }
       } else {
@@ -148,7 +148,7 @@ export function useToggleReaction() {
         if (post) {
           await authClient
             .from('social_posts')
-            .update({ [countColumn]: ((post as any)[countColumn] || 0) + 1 })
+            .update({ [countColumn]: ((post as any)[countColumn] || 0) + 1 } as any)
             .eq('id', postId);
         }
       }
