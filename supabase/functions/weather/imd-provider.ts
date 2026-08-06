@@ -168,10 +168,30 @@ async function imdFetch(
       signal: ctrl.signal,
     });
 
-    if ((res.status === 401 || res.status === 403) && !isRetry) {
+    // 401 = token rejected -> refresh once and retry.
+    if (res.status === 401 && !isRetry) {
       await invalidateImdToken(supabase, log);
       clearTimeout(timer);
       return await imdFetch(path, creds, supabase, log, true);
+    }
+
+    // 403 = authenticated but not permitted. The token is valid; re-logging in
+    // cannot help and only burns logins against a government endpoint.
+    // Fail fast with an actionable diagnostic.
+    if (res.status === 403) {
+      const body = await res.text().catch(() => "");
+      const ipMatch = body.match(/IP address ([0-9.]+) not authorized/i);
+      log("error", ipMatch ? "imd_ip_not_authorized" : "imd_forbidden", {
+        path,
+        status: 403,
+        observed_egress_ip: ipMatch ? ipMatch[1] : undefined,
+        registered_ip: "178.16.136.31",
+        body: body.slice(0, 200),
+        hint: ipMatch
+          ? "IMD binds X-API-KEY to a registered server IP. The Supabase Edge Function egress IP does not match the registered one. Requires an IMD-side allowlist change or a fixed-IP relay - no code change will fix it."
+          : "IMD rejected the request. Verify the JWT belongs to the same IMD user as the API key.",
+      });
+      throw new Error(`IMD ${path} forbidden: ${body.slice(0, 200)}`);
     }
 
     if (!res.ok) {
