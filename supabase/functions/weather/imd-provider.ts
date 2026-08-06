@@ -45,9 +45,20 @@
  * would silently break the G5 spray-safety gate.
  */
 
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
+import {
+  getImdToken,
+  invalidateImdToken,
+  imdAuthHeaders,
+  type ImdCredentials,
+} from "./imd-token.ts";
+
+type LogFn = (level: string, event: string, data?: Record<string, unknown>) => void;
+
 // ---------------------------------------------------------------------------
 // Types mirrored from index.ts (kept structurally identical on purpose)
 // ---------------------------------------------------------------------------
+
 
 export interface ImdCurrentWeather {
   temp: number; feels_like: number; temp_min: number; temp_max: number;
