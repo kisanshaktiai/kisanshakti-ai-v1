@@ -296,7 +296,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     } else if (!tenant?.id && !tenantLoading) {
       console.warn('⚠️ [useWeather] No tenant ID available after loading completed');
     }
-  }, [tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
+  }, [tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon, farmLocation?.lat, farmLocation?.lon]);
 
   // Update location name when device location changes
   useEffect(() => {
