@@ -14217,21 +14217,25 @@ export type Database = {
         Row: {
           cell_key: string | null
           computed_at: string
+          confidence: number | null
           created_at: string
           crop_stress_level: string | null
           disease_risk_level: string | null
           disease_risk_score: number | null
           effective_rainfall_mm: number | null
           et0_mm: number | null
+          finalized_at: string | null
           gdd_daily: number | null
           humidity_percent: number | null
           id: string
           irrigation_needed: boolean | null
           irrigation_urgency: string | null
+          is_finalized: boolean
           land_id: string
           metric_date: string
           runoff_loss_mm: number | null
           soil_type_used: string | null
+          source: string | null
           temperature_c: number | null
           tenant_id: string | null
           total_rainfall_mm: number | null
@@ -14243,21 +14247,25 @@ export type Database = {
         Insert: {
           cell_key?: string | null
           computed_at?: string
+          confidence?: number | null
           created_at?: string
           crop_stress_level?: string | null
           disease_risk_level?: string | null
           disease_risk_score?: number | null
           effective_rainfall_mm?: number | null
           et0_mm?: number | null
+          finalized_at?: string | null
           gdd_daily?: number | null
           humidity_percent?: number | null
           id?: string
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
+          is_finalized?: boolean
           land_id: string
           metric_date: string
           runoff_loss_mm?: number | null
           soil_type_used?: string | null
+          source?: string | null
           temperature_c?: number | null
           tenant_id?: string | null
           total_rainfall_mm?: number | null
@@ -14269,21 +14277,25 @@ export type Database = {
         Update: {
           cell_key?: string | null
           computed_at?: string
+          confidence?: number | null
           created_at?: string
           crop_stress_level?: string | null
           disease_risk_level?: string | null
           disease_risk_score?: number | null
           effective_rainfall_mm?: number | null
           et0_mm?: number | null
+          finalized_at?: string | null
           gdd_daily?: number | null
           humidity_percent?: number | null
           id?: string
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
+          is_finalized?: boolean
           land_id?: string
           metric_date?: string
           runoff_loss_mm?: number | null
           soil_type_used?: string | null
+          source?: string | null
           temperature_c?: number | null
           tenant_id?: string | null
           total_rainfall_mm?: number | null
@@ -14347,6 +14359,7 @@ export type Database = {
           boundary_geom: unknown
           boundary_method: string | null
           boundary_polygon_old: Json | null
+          cell_key: string | null
           center_lat: number | null
           center_lon: number | null
           center_point_old: Json | null
@@ -14444,6 +14457,7 @@ export type Database = {
           boundary_geom?: unknown
           boundary_method?: string | null
           boundary_polygon_old?: Json | null
+          cell_key?: string | null
           center_lat?: number | null
           center_lon?: number | null
           center_point_old?: Json | null
@@ -14541,6 +14555,7 @@ export type Database = {
           boundary_geom?: unknown
           boundary_method?: string | null
           boundary_polygon_old?: Json | null
+          cell_key?: string | null
           center_lat?: number | null
           center_lon?: number | null
           center_point_old?: Json | null
@@ -30925,6 +30940,7 @@ export type Database = {
       weather_current: {
         Row: {
           cloud_cover_percent: number | null
+          confidence: number | null
           created_at: string
           data_source: string
           dew_point_celsius: number | null
@@ -30941,6 +30957,7 @@ export type Database = {
           latitude: number
           location_key: string | null
           longitude: number
+          method: string | null
           moon_phase: number | null
           observation_time: string
           pressure_hpa: number | null
@@ -30950,7 +30967,10 @@ export type Database = {
           snow_1h_mm: number | null
           soil_moisture_percent: number | null
           soil_temperature_celsius: number | null
+          station_distance_km: number | null
           station_id: string | null
+          station_name: string | null
+          station_ref: string | null
           sunrise: string | null
           sunset: string | null
           temp_max_celsius: number | null
@@ -30968,6 +30988,7 @@ export type Database = {
         }
         Insert: {
           cloud_cover_percent?: number | null
+          confidence?: number | null
           created_at?: string
           data_source: string
           dew_point_celsius?: number | null
@@ -30984,6 +31005,7 @@ export type Database = {
           latitude: number
           location_key?: string | null
           longitude: number
+          method?: string | null
           moon_phase?: number | null
           observation_time: string
           pressure_hpa?: number | null
@@ -30993,7 +31015,10 @@ export type Database = {
           snow_1h_mm?: number | null
           soil_moisture_percent?: number | null
           soil_temperature_celsius?: number | null
+          station_distance_km?: number | null
           station_id?: string | null
+          station_name?: string | null
+          station_ref?: string | null
           sunrise?: string | null
           sunset?: string | null
           temp_max_celsius?: number | null
@@ -31011,6 +31036,7 @@ export type Database = {
         }
         Update: {
           cloud_cover_percent?: number | null
+          confidence?: number | null
           created_at?: string
           data_source?: string
           dew_point_celsius?: number | null
@@ -31027,6 +31053,7 @@ export type Database = {
           latitude?: number
           location_key?: string | null
           longitude?: number
+          method?: string | null
           moon_phase?: number | null
           observation_time?: string
           pressure_hpa?: number | null
@@ -31036,7 +31063,10 @@ export type Database = {
           snow_1h_mm?: number | null
           soil_moisture_percent?: number | null
           soil_temperature_celsius?: number | null
+          station_distance_km?: number | null
           station_id?: string | null
+          station_name?: string | null
+          station_ref?: string | null
           sunrise?: string | null
           sunset?: string | null
           temp_max_celsius?: number | null
@@ -31142,6 +31172,7 @@ export type Database = {
           id: string
           imd_distance_km: number | null
           imd_station_code: string | null
+          issued_at: string | null
           land_id: string | null
           latitude: number
           location_key: string | null
@@ -31152,7 +31183,10 @@ export type Database = {
           rain_probability_percent: number | null
           snow_amount_mm: number | null
           soil_temperature_celsius: number | null
+          station_distance_km: number | null
           station_id: string | null
+          station_ref: string | null
+          superseded_by: string | null
           temperature_celsius: number | null
           temperature_max_celsius: number | null
           temperature_min_celsius: number | null
@@ -31178,6 +31212,7 @@ export type Database = {
           id?: string
           imd_distance_km?: number | null
           imd_station_code?: string | null
+          issued_at?: string | null
           land_id?: string | null
           latitude: number
           location_key?: string | null
@@ -31188,7 +31223,10 @@ export type Database = {
           rain_probability_percent?: number | null
           snow_amount_mm?: number | null
           soil_temperature_celsius?: number | null
+          station_distance_km?: number | null
           station_id?: string | null
+          station_ref?: string | null
+          superseded_by?: string | null
           temperature_celsius?: number | null
           temperature_max_celsius?: number | null
           temperature_min_celsius?: number | null
@@ -31214,6 +31252,7 @@ export type Database = {
           id?: string
           imd_distance_km?: number | null
           imd_station_code?: string | null
+          issued_at?: string | null
           land_id?: string | null
           latitude?: number
           location_key?: string | null
@@ -31224,7 +31263,10 @@ export type Database = {
           rain_probability_percent?: number | null
           snow_amount_mm?: number | null
           soil_temperature_celsius?: number | null
+          station_distance_km?: number | null
           station_id?: string | null
+          station_ref?: string | null
+          superseded_by?: string | null
           temperature_celsius?: number | null
           temperature_max_celsius?: number | null
           temperature_min_celsius?: number | null
@@ -31343,6 +31385,8 @@ export type Database = {
       weather_observations: {
         Row: {
           cloud_coverage_percent: number | null
+          completeness_pct: number | null
+          confidence: number | null
           created_at: string
           dew_point_celsius: number | null
           farmer_id: string | null
@@ -31352,11 +31396,14 @@ export type Database = {
           land_id: string | null
           location_key: string | null
           metadata: Json | null
+          method: string | null
           observation_date: string
           observation_time: string
           pressure_hpa: number | null
           rainfall_mm: number
           snow_1h_mm: number | null
+          station_distance_km: number | null
+          station_ref: string | null
           temperature_celsius: number | null
           tenant_id: string
           updated_at: string
@@ -31368,6 +31415,8 @@ export type Database = {
         }
         Insert: {
           cloud_coverage_percent?: number | null
+          completeness_pct?: number | null
+          confidence?: number | null
           created_at?: string
           dew_point_celsius?: number | null
           farmer_id?: string | null
@@ -31377,11 +31426,14 @@ export type Database = {
           land_id?: string | null
           location_key?: string | null
           metadata?: Json | null
+          method?: string | null
           observation_date: string
           observation_time?: string
           pressure_hpa?: number | null
           rainfall_mm?: number
           snow_1h_mm?: number | null
+          station_distance_km?: number | null
+          station_ref?: string | null
           temperature_celsius?: number | null
           tenant_id: string
           updated_at?: string
@@ -31393,6 +31445,8 @@ export type Database = {
         }
         Update: {
           cloud_coverage_percent?: number | null
+          completeness_pct?: number | null
+          confidence?: number | null
           created_at?: string
           dew_point_celsius?: number | null
           farmer_id?: string | null
@@ -31402,11 +31456,14 @@ export type Database = {
           land_id?: string | null
           location_key?: string | null
           metadata?: Json | null
+          method?: string | null
           observation_date?: string
           observation_time?: string
           pressure_hpa?: number | null
           rainfall_mm?: number
           snow_1h_mm?: number | null
+          station_distance_km?: number | null
+          station_ref?: string | null
           temperature_celsius?: number | null
           tenant_id?: string
           updated_at?: string
@@ -35314,6 +35371,7 @@ export type Database = {
         Returns: Json
       }
       jsonb_normalize_upper_tokens: { Args: { data: Json }; Returns: Json }
+      land_cell_key: { Args: { p_lat: number; p_lon: number }; Returns: string }
       leave_community: {
         Args: { p_community_id: string; p_farmer_id: string }
         Returns: Json

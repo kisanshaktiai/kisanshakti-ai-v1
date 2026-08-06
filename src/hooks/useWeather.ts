@@ -152,6 +152,36 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     return { lat: REGIONAL_FALLBACK.lat, lon: REGIONAL_FALLBACK.lon, source: 'regional' };
   };
 
+  // MODEL A ONLY. Display weather may use a nearby fresh cell — a farmer just
+  // needs to know if it will rain on him. MODEL B MUST NEVER do this: GDD, ET0
+  // and disease compound daily, so a 20 km substitution corrupts a season.
+  const [nearby, setNearby] = useState<{ distanceKm: number; stationName: string | null } | null>(null);
+
+  const findNearbyFresh = async (lat: number, lon: number) => {
+    const { data } = await supabase
+      .from('weather_current')
+      .select('*')
+      .gte('latitude', lat - 0.25).lte('latitude', lat + 0.25)
+      .gte('longitude', lon - 0.25).lte('longitude', lon + 0.25)
+      .gt('expires_at', new Date().toISOString())
+      .order('observation_time', { ascending: false }) // freshness FIRST
+      .limit(5);
+    if (!data?.length) return null;
+
+    const km = (aLat: number, aLon: number, bLat: number, bLon: number) => {
+      const R = 6371, rad = (d: number) => d * Math.PI / 180;
+      const dLat = rad(bLat - aLat), dLon = rad(bLon - aLon);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    };
+
+    const within = data
+      .map((r: any) => ({ row: r, d: km(lat, lon, Number(r.latitude), Number(r.longitude)) }))
+      .filter((x) => x.d <= 25)
+      .sort((a, b) => a.d - b.d);
+    return within[0] ?? null;
+  };
+
   const fetchWeatherData = async (forceRefresh: boolean = false) => {
     // Don't fetch if tenant isn't loaded yet
     if (!tenant?.id) {
@@ -187,9 +217,21 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
       const weatherClient = user?.id && tenant?.id 
         ? supabaseWithAuth(user.id, tenant.id)
         : supabase;
-      
+
+      // MODEL A: proximity-first display provenance (freshness first, then distance)
+      if (!landId) {
+        const near = await findNearbyFresh(rounded.lat, rounded.lon);
+        setNearby(near
+          ? { distanceKm: Math.round(near.d * 10) / 10, stationName: (near.row as any).station_name ?? null }
+          : null);
+      } else {
+        setNearby(null);
+      }
+
       // NEW: Single combined API call for all weather data
       console.log('📡 [useWeather] Fetching ALL weather data (current + forecast + hourly) in one call...');
+      
+
       
       const { data, error: fetchError } = await weatherClient.functions.invoke('weather', {
         body: {
@@ -331,5 +373,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     locationSource: actualLocation.source, // 'explicit' | 'gps' | 'farm' | 'regional'
     regionalFallbackLabel: REGIONAL_FALLBACK.label,
     isStale: isStale(), // NEW: Return staleness status
+    weatherDistanceKm: nearby?.distanceKm ?? null, // MODEL A provenance
+    weatherStationName: nearby?.stationName ?? null,
   };
 };

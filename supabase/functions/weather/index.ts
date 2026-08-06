@@ -101,7 +101,7 @@ const CONFIG = {
 // ============================================================================
 
 interface WeatherRequest {
-  action: "current" | "forecast" | "agricultural" | "all" | "land";
+  action: "current" | "forecast" | "agricultural" | "all" | "land" | "refresh_land_cells" | "derive_land_state";
   lat?: number;
   lon?: number;
   landId?: string;
@@ -135,6 +135,8 @@ interface CurrentWeatherData {
   imd_station_code?: string;
   imd_station_name?: string;
   imd_distance_km?: number;
+  station_ref?: string;
+  station_name?: string;
 }
 
 interface ForecastItem {
@@ -324,7 +326,9 @@ async function fetchOpenWeatherCurrent(lat: number, lon: number, apiKey: string,
     visibility: d.visibility ?? 10000,
     sunrise: d.sys?.sunrise ?? 0,
     sunset: d.sys?.sunset ?? 0,
-    location: `${lat}, ${lon}`,
+    location: d.name ? `${d.name}` : `${lat}, ${lon}`,
+    station_ref: d.id ? String(d.id) : undefined,
+    station_name: d.name ?? undefined,
     dt: d.dt,
     provider: "OpenWeather",
     uv_index: 0,   // not in the free current endpoint
@@ -688,7 +692,7 @@ async function cacheWeatherData(
       location_key: locationKey,
       latitude: rounded.lat,
       longitude: rounded.lon,
-      land_id: landId ?? null,
+      land_id: null, // LAYER 1 is shared measurement — never land-scoped
       tenant_id: tenantId ?? null,
       temperature_celsius: current.temp,
       temp_min_celsius: current.temp_min,
@@ -716,6 +720,11 @@ async function cacheWeatherData(
       imd_station_code: current.imd_station_code ?? null,
       imd_station_name: current.imd_station_name ?? null,
       imd_distance_km: current.imd_distance_km ?? null,
+      station_ref: current.station_ref ?? current.imd_station_code ?? null,
+      station_name: current.station_name ?? current.imd_station_name ?? null,
+      station_distance_km: current.imd_distance_km ?? null,
+      method: current.provider === "IMD" ? "measured" : "modelled",
+      confidence: current.provider === "IMD" ? 0.9 : 0.75,
       expires_at: expiresAt.toISOString(),
       created_at: now.toISOString(),
     };
@@ -730,8 +739,12 @@ async function cacheWeatherData(
       const { error: obsErr } = await supabase.from("weather_observations").upsert({
         tenant_id: tenantId,
         farmer_id: farmerId ?? null,
-        land_id: landId ?? null,
+        land_id: null, // LAYER 1 shared measurement
         location_key: locationKey,
+        station_ref: current.station_ref ?? current.imd_station_code ?? null,
+        station_distance_km: current.imd_distance_km ?? null,
+        method: current.provider === "IMD" ? "measured" : "modelled",
+        confidence: current.provider === "IMD" ? 0.9 : 0.75,
         observation_date: istDate(now), // FIX: IST, not UTC
         observation_time: new Date(current.dt * 1000).toISOString(),
         temperature_celsius: current.temp,
@@ -770,7 +783,7 @@ async function cacheWeatherData(
         location_key: locationKey,
         latitude: rounded.lat,
         longitude: rounded.lon,
-        land_id: landId ?? null,
+        land_id: null, // LAYER 1 shared measurement
         tenant_id: tenantId ?? null,
         forecast_time: new Date(day.dt * 1000).toISOString(),
         forecast_type: "daily" as const,
@@ -790,12 +803,18 @@ async function cacheWeatherData(
         rain_prob_source: day.pop_source ?? null,
         imd_station_code: current.imd_station_code ?? null,
         imd_distance_km: current.imd_distance_km ?? null,
+        issued_at: now.toISOString(),
+        station_ref: current.station_ref ?? current.imd_station_code ?? null,
+        station_distance_km: current.imd_distance_km ?? null,
         created_at: now.toISOString(),
       }));
 
-      await supabase.from("weather_forecasts").delete()
-        .eq("location_key", locationKey).eq("forecast_type", "daily");
-      const { error } = await supabase.from("weather_forecasts").insert(rows);
+      // Append, never erase. Prior issues are the forecast-skill dataset.
+      const { error } = await supabase.from("weather_forecasts")
+        .upsert(rows, {
+          onConflict: "location_key,forecast_type,forecast_time,issued_at,data_source",
+          ignoreDuplicates: true,
+        });
       if (error) log(runId, "warn", "daily_forecast_insert_failed", { error: error.message });
       else log(runId, "info", "daily_forecasts_cached", { count: rows.length, provider });
     }
@@ -806,7 +825,7 @@ async function cacheWeatherData(
         location_key: locationKey,
         latitude: rounded.lat,
         longitude: rounded.lon,
-        land_id: landId ?? null,
+        land_id: null, // LAYER 1 shared measurement
         tenant_id: tenantId ?? null,
         forecast_time: new Date(h.dt * 1000).toISOString(),
         forecast_type: "hourly" as const,
@@ -820,12 +839,17 @@ async function cacheWeatherData(
         rain_probability_percent: Math.round(h.pop * 100),
         uv_index: h.uv_index ?? null,
         data_source: provider,
+        issued_at: now.toISOString(),
+        station_ref: current.station_ref ?? current.imd_station_code ?? null,
+        station_distance_km: current.imd_distance_km ?? null,
         created_at: now.toISOString(),
       }));
 
-      await supabase.from("weather_forecasts").delete()
-        .eq("location_key", locationKey).eq("forecast_type", "hourly");
-      const { error } = await supabase.from("weather_forecasts").insert(rows);
+      const { error } = await supabase.from("weather_forecasts")
+        .upsert(rows, {
+          onConflict: "location_key,forecast_type,forecast_time,issued_at,data_source",
+          ignoreDuplicates: true,
+        });
       if (error) log(runId, "warn", "hourly_forecast_insert_failed", { error: error.message });
     }
 
@@ -890,7 +914,7 @@ async function updateWeatherAggregate(
       .eq("tenant_id", tenantId)
       .eq("aggregate_date", today)
       .eq("location_key", locationKey); // prevents city mixing
-    q = landId ? q.eq("land_id", landId) : q.is("land_id", null);
+    q = q.is("land_id", null); // LAYER 1 aggregates are cell-scoped, never land-scoped
     const { data: existing } = await q.maybeSingle();
 
     if (existing) {
@@ -957,7 +981,7 @@ async function updateWeatherAggregate(
       const { error } = await supabase.from("weather_aggregates").upsert({
         tenant_id: tenantId,
         farmer_id: farmerId ?? null,
-        land_id: landId ?? null,
+        land_id: null, // LAYER 1 shared measurement
         location_key: locationKey,
         aggregate_date: today,
         rain_mm_total: rain24,
@@ -1193,6 +1217,92 @@ serve(async (req: Request): Promise<Response> => {
     let { action, lat, lon, landId } = body;
     let landData: { id: string; name: string; farmer_id: string } | null = null;
 
+    // ---- MODEL B: refresh every cell containing an active land ----------------
+    if (action === "refresh_land_cells") {
+      const { data: rows, error } = await supabase
+        .from("lands").select("cell_key, center_lat, center_lon")
+        .eq("is_active", true).not("cell_key", "is", null);
+      if (error) throw new Error(`land cell read failed: ${error.message}`);
+
+      const unique = new Map<string, { lat: number; lon: number }>();
+      for (const r of rows ?? []) {
+        if (!unique.has(r.cell_key as string)) {
+          unique.set(r.cell_key as string, { lat: Number(r.center_lat), lon: Number(r.center_lon) });
+        }
+      }
+
+      const results: Array<{ cell: string; ok: boolean; skipped?: boolean }> = [];
+      for (const [cellKey, c] of unique) {
+        try {
+          const r = roundCoordinates(c.lat, c.lon);
+          const fresh = await checkCache(supabase, r.key, "all", runId);
+          if (fresh && !fresh.stale) { results.push({ cell: cellKey, ok: true, skipped: true }); continue; }
+          const fwd: Record<string, string> = { "Content-Type": "application/json" };
+          for (const h of ["authorization", "apikey", "x-tenant-id", "x-client-domain"]) {
+            const v = req.headers.get(h);
+            if (v) fwd[h] = v;
+          }
+          const selfUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/weather`;
+          if (!fwd["authorization"]) {
+            fwd["authorization"] = `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
+          }
+          const res = await fetch(selfUrl, {
+            method: "POST",
+            headers: fwd,
+            body: JSON.stringify({ action: "all", lat: c.lat, lon: c.lon }),
+          });
+          if (!res.ok) {
+            log(runId, "warn", "land_cell_refresh_failed", {
+              cell: cellKey, status: res.status, body: (await res.text()).slice(0, 200),
+            });
+          }
+          results.push({ cell: cellKey, ok: res.ok });
+        } catch (e) {
+          log(runId, "warn", "land_cell_refresh_exception", { cell: cellKey, error: String(e) });
+          results.push({ cell: cellKey, ok: false });
+        }
+      }
+
+      log(runId, "info", "land_cells_refreshed", {
+        cells: unique.size, ok: results.filter((r) => r.ok).length,
+        skipped_fresh: results.filter((r) => r.skipped).length,
+      });
+      return new Response(JSON.stringify({
+        action, cells: unique.size, results, timestamp: new Date().toISOString(),
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ---- MODEL B: derive per-land agronomic state for ALL active lands -------
+    if (action === "derive_land_state") {
+      const { data: allLands, error } = await supabase
+        .from("lands").select("id, tenant_id, cell_key, center_lat, center_lon")
+        .eq("is_active", true).not("cell_key", "is", null);
+      if (error) throw new Error(`lands read failed: ${error.message}`);
+
+      let derived = 0, skipped = 0;
+      for (const land of allLands ?? []) {
+        const cell = await checkCache(supabase, land.cell_key as string, "current", runId, true);
+        if (!cell?.current) { skipped++; continue; }
+        try {
+          await computeLandWeatherMetrics(
+            supabase, runId, land.id as string, land.tenant_id as string,
+            land.cell_key as string, cell.current,
+            { lat: Number(land.center_lat), lon: Number(land.center_lon) },
+            (cell.current as any).rain_24h ?? cell.current.rain_1h ?? 0,
+          );
+          derived++;
+        } catch (e) {
+          log(runId, "warn", "land_derivation_failed", { land_id: land.id, error: String(e) });
+          skipped++;
+        }
+      }
+
+      log(runId, "info", "land_state_derived", { derived, skipped });
+      return new Response(JSON.stringify({
+        action, derived, skipped, timestamp: new Date().toISOString(),
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // ---- land resolution ---------------------------------------------------
     if (landId || action === "land") {
       if (!landId) throw new Error("landId is required for land-based weather request");
@@ -1231,6 +1341,14 @@ serve(async (req: Request): Promise<Response> => {
     // ---- STEP 1: cache -----------------------------------------------------
     const cached = await checkCache(supabase, rounded.key, action, runId);
     if (cached) {
+      // MODEL B: derivation must not depend on a cache miss.
+      if (landData?.id && cached.current) {
+        await computeLandWeatherMetrics(
+          supabase, runId, landData.id, tenant.id, rounded.key,
+          cached.current, rounded,
+          (cached.current as any).rain_24h ?? cached.current.rain_1h ?? 0,
+        );
+      }
       return new Response(JSON.stringify({
         ...cached,
         tenant: { id: tenant.id, name: tenant.name },
@@ -1238,6 +1356,7 @@ serve(async (req: Request): Promise<Response> => {
         provider: cached.current?.provider ?? "Cache",
         stale: cached.stale ?? false,
         cell: rounded.key,
+        land: landData ? { id: landData.id, name: landData.name } : undefined,
         timestamp: new Date().toISOString(),
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
