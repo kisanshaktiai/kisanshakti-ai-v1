@@ -105,13 +105,26 @@ export interface LandChatContext {
     weather_description: string | null;
     observation_time: string | null;
   } | null;
+  /**
+   * From `public.land_weather_state`.
+   * NOTE: `gdd_daily` is TODAY's GDD contribution — NOT season-cumulative GDD.
+   * Season-cumulative GDD lives in `lands.current_gdd`.
+   */
   weatherMetrics: {
     metric_date: string | null;
-    gdd_accumulated: number | null;
+    gdd_daily: number | null;
     et0_mm: number | null;
+    vpd_kpa: number | null;
     total_rainfall_mm: number | null;
+    effective_rainfall_mm: number | null;
+    water_deficit_mm: number | null;
+    irrigation_needed: boolean | null;
     irrigation_urgency: string | null;
+    disease_risk_score: number | null;
     disease_risk_level: string | null;
+    crop_stress_level: string | null;
+    water_balance_status: string | null;
+    computed_at: string | null;
   } | null;
 }
 
