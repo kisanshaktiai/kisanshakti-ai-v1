@@ -6421,51 +6421,6 @@ export type Database = {
           },
         ]
       }
-      crop_ndvi_phenology: {
-        Row: {
-          agro_zone: string | null
-          crop_code: string
-          das_max: number
-          das_min: number
-          id: string
-          ndvi_p10: number
-          ndvi_p50: number
-          ndvi_p90: number
-          sample_size: number | null
-          source: string
-          stage_code: string
-          updated_at: string
-        }
-        Insert: {
-          agro_zone?: string | null
-          crop_code: string
-          das_max: number
-          das_min: number
-          id?: string
-          ndvi_p10: number
-          ndvi_p50: number
-          ndvi_p90: number
-          sample_size?: number | null
-          source?: string
-          stage_code: string
-          updated_at?: string
-        }
-        Update: {
-          agro_zone?: string | null
-          crop_code?: string
-          das_max?: number
-          das_min?: number
-          id?: string
-          ndvi_p10?: number
-          ndvi_p50?: number
-          ndvi_p90?: number
-          sample_size?: number | null
-          source?: string
-          stage_code?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       crop_schedules: {
         Row: {
           actual_harvest_date: string | null
@@ -33123,6 +33078,29 @@ export type Database = {
           },
         ]
       }
+      v_ndvi_stage_coverage: {
+        Row: {
+          crop_code: string | null
+          crop_cycle: string | null
+          cultivation_method: string | null
+          das_reference: string | null
+          missing_ndvi: number | null
+          missing_stage_code: number | null
+          pct_covered: number | null
+          resolvable_stages: number | null
+          stage_role: string | null
+          with_ndvi: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_stage_master_cultivation_method_fk"
+            columns: ["cultivation_method"]
+            isOneToOne: false
+            referencedRelation: "cultivation_method_master"
+            referencedColumns: ["method_code"]
+          },
+        ]
+      }
       v_observation_missing_farmer_alias: {
         Row: {
           crop_group: string | null
@@ -35311,14 +35289,31 @@ export type Database = {
       }
       ndvi_stage_anomaly: {
         Args: {
-          p_agro_zone?: string
+          p_as_of?: string
           p_crop_code: string
-          p_das: number
+          p_crop_cycle?: string
+          p_cultivation_method: string
+          p_current_gdd?: number
+          p_land_id?: string
           p_ndvi: number
+          p_sow_date: string
+          p_transplant_date?: string
+          p_variety_id?: string
         }
         Returns: {
-          ndvi_p50: number
+          current_das: number
+          current_dat: number
+          evidence_sources: string[]
+          expected_ndvi_max: number
+          expected_ndvi_min: number
+          growth_stage: string
+          ndvi_confidence: number
+          phenology_index: number
+          reason: string
+          reference_system: string
           stage_code: string
+          stage_confidence: number
+          stage_source: string
           status: string
           z_score: number
         }[]
