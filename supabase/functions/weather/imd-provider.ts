@@ -45,9 +45,20 @@
  * would silently break the G5 spray-safety gate.
  */
 
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
+import {
+  getImdToken,
+  invalidateImdToken,
+  imdAuthHeaders,
+  type ImdCredentials,
+} from "./imd-token.ts";
+
+type LogFn = (level: string, event: string, data?: Record<string, unknown>) => void;
+
 // ---------------------------------------------------------------------------
 // Types mirrored from index.ts (kept structurally identical on purpose)
 // ---------------------------------------------------------------------------
+
 
 export interface ImdCurrentWeather {
   temp: number; feels_like: number; temp_min: number; temp_max: number;
@@ -132,21 +143,42 @@ function normalizeTime(raw: string | null): string | null {
   return null;
 }
 
-async function imdFetch(path: string, apiKey: string): Promise<unknown> {
-  const url = new URL(`${IMD_BASE}/${path}`);
-  url.searchParams.set("api_key", apiKey);
+async function imdFetch(
+  path: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
+  isRetry = false,
+): Promise<unknown> {
+  const token = await getImdToken(supabase, creds, log, isRetry);
+  if (!token) {
+    throw new Error("IMD authentication unavailable (no valid session token)");
+  }
 
+  const url = new URL(`${IMD_BASE}/${path}`);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+
   try {
     const res = await fetch(url.toString(), {
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/json",
+        ...imdAuthHeaders(creds.apiKey, token),
+      },
       signal: ctrl.signal,
     });
+
+    if ((res.status === 401 || res.status === 403) && !isRetry) {
+      await invalidateImdToken(supabase, log);
+      clearTimeout(timer);
+      return await imdFetch(path, creds, supabase, log, true);
+    }
+
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(`IMD ${path} error: ${res.status} - ${body.slice(0, 200)}`);
     }
+
     const text = await res.text();
     if (!text.trim()) throw new Error(`IMD ${path} returned an empty body`);
     return JSON.parse(text);
@@ -154,6 +186,7 @@ async function imdFetch(path: string, apiKey: string): Promise<unknown> {
     clearTimeout(timer);
   }
 }
+
 
 function asArray(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) return payload as Record<string, unknown>[];
@@ -243,9 +276,9 @@ function fresh<T>(c: { at: number; rows: T[] } | null): boolean {
   return !!c && Date.now() - c.at < STATION_CACHE_TTL_MS && c.rows.length > 0;
 }
 
-async function getCityStations(apiKey: string): Promise<StationRow[]> {
+async function getCityStations(creds: ImdCredentials, supabase: SupabaseClient, log: LogFn): Promise<StationRow[]> {
   if (fresh(cityCache)) return cityCache!.rows;
-  const rows = asArray(await imdFetch("cityforecastloc", apiKey));
+  const rows = asArray(await imdFetch("cityforecastloc", creds, supabase, log));
   const out: StationRow[] = [];
   for (const r of rows) {
     const lat = num(r["Latitude"]), lon = num(r["Longitude"]);
@@ -259,10 +292,10 @@ async function getCityStations(apiKey: string): Promise<StationRow[]> {
   return out;
 }
 
-async function getAwsStations(apiKey: string, stateId?: number): Promise<StationRow[]> {
+async function getAwsStations(creds: ImdCredentials, supabase: SupabaseClient, log: LogFn, stateId?: number): Promise<StationRow[]> {
   if (fresh(awsCache)) return awsCache!.rows;
   const path = stateId ? `aws_data?sid=${stateId}` : "aws_data";
-  const rows = asArray(await imdFetch(path, apiKey));
+  const rows = asArray(await imdFetch(path, creds, supabase, log));
   const out: StationRow[] = [];
   for (const r of rows) {
     const lat = num(r["Latitude"]), lon = num(r["Longitude"]);
@@ -300,9 +333,11 @@ export function imdCacheStatus() {
 export async function fetchImdCurrent(
   lat: number,
   lon: number,
-  apiKey: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
 ): Promise<ImdCurrentWeather> {
-  const stations = await getCityStations(apiKey);
+  const stations = await getCityStations(creds, supabase, log);
   const match = nearest(lat, lon, stations, MAX_STATION_DISTANCE_KM);
   if (!match) throw new Error(`IMD: no station within ${MAX_STATION_DISTANCE_KM}km of ${lat},${lon}`);
 
@@ -315,7 +350,7 @@ export async function fetchImdCurrent(
   // has no live observation we still return a valid record from cityforecast.
   let live: Record<string, unknown> | null = null;
   try {
-    const rows = asArray(await imdFetch(`current_wx?id=${encodeURIComponent(station.code)}`, apiKey));
+    const rows = asArray(await imdFetch(`current_wx?id=${encodeURIComponent(station.code)}`, creds, supabase, log));
     live = rows[0] ?? null;
   } catch (e) {
     console.warn(`⚠️ [IMD] current_wx unavailable for ${station.code}: ${(e as Error).message}`);
@@ -393,9 +428,11 @@ export async function fetchImdCurrent(
 export async function fetchImdForecast(
   lat: number,
   lon: number,
-  apiKey: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
 ): Promise<{ forecast: ImdDailyForecast[]; hourly: never[] }> {
-  const stations = await getCityStations(apiKey);
+  const stations = await getCityStations(creds, supabase, log);
   const match = nearest(lat, lon, stations, MAX_STATION_DISTANCE_KM);
   if (!match) throw new Error(`IMD: no station within ${MAX_STATION_DISTANCE_KM}km of ${lat},${lon}`);
 
@@ -489,10 +526,12 @@ export interface ImdWarning {
 }
 
 export async function fetchImdDistrictWarnings(
-  apiKey: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
   districtObjIds?: string[],
 ): Promise<ImdWarning[]> {
-  const rows = asArray(await imdFetch("districtwarning", apiKey));
+  const rows = asArray(await imdFetch("districtwarning", creds, supabase, log));
   const wanted = districtObjIds?.length ? new Set(districtObjIds) : null;
   const out: ImdWarning[] = [];
 

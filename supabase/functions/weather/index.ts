@@ -42,6 +42,7 @@ import {
   fetchImdForecast,
   imdCacheStatus,
 } from "./imd-provider.ts";
+import { getImdCredentials } from "./imd-token.ts";
 // FIX: this module existed but was never imported. Its calculations are
 // crop-aware (per-crop GDD base/cap, VPD, irrigation need) and strictly
 // better than the inline copies that were being used instead.
@@ -1146,7 +1147,9 @@ serve(async (req: Request): Promise<Response> => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const imdApiKey = Deno.env.get("IMD_API_KEY");
+    const imdLog: (l: string, e: string, d?: Record<string, unknown>) => void =
+      (l, e, d) => log(runId, l as "info" | "warn" | "error", e, d);
+    const imdCreds = getImdCredentials(imdLog);
     const tomorrowIoApiKey = Deno.env.get("TOMORROW_IO_API_KEY");
     const openWeatherApiKey = Deno.env.get("OPENWEATHER_API_KEY") ?? Deno.env.get("WEATHER_API_KEY");
 
@@ -1155,7 +1158,7 @@ serve(async (req: Request): Promise<Response> => {
     // FIX: the previous build threw if TOMORROW_IO_API_KEY was absent, BEFORE
     // trying any provider - so a rotated Tomorrow.io key took down the whole
     // endpoint even with IMD and OpenWeather healthy.
-    if (!imdApiKey && !openWeatherApiKey && !tomorrowIoApiKey) {
+    if (!imdCreds && !openWeatherApiKey && !tomorrowIoApiKey) {
       throw new Error("No weather API keys configured (need IMD_API_KEY, OPENWEATHER_API_KEY or TOMORROW_IO_API_KEY)");
     }
 
@@ -1265,17 +1268,17 @@ serve(async (req: Request): Promise<Response> => {
     const needForecast = action === "forecast" || action === "all" || action === "agricultural";
 
     const budgets = {
-      IMD: imdApiKey ? await getUsedToday(supabase, "IMD") : Infinity,
+      IMD: imdCreds ? await getUsedToday(supabase, "IMD") : Infinity,
       OpenWeather: openWeatherApiKey ? await getUsedToday(supabase, "OpenWeather") : Infinity,
       "Tomorrow.io": tomorrowIoApiKey ? await getUsedToday(supabase, "Tomorrow.io") : Infinity,
     };
 
     // -- TIER 1: IMD (authoritative for India, effectively unmetered) --------
-    if (imdApiKey && budgets.IMD < CONFIG.DAILY_BUDGET.IMD) {
+    if (imdCreds && budgets.IMD < CONFIG.DAILY_BUDGET.IMD) {
       if (needCurrent) {
         const t0 = Date.now();
         try {
-          const c = await fetchImdCurrent(rounded.lat, rounded.lon, imdApiKey);
+          const c = await fetchImdCurrent(rounded.lat, rounded.lon, imdCreds, supabase, imdLog);
           if (validateCurrent(c as CurrentWeatherData, runId)) {
             current = c as CurrentWeatherData;
             dataProvider = "IMD";
@@ -1291,7 +1294,7 @@ serve(async (req: Request): Promise<Response> => {
       if (needForecast) {
         const t0 = Date.now();
         try {
-          const f = await fetchImdForecast(rounded.lat, rounded.lon, imdApiKey);
+          const f = await fetchImdForecast(rounded.lat, rounded.lon, imdCreds, supabase, imdLog);
           if (f.forecast.length) {
             forecast = f.forecast as DailyForecast[];
             if (dataProvider === "unknown") dataProvider = "IMD";
