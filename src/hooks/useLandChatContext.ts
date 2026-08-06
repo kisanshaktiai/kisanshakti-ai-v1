@@ -15,7 +15,8 @@
  *                               moisture, agro-climatic zone.
  *     • ndvi_data             → latest ndvi row within 45d for the field.
  *     • weather_current       → latest live weather bound to the land.
- *     • land_weather_metrics  → latest daily aggregate (GDD, ET0, rainfall).
+ *     • land_weather_state    → latest per-land derived agronomy
+ *                               (daily GDD, ET0, VPD, water balance, risk).
  *
  * Every column referenced here was verified against the live public schema
  * (see .lovable/plan.md audit — 2026-07-07). No column is assumed.
