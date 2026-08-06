@@ -159,7 +159,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
       return;
     }
 
-    const weatherLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
+    const weatherLocation = resolveLocation();
     
     // Round coordinates for consistent caching (~1km precision)
     const rounded = roundCoordinates(weatherLocation.lat, weatherLocation.lon);
@@ -310,12 +310,12 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
 
   // Update store location
   useEffect(() => {
-    const actualLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
-    const rounded = roundCoordinates(actualLocation.lat, actualLocation.lon);
+    const resolved = resolveLocation();
+    const rounded = roundCoordinates(resolved.lat, resolved.lon);
     setLocation(rounded);
-  }, [location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
+  }, [location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon, farmLocation?.lat, farmLocation?.lon]);
 
-  const actualLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
+  const actualLocation = resolveLocation();
   const roundedLocation = roundCoordinates(actualLocation.lat, actualLocation.lon);
 
   return {
@@ -328,6 +328,8 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     dataSource, // NEW: Return data source
     refetch: () => fetchWeatherData(true), // Force refresh on manual refetch
     location: roundedLocation, // Return rounded location for consistency
+    locationSource: actualLocation.source, // 'explicit' | 'gps' | 'farm' | 'regional'
+    regionalFallbackLabel: REGIONAL_FALLBACK.label,
     isStale: isStale(), // NEW: Return staleness status
   };
 };
