@@ -276,9 +276,9 @@ function fresh<T>(c: { at: number; rows: T[] } | null): boolean {
   return !!c && Date.now() - c.at < STATION_CACHE_TTL_MS && c.rows.length > 0;
 }
 
-async function getCityStations(apiKey: string): Promise<StationRow[]> {
+async function getCityStations(creds: ImdCredentials, supabase: SupabaseClient, log: LogFn): Promise<StationRow[]> {
   if (fresh(cityCache)) return cityCache!.rows;
-  const rows = asArray(await imdFetch("cityforecastloc", apiKey));
+  const rows = asArray(await imdFetch("cityforecastloc", creds, supabase, log));
   const out: StationRow[] = [];
   for (const r of rows) {
     const lat = num(r["Latitude"]), lon = num(r["Longitude"]);
@@ -292,10 +292,10 @@ async function getCityStations(apiKey: string): Promise<StationRow[]> {
   return out;
 }
 
-async function getAwsStations(apiKey: string, stateId?: number): Promise<StationRow[]> {
+async function getAwsStations(creds: ImdCredentials, supabase: SupabaseClient, log: LogFn, stateId?: number): Promise<StationRow[]> {
   if (fresh(awsCache)) return awsCache!.rows;
   const path = stateId ? `aws_data?sid=${stateId}` : "aws_data";
-  const rows = asArray(await imdFetch(path, apiKey));
+  const rows = asArray(await imdFetch(path, creds, supabase, log));
   const out: StationRow[] = [];
   for (const r of rows) {
     const lat = num(r["Latitude"]), lon = num(r["Longitude"]);
@@ -333,9 +333,11 @@ export function imdCacheStatus() {
 export async function fetchImdCurrent(
   lat: number,
   lon: number,
-  apiKey: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
 ): Promise<ImdCurrentWeather> {
-  const stations = await getCityStations(apiKey);
+  const stations = await getCityStations(creds, supabase, log);
   const match = nearest(lat, lon, stations, MAX_STATION_DISTANCE_KM);
   if (!match) throw new Error(`IMD: no station within ${MAX_STATION_DISTANCE_KM}km of ${lat},${lon}`);
 
@@ -348,7 +350,7 @@ export async function fetchImdCurrent(
   // has no live observation we still return a valid record from cityforecast.
   let live: Record<string, unknown> | null = null;
   try {
-    const rows = asArray(await imdFetch(`current_wx?id=${encodeURIComponent(station.code)}`, apiKey));
+    const rows = asArray(await imdFetch(`current_wx?id=${encodeURIComponent(station.code)}`, creds, supabase, log));
     live = rows[0] ?? null;
   } catch (e) {
     console.warn(`⚠️ [IMD] current_wx unavailable for ${station.code}: ${(e as Error).message}`);
@@ -426,9 +428,11 @@ export async function fetchImdCurrent(
 export async function fetchImdForecast(
   lat: number,
   lon: number,
-  apiKey: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
 ): Promise<{ forecast: ImdDailyForecast[]; hourly: never[] }> {
-  const stations = await getCityStations(apiKey);
+  const stations = await getCityStations(creds, supabase, log);
   const match = nearest(lat, lon, stations, MAX_STATION_DISTANCE_KM);
   if (!match) throw new Error(`IMD: no station within ${MAX_STATION_DISTANCE_KM}km of ${lat},${lon}`);
 
@@ -522,10 +526,12 @@ export interface ImdWarning {
 }
 
 export async function fetchImdDistrictWarnings(
-  apiKey: string,
+  creds: ImdCredentials,
+  supabase: SupabaseClient,
+  log: LogFn,
   districtObjIds?: string[],
 ): Promise<ImdWarning[]> {
-  const rows = asArray(await imdFetch("districtwarning", apiKey));
+  const rows = asArray(await imdFetch("districtwarning", creds, supabase, log));
   const wanted = districtObjIds?.length ? new Set(districtObjIds) : null;
   const out: ImdWarning[] = [];
 
