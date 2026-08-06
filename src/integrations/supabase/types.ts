@@ -6421,6 +6421,51 @@ export type Database = {
           },
         ]
       }
+      crop_ndvi_phenology: {
+        Row: {
+          agro_zone: string | null
+          crop_code: string
+          das_max: number
+          das_min: number
+          id: string
+          ndvi_p10: number
+          ndvi_p50: number
+          ndvi_p90: number
+          sample_size: number | null
+          source: string
+          stage_code: string
+          updated_at: string
+        }
+        Insert: {
+          agro_zone?: string | null
+          crop_code: string
+          das_max: number
+          das_min: number
+          id?: string
+          ndvi_p10: number
+          ndvi_p50: number
+          ndvi_p90: number
+          sample_size?: number | null
+          source?: string
+          stage_code: string
+          updated_at?: string
+        }
+        Update: {
+          agro_zone?: string | null
+          crop_code?: string
+          das_max?: number
+          das_min?: number
+          id?: string
+          ndvi_p10?: number
+          ndvi_p50?: number
+          ndvi_p90?: number
+          sample_size?: number | null
+          source?: string
+          stage_code?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       crop_schedules: {
         Row: {
           actual_harvest_date: string | null
@@ -14384,6 +14429,8 @@ export type Database = {
           last_harvest_date: string | null
           last_moisture_update: string | null
           last_ndvi_calculation: string | null
+          last_ndvi_quality: number | null
+          last_ndvi_source: string | null
           last_ndvi_value: number | null
           last_processed_at: string | null
           last_soil_test_date: string | null
@@ -14397,6 +14444,7 @@ export type Database = {
           name: string
           ndvi_geotiff_url: string | null
           ndvi_status: string | null
+          ndvi_status_note: string | null
           ndvi_tested: boolean | null
           ndvi_thumbnail_url: string | null
           nitrogen_kg_per_ha: number | null
@@ -14478,6 +14526,8 @@ export type Database = {
           last_harvest_date?: string | null
           last_moisture_update?: string | null
           last_ndvi_calculation?: string | null
+          last_ndvi_quality?: number | null
+          last_ndvi_source?: string | null
           last_ndvi_value?: number | null
           last_processed_at?: string | null
           last_soil_test_date?: string | null
@@ -14491,6 +14541,7 @@ export type Database = {
           name: string
           ndvi_geotiff_url?: string | null
           ndvi_status?: string | null
+          ndvi_status_note?: string | null
           ndvi_tested?: boolean | null
           ndvi_thumbnail_url?: string | null
           nitrogen_kg_per_ha?: number | null
@@ -14572,6 +14623,8 @@ export type Database = {
           last_harvest_date?: string | null
           last_moisture_update?: string | null
           last_ndvi_calculation?: string | null
+          last_ndvi_quality?: number | null
+          last_ndvi_source?: string | null
           last_ndvi_value?: number | null
           last_processed_at?: string | null
           last_soil_test_date?: string | null
@@ -14585,6 +14638,7 @@ export type Database = {
           name?: string
           ndvi_geotiff_url?: string | null
           ndvi_status?: string | null
+          ndvi_status_note?: string | null
           ndvi_tested?: boolean | null
           ndvi_thumbnail_url?: string | null
           nitrogen_kg_per_ha?: number | null
@@ -17259,6 +17313,9 @@ export type Database = {
       }
       ndvi_data: {
         Row: {
+          acquisition_date: string | null
+          acquisition_time: string | null
+          buffer_applied: boolean | null
           cloud_cover: number | null
           cloud_coverage: number | null
           collection_id: string | null
@@ -17267,10 +17324,13 @@ export type Database = {
           coverage: number | null
           coverage_percentage: number | null
           created_at: string
+          cross_ratio_db: number | null
           date: string
           evi_value: number | null
+          field_area_m2: number | null
           id: string
           image_url: string | null
+          is_interpolated: boolean
           land_id: string
           max_ndvi: number | null
           mcari_value: number | null
@@ -17278,25 +17338,49 @@ export type Database = {
           median_ndvi: number | null
           metadata: Json | null
           min_ndvi: number | null
+          mndwi_water: number | null
+          ndmi_value: number | null
+          ndre_value: number | null
           ndvi_max: number | null
           ndvi_min: number | null
+          ndvi_p10: number | null
+          ndvi_p90: number | null
+          ndvi_spatial_max: number | null
+          ndvi_spatial_median: number | null
+          ndvi_spatial_min: number | null
+          ndvi_spatial_std: number | null
           ndvi_std: number | null
           ndvi_value: number | null
           ndwi_value: number | null
+          observation_source: string
+          observation_type: Database["public"]["Enums"]["ndvi_observation_type"]
+          platform: string | null
+          processing_baseline: string | null
           processing_level: string | null
           quality_score: number | null
+          relative_orbit: number | null
+          rvi_std: number | null
+          rvi_value: number | null
           satellite_source: string | null
           savi_value: number | null
+          scene_cloud_cover: number | null
           scene_id: string | null
+          shadow_fraction: number | null
           soil_moisture: number | null
+          source_scene_count: number
           spatial_resolution: number | null
           tenant_id: string
           tile_id: string | null
           total_pixels: number | null
+          uniformity_cv: number | null
           updated_at: string | null
           valid_pixels: number | null
+          water_fraction: number | null
         }
         Insert: {
+          acquisition_date?: string | null
+          acquisition_time?: string | null
+          buffer_applied?: boolean | null
           cloud_cover?: number | null
           cloud_coverage?: number | null
           collection_id?: string | null
@@ -17305,10 +17389,13 @@ export type Database = {
           coverage?: number | null
           coverage_percentage?: number | null
           created_at?: string
+          cross_ratio_db?: number | null
           date: string
           evi_value?: number | null
+          field_area_m2?: number | null
           id?: string
           image_url?: string | null
+          is_interpolated?: boolean
           land_id: string
           max_ndvi?: number | null
           mcari_value?: number | null
@@ -17316,25 +17403,49 @@ export type Database = {
           median_ndvi?: number | null
           metadata?: Json | null
           min_ndvi?: number | null
+          mndwi_water?: number | null
+          ndmi_value?: number | null
+          ndre_value?: number | null
           ndvi_max?: number | null
           ndvi_min?: number | null
+          ndvi_p10?: number | null
+          ndvi_p90?: number | null
+          ndvi_spatial_max?: number | null
+          ndvi_spatial_median?: number | null
+          ndvi_spatial_min?: number | null
+          ndvi_spatial_std?: number | null
           ndvi_std?: number | null
           ndvi_value?: number | null
           ndwi_value?: number | null
+          observation_source?: string
+          observation_type?: Database["public"]["Enums"]["ndvi_observation_type"]
+          platform?: string | null
+          processing_baseline?: string | null
           processing_level?: string | null
           quality_score?: number | null
+          relative_orbit?: number | null
+          rvi_std?: number | null
+          rvi_value?: number | null
           satellite_source?: string | null
           savi_value?: number | null
+          scene_cloud_cover?: number | null
           scene_id?: string | null
+          shadow_fraction?: number | null
           soil_moisture?: number | null
+          source_scene_count?: number
           spatial_resolution?: number | null
           tenant_id: string
           tile_id?: string | null
           total_pixels?: number | null
+          uniformity_cv?: number | null
           updated_at?: string | null
           valid_pixels?: number | null
+          water_fraction?: number | null
         }
         Update: {
+          acquisition_date?: string | null
+          acquisition_time?: string | null
+          buffer_applied?: boolean | null
           cloud_cover?: number | null
           cloud_coverage?: number | null
           collection_id?: string | null
@@ -17343,10 +17454,13 @@ export type Database = {
           coverage?: number | null
           coverage_percentage?: number | null
           created_at?: string
+          cross_ratio_db?: number | null
           date?: string
           evi_value?: number | null
+          field_area_m2?: number | null
           id?: string
           image_url?: string | null
+          is_interpolated?: boolean
           land_id?: string
           max_ndvi?: number | null
           mcari_value?: number | null
@@ -17354,23 +17468,44 @@ export type Database = {
           median_ndvi?: number | null
           metadata?: Json | null
           min_ndvi?: number | null
+          mndwi_water?: number | null
+          ndmi_value?: number | null
+          ndre_value?: number | null
           ndvi_max?: number | null
           ndvi_min?: number | null
+          ndvi_p10?: number | null
+          ndvi_p90?: number | null
+          ndvi_spatial_max?: number | null
+          ndvi_spatial_median?: number | null
+          ndvi_spatial_min?: number | null
+          ndvi_spatial_std?: number | null
           ndvi_std?: number | null
           ndvi_value?: number | null
           ndwi_value?: number | null
+          observation_source?: string
+          observation_type?: Database["public"]["Enums"]["ndvi_observation_type"]
+          platform?: string | null
+          processing_baseline?: string | null
           processing_level?: string | null
           quality_score?: number | null
+          relative_orbit?: number | null
+          rvi_std?: number | null
+          rvi_value?: number | null
           satellite_source?: string | null
           savi_value?: number | null
+          scene_cloud_cover?: number | null
           scene_id?: string | null
+          shadow_fraction?: number | null
           soil_moisture?: number | null
+          source_scene_count?: number
           spatial_resolution?: number | null
           tenant_id?: string
           tile_id?: string | null
           total_pixels?: number | null
+          uniformity_cv?: number | null
           updated_at?: string | null
           valid_pixels?: number | null
+          water_fraction?: number | null
         }
         Relationships: [
           {
@@ -17744,6 +17879,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ndvi_run_summary: {
+        Row: {
+          created_at: string
+          duration_seconds: number | null
+          id: string
+          lands_completed: number | null
+          lands_eligible: number | null
+          lands_failed: number | null
+          lands_processed: number | null
+          lands_skipped: number | null
+          lands_via_optical: number | null
+          lands_via_radar: number | null
+          lookback_days: number | null
+          notes: Json | null
+          observations_written: number
+          run_started_at: string
+          skip_rate_pct: number | null
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          lands_completed?: number | null
+          lands_eligible?: number | null
+          lands_failed?: number | null
+          lands_processed?: number | null
+          lands_skipped?: number | null
+          lands_via_optical?: number | null
+          lands_via_radar?: number | null
+          lookback_days?: number | null
+          notes?: Json | null
+          observations_written?: number
+          run_started_at: string
+          skip_rate_pct?: number | null
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          lands_completed?: number | null
+          lands_eligible?: number | null
+          lands_failed?: number | null
+          lands_processed?: number | null
+          lands_skipped?: number | null
+          lands_via_optical?: number | null
+          lands_via_radar?: number | null
+          lookback_days?: number | null
+          notes?: Json | null
+          observations_written?: number
+          run_started_at?: string
+          skip_rate_pct?: number | null
+        }
+        Relationships: []
       }
       ndvi_spatial_analytics: {
         Row: {
@@ -31379,6 +31568,42 @@ export type Database = {
         }
         Relationships: []
       }
+      weather_provider_token: {
+        Row: {
+          expires_at: string
+          last_error: string | null
+          last_error_at: string | null
+          obtained_at: string
+          provider: string
+          refresh_count: number
+          token: string
+          token_type: string
+          updated_at: string
+        }
+        Insert: {
+          expires_at: string
+          last_error?: string | null
+          last_error_at?: string | null
+          obtained_at?: string
+          provider: string
+          refresh_count?: number
+          token: string
+          token_type?: string
+          updated_at?: string
+        }
+        Update: {
+          expires_at?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          obtained_at?: string
+          provider?: string
+          refresh_count?: number
+          token?: string
+          token_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       webhook_logs: {
         Row: {
           attempt_number: number
@@ -32824,6 +33049,80 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ndvi_decision_grade: {
+        Row: {
+          acquisition_date: string | null
+          acquisition_time: string | null
+          age_days: number | null
+          cloud_cover: number | null
+          confidence_level: string | null
+          is_fresh: boolean | null
+          land_id: string | null
+          mcari_value: number | null
+          ndmi_value: number | null
+          ndre_value: number | null
+          ndvi_spatial_std: number | null
+          ndvi_value: number | null
+          observation_source: string | null
+          quality_score: number | null
+          recency_rank: number | null
+          savi_value: number | null
+          scene_id: string | null
+          tenant_id: string | null
+          uniformity_cv: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_ndvi_data_tenant"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       v_observation_missing_farmer_alias: {
         Row: {
           crop_group: string | null
@@ -33313,6 +33612,45 @@ export type Database = {
             referencedColumns: ["scope_code"]
           },
         ]
+      }
+      v_weather_token_status: {
+        Row: {
+          expires_at: string | null
+          is_valid: boolean | null
+          last_error: string | null
+          last_error_at: string | null
+          minutes_remaining: number | null
+          obtained_at: string | null
+          provider: string | null
+          refresh_count: number | null
+          token_length: number | null
+          token_type: string | null
+        }
+        Insert: {
+          expires_at?: string | null
+          is_valid?: never
+          last_error?: string | null
+          last_error_at?: string | null
+          minutes_remaining?: never
+          obtained_at?: string | null
+          provider?: string | null
+          refresh_count?: number | null
+          token_length?: never
+          token_type?: string | null
+        }
+        Update: {
+          expires_at?: string | null
+          is_valid?: never
+          last_error?: string | null
+          last_error_at?: string | null
+          minutes_remaining?: never
+          obtained_at?: string | null
+          provider?: string | null
+          refresh_count?: number | null
+          token_length?: never
+          token_type?: string | null
+        }
+        Relationships: []
       }
       vw_latest_soil_data: {
         Row: {
@@ -34971,6 +35309,20 @@ export type Database = {
         Args: never
         Returns: undefined
       }
+      ndvi_stage_anomaly: {
+        Args: {
+          p_agro_zone?: string
+          p_crop_code: string
+          p_das: number
+          p_ndvi: number
+        }
+        Returns: {
+          ndvi_p50: number
+          stage_code: string
+          status: string
+          z_score: number
+        }[]
+      }
       nearest_lands_summary: {
         Args: {
           p_lat: number
@@ -36179,6 +36531,7 @@ export type Database = {
         | "msme_certificate"
         | "other"
       metric_type: "system" | "usage" | "ai_model" | "financial" | "custom"
+      ndvi_observation_type: "observed" | "interpolated" | "composite"
       onboarding_step_status:
         | "pending"
         | "in_progress"
@@ -36470,6 +36823,7 @@ export const Constants = {
         "other",
       ],
       metric_type: ["system", "usage", "ai_model", "financial", "custom"],
+      ndvi_observation_type: ["observed", "interpolated", "composite"],
       onboarding_step_status: [
         "pending",
         "in_progress",
