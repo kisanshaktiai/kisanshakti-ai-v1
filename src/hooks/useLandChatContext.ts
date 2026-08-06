@@ -15,7 +15,8 @@
  *                               moisture, agro-climatic zone.
  *     • ndvi_data             → latest ndvi row within 45d for the field.
  *     • weather_current       → latest live weather bound to the land.
- *     • land_weather_metrics  → latest daily aggregate (GDD, ET0, rainfall).
+ *     • land_weather_state    → latest per-land derived agronomy
+ *                               (daily GDD, ET0, VPD, water balance, risk).
  *
  * Every column referenced here was verified against the live public schema
  * (see .lovable/plan.md audit — 2026-07-07). No column is assumed.
@@ -104,13 +105,26 @@ export interface LandChatContext {
     weather_description: string | null;
     observation_time: string | null;
   } | null;
+  /**
+   * From `public.land_weather_state`.
+   * NOTE: `gdd_daily` is TODAY's GDD contribution — NOT season-cumulative GDD.
+   * Season-cumulative GDD lives in `lands.current_gdd`.
+   */
   weatherMetrics: {
     metric_date: string | null;
-    gdd_accumulated: number | null;
+    gdd_daily: number | null;
     et0_mm: number | null;
+    vpd_kpa: number | null;
     total_rainfall_mm: number | null;
+    effective_rainfall_mm: number | null;
+    water_deficit_mm: number | null;
+    irrigation_needed: boolean | null;
     irrigation_urgency: string | null;
+    disease_risk_score: number | null;
     disease_risk_level: string | null;
+    crop_stress_level: string | null;
+    water_balance_status: string | null;
+    computed_at: string | null;
   } | null;
 }
 
@@ -181,9 +195,14 @@ async function fetchLandChatContext(
       .order('observation_time', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    (client as any)
-      .from('land_weather_metrics')
-      .select('metric_date, gdd_accumulated, et0_mm, total_rainfall_mm, irrigation_urgency, disease_risk_level')
+    client
+      .from('land_weather_state')
+      .select(
+        'metric_date, gdd_daily, et0_mm, vpd_kpa, total_rainfall_mm, ' +
+        'effective_rainfall_mm, water_deficit_mm, irrigation_needed, ' +
+        'irrigation_urgency, disease_risk_score, disease_risk_level, ' +
+        'crop_stress_level, water_balance_status, computed_at'
+      )
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
       .order('metric_date', { ascending: false })
