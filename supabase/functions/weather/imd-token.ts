@@ -20,26 +20,51 @@ export interface ImdCredentials {
   apiKey: string;
   email: string;
   password: string;
+  /** Which secret the key came from — for diagnostics only, never the value. */
+  apiKeySource?: string;
 }
 
+/**
+ * IMD binds each API key to a single registered server IP.
+ *
+ * IMD_API_KEY_SB is the key registered against the Supabase Edge Function
+ * egress IP and is therefore preferred. IMD_API_KEY (registered to a
+ * different host) is retained as a fallback so the function still works if
+ * it is ever run from that host, and so removing one secret cannot break
+ * the other path.
+ *
+ * The key SOURCE NAME is logged so a 403 can be diagnosed instantly. The key
+ * VALUE is never logged.
+ */
 export function getImdCredentials(log: LogFn): ImdCredentials | null {
-  const apiKey = env("IMD_API_KEY");
+  const keySb = env("IMD_API_KEY_SB");
+  const keyLegacy = env("IMD_API_KEY");
+  const apiKey = keySb || keyLegacy;
+  const apiKeySource = keySb ? "IMD_API_KEY_SB" : keyLegacy ? "IMD_API_KEY" : "";
+
   const email = env("IMD_EMAIL");
   const password = env("IMD_PASSWORD");
 
   const missing: string[] = [];
-  if (!apiKey) missing.push("IMD_API_KEY");
+  if (!apiKey) missing.push("IMD_API_KEY_SB or IMD_API_KEY");
   if (!email) missing.push("IMD_EMAIL");
   if (!password) missing.push("IMD_PASSWORD");
 
   if (missing.length) {
     log("warn", "imd_credentials_missing", {
       missing,
-      hint: "IMD requires X-API-KEY plus a JWT obtained with email+password. All three secrets are mandatory.",
+      hint: "IMD requires X-API-KEY plus a JWT obtained with email+password. All three are mandatory.",
     });
     return null;
   }
-  return { apiKey, email, password };
+
+  log("info", "imd_credentials_resolved", {
+    api_key_source: apiKeySource,
+    api_key_length: apiKey.length, // length only, never the value
+    using_supabase_registered_key: apiKeySource === "IMD_API_KEY_SB",
+  });
+
+  return { apiKey, email, password, apiKeySource };
 }
 
 function extractToken(payload: unknown): string | null {
