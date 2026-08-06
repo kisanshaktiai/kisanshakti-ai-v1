@@ -17852,6 +17852,7 @@ export type Database = {
           observations_written: number
           run_started_at: string
           skip_rate_pct: number | null
+          tenant_id: string | null
         }
         Insert: {
           created_at?: string
@@ -17869,6 +17870,7 @@ export type Database = {
           observations_written?: number
           run_started_at: string
           skip_rate_pct?: number | null
+          tenant_id?: string | null
         }
         Update: {
           created_at?: string
@@ -17886,6 +17888,7 @@ export type Database = {
           observations_written?: number
           run_started_at?: string
           skip_rate_pct?: number | null
+          tenant_id?: string | null
         }
         Relationships: []
       }
@@ -31323,6 +31326,7 @@ export type Database = {
           humidity_percent: number | null
           id: string
           land_id: string | null
+          location_key: string | null
           metadata: Json | null
           observation_date: string
           observation_time: string
@@ -31347,6 +31351,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           land_id?: string | null
+          location_key?: string | null
           metadata?: Json | null
           observation_date: string
           observation_time?: string
@@ -31371,6 +31376,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           land_id?: string | null
+          location_key?: string | null
           metadata?: Json | null
           observation_date?: string
           observation_time?: string
