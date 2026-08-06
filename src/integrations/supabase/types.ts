@@ -9204,6 +9204,8 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          imd_district_obj_id: string | null
+          imd_mapped_at: string | null
           is_active: boolean | null
           name: string
           name_as: string | null
@@ -9225,6 +9227,8 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          imd_district_obj_id?: string | null
+          imd_mapped_at?: string | null
           is_active?: boolean | null
           name: string
           name_as?: string | null
@@ -9246,6 +9250,8 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          imd_district_obj_id?: string | null
+          imd_mapped_at?: string | null
           is_active?: boolean | null
           name?: string
           name_as?: string | null
@@ -14207,120 +14213,123 @@ export type Database = {
           },
         ]
       }
-      land_weather_metrics: {
+      land_weather_state: {
         Row: {
-          computed_at: string | null
+          cell_key: string | null
+          computed_at: string
+          created_at: string
           crop_stress_level: string | null
           disease_risk_level: string | null
           disease_risk_score: number | null
           effective_rainfall_mm: number | null
           et0_mm: number | null
-          gdd_accumulated: number | null
           gdd_daily: number | null
           humidity_percent: number | null
           id: string
           irrigation_needed: boolean | null
           irrigation_urgency: string | null
           land_id: string
-          location_key: string | null
           metric_date: string
           runoff_loss_mm: number | null
-          soil_infiltration_rate: string | null
+          soil_type_used: string | null
           temperature_c: number | null
-          tenant_id: string
+          tenant_id: string | null
           total_rainfall_mm: number | null
+          vpd_kpa: number | null
           water_balance_status: string | null
           water_deficit_mm: number | null
           wind_speed_kmh: number | null
         }
         Insert: {
-          computed_at?: string | null
+          cell_key?: string | null
+          computed_at?: string
+          created_at?: string
           crop_stress_level?: string | null
           disease_risk_level?: string | null
           disease_risk_score?: number | null
           effective_rainfall_mm?: number | null
           et0_mm?: number | null
-          gdd_accumulated?: number | null
           gdd_daily?: number | null
           humidity_percent?: number | null
           id?: string
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           land_id: string
-          location_key?: string | null
           metric_date: string
           runoff_loss_mm?: number | null
-          soil_infiltration_rate?: string | null
+          soil_type_used?: string | null
           temperature_c?: number | null
-          tenant_id: string
+          tenant_id?: string | null
           total_rainfall_mm?: number | null
+          vpd_kpa?: number | null
           water_balance_status?: string | null
           water_deficit_mm?: number | null
           wind_speed_kmh?: number | null
         }
         Update: {
-          computed_at?: string | null
+          cell_key?: string | null
+          computed_at?: string
+          created_at?: string
           crop_stress_level?: string | null
           disease_risk_level?: string | null
           disease_risk_score?: number | null
           effective_rainfall_mm?: number | null
           et0_mm?: number | null
-          gdd_accumulated?: number | null
           gdd_daily?: number | null
           humidity_percent?: number | null
           id?: string
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           land_id?: string
-          location_key?: string | null
           metric_date?: string
           runoff_loss_mm?: number | null
-          soil_infiltration_rate?: string | null
+          soil_type_used?: string | null
           temperature_c?: number | null
-          tenant_id?: string
+          tenant_id?: string | null
           total_rainfall_mm?: number | null
+          vpd_kpa?: number | null
           water_balance_status?: string | null
           water_deficit_mm?: number | null
           wind_speed_kmh?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "land_weather_metrics_land_id_fkey"
+            foreignKeyName: "land_weather_state_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "land_agent_context"
             referencedColumns: ["land_id"]
           },
           {
-            foreignKeyName: "land_weather_metrics_land_id_fkey"
+            foreignKeyName: "land_weather_state_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "land_boundary_overlaps"
             referencedColumns: ["land_a_id"]
           },
           {
-            foreignKeyName: "land_weather_metrics_land_id_fkey"
+            foreignKeyName: "land_weather_state_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "land_boundary_overlaps"
             referencedColumns: ["land_b_id"]
           },
           {
-            foreignKeyName: "land_weather_metrics_land_id_fkey"
+            foreignKeyName: "land_weather_state_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "land_tile_coverage"
             referencedColumns: ["land_id"]
           },
           {
-            foreignKeyName: "land_weather_metrics_land_id_fkey"
+            foreignKeyName: "land_weather_state_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "land_weather_metrics_land_id_fkey"
+            foreignKeyName: "land_weather_state_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "vw_soil_summary"
@@ -18928,54 +18937,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      organization_weather_alerts: {
-        Row: {
-          acknowledged_by: Json | null
-          affected_areas: Json
-          alert_type: string
-          created_at: string | null
-          description: string
-          expires_at: string | null
-          id: string
-          is_active: boolean | null
-          organization_id: string
-          recommendations: Json | null
-          severity: string
-          title: string
-          updated_at: string | null
-        }
-        Insert: {
-          acknowledged_by?: Json | null
-          affected_areas: Json
-          alert_type: string
-          created_at?: string | null
-          description: string
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          organization_id: string
-          recommendations?: Json | null
-          severity: string
-          title: string
-          updated_at?: string | null
-        }
-        Update: {
-          acknowledged_by?: Json | null
-          affected_areas?: Json
-          alert_type?: string
-          created_at?: string | null
-          description?: string
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          organization_id?: string
-          recommendations?: Json | null
-          severity?: string
-          title?: string
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       otp_sessions: {
         Row: {
@@ -24077,53 +24038,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "mgrs_tiles"
             referencedColumns: ["tile_id", "country_id"]
-          },
-        ]
-      }
-      schedule_climate_monitoring: {
-        Row: {
-          adjustment_reason: string | null
-          adjustment_triggered: boolean | null
-          created_at: string | null
-          id: string
-          monitoring_date: string
-          ndvi_value: number | null
-          rainfall_24h: number | null
-          schedule_id: string
-          tasks_rescheduled: number | null
-          temperature_avg: number | null
-        }
-        Insert: {
-          adjustment_reason?: string | null
-          adjustment_triggered?: boolean | null
-          created_at?: string | null
-          id?: string
-          monitoring_date: string
-          ndvi_value?: number | null
-          rainfall_24h?: number | null
-          schedule_id: string
-          tasks_rescheduled?: number | null
-          temperature_avg?: number | null
-        }
-        Update: {
-          adjustment_reason?: string | null
-          adjustment_triggered?: boolean | null
-          created_at?: string | null
-          id?: string
-          monitoring_date?: string
-          ndvi_value?: number | null
-          rainfall_24h?: number | null
-          schedule_id?: string
-          tasks_rescheduled?: number | null
-          temperature_avg?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "schedule_climate_monitoring_schedule_id_fkey"
-            columns: ["schedule_id"]
-            isOneToOne: false
-            referencedRelation: "crop_schedules"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -30742,6 +30656,7 @@ export type Database = {
         Row: {
           affected_activities: string[] | null
           alert_id: string
+          alert_kind: string | null
           area_name: string
           cache_data: Json | null
           certainty: string
@@ -30752,6 +30667,9 @@ export type Database = {
           end_time: string | null
           event_type: string
           id: string
+          imd_color_code: number | null
+          imd_district_obj_id: string | null
+          imd_warning_codes: string[] | null
           instruction: string | null
           is_active: boolean
           last_fetched: string | null
@@ -30770,6 +30688,7 @@ export type Database = {
         Insert: {
           affected_activities?: string[] | null
           alert_id: string
+          alert_kind?: string | null
           area_name: string
           cache_data?: Json | null
           certainty: string
@@ -30780,6 +30699,9 @@ export type Database = {
           end_time?: string | null
           event_type: string
           id?: string
+          imd_color_code?: number | null
+          imd_district_obj_id?: string | null
+          imd_warning_codes?: string[] | null
           instruction?: string | null
           is_active?: boolean
           last_fetched?: string | null
@@ -30798,6 +30720,7 @@ export type Database = {
         Update: {
           affected_activities?: string[] | null
           alert_id?: string
+          alert_kind?: string | null
           area_name?: string
           cache_data?: Json | null
           certainty?: string
@@ -30808,6 +30731,9 @@ export type Database = {
           end_time?: string | null
           event_type?: string
           id?: string
+          imd_color_code?: number | null
+          imd_district_obj_id?: string | null
+          imd_warning_codes?: string[] | null
           instruction?: string | null
           is_active?: boolean
           last_fetched?: string | null
@@ -30830,12 +30756,16 @@ export type Database = {
           cloud_cover_percent: number | null
           created_at: string
           data_source: string
+          dew_point_celsius: number | null
           evapotranspiration_mm: number | null
           expires_at: string | null
           feels_like_celsius: number | null
           growing_degree_days: number | null
           humidity_percent: number | null
           id: string
+          imd_distance_km: number | null
+          imd_station_code: string | null
+          imd_station_name: string | null
           land_id: string | null
           latitude: number
           location_key: string | null
@@ -30852,6 +30782,8 @@ export type Database = {
           station_id: string | null
           sunrise: string | null
           sunset: string | null
+          temp_max_celsius: number | null
+          temp_min_celsius: number | null
           temperature_celsius: number | null
           tenant_id: string | null
           uv_index: number | null
@@ -30867,12 +30799,16 @@ export type Database = {
           cloud_cover_percent?: number | null
           created_at?: string
           data_source: string
+          dew_point_celsius?: number | null
           evapotranspiration_mm?: number | null
           expires_at?: string | null
           feels_like_celsius?: number | null
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          imd_distance_km?: number | null
+          imd_station_code?: string | null
+          imd_station_name?: string | null
           land_id?: string | null
           latitude: number
           location_key?: string | null
@@ -30889,6 +30825,8 @@ export type Database = {
           station_id?: string | null
           sunrise?: string | null
           sunset?: string | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
           temperature_celsius?: number | null
           tenant_id?: string | null
           uv_index?: number | null
@@ -30904,12 +30842,16 @@ export type Database = {
           cloud_cover_percent?: number | null
           created_at?: string
           data_source?: string
+          dew_point_celsius?: number | null
           evapotranspiration_mm?: number | null
           expires_at?: string | null
           feels_like_celsius?: number | null
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          imd_distance_km?: number | null
+          imd_station_code?: string | null
+          imd_station_name?: string | null
           land_id?: string | null
           latitude?: number
           location_key?: string | null
@@ -30926,6 +30868,8 @@ export type Database = {
           station_id?: string | null
           sunrise?: string | null
           sunset?: string | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
           temperature_celsius?: number | null
           tenant_id?: string | null
           uv_index?: number | null
@@ -31025,12 +30969,15 @@ export type Database = {
           growing_degree_days: number | null
           humidity_percent: number | null
           id: string
+          imd_distance_km: number | null
+          imd_station_code: string | null
           land_id: string | null
           latitude: number
           location_key: string | null
           longitude: number
           pressure_hpa: number | null
           rain_amount_mm: number | null
+          rain_prob_source: string | null
           rain_probability_percent: number | null
           snow_amount_mm: number | null
           soil_temperature_celsius: number | null
@@ -31058,12 +31005,15 @@ export type Database = {
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          imd_distance_km?: number | null
+          imd_station_code?: string | null
           land_id?: string | null
           latitude: number
           location_key?: string | null
           longitude: number
           pressure_hpa?: number | null
           rain_amount_mm?: number | null
+          rain_prob_source?: string | null
           rain_probability_percent?: number | null
           snow_amount_mm?: number | null
           soil_temperature_celsius?: number | null
@@ -31091,12 +31041,15 @@ export type Database = {
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          imd_distance_km?: number | null
+          imd_station_code?: string | null
           land_id?: string | null
           latitude?: number
           location_key?: string | null
           longitude?: number
           pressure_hpa?: number | null
           rain_amount_mm?: number | null
+          rain_prob_source?: string | null
           rain_probability_percent?: number | null
           snow_amount_mm?: number | null
           soil_temperature_celsius?: number | null
@@ -31389,6 +31342,42 @@ export type Database = {
             referencedColumns: ["land_id"]
           },
         ]
+      }
+      weather_provider_call: {
+        Row: {
+          called_at: string
+          endpoint: string
+          error_message: string | null
+          id: number
+          latency_ms: number | null
+          ok: boolean
+          provider: string
+          quota_day: string
+          run_id: string | null
+        }
+        Insert: {
+          called_at?: string
+          endpoint: string
+          error_message?: string | null
+          id?: number
+          latency_ms?: number | null
+          ok?: boolean
+          provider: string
+          quota_day?: string
+          run_id?: string | null
+        }
+        Update: {
+          called_at?: string
+          endpoint?: string
+          error_message?: string | null
+          id?: number
+          latency_ms?: number | null
+          ok?: boolean
+          provider?: string
+          quota_day?: string
+          run_id?: string | null
+        }
+        Relationships: []
       }
       webhook_logs: {
         Row: {
@@ -33265,6 +33254,19 @@ export type Database = {
           },
         ]
       }
+      v_weather_provider_utilisation: {
+        Row: {
+          avg_latency_ms: number | null
+          budget_used_pct: number | null
+          calls: number | null
+          daily_budget: number | null
+          failed_calls: number | null
+          ok_calls: number | null
+          provider: string | null
+          quota_day: string | null
+        }
+        Relationships: []
+      }
       v_weather_threshold_without_evidence: {
         Row: {
           crop_group: string | null
@@ -33500,138 +33502,6 @@ export type Database = {
           total_analyses: number | null
         }
         Relationships: []
-      }
-      weather_with_location: {
-        Row: {
-          area_acres: number | null
-          center_lat: number | null
-          center_lon: number | null
-          cloud_coverage_percent: number | null
-          created_at: string | null
-          dew_point_celsius: number | null
-          district: string | null
-          farmer_id: string | null
-          feels_like_celsius: number | null
-          humidity_percent: number | null
-          id: string | null
-          land_id: string | null
-          land_name: string | null
-          location_coords: Json | null
-          metadata: Json | null
-          observation_date: string | null
-          observation_time: string | null
-          pressure_hpa: number | null
-          rainfall_mm: number | null
-          temperature_celsius: number | null
-          tenant_id: string | null
-          updated_at: string | null
-          uv_index: number | null
-          village: string | null
-          visibility_km: number | null
-          weather_condition: string | null
-          wind_direction: string | null
-          wind_speed_kmh: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "fk_weather_land"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_agent_context"
-            referencedColumns: ["land_id"]
-          },
-          {
-            foreignKeyName: "fk_weather_land"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_boundary_overlaps"
-            referencedColumns: ["land_a_id"]
-          },
-          {
-            foreignKeyName: "fk_weather_land"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_boundary_overlaps"
-            referencedColumns: ["land_b_id"]
-          },
-          {
-            foreignKeyName: "fk_weather_land"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_tile_coverage"
-            referencedColumns: ["land_id"]
-          },
-          {
-            foreignKeyName: "fk_weather_land"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "lands"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_weather_land"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "vw_soil_summary"
-            referencedColumns: ["land_id"]
-          },
-          {
-            foreignKeyName: "weather_observations_farmer_id_fkey"
-            columns: ["farmer_id"]
-            isOneToOne: false
-            referencedRelation: "farmers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "weather_observations_farmer_id_fkey"
-            columns: ["farmer_id"]
-            isOneToOne: false
-            referencedRelation: "ndvi_full_view"
-            referencedColumns: ["farmer_id"]
-          },
-          {
-            foreignKeyName: "weather_observations_land_id_fkey"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_agent_context"
-            referencedColumns: ["land_id"]
-          },
-          {
-            foreignKeyName: "weather_observations_land_id_fkey"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_boundary_overlaps"
-            referencedColumns: ["land_a_id"]
-          },
-          {
-            foreignKeyName: "weather_observations_land_id_fkey"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_boundary_overlaps"
-            referencedColumns: ["land_b_id"]
-          },
-          {
-            foreignKeyName: "weather_observations_land_id_fkey"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "land_tile_coverage"
-            referencedColumns: ["land_id"]
-          },
-          {
-            foreignKeyName: "weather_observations_land_id_fkey"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "lands"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "weather_observations_land_id_fkey"
-            columns: ["land_id"]
-            isOneToOne: false
-            referencedRelation: "vw_soil_summary"
-            referencedColumns: ["land_id"]
-          },
-        ]
       }
     }
     Functions: {
@@ -36237,6 +36107,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      weather_ingest_health: { Args: never; Returns: Json }
     }
     Enums: {
       alert_severity: "low" | "medium" | "high" | "critical" | "info"
