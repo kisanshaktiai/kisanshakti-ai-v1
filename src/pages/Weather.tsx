@@ -19,17 +19,12 @@ import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AnimatedWeatherBackground } from '@/components/weather/AnimatedWeatherBackground';
-import { WeatherCard } from '@/components/weather/WeatherCard';
 import { RainfallChart } from '@/components/weather/RainfallChart';
-import { WeatherAnimation } from '@/components/weather/WeatherAnimation';
-import { SyncIndicator } from '@/components/weather/SyncIndicator';
-import { AgriculturalInsights } from '@/components/weather/AgriculturalInsights';
-import { WeatherMap } from '@/components/weather/WeatherMap';
 import { VoiceWeatherSummary } from '@/components/weather/VoiceWeatherSummary';
 import { WeatherHeroCard } from '@/components/weather/WeatherHeroCard';
 import { FarmingRecommendations } from '@/components/weather/FarmingRecommendations';
 import { PageShell } from '@/components/layout/PageShell';
-import { HourlyTimeline } from '@/components/weather/HourlyTimeline';
+
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { useLandWeatherState } from '@/hooks/useLandWeatherState';
