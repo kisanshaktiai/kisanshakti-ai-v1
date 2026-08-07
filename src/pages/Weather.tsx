@@ -42,7 +42,22 @@ import { SevenDayForecast } from '@/components/weather/SevenDayForecast';
 
 export default function Weather() {
   const { t } = useTranslation();
-  const { currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated } = useWeather();
+  const {
+    currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated,
+    locationSource, regionalFallbackLabel, weatherDistanceKm, weatherStationName, isStale,
+  } = useWeather();
+
+  // MODEL B — land-scoped agronomy. Display weather may borrow a nearby cell;
+  // irrigation/GDD/disease never may, so they are keyed to one selected land.
+  const { lands } = useLands();
+  const [selectedLandId, setSelectedLandId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!selectedLandId && lands?.length) setSelectedLandId(lands[0].id);
+  }, [lands, selectedLandId]);
+  const { state: landState, isToday: landStateIsToday, isLoading: landStateLoading } =
+    useLandWeatherState(selectedLandId);
+  const selectedLand = lands?.find((l: any) => l.id === selectedLandId);
+
   
   /**
    * FIX: Removed problematic useEffect with touch listeners
