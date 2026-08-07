@@ -45,7 +45,7 @@ interface SevenDayForecastProps {
 }
 
 export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   // Find min/max temp across all days for relative scale
   const allTemps = forecast.slice(0, 7).flatMap(d => [d.temp.min, d.temp.max]);
@@ -155,7 +155,7 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
                       "text-sm font-bold",
                       isFirstDay ? "text-primary" : "text-foreground"
                     )}>
-                      {getDayLabel(day.dt, index)}
+                      {getDayLabel(day.dt)}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       {format(new Date(day.dt * 1000), 'd MMM')}
