@@ -9707,6 +9707,560 @@ export type Database = {
         }
         Relationships: []
       }
+      env_derivation_run: {
+        Row: {
+          cell_key: string | null
+          engine_source_id: string | null
+          executed_at: string | null
+          land_id: string | null
+          method_id: string
+          method_version: string
+          params_hash: string | null
+          run_id: string
+          status: string | null
+        }
+        Insert: {
+          cell_key?: string | null
+          engine_source_id?: string | null
+          executed_at?: string | null
+          land_id?: string | null
+          method_id: string
+          method_version: string
+          params_hash?: string | null
+          run_id?: string
+          status?: string | null
+        }
+        Update: {
+          cell_key?: string | null
+          engine_source_id?: string | null
+          executed_at?: string | null
+          land_id?: string | null
+          method_id?: string
+          method_version?: string
+          params_hash?: string | null
+          run_id?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "env_derivation_run_engine_source_id_fkey"
+            columns: ["engine_source_id"]
+            isOneToOne: false
+            referencedRelation: "env_source_registry"
+            referencedColumns: ["source_id"]
+          },
+          {
+            foreignKeyName: "env_derivation_run_method_id_method_version_fkey"
+            columns: ["method_id", "method_version"]
+            isOneToOne: false
+            referencedRelation: "sci_method_registry"
+            referencedColumns: ["method_id", "version"]
+          },
+        ]
+      }
+      env_obs_lineage: {
+        Row: {
+          derived_obs_id: number
+          input_obs_id: number
+          run_id: string | null
+          sensitivity: number | null
+        }
+        Insert: {
+          derived_obs_id: number
+          input_obs_id: number
+          run_id?: string | null
+          sensitivity?: number | null
+        }
+        Update: {
+          derived_obs_id?: number
+          input_obs_id?: number
+          run_id?: string | null
+          sensitivity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "env_obs_lineage_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "env_derivation_run"
+            referencedColumns: ["run_id"]
+          },
+        ]
+      }
+      env_observations: {
+        Row: {
+          cell_key: string | null
+          confidence: number | null
+          created_at: string | null
+          dist_kind: string | null
+          entity_key: string | null
+          horizon_hours: number | null
+          issue_time: string
+          land_id: string | null
+          obs_id: number
+          obs_version: number | null
+          prior_version: number | null
+          property_code: string
+          qc_flags: string[] | null
+          qc_level: number | null
+          raw_unit: string | null
+          raw_value: number | null
+          revision_reason: string | null
+          source_id: string
+          superseded_by: number | null
+          u_std: number | null
+          valid_time: string
+          value: number
+        }
+        Insert: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time: string
+          value: number
+        }
+        Update: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time?: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code?: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id?: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "env_observations_property_code_fkey"
+            columns: ["property_code"]
+            isOneToOne: false
+            referencedRelation: "env_property_master"
+            referencedColumns: ["property_code"]
+          },
+          {
+            foreignKeyName: "env_observations_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "env_source_registry"
+            referencedColumns: ["source_id"]
+          },
+        ]
+      }
+      env_observations_202608: {
+        Row: {
+          cell_key: string | null
+          confidence: number | null
+          created_at: string | null
+          dist_kind: string | null
+          entity_key: string | null
+          horizon_hours: number | null
+          issue_time: string
+          land_id: string | null
+          obs_id: number
+          obs_version: number | null
+          prior_version: number | null
+          property_code: string
+          qc_flags: string[] | null
+          qc_level: number | null
+          raw_unit: string | null
+          raw_value: number | null
+          revision_reason: string | null
+          source_id: string
+          superseded_by: number | null
+          u_std: number | null
+          valid_time: string
+          value: number
+        }
+        Insert: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time: string
+          value: number
+        }
+        Update: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time?: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code?: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id?: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time?: string
+          value?: number
+        }
+        Relationships: []
+      }
+      env_observations_202609: {
+        Row: {
+          cell_key: string | null
+          confidence: number | null
+          created_at: string | null
+          dist_kind: string | null
+          entity_key: string | null
+          horizon_hours: number | null
+          issue_time: string
+          land_id: string | null
+          obs_id: number
+          obs_version: number | null
+          prior_version: number | null
+          property_code: string
+          qc_flags: string[] | null
+          qc_level: number | null
+          raw_unit: string | null
+          raw_value: number | null
+          revision_reason: string | null
+          source_id: string
+          superseded_by: number | null
+          u_std: number | null
+          valid_time: string
+          value: number
+        }
+        Insert: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time: string
+          value: number
+        }
+        Update: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time?: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code?: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id?: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time?: string
+          value?: number
+        }
+        Relationships: []
+      }
+      env_observations_202610: {
+        Row: {
+          cell_key: string | null
+          confidence: number | null
+          created_at: string | null
+          dist_kind: string | null
+          entity_key: string | null
+          horizon_hours: number | null
+          issue_time: string
+          land_id: string | null
+          obs_id: number
+          obs_version: number | null
+          prior_version: number | null
+          property_code: string
+          qc_flags: string[] | null
+          qc_level: number | null
+          raw_unit: string | null
+          raw_value: number | null
+          revision_reason: string | null
+          source_id: string
+          superseded_by: number | null
+          u_std: number | null
+          valid_time: string
+          value: number
+        }
+        Insert: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time: string
+          value: number
+        }
+        Update: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time?: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code?: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id?: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time?: string
+          value?: number
+        }
+        Relationships: []
+      }
+      env_observations_202611: {
+        Row: {
+          cell_key: string | null
+          confidence: number | null
+          created_at: string | null
+          dist_kind: string | null
+          entity_key: string | null
+          horizon_hours: number | null
+          issue_time: string
+          land_id: string | null
+          obs_id: number
+          obs_version: number | null
+          prior_version: number | null
+          property_code: string
+          qc_flags: string[] | null
+          qc_level: number | null
+          raw_unit: string | null
+          raw_value: number | null
+          revision_reason: string | null
+          source_id: string
+          superseded_by: number | null
+          u_std: number | null
+          valid_time: string
+          value: number
+        }
+        Insert: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time: string
+          value: number
+        }
+        Update: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time?: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code?: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id?: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time?: string
+          value?: number
+        }
+        Relationships: []
+      }
+      env_property_master: {
+        Row: {
+          created_at: string | null
+          display_name: string | null
+          farmer_visible: boolean | null
+          method_ref: string | null
+          plausible_max: number | null
+          plausible_min: number | null
+          property_code: string
+          unit: string
+          value_kind: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_name?: string | null
+          farmer_visible?: boolean | null
+          method_ref?: string | null
+          plausible_max?: number | null
+          plausible_min?: number | null
+          property_code: string
+          unit: string
+          value_kind?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_name?: string | null
+          farmer_visible?: boolean | null
+          method_ref?: string | null
+          plausible_max?: number | null
+          plausible_min?: number | null
+          property_code?: string
+          unit?: string
+          value_kind?: string | null
+        }
+        Relationships: []
+      }
+      env_source_registry: {
+        Row: {
+          calibration_ref: string | null
+          created_at: string | null
+          elevation_m: number | null
+          geom: unknown
+          is_active: boolean | null
+          land_id: string | null
+          sensor_spec: Json | null
+          siting_class: number | null
+          source_code: string
+          source_id: string
+          source_kind: string | null
+          tenant_id: string | null
+          trust_prior: number | null
+        }
+        Insert: {
+          calibration_ref?: string | null
+          created_at?: string | null
+          elevation_m?: number | null
+          geom?: unknown
+          is_active?: boolean | null
+          land_id?: string | null
+          sensor_spec?: Json | null
+          siting_class?: number | null
+          source_code: string
+          source_id?: string
+          source_kind?: string | null
+          tenant_id?: string | null
+          trust_prior?: number | null
+        }
+        Update: {
+          calibration_ref?: string | null
+          created_at?: string | null
+          elevation_m?: number | null
+          geom?: unknown
+          is_active?: boolean | null
+          land_id?: string | null
+          sensor_spec?: Json | null
+          siting_class?: number | null
+          source_code?: string
+          source_id?: string
+          source_kind?: string | null
+          tenant_id?: string | null
+          trust_prior?: number | null
+        }
+        Relationships: []
+      }
       epidemiology_threshold_evidence: {
         Row: {
           confidence: string
@@ -14216,6 +14770,7 @@ export type Database = {
       land_weather_state: {
         Row: {
           cell_key: string | null
+          cold_stress_dh: number | null
           computed_at: string
           confidence: number | null
           created_at: string
@@ -14223,22 +14778,37 @@ export type Database = {
           disease_risk_level: string | null
           disease_risk_score: number | null
           effective_rainfall_mm: number | null
+          et0_method: string | null
           et0_mm: number | null
+          et0_pm: number | null
+          etc_mm: number | null
           finalized_at: string | null
+          frost_risk_score: number | null
           gdd_daily: number | null
+          harvest_window_score: number | null
+          heat_stress_dh: number | null
           humidity_percent: number | null
           id: string
           irrigation_needed: boolean | null
           irrigation_urgency: string | null
           is_finalized: boolean
+          kc_ndvi_adj: number | null
+          kc_static: number | null
           land_id: string
+          lwd_est_hours: number | null
           metric_date: string
+          raw_mm: number | null
+          root_depletion_mm: number | null
           runoff_loss_mm: number | null
           soil_type_used: string | null
           source: string | null
+          spray_score: number | null
+          spray_window: Json | null
+          taw_mm: number | null
           temperature_c: number | null
           tenant_id: string | null
           total_rainfall_mm: number | null
+          u_std_et0: number | null
           vpd_kpa: number | null
           water_balance_status: string | null
           water_deficit_mm: number | null
@@ -14246,6 +14816,7 @@ export type Database = {
         }
         Insert: {
           cell_key?: string | null
+          cold_stress_dh?: number | null
           computed_at?: string
           confidence?: number | null
           created_at?: string
@@ -14253,22 +14824,37 @@ export type Database = {
           disease_risk_level?: string | null
           disease_risk_score?: number | null
           effective_rainfall_mm?: number | null
+          et0_method?: string | null
           et0_mm?: number | null
+          et0_pm?: number | null
+          etc_mm?: number | null
           finalized_at?: string | null
+          frost_risk_score?: number | null
           gdd_daily?: number | null
+          harvest_window_score?: number | null
+          heat_stress_dh?: number | null
           humidity_percent?: number | null
           id?: string
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           is_finalized?: boolean
+          kc_ndvi_adj?: number | null
+          kc_static?: number | null
           land_id: string
+          lwd_est_hours?: number | null
           metric_date: string
+          raw_mm?: number | null
+          root_depletion_mm?: number | null
           runoff_loss_mm?: number | null
           soil_type_used?: string | null
           source?: string | null
+          spray_score?: number | null
+          spray_window?: Json | null
+          taw_mm?: number | null
           temperature_c?: number | null
           tenant_id?: string | null
           total_rainfall_mm?: number | null
+          u_std_et0?: number | null
           vpd_kpa?: number | null
           water_balance_status?: string | null
           water_deficit_mm?: number | null
@@ -14276,6 +14862,7 @@ export type Database = {
         }
         Update: {
           cell_key?: string | null
+          cold_stress_dh?: number | null
           computed_at?: string
           confidence?: number | null
           created_at?: string
@@ -14283,22 +14870,37 @@ export type Database = {
           disease_risk_level?: string | null
           disease_risk_score?: number | null
           effective_rainfall_mm?: number | null
+          et0_method?: string | null
           et0_mm?: number | null
+          et0_pm?: number | null
+          etc_mm?: number | null
           finalized_at?: string | null
+          frost_risk_score?: number | null
           gdd_daily?: number | null
+          harvest_window_score?: number | null
+          heat_stress_dh?: number | null
           humidity_percent?: number | null
           id?: string
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           is_finalized?: boolean
+          kc_ndvi_adj?: number | null
+          kc_static?: number | null
           land_id?: string
+          lwd_est_hours?: number | null
           metric_date?: string
+          raw_mm?: number | null
+          root_depletion_mm?: number | null
           runoff_loss_mm?: number | null
           soil_type_used?: string | null
           source?: string | null
+          spray_score?: number | null
+          spray_window?: Json | null
+          taw_mm?: number | null
           temperature_c?: number | null
           tenant_id?: string | null
           total_rainfall_mm?: number | null
+          u_std_et0?: number | null
           vpd_kpa?: number | null
           water_balance_status?: string | null
           water_deficit_mm?: number | null
@@ -22745,6 +23347,51 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_episodes: {
+        Row: {
+          confidence: number | null
+          current_value: number | null
+          ended_at: string | null
+          episode_id: string
+          evidence_obs_ids: number[] | null
+          land_id: string
+          peak_value: number | null
+          phase: string
+          phase_updated_at: string | null
+          risk_code: string
+          started_at: string
+          tenant_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          current_value?: number | null
+          ended_at?: string | null
+          episode_id?: string
+          evidence_obs_ids?: number[] | null
+          land_id: string
+          peak_value?: number | null
+          phase: string
+          phase_updated_at?: string | null
+          risk_code: string
+          started_at: string
+          tenant_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          current_value?: number | null
+          ended_at?: string | null
+          episode_id?: string
+          evidence_obs_ids?: number[] | null
+          land_id?: string
+          peak_value?: number | null
+          phase?: string
+          phase_updated_at?: string | null
+          risk_code?: string
+          started_at?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       rule_approval_workflow: {
         Row: {
           agronomist_notes: string | null
@@ -24547,6 +25194,66 @@ export type Database = {
           report_name?: string
           schedule_cron?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      sci_method_registry: {
+        Row: {
+          applicable_crops: string[] | null
+          authoritative_source: string
+          created_at: string | null
+          equation_ref: string | null
+          geographic_scope: string[] | null
+          inputs: Json | null
+          method_id: string
+          method_kind: string | null
+          outputs: Json | null
+          params: Json | null
+          review_notes: string | null
+          review_status: string | null
+          reviewed_by: string | null
+          sensitivity: Json | null
+          valid_from: string | null
+          valid_to: string | null
+          version: string
+        }
+        Insert: {
+          applicable_crops?: string[] | null
+          authoritative_source: string
+          created_at?: string | null
+          equation_ref?: string | null
+          geographic_scope?: string[] | null
+          inputs?: Json | null
+          method_id: string
+          method_kind?: string | null
+          outputs?: Json | null
+          params?: Json | null
+          review_notes?: string | null
+          review_status?: string | null
+          reviewed_by?: string | null
+          sensitivity?: Json | null
+          valid_from?: string | null
+          valid_to?: string | null
+          version: string
+        }
+        Update: {
+          applicable_crops?: string[] | null
+          authoritative_source?: string
+          created_at?: string | null
+          equation_ref?: string | null
+          geographic_scope?: string[] | null
+          inputs?: Json | null
+          method_id?: string
+          method_kind?: string | null
+          outputs?: Json | null
+          params?: Json | null
+          review_notes?: string | null
+          review_status?: string | null
+          reviewed_by?: string | null
+          sensitivity?: Json | null
+          valid_from?: string | null
+          valid_to?: string | null
+          version?: string
         }
         Relationships: []
       }
@@ -30937,6 +31644,51 @@ export type Database = {
         }
         Relationships: []
       }
+      weather_cell_bias: {
+        Row: {
+          cell_key: string
+          property_code: string
+          rolling_bias: number | null
+          rolling_mae: number | null
+          sample_n: number | null
+          source_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          cell_key: string
+          property_code: string
+          rolling_bias?: number | null
+          rolling_mae?: number | null
+          sample_n?: number | null
+          source_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          cell_key?: string
+          property_code?: string
+          rolling_bias?: number | null
+          rolling_mae?: number | null
+          sample_n?: number | null
+          source_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_cell_bias_property_code_fkey"
+            columns: ["property_code"]
+            isOneToOne: false
+            referencedRelation: "env_property_master"
+            referencedColumns: ["property_code"]
+          },
+          {
+            foreignKeyName: "weather_cell_bias_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "env_source_registry"
+            referencedColumns: ["source_id"]
+          },
+        ]
+      }
       weather_current: {
         Row: {
           cloud_cover_percent: number | null
@@ -34503,6 +35255,7 @@ export type Database = {
         | { Args: { schema_name: string; table_name: string }; Returns: string }
         | { Args: { table_name: string }; Returns: string }
       enablelongtransactions: { Args: never; Returns: string }
+      ensure_env_partitions: { Args: never; Returns: undefined }
       ensure_onboarding_workflow: {
         Args: { p_tenant_id: string }
         Returns: string
