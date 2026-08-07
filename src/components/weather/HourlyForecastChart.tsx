@@ -9,6 +9,7 @@
 
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
@@ -19,15 +20,18 @@ interface HourlyForecastChartProps {
 }
 
 export const HourlyForecastChart: React.FC<HourlyForecastChartProps> = ({ hourlyForecast }) => {
+  const { t } = useTranslation();
+
   const chartData = useMemo(() => {
     return hourlyForecast.slice(0, 12).map((hour, index) => ({
-      time: index === 0 ? 'Now' : format(new Date(hour.dt * 1000), 'ha'),
+      time: index === 0 ? t('weather.hourly.now') : format(new Date(hour.dt * 1000), 'ha'),
       temp: Math.round(hour.temp),
       feelsLike: Math.round(hour.feels_like),
       pop: Math.round(hour.pop * 100),
       rawDt: hour.dt
     }));
-  }, [hourlyForecast]);
+  }, [hourlyForecast, t]);
+
 
   if (!hourlyForecast || hourlyForecast.length === 0) {
     return null;
