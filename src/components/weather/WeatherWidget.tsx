@@ -1,15 +1,24 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
-import { Cloud, CloudRain, Sun, CloudSnow, Loader2, Droplets, Wind, Thermometer } from 'lucide-react';
+import { Cloud, CloudRain, Sun, CloudSnow, Loader2, Droplets, Wind, Thermometer, Umbrella } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWeather } from '@/hooks/useWeather';
+import { useLands } from '@/hooks/useLands';
+import { useLandWeatherState } from '@/hooks/useLandWeatherState';
 import { AnimatedWeatherBackground } from './AnimatedWeatherBackground';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
 export const WeatherWidget: React.FC = () => {
   const navigate = useNavigate();
-  const { currentWeather, loading, lastUpdated, forecast } = useWeather();
+  // NOTE: this instance is normally a store *follower* — the weather page or
+  // whichever consumer mounted first owns the fetch loop (see useWeather).
+  const { currentWeather, loading, lastUpdated, forecast, hourlyForecast } = useWeather();
+
+  const { lands } = useLands();
+  const primaryLandId = lands?.[0]?.id;
+  const { state: landState, isToday: landStateIsToday } = useLandWeatherState(primaryLandId);
+
 
   const getWeatherIcon = (condition: string) => {
     const iconMap: Record<string, React.ReactNode> = {
