@@ -65,12 +65,20 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
     return iconConfig[main] || { icon: Cloud, color: 'text-muted-foreground', bg: 'bg-muted-foreground/40/20' };
   };
 
-  const getDayLabel = (timestamp: number, index: number): string => {
+  /**
+   * Label from the REAL date only. Using `index === 0` used to force "Today"
+   * even when the first row was tomorrow (the cache filters out past slots),
+   * which shifted every following day by one.
+   */
+  const getDayLabel = (timestamp: number): string => {
     const date = new Date(timestamp * 1000);
-    if (index === 0 || isToday(date)) return t('weather.forecast.today');
-    if (isTomorrow(date)) return 'Tmrw';
-    return format(date, 'EEE');
+    if (isToday(date)) return t('weather.forecast.today');
+    if (isTomorrow(date)) return t('weather.forecast.tomorrow');
+    return new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-IN' : `${i18n.language}-IN`, {
+      weekday: 'short',
+    }).format(date);
   };
+
 
   const getTemperatureColor = (temp: number): string => {
     if (temp >= 40) return 'text-destructive';
