@@ -197,6 +197,9 @@
       "farming_recommendations": "हवामानावर आधारित शेती सल्ला",
       "voice_summary": "हवामान सारांश ऐका",
       "hourly_chart": "तासा-तासाचा तापमान अंदाज"
+    },
+    "actions": {
+      "refresh": "ताजं करा"
     }
   }
 }
