@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-07 17:50 UTC — GAP D: ai_decision_log rows now carry a real
+//     decision_type (turn terminal outcome) and input_data.crop /
+//     growth_stage / days_since_sowing from the frozen canonical context.
 //   2026-08-08 00:00 UTC — FIX 7: runtime_trace late serialization. buildRuntimeTrace
 //     now flushes still-open spans, sorts stages, warns [RUNTIME_TRACE_EMPTY], and
 //     new recordStage()/ingestLayerTimings() fold orchestrator layer timings in.
@@ -496,7 +499,7 @@ export class RuntimeTraceCollector {
             trace_id: this.header.trace_id,
             execution_id: this.header.execution_id,
             runtime_version: this.header.runtime_version,
-            input_data: { farmer_message: extra.farmer_message ?? null, trace_id: this.header.trace_id },
+            input_data: { farmer_message: extra.farmer_message ?? null, trace_id: this.header.trace_id, crop: _canon.crop, growth_stage: _canon.growth_stage, days_since_sowing: _canon.days_since_sowing },
             output_data: this.decision ?? this.builderOutput ?? { trace_id: this.header.trace_id },
             reasoning: nonEmptyReasoning(legacyDecisionRow.reasoning, this.context?.intent?.code, 'Minimal runtime trace fallback'),
             confidence_score: confidenceScore,
@@ -524,7 +527,7 @@ export class RuntimeTraceCollector {
               schedule_id: null,
               decision_type: normalizeLegacyDecisionType(rawDecisionType),
               model_version: this.header.runtime_version,
-              input_data: { farmer_message: extra.farmer_message ?? null, trace_id: this.header.trace_id },
+              input_data: { farmer_message: extra.farmer_message ?? null, trace_id: this.header.trace_id, crop: _canon.crop, growth_stage: _canon.growth_stage, days_since_sowing: _canon.days_since_sowing },
               output_data: this.decision ?? this.builderOutput ?? { trace_id: this.header.trace_id },
               reasoning: `${nonEmptyReasoning(legacyDecisionRow.reasoning, this.context?.intent?.code, 'Bare runtime trace fallback')} trace_id=${this.header.trace_id}`,
               confidence_score: confidenceScore,

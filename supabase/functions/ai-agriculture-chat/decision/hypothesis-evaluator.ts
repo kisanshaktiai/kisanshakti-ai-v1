@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+//   2026-08-07 17:50 UTC — GAP A: CandidateHypothesis carries decision_rules.i18n_key
+//     so the clarification UI translates by key, not by English sentence.
 /**
  * CHANGE LOG
  * 2026-07-29 10:55 UTC — FIX C1-b: calculateStageRelevance forwards cultivationMethod to calculateStageRelevanceScore.

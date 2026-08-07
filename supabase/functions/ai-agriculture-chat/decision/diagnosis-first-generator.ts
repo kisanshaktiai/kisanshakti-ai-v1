@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-07 17:50 UTC — GAP A: cause labels resolve by decision_rules.i18n_key
+//     first; sentence-based translateCause is fallback only; [I18N_KEY_MISS]
+//     warning deduped per key per request.
 //   2026-08-08 00:00 UTC — FIX 5: i18n by key. Diagnosis question resolved via
 //     DB translation cache (UI_DIAGNOSIS_QUESTION_*) instead of a hardcoded
 //     English sentence; English retained as last-resort fallback only.

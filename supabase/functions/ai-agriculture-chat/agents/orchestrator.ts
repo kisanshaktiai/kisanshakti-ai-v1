@@ -1,4 +1,6 @@
 // CHANGE LOG (newest first)
+//   2026-08-07 17:50 UTC — GAP B: exit-point recovery now also attaches PREPARED
+//     clarification options when a fallback ships zero options.
 //   2026-08-08 00:00 UTC — FIX 2: never-empty-response invariant at the single
 //     exit point; FIX 7: layer timings folded into runtime_trace.
 /**
