@@ -1021,8 +1021,11 @@ async function updateWeatherAggregate(
         observation_count: obsCount + 1,
       };
 
-      const candMin = Math.min(current.temp, tempMin);
-      const candMax = Math.max(current.temp, tempMax);
+      // Running daily min/max from real observations (the instantaneous reading
+      // IS a legitimate observation for these columns; only ET0/GDD required
+      // true daily extremes).
+      const candMin = Math.min(current.temp, dailyMin ?? current.temp);
+      const candMax = Math.max(current.temp, dailyMax ?? current.temp);
       if (existing.temp_min_celsius == null || candMin < existing.temp_min_celsius) updates.temp_min_celsius = candMin;
       if (existing.temp_max_celsius == null || candMax > existing.temp_max_celsius) updates.temp_max_celsius = candMax;
 
@@ -1037,25 +1040,15 @@ async function updateWeatherAggregate(
         updates.wind_speed_max_kmh = current.wind_speed * 3.6;
       }
 
-      const indices = calculateAllAgriculturalIndices({
-        temperature_c: current.temp,
-        temperature_max_c: tempMax,
-        temperature_min_c: tempMin,
-        humidity_percent: current.humidity,
-        cloud_cover_percent: current.clouds,
-        sunrise_timestamp: current.sunrise,
-        sunset_timestamp: current.sunset,
-        rainfall_24h_mm: rain24,
-        latitude: latitude || 20,
-        day_of_year: dayOfYear,
-      });
+      const indices = calculateAllAgriculturalIndices(indicesInput, methods);
 
       updates.frost_risk = current.temp < 4;
       updates.heat_stress_risk = current.temp > 38;
       updates.disease_risk_level = indices.disease_risk.level.toLowerCase();
-      updates.gdd_accumulated = (existing.gdd_accumulated || 0) + dailyGDD;
-      updates.evapotranspiration_mm = et0;
-      updates.sunshine_hours = sunshine;
+      // D3: never write a fabricated ET0/GDD — leave the column untouched.
+      if (dailyGDD !== null) updates.gdd_accumulated = (existing.gdd_accumulated || 0) + dailyGDD;
+      if (et0 !== null) updates.evapotranspiration_mm = et0;
+      if (sunshine !== null) updates.sunshine_hours = sunshine;
 
       await supabase.from("weather_aggregates").update(updates).eq("id", existing.id);
       log(runId, "info", "aggregate_updated", { date: today, obs_count: obsCount + 1, rain_total: updates.rain_mm_total });
