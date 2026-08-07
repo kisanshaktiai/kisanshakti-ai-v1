@@ -42,11 +42,12 @@ export const HourlyForecastChart: React.FC<HourlyForecastChartProps> = ({ hourly
       return (
         <div className="bg-background/95 backdrop-blur-sm border border-border rounded-lg p-2 shadow-lg">
           <p className="text-xs font-semibold mb-1">{payload[0].payload.time}</p>
-          <p className="text-xs text-primary">Temp: {payload[0].value}°C</p>
-          <p className="text-xs text-muted-foreground">Feels: {payload[0].payload.feelsLike}°C</p>
+          <p className="text-xs text-primary">{t('weather.hourly.temp')}: {payload[0].value}°C</p>
+          <p className="text-xs text-muted-foreground">{t('weather.hourly.feels')}: {payload[0].payload.feelsLike}°C</p>
           {payload[0].payload.pop > 0 && (
-            <p className="text-xs text-blue-500">Rain: {payload[0].payload.pop}%</p>
+            <p className="text-xs text-info">{t('weather.hourly.rain')}: {payload[0].payload.pop}%</p>
           )}
+
         </div>
       );
     }
@@ -68,9 +69,10 @@ export const HourlyForecastChart: React.FC<HourlyForecastChartProps> = ({ hourly
           <CardTitle className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-1.5">
               <Activity className="h-3.5 w-3.5 text-primary" />
-              Hourly Forecast
+              {t('weather.hourly.title')}
             </span>
-            <span className="text-xs text-muted-foreground">Next 12 hours</span>
+            <span className="text-xs text-muted-foreground">{t('weather.hourly.next_12h')}</span>
+
           </CardTitle>
         </CardHeader>
         <CardContent className="pb-3">
