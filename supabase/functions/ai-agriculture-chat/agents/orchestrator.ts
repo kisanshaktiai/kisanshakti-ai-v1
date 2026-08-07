@@ -1450,6 +1450,45 @@ export class AIAgentOrchestrator {
       if (_rt && _lt) _rt.ingestLayerTimings(_lt, 'orchestrator');
     } catch { /* trace-only */ }
 
+    // GAP B (2026-08-07) — PREPARED-CLARIFICATION RECOVERY INVARIANT.
+    // A non-blank fallback message with ZERO options is a dead end for the
+    // farmer. If clarification cards were prepared earlier in the turn and the
+    // symbolic brain matched nothing (or we degraded to a fallback), attach
+    // them here. Never overwrite options that already exist.
+    try {
+      const _existingOpts = Array.isArray((response as any)?.clarification_options)
+        ? (response as any).clarification_options
+        : [];
+      const _prepared = (this as any).__preparedClarification;
+      const _preparedOpts: any[] = Array.isArray(_prepared?.structuredOptions) && _prepared.structuredOptions.length > 0
+        ? _prepared.structuredOptions
+        : (Array.isArray(_prepared?.clarificationResponse?.options) ? _prepared.clarificationResponse.options : []);
+
+      const _matchedRules: number = Array.isArray((this as any)._graphHypothesisRuleIds)
+        ? (this as any)._graphHypothesisRuleIds.length
+        : 0;
+      const _type = String((response as any)?.type ?? '');
+      const _status = String((response as any)?.decision_status ?? (response as any)?.status ?? '');
+      const _isFallback = /FALLBACK|NO_DECISION|ERROR|UNKNOWN/i.test(`${_type} ${_status}`);
+
+      if (response && _existingOpts.length === 0 && _preparedOpts.length > 0 && (_matchedRules === 0 || _isFallback)) {
+        (response as any).clarification_options = _preparedOpts;
+
+        // Mirror the follow_up shape already used by the decision_output block above.
+        const _dOut = (response as any).decision_output;
+        if (_dOut && typeof _dOut === 'object' && !_dOut.follow_up) {
+          _dOut.follow_up = { clarification_options: _preparedOpts };
+        }
+
+        console.warn(
+          `[RESPONSE_INVARIANT_ATTACHED] trace=${traceId} options=${_preparedOpts.length} ` +
+          `type=${_type || 'null'} matched_rules=${_matchedRules}`,
+        );
+      }
+    } catch (prepErr) {
+      console.warn(`[RESPONSE_INVARIANT_ATTACH_FAILED] trace=${traceId} err=${(prepErr as Error).message}`);
+    }
+
     // FIX 2 (2026-08-08) — NEVER-EMPTY-RESPONSE INVARIANT.
     // Single exit point guarantee: the caller must never receive a null
     // response, nor a response whose farmer-visible message is blank. Silent
@@ -7296,6 +7335,12 @@ export class AIAgentOrchestrator {
           clarificationSource,
         };
         
+        // GAP B (2026-08-07) — stash a reference so the SINGLE EXIT POINT can
+        // recover the prepared cards when the turn degrades to a fallback and
+        // ships zero options. Production case: 111-char STAGE_FALLBACK message
+        // with options=0 while 9 prepared cards existed.
+        (this as any).__preparedClarification = pendingClarificationResponse;
+
         console.log(`   📋 Clarification PREPARED (will use only if symbolic brain finds 0 rules)`);
       } else if (inductionBasedBypass || bypassClarification) {
         console.log(`   ✅ Clarification SKIPPED (induction bypass: ${inductionBasedBypass}, option bypass: ${bypassClarification}) - proceeding to Symbolic Decision Brain`);
