@@ -53,7 +53,24 @@ import {
   calculateDailyGDD,
   getCropGDDParams,
   estimateSunshineHours,
+  computeConfidence,
+  estimateLeafWetnessHours,
+  type HourlyWetnessInput,
 } from "./agricultural-calculations.ts";
+import { loadSciMethods, type MethodsMap } from "./sci-methods.ts";
+
+// Scientific coefficients come from public.sci_method_registry. ONE read per
+// isolate (never per calculation); the map is then passed by value into the
+// science module.
+let sciMethodsCache: MethodsMap | null = null;
+async function getSciMethods(supabase: SupabaseClient, runId: string): Promise<MethodsMap> {
+  if (sciMethodsCache) return sciMethodsCache;
+  sciMethodsCache = await loadSciMethods(
+    supabase,
+    (l, e, d) => log(runId, l as "info" | "warn" | "error", e, d),
+  );
+  return sciMethodsCache;
+}
 
 // ============================================================================
 // CONFIGURATION
