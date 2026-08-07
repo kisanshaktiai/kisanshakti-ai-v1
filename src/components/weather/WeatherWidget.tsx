@@ -137,6 +137,14 @@ export const WeatherWidget: React.FC = () => {
               )}
             </div>
 
+            {landVerdict && (
+              <p className={cn('text-[11px] font-semibold mt-2', landVerdict.tone)}>
+                {landVerdict.text}
+              </p>
+            )}
+
+
+
             {/* Provider & Update Badge */}
             <div className="flex items-center justify-between mt-3">
               {currentWeather?.provider && (
