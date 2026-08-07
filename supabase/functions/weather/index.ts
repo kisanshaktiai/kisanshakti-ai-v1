@@ -799,7 +799,7 @@ async function cacheWeatherData(
         station_ref: current.station_ref ?? current.imd_station_code ?? null,
         station_distance_km: current.imd_distance_km ?? null,
         method: current.provider === "IMD" ? "measured" : "modelled",
-        confidence: current.provider === "IMD" ? 0.9 : 0.75,
+        confidence: currentConfidence, // D6: CONFIDENCE_MODEL@1.0
         observation_date: istDate(now), // FIX: IST, not UTC
         observation_time: new Date(current.dt * 1000).toISOString(),
         temperature_celsius: current.temp,
