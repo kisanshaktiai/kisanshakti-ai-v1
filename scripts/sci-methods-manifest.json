@@ -1,0 +1,23 @@
+{
+  "_comment": "Regenerate after any registry migration. Source: public.sci_method_registry WHERE review_status='approved' (method_id + version).",
+  "generated_at": "2026-08-07T12:45Z",
+  "methods": {
+    "CONFIDENCE_MODEL": "1.0",
+    "ET0_FAO56_PM": "1.0",
+    "ET0_HARGREAVES": "1.0",
+    "EVENT_HEATWAVE_IMD": "1.0",
+    "FROST_COMPOSITE": "1.0",
+    "GDD_BASE_TEMPS": "1.0",
+    "GDD_MODIFIED": "1.0",
+    "HEAT_STRESS_FLOWERING": "1.0",
+    "KC_FAO56_TABLE12": "1.0",
+    "KC_NDVI_ADJUST": "1.0",
+    "LWD_RH_THRESHOLD": "1.0",
+    "SAXTON_RAWLS_PTF": "1.0",
+    "SOIL_TYPE_EFFECTIVE_RAIN": "1.0",
+    "SOIL_WATER_BALANCE_FAO56": "1.0",
+    "SPRAY_SUITABILITY": "1.0",
+    "VPD_TETENS": "1.0",
+    "WHEAT_TERMINAL_HEAT": "1.0"
+  }
+}

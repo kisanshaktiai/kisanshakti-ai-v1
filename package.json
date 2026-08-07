@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "bundle-rules": "npx tsx scripts/bundle-rules.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "guard": "node scripts/env-intelligence-guard.mjs",
+    "prebuild": "node scripts/env-intelligence-guard.mjs",
+    "check": "node scripts/env-intelligence-guard.mjs && eslint ."
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",
