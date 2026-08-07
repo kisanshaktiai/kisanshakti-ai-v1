@@ -30,6 +30,8 @@ export interface DiagnosisOption {
   priority: number;
   icon: string;  // Emoji for visual aid
   rule_id: string;
+  /** GAP A — decision_rules.i18n_key for the cause (key-first translation). */
+  i18n_key?: string | null;
 }
 
 export interface PhotoOption {
@@ -248,6 +250,7 @@ export async function generateDiagnosisFirstResponse(
   } = input;
   
   const traceIdFinal = trace_id || `diag_${Date.now()}`;
+  resetI18nKeyMissDedupe(); // GAP A — one [I18N_KEY_MISS] per key per request
   
   console.log(`\n═══════════════════════════════════════════════════════════════`);
   console.log(`🔬 [DiagnosisFirst v${DIAGNOSIS_FIRST_VERSION}] Generating diagnosis options`);
@@ -381,7 +384,7 @@ export async function generateDiagnosisFirstResponse(
       };
 
       // STEP 1: Try DB-driven labels FIRST (SSOT)
-      causeLabel = getCauseLabelFromDB(h.cause, language);
+      causeLabel = getCauseLabelFromDB(h.cause, language, (h as any).i18n_key ?? null);
       observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       
       const dbCauseGood = !isUntranslated(causeLabel);
@@ -448,7 +451,8 @@ export async function generateDiagnosisFirstResponse(
         confidence: h.total_score,
         priority: h.priority,
         icon: getGroupIcon(h.canonical_group),
-        rule_id: h.rule_id
+        rule_id: h.rule_id,
+        i18n_key: (h as any).i18n_key ?? null
       };
     })
   );
