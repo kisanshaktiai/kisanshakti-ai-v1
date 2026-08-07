@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { toastManager } from '@/utils/ToastManager';
 import { useLocation } from '@/hooks/useLocation';
