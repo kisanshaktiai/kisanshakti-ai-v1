@@ -145,9 +145,14 @@ if (!existsSync(SNAPSHOT)) {
         for (const k of Object.keys(shape)) expected.add(k);
       }
       for (const key of expected) {
-        const produced =
-          new RegExp(`(^|[\\s{,])${key}\\s*:`, 'm').test(assembly) ||
-          new RegExp(`response\\.${key}\\s*=`).test(assembly);
+        // Some keys (e.g. `stale`) are produced by the cache-hit early-return
+        // path rather than the final assembly object, so fall back to a
+        // file-wide production check before failing.
+        const producedBy = (hay) =>
+          new RegExp(`(^|[\\s{,])${key}\\s*:`, 'm').test(hay) ||
+          new RegExp(`response\\.${key}\\s*=`).test(hay);
+        const produced = producedBy(assembly) || producedBy(src);
+
         if (!produced) {
           fail(
             'WEATHER_CONTRACT_BROKEN',
