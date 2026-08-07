@@ -101,7 +101,7 @@ const CONFIG = {
 // ============================================================================
 
 interface WeatherRequest {
-  action: "current" | "forecast" | "agricultural" | "all" | "land" | "refresh_land_cells" | "derive_land_state";
+  action: "current" | "forecast" | "agricultural" | "all" | "land" | "land_state" | "refresh_land_cells" | "derive_land_state";
   lat?: number;
   lon?: number;
   landId?: string;
