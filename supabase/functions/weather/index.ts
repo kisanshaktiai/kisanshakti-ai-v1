@@ -58,6 +58,8 @@ import {
   type HourlyWetnessInput,
 } from "./agricultural-calculations.ts";
 import { loadSciMethods, type MethodsMap } from "./sci-methods.ts";
+import { runDailyDerive } from "./derive-pipeline.ts";
+
 
 // Scientific coefficients come from public.sci_method_registry. ONE read per
 // isolate (never per calculation); the map is then passed by value into the
@@ -118,7 +120,7 @@ const CONFIG = {
 // ============================================================================
 
 interface WeatherRequest {
-  action: "current" | "forecast" | "agricultural" | "all" | "land" | "land_state" | "refresh_land_cells" | "derive_land_state";
+  action: "current" | "forecast" | "agricultural" | "all" | "land" | "land_state" | "refresh_land_cells" | "derive_land_state" | "daily_derive";
   lat?: number;
   lon?: number;
   landId?: string;
@@ -1390,11 +1392,33 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
+      // D9/D10: scientific daily derive + observation-spine dual-write.
+      // Runs AFTER the legacy metric loop so land_weather_state already has
+      // its legacy columns; this fills the new scientific columns, writes
+      // env_observations + lineage, and maintains risk_episodes.
+      let spine: unknown = null;
+      try {
+        const methods = await getSciMethods(supabase, runId);
+        spine = (await runDailyDerive(supabase, runId, methods, log)).summary;
+      } catch (e) {
+        log(runId, "warn", "daily_derive_failed", { error: String(e) });
+      }
+
       log(runId, "info", "land_state_derived", { derived, skipped });
       return new Response(JSON.stringify({
-        action, derived, skipped, timestamp: new Date().toISOString(),
+        action, derived, skipped, spine, timestamp: new Date().toISOString(),
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    // ---- Scientific derive only (single land or all) ------------------------
+    if (action === "daily_derive") {
+      const methods = await getSciMethods(supabase, runId);
+      const { summary } = await runDailyDerive(supabase, runId, methods, log, landId ?? undefined);
+      return new Response(JSON.stringify({
+        action, ...summary, timestamp: new Date().toISOString(),
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
 
     // ---- MODEL B (read): latest derived agronomy for ONE land ---------------
     // Read-only projection of land_weather_state. The browser cannot read this
