@@ -624,7 +624,7 @@ export default function Home() {
                     <Activity className="w-3.5 h-3.5 text-primary" />
                     <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.pressure')}</span>
                     <span className="text-sm font-bold text-foreground">
-                      {currentWeather?.pressure || '--'} <span className="text-[10px] font-normal">hPa</span>
+                      {currentWeather?.pressure != null ? currentWeather.pressure : '--'} <span className="text-[10px] font-normal">hPa</span>
                     </span>
                   </motion.div>
                 </motion.div>
