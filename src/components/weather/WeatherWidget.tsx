@@ -122,7 +122,14 @@ export const WeatherWidget: React.FC = () => {
                 <span className="text-[10px] font-medium">{currentWeather?.wind_speed ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '--'}</span>
               </div>
               
-              {rainChance > 0 && (
+              {rain6h > 0 && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-info/20 backdrop-blur-sm border border-info/30">
+                  <Umbrella className="w-3 h-3 text-info" />
+                  <span className="text-[10px] font-medium text-info">{rain6h}% / 6h</span>
+                </div>
+              )}
+
+              {rain6h === 0 && rainChance > 0 && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-info/20 backdrop-blur-sm border border-info/30">
                   <CloudRain className="w-3 h-3 text-info" />
                   <span className="text-[10px] font-medium text-info">{rainChance}%</span>
