@@ -415,8 +415,9 @@ export default function Home() {
                           <div className="flex flex-col">
                             <span className="text-[9px] text-muted-foreground">{t('home.stats.temp')}</span>
                             <span className="text-sm font-bold text-foreground">
-                              {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}°C
+                              {currentWeather?.temp != null ? Math.round(currentWeather.temp) : '--'}°C
                             </span>
+
                           </div>
                         </>
                       )}
