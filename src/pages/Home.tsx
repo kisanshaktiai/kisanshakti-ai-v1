@@ -427,8 +427,9 @@ export default function Home() {
                           <div className="flex flex-col">
                             <span className="text-[9px] text-muted-foreground">{t('home.stats.humidity')}</span>
                             <span className="text-sm font-bold text-foreground">
-                              {currentWeather?.humidity || '--'}%
+                              {currentWeather?.humidity != null ? currentWeather.humidity : '--'}%
                             </span>
+
                           </div>
                         </>
                       )}
