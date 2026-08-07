@@ -45,8 +45,52 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const { currentWeather } = useWeather();
+  const {
+    currentWeather,
+    forecast,
+    hourlyForecast,
+    loading: weatherLoading,
+    lastUpdated,
+    isStale: weatherIsStale,
+    locationSource,
+    weatherDistanceKm,
+    weatherStationName,
+    refetch: refetchWeather,
+  } = useWeather();
   const reduceMotion = useReducedMotion();
+
+  // ---------------------------------------------------------------------
+  // Weather card provenance + freshness (the farmer must be able to tell
+  // "my location" from "a station 12 km away" from "regional estimate").
+  // ---------------------------------------------------------------------
+  const weatherProvenance = (() => {
+    if (locationSource === 'regional') return t('weather.provenance.regional');
+    if (weatherDistanceKm != null && weatherDistanceKm >= 1) {
+      return weatherStationName
+        ? t('weather.provenance.named_station', { name: weatherStationName, km: weatherDistanceKm })
+        : t('weather.provenance.nearby_station', { km: weatherDistanceKm });
+    }
+    if (locationSource === 'farm') return t('weather.provenance.your_field');
+    return t('weather.provenance.your_location');
+  })();
+
+  const weatherUpdatedLabel = (() => {
+    if (!lastUpdated) return null;
+    const mins = Math.floor((Date.now() - lastUpdated) / 60000);
+    if (mins < 1) return t('weather.header.updated_now');
+    if (mins < 60) return t('weather.header.updated_minutes', { minutes: mins });
+    const hrs = Math.floor(mins / 60);
+    return hrs === 1 ? t('weather.header.updated_hour') : t('weather.header.updated_hours', { hours: hrs });
+  })();
+
+  // Rain in the next 6 hours is what actually changes the morning plan.
+  const rainNext6h = (() => {
+    const next6 = (hourlyForecast ?? []).slice(0, 6);
+    if (next6.length) return Math.round(Math.max(...next6.map((h: any) => Number(h?.pop ?? 0))) * 100);
+    const pop = forecast?.[0]?.pop;
+    return pop != null ? Math.round(Number(pop) * 100) : 0;
+  })();
+
 
   const currentTime = useMinuteTick();
   const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
