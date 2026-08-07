@@ -2,6 +2,9 @@
  * CHANGE LOG
  * 2026-08-08 00:00 UTC — FIX 4: deterministic stage resolution. crop_stage_master
  *   is now loaded with is_active=true and a stable server-side ORDER BY, and
+ *   2026-08-07 17:50 UTC — GAP C: rank axis 5 now tests stage_node_type
+ *     'biological' (real DB enum) and 'alias' picks resolve to their
+ *     canonical_stage_id row via the new masterById index.
  *   getStageByDAS ranks overlapping windows by a total order (lane → cycle →
  *   das_reference → non-concurrent → canonical node → narrowest span → das_min
  *   → stage_code). Emits [STAGE_RESOLUTION_DETERMINISTIC] when >1 candidate.
@@ -78,6 +81,8 @@ interface Cache {
   knowledgeByCropStage: Map<string, StageKnowledgeRow>;
   // Adjacency list built from public.crop_stage_graph — SSOT for stage
   stageAdjacency: Map<string, Set<string>>;
+  /** GAP C — crop_stage_master.id → row, for alias → canonical resolution. */
+  masterById: Map<string, StageMasterRow>;
 }
 
 let cache: Cache | null = null;
@@ -279,7 +284,11 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
   const knowledgeByCropStage = new Map<string, StageKnowledgeRow>();
   for (const r of knowledge) knowledgeByCropStage.set(k(r.crop_code, r.growth_stage), r);
 
-  cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage, stageAdjacency };
+  // GAP C — id index so an 'alias' node can be resolved to its canonical row.
+  const masterById = new Map<string, StageMasterRow>();
+  for (const r of master) if (r?.id) masterById.set(String(r.id), r);
+
+  cache = { loadedAt: now, master, knowledge, byCropStage, knowledgeByCropStage, stageAdjacency, masterById };
   console.log(
     `[STAGE_KNOWLEDGE] loaded master=${master.length} knowledge=${knowledge.length} adjacency=${stageAdjacency.size}`
   );
@@ -350,7 +359,9 @@ export function getStageCategoryFromDB(
 //   2. cycle match     (explicit crop_cycle > null)
 //   3. reference match (explicit das_reference > null)
 //   4. NOT is_concurrent_window (primary timeline beats overlay windows)
-//   5. stage_node_type === 'stage' (canonical node beats sub/parent nodes)
+//   5. stage_node_type === 'biological' (DB enum is
+//      'biological' | 'operational' | 'alias' | 'lifecycle_variant';
+//      GAP C fixed axis 5, which previously tested a value that never occurs)
 //   6. narrowest DAS window (das_max - das_min)
 //   7. lowest das_min
 //   8. stage_code ASC (final, stable tiebreak)
@@ -386,7 +397,7 @@ export function getStageByDAS(
       cycle && r.crop_cycle && String(r.crop_cycle).toLowerCase() === cycle ? 0 : 1,
       ref && r.das_reference && String(r.das_reference).toLowerCase() === ref ? 0 : 1,
       r.is_concurrent_window === true ? 1 : 0,
-      String(r.stage_node_type ?? 'stage').toLowerCase() === 'stage' ? 0 : 1,
+      String(r.stage_node_type ?? 'biological').toLowerCase() === 'biological' ? 0 : 1,
       span,
       r.das_min ?? 0,
     ];
@@ -402,7 +413,20 @@ export function getStageByDAS(
       .localeCompare(String(b.stage_code ?? b.growth_stage ?? ''));
   });
 
-  const picked = sorted[0];
+  let picked = sorted[0];
+
+  // GAP C — an 'alias' node is a pointer, not a stage. Resolve it to the
+  // canonical master row so downstream consumers never see the alias name.
+  if (picked && String(picked.stage_node_type ?? '').toLowerCase() === 'alias' && picked.canonical_stage_id) {
+    const canonical = cache.masterById.get(String(picked.canonical_stage_id));
+    if (canonical) {
+      console.log(
+        `[STAGE_ALIAS_RESOLVED] alias=${picked.growth_stage} canonical=${canonical.growth_stage}`,
+      );
+      picked = canonical;
+    }
+  }
+
   if (candidates.length > 1) {
     warnOnce(
       `das:${cropKey}:${das}:${method ?? 'any'}`,
