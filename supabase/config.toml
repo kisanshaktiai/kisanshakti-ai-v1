@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.weather]
 verify_jwt = false
 
+[functions.env-intelligence]
+verify_jwt = false
+
 [functions.ai-agriculture-chat]
 verify_jwt = false
 
