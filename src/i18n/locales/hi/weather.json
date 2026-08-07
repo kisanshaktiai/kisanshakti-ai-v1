@@ -197,6 +197,9 @@
       "farming_recommendations": "मौसम के आधार पर खेती सलाह",
       "voice_summary": "मौसम सारांश सुनें",
       "hourly_chart": "प्रति घंटा तापमान पूर्वानुमान"
+    },
+    "actions": {
+      "refresh": "नया करें"
     }
   }
 }

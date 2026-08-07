@@ -197,6 +197,9 @@
       "farming_recommendations": "Farming recommendations based on weather",
       "voice_summary": "Read weather summary aloud",
       "hourly_chart": "Hourly temperature forecast"
+    },
+    "actions": {
+      "refresh": "Refresh"
     }
   }
 }

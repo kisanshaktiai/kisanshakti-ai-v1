@@ -18,7 +18,9 @@ import {
   Sun,
   CloudRain,
   CloudSnow,
+  RefreshCw,
 } from 'lucide-react';
+
 
 import { useAuthStore } from '@/stores/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -45,8 +47,52 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const { currentWeather } = useWeather();
+  const {
+    currentWeather,
+    forecast,
+    hourlyForecast,
+    loading: weatherLoading,
+    lastUpdated,
+    isStale: weatherIsStale,
+    locationSource,
+    weatherDistanceKm,
+    weatherStationName,
+    refetch: refetchWeather,
+  } = useWeather();
   const reduceMotion = useReducedMotion();
+
+  // ---------------------------------------------------------------------
+  // Weather card provenance + freshness (the farmer must be able to tell
+  // "my location" from "a station 12 km away" from "regional estimate").
+  // ---------------------------------------------------------------------
+  const weatherProvenance = (() => {
+    if (locationSource === 'regional') return t('weather.provenance.regional');
+    if (weatherDistanceKm != null && weatherDistanceKm >= 1) {
+      return weatherStationName
+        ? t('weather.provenance.named_station', { name: weatherStationName, km: weatherDistanceKm })
+        : t('weather.provenance.nearby_station', { km: weatherDistanceKm });
+    }
+    if (locationSource === 'farm') return t('weather.provenance.your_field');
+    return t('weather.provenance.your_location');
+  })();
+
+  const weatherUpdatedLabel = (() => {
+    if (!lastUpdated) return null;
+    const mins = Math.floor((Date.now() - lastUpdated) / 60000);
+    if (mins < 1) return t('weather.header.updated_now');
+    if (mins < 60) return t('weather.header.updated_minutes', { minutes: mins });
+    const hrs = Math.floor(mins / 60);
+    return hrs === 1 ? t('weather.header.updated_hour') : t('weather.header.updated_hours', { hours: hrs });
+  })();
+
+  // Rain in the next 6 hours is what actually changes the morning plan.
+  const rainNext6h = (() => {
+    const next6 = (hourlyForecast ?? []).slice(0, 6);
+    if (next6.length) return Math.round(Math.max(...next6.map((h: any) => Number(h?.pop ?? 0))) * 100);
+    const pop = forecast?.[0]?.pop;
+    return pop != null ? Math.round(Number(pop) * 100) : 0;
+  })();
+
 
   const currentTime = useMinuteTick();
   const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
@@ -371,8 +417,9 @@ export default function Home() {
                           <div className="flex flex-col">
                             <span className="text-[9px] text-muted-foreground">{t('home.stats.temp')}</span>
                             <span className="text-sm font-bold text-foreground">
-                              {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}°C
+                              {currentWeather?.temp != null ? Math.round(currentWeather.temp) : '--'}°C
                             </span>
+
                           </div>
                         </>
                       )}
@@ -382,8 +429,9 @@ export default function Home() {
                           <div className="flex flex-col">
                             <span className="text-[9px] text-muted-foreground">{t('home.stats.humidity')}</span>
                             <span className="text-sm font-bold text-foreground">
-                              {currentWeather?.humidity || '--'}%
+                              {currentWeather?.humidity != null ? currentWeather.humidity : '--'}%
                             </span>
+
                           </div>
                         </>
                       )}
@@ -393,8 +441,9 @@ export default function Home() {
                           <div className="flex flex-col">
                             <span className="text-[9px] text-muted-foreground">{t('home.stats.pressure')}</span>
                             <span className="text-sm font-bold text-foreground">
-                              {currentWeather?.pressure || '--'} hPa
+                              {currentWeather?.pressure != null ? currentWeather.pressure : '--'} hPa
                             </span>
+
                           </div>
                         </>
                       )}
@@ -445,6 +494,41 @@ export default function Home() {
                   </div>
                 </motion.div>
 
+                {/* Provenance + freshness + manual refresh */}
+                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
+                    <MapPin className="w-2.5 h-2.5" />
+                    {weatherProvenance}
+                  </span>
+                  {weatherUpdatedLabel && (
+                    <span className="text-[10px] text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
+                      {t('weather.header.updated_prefix')} {weatherUpdatedLabel}
+                    </span>
+                  )}
+                  {weatherIsStale && (
+                    <span className="text-[10px] font-medium text-warning bg-warning/15 rounded-full px-2 py-0.5">
+                      {t('weather.provenance.stale')}
+                    </span>
+                  )}
+                  {rainNext6h > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-info bg-info/15 rounded-full px-2 py-0.5">
+                      <CloudRain className="w-2.5 h-2.5" />
+                      {t('weather.widget.rain_6h', { value: rainNext6h })}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={t('weather.actions.refresh')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      refetchWeather();
+                    }}
+                    className="ml-auto p-1 rounded-full bg-background/60 text-muted-foreground active:scale-95 transition-transform"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${weatherLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
                 {/* Header - Compact */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-baseline gap-2">
@@ -454,7 +538,7 @@ export default function Home() {
                       transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
                       className="text-5xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent"
                     >
-                      {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}
+                      {currentWeather?.temp != null ? Math.round(currentWeather.temp) : '--'}
                     </motion.span>
                     <div className="flex flex-col">
                       <span className="text-2xl text-muted-foreground font-light">°C</span>
@@ -465,7 +549,7 @@ export default function Home() {
                         className="text-[10px] text-muted-foreground flex items-center gap-1"
                       >
                         <Thermometer className="w-2.5 h-2.5" />
-                        {currentWeather?.feels_like ? Math.round(currentWeather.feels_like) : '--'}°
+                        {currentWeather?.feels_like != null ? Math.round(currentWeather.feels_like) : '--'}°
                       </motion.span>
                     </div>
                   </div>
@@ -496,6 +580,7 @@ export default function Home() {
                   </motion.div>
                 </div>
 
+
                 {/* Weather Details Grid - Compact */}
                 <motion.div
                   className="grid grid-cols-3 gap-1.5 pt-2 mt-2 border-t border-border/20"
@@ -511,9 +596,10 @@ export default function Home() {
                     <Wind className="w-3.5 h-3.5 text-primary" />
                     <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.wind')}</span>
                     <span className="text-sm font-bold text-foreground">
-                      {currentWeather?.wind_speed ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
-                      <span className="text-[10px] font-normal"> km/h</span>
+                      {currentWeather?.wind_speed != null ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
+                      <span className="text-[10px] font-normal"> {t('weather.units.kmh')}</span>
                     </span>
+
                   </motion.div>
 
                   <motion.div
@@ -524,9 +610,10 @@ export default function Home() {
                     <Droplets className="w-3.5 h-3.5 text-primary" />
                     <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.humidity')}</span>
                     <span className="text-sm font-bold text-foreground">
-                      {currentWeather?.humidity || '--'}
+                      {currentWeather?.humidity != null ? currentWeather.humidity : '--'}
                       <span className="text-[10px] font-normal">%</span>
                     </span>
+
                   </motion.div>
 
                   <motion.div
@@ -537,7 +624,7 @@ export default function Home() {
                     <Activity className="w-3.5 h-3.5 text-primary" />
                     <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.pressure')}</span>
                     <span className="text-sm font-bold text-foreground">
-                      {currentWeather?.pressure || '--'} <span className="text-[10px] font-normal">hPa</span>
+                      {currentWeather?.pressure != null ? currentWeather.pressure : '--'} <span className="text-[10px] font-normal">hPa</span>
                     </span>
                   </motion.div>
                 </motion.div>
