@@ -946,6 +946,8 @@ async function updateWeatherAggregate(
   _longitude: number,
   dewPointC: number,
   rain24: number,
+  methods?: MethodsMap,
+  wetnessSeries?: HourlyWetnessInput[],
 ) {
   // FIX: IST date and IST hour. The runtime is UTC; farms are IST (+5:30), so
   // every rain-period bucket was previously shifted by 5.5 hours and a late
@@ -958,14 +960,45 @@ async function updateWeatherAggregate(
   else if (hour >= 17 && hour < 21) rainColumn = "rain_mm_evening";
   else if (hour >= 21 || hour < 6) rainColumn = "rain_mm_night";
 
-  const tempMax = current.temp_max ?? current.temp;
-  const tempMin = current.temp_min ?? current.temp;
+  // D3 FIX: daily Tmax/Tmin are used ONLY when the provider actually supplied
+  // them. Substituting the instantaneous temperature (the old
+  // `current.temp_max ?? current.temp`) fabricated a zero diurnal range and
+  // poisoned ET0/GDD. When they are missing, ET0/GDD are skipped here and the
+  // daily finalize job (which reads weather_aggregates) computes them.
+  const dailyMax = Number.isFinite(current.temp_max as number) ? (current.temp_max as number) : null;
+  const dailyMin = Number.isFinite(current.temp_min as number) ? (current.temp_min as number) : null;
+  const hasDaily = dailyMax !== null && dailyMin !== null;
+  const hasLat = Number.isFinite(latitude);
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
 
-  const et0 = calculateET0Hargreaves(tempMax, tempMin, latitude || 20, dayOfYear);
-  const gddParams = getCropGDDParams("DEFAULT");
-  const dailyGDD = calculateDailyGDD(tempMax, tempMin, gddParams.baseTemp, gddParams.maxTemp);
-  const sunshine = estimateSunshineHours(current.clouds, current.sunrise, current.sunset);
+  const et0 = hasDaily && hasLat
+    ? calculateET0Hargreaves(dailyMax as number, dailyMin as number, latitude, dayOfYear, methods)
+    : null;
+  const gddParams = getCropGDDParams("DEFAULT", methods);
+  const dailyGDD = hasDaily
+    ? calculateDailyGDD(dailyMax as number, dailyMin as number, gddParams.baseTemp, gddParams.maxTemp)
+    : null;
+  const sunshine = Number.isFinite(current.sunrise) && Number.isFinite(current.sunset) && current.sunset > current.sunrise
+    ? estimateSunshineHours(current.clouds, current.sunrise, current.sunset)
+    : null;
+  if (!hasDaily) log(runId, "info", "agg_qc_flag", { flag: "MISSING_TMAXMIN", location_key: locationKey });
+
+  const indicesInput = {
+    temperature_c: current.temp,
+    temperature_max_c: dailyMax ?? undefined,
+    temperature_min_c: dailyMin ?? undefined,
+    humidity_percent: current.humidity,
+    cloud_cover_percent: current.clouds,
+    sunrise_timestamp: current.sunrise,
+    sunset_timestamp: current.sunset,
+    rainfall_24h_mm: rain24,
+    latitude: hasLat ? latitude : undefined,
+    day_of_year: dayOfYear,
+    wind_speed_ms: current.wind_speed,
+    pressure_hpa: current.pressure,
+    dew_point_c: dewPointC,
+    hourly_series: wetnessSeries,
+  };
 
   try {
     // FIX: .eq('land_id', null) never matches SQL NULL in PostgREST, so this
