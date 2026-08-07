@@ -1,14 +1,15 @@
 {
   "__meta": {
     "page": "weather",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2026-08-07"
   },
   "weather": {
     "header": {
       "title": "मौसम",
-      "current_location": "वर्तमान स्थान",
+      "current_location": "आपकी जगह",
+      "updated_prefix": "अपडेट",
       "updated_now": "अभी-अभी",
       "updated_minutes": "{{minutes}} मिनट पहले",
       "updated_hour": "1 घंटा पहले",
@@ -18,11 +19,21 @@
       "feels_like": "{{temp}}°C जैसा लग रहा है",
       "provider": "{{provider}} से डेटा"
     },
+    "provenance": {
+      "your_field": "आपका खेत",
+      "your_location": "आप जहाँ हैं",
+      "nearby_station": "पास का केंद्र — {{km}} किमी",
+      "named_station": "{{name}} — {{km}} किमी",
+      "regional": "इलाके का अंदाज़ा",
+      "stale": "पुरानी जानकारी"
+    },
     "stats": {
       "wind": "हवा",
       "humidity": "नमी",
-      "visibility": "दृश्यता",
-      "pressure": "दबाव"
+      "visibility": "दिखाई देना",
+      "pressure": "दबाव",
+      "uv": "धूप (UV)",
+      "dew_point": "ओस"
     },
     "units": {
       "celsius": "°C",
@@ -30,32 +41,95 @@
       "percent": "%",
       "km": "किमी",
       "hpa": "hPa",
-      "mm": "मिमी"
+      "mm": "मिमी",
+      "kpa": "kPa"
     },
     "forecast": {
-      "title": "7 दिन का पूर्वानुमान",
-      "daily": "दैनिक",
-      "hourly": "प्रति घंटा",
+      "title": "7 दिन का अंदाज़ा",
+      "daily": "रोज़",
+      "hourly": "हर घंटे",
       "today": "आज",
-      "week": "सप्ताह",
+      "tomorrow": "कल",
+      "week": "हफ़्ता",
       "days_7": "7 दिन",
-      "temp_max": "अधिकतम",
-      "temp_min": "न्यूनतम",
-      "rain_chance": "बारिश"
+      "temp_max": "ज़्यादा",
+      "temp_min": "कम",
+      "rain_chance": "बारिश",
+      "low_short": "कम",
+      "high_short": "ज़्यादा",
+      "rainy_days": "{{count}} दिन बारिश"
+    },
+    "hourly": {
+      "title": "घंटे-घंटे का अंदाज़ा",
+      "next_12h": "अगले 12 घंटे",
+      "now": "अभी",
+      "temp": "तापमान",
+      "feels": "महसूस",
+      "rain": "बारिश"
     },
     "rainfall": {
-      "title": "वर्षा",
+      "title": "बारिश",
       "today": "आज",
-      "week": "सप्ताह",
-      "chart_label": "वर्षा (मिमी)",
-      "cumulative": "संचयी",
+      "week": "हफ़्ता",
+      "chart_label": "बारिश (मिमी)",
+      "cumulative": "कुल",
       "no_rain": "बारिश की संभावना नहीं"
+    },
+    "field": {
+      "select": "अपना खेत चुनें",
+      "title": "आज आपका खेत",
+      "today": "आज",
+      "as_of": "{{date}} तक",
+      "stale_note": "पिछले दिन की गणना दिख रही है। आज के आंकड़े अभी तैयार नहीं हैं।",
+      "not_ready_title": "खेत की गणना अभी नहीं हुई",
+      "not_ready_desc": "पानी की ज़रूरत, पानी का उड़ना और रोग का खतरा — आज की गणना होते ही यहाँ दिखेगा।",
+      "irrigation": "पानी देना",
+      "deficit": "{{value}} मिमी पानी कम",
+      "et0": "पानी उड़ना (ET0)",
+      "eff_rain": "काम की बारिश {{value}} मिमी",
+      "vpd": "सूखी हवा (VPD)",
+      "rain": "बारिश {{value}} मिमी",
+      "gdd": "आज की गर्मी इकाई",
+      "disease_risk": "रोग का खतरा",
+      "score": "अंक {{value}}",
+      "crop_stress": "फसल पर तनाव",
+      "soil": "मिट्टी: {{value}}",
+      "needed": "ज़रूरत है",
+      "not_needed": "ज़रूरत नहीं",
+      "footer": "सिर्फ़ इसी खेत के लिए गणना",
+      "confidence": "भरोसा {{value}}%",
+      "level": {
+        "critical": "बहुत ज़रूरी",
+        "urgent": "जल्दी करें",
+        "high": "ज़्यादा",
+        "medium": "मध्यम",
+        "moderate": "मध्यम",
+        "low": "कम",
+        "none": "कुछ नहीं",
+        "severe": "गंभीर",
+        "deficit": "पानी की कमी",
+        "surplus": "पानी ज़्यादा",
+        "balanced": "ठीक-ठाक",
+        "adequate": "पानी पूरा",
+        "unknown": "--"
+      }
+    },
+    "widget": {
+      "title": "आज का मौसम",
+      "loading": "लोड हो रहा है...",
+      "rain_6h": "{{value}}% / 6 घंटे",
+      "irrigate_today": "आज पानी दें",
+      "irrigation_soon": "जल्द पानी देना होगा",
+      "high_disease_risk": "रोग का खतरा ज़्यादा",
+      "normal": "खेत की हालत ठीक है"
     },
     "farming": {
       "title": "खेती सलाह",
       "irrigation": "सिंचाई",
       "spraying": "छिड़काव",
       "planting": "बुवाई",
+      "field_badge": "खेत",
+      "deficit_mm": "{{value}} मिमी कम",
       "high": "अधिक",
       "medium": "मध्यम",
       "low": "कम",
@@ -69,6 +143,7 @@
     "voice": {
       "read": "सुनें",
       "stop": "बंद करें",
+      "error": "मौसम पढ़ा नहीं जा सका",
       "summary": "आज का मौसम: {{temp}} डिग्री सेल्सियस, {{condition}}। {{feelsLike}} डिग्री जैसा महसूस हो रहा है। नमी {{humidity}} प्रतिशत है। हवा की गति {{windSpeed}} किलोमीटर प्रति घंटा है। {{rainInfo}} {{advice}}",
       "high_rain_advice": "अधिक बारिश की संभावना के कारण आज छिड़काव से बचें।",
       "high_wind_advice": "तेज हवा के कारण छिड़काव में सावधानी बरतें।",
@@ -78,7 +153,7 @@
       "no_rain": "बारिश की संभावना नहीं है।"
     },
     "toast": {
-      "sync_success": "मौसम डेटा सफलतापूर्वक अपडेट हुआ",
+      "sync_success": "मौसम डेटा अपडेट हो गया",
       "sync_error": "मौसम डेटा अपडेट नहीं हो सका",
       "location_error": "आपका स्थान नहीं मिल सका",
       "offline": "आप ऑफलाइन हैं। पुराना मौसम डेटा दिख रहा है।",
@@ -123,25 +198,5 @@
       "voice_summary": "मौसम सारांश सुनें",
       "hourly_chart": "प्रति घंटा तापमान पूर्वानुमान"
     }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show today's weather",
-      "What's the weather forecast?",
-      "Read the weather report",
-      "How much rain is expected?"
-    ],
-    "voice_examples_hi": [
-      "आज का मौसम दिखाओ",
-      "मौसम का पूर्वानुमान क्या है?",
-      "मौसम रिपोर्ट पढ़ो",
-      "कितनी बारिश होगी?"
-    ],
-    "voice_examples_mr": [
-      "आजचे हवामान दाखवा",
-      "हवामानाचा अंदाज काय आहे?",
-      "हवामान अहवाल वाचा",
-      "किती पाऊस अपेक्षित आहे?"
-    ]
   }
 }

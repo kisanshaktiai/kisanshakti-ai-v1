@@ -89,38 +89,39 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
   const planting = getPlantingAdvice();
 
   const irrigationSub = irrigation.fromField && landState?.water_deficit_mm !== null && landState?.water_deficit_mm !== undefined
-    ? `${Number(landState.water_deficit_mm).toFixed(1)} mm deficit`
+    ? t('weather.farming.deficit_mm', { value: Number(landState.water_deficit_mm).toFixed(1) })
     : undefined;
 
   const recommendations = [
     {
       icon: Droplets,
-      title: t('weather.farming.irrigation', 'Irrigation'),
+      title: t('weather.farming.irrigation'),
       ...irrigation,
       sub: irrigationSub,
-      label: irrigation.status === 'high' ? t('weather.farming.high', 'HIGH') :
-             irrigation.status === 'medium' ? t('weather.farming.medium', 'MEDIUM') :
-             t('weather.farming.low', 'LOW')
+      label: irrigation.status === 'high' ? t('weather.farming.high') :
+             irrigation.status === 'medium' ? t('weather.farming.medium') :
+             t('weather.farming.low')
     },
     {
       icon: Bug,
-      title: t('weather.farming.spraying', 'Spraying'),
+      title: t('weather.farming.spraying'),
       ...spraying,
       sub: undefined,
-      label: spraying.status === 'good' ? t('weather.farming.good', 'GOOD') :
-             spraying.status === 'moderate' ? t('weather.farming.moderate', 'MODERATE') :
-             t('weather.farming.avoid', 'AVOID')
+      label: spraying.status === 'good' ? t('weather.farming.good') :
+             spraying.status === 'moderate' ? t('weather.farming.moderate') :
+             t('weather.farming.avoid')
     },
     {
       icon: Sprout,
-      title: t('weather.farming.planting', 'Planting'),
+      title: t('weather.farming.planting'),
       ...planting,
       sub: undefined,
-      label: planting.status === 'good' ? t('weather.farming.favorable', 'FAVORABLE') :
-             planting.status === 'moderate' ? t('weather.farming.ok', 'OK') :
-             t('weather.farming.notRecommended', 'NOT RECOMMENDED')
+      label: planting.status === 'good' ? t('weather.farming.favorable') :
+             planting.status === 'moderate' ? t('weather.farming.ok') :
+             t('weather.farming.not_recommended')
     }
   ];
+
 
 
   return (
@@ -132,7 +133,8 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
     >
       <h3 className="text-base font-bold mb-3 flex items-center gap-2">
         <Sprout className="h-4 w-4 text-primary" />
-        {t('weather.farming.title', 'Farming Recommendations')}
+        {t('weather.farming.title')}
+
       </h3>
 
       {/* FIX: Improved horizontal scroll with better snap and touch handling */}
@@ -170,9 +172,10 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
                   <rec.icon className={cn("h-8 w-8", rec.color)} />
                   {rec.fromField && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      Field
+                      {t('weather.farming.field_badge')}
                     </span>
                   )}
+
                 </div>
                 
                 <div>

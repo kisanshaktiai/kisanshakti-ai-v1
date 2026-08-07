@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -34,12 +35,25 @@ const riskTone = (v?: string | null) => {
 const num = (v: number | null | undefined, digits = 1) =>
   v === null || v === undefined ? '--' : Number(v).toFixed(digits);
 
-const pretty = (v?: string | null) =>
-  !v ? '--' : v.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
-
 export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
   state, landName, isToday, isLoading,
 }) => {
+  const { t, i18n } = useTranslation();
+
+  /**
+   * DB enum values (HIGH, MODERATE, WATER_DEFICIT, ...) are symbolic codes.
+   * They are rendered through the `weather.field.level.*` dictionary so a
+   * farmer never sees an ALL_CAPS code. Unknown codes degrade to a readable
+   * sentence-case form instead of leaking the raw token.
+   */
+  const level = (v?: string | null) => {
+    if (!v) return t('weather.field.level.unknown');
+    const key = v.toLowerCase().replace(/[\s-]+/g, '_').replace(/^water_/, '');
+    const translated = t(`weather.field.level.${key}`, { defaultValue: '' });
+    if (translated) return translated;
+    return v.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+  };
+
   if (isLoading) {
     return (
       <div className="px-4 py-3">
@@ -59,10 +73,9 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
           <CardContent className="p-4 flex items-start gap-3">
             <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold">Field metrics not computed yet</p>
+              <p className="text-sm font-semibold">{t('weather.field.not_ready_title')}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Soil-aware irrigation, ET0 and disease risk appear once the daily
-                field computation runs for this land.
+                {t('weather.field.not_ready_desc')}
               </p>
             </div>
           </CardContent>
@@ -74,47 +87,61 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
   const metrics = [
     {
       icon: Droplets,
-      label: 'Irrigation',
-      value: pretty(state.irrigation_urgency) || (state.irrigation_needed ? 'Needed' : 'Not needed'),
-      sub: `Deficit ${num(state.water_deficit_mm)} mm`,
+      key: 'irrigation',
+      label: t('weather.field.irrigation'),
+      value: state.irrigation_urgency
+        ? level(state.irrigation_urgency)
+        : state.irrigation_needed
+          ? t('weather.field.needed')
+          : t('weather.field.not_needed'),
+      sub: t('weather.field.deficit', { value: num(state.water_deficit_mm) }),
       tone: urgencyTone(state.irrigation_urgency),
     },
     {
       icon: Waves,
-      label: 'ET0',
-      value: `${num(state.et0_mm)} mm`,
-      sub: `Eff. rain ${num(state.effective_rainfall_mm)} mm`,
+      key: 'et0',
+      label: t('weather.field.et0'),
+      value: `${num(state.et0_mm)} ${t('weather.units.mm')}`,
+      sub: t('weather.field.eff_rain', { value: num(state.effective_rainfall_mm) }),
       tone: 'text-info',
     },
     {
       icon: Gauge,
-      label: 'VPD',
-      value: `${num(state.vpd_kpa, 2)} kPa`,
-      sub: `Rain ${num(state.total_rainfall_mm)} mm`,
+      key: 'vpd',
+      label: t('weather.field.vpd'),
+      value: `${num(state.vpd_kpa, 2)} ${t('weather.units.kpa')}`,
+      sub: t('weather.field.rain', { value: num(state.total_rainfall_mm) }),
       tone: 'text-foreground/80',
     },
     {
       icon: Sprout,
-      label: 'GDD today',
+      key: 'gdd',
+      label: t('weather.field.gdd'),
       value: num(state.gdd_daily, 1),
-      sub: pretty(state.water_balance_status),
+      sub: level(state.water_balance_status),
       tone: 'text-success',
     },
     {
       icon: Bug,
-      label: 'Disease risk',
-      value: pretty(state.disease_risk_level),
-      sub: state.disease_risk_score !== null ? `Score ${num(state.disease_risk_score, 0)}` : '--',
+      key: 'disease',
+      label: t('weather.field.disease_risk'),
+      value: level(state.disease_risk_level),
+      sub: state.disease_risk_score !== null && state.disease_risk_score !== undefined
+        ? t('weather.field.score', { value: num(state.disease_risk_score, 0) })
+        : '--',
       tone: riskTone(state.disease_risk_level),
     },
     {
       icon: Thermometer,
-      label: 'Crop stress',
-      value: pretty(state.crop_stress_level),
-      sub: `Soil ${pretty(state.soil_type_used)}`,
+      key: 'stress',
+      label: t('weather.field.crop_stress'),
+      value: level(state.crop_stress_level),
+      sub: t('weather.field.soil', { value: level(state.soil_type_used) }),
       tone: riskTone(state.crop_stress_level),
     },
   ];
+
+  const localeTag = i18n.language === 'en' ? 'en-IN' : `${i18n.language}-IN`;
 
   return (
     <motion.div
@@ -125,11 +152,13 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-base font-bold flex items-center gap-2">
           <MapPin className="h-4 w-4 text-primary" />
-          Field intelligence
+          {t('weather.field.title')}
           {landName && <span className="text-xs font-medium text-muted-foreground">· {landName}</span>}
         </h3>
         <Badge variant="secondary" className="text-[10px]">
-          {isToday ? 'Today' : `As of ${state.metric_date?.slice(0, 10)}`}
+          {isToday
+            ? t('weather.field.today')
+            : t('weather.field.as_of', { date: state.metric_date?.slice(0, 10) })}
         </Badge>
       </div>
 
@@ -137,7 +166,7 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
         <div className="flex items-center gap-2 mb-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2">
           <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
           <p className="text-[11px] text-foreground/80">
-            Showing the last computed day. Today's field metrics are not ready yet.
+            {t('weather.field.stale_note')}
           </p>
         </div>
       )}
@@ -145,13 +174,13 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
       <div className="grid grid-cols-3 gap-2">
         {metrics.map((m) => (
           <div
-            key={m.label}
+            key={m.key}
             className="rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm"
           >
             <div className="flex flex-col items-center text-center gap-0.5">
               <m.icon className={cn('h-4 w-4', m.tone)} />
               <span className={cn('text-sm font-bold leading-tight', m.tone)}>{m.value}</span>
-              <span className="text-[10px] text-muted-foreground font-medium">{m.label}</span>
+              <span className="text-[10px] text-muted-foreground font-medium leading-tight">{m.label}</span>
               <span className="text-[9px] text-muted-foreground/80 leading-tight">{m.sub}</span>
             </div>
           </div>
@@ -159,10 +188,12 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
       </div>
 
       <p className="text-[9px] text-muted-foreground mt-2">
-        Computed for this field only
-        {state.computed_at ? ` · ${new Date(state.computed_at).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}` : ''}
+        {t('weather.field.footer')}
+        {state.computed_at
+          ? ` · ${new Date(state.computed_at).toLocaleString(localeTag, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}`
+          : ''}
         {state.confidence !== null && state.confidence !== undefined
-          ? ` · confidence ${Math.round(Number(state.confidence) * 100)}%`
+          ? ` · ${t('weather.field.confidence', { value: Math.round(Number(state.confidence) * 100) })}`
           : ''}
       </p>
     </motion.div>

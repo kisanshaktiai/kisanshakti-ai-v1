@@ -601,7 +601,33 @@ async function checkCache(
     let fq = supabase.from("weather_forecasts").select("*")
       .eq("location_key", locationKey).order("forecast_time", { ascending: true });
     if (!allowStale) fq = fq.gte("forecast_time", new Date().toISOString());
-    const { data: rows } = await fq;
+    const { data: rawRows } = await fq;
+
+    // ------------------------------------------------------------------
+    // DE-DUPLICATION (root cause of repeated forecast days in the UI)
+    // weather_forecasts is APPEND-ONLY: one row per issued_at, on purpose,
+    // because prior issues are the forecast-skill dataset. Reading it back
+    // raw therefore emits the same calendar day 2-3 times.
+    // Collapse here: keep the newest issued_at per slot. Daily rows bucket
+    // by the IST calendar day so a UTC-midnight row is never split in two.
+    // ------------------------------------------------------------------
+    const istDayKey = (iso: string) =>
+      new Date(new Date(iso).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+
+    const newestBySlot = new Map<string, any>();
+    for (const f of rawRows ?? []) {
+      const slot = f.forecast_type === "daily"
+        ? `daily:${istDayKey(f.forecast_time)}`
+        : `${f.forecast_type}:${new Date(f.forecast_time).toISOString()}`;
+      const prev = newestBySlot.get(slot);
+      const issued = f.issued_at ? new Date(f.issued_at).getTime() : 0;
+      const prevIssued = prev?.issued_at ? new Date(prev.issued_at).getTime() : -1;
+      if (!prev || issued > prevIssued) newestBySlot.set(slot, f);
+    }
+
+    const rows = Array.from(newestBySlot.values()).sort(
+      (a, b) => new Date(a.forecast_time).getTime() - new Date(b.forecast_time).getTime(),
+    );
 
     const hourly: ForecastItem[] = [];
     const daily: DailyForecast[] = [];

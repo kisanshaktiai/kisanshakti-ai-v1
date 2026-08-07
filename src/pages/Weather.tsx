@@ -19,17 +19,12 @@ import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AnimatedWeatherBackground } from '@/components/weather/AnimatedWeatherBackground';
-import { WeatherCard } from '@/components/weather/WeatherCard';
 import { RainfallChart } from '@/components/weather/RainfallChart';
-import { WeatherAnimation } from '@/components/weather/WeatherAnimation';
-import { SyncIndicator } from '@/components/weather/SyncIndicator';
-import { AgriculturalInsights } from '@/components/weather/AgriculturalInsights';
-import { WeatherMap } from '@/components/weather/WeatherMap';
 import { VoiceWeatherSummary } from '@/components/weather/VoiceWeatherSummary';
 import { WeatherHeroCard } from '@/components/weather/WeatherHeroCard';
 import { FarmingRecommendations } from '@/components/weather/FarmingRecommendations';
 import { PageShell } from '@/components/layout/PageShell';
-import { HourlyTimeline } from '@/components/weather/HourlyTimeline';
+
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { useLandWeatherState } from '@/hooks/useLandWeatherState';
@@ -73,12 +68,13 @@ export default function Weather() {
   const handleManualSync = async () => {
     try {
       await refetch();
-      toastManager.success('Weather data synced successfully', 'weather-sync-success');
+      toastManager.success(t('weather.toast.sync_success'), 'weather-sync-success');
     } catch (err) {
-      toastManager.error('Failed to sync weather data', 'weather-sync-error');
+      toastManager.error(t('weather.toast.sync_error'), 'weather-sync-error');
       throw err; // Re-throw for PullRefreshController to handle
     }
   };
+
 
   const getWeatherCondition = (): 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night' => {
     if (!currentWeather) return 'clouds';
@@ -206,7 +202,7 @@ export default function Weather() {
           {/* Hero Section with Weather Info */}
           <WeatherHeroCard
             currentWeather={currentWeather}
-            location={currentWeather.location || 'Current Location'}
+            location={currentWeather.location || t('weather.header.current_location')}
             lastSyncTime={lastUpdated ? new Date(lastUpdated) : null}
             isRefreshing={false}
             onRefresh={handleManualSync}
@@ -226,7 +222,7 @@ export default function Weather() {
             <div className="px-4 pt-3">
               <Select value={selectedLandId} onValueChange={setSelectedLandId}>
                 <SelectTrigger className="h-9 text-xs rounded-xl">
-                  <SelectValue placeholder="Select field" />
+                  <SelectValue placeholder={t('weather.field.select')} />
                 </SelectTrigger>
                 <SelectContent>
                   {lands.map((l: any) => (
@@ -292,9 +288,10 @@ export default function Weather() {
             >
               {/* Row 1: Primary Stats */}
               {[
-                { icon: Wind, label: 'Wind', value: Math.round(currentWeather.wind_speed * 3.6), unit: 'km/h', type: 'wind', gradient: 'from-info/10 to-info/10' },
-                { icon: Droplets, label: 'Humidity', value: currentWeather.humidity, unit: '%', type: 'humidity', gradient: 'from-info/10 to-info/10' },
-                { icon: Eye, label: 'Visibility', value: (currentWeather.visibility / 1000).toFixed(1), unit: 'km', type: 'visibility', gradient: 'from-success/10 to-success/10' }
+                { icon: Wind, label: t('weather.stats.wind'), value: Math.round(currentWeather.wind_speed * 3.6), unit: t('weather.units.kmh'), type: 'wind', gradient: 'from-info/10 to-info/10' },
+                { icon: Droplets, label: t('weather.stats.humidity'), value: currentWeather.humidity, unit: t('weather.units.percent'), type: 'humidity', gradient: 'from-info/10 to-info/10' },
+                { icon: Eye, label: t('weather.stats.visibility'), value: (currentWeather.visibility / 1000).toFixed(1), unit: t('weather.units.km'), type: 'visibility', gradient: 'from-success/10 to-success/10' }
+
               ].map((stat, index) => (
                 <motion.div
                   key={stat.label}
@@ -385,7 +382,7 @@ export default function Weather() {
                   <span className="text-sm font-bold">
                     {currentWeather.uv_index !== undefined ? currentWeather.uv_index.toFixed(1) : '--'}
                   </span>
-                  <span className="text-[9px] text-muted-foreground">UV</span>
+                  <span className="text-[9px] text-muted-foreground">{t('weather.stats.uv')}</span>
                 </div>
               </motion.div>
 
@@ -402,7 +399,7 @@ export default function Weather() {
                   <span className="text-sm font-bold">
                     {currentWeather.dew_point !== undefined ? Math.round(currentWeather.dew_point) : '--'}°
                   </span>
-                  <span className="text-[9px] text-muted-foreground">Dew Pt</span>
+                  <span className="text-[9px] text-muted-foreground">{t('weather.stats.dew_point')}</span>
                 </div>
               </motion.div>
             </motion.div>

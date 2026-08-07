@@ -37,26 +37,28 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
     // Generate farming recommendations
     let farmingAdvice = '';
     if (rainChance > 60) {
-      farmingAdvice = t('weather.voice.highRainAdvice', 'Avoid spraying today due to high rain probability.');
+      farmingAdvice = t('weather.voice.high_rain_advice');
     } else if (windSpeed > 20) {
-      farmingAdvice = t('weather.voice.highWindAdvice', 'Be careful with spraying due to strong winds.');
+      farmingAdvice = t('weather.voice.high_wind_advice');
     } else if (humidity < 40 && temp > 30) {
-      farmingAdvice = t('weather.voice.irrigationAdvice', 'Consider increasing irrigation due to hot and dry conditions.');
+      farmingAdvice = t('weather.voice.irrigation_advice');
     } else {
-      farmingAdvice = t('weather.voice.goodConditions', 'Weather conditions are favorable for farming activities.');
+      farmingAdvice = t('weather.voice.good_conditions');
     }
 
     // Create multilingual summary
     const summary = t('weather.voice.summary', {
-      defaultValue: "Today's weather: {{temp}} degrees celsius, {{condition}}. It feels like {{feelsLike}} degrees. Humidity is {{humidity}} percent. Wind speed is {{windSpeed}} kilometers per hour. {{rainInfo}} {{advice}}",
       temp,
       condition,
       feelsLike,
       humidity,
       windSpeed,
-      rainInfo: rainChance > 20 ? `Rain probability is ${rainChance} percent.` : 'No rain expected.',
+      rainInfo: rainChance > 20
+        ? t('weather.voice.rain_expected', { chance: rainChance })
+        : t('weather.voice.no_rain'),
       advice: farmingAdvice
     });
+
 
     return summary;
   };

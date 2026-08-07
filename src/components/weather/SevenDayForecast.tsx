@@ -45,13 +45,35 @@ interface SevenDayForecastProps {
 }
 
 export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+
+  /**
+   * DEFENSIVE DE-DUPLICATION.
+   * `weather_forecasts` is append-only (one row per issued_at), so a stale
+   * client or a raw provider payload can contain the same calendar day more
+   * than once — which is what made "tomorrow" repeat in the list. The edge
+   * function now collapses on read; this keeps the UI correct regardless.
+   * Bucketing uses the IST calendar day so a UTC-midnight slot is not split.
+   */
+  const days = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: ForecastDay[] = [];
+    for (const d of forecast ?? []) {
+      const key = new Date(d.dt * 1000 + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(d);
+      if (out.length === 7) break;
+    }
+    return out;
+  }, [forecast]);
 
   // Find min/max temp across all days for relative scale
-  const allTemps = forecast.slice(0, 7).flatMap(d => [d.temp.min, d.temp.max]);
+  const allTemps = days.flatMap(d => [d.temp.min, d.temp.max]);
   const minTemp = Math.min(...allTemps);
   const maxTemp = Math.max(...allTemps);
   const tempRange = maxTemp - minTemp || 1;
+
 
   const getWeatherIcon = (main: string) => {
     const iconConfig: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
@@ -65,12 +87,20 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
     return iconConfig[main] || { icon: Cloud, color: 'text-muted-foreground', bg: 'bg-muted-foreground/40/20' };
   };
 
-  const getDayLabel = (timestamp: number, index: number): string => {
+  /**
+   * Label from the REAL date only. Using `index === 0` used to force "Today"
+   * even when the first row was tomorrow (the cache filters out past slots),
+   * which shifted every following day by one.
+   */
+  const getDayLabel = (timestamp: number): string => {
     const date = new Date(timestamp * 1000);
-    if (index === 0 || isToday(date)) return t('weather.forecast.today');
-    if (isTomorrow(date)) return 'Tmrw';
-    return format(date, 'EEE');
+    if (isToday(date)) return t('weather.forecast.today');
+    if (isTomorrow(date)) return t('weather.forecast.tomorrow');
+    return new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-IN' : `${i18n.language}-IN`, {
+      weekday: 'short',
+    }).format(date);
   };
+
 
   const getTemperatureColor = (temp: number): string => {
     if (temp >= 40) return 'text-destructive';
@@ -119,11 +149,12 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
 
       {/* Modern Vertical List Layout */}
       <div className="space-y-2">
-        {forecast.slice(0, 7).map((day, index) => {
+        {days.map((day, index) => {
           const weatherConfig = getWeatherIcon(day.weather[0]?.main || 'Clear');
           const IconComponent = weatherConfig.icon;
-          const isFirstDay = index === 0;
+          const isFirstDay = isToday(new Date(day.dt * 1000));
           const barStyle = getTempBarStyle(day.temp.min, day.temp.max);
+
 
           return (
             <motion.div
@@ -147,7 +178,7 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
                       "text-sm font-bold",
                       isFirstDay ? "text-primary" : "text-foreground"
                     )}>
-                      {getDayLabel(day.dt, index)}
+                      {getDayLabel(day.dt)}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       {format(new Date(day.dt * 1000), 'd MMM')}
@@ -237,17 +268,18 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
             <TrendingDown className="h-3 w-3 text-info" />
-            <span>Low: {Math.round(minTemp)}°</span>
+            <span>{t('weather.forecast.low_short')}: {Math.round(minTemp)}°</span>
           </div>
           <div className="flex items-center gap-1">
             <TrendingUp className="h-3 w-3 text-warning" />
-            <span>High: {Math.round(maxTemp)}°</span>
+            <span>{t('weather.forecast.high_short')}: {Math.round(maxTemp)}°</span>
           </div>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Droplets className="h-3 w-3 text-info" />
           <span>
-            {forecast.slice(0, 7).filter(d => d.pop > 0.3).length} rainy days
+            {t('weather.forecast.rainy_days', { count: days.filter(d => d.pop > 0.3).length })}
+
           </span>
         </div>
       </motion.div>

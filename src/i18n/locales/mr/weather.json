@@ -1,28 +1,39 @@
 {
   "__meta": {
     "page": "weather",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2026-08-07"
   },
   "weather": {
     "header": {
       "title": "हवामान",
-      "current_location": "सध्याचे स्थान",
+      "current_location": "तुमची जागा",
+      "updated_prefix": "अपडेट",
       "updated_now": "आत्ताच",
-      "updated_minutes": "{{minutes}} मिनिटे आधी",
-      "updated_hour": "1 तास आधी",
-      "updated_hours": "{{hours}} तास आधी"
+      "updated_minutes": "{{minutes}} मिनिटांपूर्वी",
+      "updated_hour": "1 तासापूर्वी",
+      "updated_hours": "{{hours}} तासांपूर्वी"
     },
     "hero": {
-      "feels_like": "{{temp}}°C वाटतो",
-      "provider": "{{provider}} पासून डेटा"
+      "feels_like": "{{temp}}°C सारखं जाणवतंय",
+      "provider": "{{provider}} कडून माहिती"
+    },
+    "provenance": {
+      "your_field": "तुमचं शेत",
+      "your_location": "तुम्ही जिथे आहात",
+      "nearby_station": "जवळचं केंद्र — {{km}} किमी",
+      "named_station": "{{name}} — {{km}} किमी",
+      "regional": "भागाचा अंदाज",
+      "stale": "जुनी माहिती"
     },
     "stats": {
       "wind": "वारा",
       "humidity": "आर्द्रता",
-      "visibility": "दृश्यमानता",
-      "pressure": "दाब"
+      "visibility": "दिसण्याची मर्यादा",
+      "pressure": "दाब",
+      "uv": "ऊन (UV)",
+      "dew_point": "दव"
     },
     "units": {
       "celsius": "°C",
@@ -30,76 +41,140 @@
       "percent": "%",
       "km": "किमी",
       "hpa": "hPa",
-      "mm": "मिमी"
+      "mm": "मिमी",
+      "kpa": "kPa"
     },
     "forecast": {
       "title": "7 दिवसांचा अंदाज",
-      "daily": "दैनिक",
-      "hourly": "तासानुतास",
+      "daily": "रोजचा",
+      "hourly": "तासाचा",
       "today": "आज",
+      "tomorrow": "उद्या",
       "week": "आठवडा",
       "days_7": "7 दिवस",
-      "temp_max": "कमाल",
-      "temp_min": "किमान",
-      "rain_chance": "पाऊस"
+      "temp_max": "जास्त",
+      "temp_min": "कमी",
+      "rain_chance": "पाऊस",
+      "low_short": "कमी",
+      "high_short": "जास्त",
+      "rainy_days": "{{count}} दिवस पाऊस"
+    },
+    "hourly": {
+      "title": "तासा-तासाचा अंदाज",
+      "next_12h": "पुढचे 12 तास",
+      "now": "आत्ता",
+      "temp": "तापमान",
+      "feels": "जाणवतं",
+      "rain": "पाऊस"
     },
     "rainfall": {
-      "title": "पर्जन्यवृष्टी",
+      "title": "पाऊस",
       "today": "आज",
       "week": "आठवडा",
       "chart_label": "पाऊस (मिमी)",
       "cumulative": "एकूण",
-      "no_rain": "पाऊस अपेक्षित नाही"
+      "no_rain": "पावसाची शक्यता नाही"
+    },
+    "field": {
+      "select": "तुमचं शेत निवडा",
+      "title": "आज तुमचं शेत",
+      "today": "आज",
+      "as_of": "{{date}} पर्यंत",
+      "stale_note": "मागच्या दिवसाची मोजणी दिसतेय. आजचे आकडे अजून तयार नाहीत.",
+      "not_ready_title": "शेताची मोजणी अजून झाली नाही",
+      "not_ready_desc": "पाण्याची गरज, पाण्याचं उडणं आणि रोगाचा धोका — आजची मोजणी झाल्यावर इथे दिसेल.",
+      "irrigation": "पाणी देणं",
+      "deficit": "{{value}} मिमी पाणी कमी",
+      "et0": "पाण्याचं उडणं (ET0)",
+      "eff_rain": "उपयोगी पाऊस {{value}} मिमी",
+      "vpd": "कोरडी हवा (VPD)",
+      "rain": "पाऊस {{value}} मिमी",
+      "gdd": "आजची उष्णता एकके",
+      "disease_risk": "रोगाचा धोका",
+      "score": "गुण {{value}}",
+      "crop_stress": "पिकावर ताण",
+      "soil": "जमीन: {{value}}",
+      "needed": "गरज आहे",
+      "not_needed": "गरज नाही",
+      "footer": "फक्त याच शेतासाठी मोजणी",
+      "confidence": "खात्री {{value}}%",
+      "level": {
+        "critical": "अत्यंत तातडीचं",
+        "urgent": "तातडीचं",
+        "high": "जास्त",
+        "medium": "मध्यम",
+        "moderate": "मध्यम",
+        "low": "कमी",
+        "none": "काही नाही",
+        "severe": "गंभीर",
+        "deficit": "पाण्याची कमतरता",
+        "surplus": "पाणी जास्त",
+        "balanced": "समतोल",
+        "adequate": "पाणी पुरेसं",
+        "unknown": "--"
+      }
+    },
+    "widget": {
+      "title": "आजचं हवामान",
+      "loading": "लोड होतंय...",
+      "rain_6h": "{{value}}% / 6 तास",
+      "irrigate_today": "आज पाणी द्या",
+      "irrigation_soon": "लवकरच पाणी द्यावं लागेल",
+      "high_disease_risk": "रोगाचा धोका जास्त",
+      "normal": "शेताची स्थिती ठीक आहे"
     },
     "farming": {
-      "title": "शेती शिफारसी",
-      "irrigation": "पाणी पुरवठा",
+      "title": "शेती सल्ला",
+      "irrigation": "पाणी",
       "spraying": "फवारणी",
       "planting": "लागवड",
+      "field_badge": "शेत",
+      "deficit_mm": "{{value}} मिमी कमी",
       "high": "जास्त",
       "medium": "मध्यम",
       "low": "कमी",
-      "good": "चांगले",
-      "moderate": "ठीक आहे",
+      "good": "चांगलं",
+      "moderate": "बरं",
       "avoid": "टाळा",
       "favorable": "अनुकूल",
       "ok": "ठीक",
-      "not_recommended": "शिफारस नाही"
+      "not_recommended": "सल्ला नाही"
     },
     "voice": {
       "read": "ऐका",
       "stop": "थांबवा",
-      "summary": "आजचे हवामान: {{temp}} अंश सेल्सिअस, {{condition}}। {{feelsLike}} अंश वाटत आहे। आर्द्रता {{humidity}} टक्के आहे। वाऱ्याचा वेग {{windSpeed}} किलोमीटर प्रति तास आहे। {{rainInfo}} {{advice}}",
-      "high_rain_advice": "जास्त पाऊस अपेक्षित असल्याने आज फवारणी टाळा।",
-      "high_wind_advice": "जोरदार वाऱ्यामुळे फवारणी करताना सावधगिरी बाळगा।",
-      "irrigation_advice": "गरम आणि कोरड्या हवामानामुळे पाणी पुरवठा वाढवा।",
-      "good_conditions": "हवामान शेतीसाठी अनुकूल आहे।",
-      "rain_expected": "पाऊस {{chance}} टक्के शक्यता आहे।",
-      "no_rain": "पाऊस अपेक्षित नाही।"
+      "error": "हवामान वाचता आलं नाही",
+      "summary": "आजचं हवामान: {{temp}} अंश सेल्सिअस, {{condition}}. {{feelsLike}} अंशांसारखं जाणवतंय. आर्द्रता {{humidity}} टक्के आहे. वाऱ्याचा वेग {{windSpeed}} किलोमीटर प्रति तास आहे. {{rainInfo}} {{advice}}",
+      "high_rain_advice": "पावसाची शक्यता जास्त असल्यानं आज फवारणी टाळा.",
+      "high_wind_advice": "वारा जोरात आहे, फवारणी करताना काळजी घ्या.",
+      "irrigation_advice": "ऊन आणि कोरडी हवा आहे, पाणी वाढवण्याचा विचार करा.",
+      "good_conditions": "हवामान शेतीच्या कामांसाठी चांगलं आहे.",
+      "rain_expected": "पावसाची शक्यता {{chance}} टक्के आहे.",
+      "no_rain": "पावसाची शक्यता नाही."
     },
     "toast": {
-      "sync_success": "हवामान डेटा यशस्वीरित्या अपडेट झाला",
-      "sync_error": "हवामान डेटा अपडेट झाला नाही",
-      "location_error": "तुमचे स्थान मिळू शकले नाही",
-      "offline": "तुम्ही ऑफलाइन आहात। जुना हवामान डेटा दर्शवित आहे।",
-      "refresh_hint": "अपडेट करण्यासाठी खाली खेचा"
+      "sync_success": "हवामान माहिती अपडेट झाली",
+      "sync_error": "हवामान माहिती अपडेट होऊ शकली नाही",
+      "location_error": "तुमची जागा मिळाली नाही",
+      "offline": "तुम्ही ऑफलाइन आहात. जुनी माहिती दाखवत आहोत.",
+      "refresh_hint": "अपडेटसाठी खाली ओढा"
     },
     "error": {
-      "title": "हवामान डेटा उपलब्ध नाही",
-      "message": "हवामान माहिती लोड करू शकत नाही. कृपया तुमचे कनेक्शन तपासा आणि पुन्हा प्रयत्न करा।",
-      "network": "नेटवर्क त्रुटी. कृपया तुमचे इंटरनेट कनेक्शन तपासा।",
-      "location": "स्थान प्रवेश नाकारला. अचूक हवामानासाठी स्थान सक्षम करा।",
-      "server": "हवामान सेवा तात्पुरती अनुपलब्ध आहे।",
-      "retry": "पुन्हा प्रयत्न करा"
+      "title": "हवामान माहिती उपलब्ध नाही",
+      "message": "हवामानाची माहिती मिळाली नाही. इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.",
+      "network": "नेटवर्कची अडचण. इंटरनेट तपासा.",
+      "location": "जागेची परवानगी नाही. अचूक हवामानासाठी परवानगी द्या.",
+      "server": "हवामान सेवा तात्पुरती बंद आहे.",
+      "retry": "पुन्हा प्रयत्न"
     },
     "empty": {
-      "no_data": "कोणताही हवामान डेटा उपलब्ध नाही",
-      "enable_location": "हवामान पाहण्यासाठी स्थान सक्षम करा"
+      "no_data": "हवामान माहिती नाही",
+      "enable_location": "हवामान पाहण्यासाठी जागेची परवानगी द्या"
     },
     "cta": {
-      "refresh": "ताजे करा",
-      "retry": "पुन्हा प्रयत्न करा",
-      "enable_location": "स्थान सक्षम करा"
+      "refresh": "पुन्हा घ्या",
+      "retry": "पुन्हा प्रयत्न",
+      "enable_location": "जागा सुरू करा"
     },
     "chart": {
       "temperature": "तापमान",
@@ -109,39 +184,19 @@
       "x_axis_hours": "वेळ",
       "y_axis_temp": "°C",
       "tooltip_temp": "तापमान: {{value}}°C",
-      "tooltip_feels": "वाटते: {{value}}°C",
+      "tooltip_feels": "जाणवतं: {{value}}°C",
       "tooltip_rain": "पाऊस: {{value}}%"
     },
     "aria": {
-      "refresh_button": "हवामान डेटा ताजे करा",
+      "refresh_button": "हवामान माहिती पुन्हा घ्या",
       "back_button": "मागे जा",
-      "hero_card": "सध्याची हवामान माहिती",
-      "stats_grid": "हवामान सांख्यिकी",
-      "forecast_card": "{{day}} साठी हवामान अंदाज",
-      "rainfall_chart": "7 दिवसांचा पाऊस चार्ट",
-      "farming_recommendations": "हवामानावर आधारित शेती शिफारसी",
+      "hero_card": "सध्याचं हवामान",
+      "stats_grid": "हवामान आकडेवारी",
+      "forecast_card": "{{day}} चा हवामान अंदाज",
+      "rainfall_chart": "7 दिवसांचा पाऊस तक्ता",
+      "farming_recommendations": "हवामानावर आधारित शेती सल्ला",
       "voice_summary": "हवामान सारांश ऐका",
-      "hourly_chart": "तासानुतास तापमान अंदाज"
+      "hourly_chart": "तासा-तासाचा तापमान अंदाज"
     }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show today's weather",
-      "What's the weather forecast?",
-      "Read the weather report",
-      "How much rain is expected?"
-    ],
-    "voice_examples_hi": [
-      "आज का मौसम दिखाओ",
-      "मौसम का पूर्वानुमान क्या है?",
-      "मौसम रिपोर्ट पढ़ो",
-      "कितनी बारिश होगी?"
-    ],
-    "voice_examples_mr": [
-      "आजचे हवामान दाखवा",
-      "हवामानाचा अंदाज काय आहे?",
-      "हवामान अहवाल वाचा",
-      "किती पाऊस अपेक्षित आहे?"
-    ]
   }
 }

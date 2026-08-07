@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Cloud, CloudRain, Sun, CloudSnow, Loader2, Droplets, Wind, Thermometer, Umbrella } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +12,7 @@ import { motion } from 'framer-motion';
 
 export const WeatherWidget: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   // NOTE: this instance is normally a store *follower* — the weather page or
   // whichever consumer mounted first owns the fetch loop (see useWeather).
   const { currentWeather, loading, lastUpdated, forecast, hourlyForecast } = useWeather();
@@ -18,6 +20,7 @@ export const WeatherWidget: React.FC = () => {
   const { lands } = useLands();
   const primaryLandId = lands?.[0]?.id;
   const { state: landState, isToday: landStateIsToday } = useLandWeatherState(primaryLandId);
+
 
 
   const getWeatherIcon = (condition: string) => {
@@ -55,16 +58,17 @@ export const WeatherWidget: React.FC = () => {
     const urgency = (landState.irrigation_urgency ?? '').toUpperCase();
     const risk = (landState.disease_risk_level ?? '').toUpperCase();
     if (urgency === 'CRITICAL' || urgency === 'HIGH' || urgency === 'URGENT') {
-      return { text: 'Irrigate today', tone: 'text-destructive' };
+      return { text: t('weather.widget.irrigate_today'), tone: 'text-destructive' };
     }
     if (risk === 'HIGH' || risk === 'CRITICAL' || risk === 'SEVERE') {
-      return { text: 'High disease risk', tone: 'text-warning' };
+      return { text: t('weather.widget.high_disease_risk'), tone: 'text-warning' };
     }
     if (urgency === 'MEDIUM' || urgency === 'MODERATE' || landState.irrigation_needed) {
-      return { text: 'Irrigation due soon', tone: 'text-info' };
+      return { text: t('weather.widget.irrigation_soon'), tone: 'text-info' };
     }
-    return { text: 'Field conditions normal', tone: 'text-success' };
+    return { text: t('weather.widget.normal'), tone: 'text-success' };
   })();
+
 
 
 
@@ -82,7 +86,7 @@ export const WeatherWidget: React.FC = () => {
             {/* Header Row */}
             <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-0.5">Today's Weather</p>
+                <p className="text-xs font-medium text-muted-foreground mb-0.5">{t('weather.widget.title')}</p>
                 <div className="flex items-baseline gap-1">
                   <span className="text-4xl font-bold text-foreground tracking-tight">
                     {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}
@@ -102,7 +106,7 @@ export const WeatherWidget: React.FC = () => {
 
             {/* Description */}
             <p className="text-sm font-medium capitalize text-foreground/80 mb-3">
-              {currentWeather?.description || 'Loading...'}
+              {currentWeather?.description || t('weather.widget.loading')}
             </p>
 
             {/* Stats Row - Modern Pill Design */}
@@ -119,13 +123,14 @@ export const WeatherWidget: React.FC = () => {
               
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-background/50 backdrop-blur-sm border border-white/10">
                 <Wind className="w-3 h-3 text-info" />
-                <span className="text-[10px] font-medium">{currentWeather?.wind_speed ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '--'}</span>
+                <span className="text-[10px] font-medium">{currentWeather?.wind_speed ? `${Math.round(currentWeather.wind_speed * 3.6)} ${t('weather.units.kmh')}` : '--'}</span>
               </div>
               
               {rain6h > 0 && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-info/20 backdrop-blur-sm border border-info/30">
                   <Umbrella className="w-3 h-3 text-info" />
-                  <span className="text-[10px] font-medium text-info">{rain6h}% / 6h</span>
+                  <span className="text-[10px] font-medium text-info">{t('weather.widget.rain_6h', { value: rain6h })}</span>
+
                 </div>
               )}
 
