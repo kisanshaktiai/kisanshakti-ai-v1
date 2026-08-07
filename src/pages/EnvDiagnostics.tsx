@@ -13,7 +13,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { envIntelligenceApi } from '@/services/envIntelligenceApi';
-import { ShieldAlert, FlaskConical, Activity, GitБranchIcon } from 'lucide-react';
+import { ShieldAlert, FlaskConical, Activity } from 'lucide-react';
 
 export default function EnvDiagnostics() {
   const { t } = useTranslation();
