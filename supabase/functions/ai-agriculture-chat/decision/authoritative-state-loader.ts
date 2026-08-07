@@ -9,6 +9,9 @@ import { getConfigJson, getConfigNumber } from '../utils/db-ssot/system-config-c
 export const AUTHORITATIVE_STATE_LOADER_VERSION = '2.1.0';
 
 // CHANGE LOG (newest first)
+// 2026-08-07 12:30 UTC — D7: additive weather.derived namespace (ET0/VPD/GDD cum/
+//   LWD/spray/frost/stress/soil-water/harvest + active risk episodes) from
+//   land_weather_state, land_gdd_daily and risk_episodes. Raw weather untouched.
 // 2026-07-24 — P7: NDVI status bands, soil nutrient bands, and freshness
 
 // CANONICAL INTERPRETATION ENUMS - SINGLE SOURCE OF TRUTH
@@ -263,6 +266,8 @@ export interface AuthoritativeLandState {
     data_age_hours: number | null;
     data_fresh: boolean;
     data_source?: string | null;
+    /** D7 — Environmental Intelligence derived namespace (additive) */
+    derived?: EnvDerivedNamespace;
   };
   
   // Derived Metrics - SSOT INTERPRETATIONS
@@ -300,6 +305,28 @@ export interface StateLoadingResult {
   loading_time_ms: number;
 }
 
+// D7 — ENVIRONMENTAL INTELLIGENCE DERIVED NAMESPACE
+export interface EnvDerivedNamespace {
+  et0: number | null;
+  et0_method: string | null;
+  vpd: number | null;
+  gdd_cumulative: number | null;
+  lwd_est: number | null;
+  spray_score: number | null;
+  frost_risk: number | null;
+  heat_stress_dh: number | null;
+  cold_stress_dh: number | null;
+  water_deficit: number | null;
+  root_depletion: number | null;
+  raw_mm: number | null;
+  taw_mm: number | null;
+  irrigation_urgency: string | null;
+  harvest_window: number | null;
+  confidence: number | null;
+  as_of: string | null;
+  active_episodes: { risk_code: string; phase: string; current_value: number | null; confidence: number | null }[];
+}
+
 // MAIN LOADER FUNCTION
 
 export async function loadAuthoritativeLandState(
@@ -324,7 +351,10 @@ export async function loadAuthoritativeLandState(
       soilHealthResult,
       ndviResult,
       weatherResult,
-      phenologyResult
+      phenologyResult,
+      landWeatherStateResult,
+      gddDailyResult,
+      riskEpisodesResult
     ] = await Promise.all([
       // 1. Land base data — PR-4d: pull the authoritative SSOT columns
       supabase
@@ -378,7 +408,29 @@ export async function loadAuthoritativeLandState(
         .maybeSingle(),
 
       // 6. PR-1 · Crop-stage SSOT — variety-aware phenology resolver.
-      supabase.rpc('resolve_crop_phenology_for_land', { p_land_id: landId })
+      supabase.rpc('resolve_crop_phenology_for_land', { p_land_id: landId }),
+
+      // 7. D7 · Environmental Intelligence derived state (additive, non-breaking)
+      supabase
+        .from('land_weather_state')
+        .select('metric_date, et0_mm, et0_pm, et0_method, vpd_kpa, lwd_est_hours, spray_score, frost_risk_score, heat_stress_dh, cold_stress_dh, water_deficit_mm, root_depletion_mm, raw_mm, taw_mm, irrigation_urgency, harvest_window_score, confidence')
+        .eq('land_id', landId)
+        .order('metric_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('land_gdd_daily')
+        .select('cumulative_gdd, obs_date')
+        .eq('land_id', landId)
+        .order('obs_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('risk_episodes')
+        .select('risk_code, phase, current_value, confidence')
+        .eq('land_id', landId)
+        .neq('phase', 'ended')
+        .limit(20)
     ]);
     
     // VALIDATE LAND ACCESS
@@ -672,6 +724,11 @@ export async function loadAuthoritativeLandState(
       },
       
       weather: {
+        derived: buildEnvDerived(
+          (landWeatherStateResult as any)?.data ?? null,
+          (gddDailyResult as any)?.data ?? null,
+          (riskEpisodesResult as any)?.data ?? null,
+        ),
         temperature: (weather as any)?.temperature_celsius ?? weatherMeta?.temperature ?? null,
         humidity: (weather as any)?.humidity_percent ?? weatherMeta?.humidity ?? null,
         rainfall_last_24h: (weather as any)?.rainfall_mm ?? weatherMeta?.rainfall ?? weatherMeta?.rainfall_last_24h ?? null,
@@ -862,3 +919,39 @@ export function generateMissingDataQuestions(
 
 // Export version for consumers to verify SSOT compliance
 export { AUTHORITATIVE_STATE_LOADER_VERSION as VERSION };
+
+
+// D7 — build the environmental derived namespace from land_weather_state +
+// land_gdd_daily + risk_episodes. Raw weather fields above stay untouched.
+function buildEnvDerived(lws: any, gdd: any, episodes: any[] | null): EnvDerivedNamespace {
+  const n = (v: any): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
+  return {
+    et0: n(lws?.et0_pm) ?? n(lws?.et0_mm),
+    et0_method: lws?.et0_method ?? null,
+    vpd: n(lws?.vpd_kpa),
+    gdd_cumulative: n(gdd?.cumulative_gdd),
+    lwd_est: n(lws?.lwd_est_hours),
+    spray_score: n(lws?.spray_score),
+    frost_risk: n(lws?.frost_risk_score),
+    heat_stress_dh: n(lws?.heat_stress_dh),
+    cold_stress_dh: n(lws?.cold_stress_dh),
+    water_deficit: n(lws?.water_deficit_mm),
+    root_depletion: n(lws?.root_depletion_mm),
+    raw_mm: n(lws?.raw_mm),
+    taw_mm: n(lws?.taw_mm),
+    irrigation_urgency: lws?.irrigation_urgency ?? null,
+    harvest_window: n(lws?.harvest_window_score),
+    confidence: n(lws?.confidence),
+    as_of: lws?.metric_date ?? null,
+    active_episodes: (episodes || []).map((e: any) => ({
+      risk_code: String(e.risk_code || ''),
+      phase: String(e.phase || ''),
+      current_value: n(e.current_value),
+      confidence: n(e.confidence),
+    })),
+  };
+}
