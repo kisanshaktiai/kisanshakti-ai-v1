@@ -53,7 +53,24 @@ import {
   calculateDailyGDD,
   getCropGDDParams,
   estimateSunshineHours,
+  computeConfidence,
+  estimateLeafWetnessHours,
+  type HourlyWetnessInput,
 } from "./agricultural-calculations.ts";
+import { loadSciMethods, type MethodsMap } from "./sci-methods.ts";
+
+// Scientific coefficients come from public.sci_method_registry. ONE read per
+// isolate (never per calculation); the map is then passed by value into the
+// science module.
+let sciMethodsCache: MethodsMap | null = null;
+async function getSciMethods(supabase: SupabaseClient, runId: string): Promise<MethodsMap> {
+  if (sciMethodsCache) return sciMethodsCache;
+  sciMethodsCache = await loadSciMethods(
+    supabase,
+    (l, e, d) => log(runId, l as "info" | "warn" | "error", e, d),
+  );
+  return sciMethodsCache;
+}
 
 // ============================================================================
 // CONFIGURATION
@@ -703,6 +720,18 @@ async function cacheWeatherData(
   const ttlMin = (CONFIG.TTL_MINUTES as Record<string, number>)[provider] ?? CONFIG.TTL_MINUTES.default;
   const expiresAt = new Date(now.getTime() + ttlMin * 60 * 1000);
 
+  // D6 FIX: confidence is computed (CONFIDENCE_MODEL@1.0), never a constant.
+  // agreement = 1.0 and skill = registry-neutral until cross-provider ensemble
+  // scoring lands; freshness comes from the record age vs its own TTL.
+  const sciMethods = await getSciMethods(supabase, runId);
+  const obsAgeMin = Number.isFinite(current.dt)
+    ? Math.max(0, (now.getTime() - current.dt * 1000) / 60000)
+    : 0;
+  const currentConfidence = computeConfidence(
+    { agreement: 1.0, freshnessAgeMin: obsAgeMin, ttlMin, horizonDays: 0 },
+    sciMethods,
+  );
+
   // Derive dew point when the provider did not supply one.
   const dewPointC = current.dew_point && current.dew_point !== 0
     ? current.dew_point
@@ -750,7 +779,7 @@ async function cacheWeatherData(
       station_name: current.station_name ?? current.imd_station_name ?? null,
       station_distance_km: current.imd_distance_km ?? null,
       method: current.provider === "IMD" ? "measured" : "modelled",
-      confidence: current.provider === "IMD" ? 0.9 : 0.75,
+      confidence: currentConfidence, // D6: CONFIDENCE_MODEL@1.0
       expires_at: expiresAt.toISOString(),
       created_at: now.toISOString(),
     };
@@ -770,7 +799,7 @@ async function cacheWeatherData(
         station_ref: current.station_ref ?? current.imd_station_code ?? null,
         station_distance_km: current.imd_distance_km ?? null,
         method: current.provider === "IMD" ? "measured" : "modelled",
-        confidence: current.provider === "IMD" ? 0.9 : 0.75,
+        confidence: currentConfidence, // D6: CONFIDENCE_MODEL@1.0
         observation_date: istDate(now), // FIX: IST, not UTC
         observation_time: new Date(current.dt * 1000).toISOString(),
         temperature_celsius: current.temp,
@@ -880,13 +909,20 @@ async function cacheWeatherData(
     }
 
     // ---- 5. daily aggregate --------------------------------------------------
+    // D5: the hourly series is now threaded through so leaf wetness duration
+    // can actually be estimated (rain per hour is not published by the
+    // providers' hourly product, so the RH / dew-point criteria decide).
+    const wetnessSeries: HourlyWetnessInput[] | undefined = hourly?.length
+      ? hourly.map((h) => ({ rh: h.humidity, temp: h.temp, dt: h.dt }))
+      : undefined;
+
     if (tenantId) {
-      await updateWeatherAggregate(supabase, runId, tenantId, farmerId, landId, locationKey, current, now, rounded.lat, rounded.lon, dewPointC, rain24);
+      await updateWeatherAggregate(supabase, runId, tenantId, farmerId, landId, locationKey, current, now, rounded.lat, rounded.lon, dewPointC, rain24, sciMethods, wetnessSeries);
     }
 
     // ---- 6. per-land derived metrics ----------------------------------------
     if (landId && tenantId) {
-      await computeLandWeatherMetrics(supabase, runId, landId, tenantId, locationKey, current, rounded, rain24);
+      await computeLandWeatherMetrics(supabase, runId, landId, tenantId, locationKey, current, rounded, rain24, sciMethods, wetnessSeries);
     }
   } catch (e) {
     log(runId, "error", "cache_write_exception", { error: String(e) });
@@ -910,6 +946,8 @@ async function updateWeatherAggregate(
   _longitude: number,
   dewPointC: number,
   rain24: number,
+  methods?: MethodsMap,
+  wetnessSeries?: HourlyWetnessInput[],
 ) {
   // FIX: IST date and IST hour. The runtime is UTC; farms are IST (+5:30), so
   // every rain-period bucket was previously shifted by 5.5 hours and a late
@@ -922,14 +960,45 @@ async function updateWeatherAggregate(
   else if (hour >= 17 && hour < 21) rainColumn = "rain_mm_evening";
   else if (hour >= 21 || hour < 6) rainColumn = "rain_mm_night";
 
-  const tempMax = current.temp_max ?? current.temp;
-  const tempMin = current.temp_min ?? current.temp;
+  // D3 FIX: daily Tmax/Tmin are used ONLY when the provider actually supplied
+  // them. Substituting the instantaneous temperature (the old
+  // `current.temp_max ?? current.temp`) fabricated a zero diurnal range and
+  // poisoned ET0/GDD. When they are missing, ET0/GDD are skipped here and the
+  // daily finalize job (which reads weather_aggregates) computes them.
+  const dailyMax = Number.isFinite(current.temp_max as number) ? (current.temp_max as number) : null;
+  const dailyMin = Number.isFinite(current.temp_min as number) ? (current.temp_min as number) : null;
+  const hasDaily = dailyMax !== null && dailyMin !== null;
+  const hasLat = Number.isFinite(latitude);
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
 
-  const et0 = calculateET0Hargreaves(tempMax, tempMin, latitude || 20, dayOfYear);
-  const gddParams = getCropGDDParams("DEFAULT");
-  const dailyGDD = calculateDailyGDD(tempMax, tempMin, gddParams.baseTemp, gddParams.maxTemp);
-  const sunshine = estimateSunshineHours(current.clouds, current.sunrise, current.sunset);
+  const et0 = hasDaily && hasLat
+    ? calculateET0Hargreaves(dailyMax as number, dailyMin as number, latitude, dayOfYear, methods)
+    : null;
+  const gddParams = getCropGDDParams("DEFAULT", methods);
+  const dailyGDD = hasDaily
+    ? calculateDailyGDD(dailyMax as number, dailyMin as number, gddParams.baseTemp, gddParams.maxTemp)
+    : null;
+  const sunshine = Number.isFinite(current.sunrise) && Number.isFinite(current.sunset) && current.sunset > current.sunrise
+    ? estimateSunshineHours(current.clouds, current.sunrise, current.sunset)
+    : null;
+  if (!hasDaily) log(runId, "info", "agg_qc_flag", { flag: "MISSING_TMAXMIN", location_key: locationKey });
+
+  const indicesInput = {
+    temperature_c: current.temp,
+    temperature_max_c: dailyMax ?? undefined,
+    temperature_min_c: dailyMin ?? undefined,
+    humidity_percent: current.humidity,
+    cloud_cover_percent: current.clouds,
+    sunrise_timestamp: current.sunrise,
+    sunset_timestamp: current.sunset,
+    rainfall_24h_mm: rain24,
+    latitude: hasLat ? latitude : undefined,
+    day_of_year: dayOfYear,
+    wind_speed_ms: current.wind_speed,
+    pressure_hpa: current.pressure,
+    dew_point_c: dewPointC,
+    hourly_series: wetnessSeries,
+  };
 
   try {
     // FIX: .eq('land_id', null) never matches SQL NULL in PostgREST, so this
@@ -952,8 +1021,11 @@ async function updateWeatherAggregate(
         observation_count: obsCount + 1,
       };
 
-      const candMin = Math.min(current.temp, tempMin);
-      const candMax = Math.max(current.temp, tempMax);
+      // Running daily min/max from real observations (the instantaneous reading
+      // IS a legitimate observation for these columns; only ET0/GDD required
+      // true daily extremes).
+      const candMin = Math.min(current.temp, dailyMin ?? current.temp);
+      const candMax = Math.max(current.temp, dailyMax ?? current.temp);
       if (existing.temp_min_celsius == null || candMin < existing.temp_min_celsius) updates.temp_min_celsius = candMin;
       if (existing.temp_max_celsius == null || candMax > existing.temp_max_celsius) updates.temp_max_celsius = candMax;
 
@@ -968,41 +1040,20 @@ async function updateWeatherAggregate(
         updates.wind_speed_max_kmh = current.wind_speed * 3.6;
       }
 
-      const indices = calculateAllAgriculturalIndices({
-        temperature_c: current.temp,
-        temperature_max_c: tempMax,
-        temperature_min_c: tempMin,
-        humidity_percent: current.humidity,
-        cloud_cover_percent: current.clouds,
-        sunrise_timestamp: current.sunrise,
-        sunset_timestamp: current.sunset,
-        rainfall_24h_mm: rain24,
-        latitude: latitude || 20,
-        day_of_year: dayOfYear,
-      });
+      const indices = calculateAllAgriculturalIndices(indicesInput, methods);
 
       updates.frost_risk = current.temp < 4;
       updates.heat_stress_risk = current.temp > 38;
       updates.disease_risk_level = indices.disease_risk.level.toLowerCase();
-      updates.gdd_accumulated = (existing.gdd_accumulated || 0) + dailyGDD;
-      updates.evapotranspiration_mm = et0;
-      updates.sunshine_hours = sunshine;
+      // D3: never write a fabricated ET0/GDD — leave the column untouched.
+      if (dailyGDD !== null) updates.gdd_accumulated = (existing.gdd_accumulated || 0) + dailyGDD;
+      if (et0 !== null) updates.evapotranspiration_mm = et0;
+      if (sunshine !== null) updates.sunshine_hours = sunshine;
 
       await supabase.from("weather_aggregates").update(updates).eq("id", existing.id);
       log(runId, "info", "aggregate_updated", { date: today, obs_count: obsCount + 1, rain_total: updates.rain_mm_total });
     } else {
-      const indices = calculateAllAgriculturalIndices({
-        temperature_c: current.temp,
-        temperature_max_c: tempMax,
-        temperature_min_c: tempMin,
-        humidity_percent: current.humidity,
-        cloud_cover_percent: current.clouds,
-        sunrise_timestamp: current.sunrise,
-        sunset_timestamp: current.sunset,
-        rainfall_24h_mm: rain24,
-        latitude: latitude || 20,
-        day_of_year: dayOfYear,
-      });
+      const indices = calculateAllAgriculturalIndices(indicesInput, methods);
 
       const { error } = await supabase.from("weather_aggregates").upsert({
         tenant_id: tenantId,
@@ -1012,8 +1063,8 @@ async function updateWeatherAggregate(
         aggregate_date: today,
         rain_mm_total: rain24,
         [rainColumn]: rain24,
-        temp_min_celsius: tempMin,
-        temp_max_celsius: tempMax,
+        temp_min_celsius: dailyMin ?? current.temp,
+        temp_max_celsius: dailyMax ?? current.temp,
         temp_avg_celsius: current.temp,
         humidity_avg_percent: current.humidity,
         wind_speed_avg_kmh: current.wind_speed * 3.6,
@@ -1022,6 +1073,7 @@ async function updateWeatherAggregate(
         frost_risk: current.temp < 4,
         heat_stress_risk: current.temp > 38,
         disease_risk_level: indices.disease_risk.level.toLowerCase(),
+        // D3: null instead of a fabricated value when daily extremes are absent
         gdd_accumulated: dailyGDD,
         evapotranspiration_mm: et0,
         sunshine_hours: sunshine,
@@ -1098,6 +1150,8 @@ async function archiveToWeatherHistorical(
 // PER-LAND DERIVED METRICS
 // ============================================================================
 
+// Legacy inline copy — kept only as the offline mirror. The authoritative
+// values now live in sci_method_registry as SOIL_TYPE_EFFECTIVE_RAIN@1.0.
 const SOIL_FACTORS: Record<string, number> = {
   black: 0.60, black_cotton: 0.60, vertisol: 0.60,
   red: 0.75, laterite: 0.75, alfisol: 0.75,
@@ -1115,24 +1169,29 @@ async function computeLandWeatherMetrics(
   current: CurrentWeatherData,
   rounded: { lat: number; lon: number },
   rain24: number,
+  methods?: MethodsMap,
+  wetnessSeries?: HourlyWetnessInput[],
 ) {
   try {
     const { data: land } = await supabase.from("lands")
       .select("soil_type, current_crop, area_acres").eq("id", landId).maybeSingle();
 
     const soilType = (land?.soil_type ?? "default").toLowerCase();
-    const soilFactor = SOIL_FACTORS[soilType] ?? SOIL_FACTORS.default;
+    const registrySoil = (methods?.SOIL_TYPE_EFFECTIVE_RAIN?.params ?? {}) as Record<string, number>;
+    const soilFactor = registrySoil[soilType] ?? registrySoil.default
+      ?? SOIL_FACTORS[soilType] ?? SOIL_FACTORS.default;
     const cropCode = land?.current_crop ?? "DEFAULT";
 
-    const tempMax = current.temp_max ?? current.temp;
-    const tempMin = current.temp_min ?? current.temp;
+    // D3 FIX: no fabricated diurnal range here either.
+    const dailyMax = Number.isFinite(current.temp_max as number) ? (current.temp_max as number) : undefined;
+    const dailyMin = Number.isFinite(current.temp_min as number) ? (current.temp_min as number) : undefined;
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
 
     // Crop-aware indices from the module that was previously dead code.
     const indices = calculateAllAgriculturalIndices({
       temperature_c: current.temp,
-      temperature_max_c: tempMax,
-      temperature_min_c: tempMin,
+      temperature_max_c: dailyMax,
+      temperature_min_c: dailyMin,
       humidity_percent: current.humidity,
       cloud_cover_percent: current.clouds,
       sunrise_timestamp: current.sunrise,
@@ -1141,21 +1200,25 @@ async function computeLandWeatherMetrics(
       latitude: rounded.lat,
       day_of_year: dayOfYear,
       crop_code: cropCode,
-    });
+      wind_speed_ms: current.wind_speed,
+      pressure_hpa: current.pressure,
+      hourly_series: wetnessSeries,
+    }, methods);
 
     const effectiveRainfall = rain24 * soilFactor;
     const runoffLoss = rain24 - effectiveRainfall;
-    const waterDeficit = Math.max(0, indices.et0_mm - effectiveRainfall);
+    const et0 = indices.et0_mm; // null when daily Tmax/Tmin were unavailable
+    const waterDeficit = et0 === null ? null : Math.max(0, et0 - effectiveRainfall);
 
     let cropStress = "NONE";
     if (current.temp > 40) cropStress = "SEVERE_HEAT";
     else if (current.temp > 38) cropStress = "HEAT";
     else if (current.temp < 5) cropStress = "FROST";
-    else if (waterDeficit > 5) cropStress = "WATER_STRESS";
+    else if ((waterDeficit ?? 0) > 5) cropStress = "WATER_STRESS";
 
     let waterBalance = "BALANCED";
-    if (effectiveRainfall > indices.et0_mm * 1.5) waterBalance = "SURPLUS";
-    else if (waterDeficit > 3) waterBalance = "DEFICIT";
+    if (et0 !== null && effectiveRainfall > et0 * 1.5) waterBalance = "SURPLUS";
+    else if ((waterDeficit ?? 0) > 3) waterBalance = "DEFICIT";
 
     const { error } = await supabase.from("land_weather_state").upsert({
       land_id: landId,
@@ -1168,12 +1231,15 @@ async function computeLandWeatherMetrics(
       total_rainfall_mm: rain24,
       effective_rainfall_mm: Math.round(effectiveRainfall * 10) / 10,
       runoff_loss_mm: Math.round(runoffLoss * 10) / 10,
-      water_deficit_mm: Math.round(waterDeficit * 10) / 10,
+      water_deficit_mm: waterDeficit === null ? null : Math.round(waterDeficit * 10) / 10,
       soil_type_used: soilType,
-      irrigation_needed: indices.irrigation_need.needs_irrigation,
-      irrigation_urgency: indices.irrigation_need.priority,
+      irrigation_needed: indices.irrigation_need?.needs_irrigation ?? null,
+      irrigation_urgency: indices.irrigation_need?.priority ?? null,
       gdd_daily: indices.gdd,
-      et0_mm: indices.et0_mm,
+      et0_mm: et0,
+      et0_method: indices.et0_method,
+      u_std_et0: indices.et0_u_std,
+      lwd_est_hours: indices.leaf_wetness_hours,
       vpd_kpa: indices.vpd_kpa,
       disease_risk_score: indices.disease_risk.score,
       disease_risk_level: indices.disease_risk.level,
@@ -1184,7 +1250,8 @@ async function computeLandWeatherMetrics(
 
     if (error) log(runId, "warn", "land_metrics_failed", { error: error.message });
     else log(runId, "info", "land_metrics_computed", {
-      land_id: landId, et0: indices.et0_mm, deficit: waterDeficit, stress: cropStress,
+      land_id: landId, et0, method: indices.et0_method, deficit: waterDeficit,
+      stress: cropStress, qc_flags: indices.qc_flags,
     });
   } catch (e) {
     log(runId, "warn", "land_metrics_exception", { error: String(e) });
