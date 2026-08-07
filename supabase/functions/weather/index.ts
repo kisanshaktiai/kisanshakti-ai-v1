@@ -909,13 +909,20 @@ async function cacheWeatherData(
     }
 
     // ---- 5. daily aggregate --------------------------------------------------
+    // D5: the hourly series is now threaded through so leaf wetness duration
+    // can actually be estimated (rain per hour is not published by the
+    // providers' hourly product, so the RH / dew-point criteria decide).
+    const wetnessSeries: HourlyWetnessInput[] | undefined = hourly?.length
+      ? hourly.map((h) => ({ rh: h.humidity, temp: h.temp, dt: h.dt }))
+      : undefined;
+
     if (tenantId) {
-      await updateWeatherAggregate(supabase, runId, tenantId, farmerId, landId, locationKey, current, now, rounded.lat, rounded.lon, dewPointC, rain24);
+      await updateWeatherAggregate(supabase, runId, tenantId, farmerId, landId, locationKey, current, now, rounded.lat, rounded.lon, dewPointC, rain24, sciMethods, wetnessSeries);
     }
 
     // ---- 6. per-land derived metrics ----------------------------------------
     if (landId && tenantId) {
-      await computeLandWeatherMetrics(supabase, runId, landId, tenantId, locationKey, current, rounded, rain24);
+      await computeLandWeatherMetrics(supabase, runId, landId, tenantId, locationKey, current, rounded, rain24, sciMethods, wetnessSeries);
     }
   } catch (e) {
     log(runId, "error", "cache_write_exception", { error: String(e) });
