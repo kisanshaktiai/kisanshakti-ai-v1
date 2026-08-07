@@ -1,9 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { MapPin, Thermometer, RefreshCw, Satellite, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { WeatherAnimation } from './WeatherAnimation';
+
 
 interface WeatherHeroCardProps {
   currentWeather: any;
