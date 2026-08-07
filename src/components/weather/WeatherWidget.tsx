@@ -58,16 +58,17 @@ export const WeatherWidget: React.FC = () => {
     const urgency = (landState.irrigation_urgency ?? '').toUpperCase();
     const risk = (landState.disease_risk_level ?? '').toUpperCase();
     if (urgency === 'CRITICAL' || urgency === 'HIGH' || urgency === 'URGENT') {
-      return { text: 'Irrigate today', tone: 'text-destructive' };
+      return { text: t('weather.widget.irrigate_today'), tone: 'text-destructive' };
     }
     if (risk === 'HIGH' || risk === 'CRITICAL' || risk === 'SEVERE') {
-      return { text: 'High disease risk', tone: 'text-warning' };
+      return { text: t('weather.widget.high_disease_risk'), tone: 'text-warning' };
     }
     if (urgency === 'MEDIUM' || urgency === 'MODERATE' || landState.irrigation_needed) {
-      return { text: 'Irrigation due soon', tone: 'text-info' };
+      return { text: t('weather.widget.irrigation_soon'), tone: 'text-info' };
     }
-    return { text: 'Field conditions normal', tone: 'text-success' };
+    return { text: t('weather.widget.normal'), tone: 'text-success' };
   })();
+
 
 
 
