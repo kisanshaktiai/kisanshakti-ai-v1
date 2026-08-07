@@ -149,11 +149,12 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
 
       {/* Modern Vertical List Layout */}
       <div className="space-y-2">
-        {forecast.slice(0, 7).map((day, index) => {
+        {days.map((day, index) => {
           const weatherConfig = getWeatherIcon(day.weather[0]?.main || 'Clear');
           const IconComponent = weatherConfig.icon;
-          const isFirstDay = index === 0;
+          const isFirstDay = isToday(new Date(day.dt * 1000));
           const barStyle = getTempBarStyle(day.temp.min, day.temp.max);
+
 
           return (
             <motion.div
@@ -267,17 +268,18 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
             <TrendingDown className="h-3 w-3 text-info" />
-            <span>Low: {Math.round(minTemp)}°</span>
+            <span>{t('weather.forecast.low_short')}: {Math.round(minTemp)}°</span>
           </div>
           <div className="flex items-center gap-1">
             <TrendingUp className="h-3 w-3 text-warning" />
-            <span>High: {Math.round(maxTemp)}°</span>
+            <span>{t('weather.forecast.high_short')}: {Math.round(maxTemp)}°</span>
           </div>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Droplets className="h-3 w-3 text-info" />
           <span>
-            {forecast.slice(0, 7).filter(d => d.pop > 0.3).length} rainy days
+            {t('weather.forecast.rainy_days', { count: days.filter(d => d.pop > 0.3).length })}
+
           </span>
         </div>
       </motion.div>
