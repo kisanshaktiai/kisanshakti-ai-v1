@@ -439,8 +439,9 @@ export default function Home() {
                           <div className="flex flex-col">
                             <span className="text-[9px] text-muted-foreground">{t('home.stats.pressure')}</span>
                             <span className="text-sm font-bold text-foreground">
-                              {currentWeather?.pressure || '--'} hPa
+                              {currentWeather?.pressure != null ? currentWeather.pressure : '--'} hPa
                             </span>
+
                           </div>
                         </>
                       )}
