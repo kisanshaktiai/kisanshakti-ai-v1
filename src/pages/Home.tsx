@@ -596,9 +596,10 @@ export default function Home() {
                     <Wind className="w-3.5 h-3.5 text-primary" />
                     <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.wind')}</span>
                     <span className="text-sm font-bold text-foreground">
-                      {currentWeather?.wind_speed ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
-                      <span className="text-[10px] font-normal"> km/h</span>
+                      {currentWeather?.wind_speed != null ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
+                      <span className="text-[10px] font-normal"> {t('weather.units.kmh')}</span>
                     </span>
+
                   </motion.div>
 
                   <motion.div
