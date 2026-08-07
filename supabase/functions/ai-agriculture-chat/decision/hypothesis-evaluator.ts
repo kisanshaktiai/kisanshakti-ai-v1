@@ -103,6 +103,9 @@ export interface CandidateHypothesisResistance {
 export interface CandidateHypothesis {
   rule_id: string;
   cause: string;
+  /** FIX 5 / GAP A — decision_rules.i18n_key threaded through so the UI layer
+   *  can translate BY KEY instead of by the English cause sentence. */
+  i18n_key?: string | null;
   canonical_group: string;
   priority: number;
   stage_relevance_score: number;
@@ -1028,6 +1031,7 @@ export async function evaluateCandidateHypotheses(
       scoredCandidates.push({
         rule_id: rule.rule_id,
         cause: rule.cause || 'unknown',
+        i18n_key: rule.i18n_key ?? null,
         canonical_group: rule.canonical_group || rule.category || 'general',
         priority: rule.priority || 50,
         stage_relevance_score: stageRelevance,
