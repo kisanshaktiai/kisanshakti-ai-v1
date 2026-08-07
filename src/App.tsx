@@ -45,6 +45,7 @@ const LandManagement = lazy(() => import("./pages/LandManagement"));
 const AddLand = lazy(() => import("./pages/AddLand"));
 const EditLand = lazy(() => import("./pages/EditLand"));
 const LandDetails = lazy(() => import("./pages/LandDetails"));
+const EnvDiagnostics = lazy(() => import("./pages/EnvDiagnostics"));
 const AIChat = lazy(() => import("./pages/AIChat"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const AICommunityPage = lazy(() => import("./pages/CommunityPage"));
@@ -376,6 +377,7 @@ const router = createBrowserRouter([
       { path: "lands/:id", element: <Suspense fallback={<PageLoader />}><LandDetails /></Suspense> },
       { path: "lands/:id/soil", element: <Suspense fallback={<PageLoader />}><SoilHealthReport /></Suspense> },
       { path: "lands/:id/ndvi", element: <Suspense fallback={<PageLoader />}><NDVIAnalysis /></Suspense> },
+      { path: "diagnostics/environment", element: <Suspense fallback={<PageLoader />}><EnvDiagnostics /></Suspense> },
       { path: "ai-chat", element: <Suspense fallback={<PageLoader />}><AIChat /></Suspense> },
       { path: "chat", element: <Suspense fallback={<PageLoader />}><AIChat /></Suspense> },
       { path: "community", element: <Suspense fallback={<PageLoader />}><AICommunityPage /></Suspense> },

@@ -17,6 +17,7 @@ import { isolatedSupabase } from '@/services/dataIsolationService';
 import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { LandDetailsSkeleton } from '@/components/skeletons';
+import { FarmIntelligenceCard } from '@/components/farm-intelligence/FarmIntelligenceCard';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -525,6 +526,9 @@ export default function LandDetails() {
           </div>
 
           <TabsContent value="overview" className="space-y-4">
+            {/* Farm Intelligence (environmental spine) */}
+            {id && <FarmIntelligenceCard landId={id} />}
+
             {/* Land Information Card */}
             <Card className="border-border/50 shadow-lg">
               <CardHeader className="pb-4">
