@@ -168,6 +168,11 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
               <CardContent className="p-4 space-y-2 relative">
                 <div className="flex items-center justify-between">
                   <rec.icon className={cn("h-8 w-8", rec.color)} />
+                  {rec.fromField && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      Field
+                    </span>
+                  )}
                 </div>
                 
                 <div>
@@ -182,8 +187,12 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
                   >
                     {rec.label}
                   </Badge>
+                  {rec.sub && (
+                    <p className="text-[9px] text-muted-foreground mt-1">{rec.sub}</p>
+                  )}
                 </div>
               </CardContent>
+
             </Card>
           </motion.div>
         ))}
