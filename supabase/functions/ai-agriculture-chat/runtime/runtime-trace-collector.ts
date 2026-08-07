@@ -1,3 +1,7 @@
+// CHANGE LOG (newest first)
+//   2026-08-08 00:00 UTC — FIX 7: runtime_trace late serialization. buildRuntimeTrace
+//     now flushes still-open spans, sorts stages, warns [RUNTIME_TRACE_EMPTY], and
+//     new recordStage()/ingestLayerTimings() fold orchestrator layer timings in.
 // PHASE Y — RuntimeTraceCollector
 
 export const RUNTIME_VERSION  = '1.0.0';
@@ -230,11 +234,58 @@ export class RuntimeTraceCollector {
     };
   }
 
+  // FIX 7 (2026-08-08) — post-hoc stage span. Layers that were timed with
+  // plain Date.now() arithmetic (orchestrator layerTimings) can be folded into
+  // the trace without being wrapped in `stage()`.
+  recordStage(name: StageName, owner: string, latencyMs: number, patch: Partial<StageRecord> = {}): void {
+    try {
+      if (!name) return;
+      const end = Date.now();
+      const lat = Number.isFinite(latencyMs) ? Math.max(0, latencyMs | 0) : 0;
+      this.stages.push({ name, owner, start_ms: end - lat, end_ms: end, latency_ms: lat, ...patch } as StageRecord);
+    } catch {}
+  }
+
+  /** Fold an orchestrator `layerTimings` map ({ layer3_rules: 421, … }) into stages. */
+  ingestLayerTimings(timings: Record<string, number> | null | undefined, owner = 'orchestrator'): void {
+    if (!timings) return;
+    for (const [name, ms] of Object.entries(timings)) {
+      if (typeof ms !== 'number' || !Number.isFinite(ms)) continue;
+      if (this.stages.some((s) => s.name === (name as StageName))) continue;
+      this.recordStage(name as StageName, owner, ms);
+    }
+  }
+
   buildRuntimeTrace(totalLatencyMs: number) {
+    // FIX 7 — LATE SERIALIZATION. Previously `stages` serialized as [] on every
+    // turn because spans still open at persist time were dropped on the floor
+    // (endStage never ran on early-return paths). Flush them here so the trace
+    // reflects real execution instead of an empty array.
+    try {
+      for (const [name, rec] of this.openStages) {
+        rec.end_ms = Date.now();
+        rec.latency_ms = rec.end_ms - rec.start_ms;
+        (rec as any).unclosed = true;
+        this.stages.push(rec);
+        this.openStages.delete(name);
+      }
+    } catch {}
+
+    const stages = [...this.stages].sort((a, b) => (a.start_ms || 0) - (b.start_ms || 0));
+    if (stages.length === 0) {
+      console.warn(
+        `[RUNTIME_TRACE_EMPTY] trace=${this.header.trace_id} exec=${this.header.execution_id} ` +
+        `no stage spans recorded for this turn`,
+      );
+    }
     return {
       header:  this.header,
-      stages:  this.stages,
-      totals:  { total_latency_ms: totalLatencyMs, stage_count: this.stages.length },
+      stages,
+      totals:  {
+        total_latency_ms: totalLatencyMs,
+        stage_count: stages.length,
+        unclosed_stage_count: stages.filter((s: any) => s.unclosed === true).length,
+      },
     };
   }
 

@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+//   2026-08-08 00:00 UTC — FIX 2: never-empty-response invariant at the single
+//     exit point; FIX 7: layer timings folded into runtime_trace.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
@@ -1438,6 +1441,56 @@ export class AIAgentOrchestrator {
       }
     } catch { /* attach is additive; never fatal */ }
 
+    // FIX 7 (2026-08-08) — fold orchestrator layer timings into the runtime
+    // trace before it is serialized. Without this every persisted
+    // runtime_trace.stages array was `[]`.
+    try {
+      const _rt = getRuntimeTraceCollector();
+      const _lt = (this as any).__layerTimings as Record<string, number> | undefined;
+      if (_rt && _lt) _rt.ingestLayerTimings(_lt, 'orchestrator');
+    } catch { /* trace-only */ }
+
+    // FIX 2 (2026-08-08) — NEVER-EMPTY-RESPONSE INVARIANT.
+    // Single exit point guarantee: the caller must never receive a null
+    // response, nor a response whose farmer-visible message is blank. Silent
+    // empty turns previously surfaced as a frozen chat with no bubble.
+    try {
+      const _msgOf = (r: any): string =>
+        String(r?.message ?? r?.response ?? r?.text ?? r?.farmer_response ?? '').trim();
+
+      if (!response || !_msgOf(response)) {
+        const _hasOptions = Array.isArray((response as any)?.clarification_options)
+          && (response as any).clarification_options.length > 0;
+        const _fallbackText = _hasOptions
+          ? ((response as any)?.question ?? (response as any)?.clarification_question ?? '')
+          : '';
+
+        if (_fallbackText && response) {
+          (response as any).message = _fallbackText;
+          console.warn(`[EMPTY_RESPONSE_RECOVERED] trace=${traceId} source=clarification_question`);
+        } else {
+          const _prior = response;
+          response = {
+            ...(typeof _prior === 'object' && _prior ? _prior : {}),
+            type: (_prior as any)?.type ?? 'SYSTEM_FALLBACK',
+            message: '', // narration layer owns wording; key below drives i18n
+            message_key: 'chat.fallback.no_response',
+            metadata: {
+              ...((_prior as any)?.metadata ?? {}),
+              empty_response_invariant: true,
+              trace_id: traceId,
+            },
+          } as unknown as OrchestratorResponse;
+          console.error(
+            `[EMPTY_RESPONSE_INVARIANT] trace=${traceId} prior_type=${(_prior as any)?.type ?? 'null'} ` +
+            `recovered=SYSTEM_FALLBACK`,
+          );
+        }
+      }
+    } catch (emptyErr) {
+      console.warn(`[EMPTY_RESPONSE_INVARIANT_FAILED] trace=${traceId} err=${(emptyErr as Error).message}`);
+    }
+
     return response;
     };
     return await turnMemoStorage.run(requestMemo, run);
@@ -1613,6 +1666,8 @@ export class AIAgentOrchestrator {
       layer4_formatting: 0,  // Layer 4: LLM Response Formatting
       layer5_validation: 0   // Layer 5: Safety & Validation
     };
+    // FIX 7 — expose timings to the single exit point (runtime_trace folding).
+    (this as any).__layerTimings = layerTimings;
     
     console.log(`\n🚀 [${traceId}] Orchestrator v${ORCHESTRATOR_VERSION}: Starting full diagnostic flow...`);
     console.log(`   [${traceId}] Session: ${sessionId}`);
@@ -5741,7 +5796,16 @@ export class AIAgentOrchestrator {
               if (c.candidate_rule_ids.length === 0) graphHypothesisEdgeMissing.push(c.hypothesis_id);
             }
             graphHypothesisRuleIds = Array.from(new Set(graphHypothesisRuleIds));
-            (this as any)._graphHypothesisResult = graphOut;
+            // FIX 1 — defensive setter guard (never downgrade a populated result to 0 candidates)
+            {
+              const _prevN = (((this as any)._graphHypothesisResult?.candidates) ?? []).length;
+              const _nextN = (graphOut?.candidates ?? []).length;
+              if (_prevN > 0 && _nextN === 0) {
+                console.warn(`[GRAPH_RESULT_DROP_PREVENTED] trace=${traceId} prior=${_prevN} attempted=0 site=HYP_GRAPH_MAIN`);
+              } else {
+                (this as any)._graphHypothesisResult = graphOut;
+              }
+            }
             (this as any)._graphHypothesisRuleIds = graphHypothesisRuleIds;
             try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setHypothesisRuleIds(graphHypothesisRuleIds); } catch {}
             (this as any)._graphHypothesisEdgeMissing = graphHypothesisEdgeMissing;
@@ -5906,13 +5970,18 @@ export class AIAgentOrchestrator {
                 if ((orderErr as Error).message?.startsWith('GRAPH_ORDER_ERROR')) throw orderErr;
               }
               (this as any)._graphExecuted = true;
-              (this as any)._graphHypothesisResult = {
-                candidates: [],
-                eliminated: [],
-                input_observations: currentObservations,
-                trace_id: traceId,
-                timings_ms: 0,
-              };
+              // FIX 1 — defensive setter guard
+              if (_priorCandidates.length > 0) {
+                console.warn(`[GRAPH_RESULT_DROP_PREVENTED] trace=${traceId} prior=${_priorCandidates.length} attempted=0 site=HYP_GRAPH_NON_FATAL_SKIP`);
+              } else {
+                (this as any)._graphHypothesisResult = {
+                  candidates: [],
+                  eliminated: [],
+                  input_observations: currentObservations,
+                  trace_id: traceId,
+                  timings_ms: 0,
+                };
+              }
               (this as any)._graphHypothesisIds = [];
               (this as any)._graphHypothesisRuleIds = [];
               (this as any)._graphHypothesisEdgeMissing = [];
@@ -7985,22 +8054,62 @@ export class AIAgentOrchestrator {
             console.warn(`   ⚠️ [HYP_GRAPH_SCOPE] graph edges present but none in intent-filtered set (${graphRuleIdSet.size} edges); blocking (Neuro-Symbolic invariant)`);
             rulesForEvaluator = [];
           }
-        } else if (_graphExecutedFlag && _graphSurvivors.length === 0 && _isDiagnosticIntentForScope) {
-          // NEURO-SYMBOLIC INVARIANT — GRAPH_SCOPE_BLOCKED
-          const _blocked = rulesAfterIntent.length;
-          rulesForEvaluator = [];
-          (this as any)._graphScopeBlocked = {
-            graphExecuted: true,
-            hypothesisCount: 0,
-            graphRuleEdges: 0,
-            blockedRuleCount: _blocked,
-            reason: 'NO_HYPOTHESIS_SURVIVED_DB_GATES',
-          };
-          console.warn(
-            `[GRAPH_SCOPE_BLOCKED] trace=${traceId} intent=${activeIntentForRules} ` +
-            `graphExecuted=true hypothesisCount=0 graphRuleEdges=0 ` +
-            `blockedRuleCount=${_blocked} reason=NO_HYPOTHESIS_SURVIVED_DB_GATES`,
-          );
+        } else if (_graphExecutedFlag && _isDiagnosticIntentForScope) {
+          // FIX 1 — UNIFIED EVIDENCE SCOPE GATE.
+          // Before blocking, consult ALL three survivor stores:
+          //   (a) _graphHypothesisResult.candidates
+          //   (b) GraphRuntimeState.hypothesis_ids
+          //   (c) _graphHypothesisRuleIds
+          const _grsForScope = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
+          const _storeA: any[] = _graphSurvivors;
+          const _storeB: readonly string[] = (_grsForScope?.hypothesis_ids ?? []) as readonly string[];
+          const _storeC: string[] = (((this as any)._graphHypothesisRuleIds ?? []) as string[]).filter(Boolean);
+
+          const _recoveredEdges = Array.from(new Set<string>([
+            ..._storeA
+              .flatMap((c: any) => Array.isArray(c?.candidate_rule_ids) ? c.candidate_rule_ids : [])
+              .filter(Boolean)
+              .map((r: any) => String(r)),
+            ..._storeC,
+          ]));
+
+          const _survivorCount = _storeA.length || _storeB.length || _storeC.length;
+
+          if (_survivorCount > 0) {
+            const _src = _storeA.length > 0
+              ? '_graphHypothesisResult'
+              : (_storeB.length > 0 ? 'GraphRuntimeState.hypothesis_ids' : '_graphHypothesisRuleIds');
+            if (_recoveredEdges.length > 0) {
+              const _scopedRecovered = rulesAfterIntent.filter((r: any) =>
+                _recoveredEdges.includes(String(r?.rule_id ?? r?.id ?? '')));
+              rulesForEvaluator = _scopedRecovered.length > 0 ? _scopedRecovered : rulesAfterIntent;
+              (this as any)._graphHypothesisRuleIds = _recoveredEdges;
+              try { _grsForScope?.setHypothesisRuleIds(_recoveredEdges); } catch {}
+            } else {
+              // Survivors exist but no rule edges known — do NOT block the turn.
+              rulesForEvaluator = rulesAfterIntent;
+            }
+            console.warn(
+              `[HYP_GRAPH_SCOPE_RECOVERED] trace=${traceId} survivors=${_survivorCount} ` +
+              `rule_edges=${_recoveredEdges.length} source=${_src}`,
+            );
+          } else {
+            // NEURO-SYMBOLIC INVARIANT — GRAPH_SCOPE_BLOCKED (all three stores empty)
+            const _blocked = rulesAfterIntent.length;
+            rulesForEvaluator = [];
+            (this as any)._graphScopeBlocked = {
+              graphExecuted: true,
+              hypothesisCount: 0,
+              graphRuleEdges: 0,
+              blockedRuleCount: _blocked,
+              reason: 'NO_HYPOTHESIS_SURVIVED_DB_GATES',
+            };
+            console.warn(
+              `[GRAPH_SCOPE_BLOCKED] trace=${traceId} intent=${activeIntentForRules} ` +
+              `graphExecuted=true hypothesisCount=0 graphRuleEdges=0 ` +
+              `blockedRuleCount=${_blocked} reason=NO_HYPOTHESIS_SURVIVED_DB_GATES`,
+            );
+          }
         }
         const graphHypIdsForTrace: string[] = (((this as any)._graphHypothesisResult?.candidates) ?? []).map((c: any) => c.hypothesis_id);
         const hypToRuleReason = graphHypIdsForTrace.length === 0

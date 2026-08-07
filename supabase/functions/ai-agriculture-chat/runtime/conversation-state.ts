@@ -1,4 +1,13 @@
 // Phase H — CANONICAL CONVERSATION STATE (Single Runtime Authority)
+//
+// CHANGE LOG (newest first)
+//   2026-08-08 00:00 UTC — FIX 3: presentation-string leak into evidence.
+//     Clarification selections were arriving as rendered farmer-facing labels
+//     (Devanagari sentences, emoji-prefixed option text, "Yellow leaves" etc.)
+//     and were being counted as confirmed symbolic observations, inflating
+//     informative_count and coverage with strings no rule could ever match.
+//     Only canonical symbolic codes (ASCII snake/UPPER_SNAKE) are admitted;
+//     everything else is dropped and logged as [EVIDENCE_PRESENTATION_LEAK].
 
 import { computeCoverage, INFORMATIVE_PLACEHOLDERS } from './evidence-coverage.ts';
 
@@ -55,9 +64,32 @@ function isUnknownPlaceholder(code: string): boolean {
   return UNKNOWN_RE.test(code);
 }
 
+// FIX 3 — a symbolic code is ASCII letters/digits/underscore only. Rendered
+// labels (any non-ASCII script, whitespace, emoji, punctuation) are NOT codes.
+const SYMBOLIC_CODE_RE = /^[A-Za-z][A-Za-z0-9_]{1,79}$/;
+
+function isSymbolicCode(code: string): boolean {
+  return SYMBOLIC_CODE_RE.test(code);
+}
+
+function admitCodes(raw: Iterable<string>, bucket: string, trace_id: string): string[] {
+  const kept: string[] = [];
+  const rejected: string[] = [];
+  for (const c of new Set([...raw].filter(Boolean).map((x) => String(x).trim()))) {
+    (isSymbolicCode(c) ? kept : rejected).push(c);
+  }
+  if (rejected.length > 0) {
+    console.warn(
+      `[EVIDENCE_PRESENTATION_LEAK] trace=${trace_id} bucket=${bucket} ` +
+      `rejected=${rejected.length} sample=${JSON.stringify(rejected.slice(0, 3))}`,
+    );
+  }
+  return kept;
+}
+
 export function buildConversationState(i: BuildStateInput): ConversationState {
-  const confirmedAll = Array.from(new Set([...i.confirmed].filter(Boolean)));
-  const inferredAll  = Array.from(new Set([...i.inferred ].filter(Boolean)));
+  const confirmedAll = admitCodes(i.confirmed, 'confirmed', i.trace_id);
+  const inferredAll  = admitCodes(i.inferred,  'inferred',  i.trace_id);
   const hypotheses   = Array.from(new Set([...(i.hypotheses || [])].filter(Boolean)));
 
   // Split confirmed → informative vs unknown placeholders (Bug 2 fix)
