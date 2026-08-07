@@ -414,7 +414,9 @@ export default function Weather() {
             <FarmingRecommendations
               currentWeather={currentWeather}
               forecast={forecast}
+              landState={landStateIsToday ? landState : null}
             />
+
 
             {/* Hourly Forecast Chart - NEW: Line chart instead of cards */}
             {hourlyForecast && hourlyForecast.length > 0 && (
