@@ -1,0 +1,74 @@
+{
+  "__meta": {
+    "page": "farm-intelligence",
+    "version": "1.0",
+    "last_updated": "2026-08-07"
+  },
+  "farmIntel": {
+    "title": "Farm Intelligence",
+    "subtitle": "Science-backed field conditions from measured weather",
+    "loading": "Loading…",
+    "no_data": "No data yet",
+    "irrigation": {
+      "title": "Soil water",
+      "trigger": "Irrigate below this",
+      "available": "Water left",
+      "depleted": "Used up",
+      "crop_use": "Crop use today",
+      "status_ok": "Enough water",
+      "status_soon": "Irrigate soon",
+      "status_now": "Irrigate now"
+    },
+    "spray": {
+      "title": "Spraying window",
+      "score": "Today {{value}}%",
+      "good": "Good",
+      "caution": "Careful",
+      "avoid": "Do not spray",
+      "best_window": "Best time to spray: around {{hour}}:00",
+      "no_window": "No safe spraying time in the next hours"
+    },
+    "risk": {
+      "title": "Active risks",
+      "none": "No active risk right now",
+      "tap_hint": "Tap a risk to see why",
+      "why_desc": "This is based on measured weather from your field area.",
+      "current": "Now",
+      "peak": "Highest",
+      "confidence": "Confidence",
+      "factors": "What caused this",
+      "how_computed": "How this was calculated",
+      "phase": {
+        "onset": "Starting",
+        "active": "Ongoing",
+        "peak": "Peak",
+        "declining": "Easing"
+      },
+      "codes": {}
+    },
+    "timeline": {
+      "title": "Rain and water demand",
+      "rain": "Rain",
+      "et0": "Water demand"
+    },
+    "diagnostics": {
+      "title": "Environmental Diagnostics",
+      "subtitle": "Observation spine, bias and derivation runs",
+      "select_land": "Select land",
+      "cell_key": "Cell",
+      "observations": "Recent observations",
+      "bias": "Cell bias",
+      "methods": "Scientific methods",
+      "runs": "Derivation runs",
+      "no_access": "You do not have access to this page.",
+      "property": "Property",
+      "value": "Value",
+      "time": "Valid time",
+      "source": "Source",
+      "confidence": "Confidence",
+      "qc": "QC",
+      "status": "Status",
+      "version": "Version"
+    }
+  }
+}
