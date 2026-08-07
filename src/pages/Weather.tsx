@@ -202,7 +202,7 @@ export default function Weather() {
           {/* Hero Section with Weather Info */}
           <WeatherHeroCard
             currentWeather={currentWeather}
-            location={currentWeather.location || 'Current Location'}
+            location={currentWeather.location || t('weather.header.current_location')}
             lastSyncTime={lastUpdated ? new Date(lastUpdated) : null}
             isRefreshing={false}
             onRefresh={handleManualSync}
@@ -288,9 +288,10 @@ export default function Weather() {
             >
               {/* Row 1: Primary Stats */}
               {[
-                { icon: Wind, label: 'Wind', value: Math.round(currentWeather.wind_speed * 3.6), unit: 'km/h', type: 'wind', gradient: 'from-info/10 to-info/10' },
-                { icon: Droplets, label: 'Humidity', value: currentWeather.humidity, unit: '%', type: 'humidity', gradient: 'from-info/10 to-info/10' },
-                { icon: Eye, label: 'Visibility', value: (currentWeather.visibility / 1000).toFixed(1), unit: 'km', type: 'visibility', gradient: 'from-success/10 to-success/10' }
+                { icon: Wind, label: t('weather.stats.wind'), value: Math.round(currentWeather.wind_speed * 3.6), unit: t('weather.units.kmh'), type: 'wind', gradient: 'from-info/10 to-info/10' },
+                { icon: Droplets, label: t('weather.stats.humidity'), value: currentWeather.humidity, unit: t('weather.units.percent'), type: 'humidity', gradient: 'from-info/10 to-info/10' },
+                { icon: Eye, label: t('weather.stats.visibility'), value: (currentWeather.visibility / 1000).toFixed(1), unit: t('weather.units.km'), type: 'visibility', gradient: 'from-success/10 to-success/10' }
+
               ].map((stat, index) => (
                 <motion.div
                   key={stat.label}
@@ -381,7 +382,7 @@ export default function Weather() {
                   <span className="text-sm font-bold">
                     {currentWeather.uv_index !== undefined ? currentWeather.uv_index.toFixed(1) : '--'}
                   </span>
-                  <span className="text-[9px] text-muted-foreground">UV</span>
+                  <span className="text-[9px] text-muted-foreground">{t('weather.stats.uv')}</span>
                 </div>
               </motion.div>
 
@@ -398,7 +399,7 @@ export default function Weather() {
                   <span className="text-sm font-bold">
                     {currentWeather.dew_point !== undefined ? Math.round(currentWeather.dew_point) : '--'}°
                   </span>
-                  <span className="text-[9px] text-muted-foreground">Dew Pt</span>
+                  <span className="text-[9px] text-muted-foreground">{t('weather.stats.dew_point')}</span>
                 </div>
               </motion.div>
             </motion.div>
