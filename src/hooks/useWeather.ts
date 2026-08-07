@@ -354,6 +354,9 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
   };
 
   useEffect(() => {
+    // Only the elected leader fetches; followers render the shared store.
+    if (!isFetchLeader) return;
+
     // Wait for tenant to load before fetching weather
     if (tenantLoading) {
       console.log('⏳ [useWeather] Tenant still loading, skipping weather fetch');
@@ -375,7 +378,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     } else if (!tenant?.id && !tenantLoading) {
       console.warn('⚠️ [useWeather] No tenant ID available after loading completed');
     }
-  }, [tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon, farmLocation?.lat, farmLocation?.lon]);
+  }, [isFetchLeader, tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon, farmLocation?.lat, farmLocation?.lon]);
 
   // Update location name when device location changes
   useEffect(() => {
