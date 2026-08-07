@@ -36484,6 +36484,7 @@ export type Database = {
       }
       resolve_tenant_by_slug: { Args: { p_slug: string }; Returns: Json }
       resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
+      run_env_verification: { Args: never; Returns: Json }
       sanitize_white_label_config: {
         Args: { config_data: Json }
         Returns: Json

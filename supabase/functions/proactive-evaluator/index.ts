@@ -1,5 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  batchLoadDerived,
+  batchLoadForecastTmax5d,
+  loadFarmerVisibility,
+  applyFarmerVisibilityGuard,
+  isEnvIntelligenceRule,
+  evaluateEnvRule,
+  emptyDerived,
+  type DerivedState,
+} from './env-derived.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -98,6 +108,10 @@ interface LandContext {
   soil_type: string | null;
   irrigation_type: string | null;
   water_source: string | null;
+  /** D7 — Environmental Intelligence derived namespace (additive) */
+  derived: DerivedState;
+  /** 5-day forecast mean Tmax (°C), null when unavailable */
+  forecast_tmax_mean_5d: number | null;
 }
 
 interface RuleEvalResult {
@@ -262,7 +276,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         .order('created_at', { ascending: false }),
       // Recent alerts for dedup/cooldown (24h)
       supabase.from('proactive_alerts')
-        .select('id, rule_id, land_id, farmer_id, dedup_key, created_at, status')
+        .select('id, rule_id, land_id, farmer_id, dedup_key, created_at, status, trigger_data')
         .in('land_id', landIds)
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
       // Soil health per land
@@ -309,10 +323,15 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     );
     
     // Batch-load forecast rain probability (72h) and GDD (30d) — by location_key
-    const [forecastLocMap, gddLocMap] = await Promise.all([
+    const [forecastLocMap, gddLocMap, tmax5dLocMap, derivedMap, farmerVisibility] = await Promise.all([
       batchLoadForecast(supabase, locKeyArray),
       batchLoadGDD(supabase, locKeyArray),
+      // D7 — Environmental Intelligence (additive)
+      batchLoadForecastTmax5d(supabase, locKeyArray),
+      batchLoadDerived(supabase, landIds),
+      loadFarmerVisibility(supabase),
     ]);
+    console.log(`[ProactiveEvaluator][${tenantId.slice(0,8)}] [ENV_DERIVED] hydrated derived state for ${derivedMap.size}/${landIds.length} lands`);
     // Map location_key results back to land_ids
     const forecastMap = new Map<string, number>();
     const gddMap = new Map<string, number>();
@@ -394,6 +413,8 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         soil_type: land.soil_type ?? null,
         irrigation_type: land.irrigation_type ?? null,
         water_source: land.water_source ?? null,
+        derived: derivedMap.get(land.id) || emptyDerived(),
+        forecast_tmax_mean_5d: locKey ? (tmax5dLocMap.get(locKey) ?? null) : null,
       });
     }
 
@@ -418,12 +439,40 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
       totalRulesEvaluated += applicableRules.length;
 
       for (const rule of applicableRules) {
-        const result = evaluateRule(rule, ctx);
+        // D7 — Environmental Intelligence rules resolve derived.* / active_episodes.
+        // Legacy rules keep their existing evaluation path untouched.
+        const isEnvRule = isEnvIntelligenceRule(rule.conditions);
+        let envPhase: string | null = null;
+        let result: RuleEvalResult;
+        if (isEnvRule) {
+          const envRes = evaluateEnvRule(rule.rule_code, rule.conditions, {
+            crop_code: ctx.crop_code,
+            derived: ctx.derived,
+            weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h },
+            forecast: { tmax_mean_5d: ctx.forecast_tmax_mean_5d },
+          });
+          envPhase = envRes.episodePhase;
+          result = { fired: envRes.fired, riskScore: envRes.riskScore, confidence: envRes.confidence, reasoning: envRes.reasoning, triggerData: envRes.triggerData };
+          console.log(`[ENV_RULE_EVAL] land=${ctx.land_id.slice(0,8)} rule=${rule.rule_code} fired=${envRes.fired} reason=${envRes.reasoning}`);
+        } else {
+          result = evaluateRule(rule, ctx);
+        }
         if (!result.fired) continue;
         totalRulesFired++;
 
+        // Episode-driven rules fire only on phase TRANSITIONS (never every tick)
+        if (isEnvRule && rule.conditions?.metadata?.episode_driven === true) {
+          const lastPhase = lastAlertPhase(rule.rule_code, ctx.land_id, alertMap);
+          if (lastPhase && envPhase && lastPhase === envPhase) {
+            console.log(`[ENV_RULE_EVAL] land=${ctx.land_id.slice(0,8)} rule=${rule.rule_code} suppressed: phase unchanged (${envPhase})`);
+            continue;
+          }
+        }
+
         // In-memory dedup check
-        const dedupKey = `${rule.rule_code}:${ctx.land_id}:${todayStr}`;
+        const dedupKey = isEnvRule && envPhase
+          ? `${rule.rule_code}:${ctx.land_id}:${envPhase}:${todayStr}`
+          : `${rule.rule_code}:${ctx.land_id}:${todayStr}`;
         if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || 24, alertMap)) continue;
 
         // Daily throttle check (in-memory)
@@ -460,9 +509,13 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
           action_text_en: fillTemplate(rule.action_template_en, templateVars),
           risk_score: result.riskScore,
           confidence: result.confidence,
-          trigger_data: addSymbolicSolution(
-            enrichTriggerDataWithIrrigation(result.triggerData, rule.alert_category, ctx),
-            null, rule, ctx, decisionRules
+          trigger_data: applyFarmerVisibilityGuard(
+            addSymbolicSolution(
+              enrichTriggerDataWithIrrigation(result.triggerData, rule.alert_category, ctx),
+              null, rule, ctx, decisionRules
+            ),
+            farmerVisibility,
+            'farmer',
           ),
           decision_reasoning: result.reasoning,
           status: 'PENDING',
@@ -912,6 +965,15 @@ function nullWeather() {
 // =====================================================
 // IN-MEMORY DEDUP + COOLDOWN (G4)
 // =====================================================
+
+/** Last stored episode phase for an episode-driven rule on this land (transition gating). */
+function lastAlertPhase(ruleCode: string, landId: string, alertMap: Map<string, any[]>): string | null {
+  const landAlerts = (alertMap.get(landId) || [])
+    .filter(a => a.rule_id === ruleCode)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const phase = landAlerts[0]?.trigger_data?.episode?.phase;
+  return phase ? String(phase) : null;
+}
 
 function isDuplicate(dedupKey: string, ruleCode: string, landId: string, cooldownHours: number, alertMap: Map<string, any[]>): boolean {
   // Check dedup key (same rule+land+day)
