@@ -242,9 +242,31 @@ export async function getRuleSnapshot(supabaseClient?: any): Promise<RuleSnapsho
   }
 }
 
-/** All active rules (raw rows, verbatim DB shape). */
-export async function getAllRules(supabaseClient?: any): Promise<RawRuleRow[]> {
-  return (await getRuleSnapshot(supabaseClient)).rows;
+// FIX 6 (2026-08-08) — TENANT SCOPING.
+// public.decision_rules carries `owner_tenant_id`: NULL = platform-global rule,
+// non-NULL = a rule authored by (and only valid for) that tenant. The snapshot
+// is shared across tenants for performance, so scoping MUST happen on read.
+// Callers that pass no tenantId receive GLOBAL rules only — fail-closed, so a
+// missing tenant can never leak another tenant's private agronomy.
+function scopeToTenant<T extends RawRuleRow>(rows: T[], tenantId?: string | null): T[] {
+  const tid = tenantId ? String(tenantId).trim().toLowerCase() : null;
+  let dropped = 0;
+  const out = rows.filter((r) => {
+    const owner = (r as any)?.owner_tenant_id;
+    if (owner === null || owner === undefined || owner === '') return true; // global
+    const keep = !!tid && String(owner).toLowerCase() === tid;
+    if (!keep) dropped++;
+    return keep;
+  });
+  if (dropped > 0) {
+    console.log(`[RULE_TENANT_SCOPE] tenant=${tid ?? 'GLOBAL_ONLY'} kept=${out.length} dropped_foreign=${dropped}`);
+  }
+  return out;
+}
+
+/** All active rules (raw rows, verbatim DB shape), scoped to `tenantId`. */
+export async function getAllRules(supabaseClient?: any, tenantId?: string | null): Promise<RawRuleRow[]> {
+  return scopeToTenant((await getRuleSnapshot(supabaseClient)).rows, tenantId);
 }
 
 /** Rows whose lower(crop_code) matches ANY supplied variant.
@@ -252,7 +274,8 @@ export async function getAllRules(supabaseClient?: any): Promise<RawRuleRow[]> {
  *  (ILIKE without wildcards == case-insensitive equality). */
 export async function getRulesForCrop(
   cropCode: string | string[],
-  supabaseClient?: any
+  supabaseClient?: any,
+  tenantId?: string | null
 ): Promise<RawRuleRow[]> {
   const snap = await getRuleSnapshot(supabaseClient);
   const variants = (Array.isArray(cropCode) ? cropCode : [cropCode])
@@ -266,14 +289,15 @@ export async function getRulesForCrop(
     const bucket = snap.byCrop.get(v);
     if (bucket) out.push(...bucket);
   }
-  return out;
+  return scopeToTenant(out, tenantId);
 }
 
 /** Rows for a crop (or crop variants) restricted to one canonical_group. */
 export async function getRulesForCropAndGroup(
   cropCode: string | string[],
   canonicalGroup: string,
-  supabaseClient?: any
+  supabaseClient?: any,
+  tenantId?: string | null
 ): Promise<RawRuleRow[]> {
   const snap = await getRuleSnapshot(supabaseClient);
   const group = normalizeCanonicalGroup(canonicalGroup ?? null);
@@ -288,14 +312,20 @@ export async function getRulesForCropAndGroup(
     const bucket = snap.byCropGroup.get(v)?.get(group);
     if (bucket) out.push(...bucket);
   }
-  return out;
+  return scopeToTenant(out, tenantId);
 }
 
 /** Single active rule by rule_id (case-insensitive, same as DB unique index). */
-export async function getRuleById(ruleId: string, supabaseClient?: any): Promise<RawRuleRow | null> {
+export async function getRuleById(
+  ruleId: string,
+  supabaseClient?: any,
+  tenantId?: string | null
+): Promise<RawRuleRow | null> {
   if (!ruleId) return null;
   const snap = await getRuleSnapshot(supabaseClient);
-  return snap.byRuleId.get(String(ruleId).toLowerCase()) ?? null;
+  const row = snap.byRuleId.get(String(ruleId).toLowerCase()) ?? null;
+  if (!row) return null;
+  return scopeToTenant([row], tenantId)[0] ?? null;
 }
 
 /** Force-drop the snapshot (tests / explicit invalidation). */

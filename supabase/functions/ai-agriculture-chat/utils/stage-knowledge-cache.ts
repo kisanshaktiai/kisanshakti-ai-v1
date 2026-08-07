@@ -1,5 +1,10 @@
 /**
  * CHANGE LOG
+ * 2026-08-08 00:00 UTC — FIX 4: deterministic stage resolution. crop_stage_master
+ *   is now loaded with is_active=true and a stable server-side ORDER BY, and
+ *   getStageByDAS ranks overlapping windows by a total order (lane → cycle →
+ *   das_reference → non-concurrent → canonical node → narrowest span → das_min
+ *   → stage_code). Emits [STAGE_RESOLUTION_DETERMINISTIC] when >1 candidate.
  * 2026-07-29 10:20 UTC — FIX C1-b: request-scoped cultivation lane via
  *   AsyncLocalStorage (`runWithCultivationLane` / `enterCultivationLane` /
  *   `currentLane`). All lookups resolve the lane from the explicit arg first,
@@ -37,6 +42,15 @@ export interface StageMasterRow {
   stage_description?: string | null;
   // v6 — cultivation_method dimension (e.g. 'direct_seeded', 'transplanted',
   cultivation_method?: string | null;
+  // FIX 4 — deterministic stage resolution dimensions (DB-backed)
+  crop_cycle?: string | null;
+  das_reference?: string | null;
+  stage_node_type?: string | null;
+  is_concurrent_window?: boolean | null;
+  canonical_stage_id?: string | null;
+  stage_code?: string | null;
+  id?: string | null;
+  is_active?: boolean | null;
 }
 
 
@@ -171,7 +185,12 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
   try {
     const { data, error } = await supabase
       .from('crop_stage_master')
-      .select('crop_code, growth_stage, stage_description, das_min, das_max, cultivation_method')
+      .select('id, crop_code, growth_stage, stage_code, stage_description, das_min, das_max, cultivation_method, crop_cycle, das_reference, stage_node_type, is_concurrent_window, canonical_stage_id, is_active')
+      .eq('is_active', true)
+      .order('crop_code')
+      .order('das_min')
+      .order('das_max')
+      .order('stage_code')
       .limit(5000);
 
     if (error) {
@@ -322,37 +341,75 @@ export function getStageCategoryFromDB(
 }
 
 // DB-first DAS → stage lookup.
+// FIX 4 (2026-08-08) — DETERMINISTIC STAGE RESOLUTION.
+// Overlapping DAS windows are the norm in crop_stage_master (concurrent
+// windows, multiple cycles, multiple das_reference systems). "First hit"
+// ordering made the same (crop, das) resolve to different stages between
+// requests. Selection is now a total order:
+//   1. lane match      (exact cultivation_method > 'any')
+//   2. cycle match     (explicit crop_cycle > null)
+//   3. reference match (explicit das_reference > null)
+//   4. NOT is_concurrent_window (primary timeline beats overlay windows)
+//   5. stage_node_type === 'stage' (canonical node beats sub/parent nodes)
+//   6. narrowest DAS window (das_max - das_min)
+//   7. lowest das_min
+//   8. stage_code ASC (final, stable tiebreak)
 export function getStageByDAS(
   crop: string,
   das: number,
   cultivationMethod?: string | null,
+  opts?: { cropCycle?: string | null; dasReference?: string | null },
 ): StageMasterRow | null {
   if (!cache) return null;
   const cropKey = (crop || '').toLowerCase();
   const method = resolveLane(cultivationMethod);
+  const cycle = opts?.cropCycle ? String(opts.cropCycle).toLowerCase() : null;
+  const ref = opts?.dasReference ? String(opts.dasReference).toLowerCase() : null;
 
-  let exact: StageMasterRow | null = null;
-  let anyRow: StageMasterRow | null = null;
-  let earliest: StageMasterRow | null = null;
-
-  for (const r of cache.master) {
-    if (r.crop_code?.toLowerCase() !== cropKey) continue;
-    if (!((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das)) continue;
+  const candidates = cache.master.filter((r) => {
+    if (r.crop_code?.toLowerCase() !== cropKey) return false;
+    if (!((r.das_min ?? -Infinity) <= das && (r.das_max ?? Infinity) >= das)) return false;
     const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
+    if (method && rowMethod !== method && rowMethod !== 'any') return false;
+    if (cycle && r.crop_cycle && String(r.crop_cycle).toLowerCase() !== cycle) return false;
+    if (ref && r.das_reference && String(r.das_reference).toLowerCase() !== ref) return false;
+    return true;
+  });
 
-    if (rowMethod === 'any' && !anyRow) anyRow = r;
-    if (method && rowMethod === method && !exact) exact = r;
-    if (!earliest || (r.das_min ?? Infinity) < (earliest.das_min ?? Infinity)) earliest = r;
-  }
+  if (candidates.length === 0) return null;
 
-  if (method) return exact ?? anyRow;
+  const rank = (r: StageMasterRow): number[] => {
+    const rowMethod = r.cultivation_method ? String(r.cultivation_method).toLowerCase() : 'any';
+    const span = (r.das_max ?? Number.MAX_SAFE_INTEGER) - (r.das_min ?? 0);
+    return [
+      method && rowMethod === method ? 0 : 1,
+      cycle && r.crop_cycle && String(r.crop_cycle).toLowerCase() === cycle ? 0 : 1,
+      ref && r.das_reference && String(r.das_reference).toLowerCase() === ref ? 0 : 1,
+      r.is_concurrent_window === true ? 1 : 0,
+      String(r.stage_node_type ?? 'stage').toLowerCase() === 'stage' ? 0 : 1,
+      span,
+      r.das_min ?? 0,
+    ];
+  };
 
-  const picked = anyRow ?? earliest;
-  if (picked) {
+  const sorted = [...candidates].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    for (let i = 0; i < ra.length; i++) {
+      if (ra[i] !== rb[i]) return ra[i] - rb[i];
+    }
+    return String(a.stage_code ?? a.growth_stage ?? '')
+      .localeCompare(String(b.stage_code ?? b.growth_stage ?? ''));
+  });
+
+  const picked = sorted[0];
+  if (candidates.length > 1) {
     warnOnce(
-      `das:${cropKey}:${das}`,
-      `[STAGE_LANE_UNKNOWN] crop=${cropKey} das=${das} ` +
-      `picked=${picked.growth_stage} method=${picked.cultivation_method ?? 'any'}`,
+      `das:${cropKey}:${das}:${method ?? 'any'}`,
+      `[STAGE_RESOLUTION_DETERMINISTIC] crop=${cropKey} das=${das} lane=${method ?? 'any'} ` +
+      `candidates=${candidates.length} picked=${picked.growth_stage} ` +
+      `stage_code=${picked.stage_code ?? 'null'} method=${picked.cultivation_method ?? 'any'} ` +
+      `concurrent=${picked.is_concurrent_window === true} span=${(picked.das_max ?? 0) - (picked.das_min ?? 0)}`,
     );
   }
   return picked;

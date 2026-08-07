@@ -1,10 +1,14 @@
+// CHANGE LOG (newest first)
+//   2026-08-08 00:00 UTC — FIX 5: i18n by key. Diagnosis question resolved via
+//     DB translation cache (UI_DIAGNOSIS_QUESTION_*) instead of a hardcoded
+//     English sentence; English retained as last-resort fallback only.
 // DIAGNOSIS-FIRST RESPONSE GENERATOR (v1.0.0)
 
 import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothesis-evaluator.ts';
 // STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
 import { translateToRegionalTerms, type FarmerLocation, type RegionalTranslation } from '../services/regional-translator.ts';
 // PHASE 4: DB-driven i18n - replaces hardcoded CAUSE_TRANSLATIONS dictionary
-import { translateCause, initializeTranslationCache } from '../i18n/translation-loader.ts';
+import { translateCause, initializeTranslationCache, getTranslation } from '../i18n/translation-loader.ts';
 type SupportedLanguage = string;
 // PHASE 4: DB-driven observation labels - replaces hardcoded OBSERVATION_LABELS dictionary
 import { loadObservationLabels, type ObservationLabel } from '../i18n/observation-label-loader.ts';
@@ -146,24 +150,46 @@ function getObservationLabelFromMap(
   return formatted;
 }
 
-// PHOTO OPTION LABELS (English-only — LLM narration layer translates)
+// PHOTO OPTION LABELS — key-driven; DB translation wins, English is fallback only.
+
+export const PHOTO_LABEL_KEY = 'UI_OPTION_SEND_PHOTO';
+export const PHOTO_DESCRIPTION_KEY = 'UI_OPTION_SEND_PHOTO_DESC';
+export const DIAGNOSIS_QUESTION_KEY_SINGLE = 'UI_DIAGNOSIS_QUESTION_SINGLE';
+export const DIAGNOSIS_QUESTION_KEY_MULTIPLE = 'UI_DIAGNOSIS_QUESTION_MULTIPLE';
 
 const PHOTO_LABEL = { label: '📷 Send Photo', description: 'Send a crop photo for more accurate diagnosis' };
 
-const DIAGNOSIS_QUESTION_TEMPLATE = {
+// FIX 5 (2026-08-08) — i18n BY KEY, NOT BY ENGLISH SENTENCE.
+// These English strings are LAST-RESORT fallbacks. The question is resolved
+// through the DB translation cache using a stable i18n key so a Marathi or
+// Hindi farmer never receives an English sentence that the narration layer
+// then has to guess at.
+const DIAGNOSIS_QUESTION_FALLBACK = {
   single: '🔬 Your crop may be affected by {cause}. Which of these do you see?',
   multiple: '🔬 Your crop may have one of these issues. Select the closest match:'
 };
 
 function getQuestionText(
   diagnoses: DiagnosisOption[],
-  _language: string
+  language: string
 ): string {
-  if (diagnoses.length === 1) {
-    return DIAGNOSIS_QUESTION_TEMPLATE.single.replace('{cause}', diagnoses[0].cause_label);
+  const isSingle = diagnoses.length === 1;
+  const key = isSingle ? DIAGNOSIS_QUESTION_KEY_SINGLE : DIAGNOSIS_QUESTION_KEY_MULTIPLE;
+
+  let text = '';
+  try {
+    const translated = getTranslation(key, language || 'en');
+    // getTranslation() degrades to a formatted key when no row exists — reject
+    // that (it looks like "Ui Diagnosis Question Single") and use the fallback.
+    if (translated && !/^ui[\s_]/i.test(translated.trim())) text = translated;
+  } catch { /* translation cache not initialised — fallback below */ }
+
+  if (!text) {
+    text = isSingle ? DIAGNOSIS_QUESTION_FALLBACK.single : DIAGNOSIS_QUESTION_FALLBACK.multiple;
+    console.warn(`[I18N_KEY_MISS] key=${key} language=${language} → english_fallback`);
   }
-  
-  return DIAGNOSIS_QUESTION_TEMPLATE.multiple;
+
+  return isSingle ? text.replace('{cause}', diagnoses[0].cause_label) : text;
 }
 
 // MAIN GENERATOR FUNCTION
