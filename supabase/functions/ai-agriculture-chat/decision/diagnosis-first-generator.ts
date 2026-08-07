@@ -101,28 +101,65 @@ function getGroupIcon(canonicalGroup: string): string {
 
 // v2.0.0: CAUSE TRANSLATION - DB-DRIVEN via translateCause()
 
-// Get farmer-friendly cause label using DB-driven i18n system.
-function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string {
-  const translated = translateCause(cause, language);
-  
-  // CRITICAL FIX: Detect if translation is still English for non-English language
-  // Uses script-aware detection (inline, no dynamic import)
-  if (language !== 'en' && translated) {
-    const SCRIPT_RANGES: Record<string, RegExp> = {
-      mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
-      ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
-      ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
-      pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
-    };
-    const scriptRegex = SCRIPT_RANGES[language];
-    const hasNativeScript = scriptRegex ? scriptRegex.test(translated) : 
-      (translated.replace(/[\s\d\p{P}\p{S}a-zA-Z]/gu, '').length > 0);
-    
-    if (!hasNativeScript) {
-      console.warn(`   ⚠️ [getCauseLabelDB] No ${language} translation for "${cause}" - will use observation label`);
-      return '';
+// GAP A (2026-08-07) — KEY-FIRST CAUSE TRANSLATION.
+// Previously the cause label was resolved by feeding the English sentence into
+// translateCause(), which produced one production warning per sentence per
+// option. decision_rules.i18n_key is populated for 1,817 rules, so the key is
+// the authority: look it up first, and only fall back to the sentence when the
+// row carries no key or the key has no translation row.
+const _i18nKeyMissSeen = new Set<string>();
+
+function warnKeyMissOnce(key: string, language: string): void {
+  const dedupe = `${key}::${language}`;
+  if (_i18nKeyMissSeen.has(dedupe)) return;
+  _i18nKeyMissSeen.add(dedupe);
+  console.warn(`[I18N_KEY_MISS] key=${key} lang=${language}`);
+}
+
+/** Reset the per-request warn dedupe (called at the top of each generation). */
+function resetI18nKeyMissDedupe(): void {
+  _i18nKeyMissSeen.clear();
+}
+
+function hasNativeScript(text: string, language: SupportedLanguage): boolean {
+  if (!text) return false;
+  if (language === 'en') return true;
+  const SCRIPT_RANGES: Record<string, RegExp> = {
+    mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
+    ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
+    ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
+    pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
+  };
+  const scriptRegex = SCRIPT_RANGES[language];
+  return scriptRegex
+    ? scriptRegex.test(text)
+    : text.replace(/[\s\d\p{P}\p{S}a-zA-Z]/gu, '').length > 0;
+}
+
+// Get farmer-friendly cause label — i18n_key FIRST, English sentence only as fallback.
+function getCauseLabelFromDB(
+  cause: string,
+  language: SupportedLanguage,
+  i18nKey?: string | null
+): string {
+  // (1) KEY PATH — authoritative.
+  if (i18nKey) {
+    const byKey = getTranslation(i18nKey, language);
+    if (byKey && (language === 'en' || hasNativeScript(byKey, language))) {
+      console.log(`   [getCauseLabelDB] key=${i18nKey} → "${byKey}" (${language})`);
+      return byKey;
     }
+    warnKeyMissOnce(i18nKey, String(language));
   }
+
+  // (2) SENTENCE FALLBACK — legacy path, unchanged text.
+  const translated = translateCause(cause, language);
+
+  if (language !== 'en' && translated && !hasNativeScript(translated, language)) {
+    // No usable translation — caller falls back to the observation label.
+    return '';
+  }
+
   
   console.log(`   [getCauseLabelDB] "${cause}" → "${translated}" (${language})`);
   return translated;
