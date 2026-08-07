@@ -214,7 +214,42 @@ export default function Weather() {
             weatherCondition={getWeatherCondition()}
             gradient={getWeatherGradient()}
             lastUpdated={lastUpdated}
+            locationSource={locationSource as any}
+            regionalFallbackLabel={regionalFallbackLabel}
+            weatherDistanceKm={weatherDistanceKm}
+            weatherStationName={weatherStationName}
+            isStale={isStale}
           />
+
+          {/* Land selector — only meaningful when the farmer has multiple fields */}
+          {lands && lands.length > 1 && (
+            <div className="px-4 pt-3">
+              <Select value={selectedLandId} onValueChange={setSelectedLandId}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue placeholder="Select field" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lands.map((l: any) => (
+                    <SelectItem key={l.id} value={l.id} className="text-xs">
+                      {l.name}{l.area_acres ? ` · ${l.area_acres} ac` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* MODEL B — DB-derived field intelligence */}
+          {selectedLandId && (
+            <LandAgronomyPanel
+              state={landState}
+              landName={selectedLand?.name}
+              isToday={landStateIsToday}
+              isLoading={landStateLoading}
+            />
+          )}
+
+
 
           {/* Sunrise/Sunset Row - NEW: Shows real data from API */}
           {(currentWeather.sunrise || currentWeather.sunset) && (
