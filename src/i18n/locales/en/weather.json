@@ -1,14 +1,15 @@
 {
   "__meta": {
     "page": "weather",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2026-08-07"
   },
   "weather": {
     "header": {
       "title": "Weather",
       "current_location": "Current Location",
+      "updated_prefix": "Updated",
       "updated_now": "just now",
       "updated_minutes": "{{minutes}}m ago",
       "updated_hour": "1h ago",
@@ -18,11 +19,21 @@
       "feels_like": "Feels like {{temp}}°C",
       "provider": "Data from {{provider}}"
     },
+    "provenance": {
+      "your_field": "Your field",
+      "your_location": "Your location",
+      "nearby_station": "Nearby station — {{km}} km",
+      "named_station": "{{name}} — {{km}} km",
+      "regional": "Regional estimate",
+      "stale": "Old reading"
+    },
     "stats": {
       "wind": "Wind",
       "humidity": "Humidity",
       "visibility": "Visibility",
-      "pressure": "Pressure"
+      "pressure": "Pressure",
+      "uv": "UV",
+      "dew_point": "Dew point"
     },
     "units": {
       "celsius": "°C",
@@ -30,18 +41,31 @@
       "percent": "%",
       "km": "km",
       "hpa": "hPa",
-      "mm": "mm"
+      "mm": "mm",
+      "kpa": "kPa"
     },
     "forecast": {
       "title": "7-Day Forecast",
       "daily": "Daily",
       "hourly": "Hourly",
       "today": "Today",
+      "tomorrow": "Tomorrow",
       "week": "Week",
       "days_7": "7 Days",
       "temp_max": "High",
       "temp_min": "Low",
-      "rain_chance": "Rain"
+      "rain_chance": "Rain",
+      "low_short": "Low",
+      "high_short": "High",
+      "rainy_days": "{{count}} rainy days"
+    },
+    "hourly": {
+      "title": "Hourly Forecast",
+      "next_12h": "Next 12 hours",
+      "now": "Now",
+      "temp": "Temp",
+      "feels": "Feels",
+      "rain": "Rain"
     },
     "rainfall": {
       "title": "Rainfall",
@@ -51,11 +75,61 @@
       "cumulative": "Cumulative",
       "no_rain": "No rain expected"
     },
+    "field": {
+      "select": "Choose your field",
+      "title": "Your field today",
+      "today": "Today",
+      "as_of": "As of {{date}}",
+      "stale_note": "Showing the last calculated day. Today's field numbers are not ready yet.",
+      "not_ready_title": "Field numbers not calculated yet",
+      "not_ready_desc": "Watering need, water loss and disease risk for this field will appear once today's calculation runs.",
+      "irrigation": "Watering",
+      "deficit": "Short by {{value}} mm",
+      "et0": "Water loss (ET0)",
+      "eff_rain": "Useful rain {{value}} mm",
+      "vpd": "Dry air (VPD)",
+      "rain": "Rain {{value}} mm",
+      "gdd": "Heat units today",
+      "disease_risk": "Disease risk",
+      "score": "Score {{value}}",
+      "crop_stress": "Crop stress",
+      "soil": "Soil: {{value}}",
+      "needed": "Needed",
+      "not_needed": "Not needed",
+      "footer": "Calculated for this field only",
+      "confidence": "confidence {{value}}%",
+      "level": {
+        "critical": "Very urgent",
+        "urgent": "Urgent",
+        "high": "High",
+        "medium": "Medium",
+        "moderate": "Medium",
+        "low": "Low",
+        "none": "None",
+        "severe": "Severe",
+        "deficit": "Short of water",
+        "surplus": "Excess water",
+        "balanced": "Balanced",
+        "adequate": "Enough water",
+        "unknown": "--"
+      }
+    },
+    "widget": {
+      "title": "Today's Weather",
+      "loading": "Loading...",
+      "rain_6h": "{{value}}% / 6h",
+      "irrigate_today": "Water the field today",
+      "irrigation_soon": "Watering due soon",
+      "high_disease_risk": "High disease risk",
+      "normal": "Field conditions are fine"
+    },
     "farming": {
       "title": "Farming Recommendations",
       "irrigation": "Irrigation",
       "spraying": "Spraying",
       "planting": "Planting",
+      "field_badge": "Field",
+      "deficit_mm": "{{value}} mm short",
       "high": "HIGH",
       "medium": "MEDIUM",
       "low": "LOW",
@@ -69,6 +143,7 @@
     "voice": {
       "read": "Read Aloud",
       "stop": "Stop Reading",
+      "error": "Failed to read weather",
       "summary": "Today's weather: {{temp}} degrees celsius, {{condition}}. It feels like {{feelsLike}} degrees. Humidity is {{humidity}} percent. Wind speed is {{windSpeed}} kilometers per hour. {{rainInfo}} {{advice}}",
       "high_rain_advice": "Avoid spraying today due to high rain probability.",
       "high_wind_advice": "Be careful with spraying due to strong winds.",
@@ -123,25 +198,5 @@
       "voice_summary": "Read weather summary aloud",
       "hourly_chart": "Hourly temperature forecast"
     }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show today's weather",
-      "What's the weather forecast?",
-      "Read the weather report",
-      "How much rain is expected?"
-    ],
-    "voice_examples_hi": [
-      "आज का मौसम दिखाओ",
-      "मौसम का पूर्वानुमान क्या है?",
-      "मौसम रिपोर्ट पढ़ो",
-      "कितनी बारिश होगी?"
-    ],
-    "voice_examples_mr": [
-      "आजचे हवामान दाखवा",
-      "हवामानाचा अंदाज काय आहे?",
-      "हवामान अहवाल वाचा",
-      "किती पाऊस अपेक्षित आहे?"
-    ]
   }
 }
