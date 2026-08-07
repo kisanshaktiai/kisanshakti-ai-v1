@@ -31,6 +31,9 @@ import { FarmingRecommendations } from '@/components/weather/FarmingRecommendati
 import { PageShell } from '@/components/layout/PageShell';
 import { HourlyTimeline } from '@/components/weather/HourlyTimeline';
 import { useWeather } from '@/hooks/useWeather';
+import { useLands } from '@/hooks/useLands';
+import { useLandWeatherState } from '@/hooks/useLandWeatherState';
+import { LandAgronomyPanel } from '@/components/weather/LandAgronomyPanel';
 // Weather sync now handled by backend edge function
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -42,7 +45,22 @@ import { SevenDayForecast } from '@/components/weather/SevenDayForecast';
 
 export default function Weather() {
   const { t } = useTranslation();
-  const { currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated } = useWeather();
+  const {
+    currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated,
+    locationSource, regionalFallbackLabel, weatherDistanceKm, weatherStationName, isStale,
+  } = useWeather();
+
+  // MODEL B — land-scoped agronomy. Display weather may borrow a nearby cell;
+  // irrigation/GDD/disease never may, so they are keyed to one selected land.
+  const { lands } = useLands();
+  const [selectedLandId, setSelectedLandId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!selectedLandId && lands?.length) setSelectedLandId(lands[0].id);
+  }, [lands, selectedLandId]);
+  const { state: landState, isToday: landStateIsToday, isLoading: landStateLoading } =
+    useLandWeatherState(selectedLandId);
+  const selectedLand = lands?.find((l: any) => l.id === selectedLandId);
+
   
   /**
    * FIX: Removed problematic useEffect with touch listeners
@@ -196,7 +214,42 @@ export default function Weather() {
             weatherCondition={getWeatherCondition()}
             gradient={getWeatherGradient()}
             lastUpdated={lastUpdated}
+            locationSource={locationSource as any}
+            regionalFallbackLabel={regionalFallbackLabel}
+            weatherDistanceKm={weatherDistanceKm}
+            weatherStationName={weatherStationName}
+            isStale={isStale}
           />
+
+          {/* Land selector — only meaningful when the farmer has multiple fields */}
+          {lands && lands.length > 1 && (
+            <div className="px-4 pt-3">
+              <Select value={selectedLandId} onValueChange={setSelectedLandId}>
+                <SelectTrigger className="h-9 text-xs rounded-xl">
+                  <SelectValue placeholder="Select field" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lands.map((l: any) => (
+                    <SelectItem key={l.id} value={l.id} className="text-xs">
+                      {l.name}{l.area_acres ? ` · ${l.area_acres} ac` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* MODEL B — DB-derived field intelligence */}
+          {selectedLandId && (
+            <LandAgronomyPanel
+              state={landState}
+              landName={selectedLand?.name}
+              isToday={landStateIsToday}
+              isLoading={landStateLoading}
+            />
+          )}
+
+
 
           {/* Sunrise/Sunset Row - NEW: Shows real data from API */}
           {(currentWeather.sunrise || currentWeather.sunset) && (
@@ -361,7 +414,9 @@ export default function Weather() {
             <FarmingRecommendations
               currentWeather={currentWeather}
               forecast={forecast}
+              landState={landStateIsToday ? landState : null}
             />
+
 
             {/* Hourly Forecast Chart - NEW: Line chart instead of cards */}
             {hourlyForecast && hourlyForecast.length > 0 && (

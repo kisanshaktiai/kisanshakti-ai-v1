@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Thermometer, RefreshCw } from 'lucide-react';
+import { MapPin, Thermometer, RefreshCw, Satellite, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { WeatherAnimation } from './WeatherAnimation';
@@ -15,6 +15,12 @@ interface WeatherHeroCardProps {
   weatherCondition: 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night';
   gradient: string;
   lastUpdated?: number | null;
+  /** MODEL A provenance — where this reading actually came from. */
+  locationSource?: 'explicit' | 'gps' | 'farm' | 'regional';
+  regionalFallbackLabel?: string;
+  weatherDistanceKm?: number | null;
+  weatherStationName?: string | null;
+  isStale?: boolean;
 }
 
 export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
@@ -26,8 +32,29 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
   weatherIcon,
   weatherCondition,
   gradient,
-  lastUpdated
+  lastUpdated,
+  locationSource,
+  regionalFallbackLabel,
+  weatherDistanceKm,
+  weatherStationName,
+  isStale
 }) => {
+  // A farmer must be able to tell his own field from a borrowed reading.
+  const provenance = (() => {
+    if (locationSource === 'regional') {
+      return { label: regionalFallbackLabel || 'Regional estimate', tone: 'warning' as const };
+    }
+    if (weatherDistanceKm !== null && weatherDistanceKm !== undefined && weatherDistanceKm > 0.5) {
+      return {
+        label: `${weatherStationName ? `${weatherStationName} — ` : 'Nearby station — '}${weatherDistanceKm} km`,
+        tone: 'info' as const,
+      };
+    }
+    if (locationSource === 'farm') return { label: 'Your field', tone: 'success' as const };
+    if (locationSource === 'gps') return { label: 'Your location', tone: 'success' as const };
+    return null;
+  })();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -20 }}
@@ -51,6 +78,28 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
               <MapPin className="h-3.5 w-3.5 text-primary" />
               {location || 'Current Location'}
             </h1>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {provenance && (
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border',
+                    provenance.tone === 'success' && 'bg-success/10 border-success/30 text-success',
+                    provenance.tone === 'info' && 'bg-info/10 border-info/30 text-info',
+                    provenance.tone === 'warning' && 'bg-warning/10 border-warning/30 text-warning'
+                  )}
+                >
+                  <Satellite className="h-3 w-3" />
+                  {provenance.label}
+                </span>
+              )}
+              {isStale && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-warning/10 border-warning/30 text-warning">
+                  <AlertTriangle className="h-3 w-3" />
+                  Stale
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center gap-2">
               <p className="text-xs text-muted-foreground">
                 {format(new Date(), 'EEE, MMM d')}

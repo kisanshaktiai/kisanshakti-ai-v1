@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { toastManager } from '@/utils/ToastManager';
 import { useLocation } from '@/hooks/useLocation';
@@ -93,6 +93,19 @@ function roundCoordinates(lat: number, lon: number): { lat: number; lon: number 
   };
 }
 
+// ---------------------------------------------------------------------------
+// SINGLE FETCH OWNER
+// The page and the home widget both call useWeather(), but the zustand store is
+// shared. Without this guard every mounted consumer ran its own proximity query
+// and its own 10-minute interval. Exactly one instance ("the leader") fetches;
+// everyone else is a pure store reader. Leadership transfers on unmount.
+// ---------------------------------------------------------------------------
+let leaderId: string | null = null;
+let instanceSeq = 0;
+const members = new Set<string>();
+const leaderListeners = new Set<(id: string | null) => void>();
+const notifyLeaderChange = () => leaderListeners.forEach((fn) => fn(leaderId));
+
 export const useWeather = (location?: { lat: number; lon: number }, landId?: string) => {
   // Use centralized weather store for single source of truth
   const {
@@ -115,6 +128,30 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
   
   // Use the centralized location service
   const { location: deviceLocation } = useLocation();
+
+  // Fetch-leader election (see note above the hook).
+  const instanceIdRef = useRef<string>('');
+  if (!instanceIdRef.current) instanceIdRef.current = `w-${++instanceSeq}`;
+  const [isFetchLeader, setIsFetchLeader] = useState(false);
+
+  useEffect(() => {
+    const id = instanceIdRef.current;
+    members.add(id);
+    if (!leaderId) leaderId = id;
+    const onChange = (current: string | null) => setIsFetchLeader(current === id);
+    leaderListeners.add(onChange);
+    onChange(leaderId);
+    return () => {
+      leaderListeners.delete(onChange);
+      members.delete(id);
+      if (leaderId === id) {
+        leaderId = members.values().next().value ?? null;
+        notifyLeaderChange();
+      }
+    };
+  }, []);
+
+
 
   // Regional fallback: Kolhapur district HQ — 72% of active lands are there.
   // Used ONLY when there is no explicit location, no GPS, and no farm on record.
@@ -317,6 +354,9 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
   };
 
   useEffect(() => {
+    // Only the elected leader fetches; followers render the shared store.
+    if (!isFetchLeader) return;
+
     // Wait for tenant to load before fetching weather
     if (tenantLoading) {
       console.log('⏳ [useWeather] Tenant still loading, skipping weather fetch');
@@ -338,7 +378,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     } else if (!tenant?.id && !tenantLoading) {
       console.warn('⚠️ [useWeather] No tenant ID available after loading completed');
     }
-  }, [tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon, farmLocation?.lat, farmLocation?.lon]);
+  }, [isFetchLeader, tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon, farmLocation?.lat, farmLocation?.lon]);
 
   // Update location name when device location changes
   useEffect(() => {

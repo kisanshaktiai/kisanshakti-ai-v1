@@ -1,15 +1,24 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
-import { Cloud, CloudRain, Sun, CloudSnow, Loader2, Droplets, Wind, Thermometer } from 'lucide-react';
+import { Cloud, CloudRain, Sun, CloudSnow, Loader2, Droplets, Wind, Thermometer, Umbrella } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWeather } from '@/hooks/useWeather';
+import { useLands } from '@/hooks/useLands';
+import { useLandWeatherState } from '@/hooks/useLandWeatherState';
 import { AnimatedWeatherBackground } from './AnimatedWeatherBackground';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
 export const WeatherWidget: React.FC = () => {
   const navigate = useNavigate();
-  const { currentWeather, loading, lastUpdated, forecast } = useWeather();
+  // NOTE: this instance is normally a store *follower* — the weather page or
+  // whichever consumer mounted first owns the fetch loop (see useWeather).
+  const { currentWeather, loading, lastUpdated, forecast, hourlyForecast } = useWeather();
+
+  const { lands } = useLands();
+  const primaryLandId = lands?.[0]?.id;
+  const { state: landState, isToday: landStateIsToday } = useLandWeatherState(primaryLandId);
+
 
   const getWeatherIcon = (condition: string) => {
     const iconMap: Record<string, React.ReactNode> = {
@@ -33,6 +42,31 @@ export const WeatherWidget: React.FC = () => {
 
   // Calculate rain chance from forecast
   const rainChance = forecast?.[0]?.pop ? Math.round(forecast[0].pop * 100) : 0;
+
+  // Next 6 hours is what actually changes a farmer's morning plan.
+  const next6h = (hourlyForecast ?? []).slice(0, 6);
+  const rain6h = next6h.length
+    ? Math.round(Math.max(...next6h.map((h: any) => Number(h?.pop ?? 0))) * 100)
+    : 0;
+
+  // Land verdict — only shown when the DB computed it for today.
+  const landVerdict = (() => {
+    if (!landState || !landStateIsToday) return null;
+    const urgency = (landState.irrigation_urgency ?? '').toUpperCase();
+    const risk = (landState.disease_risk_level ?? '').toUpperCase();
+    if (urgency === 'CRITICAL' || urgency === 'HIGH' || urgency === 'URGENT') {
+      return { text: 'Irrigate today', tone: 'text-destructive' };
+    }
+    if (risk === 'HIGH' || risk === 'CRITICAL' || risk === 'SEVERE') {
+      return { text: 'High disease risk', tone: 'text-warning' };
+    }
+    if (urgency === 'MEDIUM' || urgency === 'MODERATE' || landState.irrigation_needed) {
+      return { text: 'Irrigation due soon', tone: 'text-info' };
+    }
+    return { text: 'Field conditions normal', tone: 'text-success' };
+  })();
+
+
 
   return (
     <motion.div
@@ -88,13 +122,28 @@ export const WeatherWidget: React.FC = () => {
                 <span className="text-[10px] font-medium">{currentWeather?.wind_speed ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '--'}</span>
               </div>
               
-              {rainChance > 0 && (
+              {rain6h > 0 && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-info/20 backdrop-blur-sm border border-info/30">
+                  <Umbrella className="w-3 h-3 text-info" />
+                  <span className="text-[10px] font-medium text-info">{rain6h}% / 6h</span>
+                </div>
+              )}
+
+              {rain6h === 0 && rainChance > 0 && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-info/20 backdrop-blur-sm border border-info/30">
                   <CloudRain className="w-3 h-3 text-info" />
                   <span className="text-[10px] font-medium text-info">{rainChance}%</span>
                 </div>
               )}
             </div>
+
+            {landVerdict && (
+              <p className={cn('text-[11px] font-semibold mt-2', landVerdict.tone)}>
+                {landVerdict.text}
+              </p>
+            )}
+
+
 
             {/* Provider & Update Badge */}
             <div className="flex items-center justify-between mt-3">
