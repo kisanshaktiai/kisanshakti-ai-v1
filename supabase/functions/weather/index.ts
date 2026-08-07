@@ -1303,6 +1303,37 @@ serve(async (req: Request): Promise<Response> => {
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ---- MODEL B (read): latest derived agronomy for ONE land ---------------
+    // Read-only projection of land_weather_state. The browser cannot read this
+    // table directly (RLS is auth.uid()-based while the app uses custom
+    // header auth), so the UI must come through here. NEVER substitute a
+    // nearby cell: agronomy is land-scoped by definition.
+    if (action === "land_state") {
+      if (!landId) throw new Error("landId is required for land_state");
+
+      const { data: land } = await supabase.from("lands")
+        .select("id, name, current_crop, area_acres, soil_type")
+        .eq("id", landId).eq("tenant_id", tenant.id).maybeSingle();
+      if (!land) {
+        return new Response(JSON.stringify({ error: "Land not found for this tenant" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const { data: state, error: stateErr } = await supabase.from("land_weather_state")
+        .select("*")
+        .eq("land_id", landId).eq("tenant_id", tenant.id)
+        .order("metric_date", { ascending: false })
+        .limit(1).maybeSingle();
+      if (stateErr) log(runId, "warn", "land_state_read_failed", { error: stateErr.message });
+
+      log(runId, "info", "land_state_served", { land_id: landId, has_state: !!state });
+      return new Response(JSON.stringify({
+        action, land, state: state ?? null, timestamp: new Date().toISOString(),
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+
+
     // ---- land resolution ---------------------------------------------------
     if (landId || action === "land") {
       if (!landId) throw new Error("landId is required for land-based weather request");
