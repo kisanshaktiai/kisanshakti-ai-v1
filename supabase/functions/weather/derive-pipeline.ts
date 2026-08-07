@@ -569,7 +569,7 @@ async function writeSpine(supabase: Sb, runId: string, p: SpinePayload, log: Log
       }, p.methods);
       return {
         land_id: p.land.id, cell_key: p.land.cell_key, property_code: property,
-        valid_time: validTime, issue_time: issueTime, horizon_hours: 0,
+        valid_time: validTime, issue_time: issueTime,
         value, source_id: p.providerSrc ?? engineSourceId,
         qc_level: qc.level, qc_flags: qc.flags, confidence: Math.round(conf * 1000) / 1000,
       };
@@ -614,7 +614,7 @@ async function writeSpine(supabase: Sb, runId: string, p: SpinePayload, log: Log
       }, p.methods);
       return {
         land_id: p.land.id, cell_key: p.land.cell_key, property_code: property,
-        valid_time: validTime, issue_time: issueTime, horizon_hours: 0,
+        valid_time: validTime, issue_time: issueTime,
         value, u_std: d.u_std ?? null, source_id: engineSourceId,
         qc_level: qc.level, qc_flags: qc.flags, confidence: Math.round(conf * 1000) / 1000,
       };
