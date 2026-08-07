@@ -336,9 +336,32 @@ export class RuntimeTraceCollector {
         return null;
       }
 
+      // GAP D (2026-08-07) — terminal-type derivation.
+      // ai_decision_log.decision_type was landing on 'unknown' for real turns.
+      // Map the TURN OUTCOME first (rules matched → prescription/monitoring,
+      // clarification returned → clarification, failure → safety_block/unknown),
+      // then fall back to the previous heuristics. All values below are members
+      // of AI_DECISION_LOG_TYPES, so the CHECK constraint cannot reject them.
+      const _matchedRules: number = Number(
+        this.rules?.matched_count ?? (Array.isArray(this.rules?.applied) ? this.rules.applied.length : 0),
+      ) || 0;
+      const _winnerAction = this.rules?.winner?.action_type
+        ?? this.decision?.primary_decision?.action_type
+        ?? null;
+      let terminalType: string | null = null;
+      if (_matchedRules > 0 || this.decision?.primary_decision) {
+        terminalType = normalizeDecisionType(_winnerAction ?? 'prescription');
+        if (terminalType === 'unknown') terminalType = 'prescription';
+      } else if (this.clarification) {
+        terminalType = 'clarification';
+      } else if (this.decision?.failed || this.decision?.error) {
+        terminalType = 'safety_block';
+      }
+
       // Derive a meaningful decision_type even on early returns (e.g., clarification
       // turns where no rule has fired yet) so traces never collapse to 'unknown'.
-      const rawDecisionType = this.decision?.decision_type
+      const rawDecisionType = terminalType
+        || this.decision?.decision_type
         || this.decision?.primary_decision?.action_type
         || this.rules?.winner?.action_type
         || this.rules?.winner?.rule_id
@@ -356,6 +379,15 @@ export class RuntimeTraceCollector {
         hyp?.confidence
       );
 
+      // GAP D — read crop/stage/DAS from the frozen canonical context only.
+      const _cc = ctx.canonical ?? null;
+      const _num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : null);
+      const _canon = {
+        crop:              _cc?.crop_code ?? ctx.crop ?? null,
+        growth_stage:      _cc?.growth_stage ?? ctx.stage ?? null,
+        days_since_sowing: _num(_cc?.days_since_sowing ?? ctx.das),
+      };
+
       const generatedDecisionId = crypto.randomUUID();
 
       const legacyDecisionRow: Record<string, any> = {
@@ -366,7 +398,15 @@ export class RuntimeTraceCollector {
         schedule_id:     safeUuid(ctx.schedule_id),
         decision_type:   normalizeDecisionType(rawDecisionType),
         model_version:   this.header.runtime_version,
-        input_data:      { farmer_message: extra.farmer_message ?? null, observations: extra.observations ?? [] },
+        input_data:      {
+          farmer_message: extra.farmer_message ?? null,
+          observations:   extra.observations ?? [],
+          // GAP D — locked canonical context (GRAPH_FREEZE). NEVER fabricated:
+          // when the canonical context is unavailable these stay null.
+          crop:              _canon.crop,
+          growth_stage:      _canon.growth_stage,
+          days_since_sowing: _canon.days_since_sowing,
+        },
         output_data:     this.decision ?? this.builderOutput ?? {},
         reasoning:       nonEmptyReasoning(
           this.decision?.reasoning,
