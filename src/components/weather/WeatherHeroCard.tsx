@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Thermometer, RefreshCw } from 'lucide-react';
+import { MapPin, Thermometer, RefreshCw, Satellite, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { WeatherAnimation } from './WeatherAnimation';
@@ -15,6 +15,12 @@ interface WeatherHeroCardProps {
   weatherCondition: 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night';
   gradient: string;
   lastUpdated?: number | null;
+  /** MODEL A provenance — where this reading actually came from. */
+  locationSource?: 'explicit' | 'gps' | 'farm' | 'regional';
+  regionalFallbackLabel?: string;
+  weatherDistanceKm?: number | null;
+  weatherStationName?: string | null;
+  isStale?: boolean;
 }
 
 export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
@@ -26,8 +32,29 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
   weatherIcon,
   weatherCondition,
   gradient,
-  lastUpdated
+  lastUpdated,
+  locationSource,
+  regionalFallbackLabel,
+  weatherDistanceKm,
+  weatherStationName,
+  isStale
 }) => {
+  // A farmer must be able to tell his own field from a borrowed reading.
+  const provenance = (() => {
+    if (locationSource === 'regional') {
+      return { label: regionalFallbackLabel || 'Regional estimate', tone: 'warning' as const };
+    }
+    if (weatherDistanceKm !== null && weatherDistanceKm !== undefined && weatherDistanceKm > 0.5) {
+      return {
+        label: `${weatherStationName ? `${weatherStationName} — ` : 'Nearby station — '}${weatherDistanceKm} km`,
+        tone: 'info' as const,
+      };
+    }
+    if (locationSource === 'farm') return { label: 'Your field', tone: 'success' as const };
+    if (locationSource === 'gps') return { label: 'Your location', tone: 'success' as const };
+    return null;
+  })();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -20 }}
