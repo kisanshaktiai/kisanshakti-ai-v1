@@ -1150,6 +1150,8 @@ async function archiveToWeatherHistorical(
 // PER-LAND DERIVED METRICS
 // ============================================================================
 
+// Legacy inline copy — kept only as the offline mirror. The authoritative
+// values now live in sci_method_registry as SOIL_TYPE_EFFECTIVE_RAIN@1.0.
 const SOIL_FACTORS: Record<string, number> = {
   black: 0.60, black_cotton: 0.60, vertisol: 0.60,
   red: 0.75, laterite: 0.75, alfisol: 0.75,
@@ -1167,24 +1169,29 @@ async function computeLandWeatherMetrics(
   current: CurrentWeatherData,
   rounded: { lat: number; lon: number },
   rain24: number,
+  methods?: MethodsMap,
+  wetnessSeries?: HourlyWetnessInput[],
 ) {
   try {
     const { data: land } = await supabase.from("lands")
       .select("soil_type, current_crop, area_acres").eq("id", landId).maybeSingle();
 
     const soilType = (land?.soil_type ?? "default").toLowerCase();
-    const soilFactor = SOIL_FACTORS[soilType] ?? SOIL_FACTORS.default;
+    const registrySoil = (methods?.SOIL_TYPE_EFFECTIVE_RAIN?.params ?? {}) as Record<string, number>;
+    const soilFactor = registrySoil[soilType] ?? registrySoil.default
+      ?? SOIL_FACTORS[soilType] ?? SOIL_FACTORS.default;
     const cropCode = land?.current_crop ?? "DEFAULT";
 
-    const tempMax = current.temp_max ?? current.temp;
-    const tempMin = current.temp_min ?? current.temp;
+    // D3 FIX: no fabricated diurnal range here either.
+    const dailyMax = Number.isFinite(current.temp_max as number) ? (current.temp_max as number) : undefined;
+    const dailyMin = Number.isFinite(current.temp_min as number) ? (current.temp_min as number) : undefined;
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
 
     // Crop-aware indices from the module that was previously dead code.
     const indices = calculateAllAgriculturalIndices({
       temperature_c: current.temp,
-      temperature_max_c: tempMax,
-      temperature_min_c: tempMin,
+      temperature_max_c: dailyMax,
+      temperature_min_c: dailyMin,
       humidity_percent: current.humidity,
       cloud_cover_percent: current.clouds,
       sunrise_timestamp: current.sunrise,
@@ -1193,21 +1200,25 @@ async function computeLandWeatherMetrics(
       latitude: rounded.lat,
       day_of_year: dayOfYear,
       crop_code: cropCode,
-    });
+      wind_speed_ms: current.wind_speed,
+      pressure_hpa: current.pressure,
+      hourly_series: wetnessSeries,
+    }, methods);
 
     const effectiveRainfall = rain24 * soilFactor;
     const runoffLoss = rain24 - effectiveRainfall;
-    const waterDeficit = Math.max(0, indices.et0_mm - effectiveRainfall);
+    const et0 = indices.et0_mm; // null when daily Tmax/Tmin were unavailable
+    const waterDeficit = et0 === null ? null : Math.max(0, et0 - effectiveRainfall);
 
     let cropStress = "NONE";
     if (current.temp > 40) cropStress = "SEVERE_HEAT";
     else if (current.temp > 38) cropStress = "HEAT";
     else if (current.temp < 5) cropStress = "FROST";
-    else if (waterDeficit > 5) cropStress = "WATER_STRESS";
+    else if ((waterDeficit ?? 0) > 5) cropStress = "WATER_STRESS";
 
     let waterBalance = "BALANCED";
-    if (effectiveRainfall > indices.et0_mm * 1.5) waterBalance = "SURPLUS";
-    else if (waterDeficit > 3) waterBalance = "DEFICIT";
+    if (et0 !== null && effectiveRainfall > et0 * 1.5) waterBalance = "SURPLUS";
+    else if ((waterDeficit ?? 0) > 3) waterBalance = "DEFICIT";
 
     const { error } = await supabase.from("land_weather_state").upsert({
       land_id: landId,
@@ -1220,12 +1231,15 @@ async function computeLandWeatherMetrics(
       total_rainfall_mm: rain24,
       effective_rainfall_mm: Math.round(effectiveRainfall * 10) / 10,
       runoff_loss_mm: Math.round(runoffLoss * 10) / 10,
-      water_deficit_mm: Math.round(waterDeficit * 10) / 10,
+      water_deficit_mm: waterDeficit === null ? null : Math.round(waterDeficit * 10) / 10,
       soil_type_used: soilType,
-      irrigation_needed: indices.irrigation_need.needs_irrigation,
-      irrigation_urgency: indices.irrigation_need.priority,
+      irrigation_needed: indices.irrigation_need?.needs_irrigation ?? null,
+      irrigation_urgency: indices.irrigation_need?.priority ?? null,
       gdd_daily: indices.gdd,
-      et0_mm: indices.et0_mm,
+      et0_mm: et0,
+      et0_method: indices.et0_method,
+      u_std_et0: indices.et0_u_std,
+      lwd_est_hours: indices.leaf_wetness_hours,
       vpd_kpa: indices.vpd_kpa,
       disease_risk_score: indices.disease_risk.score,
       disease_risk_level: indices.disease_risk.level,
@@ -1236,7 +1250,8 @@ async function computeLandWeatherMetrics(
 
     if (error) log(runId, "warn", "land_metrics_failed", { error: error.message });
     else log(runId, "info", "land_metrics_computed", {
-      land_id: landId, et0: indices.et0_mm, deficit: waterDeficit, stress: cropStress,
+      land_id: landId, et0, method: indices.et0_method, deficit: waterDeficit,
+      stress: cropStress, qc_flags: indices.qc_flags,
     });
   } catch (e) {
     log(runId, "warn", "land_metrics_exception", { error: String(e) });
