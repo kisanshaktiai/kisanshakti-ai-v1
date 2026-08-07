@@ -720,6 +720,18 @@ async function cacheWeatherData(
   const ttlMin = (CONFIG.TTL_MINUTES as Record<string, number>)[provider] ?? CONFIG.TTL_MINUTES.default;
   const expiresAt = new Date(now.getTime() + ttlMin * 60 * 1000);
 
+  // D6 FIX: confidence is computed (CONFIDENCE_MODEL@1.0), never a constant.
+  // agreement = 1.0 and skill = registry-neutral until cross-provider ensemble
+  // scoring lands; freshness comes from the record age vs its own TTL.
+  const sciMethods = await getSciMethods(supabase, runId);
+  const obsAgeMin = Number.isFinite(current.dt)
+    ? Math.max(0, (now.getTime() - current.dt * 1000) / 60000)
+    : 0;
+  const currentConfidence = computeConfidence(
+    { agreement: 1.0, freshnessAgeMin: obsAgeMin, ttlMin, horizonDays: 0 },
+    sciMethods,
+  );
+
   // Derive dew point when the provider did not supply one.
   const dewPointC = current.dew_point && current.dew_point !== 0
     ? current.dew_point
