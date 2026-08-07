@@ -93,6 +93,19 @@ function roundCoordinates(lat: number, lon: number): { lat: number; lon: number 
   };
 }
 
+// ---------------------------------------------------------------------------
+// SINGLE FETCH OWNER
+// The page and the home widget both call useWeather(), but the zustand store is
+// shared. Without this guard every mounted consumer ran its own proximity query
+// and its own 10-minute interval. Exactly one instance ("the leader") fetches;
+// everyone else is a pure store reader. Leadership transfers on unmount.
+// ---------------------------------------------------------------------------
+let leaderId: string | null = null;
+let instanceSeq = 0;
+const members = new Set<string>();
+const leaderListeners = new Set<(id: string | null) => void>();
+const notifyLeaderChange = () => leaderListeners.forEach((fn) => fn(leaderId));
+
 export const useWeather = (location?: { lat: number; lon: number }, landId?: string) => {
   // Use centralized weather store for single source of truth
   const {
