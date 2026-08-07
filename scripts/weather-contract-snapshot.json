@@ -1,0 +1,131 @@
+{
+  "_comment": "Weather response contract snapshot (types only, no values). Regenerate with scripts/env-intelligence-guard.mjs --snapshot after any intentional weather response change.",
+  "captured_at": "2026-08-07T12:45Z",
+  "land_id": "714f7464-44e3-4791-8597-196832f094d7",
+  "actions": {
+    "current": {
+      "cached": "bool",
+      "cell": "str",
+      "current": {
+        "clouds": "int",
+        "description": "str",
+        "dew_point": "float",
+        "dt": "int",
+        "feels_like": "int",
+        "humidity": "int",
+        "icon": "str",
+        "location": "str",
+        "main": "str",
+        "pressure": "int",
+        "provider": "str",
+        "rain_1h": "int",
+        "rain_24h": "int",
+        "rain_3h": "int",
+        "sunrise": "int",
+        "sunset": "int",
+        "temp": "float",
+        "temp_max": "float",
+        "temp_min": "float",
+        "uv_index": "int",
+        "visibility": "int",
+        "wind_deg": "int",
+        "wind_speed": "float"
+      },
+      "land": {
+        "id": "str",
+        "name": "str"
+      },
+      "provider": "str",
+      "stale": "bool",
+      "tenant": {
+        "id": "str",
+        "name": "str"
+      },
+      "timestamp": "str"
+    },
+    "all": {
+      "cached": "bool",
+      "cell": "str",
+      "current": {
+        "clouds": "int",
+        "description": "str",
+        "dew_point": "float",
+        "dt": "int",
+        "feels_like": "int",
+        "humidity": "int",
+        "icon": "str",
+        "location": "str",
+        "main": "str",
+        "pressure": "int",
+        "provider": "str",
+        "rain_1h": "int",
+        "rain_24h": "int",
+        "rain_3h": "int",
+        "sunrise": "int",
+        "sunset": "int",
+        "temp": "float",
+        "temp_max": "float",
+        "temp_min": "float",
+        "uv_index": "int",
+        "visibility": "int",
+        "wind_deg": "int",
+        "wind_speed": "float"
+      },
+      "forecast": [
+        {
+          "dt": "int",
+          "humidity": "int",
+          "pop": "int",
+          "pop_source": "str",
+          "rain": "int",
+          "temp": {
+            "day": "float",
+            "eve": "float",
+            "max": "float",
+            "min": "float",
+            "morn": "float",
+            "night": "float"
+          },
+          "uv_index": "int",
+          "weather": [
+            {
+              "description": "str",
+              "icon": "str",
+              "main": "str"
+            }
+          ],
+          "wind_speed": "float"
+        }
+      ],
+      "hourly": [
+        {
+          "dt": "int",
+          "feels_like": "float",
+          "humidity": "int",
+          "pop": "int",
+          "temp": "float",
+          "uv_index": "int",
+          "weather": [
+            {
+              "description": "str",
+              "icon": "str",
+              "main": "str"
+            }
+          ],
+          "wind_speed": "float"
+        }
+      ],
+      "land": {
+        "id": "str",
+        "name": "str"
+      },
+      "provider": "str",
+      "stale": "bool",
+      "tenant": {
+        "id": "str",
+        "name": "str"
+      },
+      "timestamp": "str"
+    }
+  }
+}
