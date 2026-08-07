@@ -1053,18 +1053,7 @@ async function updateWeatherAggregate(
       await supabase.from("weather_aggregates").update(updates).eq("id", existing.id);
       log(runId, "info", "aggregate_updated", { date: today, obs_count: obsCount + 1, rain_total: updates.rain_mm_total });
     } else {
-      const indices = calculateAllAgriculturalIndices({
-        temperature_c: current.temp,
-        temperature_max_c: tempMax,
-        temperature_min_c: tempMin,
-        humidity_percent: current.humidity,
-        cloud_cover_percent: current.clouds,
-        sunrise_timestamp: current.sunrise,
-        sunset_timestamp: current.sunset,
-        rainfall_24h_mm: rain24,
-        latitude: latitude || 20,
-        day_of_year: dayOfYear,
-      });
+      const indices = calculateAllAgriculturalIndices(indicesInput, methods);
 
       const { error } = await supabase.from("weather_aggregates").upsert({
         tenant_id: tenantId,
@@ -1074,8 +1063,8 @@ async function updateWeatherAggregate(
         aggregate_date: today,
         rain_mm_total: rain24,
         [rainColumn]: rain24,
-        temp_min_celsius: tempMin,
-        temp_max_celsius: tempMax,
+        temp_min_celsius: dailyMin ?? current.temp,
+        temp_max_celsius: dailyMax ?? current.temp,
         temp_avg_celsius: current.temp,
         humidity_avg_percent: current.humidity,
         wind_speed_avg_kmh: current.wind_speed * 3.6,
@@ -1084,6 +1073,7 @@ async function updateWeatherAggregate(
         frost_risk: current.temp < 4,
         heat_stress_risk: current.temp > 38,
         disease_risk_level: indices.disease_risk.level.toLowerCase(),
+        // D3: null instead of a fabricated value when daily extremes are absent
         gdd_accumulated: dailyGDD,
         evapotranspiration_mm: et0,
         sunshine_hours: sunshine,
