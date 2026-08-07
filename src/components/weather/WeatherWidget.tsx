@@ -86,7 +86,7 @@ export const WeatherWidget: React.FC = () => {
             {/* Header Row */}
             <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-0.5">Today's Weather</p>
+                <p className="text-xs font-medium text-muted-foreground mb-0.5">{t('weather.widget.title')}</p>
                 <div className="flex items-baseline gap-1">
                   <span className="text-4xl font-bold text-foreground tracking-tight">
                     {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}
@@ -106,7 +106,7 @@ export const WeatherWidget: React.FC = () => {
 
             {/* Description */}
             <p className="text-sm font-medium capitalize text-foreground/80 mb-3">
-              {currentWeather?.description || 'Loading...'}
+              {currentWeather?.description || t('weather.widget.loading')}
             </p>
 
             {/* Stats Row - Modern Pill Design */}
@@ -123,13 +123,14 @@ export const WeatherWidget: React.FC = () => {
               
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-background/50 backdrop-blur-sm border border-white/10">
                 <Wind className="w-3 h-3 text-info" />
-                <span className="text-[10px] font-medium">{currentWeather?.wind_speed ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '--'}</span>
+                <span className="text-[10px] font-medium">{currentWeather?.wind_speed ? `${Math.round(currentWeather.wind_speed * 3.6)} ${t('weather.units.kmh')}` : '--'}</span>
               </div>
               
               {rain6h > 0 && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-info/20 backdrop-blur-sm border border-info/30">
                   <Umbrella className="w-3 h-3 text-info" />
-                  <span className="text-[10px] font-medium text-info">{rain6h}% / 6h</span>
+                  <span className="text-[10px] font-medium text-info">{t('weather.widget.rain_6h', { value: rain6h })}</span>
+
                 </div>
               )}
 
