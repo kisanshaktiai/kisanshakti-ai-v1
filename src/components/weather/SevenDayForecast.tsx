@@ -47,11 +47,33 @@ interface SevenDayForecastProps {
 export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) => {
   const { t, i18n } = useTranslation();
 
+  /**
+   * DEFENSIVE DE-DUPLICATION.
+   * `weather_forecasts` is append-only (one row per issued_at), so a stale
+   * client or a raw provider payload can contain the same calendar day more
+   * than once — which is what made "tomorrow" repeat in the list. The edge
+   * function now collapses on read; this keeps the UI correct regardless.
+   * Bucketing uses the IST calendar day so a UTC-midnight slot is not split.
+   */
+  const days = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: ForecastDay[] = [];
+    for (const d of forecast ?? []) {
+      const key = new Date(d.dt * 1000 + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(d);
+      if (out.length === 7) break;
+    }
+    return out;
+  }, [forecast]);
+
   // Find min/max temp across all days for relative scale
-  const allTemps = forecast.slice(0, 7).flatMap(d => [d.temp.min, d.temp.max]);
+  const allTemps = days.flatMap(d => [d.temp.min, d.temp.max]);
   const minTemp = Math.min(...allTemps);
   const maxTemp = Math.max(...allTemps);
   const tempRange = maxTemp - minTemp || 1;
+
 
   const getWeatherIcon = (main: string) => {
     const iconConfig: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
