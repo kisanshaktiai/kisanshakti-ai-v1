@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Cloud, CloudRain, Sun, CloudSnow, Loader2, Droplets, Wind, Thermometer, Umbrella } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +12,7 @@ import { motion } from 'framer-motion';
 
 export const WeatherWidget: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   // NOTE: this instance is normally a store *follower* — the weather page or
   // whichever consumer mounted first owns the fetch loop (see useWeather).
   const { currentWeather, loading, lastUpdated, forecast, hourlyForecast } = useWeather();
@@ -18,6 +20,7 @@ export const WeatherWidget: React.FC = () => {
   const { lands } = useLands();
   const primaryLandId = lands?.[0]?.id;
   const { state: landState, isToday: landStateIsToday } = useLandWeatherState(primaryLandId);
+
 
 
   const getWeatherIcon = (condition: string) => {
