@@ -68,12 +68,13 @@ export default function Weather() {
   const handleManualSync = async () => {
     try {
       await refetch();
-      toastManager.success('Weather data synced successfully', 'weather-sync-success');
+      toastManager.success(t('weather.toast.sync_success'), 'weather-sync-success');
     } catch (err) {
-      toastManager.error('Failed to sync weather data', 'weather-sync-error');
+      toastManager.error(t('weather.toast.sync_error'), 'weather-sync-error');
       throw err; // Re-throw for PullRefreshController to handle
     }
   };
+
 
   const getWeatherCondition = (): 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night' => {
     if (!currentWeather) return 'clouds';
@@ -221,7 +222,7 @@ export default function Weather() {
             <div className="px-4 pt-3">
               <Select value={selectedLandId} onValueChange={setSelectedLandId}>
                 <SelectTrigger className="h-9 text-xs rounded-xl">
-                  <SelectValue placeholder="Select field" />
+                  <SelectValue placeholder={t('weather.field.select')} />
                 </SelectTrigger>
                 <SelectContent>
                   {lands.map((l: any) => (
