@@ -78,6 +78,28 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
               <MapPin className="h-3.5 w-3.5 text-primary" />
               {location || 'Current Location'}
             </h1>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {provenance && (
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border',
+                    provenance.tone === 'success' && 'bg-success/10 border-success/30 text-success',
+                    provenance.tone === 'info' && 'bg-info/10 border-info/30 text-info',
+                    provenance.tone === 'warning' && 'bg-warning/10 border-warning/30 text-warning'
+                  )}
+                >
+                  <Satellite className="h-3 w-3" />
+                  {provenance.label}
+                </span>
+              )}
+              {isStale && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border bg-warning/10 border-warning/30 text-warning">
+                  <AlertTriangle className="h-3 w-3" />
+                  Stale
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center gap-2">
               <p className="text-xs text-muted-foreground">
                 {format(new Date(), 'EEE, MMM d')}
