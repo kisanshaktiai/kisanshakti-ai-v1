@@ -492,6 +492,41 @@ export default function Home() {
                   </div>
                 </motion.div>
 
+                {/* Provenance + freshness + manual refresh */}
+                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
+                    <MapPin className="w-2.5 h-2.5" />
+                    {weatherProvenance}
+                  </span>
+                  {weatherUpdatedLabel && (
+                    <span className="text-[10px] text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
+                      {t('weather.header.updated_prefix')} {weatherUpdatedLabel}
+                    </span>
+                  )}
+                  {weatherIsStale && (
+                    <span className="text-[10px] font-medium text-warning bg-warning/15 rounded-full px-2 py-0.5">
+                      {t('weather.provenance.stale')}
+                    </span>
+                  )}
+                  {rainNext6h > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-info bg-info/15 rounded-full px-2 py-0.5">
+                      <CloudRain className="w-2.5 h-2.5" />
+                      {t('weather.widget.rain_6h', { value: rainNext6h })}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={t('weather.actions.refresh')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      refetchWeather();
+                    }}
+                    className="ml-auto p-1 rounded-full bg-background/60 text-muted-foreground active:scale-95 transition-transform"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${weatherLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
                 {/* Header - Compact */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-baseline gap-2">
@@ -501,7 +536,7 @@ export default function Home() {
                       transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
                       className="text-5xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent"
                     >
-                      {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}
+                      {currentWeather?.temp != null ? Math.round(currentWeather.temp) : '--'}
                     </motion.span>
                     <div className="flex flex-col">
                       <span className="text-2xl text-muted-foreground font-light">°C</span>
@@ -512,7 +547,7 @@ export default function Home() {
                         className="text-[10px] text-muted-foreground flex items-center gap-1"
                       >
                         <Thermometer className="w-2.5 h-2.5" />
-                        {currentWeather?.feels_like ? Math.round(currentWeather.feels_like) : '--'}°
+                        {currentWeather?.feels_like != null ? Math.round(currentWeather.feels_like) : '--'}°
                       </motion.span>
                     </div>
                   </div>
@@ -542,6 +577,7 @@ export default function Home() {
                     </motion.p>
                   </motion.div>
                 </div>
+
 
                 {/* Weather Details Grid - Compact */}
                 <motion.div
