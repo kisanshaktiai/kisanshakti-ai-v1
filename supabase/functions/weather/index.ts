@@ -779,7 +779,7 @@ async function cacheWeatherData(
       station_name: current.station_name ?? current.imd_station_name ?? null,
       station_distance_km: current.imd_distance_km ?? null,
       method: current.provider === "IMD" ? "measured" : "modelled",
-      confidence: current.provider === "IMD" ? 0.9 : 0.75,
+      confidence: currentConfidence, // D6: CONFIDENCE_MODEL@1.0
       expires_at: expiresAt.toISOString(),
       created_at: now.toISOString(),
     };
