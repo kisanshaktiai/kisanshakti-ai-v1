@@ -129,6 +129,30 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
   // Use the centralized location service
   const { location: deviceLocation } = useLocation();
 
+  // Fetch-leader election (see note above the hook).
+  const instanceIdRef = useRef<string>('');
+  if (!instanceIdRef.current) instanceIdRef.current = `w-${++instanceSeq}`;
+  const [isFetchLeader, setIsFetchLeader] = useState(false);
+
+  useEffect(() => {
+    const id = instanceIdRef.current;
+    members.add(id);
+    if (!leaderId) leaderId = id;
+    const onChange = (current: string | null) => setIsFetchLeader(current === id);
+    leaderListeners.add(onChange);
+    onChange(leaderId);
+    return () => {
+      leaderListeners.delete(onChange);
+      members.delete(id);
+      if (leaderId === id) {
+        leaderId = members.values().next().value ?? null;
+        notifyLeaderChange();
+      }
+    };
+  }, []);
+
+
+
   // Regional fallback: Kolhapur district HQ — 72% of active lands are there.
   // Used ONLY when there is no explicit location, no GPS, and no farm on record.
   // Must be surfaced in the UI as regional, never as the farmer's own weather.
