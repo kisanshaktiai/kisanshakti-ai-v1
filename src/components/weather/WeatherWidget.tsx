@@ -43,6 +43,31 @@ export const WeatherWidget: React.FC = () => {
   // Calculate rain chance from forecast
   const rainChance = forecast?.[0]?.pop ? Math.round(forecast[0].pop * 100) : 0;
 
+  // Next 6 hours is what actually changes a farmer's morning plan.
+  const next6h = (hourlyForecast ?? []).slice(0, 6);
+  const rain6h = next6h.length
+    ? Math.round(Math.max(...next6h.map((h: any) => Number(h?.pop ?? 0))) * 100)
+    : 0;
+
+  // Land verdict — only shown when the DB computed it for today.
+  const landVerdict = (() => {
+    if (!landState || !landStateIsToday) return null;
+    const urgency = (landState.irrigation_urgency ?? '').toUpperCase();
+    const risk = (landState.disease_risk_level ?? '').toUpperCase();
+    if (urgency === 'CRITICAL' || urgency === 'HIGH' || urgency === 'URGENT') {
+      return { text: 'Irrigate today', tone: 'text-destructive' };
+    }
+    if (risk === 'HIGH' || risk === 'CRITICAL' || risk === 'SEVERE') {
+      return { text: 'High disease risk', tone: 'text-warning' };
+    }
+    if (urgency === 'MEDIUM' || urgency === 'MODERATE' || landState.irrigation_needed) {
+      return { text: 'Irrigation due soon', tone: 'text-info' };
+    }
+    return { text: 'Field conditions normal', tone: 'text-success' };
+  })();
+
+
+
   return (
     <motion.div
       whileHover={{ scale: 1.02 }}
