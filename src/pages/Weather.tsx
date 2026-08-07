@@ -31,6 +31,9 @@ import { FarmingRecommendations } from '@/components/weather/FarmingRecommendati
 import { PageShell } from '@/components/layout/PageShell';
 import { HourlyTimeline } from '@/components/weather/HourlyTimeline';
 import { useWeather } from '@/hooks/useWeather';
+import { useLands } from '@/hooks/useLands';
+import { useLandWeatherState } from '@/hooks/useLandWeatherState';
+import { LandAgronomyPanel } from '@/components/weather/LandAgronomyPanel';
 // Weather sync now handled by backend edge function
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
