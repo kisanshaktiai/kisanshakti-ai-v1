@@ -110,7 +110,7 @@ export function resolveNdviQuality(
     // Value preference chain from the registry (median -> mean -> point).
     let value: number | null = null;
     for (const field of p.value_preference) {
-      value = num((row as Record<string, unknown>)[field]);
+      value = num((row as unknown as Record<string, unknown>)[field]);
       if (value !== null) break;
     }
     if (value === null) continue; // cloud-null scene: exactly the bug we are fixing
