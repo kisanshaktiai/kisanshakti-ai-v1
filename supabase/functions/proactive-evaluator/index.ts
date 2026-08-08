@@ -328,10 +328,11 @@ async function processOneTenant(
     recentAlertsRes,
     soilRes,
     ndviRes,
-    stageMapRes,
+    stageMasterRes,
+    stageFallbackRes,
   ] = await Promise.all([
     supabase.from('crop_schedules')
-      .select('land_id, sowing_date, crop_name, status, is_active')
+      .select('land_id, sowing_date, crop_name, status, is_active, cultivation_method')
       .in('land_id', landIds)
       .eq('is_active', true)
       .order('created_at', { ascending: false }),
@@ -348,6 +349,12 @@ async function processOneTenant(
       .in('land_id', landIds)
       .order('date', { ascending: false })
       .limit(1000),
+    // v125: crop_stage_master is the stage SSOT (full phenology per crop + lane).
+    supabase.from('crop_stage_master')
+      .select('crop_code, stage_code, growth_stage, das_min, das_max, cultivation_method')
+      .not('das_min', 'is', null)
+      .not('das_max', 'is', null),
+    // fallback only — used when crop_stage_master has no rows for the crop.
     supabase.from('intent_observation_mapping')
       .select('crop_code, growth_stage, das_min, das_max')
       .not('das_min', 'is', null)
@@ -358,6 +365,7 @@ async function processOneTenant(
   const alertMap = buildAlertMap(recentAlertsRes.data);
   const soilMap = buildSoilMap(soilRes.data);
   const ndviMap = buildNdviMap(ndviRes.data);
+
   const stageMap = buildStageMap(stageMapRes.data);
   // F9: harvest DAS per crop = max das_max from the governed stage data.
   const harvestDasByCrop = buildHarvestDasMap(stageMap);
