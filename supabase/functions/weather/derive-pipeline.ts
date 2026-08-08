@@ -461,6 +461,94 @@ export async function deriveLandDaily(
     ? calculateDiseaseRiskIndex(tempNow, rhMean, dewPoint, rain, lwd ?? 0)
     : null;
 
+  // ---- (j) rain_24h / infiltration cap / SWSI / N supply-demand ------------
+  // All coefficients come from sci_method_registry (SSOT); nothing hardcoded.
+  const soilKey = normalizeSoilType(land.soil_type);
+  const swsiParams = methods.SWSI_STAGE_SENSITIVITY?.params ?? {};
+  const lookbackDays = num(swsiParams.lookback_days) ?? 14;
+  const yDay = istDayString(new Date(Date.now() - 86400000));
+  const sinceDay = istDayString(new Date(Date.now() - lookbackDays * 86400000));
+
+  const [yAggRes, aggHistRes, stateHistRes, soilNRes] = await Promise.all([
+    supabase.from("weather_aggregates").select("rain_mm_total")
+      .eq("location_key", cell).eq("aggregate_date", yDay).is("land_id", null).maybeSingle(),
+    supabase.from("weather_aggregates").select("aggregate_date, rain_mm_total")
+      .eq("location_key", cell).is("land_id", null)
+      .gte("aggregate_date", sinceDay).lte("aggregate_date", day).limit(60),
+    supabase.from("land_weather_state").select("metric_date, etc_mm")
+      .eq("land_id", land.id).gte("metric_date", sinceDay).lt("metric_date", day).limit(60),
+    supabase.from("soil_health").select("nitrogen_kg_per_ha, organic_carbon")
+      .eq("land_id", land.id).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  // (a) rain_24h_mm — today's total + yesterday's prorated remainder.
+  const hoursElapsed = clamp((Date.now() - anchor.getTime()) / 3600000, 0, 24);
+  const yRain = num(yAggRes?.data?.rain_mm_total) ?? 0;
+  const rain24h = r2(rain + yRain * ((24 - hoursElapsed) / 24));
+
+  // (b) infiltration_cap_mm — SOIL_INFILTRATION_CAPS@1.0
+  const infilCaps = (methods.SOIL_INFILTRATION_CAPS?.params?.max_single_application_mm ?? {}) as Record<string, number>;
+  const infiltrationCap = num(infilCaps[soilKey ?? ""] ?? infilCaps.default);
+
+  // (c) SWSI — unmet demand over the lookback window, stage-weighted.
+  const effRainTable = (methods.SOIL_TYPE_EFFECTIVE_RAIN?.params ?? {}) as Record<string, number>;
+  const effRainFactor = num(effRainTable[soilKey ?? ""] ?? effRainTable.default) ?? 0.7;
+  const stageKey = stageName.toLowerCase().trim().replace(/\s+/g, "_");
+  const stageMult = (swsiParams.stage_multiplier ?? {}) as Record<string, number>;
+  const swsiMult = num(stageMult[stageKey]) ?? num(stageMult.default) ?? 1;
+
+  const etcSum = ((stateHistRes?.data ?? []) as Array<{ etc_mm: unknown }>)
+    .reduce((s, r) => s + (num(r.etc_mm) ?? 0), 0) + (etc ?? 0);
+  const rainSum = ((aggHistRes?.data ?? []) as Array<{ rain_mm_total: unknown }>)
+    .reduce((s, r) => s + (num(r.rain_mm_total) ?? 0), 0);
+  let swsi: number | null = null;
+  let swsiClass: string | null = null;
+  if (tawRaw && tawRaw.raw_mm > 0) {
+    const unmet = Math.max(0, etcSum - rainSum * effRainFactor);
+    swsi = clamp((unmet / tawRaw.raw_mm) * swsiMult, 0, 1);
+    const breaks = (swsiParams.class_breaks ?? {}) as Record<string, number>;
+    swsiClass = swsi >= (num(breaks.severe) ?? 0.75)
+      ? "severe"
+      : swsi >= (num(breaks.moderate) ?? 0.55)
+      ? "moderate"
+      : swsi >= (num(breaks.mild) ?? 0.35)
+      ? "mild"
+      : "none";
+    swsi = r2(swsi);
+  } else {
+    out.reasons.push("SWSI_NO_RAW");
+  }
+
+  // (d) N supply/demand ratio — N_SUPPLY_DEMAND_STAGE@1.0 + N_MINERALIZATION_SOC@1.0
+  const nParams = methods.N_SUPPLY_DEMAND_STAGE?.params ?? {};
+  const minParams = methods.N_MINERALIZATION_SOC?.params ?? {};
+  const demandTable = (nParams.season_n_demand_kg_ha ?? {}) as Record<string, number>;
+  const uptakeTable = (nParams.stage_uptake_fraction ?? {}) as Record<string, number>;
+  const stageFraction = num(uptakeTable[stageKey]) ?? num(uptakeTable.default);
+  const seasonDemand = num(demandTable[crop]) ?? num(demandTable.default);
+  const soilN = num(soilNRes?.data?.nitrogen_kg_per_ha);
+  const soilOc = num(soilNRes?.data?.organic_carbon);
+  const legume = (nParams.legume_suppression ?? {}) as { crops?: string[]; after_stage_fraction?: number };
+  let nSdRatio: number | null = null;
+  if (
+    legume.crops?.includes(crop) &&
+    stageFraction !== null && stageFraction > (num(legume.after_stage_fraction) ?? 1)
+  ) {
+    out.reasons.push("N_SD_SUPPRESSED_LEGUME");
+  } else if (soilN === null || soilOc === null) {
+    out.reasons.push("N_SD_NO_SOIL_TEST");
+  } else if (seasonDemand !== null && stageFraction !== null && stageFraction > 0) {
+    const demand = seasonDemand * stageFraction;
+    const mineralized = soilOc
+      * (num(minParams.rate_kg_per_pct_per_day) ?? 0)
+      * (num(minParams.season_days_default) ?? 0)
+      * stageFraction;
+    const supply = soilN + mineralized;
+    nSdRatio = demand > 0 ? r2(supply / demand) : null;
+  }
+
+
+
   // ---- confidence ----------------------------------------------------------
   const { data: biasRows } = await supabase.from("weather_cell_bias")
     .select("property_code, rolling_mae, sample_n").eq("cell_key", cell);
