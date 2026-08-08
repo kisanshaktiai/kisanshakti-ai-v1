@@ -470,11 +470,14 @@ async function processOneTenant(
 
   for (const ctx of landContexts) {
     const applicableRules = rules.filter((r: ProactiveRule) => {
-      if (r.crop_code && r.crop_code !== ctx.crop_code) return false;
-      if (r.stage_applicable?.length > 0 && !r.stage_applicable.includes('ALL')) {
+      // Contract normalization: case-insensitive crop compare; NULL/'ALL' = crop-agnostic.
+      const rc = r.crop_code ? r.crop_code.toUpperCase().trim() : null;
+      if (rc && rc !== 'ALL' && rc !== ctx.crop_code) return false;
+      const stages = (r.stage_applicable || []).map((s: string) => String(s).toUpperCase().trim());
+      if (stages.length > 0 && !stages.includes('ALL')) {
         // F1: stage-scoped rules require a KNOWN stage — fail closed.
         if (ctx.current_stage == null) return false;
-        if (!r.stage_applicable.includes(ctx.current_stage)) return false;
+        if (!stages.includes(ctx.current_stage.toUpperCase().trim())) return false;
       }
       return true;
     });
@@ -567,10 +570,12 @@ async function processOneTenant(
 
     // ---- decision_rules bridge ----
     const applicableDecisionRules = decisionRules.filter(dr => {
-      if (dr.crop_code && dr.crop_code !== ctx.crop_code) return false;
-      if (dr.stage_applicable?.length && !dr.stage_applicable.includes('ALL')) {
+      const dc = dr.crop_code ? dr.crop_code.toUpperCase().trim() : null;
+      if (dc && dc !== 'ALL' && dc !== ctx.crop_code) return false;
+      const stages = (dr.stage_applicable || []).map((s: string) => String(s).toUpperCase().trim());
+      if (stages.length > 0 && !stages.includes('ALL')) {
         if (ctx.current_stage == null) return false; // F1: fail closed
-        if (!dr.stage_applicable.includes(ctx.current_stage)) return false;
+        if (!stages.includes(ctx.current_stage.toUpperCase().trim())) return false;
       }
       return true;
     });
@@ -1735,7 +1740,8 @@ function findBestMatchingDecisionRule(
   decisionRules: DecisionRuleProactive[]
 ): DecisionRuleProactive | null {
   const candidates = decisionRules.filter(dr => {
-    if (dr.crop_code && ctx.crop_code && dr.crop_code !== ctx.crop_code) return false;
+    const bc = dr.crop_code ? dr.crop_code.toUpperCase().trim() : null;
+    if (bc && bc !== 'ALL' && ctx.crop_code && bc !== ctx.crop_code) return false;
     if (dr.stage_applicable?.length && ctx.current_stage) {
       if (!dr.stage_applicable.includes(ctx.current_stage) && !dr.stage_applicable.includes('ALL')) return false;
     }
