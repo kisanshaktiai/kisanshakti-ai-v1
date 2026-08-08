@@ -6,6 +6,20 @@
  *
  * The land-specific chat keeps using `ai-agriculture-chat` (symbolic brain).
  * This separation is the SSOT for routing — by function name, not by flags.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CHANGE LOG (audit trail — newest first)
+ * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-08 — RAG GROUNDING (Stage 3, behind feature flag 'rag_general_chat'):
+ *   information-class questions are grounded in retrieved authoritative
+ *   evidence (rag_chunks via _shared/ragRetrieval.ts) with real citations
+ *   appended in code from retrieval metadata — the LLM never invents them.
+ *   Insufficient evidence ⇒ explicit honest-guidance mode selected in code.
+ *   High-risk (pesticide/dosage/PHI) questions get the §23 informational
+ *   boundary + routing note toward land-specific verified chat.
+ *   Flag OFF ⇒ behavior is byte-identical to previous direct-LLM version.
+ *   RAG NEVER touches ai-agriculture-chat (master prompt §2/§39/§45).
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -21,6 +35,13 @@ import {
   getFarmerAddressing,
   type FarmerAddressing,
 } from '../_shared/farmerAddressing.ts';
+import {
+  ragRetrieve,
+  buildEvidenceBlock,
+  buildCitationLines,
+  type Evidence,
+  type RagResult,
+} from '../_shared/ragRetrieval.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,10 +71,34 @@ const LANG_NAMES: Record<string, string> = {
 const SYMBOLIC_HINTS =
   /(\[obs_keys?:|\[cause:|\[rule_id:|which part of the plant|एक पर्याय निवडा|एक विकल्प चुनें)/i;
 
+// ── RAG: high-risk (§23) — chemical/dosage/interval questions. RAG may inform,
+// but the answer must carry the informational boundary + verified-path routing.
+const HIGH_RISK_QUERY =
+  /(pesticide|insecticide|fungicide|herbicide|weedicide|spray|dose|dosage|ml per|gram per|ग्राम प्रति|मिली प्रति|छिड़काव|फवारणी|कीटनाशक|बुरशीनाशक|तणनाशक|खुराक|मात्रा|डोस|PHI|pre-?harvest interval|ETL|mix(ing)? chemical|कौन सी दवा|कोणते औषध)/i;
+
+async function isRagEnabled(supabase: any, tenantId: string): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('feature_flags')
+      .select('is_enabled, target_tenants')
+      .eq('flag_name', 'rag_general_chat')
+      .maybeSingle();
+    if (!data?.is_enabled) return false;
+    const targets: string[] = data.target_tenants || [];
+    return targets.length === 0 || targets.includes(tenantId);
+  } catch {
+    return false; // flag lookup failure ⇒ safe default: previous behavior
+  }
+}
+
 function buildSystemPrompt(
   language: string,
   landContext: any | null,
   addressing: FarmerAddressing | null,
+  rag?: {
+    evidenceBlock: string | null; // null = retrieval ran but found nothing
+    highRisk: boolean;
+  } | null,
 ): string {
   const langName = LANG_NAMES[language] || 'English';
   const landBlock = landContext
@@ -61,6 +106,53 @@ function buildSystemPrompt(
     : 'LAND_CONTEXT: none (farmer asked a general question without a specific land)';
 
   const addressingBlock = addressing ? `\n\n${addressing.promptDirective}\n` : '';
+
+  // ── RAG grounding rules (§21). Only present when the feature flag is ON.
+  let ragBlock = '';
+  if (rag) {
+    if (rag.evidenceBlock) {
+      ragBlock = `
+
+RETRIEVED_EVIDENCE (authoritative published sources — retrieved for THIS question):
+${rag.evidenceBlock}
+
+EVIDENCE RULES (mandatory):
+- Ground every factual agricultural claim (numbers, thresholds, timings,
+  varieties, scheme rules, eligibility, amounts) in RETRIEVED_EVIDENCE.
+- You may add general agronomic explanation, but clearly favor the evidence
+  when they differ, and never contradict it.
+- NEVER invent a source, page number, document name, or citation. Citations
+  are appended by the system, not by you — do not write a "Sources" section.
+- If the evidence does not fully answer the question, answer what it supports
+  and say plainly (in ${langName}) what is not covered by verified sources.
+- Do not mention the words "RETRIEVED_EVIDENCE", "chunks" or "RAG" to the farmer.`;
+    } else {
+      ragBlock = `
+
+RETRIEVAL_RESULT: NO verified source document matched this question.
+INSUFFICIENT-EVIDENCE RULES (mandatory):
+- Say honestly (in ${langName}, one short sentence) that you do not have a
+  verified official document for this, then give brief, safe, general
+  guidance only.
+- Do NOT state specific numbers (doses, amounts, scheme payment figures,
+  dates, thresholds) as facts. Do NOT cite or invent any source.
+- Suggest the farmer confirm with the local Krishi Vigyan Kendra or
+  agriculture office where appropriate.`;
+    }
+    if (rag.highRisk) {
+      ragBlock += `
+
+HIGH-RISK QUESTION BOUNDARY (chemical / dosage / PHI):
+- This answer is INFORMATIONAL only. Do not present it as a treatment
+  decision for the farmer's specific field.
+- Only mention chemical names, doses or PHI values that appear verbatim in
+  RETRIEVED_EVIDENCE; otherwise give non-chemical/IPM guidance and state that
+  the exact product and dose must be confirmed.
+- End with ONE short sentence (in ${langName}) telling the farmer that for an
+  exact recommendation for THEIR field and crop stage, they should ask in
+  their land-specific chat, which gives verified advice.`;
+    }
+  }
 
   return `You are a SENIOR AGRONOMIST with 25+ years of on-field, rural farming
 experience across Indian smallholder agriculture. You advise farmers in clear,
@@ -88,7 +180,7 @@ HARD RULES:
 - Keep the reply under ~250 words. Use short bullets or numbered steps
   where they help readability.
 ${addressingBlock}
-${landBlock}`;
+${landBlock}${ragBlock}`;
 }
 
 serve(async (req: Request) => {
@@ -116,6 +208,7 @@ serve(async (req: Request) => {
       language = 'en',
       landContext = null,
       sessionId: providedSessionId = null,
+      stateCode = null,  // optional retrieval filter, e.g. 'MH' (from farmer profile/app)
     } = body || {};
 
     const lastMsg = messages[messages.length - 1];
@@ -206,6 +299,29 @@ serve(async (req: Request) => {
       console.warn(`[${traceId}] user persist failed`, (e as Error).message);
     }
 
+    // ── RAG retrieval (feature-flagged; failure NEVER breaks chat — §31)
+    let ragResult: RagResult | null = null;
+    let ragEvidence: Evidence[] = [];
+    let highRisk = false;
+    const ragOn = await isRagEnabled(supabase, tenantId);
+    if (ragOn) {
+      highRisk = HIGH_RISK_QUERY.test(userText);
+      try {
+        ragResult = await ragRetrieve(
+          supabase,
+          userText,
+          language,
+          { stateCodes: stateCode ? [stateCode] : null, tenantId: null /* general corpus is global; tenant docs opt-in later */ },
+          { sessionId, traceId, farmerId, tenantIdText: tenantId },
+        );
+        ragEvidence = ragResult.evidence;
+        console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragEvidence.length} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
+      } catch (e) {
+        console.warn(`[${traceId}] rag retrieval failed — continuing ungated:`, (e as Error).message);
+        ragResult = null; // total failure ⇒ behave exactly like pre-RAG version
+      }
+    }
+
     // ── Build LLM messages (filter symbolic-leakage from history)
     // ── Load farmer profile for respectful addressing (presentation-only)
     let addressing: FarmerAddressing | null = null;
@@ -222,7 +338,17 @@ serve(async (req: Request) => {
       console.warn(`[${traceId}] addressing build failed:`, (e as Error).message);
     }
 
-    const systemPrompt = buildSystemPrompt(language, landContext, addressing);
+    const systemPrompt = buildSystemPrompt(
+      language,
+      landContext,
+      addressing,
+      ragResult
+        ? {
+            evidenceBlock: ragEvidence.length ? buildEvidenceBlock(ragEvidence) : null,
+            highRisk,
+          }
+        : null,
+    );
     const history = (messages.slice(0, -1) as any[])
       .slice(-12)
       .map((m) => ({
@@ -289,6 +415,12 @@ serve(async (req: Request) => {
         : 'I need a little more detail to help you well.';
     }
 
+    // ── Citations: appended IN CODE from retrieval metadata (§22) — the LLM
+    //    is forbidden from writing them, so page numbers can never be invented.
+    if (ragEvidence.length > 0) {
+      answer += buildCitationLines(ragEvidence, language);
+    }
+
     // ── Persist assistant response
     try {
       await supabase.from('ai_chat_messages').insert({
@@ -299,11 +431,22 @@ serve(async (req: Request) => {
         content: answer,
         ai_model: usedModel,
         metadata: {
-          chat_mode: 'general_llm_v1',
-          orchestrator_type: 'GENERAL_LLM_DIRECT',
+          chat_mode: ragResult ? 'general_rag_v1' : 'general_llm_v1',
+          orchestrator_type: ragResult ? 'GENERAL_RAG_GROUNDED' : 'GENERAL_LLM_DIRECT',
           language,
           trace_id: traceId,
           land_context_used: !!landContext,
+          rag: ragResult
+            ? {
+                mode: ragResult.mode,
+                evidence_count: ragEvidence.length,
+                below_threshold: ragResult.belowThreshold,
+                high_risk: highRisk,
+                evidence_ids: ragEvidence.map((e) => e.chunkId),
+                embedding_model: ragResult.embeddingModel,
+                retrieval_latency_ms: ragResult.latencyMs,
+              }
+            : null,
         },
       });
     } catch (e) {
@@ -317,12 +460,14 @@ serve(async (req: Request) => {
         responseTime: Date.now() - startedAt,
         metadata: {
           type: 'general_chat',
-          orchestrator_type: 'GENERAL_LLM_DIRECT',
-          chat_mode: 'general_llm_v1',
+          orchestrator_type: ragResult ? 'GENERAL_RAG_GROUNDED' : 'GENERAL_LLM_DIRECT',
+          chat_mode: ragResult ? 'general_rag_v1' : 'general_llm_v1',
           model: usedModel,
           trace_id: traceId,
           language,
           land_context_used: !!landContext,
+          rag_grounded: ragEvidence.length > 0,
+          rag_mode: ragResult?.mode || null,
         },
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
