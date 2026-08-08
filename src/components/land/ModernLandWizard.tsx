@@ -302,7 +302,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         district: formData.district || undefined,
         taluka: formData.taluka || undefined,
         village: formData.village || undefined,
-        soil_type: formData.soil_type || undefined,
+        soil_type: normalizeSoilType(formData.soil_type) || undefined,
         water_source: formData.water_source || undefined,
         irrigation_type: formData.irrigation_type || undefined,
         current_crop: formData.current_crop || undefined,
