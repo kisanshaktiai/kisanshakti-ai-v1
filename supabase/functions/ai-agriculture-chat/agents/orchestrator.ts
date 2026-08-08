@@ -1482,6 +1482,25 @@ export class AIAgentOrchestrator {
           _dOut.follow_up = { clarification_options: _preparedOpts };
         }
 
+        // FIX B (2026-08-08) — OPTIONS SSOT SHAPE. index.ts reads options from
+        // `question.options` (payload builder + session persistence), NOT from
+        // the top-level `clarification_options`. Publish both shapes.
+        const _existingQ = (response as any).question;
+        if (!Array.isArray(_existingQ?.options) || _existingQ.options.length === 0) {
+          (response as any).question = {
+            ...(typeof _existingQ === 'object' && _existingQ ? _existingQ : {}),
+            question: (typeof _existingQ?.question === 'string' && _existingQ.question.trim())
+              ? _existingQ.question
+              : String((response as any)?.message ?? (response as any)?.response ?? ''),
+            options: _preparedOpts,
+          };
+        }
+        if (_isFallback) {
+          (response as any).type = 'CLARIFICATION_QUESTION';
+        }
+
+
+
         console.warn(
           `[RESPONSE_INVARIANT_ATTACHED] trace=${traceId} options=${_preparedOpts.length} ` +
           `type=${_type || 'null'} matched_rules=${_matchedRules}`,
