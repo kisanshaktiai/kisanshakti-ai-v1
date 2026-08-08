@@ -1071,8 +1071,28 @@ function normalizeCropCode(crop: string | null): string | null {
   if (upper.includes('TOMATO') || upper.includes('टोमॅटो') || upper.includes('टमाटर') || upper === 'TM') return 'TOMATO';
   if (upper.includes('POTATO') || upper.includes('बटाटा') || upper.includes('आलू') || upper === 'PT') return 'POTATO';
   if (upper.includes('MANGO') || upper.includes('आंबा') || upper.includes('आम') || upper === 'MG') return 'MANGO';
+  if (upper.includes('RAJMA') || upper.includes('राजमा') || upper.includes('KIDNEY BEAN')) return 'RAJMA';
   return upper;
 }
+
+// =====================================================
+// SOIL TYPE NORMALIZATION
+// Agronomy lookups (SOIL_INFILTRATION_CAPS, SOIL_TYPE_EFFECTIVE_RAIN, the
+// soil-water factor below) are keyed on lowercase underscore codes. Free-form
+// values such as 'Red Soil' used to fall through to the default silently.
+// =====================================================
+export function normalizeSoilType(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const base = String(s).toLowerCase().trim().replace(/\s+/g, '_');
+  if (!base) return null;
+  const MAP: Record<string, string> = {
+    black_soil: 'black',
+    red_soil: 'red',
+    black_cotton_soil: 'black_cotton',
+  };
+  return MAP[base] ?? base;
+}
+
 
 // =====================================================
 // PROACTIVE RULE EVALUATION (enhanced with G1 signals)
@@ -1931,6 +1951,7 @@ const CROP_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
   BANANA:    { mr: 'केळी', hi: 'केला', en: 'banana' },
   GRAPE:     { mr: 'द्राक्ष', hi: 'अंगूर', en: 'grape' },
   PIGEONPEA: { mr: 'तूर', hi: 'अरहर', en: 'pigeonpea' },
+  RAJMA:     { mr: 'राजमा', hi: 'राजमा', en: 'rajma' },
 };
 
 function cropLabel(code: string | null | undefined, lang: 'mr' | 'hi' | 'en'): string {
@@ -2284,7 +2305,7 @@ const IRRIGATION_EFFICIENCY: Record<string, number> = {
 };
 
 const SOIL_WATER_FACTOR: Record<string, number> = {
-  BLACK: 0.85, RED: 1.1, LATERITE: 1.15, ALLUVIAL: 0.95, SANDY: 1.3, CLAY: 0.8, LOAMY: 1.0, MEDIUM_BLACK: 0.9,
+  black: 0.85, red: 1.1, laterite: 1.15, alluvial: 0.95, sandy: 1.3, clay: 0.8, loamy: 1.0, medium_black: 0.9,
 };
 
 function calculateIrrigationForLand(ctx: LandContext): {
@@ -2300,7 +2321,7 @@ function calculateIrrigationForLand(ctx: LandContext): {
   const stage = ctx.current_stage || 'VEGETATIVE';
   const area = ctx.area_acres || 1;
   const irrigationType = (ctx.irrigation_type || 'FLOOD').toUpperCase();
-  const soilType = (ctx.soil_type || 'MEDIUM_BLACK').toUpperCase().replace(/\s+/g, '_');
+  const soilType = normalizeSoilType(ctx.soil_type) ?? 'medium_black';
 
   const cropNeeds = CROP_WATER_NEED_MM_PER_DAY[cropCode] || CROP_WATER_NEED_MM_PER_DAY.SUGARCANE;
   const dailyNeedMm = cropNeeds[stage] || cropNeeds.VEGETATIVE || 5;
