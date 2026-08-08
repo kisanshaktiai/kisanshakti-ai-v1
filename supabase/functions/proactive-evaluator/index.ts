@@ -1025,6 +1025,36 @@ async function batchLoadForecast(supabase: any, locationKeys: string[]): Promise
   return map;
 }
 
+// v125: minimum forecast night temperature (next 14 hours) per location_key.
+// Batch-loaded once per tenant run — never queried per land.
+async function batchLoadForecastTminNight(supabase: any, locationKeys: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (locationKeys.length === 0) return map;
+
+  const nowIso = new Date().toISOString();
+  const untilIso = new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from('weather_forecasts')
+    .select('location_key, temperature_min_celsius')
+    .in('location_key', locationKeys)
+    .gte('forecast_time', nowIso)
+    .lte('forecast_time', untilIso)
+    .not('temperature_min_celsius', 'is', null);
+
+  if (data) {
+    for (const f of data) {
+      if (!f.location_key) continue;
+      const v = Number(f.temperature_min_celsius);
+      if (!Number.isFinite(v)) continue;
+      const existing = map.get(f.location_key);
+      if (existing == null || v < existing) map.set(f.location_key, v);
+    }
+  }
+  return map;
+}
+
+
+
 // F7: batchLoadGDD DELETED. It invented GDD via a universal base temperature
 // of 10°C and, worse, "current temp × 30 days". gdd_accumulated is now
 // derived.gdd_cumulative from land_gdd_daily — the governed per-crop chain.
