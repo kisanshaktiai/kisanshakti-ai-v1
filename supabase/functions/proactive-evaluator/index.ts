@@ -427,12 +427,14 @@ async function processOneTenant(
       ? Math.floor((Date.now() - new Date(sowingDate).getTime()) / (1000 * 60 * 60 * 24))
       : 0;
 
-    // F1: DB-driven stage only. Unknown => null + logged coverage gap.
-    const currentStage = computeStageDynamic(cropCode, das, stageMap);
+    // v125: DB-driven stage from crop_stage_master (lane-aware); IOM is fallback.
+    const cultivationMethod = schedule?.cultivation_method ?? null;
+    const currentStage = computeStageDynamic(cropCode, das, stageMap, cultivationMethod, stageFallbackMap);
     if (currentStage == null && cropCode && das > 0) {
       stageGaps++;
-      console.warn(`[STAGE_COVERAGE_GAP] land=${land.id.slice(0, 8)} crop=${cropCode} das=${das} — no stage window in intent_observation_mapping; stage-scoped rules will not apply`);
+      console.warn(`[STAGE_COVERAGE_GAP] land=${land.id.slice(0, 8)} crop=${cropCode} das=${das} — no stage window in crop_stage_master or intent_observation_mapping; stage-scoped rules will not apply`);
     }
+
 
     const weather = landWeatherMap.get(land.id) || nullWeather();
     const ndviArr = ndviMap.get(land.id) || [];
