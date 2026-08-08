@@ -1058,22 +1058,50 @@ function isDuplicate(dedupKey: string, ruleCode: string, landId: string, cooldow
 }
 
 // =====================================================
-// F1: DYNAMIC STAGE — DB ONLY (no invented phenology)
+// v125: DYNAMIC STAGE — crop_stage_master SSOT (lane-aware), IOM fallback
 // =====================================================
 
-function computeStageDynamic(cropCode: string | null, das: number, stageMap: Map<string, any[]>): string | null {
+function computeStageDynamic(
+  cropCode: string | null,
+  das: number,
+  stageMap: Map<string, any[]>,
+  cultivationMethod?: string | null,
+  fallbackMap?: Map<string, any[]>,
+): string | null {
   if (!cropCode || das <= 0) return null;
+
   const stages = stageMap.get(cropCode); // UPPERCASE keys (buildStageMap)
   if (stages && stages.length > 0) {
-    for (const s of stages) {
-      if (das >= s.das_min && das <= s.das_max) {
-        return s.stage;
+    const hasTp = stages.some((s) => s.series === 'TP');
+    const hasDirect = stages.some((s) => s.series === 'DIRECT');
+    let preferred: 'TP' | 'DIRECT' | null = null;
+    if (hasTp && hasDirect) {
+      const method = String(cultivationMethod || '').toLowerCase();
+      if (method.includes('transplant')) preferred = 'TP';
+      else if (method.includes('direct') || method.includes('dsr') || method.includes('seed')) preferred = 'DIRECT';
+      else {
+        // Documented regional default (Maharashtra): rice is transplanted.
+        preferred = cropCode === 'RICE' ? 'TP' : 'DIRECT';
+        console.log(`[STAGE_SERIES_ASSUMED] crop=${cropCode} das=${das} series=${preferred} reason=cultivation_method_unknown`);
+      }
+    }
+    const pool = preferred ? stages.filter((s) => s.series === preferred) : stages;
+    for (const s of pool) {
+      if (das >= s.das_min && das <= s.das_max) return s.stage;
+    }
+  } else if (fallbackMap) {
+    // crop_stage_master has no rows for this crop => intent_observation_mapping.
+    const fb = fallbackMap.get(cropCode);
+    if (fb && fb.length > 0) {
+      for (const s of fb) {
+        if (das >= s.das_min && das <= s.das_max) return s.stage;
       }
     }
   }
   // No coverage => UNKNOWN. Never invent a stage. Caller logs the gap.
   return null;
 }
+
 
 // =====================================================
 // CROP CODE NORMALIZATION
