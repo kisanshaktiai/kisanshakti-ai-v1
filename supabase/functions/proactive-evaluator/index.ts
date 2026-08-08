@@ -366,9 +366,10 @@ async function processOneTenant(
   const soilMap = buildSoilMap(soilRes.data);
   const ndviMap = buildNdviMap(ndviRes.data);
 
-  const stageMap = buildStageMap(stageMapRes.data);
+  const stageMap = buildStageMap(stageMasterRes.data);
+  const stageFallbackMap = buildStageFallbackMap(stageFallbackRes.data);
   // F9: harvest DAS per crop = max das_max from the governed stage data.
-  const harvestDasByCrop = buildHarvestDasMap(stageMap);
+  const harvestDasByCrop = buildHarvestDasMap(stageMap.size > 0 ? stageMap : stageFallbackMap);
 
   const locationKeys = new Set<string>();
   const landToLocKey = new Map<string, string>();
