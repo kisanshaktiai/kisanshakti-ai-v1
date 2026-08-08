@@ -164,6 +164,10 @@ interface LandContext {
   water_source: string | null;
   derived: DerivedState;
   forecast_tmax_mean_5d: number | null;
+  /** v125: minimum forecast night temperature (next 14h) for temp_night rules. */
+  forecast_tmin_night: number | null;
+  /** v125: cultivation lane (transplanted / direct_seeded) for stage series choice. */
+  cultivation_method: string | null;
 }
 
 interface RuleEvalResult {
