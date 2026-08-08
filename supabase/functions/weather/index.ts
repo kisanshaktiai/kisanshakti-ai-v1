@@ -1677,6 +1677,28 @@ serve(async (req: Request): Promise<Response> => {
       if (enrichment.enriched) dataProvider = `${dataProvider}+TIO-enriched`;
     }
 
+    // -- D11: FORECAST ENSEMBLE (second opinion, best-effort, non-serving) ----
+    // Provider priority is UNCHANGED: the serving forecast stays whatever the
+    // chain above produced. This only fetches Tomorrow.io as a second opinion
+    // for cross-provider agreement scoring in the observation spine.
+    let ensembleForecast: DailyForecast[] | undefined;
+    if (
+      needForecast && forecast && !dataProvider.includes("Tomorrow.io") &&
+      tomorrowIoApiKey && budgets["Tomorrow.io"] + 1 < CONFIG.DAILY_BUDGET["Tomorrow.io"]
+    ) {
+      const t0 = Date.now();
+      try {
+        const f = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey, runId);
+        ensembleForecast = f.forecast;
+        await logCall(supabase, runId, "Tomorrow.io", "forecast_ensemble", true, Date.now() - t0);
+      } catch (e) {
+        await logCall(supabase, runId, "Tomorrow.io", "forecast_ensemble", false, Date.now() - t0, String(e));
+        log(runId, "warn", "ensemble_fetch_failed", { error: String(e) });
+      }
+    }
+
+
+
     log(runId, "info", "provider_chain_complete", {
       provider: dataProvider,
       attempts: attempts.map((a) => `${a.provider}:${a.capability}:${a.ok ? "ok" : "fail"}:${a.ms}ms`),
