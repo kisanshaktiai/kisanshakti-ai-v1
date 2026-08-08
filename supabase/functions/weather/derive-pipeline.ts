@@ -603,6 +603,11 @@ export async function deriveLandDaily(
     spray_score: r2(spray.score),
     spray_window: spray.window ?? null,
     harvest_window_score: r2(harvestWindow),
+    rain_24h_mm: rain24h,
+    infiltration_cap_mm: infiltrationCap,
+    swsi: swsi,
+    swsi_class: swsiClass,
+    n_sd_ratio: nSdRatio,
     confidence: r2(stateConfidence),
     // legacy columns are written by computeLandWeatherMetrics and are only
     // filled here when this derive created the row.
@@ -645,6 +650,9 @@ export async function deriveLandDaily(
       FROST_RISK: { value: frost.score, method: "FROST_COMPOSITE@1.0" },
       SPRAY_SCORE: { value: spray.score, method: "SPRAY_SUITABILITY@1.0" },
       HARVEST_WINDOW: { value: harvestWindow, method: "HARVEST_WINDOW_HEURISTIC@1.0" },
+      RAIN_24H: { value: rain24h, method: "SOIL_TYPE_EFFECTIVE_RAIN@1.0" },
+      SWSI: { value: swsi, method: "SWSI_STAGE_SENSITIVITY@1.0" },
+      N_SD_RATIO: { value: nSdRatio, method: "N_SUPPLY_DEMAND_STAGE@1.0" },
     },
   }, log);
   out.raw_obs = spine.rawCount;
