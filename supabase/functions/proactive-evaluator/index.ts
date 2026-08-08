@@ -806,17 +806,52 @@ function buildNdviMap(data: any[] | null): Map<string, any[]> {
   return map;
 }
 
-// F1: keys are UPPERCASE so the lookup with normalizeCropCode() output matches.
-// This is the fix for the dead DB stage path (intent_observation_mapping stores
-// lowercase crop codes; the context crop code is UPPERCASE).
-function buildStageMap(data: any[] | null): Map<string, { stage: string; das_min: number; das_max: number }[]> {
+// v125: STAGE SSOT = crop_stage_master. Keys are UPPERCASE crop codes so the
+// lookup with normalizeCropCode() output matches. stage_code is normalized by
+// stripping the leading crop prefix and an optional lane token
+// (RICE_TP_BOOTING -> BOOTING, RICE_DSR_EARLY_VEGETATIVE -> EARLY_VEGETATIVE).
+function normalizeStageCode(stageCode: string | null, growthStage: string | null, cropKey: string): string {
+  const raw = String(stageCode || '').toUpperCase().trim();
+  if (!raw) return String(growthStage || '').toUpperCase().trim();
+  let s = raw;
+  if (cropKey && s.startsWith(`${cropKey}_`)) s = s.slice(cropKey.length + 1);
+  s = s.replace(/^(TP|DSR)_/, '');
+  return s || String(growthStage || '').toUpperCase().trim();
+}
+
+function buildStageMap(data: any[] | null): Map<string, { stage: string; das_min: number; das_max: number; series: 'TP' | 'DIRECT' }[]> {
+  const map = new Map<string, any[]>();
+  if (!data) return map;
+  for (const row of data) {
+    const key = String(row.crop_code || '').toUpperCase().trim();
+    if (!key) continue;
+    const rawCode = String(row.stage_code || '').toUpperCase();
+    const method = String(row.cultivation_method || '').toLowerCase();
+    const series: 'TP' | 'DIRECT' = (rawCode.includes('_TP_') || method === 'transplanted') ? 'TP' : 'DIRECT';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push({
+      stage: normalizeStageCode(row.stage_code, row.growth_stage, key),
+      das_min: row.das_min,
+      das_max: row.das_max,
+      series,
+    });
+  }
+  for (const [, stages] of map) {
+    stages.sort((a: any, b: any) => a.das_min - b.das_min);
+  }
+  return map;
+}
+
+// Fallback stage windows (intent_observation_mapping) — used only when
+// crop_stage_master has no rows for the crop.
+function buildStageFallbackMap(data: any[] | null): Map<string, { stage: string; das_min: number; das_max: number; series: 'DIRECT' }[]> {
   const map = new Map<string, any[]>();
   if (!data) return map;
   for (const row of data) {
     const key = String(row.crop_code || '').toUpperCase().trim();
     if (!key) continue;
     if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push({ stage: row.growth_stage, das_min: row.das_min, das_max: row.das_max });
+    map.get(key)!.push({ stage: String(row.growth_stage || '').toUpperCase().trim(), das_min: row.das_min, das_max: row.das_max, series: 'DIRECT' });
   }
   for (const [, stages] of map) {
     stages.sort((a: any, b: any) => a.das_min - b.das_min);
