@@ -60,6 +60,35 @@ async function extractPdfPages(buf: ArrayBuffer): Promise<PageText[]> {
   return pages.map((t, i) => ({ page: i + 1, text: (t || '').replace(/\u0000/g, '').trim() }));
 }
 
+
+/** Remove running headers/footers: lines repeating on ≥30% of pages (min 3).
+ *  Found in validation: 'www.krishijagran.com|Package of Practices-Soyabean N'
+ *  on every page inflated retrieval scores and polluted chunk text. */
+function stripRunningLines(pages: PageText[]): PageText[] {
+  if (pages.length < 4) return pages;
+  const freq = new Map<string, number>();
+  for (const p of pages) {
+    const seen = new Set<string>();
+    for (const raw of p.text.split(/\n/)) {
+      const norm = raw.trim().replace(/\d+/g, '#').toLowerCase();
+      if (norm.length >= 8 && norm.length <= 120 && !seen.has(norm)) {
+        seen.add(norm);
+        freq.set(norm, (freq.get(norm) || 0) + 1);
+      }
+    }
+  }
+  const threshold = Math.max(3, Math.ceil(pages.length * 0.3));
+  const banned = new Set([...freq.entries()].filter(([, n]) => n >= threshold).map(([k]) => k));
+  if (banned.size === 0) return pages;
+  return pages.map((p) => ({
+    page: p.page,
+    text: p.text
+      .split(/\n/)
+      .filter((l) => !banned.has(l.trim().replace(/\d+/g, '#').toLowerCase()))
+      .join('\n'),
+  }));
+}
+
 interface RawChunk {
   text: string;
   sectionPath: string | null;
@@ -91,9 +120,16 @@ function chunkPages(pages: PageText[]): RawChunk[] {
       const lines = para.split(/\n/).map((l) => l.trim()).filter(Boolean);
       for (const line of lines) {
         const numbered = line.match(NUMBERED_HEADING);
+        // Validation fix: reject table rows masquerading as headings —
+        // title part must be letter-dominated (e.g. reject '6.03 7.8 1294',
+        // '12 Riboflavin 2.3 mg', '3 Potash 60').
+        const titlePart = numbered ? numbered[2] : line;
+        const letters = (titlePart.match(/[\p{L}]/gu) || []).length;
+        const digits = (titlePart.match(/\d/g) || []).length;
+        const letterDominated = letters >= 3 && letters > digits * 2;
         const isHeading =
-          (numbered && line.length < 90) ||
-          (CAPS_HEADING.test(line) && line.length < 65);
+          (numbered && line.length < 90 && letterDominated) ||
+          (CAPS_HEADING.test(line) && line.length < 65 && letterDominated);
         if (isHeading) {
           flush();
           currentSection = numbered ? `${numbered[1]} ${numbered[2]}`.trim() : line;
@@ -142,15 +178,19 @@ async function loadEntityDictionaries(supabase: SupabaseClient): Promise<EntityD
   return { crops, chemicals };
 }
 
+const wordRe = (term: string) =>
+  new RegExp(`(^|[^\\p{L}])${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}([^\\p{L}]|$)`, 'iu');
+
 function tagChunk(text: string, dict: EntityDictionaries): { cropCodes: string[]; chemicalNames: string[] } {
-  const lower = text.toLowerCase();
+  // Validation fix: whole-word matching (unicode-aware, works for Devanagari).
+  // Substring matching produced false crops: 'fig'→figure, 'ber'→number.
   const cropCodes = new Set<string>();
   for (const { code, term } of dict.crops) {
-    if (term.length >= 3 && lower.includes(term)) cropCodes.add(code);
+    if (term.length >= 3 && wordRe(term).test(text)) cropCodes.add(code);
   }
   const chemicalNames = new Set<string>();
   for (const chem of dict.chemicals) {
-    if (chem.length >= 4 && lower.includes(chem)) chemicalNames.add(chem);
+    if (chem.length >= 4 && wordRe(chem).test(text)) chemicalNames.add(chem);
   }
   return { cropCodes: [...cropCodes].slice(0, 12), chemicalNames: [...chemicalNames].slice(0, 12) };
 }
@@ -292,7 +332,8 @@ serve(async (req: Request) => {
 
     // 6) Chunk (§12) + validate
     await supabase.from('rag_documents').update({ processing_status: 'chunking' }).eq('id', documentId);
-    const rawChunks = chunkPages(pages);
+    const cleanedPages = stripRunningLines(pages);
+    const rawChunks = chunkPages(cleanedPages);
     if (rawChunks.length === 0) return await fail('CHUNKING_PRODUCED_ZERO_CHUNKS');
 
     // 7) Entity tagging from SSOT tables (§13)

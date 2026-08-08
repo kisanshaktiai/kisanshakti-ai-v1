@@ -152,7 +152,14 @@ export async function ragRetrieve(
     .map((e) => ({ ...e, final: e.rrf * (AUTHORITY_BOOST[e.row.authority_tier] ?? 1.0) }))
     .sort((a, b) => b.final - a.final);
 
-  const passing = ranked.filter((e) => e.rrf >= MIN_RRF_SCORE).slice(0, MAX_EVIDENCE);
+  // Validation fix: a lexical-only hit matching a single keyword (pgroonga
+  // score < 2) is noise, not evidence — e.g. 'tomato price' matching a soybean
+  // chunk on the word 'market'. Require ≥2 keyword hits unless the semantic
+  // leg also found it.
+  const passing = ranked
+    .filter((e) => e.rrf >= MIN_RRF_SCORE)
+    .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= 2))
+    .slice(0, MAX_EVIDENCE);
   const belowThreshold = passing.length === 0;
 
   const evidence: Evidence[] = passing.map((e) => ({
