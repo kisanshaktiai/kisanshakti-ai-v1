@@ -1071,8 +1071,28 @@ function normalizeCropCode(crop: string | null): string | null {
   if (upper.includes('TOMATO') || upper.includes('टोमॅटो') || upper.includes('टमाटर') || upper === 'TM') return 'TOMATO';
   if (upper.includes('POTATO') || upper.includes('बटाटा') || upper.includes('आलू') || upper === 'PT') return 'POTATO';
   if (upper.includes('MANGO') || upper.includes('आंबा') || upper.includes('आम') || upper === 'MG') return 'MANGO';
+  if (upper.includes('RAJMA') || upper.includes('राजमा') || upper.includes('KIDNEY BEAN')) return 'RAJMA';
   return upper;
 }
+
+// =====================================================
+// SOIL TYPE NORMALIZATION
+// Agronomy lookups (SOIL_INFILTRATION_CAPS, SOIL_TYPE_EFFECTIVE_RAIN, the
+// soil-water factor below) are keyed on lowercase underscore codes. Free-form
+// values such as 'Red Soil' used to fall through to the default silently.
+// =====================================================
+export function normalizeSoilType(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const base = String(s).toLowerCase().trim().replace(/\s+/g, '_');
+  if (!base) return null;
+  const MAP: Record<string, string> = {
+    black_soil: 'black',
+    red_soil: 'red',
+    black_cotton_soil: 'black_cotton',
+  };
+  return MAP[base] ?? base;
+}
+
 
 // =====================================================
 // PROACTIVE RULE EVALUATION (enhanced with G1 signals)
