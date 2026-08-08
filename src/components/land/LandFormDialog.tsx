@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { normalizeSoilType } from '@/lib/soilType';
 import {
   Dialog,
   DialogContent,
@@ -138,6 +139,7 @@ export function LandFormDialog({
     try {
       await onSubmit({
         ...data,
+        soil_type: normalizeSoilType(data.soil_type) ?? undefined,
         boundary: boundary,
       });
       form.reset();

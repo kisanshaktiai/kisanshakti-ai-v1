@@ -179,7 +179,7 @@ export function EditLandWizard({
         ownership_type: formData.ownership_type,
         area_acres: area.acres,
         area_guntas: area.guntha,
-        soil_type: formData.soil_type,
+        soil_type: normalizeSoilType(formData.soil_type),
         water_source: formData.water_source,
         irrigation_type: formData.irrigation_type,
         current_crop: formData.current_crop,
