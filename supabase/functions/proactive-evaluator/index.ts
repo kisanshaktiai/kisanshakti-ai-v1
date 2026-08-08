@@ -764,12 +764,12 @@ function applySafetySuppression(
 // BATCH LOADING HELPERS
 // =====================================================
 
-function buildScheduleMap(data: any[] | null): Map<string, { sowing_date: string; crop_name: string }> {
+function buildScheduleMap(data: any[] | null): Map<string, { sowing_date: string; crop_name: string; cultivation_method: string | null }> {
   const map = new Map();
   if (!data) return map;
   for (const cs of data) {
     if (!map.has(cs.land_id) && cs.sowing_date) {
-      map.set(cs.land_id, { sowing_date: cs.sowing_date, crop_name: cs.crop_name });
+      map.set(cs.land_id, { sowing_date: cs.sowing_date, crop_name: cs.crop_name, cultivation_method: cs.cultivation_method ?? null });
     }
   }
   return map;
