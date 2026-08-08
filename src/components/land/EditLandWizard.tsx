@@ -14,6 +14,7 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/integrations/supabase/client';
 import { landsApi } from '@/services/landsApi';
 import { useTranslation } from 'react-i18next';
+import { normalizeSoilType } from '@/lib/soilType';
 
 interface LatLng {
   lat: number;
