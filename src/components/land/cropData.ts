@@ -90,7 +90,7 @@ export const irrigationTypes = [
 ];
 
 export const soilTypes = [
-  { value: 'black_cotton', label: 'Black Cotton Soil' },
+  { value: 'black', label: 'Black Soil' },
   { value: 'red', label: 'Red Soil' },
   { value: 'alluvial', label: 'Alluvial Soil' },
   { value: 'laterite', label: 'Laterite Soil' },

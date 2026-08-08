@@ -14,7 +14,7 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/integrations/supabase/client';
 import { landsApi } from '@/services/landsApi';
 import { useTranslation } from 'react-i18next';
-import { normalizeSoilType } from '@/lib/soilType';
+import { normalizeSoilType, soilTypeLabel, SOIL_TYPES } from '@/lib/soilType';
 
 interface LatLng {
   lat: number;
@@ -59,7 +59,7 @@ export function EditLandWizard({
     district: existingData?.district || '',
     taluka: existingData?.taluka || '',
     village: existingData?.village || '',
-    soil_type: existingData?.soil_type || '',
+    soil_type: normalizeSoilType(existingData?.soil_type) || '',
     water_source: existingData?.water_source || '',
     irrigation_type: existingData?.irrigation_type || '',
     cultivation_type: existingData?.cultivation_type || '',
@@ -231,10 +231,7 @@ export function EditLandWizard({
     { title: t('lands.edit.review'), icon: Save },
   ];
 
-  const soilTypes = [
-    'Black Soil', 'Red Soil', 'Alluvial Soil', 'Clay Soil', 
-    'Sandy Soil', 'Loamy Soil', 'Laterite Soil', 'Other'
-  ];
+  const soilTypes = SOIL_TYPES;
 
   const waterSources = [
     'Well', 'Borewell', 'Canal', 'River', 'Pond', 
@@ -484,8 +481,8 @@ export function EditLandWizard({
                           </SelectTrigger>
                           <SelectContent>
                             {soilTypes.map((type) => (
-                              <SelectItem key={type} value={type}>
-                                {type}
+                              <SelectItem key={type.value} value={type.value}>
+                                {type.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -594,7 +591,7 @@ export function EditLandWizard({
                           <h4 className="font-semibold mb-3">Characteristics</h4>
                           <div className="grid grid-cols-2 gap-2 text-sm">
                             <span className="text-muted-foreground">Soil Type:</span>
-                            <span>{formData.soil_type || 'N/A'}</span>
+                            <span>{soilTypeLabel(formData.soil_type) || 'N/A'}</span>
                             <span className="text-muted-foreground">Water Source:</span>
                             <span>{formData.water_source || 'N/A'}</span>
                             <span className="text-muted-foreground">Irrigation:</span>

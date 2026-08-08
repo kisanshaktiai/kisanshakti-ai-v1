@@ -123,7 +123,7 @@ export function LandFormDialog({
             name: data.name || '',
             survey_no: data.survey_number || '',
             ownership_type: (data.ownership_type as 'owned' | 'leased' | 'shared') || 'owned',
-            soil_type: data.soil_type || '',
+            soil_type: normalizeSoilType(data.soil_type) || '',
             water_source: data.water_source || '',
             irrigation_type: data.irrigation_type || '',
             notes: data.notes || '',
@@ -331,7 +331,7 @@ export function LandFormDialog({
                             </FormControl>
                             <SelectContent>
                               {soilTypes.map((type) => (
-                                <SelectItem key={type.id} value={type.value}>
+                                <SelectItem key={type.id} value={normalizeSoilType(type.value) || type.value}>
                                   {type.label}
                                 </SelectItem>
                               ))}
