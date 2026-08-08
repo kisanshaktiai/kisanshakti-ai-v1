@@ -93,7 +93,7 @@ export async function batchLoadDerived(
 
   const [lwsRes, gddRes, epRes] = await Promise.all([
     supabase.from('land_weather_state')
-      .select('land_id, metric_date, et0_mm, et0_pm, et0_method, vpd_kpa, lwd_est_hours, spray_score, frost_risk_score, heat_stress_dh, cold_stress_dh, water_deficit_mm, root_depletion_mm, raw_mm, taw_mm, irrigation_urgency, harvest_window_score, confidence')
+      .select('land_id, metric_date, et0_mm, et0_pm, et0_method, vpd_kpa, lwd_est_hours, spray_score, frost_risk_score, heat_stress_dh, cold_stress_dh, water_deficit_mm, root_depletion_mm, raw_mm, taw_mm, irrigation_urgency, harvest_window_score, rain_24h_mm, infiltration_cap_mm, swsi, swsi_class, n_sd_ratio, confidence')
       .in('land_id', landIds)
       .order('metric_date', { ascending: false })
       .limit(2000),
@@ -127,6 +127,11 @@ export async function batchLoadDerived(
       taw_mm: num(row.taw_mm),
       irrigation_urgency: row.irrigation_urgency ?? null,
       harvest_window: num(row.harvest_window_score),
+      rain_24h: num(row.rain_24h_mm),
+      infiltration_cap: num(row.infiltration_cap_mm),
+      swsi: num(row.swsi),
+      swsi_class: row.swsi_class ?? null,
+      n_sd_ratio: num(row.n_sd_ratio),
       confidence: num(row.confidence),
       as_of: row.metric_date ?? null,
       active_episodes: [],
