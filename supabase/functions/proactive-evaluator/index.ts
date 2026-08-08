@@ -519,7 +519,7 @@ async function processOneTenant(
       if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || cfg.default_cooldown_hours, alertMap)) continue;
 
       const dailyCount = farmerDailyCounts.get(ctx.farmer_id) || 0;
-      if (dailyCount >= cfg.daily_alert_cap_per_farmer && rule.priority !== 'CRITICAL') continue;
+      if (dailyCount >= cfg.daily_alert_cap_per_farmer && mapRulePriority(rule.priority) !== 'CRITICAL') continue;
 
       eventsToInsert.push({
         tenant_id: ctx.tenant_id,
@@ -537,8 +537,8 @@ async function processOneTenant(
         land_id: ctx.land_id,
         farmer_id: ctx.farmer_id,
         rule_id: rule.rule_code,
-        alert_category: rule.alert_category,
-        priority: rule.priority,
+        alert_category: mapAlertCategory(rule.alert_category),
+        priority: mapRulePriority(rule.priority),
         title_mr: fillTemplate(rule.title_mr, templateVars),
         title_hi: fillTemplate(rule.title_hi, templateVars),
         title_en: fillTemplate(rule.title_en, templateVars),
@@ -552,7 +552,7 @@ async function processOneTenant(
         confidence: result.confidence,
         trigger_data: applyFarmerVisibilityGuard(
           addSymbolicSolution(
-            enrichTriggerDataWithIrrigation(result.triggerData, rule.alert_category, ctx, methods),
+            enrichTriggerDataWithIrrigation(result.triggerData, mapAlertCategory(rule.alert_category), ctx, methods),
             null, rule, ctx, decisionRules, methods,
           ),
           farmerVisibility,
@@ -1649,6 +1649,30 @@ function generateTrilingualAction(category: string, actionEn: string | null, ctx
 // =====================================================
 // DECISION RULE MAPPING HELPERS
 // =====================================================
+
+function mapAlertCategory(raw: string | null | undefined): string {
+  // proactive_alerts CHECK allows: IRRIGATION, PEST_RISK, DISEASE_RISK,
+  // WEATHER_WARNING, FERTILIZER_WINDOW, HARVEST_TIMING, SPRAY_WINDOW,
+  // STAGE_ADVISORY, CROP_STRESS, GENERAL. Rule authors write lowercase and
+  // synonyms — normalize the contract here.
+  const key = String(raw || '').toLowerCase().trim();
+  const MAP: Record<string, string> = {
+    irrigation: 'IRRIGATION', pest_risk: 'PEST_RISK', pest: 'PEST_RISK',
+    disease_risk: 'DISEASE_RISK', disease: 'DISEASE_RISK',
+    weather_warning: 'WEATHER_WARNING', weather: 'WEATHER_WARNING',
+    fertilizer_window: 'FERTILIZER_WINDOW', nutrition: 'FERTILIZER_WINDOW', nutrient: 'FERTILIZER_WINDOW',
+    harvest_timing: 'HARVEST_TIMING', harvest: 'HARVEST_TIMING',
+    spray_window: 'SPRAY_WINDOW', safety: 'SPRAY_WINDOW',
+    stage_advisory: 'STAGE_ADVISORY', advisory: 'STAGE_ADVISORY',
+    crop_stress: 'CROP_STRESS', crop_health: 'CROP_STRESS', stress: 'CROP_STRESS',
+  };
+  return MAP[key] || 'GENERAL';
+}
+
+function mapRulePriority(raw: string | null | undefined): string {
+  const p = String(raw || '').toUpperCase().trim();
+  return ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(p) ? p : 'MEDIUM';
+}
 
 function mapDecisionCategory(category: string): string {
   const map: Record<string, string> = {
