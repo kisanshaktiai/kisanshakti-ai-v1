@@ -2574,8 +2574,11 @@ serve(async (req) => {
     
     // Build decision tracking state
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
+    // FIX C (2026-08-08) — PERSISTENCE ACCEPTANCE: any turn that actually ships
+    // options must persist them as pending, regardless of the type string.
     const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
-                                    orchestratorResponse.type === 'CLARIFICATION_NEEDED';
+                                    orchestratorResponse.type === 'CLARIFICATION_NEEDED' ||
+                                    ((orchestratorResponse.question?.options?.length ?? 0) > 0);
     const rawOptions: any[] = orchestratorResponse.question?.options || [];
     const clarificationOptions = rawOptions.map((o: any) => o?.label).filter(Boolean) ||
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
