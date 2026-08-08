@@ -244,7 +244,10 @@ export function applyFarmerVisibilityGuard(
 
 export interface EnvEvalContext {
   crop_code: string | null;
+  /** v125: days-after-sowing data path (unlocks das_min/das_max rules). */
+  das?: number | null;
   derived: DerivedState;
+  /** v125: weather namespace also carries tmin_forecast_night (temp_night rules). */
   weather: Record<string, any>;
   forecast: Record<string, any>;
   /** v124: satellite evidence namespace — DATA PATHS ONLY, thresholds come
