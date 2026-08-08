@@ -471,6 +471,8 @@ async function processOneTenant(
       water_source: land.water_source ?? null,
       derived,
       forecast_tmax_mean_5d: locKey ? (tmax5dLocMap.get(locKey) ?? null) : null,
+      forecast_tmin_night: locKey ? (tminNightLocMap.get(locKey) ?? null) : null,
+      cultivation_method: cultivationMethod,
     });
   }
 
