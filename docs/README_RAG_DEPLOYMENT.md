@@ -68,10 +68,15 @@ FROM rag_chunks ORDER BY chunk_index LIMIT 10;
 SELECT title, page_number, section_path, score
 FROM rag_search_fulltext('PM Kisan installment', 5);
 ```
-5. Enable flag for the test tenant, ask in General chat:
-   "PM Kisan का पैसा किसे मिलता है?" → answer must end with a Sources block
-   citing the real document. Ask something out-of-corpus
-   ("तुरमेरिक भाव?") → honest no-verified-source answer, no citations.
+5. Enable flag for the test tenant and test in General chat.
+   IMPORTANT (Stage 1 = fulltext-only): ask in the SAME LANGUAGE as the
+   ingested document. English PDF → ask "Who gets PM Kisan money?" → answer
+   must end with a Sources block citing the real document. A Hindi question
+   against an English-only corpus will correctly take the honest
+   no-verified-source path in Stage 1 — cross-language matching is exactly
+   what Stage 2 embeddings add (re-test the Hindi question after backfill
+   to see hybrid retrieval working). Out-of-corpus question in any language
+   ("तुरमेरिक भाव?") → honest answer, no citations.
 
 ## Stage 2 (embeddings — after Stage 1 validated)
 
