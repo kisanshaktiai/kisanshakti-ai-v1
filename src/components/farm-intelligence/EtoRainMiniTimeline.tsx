@@ -50,6 +50,11 @@ export function EtoRainMiniTimeline({ series, isLoading }: EtoRainMiniTimelinePr
 
   const todayIdx = data.findIndex((d) => d.day === new Date().toISOString().slice(0, 10));
 
+  // Farmer role receives no ET0 by visibility policy — hide the line, its
+  // legend entry and its axis contribution entirely (no empty line, no gap).
+  const hasEt0 = (et0?.points?.length ?? 0) > 0;
+
+
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4 space-y-2">
       <div className="flex items-center gap-2">
