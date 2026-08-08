@@ -387,9 +387,10 @@ async function processOneTenant(
     cfg,
   );
 
-  const [forecastLocMap, tmax5dLocMap, derivedMap, farmerVisibility] = await Promise.all([
+  const [forecastLocMap, tmax5dLocMap, tminNightLocMap, derivedMap, farmerVisibility] = await Promise.all([
     batchLoadForecast(supabase, locKeyArray),
     batchLoadForecastTmax5d(supabase, locKeyArray),
+    batchLoadForecastTminNight(supabase, locKeyArray),
     batchLoadDerived(supabase, landIds),
     loadFarmerVisibility(supabase),
   ]);
