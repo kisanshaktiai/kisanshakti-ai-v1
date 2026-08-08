@@ -14864,6 +14864,7 @@ export type Database = {
           heat_stress_dh: number | null
           humidity_percent: number | null
           id: string
+          infiltration_cap_mm: number | null
           irrigation_needed: boolean | null
           irrigation_urgency: string | null
           is_finalized: boolean
@@ -14872,9 +14873,11 @@ export type Database = {
           land_id: string
           lwd_est_hours: number | null
           metric_date: string
+          n_sd_ratio: number | null
           ndvi_age_days: number | null
           ndvi_source: string | null
           ndvi_used: number | null
+          rain_24h_mm: number | null
           raw_mm: number | null
           root_depletion_mm: number | null
           runoff_loss_mm: number | null
@@ -14882,6 +14885,8 @@ export type Database = {
           source: string | null
           spray_score: number | null
           spray_window: Json | null
+          swsi: number | null
+          swsi_class: string | null
           taw_method: string | null
           taw_mm: number | null
           temperature_c: number | null
@@ -14915,6 +14920,7 @@ export type Database = {
           heat_stress_dh?: number | null
           humidity_percent?: number | null
           id?: string
+          infiltration_cap_mm?: number | null
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           is_finalized?: boolean
@@ -14923,9 +14929,11 @@ export type Database = {
           land_id: string
           lwd_est_hours?: number | null
           metric_date: string
+          n_sd_ratio?: number | null
           ndvi_age_days?: number | null
           ndvi_source?: string | null
           ndvi_used?: number | null
+          rain_24h_mm?: number | null
           raw_mm?: number | null
           root_depletion_mm?: number | null
           runoff_loss_mm?: number | null
@@ -14933,6 +14941,8 @@ export type Database = {
           source?: string | null
           spray_score?: number | null
           spray_window?: Json | null
+          swsi?: number | null
+          swsi_class?: string | null
           taw_method?: string | null
           taw_mm?: number | null
           temperature_c?: number | null
@@ -14966,6 +14976,7 @@ export type Database = {
           heat_stress_dh?: number | null
           humidity_percent?: number | null
           id?: string
+          infiltration_cap_mm?: number | null
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           is_finalized?: boolean
@@ -14974,9 +14985,11 @@ export type Database = {
           land_id?: string
           lwd_est_hours?: number | null
           metric_date?: string
+          n_sd_ratio?: number | null
           ndvi_age_days?: number | null
           ndvi_source?: string | null
           ndvi_used?: number | null
+          rain_24h_mm?: number | null
           raw_mm?: number | null
           root_depletion_mm?: number | null
           runoff_loss_mm?: number | null
@@ -14984,6 +14997,8 @@ export type Database = {
           source?: string | null
           spray_score?: number | null
           spray_window?: Json | null
+          swsi?: number | null
+          swsi_class?: string | null
           taw_method?: string | null
           taw_mm?: number | null
           temperature_c?: number | null
@@ -22825,7 +22840,7 @@ export type Database = {
         Row: {
           below_threshold: boolean | null
           chunks_returned: Json | null
-          created_at: string | null
+          created_at: string
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -22843,7 +22858,7 @@ export type Database = {
         Insert: {
           below_threshold?: boolean | null
           chunks_returned?: Json | null
-          created_at?: string | null
+          created_at?: string
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -22861,7 +22876,349 @@ export type Database = {
         Update: {
           below_threshold?: boolean | null
           chunks_returned?: Json | null
-          created_at?: string | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text?: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Relationships: []
+      }
+      rag_retrieval_logs_202608: {
+        Row: {
+          below_threshold: boolean | null
+          chunks_returned: Json | null
+          created_at: string
+          embedding_model: string | null
+          farmer_id: string | null
+          filters_applied: Json | null
+          id: string
+          latency_ms: number | null
+          query_language: string | null
+          query_text: string
+          retrieval_mode: string | null
+          session_id: string | null
+          tenant_id: string | null
+          top_score: number | null
+          trace_id: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text?: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Relationships: []
+      }
+      rag_retrieval_logs_202609: {
+        Row: {
+          below_threshold: boolean | null
+          chunks_returned: Json | null
+          created_at: string
+          embedding_model: string | null
+          farmer_id: string | null
+          filters_applied: Json | null
+          id: string
+          latency_ms: number | null
+          query_language: string | null
+          query_text: string
+          retrieval_mode: string | null
+          session_id: string | null
+          tenant_id: string | null
+          top_score: number | null
+          trace_id: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text?: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Relationships: []
+      }
+      rag_retrieval_logs_202610: {
+        Row: {
+          below_threshold: boolean | null
+          chunks_returned: Json | null
+          created_at: string
+          embedding_model: string | null
+          farmer_id: string | null
+          filters_applied: Json | null
+          id: string
+          latency_ms: number | null
+          query_language: string | null
+          query_text: string
+          retrieval_mode: string | null
+          session_id: string | null
+          tenant_id: string | null
+          top_score: number | null
+          trace_id: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text?: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Relationships: []
+      }
+      rag_retrieval_logs_202611: {
+        Row: {
+          below_threshold: boolean | null
+          chunks_returned: Json | null
+          created_at: string
+          embedding_model: string | null
+          farmer_id: string | null
+          filters_applied: Json | null
+          id: string
+          latency_ms: number | null
+          query_language: string | null
+          query_text: string
+          retrieval_mode: string | null
+          session_id: string | null
+          tenant_id: string | null
+          top_score: number | null
+          trace_id: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text?: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Relationships: []
+      }
+      rag_retrieval_logs_202612: {
+        Row: {
+          below_threshold: boolean | null
+          chunks_returned: Json | null
+          created_at: string
+          embedding_model: string | null
+          farmer_id: string | null
+          filters_applied: Json | null
+          id: string
+          latency_ms: number | null
+          query_language: string | null
+          query_text: string
+          retrieval_mode: string | null
+          session_id: string | null
+          tenant_id: string | null
+          top_score: number | null
+          trace_id: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text?: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Relationships: []
+      }
+      rag_retrieval_logs_202701: {
+        Row: {
+          below_threshold: boolean | null
+          chunks_returned: Json | null
+          created_at: string
+          embedding_model: string | null
+          farmer_id: string | null
+          filters_applied: Json | null
+          id: string
+          latency_ms: number | null
+          query_language: string | null
+          query_text: string
+          retrieval_mode: string | null
+          session_id: string | null
+          tenant_id: string | null
+          top_score: number | null
+          trace_id: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -36668,6 +37025,54 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      rag_search_fulltext: {
+        Args: {
+          p_crops?: string[]
+          p_doc_types?: string[]
+          p_limit?: number
+          p_query: string
+          p_states?: string[]
+          p_tenant?: string
+        }
+        Returns: {
+          authority_tier: string
+          chunk_id: string
+          chunk_text: string
+          doc_type: string
+          doc_version: string
+          document_id: string
+          language: string
+          page_number: number
+          publisher: string
+          score: number
+          section_path: string
+          title: string
+        }[]
+      }
+      rag_search_vector: {
+        Args: {
+          p_crops?: string[]
+          p_doc_types?: string[]
+          p_embedding: string
+          p_limit?: number
+          p_states?: string[]
+          p_tenant?: string
+        }
+        Returns: {
+          authority_tier: string
+          chunk_id: string
+          chunk_text: string
+          doc_type: string
+          doc_version: string
+          document_id: string
+          language: string
+          page_number: number
+          publisher: string
+          score: number
+          section_path: string
+          title: string
+        }[]
+      }
       reactivate_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       reassign_lead: {
         Args: { p_lead_id: string; p_new_admin_id: string; p_reason?: string }
