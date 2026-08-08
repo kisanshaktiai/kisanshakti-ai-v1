@@ -47,7 +47,9 @@ export function emptyDerived(): DerivedState {
     et0: null, et0_method: null, vpd: null, gdd_cumulative: null, lwd_est: null,
     spray_score: null, frost_risk: null, heat_stress_dh: null, cold_stress_dh: null,
     water_deficit: null, root_depletion: null, raw_mm: null, taw_mm: null,
-    irrigation_urgency: null, harvest_window: null, confidence: null, as_of: null,
+    irrigation_urgency: null, harvest_window: null,
+    rain_24h: null, infiltration_cap: null, swsi: null, swsi_class: null, n_sd_ratio: null,
+    confidence: null, as_of: null,
     active_episodes: [],
   };
 }
@@ -67,6 +69,9 @@ export const DERIVED_PROPERTY_CODE: Record<string, string> = {
   raw_mm: 'RAW_THRESHOLD',
   taw_mm: 'TAW',
   harvest_window: 'HARVEST_WINDOW',
+  rain_24h: 'RAIN_24H',
+  swsi: 'SWSI',
+  n_sd_ratio: 'N_SD_RATIO',
 };
 
 /** Raw provider fields that must never reach a farmer payload. */
