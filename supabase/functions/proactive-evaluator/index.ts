@@ -2321,7 +2321,7 @@ function calculateIrrigationForLand(ctx: LandContext): {
   const stage = ctx.current_stage || 'VEGETATIVE';
   const area = ctx.area_acres || 1;
   const irrigationType = (ctx.irrigation_type || 'FLOOD').toUpperCase();
-  const soilType = (ctx.soil_type || 'MEDIUM_BLACK').toUpperCase().replace(/\s+/g, '_');
+  const soilType = normalizeSoilType(ctx.soil_type) ?? 'medium_black';
 
   const cropNeeds = CROP_WATER_NEED_MM_PER_DAY[cropCode] || CROP_WATER_NEED_MM_PER_DAY.SUGARCANE;
   const dailyNeedMm = cropNeeds[stage] || cropNeeds.VEGETATIVE || 5;
