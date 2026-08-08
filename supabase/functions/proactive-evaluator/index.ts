@@ -164,6 +164,10 @@ interface LandContext {
   water_source: string | null;
   derived: DerivedState;
   forecast_tmax_mean_5d: number | null;
+  /** v125: minimum forecast night temperature (next 14h) for temp_night rules. */
+  forecast_tmin_night: number | null;
+  /** v125: cultivation lane (transplanted / direct_seeded) for stage series choice. */
+  cultivation_method: string | null;
 }
 
 interface RuleEvalResult {
@@ -324,10 +328,11 @@ async function processOneTenant(
     recentAlertsRes,
     soilRes,
     ndviRes,
-    stageMapRes,
+    stageMasterRes,
+    stageFallbackRes,
   ] = await Promise.all([
     supabase.from('crop_schedules')
-      .select('land_id, sowing_date, crop_name, status, is_active')
+      .select('land_id, sowing_date, crop_name, status, is_active, cultivation_method')
       .in('land_id', landIds)
       .eq('is_active', true)
       .order('created_at', { ascending: false }),
@@ -344,6 +349,12 @@ async function processOneTenant(
       .in('land_id', landIds)
       .order('date', { ascending: false })
       .limit(1000),
+    // v125: crop_stage_master is the stage SSOT (full phenology per crop + lane).
+    supabase.from('crop_stage_master')
+      .select('crop_code, stage_code, growth_stage, das_min, das_max, cultivation_method')
+      .not('das_min', 'is', null)
+      .not('das_max', 'is', null),
+    // fallback only — used when crop_stage_master has no rows for the crop.
     supabase.from('intent_observation_mapping')
       .select('crop_code, growth_stage, das_min, das_max')
       .not('das_min', 'is', null)
@@ -354,9 +365,11 @@ async function processOneTenant(
   const alertMap = buildAlertMap(recentAlertsRes.data);
   const soilMap = buildSoilMap(soilRes.data);
   const ndviMap = buildNdviMap(ndviRes.data);
-  const stageMap = buildStageMap(stageMapRes.data);
+
+  const stageMap = buildStageMap(stageMasterRes.data);
+  const stageFallbackMap = buildStageFallbackMap(stageFallbackRes.data);
   // F9: harvest DAS per crop = max das_max from the governed stage data.
-  const harvestDasByCrop = buildHarvestDasMap(stageMap);
+  const harvestDasByCrop = buildHarvestDasMap(stageMap.size > 0 ? stageMap : stageFallbackMap);
 
   const locationKeys = new Set<string>();
   const landToLocKey = new Map<string, string>();
@@ -374,9 +387,10 @@ async function processOneTenant(
     cfg,
   );
 
-  const [forecastLocMap, tmax5dLocMap, derivedMap, farmerVisibility] = await Promise.all([
+  const [forecastLocMap, tmax5dLocMap, tminNightLocMap, derivedMap, farmerVisibility] = await Promise.all([
     batchLoadForecast(supabase, locKeyArray),
     batchLoadForecastTmax5d(supabase, locKeyArray),
+    batchLoadForecastTminNight(supabase, locKeyArray),
     batchLoadDerived(supabase, landIds),
     loadFarmerVisibility(supabase),
   ]);
@@ -413,12 +427,14 @@ async function processOneTenant(
       ? Math.floor((Date.now() - new Date(sowingDate).getTime()) / (1000 * 60 * 60 * 24))
       : 0;
 
-    // F1: DB-driven stage only. Unknown => null + logged coverage gap.
-    const currentStage = computeStageDynamic(cropCode, das, stageMap);
+    // v125: DB-driven stage from crop_stage_master (lane-aware); IOM is fallback.
+    const cultivationMethod = schedule?.cultivation_method ?? null;
+    const currentStage = computeStageDynamic(cropCode, das, stageMap, cultivationMethod, stageFallbackMap);
     if (currentStage == null && cropCode && das > 0) {
       stageGaps++;
-      console.warn(`[STAGE_COVERAGE_GAP] land=${land.id.slice(0, 8)} crop=${cropCode} das=${das} — no stage window in intent_observation_mapping; stage-scoped rules will not apply`);
+      console.warn(`[STAGE_COVERAGE_GAP] land=${land.id.slice(0, 8)} crop=${cropCode} das=${das} — no stage window in crop_stage_master or intent_observation_mapping; stage-scoped rules will not apply`);
     }
+
 
     const weather = landWeatherMap.get(land.id) || nullWeather();
     const ndviArr = ndviMap.get(land.id) || [];
@@ -455,6 +471,8 @@ async function processOneTenant(
       water_source: land.water_source ?? null,
       derived,
       forecast_tmax_mean_5d: locKey ? (tmax5dLocMap.get(locKey) ?? null) : null,
+      forecast_tmin_night: locKey ? (tminNightLocMap.get(locKey) ?? null) : null,
+      cultivation_method: cultivationMethod,
     });
   }
 
@@ -490,8 +508,9 @@ async function processOneTenant(
       if (isEnvRule) {
         const envRes = evaluateEnvRule(rule.rule_code, rule.conditions, {
           crop_code: ctx.crop_code,
+          das: ctx.das,
           derived: ctx.derived,
-          weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h },
+          weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h, tmin_forecast_night: ctx.forecast_tmin_night },
           forecast: { tmax_mean_5d: ctx.forecast_tmax_mean_5d },
           ndvi: { value: ctx.ndvi, previous: ctx.ndvi_previous,
                   drop: (ctx.ndvi != null && ctx.ndvi_previous != null) ? ctx.ndvi_previous - ctx.ndvi : null },
@@ -745,12 +764,12 @@ function applySafetySuppression(
 // BATCH LOADING HELPERS
 // =====================================================
 
-function buildScheduleMap(data: any[] | null): Map<string, { sowing_date: string; crop_name: string }> {
+function buildScheduleMap(data: any[] | null): Map<string, { sowing_date: string; crop_name: string; cultivation_method: string | null }> {
   const map = new Map();
   if (!data) return map;
   for (const cs of data) {
     if (!map.has(cs.land_id) && cs.sowing_date) {
-      map.set(cs.land_id, { sowing_date: cs.sowing_date, crop_name: cs.crop_name });
+      map.set(cs.land_id, { sowing_date: cs.sowing_date, crop_name: cs.crop_name, cultivation_method: cs.cultivation_method ?? null });
     }
   }
   return map;
@@ -787,17 +806,52 @@ function buildNdviMap(data: any[] | null): Map<string, any[]> {
   return map;
 }
 
-// F1: keys are UPPERCASE so the lookup with normalizeCropCode() output matches.
-// This is the fix for the dead DB stage path (intent_observation_mapping stores
-// lowercase crop codes; the context crop code is UPPERCASE).
-function buildStageMap(data: any[] | null): Map<string, { stage: string; das_min: number; das_max: number }[]> {
+// v125: STAGE SSOT = crop_stage_master. Keys are UPPERCASE crop codes so the
+// lookup with normalizeCropCode() output matches. stage_code is normalized by
+// stripping the leading crop prefix and an optional lane token
+// (RICE_TP_BOOTING -> BOOTING, RICE_DSR_EARLY_VEGETATIVE -> EARLY_VEGETATIVE).
+function normalizeStageCode(stageCode: string | null, growthStage: string | null, cropKey: string): string {
+  const raw = String(stageCode || '').toUpperCase().trim();
+  if (!raw) return String(growthStage || '').toUpperCase().trim();
+  let s = raw;
+  if (cropKey && s.startsWith(`${cropKey}_`)) s = s.slice(cropKey.length + 1);
+  s = s.replace(/^(TP|DSR)_/, '');
+  return s || String(growthStage || '').toUpperCase().trim();
+}
+
+function buildStageMap(data: any[] | null): Map<string, { stage: string; das_min: number; das_max: number; series: 'TP' | 'DIRECT' }[]> {
+  const map = new Map<string, any[]>();
+  if (!data) return map;
+  for (const row of data) {
+    const key = String(row.crop_code || '').toUpperCase().trim();
+    if (!key) continue;
+    const rawCode = String(row.stage_code || '').toUpperCase();
+    const method = String(row.cultivation_method || '').toLowerCase();
+    const series: 'TP' | 'DIRECT' = (rawCode.includes('_TP_') || method === 'transplanted') ? 'TP' : 'DIRECT';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push({
+      stage: normalizeStageCode(row.stage_code, row.growth_stage, key),
+      das_min: row.das_min,
+      das_max: row.das_max,
+      series,
+    });
+  }
+  for (const [, stages] of map) {
+    stages.sort((a: any, b: any) => a.das_min - b.das_min);
+  }
+  return map;
+}
+
+// Fallback stage windows (intent_observation_mapping) — used only when
+// crop_stage_master has no rows for the crop.
+function buildStageFallbackMap(data: any[] | null): Map<string, { stage: string; das_min: number; das_max: number; series: 'DIRECT' }[]> {
   const map = new Map<string, any[]>();
   if (!data) return map;
   for (const row of data) {
     const key = String(row.crop_code || '').toUpperCase().trim();
     if (!key) continue;
     if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push({ stage: row.growth_stage, das_min: row.das_min, das_max: row.das_max });
+    map.get(key)!.push({ stage: String(row.growth_stage || '').toUpperCase().trim(), das_min: row.das_min, das_max: row.das_max, series: 'DIRECT' });
   }
   for (const [, stages] of map) {
     stages.sort((a: any, b: any) => a.das_min - b.das_min);
@@ -971,6 +1025,36 @@ async function batchLoadForecast(supabase: any, locationKeys: string[]): Promise
   return map;
 }
 
+// v125: minimum forecast night temperature (next 14 hours) per location_key.
+// Batch-loaded once per tenant run — never queried per land.
+async function batchLoadForecastTminNight(supabase: any, locationKeys: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (locationKeys.length === 0) return map;
+
+  const nowIso = new Date().toISOString();
+  const untilIso = new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from('weather_forecasts')
+    .select('location_key, temperature_min_celsius')
+    .in('location_key', locationKeys)
+    .gte('forecast_time', nowIso)
+    .lte('forecast_time', untilIso)
+    .not('temperature_min_celsius', 'is', null);
+
+  if (data) {
+    for (const f of data) {
+      if (!f.location_key) continue;
+      const v = Number(f.temperature_min_celsius);
+      if (!Number.isFinite(v)) continue;
+      const existing = map.get(f.location_key);
+      if (existing == null || v < existing) map.set(f.location_key, v);
+    }
+  }
+  return map;
+}
+
+
+
 // F7: batchLoadGDD DELETED. It invented GDD via a universal base temperature
 // of 10°C and, worse, "current temp × 30 days". gdd_accumulated is now
 // derived.gdd_cumulative from land_gdd_daily — the governed per-crop chain.
@@ -1004,22 +1088,50 @@ function isDuplicate(dedupKey: string, ruleCode: string, landId: string, cooldow
 }
 
 // =====================================================
-// F1: DYNAMIC STAGE — DB ONLY (no invented phenology)
+// v125: DYNAMIC STAGE — crop_stage_master SSOT (lane-aware), IOM fallback
 // =====================================================
 
-function computeStageDynamic(cropCode: string | null, das: number, stageMap: Map<string, any[]>): string | null {
+function computeStageDynamic(
+  cropCode: string | null,
+  das: number,
+  stageMap: Map<string, any[]>,
+  cultivationMethod?: string | null,
+  fallbackMap?: Map<string, any[]>,
+): string | null {
   if (!cropCode || das <= 0) return null;
+
   const stages = stageMap.get(cropCode); // UPPERCASE keys (buildStageMap)
   if (stages && stages.length > 0) {
-    for (const s of stages) {
-      if (das >= s.das_min && das <= s.das_max) {
-        return s.stage;
+    const hasTp = stages.some((s) => s.series === 'TP');
+    const hasDirect = stages.some((s) => s.series === 'DIRECT');
+    let preferred: 'TP' | 'DIRECT' | null = null;
+    if (hasTp && hasDirect) {
+      const method = String(cultivationMethod || '').toLowerCase();
+      if (method.includes('transplant')) preferred = 'TP';
+      else if (method.includes('direct') || method.includes('dsr') || method.includes('seed')) preferred = 'DIRECT';
+      else {
+        // Documented regional default (Maharashtra): rice is transplanted.
+        preferred = cropCode === 'RICE' ? 'TP' : 'DIRECT';
+        console.log(`[STAGE_SERIES_ASSUMED] crop=${cropCode} das=${das} series=${preferred} reason=cultivation_method_unknown`);
+      }
+    }
+    const pool = preferred ? stages.filter((s) => s.series === preferred) : stages;
+    for (const s of pool) {
+      if (das >= s.das_min && das <= s.das_max) return s.stage;
+    }
+  } else if (fallbackMap) {
+    // crop_stage_master has no rows for this crop => intent_observation_mapping.
+    const fb = fallbackMap.get(cropCode);
+    if (fb && fb.length > 0) {
+      for (const s of fb) {
+        if (das >= s.das_min && das <= s.das_max) return s.stage;
       }
     }
   }
   // No coverage => UNKNOWN. Never invent a stage. Caller logs the gap.
   return null;
 }
+
 
 // =====================================================
 // CROP CODE NORMALIZATION
@@ -1374,8 +1486,9 @@ function evaluateDecisionRule(
   if (dr.conditions_compiled && dr.compile_status === 'compiled' && isEnvIntelligenceRule(dr.conditions_compiled)) {
     const envRes = evaluateEnvRule(`DR:${dr.condition_code}`, dr.conditions_compiled, {
       crop_code: ctx.crop_code,
+      das: ctx.das,
       derived: ctx.derived,
-      weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h },
+      weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h, tmin_forecast_night: ctx.forecast_tmin_night },
       forecast: { tmax_mean_5d: ctx.forecast_tmax_mean_5d },
       ndvi: { value: ctx.ndvi, previous: ctx.ndvi_previous,
               drop: (ctx.ndvi != null && ctx.ndvi_previous != null) ? ctx.ndvi_previous - ctx.ndvi : null },
