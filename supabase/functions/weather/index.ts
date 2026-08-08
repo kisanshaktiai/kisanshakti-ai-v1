@@ -58,7 +58,7 @@ import {
   type HourlyWetnessInput,
 } from "./agricultural-calculations.ts";
 import { loadSciMethods, type MethodsMap } from "./sci-methods.ts";
-import { runDailyDerive } from "./derive-pipeline.ts";
+import { runDailyDerive, writeForecastSpine } from "./derive-pipeline.ts";
 
 
 // Scientific coefficients come from public.sci_method_registry. ONE read per
@@ -705,7 +705,52 @@ async function checkCache(
 // PERSISTENCE
 // ============================================================================
 
+/**
+ * D11: shared daily-forecast row mapping. Used by the serving-provider cache
+ * write AND by the Tomorrow.io ensemble second-opinion write.
+ */
+function buildDailyForecastRows(
+  forecast: DailyForecast[],
+  provider: string,
+  locationKey: string,
+  rounded: { lat: number; lon: number },
+  tenantId: string | undefined,
+  current: CurrentWeatherData,
+  now: Date,
+) {
+  return forecast.map((day) => ({
+    location_key: locationKey,
+    latitude: rounded.lat,
+    longitude: rounded.lon,
+    land_id: null, // LAYER 1 shared measurement
+    tenant_id: tenantId ?? null,
+    forecast_time: new Date(day.dt * 1000).toISOString(),
+    forecast_type: "daily" as const,
+    temperature_celsius: day.temp.day,
+    temperature_min_celsius: day.temp.min,
+    temperature_max_celsius: day.temp.max,
+    feels_like_celsius: day.temp.day,
+    humidity_percent: Math.round(day.humidity),
+    wind_speed_kmh: day.wind_speed * 3.6,
+    weather_description: day.weather[0]?.description ?? "Unknown",
+    weather_main: day.weather[0]?.main ?? "Unknown",
+    weather_icon: day.weather[0]?.icon ?? "01d",
+    rain_probability_percent: Math.round(day.pop * 100),
+    rain_amount_mm: day.rain ?? 0,
+    uv_index: day.uv_index ?? 0,
+    data_source: provider,
+    rain_prob_source: day.pop_source ?? null,
+    imd_station_code: current.imd_station_code ?? null,
+    imd_distance_km: current.imd_distance_km ?? null,
+    issued_at: now.toISOString(),
+    station_ref: current.station_ref ?? current.imd_station_code ?? null,
+    station_distance_km: current.imd_distance_km ?? null,
+    created_at: now.toISOString(),
+  }));
+}
+
 async function cacheWeatherData(
+
   supabase: SupabaseClient,
   runId: string,
   locationKey: string,
@@ -836,35 +881,7 @@ async function cacheWeatherData(
 
     // ---- 3. daily forecasts -------------------------------------------------
     if (forecast?.length) {
-      const rows = forecast.map((day) => ({
-        location_key: locationKey,
-        latitude: rounded.lat,
-        longitude: rounded.lon,
-        land_id: null, // LAYER 1 shared measurement
-        tenant_id: tenantId ?? null,
-        forecast_time: new Date(day.dt * 1000).toISOString(),
-        forecast_type: "daily" as const,
-        temperature_celsius: day.temp.day,
-        temperature_min_celsius: day.temp.min,
-        temperature_max_celsius: day.temp.max,
-        feels_like_celsius: day.temp.day,
-        humidity_percent: Math.round(day.humidity),
-        wind_speed_kmh: day.wind_speed * 3.6,
-        weather_description: day.weather[0]?.description ?? "Unknown",
-        weather_main: day.weather[0]?.main ?? "Unknown",
-        weather_icon: day.weather[0]?.icon ?? "01d",
-        rain_probability_percent: Math.round(day.pop * 100),
-        rain_amount_mm: day.rain ?? 0,
-        uv_index: day.uv_index ?? 0,
-        data_source: provider,
-        rain_prob_source: day.pop_source ?? null,
-        imd_station_code: current.imd_station_code ?? null,
-        imd_distance_km: current.imd_distance_km ?? null,
-        issued_at: now.toISOString(),
-        station_ref: current.station_ref ?? current.imd_station_code ?? null,
-        station_distance_km: current.imd_distance_km ?? null,
-        created_at: now.toISOString(),
-      }));
+      const rows = buildDailyForecastRows(forecast, provider, locationKey, rounded, tenantId, current, now);
 
       // Append, never erase. Prior issues are the forecast-skill dataset.
       const { error } = await supabase.from("weather_forecasts")
@@ -875,6 +892,7 @@ async function cacheWeatherData(
       if (error) log(runId, "warn", "daily_forecast_insert_failed", { error: error.message });
       else log(runId, "info", "daily_forecasts_cached", { count: rows.length, provider });
     }
+
 
     // ---- 4. hourly forecasts ------------------------------------------------
     if (hourly?.length) {
@@ -1659,6 +1677,28 @@ serve(async (req: Request): Promise<Response> => {
       if (enrichment.enriched) dataProvider = `${dataProvider}+TIO-enriched`;
     }
 
+    // -- D11: FORECAST ENSEMBLE (second opinion, best-effort, non-serving) ----
+    // Provider priority is UNCHANGED: the serving forecast stays whatever the
+    // chain above produced. This only fetches Tomorrow.io as a second opinion
+    // for cross-provider agreement scoring in the observation spine.
+    let ensembleForecast: DailyForecast[] | undefined;
+    if (
+      needForecast && forecast && !dataProvider.includes("Tomorrow.io") &&
+      tomorrowIoApiKey && budgets["Tomorrow.io"] + 1 < CONFIG.DAILY_BUDGET["Tomorrow.io"]
+    ) {
+      const t0 = Date.now();
+      try {
+        const f = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey, runId);
+        ensembleForecast = f.forecast;
+        await logCall(supabase, runId, "Tomorrow.io", "forecast_ensemble", true, Date.now() - t0);
+      } catch (e) {
+        await logCall(supabase, runId, "Tomorrow.io", "forecast_ensemble", false, Date.now() - t0, String(e));
+        log(runId, "warn", "ensemble_fetch_failed", { error: String(e) });
+      }
+    }
+
+
+
     log(runId, "info", "provider_chain_complete", {
       provider: dataProvider,
       attempts: attempts.map((a) => `${a.provider}:${a.capability}:${a.ok ? "ok" : "fail"}:${a.ms}ms`),
@@ -1693,6 +1733,35 @@ serve(async (req: Request): Promise<Response> => {
         tenant.id, userId ?? landData?.farmer_id, landData?.id,
       );
     }
+
+    // ---- STEP 4b: D11 ensemble persistence + forecast spine (best-effort) ---
+    if (forecast?.length && current) {
+      try {
+        if (ensembleForecast?.length) {
+          const ensembleRows = buildDailyForecastRows(
+            ensembleForecast, "Tomorrow.io", rounded.key, rounded, tenant.id, current, new Date(),
+          );
+          const { error: ensErr } = await supabase.from("weather_forecasts").upsert(ensembleRows, {
+            onConflict: "location_key,forecast_type,forecast_time,issued_at,data_source",
+            ignoreDuplicates: true,
+          });
+          if (ensErr) log(runId, "warn", "ensemble_forecast_insert_failed", { error: ensErr.message });
+          else log(runId, "info", "ensemble_forecasts_cached", { count: ensembleRows.length });
+        }
+
+        const methods = await getSciMethods(supabase, runId);
+        await writeForecastSpine(
+          supabase, runId, rounded.key,
+          { provider: dataProvider.split("+")[0], days: forecast },
+          ensembleForecast?.length ? { provider: "Tomorrow.io", days: ensembleForecast } : null,
+          methods,
+        );
+      } catch (e) {
+        log(runId, "warn", "forecast_spine_stage_failed", { error: String(e) });
+      }
+    }
+
+
 
     // ---- STEP 5: respond ----------------------------------------------------
     const response: Record<string, unknown> = {
