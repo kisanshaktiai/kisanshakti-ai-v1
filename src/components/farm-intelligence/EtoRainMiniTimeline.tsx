@@ -92,13 +92,15 @@ export function EtoRainMiniTimeline({ series, isLoading }: EtoRainMiniTimelinePr
                 />
               )}
               <Bar dataKey="rain" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
-              <Line
-                type="monotone"
-                dataKey="et0"
-                stroke="hsl(var(--warning))"
-                strokeWidth={2}
-                dot={false}
-              />
+              {hasEt0 && (
+                <Line
+                  type="monotone"
+                  dataKey="et0"
+                  stroke="hsl(var(--warning))"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -109,11 +111,14 @@ export function EtoRainMiniTimeline({ series, isLoading }: EtoRainMiniTimelinePr
           <span className="h-2 w-2 rounded-sm bg-primary" />
           {t('farmIntel.timeline.rain')}
         </span>
-        <span className="flex items-center gap-1">
-          <span className="h-0.5 w-3 bg-warning" />
-          {t('farmIntel.timeline.et0')}
-        </span>
+        {hasEt0 && (
+          <span className="flex items-center gap-1">
+            <span className="h-0.5 w-3 bg-warning" />
+            {t('farmIntel.timeline.et0')}
+          </span>
+        )}
       </div>
+
     </div>
   );
 }
