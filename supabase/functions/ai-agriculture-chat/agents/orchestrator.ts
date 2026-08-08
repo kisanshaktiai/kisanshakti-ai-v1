@@ -1696,8 +1696,52 @@ export class AIAgentOrchestrator {
     }
 
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
-    const safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
+    let safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
+
+    // ── FIX A (2026-08-08) — UNCONDITIONAL obs_keys EVIDENCE INGESTION ──────
+    // Machine-readable markers emitted by the UI ([obs_keys:…], [cause:…],
+    // [rule_id:…]) are farmer-CONFIRMED evidence and must be harvested BEFORE
+    // any pending-clarification branching. Previously extraction only happened
+    // inside the `pendingOptionsCount > 0` branch, so whenever session
+    // persistence lost the pending options the confirmed codes were discarded
+    // and the bracketed sentence went to NLU as free text (→ greeting loop).
+    (this as any).__embeddedConfirmedObs = [];
+    (this as any).__embeddedConfirmedCause = null;
+    (this as any).__embeddedConfirmedRuleId = null;
+    try {
+      const _obsMarkers = [...safeFarmerMessage.matchAll(/\[obs_keys?:([^\]]+)\]/gi)];
+      const _embedded: string[] = [];
+      for (const m of _obsMarkers) {
+        for (const part of String(m[1]).split(',')) {
+          const code = canonicalObsCode(part.trim());
+          if (code && /^[a-z0-9_]+$/.test(code) && !_embedded.includes(code)) _embedded.push(code);
+        }
+      }
+      const _causeM = safeFarmerMessage.match(/\[cause:([^\]]+)\]/i);
+      const _ruleM = safeFarmerMessage.match(/\[rule_id:([^\]]+)\]/i);
+      (this as any).__embeddedConfirmedCause = _causeM ? _causeM[1].trim() : null;
+      (this as any).__embeddedConfirmedRuleId = _ruleM ? _ruleM[1].trim() : null;
+      (this as any).__embeddedConfirmedObs = _embedded;
+
+      if (_embedded.length > 0 || _causeM || _ruleM) {
+        // Strip ALL bracket markers from the text that proceeds to NLU /
+        // language detection. `farmerMessage` (chat history) stays untouched.
+        safeFarmerMessage = safeFarmerMessage
+          .replace(/\[(?:obs_keys?|cause|rule_id)\s*:[^\]]*\]/gi, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+      }
+      if (_embedded.length > 0) {
+        console.log(
+          `[EMBEDDED_OBS_INGESTED] trace=${traceId} codes=[${_embedded.join(',')}] count=${_embedded.length}`,
+        );
+      }
+    } catch (embedErr) {
+      console.warn(`[EMBEDDED_OBS_EXTRACT_FAILED] err=${(embedErr as Error).message}`);
+    }
+
     const hasTextInput = hasTextContent(safeFarmerMessage);
+
     
     // PHASE-18: Layer timing infrastructure for 3-layer architecture visibility
     const layerTimings = {
