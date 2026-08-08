@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-08 02:20 UTC — FIX A: unconditional [obs_keys:] ingestion as CONFIRMED
+//     evidence + intent override; FIX B: exit invariant also publishes
+//     question.options and CLARIFICATION_QUESTION type.
 //   2026-08-07 17:50 UTC — GAP B: exit-point recovery now also attaches PREPARED
 //     clarification options when a fallback ships zero options.
 //   2026-08-08 00:00 UTC — FIX 2: never-empty-response invariant at the single

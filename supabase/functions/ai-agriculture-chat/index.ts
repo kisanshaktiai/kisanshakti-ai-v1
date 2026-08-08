@@ -2,6 +2,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-08 02:20 UTC — FIX C: persist pending options whenever the turn
+ *   ships question.options, regardless of response type string.
  * 2026-08-02 18:02 UTC — PERF: start farmer-profile read alongside orchestrator
  *   and share request-local market-product promises with formatter fallbacks.
  * 2026-07-28 14:35 UTC — FIX E2: fresh-query clarification state reset
