@@ -34857,6 +34857,62 @@ export type Database = {
           },
         ]
       }
+      qa_proactive_rule_health: {
+        Row: {
+          condition_type: string | null
+          crop_code: string | null
+          health_issue: string | null
+          rule_code: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proactive_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "proactive_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      qa_rule_crop_content_mismatch: {
+        Row: {
+          condition_code: string | null
+          crop_code: string | null
+          defect_class: string | null
+          id: string | null
+          is_active: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "fk_decision_rules_condition_code"
+            columns: ["condition_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
+          },
+        ]
+      }
       rule_authority_weights: {
         Row: {
           authority_weight: number | null
