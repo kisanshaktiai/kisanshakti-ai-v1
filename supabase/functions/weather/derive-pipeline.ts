@@ -107,6 +107,19 @@ const num = (v: unknown): number | null => {
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const r2 = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);
 
+/** Canonical soil code for every registry / coefficient lookup. */
+export function normalizeSoilType(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const base = String(s).toLowerCase().trim().replace(/\s+/g, "_");
+  if (!base) return null;
+  const MAP: Record<string, string> = {
+    black_soil: "black",
+    red_soil: "red",
+    black_cotton_soil: "black_cotton",
+  };
+  return MAP[base] ?? base;
+}
+
 // ---------------------------------------------------------------------------
 // REFERENCE DATA (cached per isolate)
 // ---------------------------------------------------------------------------
