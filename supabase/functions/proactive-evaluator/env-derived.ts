@@ -31,10 +31,16 @@ export interface DerivedState {
   taw_mm: number | null;
   irrigation_urgency: string | null;
   harvest_window: number | null;
+  rain_24h: number | null;
+  infiltration_cap: number | null;
+  swsi: number | null;
+  swsi_class: string | null;
+  n_sd_ratio: number | null;
   confidence: number | null;
   as_of: string | null;
   active_episodes: DerivedEpisode[];
 }
+
 
 export function emptyDerived(): DerivedState {
   return {
