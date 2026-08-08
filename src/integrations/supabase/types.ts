@@ -10177,6 +10177,81 @@ export type Database = {
         }
         Relationships: []
       }
+      env_observations_hist: {
+        Row: {
+          cell_key: string | null
+          confidence: number | null
+          created_at: string | null
+          dist_kind: string | null
+          entity_key: string | null
+          horizon_hours: number | null
+          issue_time: string
+          land_id: string | null
+          obs_id: number
+          obs_version: number | null
+          prior_version: number | null
+          property_code: string
+          qc_flags: string[] | null
+          qc_level: number | null
+          raw_unit: string | null
+          raw_value: number | null
+          revision_reason: string | null
+          source_id: string
+          superseded_by: number | null
+          u_std: number | null
+          valid_time: string
+          value: number
+        }
+        Insert: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time: string
+          value: number
+        }
+        Update: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time?: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code?: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id?: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time?: string
+          value?: number
+        }
+        Relationships: []
+      }
       env_property_master: {
         Row: {
           created_at: string | null
@@ -14797,6 +14872,9 @@ export type Database = {
           land_id: string
           lwd_est_hours: number | null
           metric_date: string
+          ndvi_age_days: number | null
+          ndvi_source: string | null
+          ndvi_used: number | null
           raw_mm: number | null
           root_depletion_mm: number | null
           runoff_loss_mm: number | null
@@ -14804,11 +14882,13 @@ export type Database = {
           source: string | null
           spray_score: number | null
           spray_window: Json | null
+          taw_method: string | null
           taw_mm: number | null
           temperature_c: number | null
           tenant_id: string | null
           total_rainfall_mm: number | null
           u_std_et0: number | null
+          u_std_taw: number | null
           vpd_kpa: number | null
           water_balance_status: string | null
           water_deficit_mm: number | null
@@ -14843,6 +14923,9 @@ export type Database = {
           land_id: string
           lwd_est_hours?: number | null
           metric_date: string
+          ndvi_age_days?: number | null
+          ndvi_source?: string | null
+          ndvi_used?: number | null
           raw_mm?: number | null
           root_depletion_mm?: number | null
           runoff_loss_mm?: number | null
@@ -14850,11 +14933,13 @@ export type Database = {
           source?: string | null
           spray_score?: number | null
           spray_window?: Json | null
+          taw_method?: string | null
           taw_mm?: number | null
           temperature_c?: number | null
           tenant_id?: string | null
           total_rainfall_mm?: number | null
           u_std_et0?: number | null
+          u_std_taw?: number | null
           vpd_kpa?: number | null
           water_balance_status?: string | null
           water_deficit_mm?: number | null
@@ -14889,6 +14974,9 @@ export type Database = {
           land_id?: string
           lwd_est_hours?: number | null
           metric_date?: string
+          ndvi_age_days?: number | null
+          ndvi_source?: string | null
+          ndvi_used?: number | null
           raw_mm?: number | null
           root_depletion_mm?: number | null
           runoff_loss_mm?: number | null
@@ -14896,11 +14984,13 @@ export type Database = {
           source?: string | null
           spray_score?: number | null
           spray_window?: Json | null
+          taw_method?: string | null
           taw_mm?: number | null
           temperature_c?: number | null
           tenant_id?: string | null
           total_rainfall_mm?: number | null
           u_std_et0?: number | null
+          u_std_taw?: number | null
           vpd_kpa?: number | null
           water_balance_status?: string | null
           water_deficit_mm?: number | null
@@ -22556,6 +22646,286 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           user_agent?: string | null
+        }
+        Relationships: []
+      }
+      rag_chunks: {
+        Row: {
+          chemical_names: string[] | null
+          chunk_index: number
+          chunk_text: string
+          created_at: string | null
+          crop_codes: string[] | null
+          document_id: string
+          embedding: string | null
+          entity_meta: Json | null
+          id: string
+          is_active: boolean | null
+          is_table: boolean | null
+          language: string
+          page_number: number | null
+          scheme_names: string[] | null
+          section_path: string | null
+          tenant_id: string | null
+          token_count: number | null
+        }
+        Insert: {
+          chemical_names?: string[] | null
+          chunk_index: number
+          chunk_text: string
+          created_at?: string | null
+          crop_codes?: string[] | null
+          document_id: string
+          embedding?: string | null
+          entity_meta?: Json | null
+          id?: string
+          is_active?: boolean | null
+          is_table?: boolean | null
+          language?: string
+          page_number?: number | null
+          scheme_names?: string[] | null
+          section_path?: string | null
+          tenant_id?: string | null
+          token_count?: number | null
+        }
+        Update: {
+          chemical_names?: string[] | null
+          chunk_index?: number
+          chunk_text?: string
+          created_at?: string | null
+          crop_codes?: string[] | null
+          document_id?: string
+          embedding?: string | null
+          entity_meta?: Json | null
+          id?: string
+          is_active?: boolean | null
+          is_table?: boolean | null
+          language?: string
+          page_number?: number | null
+          scheme_names?: string[] | null
+          section_path?: string | null
+          tenant_id?: string | null
+          token_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rag_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "rag_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rag_chunks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rag_documents: {
+        Row: {
+          chunk_count: number | null
+          content_hash: string
+          created_at: string | null
+          crop_codes: string[] | null
+          doc_type: string
+          doc_version: string
+          embedding_model: string | null
+          file_url: string | null
+          id: string
+          is_active: boolean | null
+          language: string
+          processing_error: string | null
+          processing_status: string
+          publication_date: string | null
+          source_id: string
+          state_codes: string[] | null
+          superseded_by: string | null
+          tenant_id: string | null
+          title: string
+          updated_at: string | null
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          chunk_count?: number | null
+          content_hash: string
+          created_at?: string | null
+          crop_codes?: string[] | null
+          doc_type: string
+          doc_version?: string
+          embedding_model?: string | null
+          file_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          language?: string
+          processing_error?: string | null
+          processing_status?: string
+          publication_date?: string | null
+          source_id: string
+          state_codes?: string[] | null
+          superseded_by?: string | null
+          tenant_id?: string | null
+          title: string
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          chunk_count?: number | null
+          content_hash?: string
+          created_at?: string | null
+          crop_codes?: string[] | null
+          doc_type?: string
+          doc_version?: string
+          embedding_model?: string | null
+          file_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          language?: string
+          processing_error?: string | null
+          processing_status?: string
+          publication_date?: string | null
+          source_id?: string
+          state_codes?: string[] | null
+          superseded_by?: string | null
+          tenant_id?: string | null
+          title?: string
+          updated_at?: string | null
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rag_documents_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "rag_source_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rag_documents_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "rag_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rag_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rag_retrieval_logs: {
+        Row: {
+          below_threshold: boolean | null
+          chunks_returned: Json | null
+          created_at: string | null
+          embedding_model: string | null
+          farmer_id: string | null
+          filters_applied: Json | null
+          id: string
+          latency_ms: number | null
+          query_language: string | null
+          query_text: string
+          retrieval_mode: string | null
+          session_id: string | null
+          tenant_id: string | null
+          top_score: number | null
+          trace_id: string | null
+          turn_id: string | null
+        }
+        Insert: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string | null
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Update: {
+          below_threshold?: boolean | null
+          chunks_returned?: Json | null
+          created_at?: string | null
+          embedding_model?: string | null
+          farmer_id?: string | null
+          filters_applied?: Json | null
+          id?: string
+          latency_ms?: number | null
+          query_language?: string | null
+          query_text?: string
+          retrieval_mode?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          top_score?: number | null
+          trace_id?: string | null
+          turn_id?: string | null
+        }
+        Relationships: []
+      }
+      rag_source_registry: {
+        Row: {
+          authority_tier: string
+          created_at: string | null
+          default_language: string
+          doc_type: string
+          id: string
+          is_active: boolean | null
+          notes: string | null
+          publisher: string
+          source_code: string
+          source_url: string | null
+          state_codes: string[] | null
+          trust_prior: number | null
+          updated_at: string | null
+          usage_rights: string | null
+        }
+        Insert: {
+          authority_tier: string
+          created_at?: string | null
+          default_language?: string
+          doc_type: string
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          publisher: string
+          source_code: string
+          source_url?: string | null
+          state_codes?: string[] | null
+          trust_prior?: number | null
+          updated_at?: string | null
+          usage_rights?: string | null
+        }
+        Update: {
+          authority_tier?: string
+          created_at?: string | null
+          default_language?: string
+          doc_type?: string
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          publisher?: string
+          source_code?: string
+          source_url?: string | null
+          state_codes?: string[] | null
+          trust_prior?: number | null
+          updated_at?: string | null
+          usage_rights?: string | null
         }
         Relationships: []
       }
