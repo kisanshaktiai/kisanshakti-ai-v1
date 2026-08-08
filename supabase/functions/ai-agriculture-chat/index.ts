@@ -2,6 +2,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-08 02:20 UTC — FIX C: persist pending options whenever the turn
+ *   ships question.options, regardless of response type string.
  * 2026-08-02 18:02 UTC — PERF: start farmer-profile read alongside orchestrator
  *   and share request-local market-product promises with formatter fallbacks.
  * 2026-07-28 14:35 UTC — FIX E2: fresh-query clarification state reset
@@ -2574,8 +2576,11 @@ serve(async (req) => {
     
     // Build decision tracking state
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
+    // FIX C (2026-08-08) — PERSISTENCE ACCEPTANCE: any turn that actually ships
+    // options must persist them as pending, regardless of the type string.
     const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
-                                    orchestratorResponse.type === 'CLARIFICATION_NEEDED';
+                                    orchestratorResponse.type === 'CLARIFICATION_NEEDED' ||
+                                    ((orchestratorResponse.question?.options?.length ?? 0) > 0);
     const rawOptions: any[] = orchestratorResponse.question?.options || [];
     const clarificationOptions = rawOptions.map((o: any) => o?.label).filter(Boolean) ||
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];

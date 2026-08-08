@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-08 02:20 UTC — FIX A: unconditional [obs_keys:] ingestion as CONFIRMED
+//     evidence + intent override; FIX B: exit invariant also publishes
+//     question.options and CLARIFICATION_QUESTION type.
 //   2026-08-07 17:50 UTC — GAP B: exit-point recovery now also attaches PREPARED
 //     clarification options when a fallback ships zero options.
 //   2026-08-08 00:00 UTC — FIX 2: never-empty-response invariant at the single
@@ -1482,6 +1485,25 @@ export class AIAgentOrchestrator {
           _dOut.follow_up = { clarification_options: _preparedOpts };
         }
 
+        // FIX B (2026-08-08) — OPTIONS SSOT SHAPE. index.ts reads options from
+        // `question.options` (payload builder + session persistence), NOT from
+        // the top-level `clarification_options`. Publish both shapes.
+        const _existingQ = (response as any).question;
+        if (!Array.isArray(_existingQ?.options) || _existingQ.options.length === 0) {
+          (response as any).question = {
+            ...(typeof _existingQ === 'object' && _existingQ ? _existingQ : {}),
+            question: (typeof _existingQ?.question === 'string' && _existingQ.question.trim())
+              ? _existingQ.question
+              : String((response as any)?.message ?? (response as any)?.response ?? ''),
+            options: _preparedOpts,
+          };
+        }
+        if (_isFallback) {
+          (response as any).type = 'CLARIFICATION_QUESTION';
+        }
+
+
+
         console.warn(
           `[RESPONSE_INVARIANT_ATTACHED] trace=${traceId} options=${_preparedOpts.length} ` +
           `type=${_type || 'null'} matched_rules=${_matchedRules}`,
@@ -1696,8 +1718,52 @@ export class AIAgentOrchestrator {
     }
 
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
-    const safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
+    let safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
+
+    // ── FIX A (2026-08-08) — UNCONDITIONAL obs_keys EVIDENCE INGESTION ──────
+    // Machine-readable markers emitted by the UI ([obs_keys:…], [cause:…],
+    // [rule_id:…]) are farmer-CONFIRMED evidence and must be harvested BEFORE
+    // any pending-clarification branching. Previously extraction only happened
+    // inside the `pendingOptionsCount > 0` branch, so whenever session
+    // persistence lost the pending options the confirmed codes were discarded
+    // and the bracketed sentence went to NLU as free text (→ greeting loop).
+    (this as any).__embeddedConfirmedObs = [];
+    (this as any).__embeddedConfirmedCause = null;
+    (this as any).__embeddedConfirmedRuleId = null;
+    try {
+      const _obsMarkers = [...safeFarmerMessage.matchAll(/\[obs_keys?:([^\]]+)\]/gi)];
+      const _embedded: string[] = [];
+      for (const m of _obsMarkers) {
+        for (const part of String(m[1]).split(',')) {
+          const code = canonicalObsCode(part.trim());
+          if (code && /^[a-z0-9_]+$/.test(code) && !_embedded.includes(code)) _embedded.push(code);
+        }
+      }
+      const _causeM = safeFarmerMessage.match(/\[cause:([^\]]+)\]/i);
+      const _ruleM = safeFarmerMessage.match(/\[rule_id:([^\]]+)\]/i);
+      (this as any).__embeddedConfirmedCause = _causeM ? _causeM[1].trim() : null;
+      (this as any).__embeddedConfirmedRuleId = _ruleM ? _ruleM[1].trim() : null;
+      (this as any).__embeddedConfirmedObs = _embedded;
+
+      if (_embedded.length > 0 || _causeM || _ruleM) {
+        // Strip ALL bracket markers from the text that proceeds to NLU /
+        // language detection. `farmerMessage` (chat history) stays untouched.
+        safeFarmerMessage = safeFarmerMessage
+          .replace(/\[(?:obs_keys?|cause|rule_id)\s*:[^\]]*\]/gi, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+      }
+      if (_embedded.length > 0) {
+        console.log(
+          `[EMBEDDED_OBS_INGESTED] trace=${traceId} codes=[${_embedded.join(',')}] count=${_embedded.length}`,
+        );
+      }
+    } catch (embedErr) {
+      console.warn(`[EMBEDDED_OBS_EXTRACT_FAILED] err=${(embedErr as Error).message}`);
+    }
+
     const hasTextInput = hasTextContent(safeFarmerMessage);
+
     
     // PHASE-18: Layer timing infrastructure for 3-layer architecture visibility
     const layerTimings = {
@@ -1991,7 +2057,27 @@ export class AIAgentOrchestrator {
         }
       }
       
+      // FIX A (2026-08-08) — EMBEDDED-OBS INTENT OVERRIDE. A turn carrying
+      // farmer-confirmed observation markers is ALWAYS a diagnostic
+      // continuation; it must never fall into greeting/general templates.
+      try {
+        const _embeddedObs: string[] = (this as any).__embeddedConfirmedObs || [];
+        if (_embeddedObs.length > 0 && ['GREETING', 'GENERAL_INFO', 'GENERAL', 'APP_HELP'].includes(String(queryRoute.route))) {
+          const _prevRoute = queryRoute.route;
+          (queryRoute as any).route = 'PEST_DISEASE_TREATMENT';
+          queryRoute.confidence = Math.max(queryRoute.confidence ?? 0, 0.8);
+          agentsUsed.push('EMBEDDED_OBS_INTENT_OVERRIDE');
+          console.log(
+            `[EMBEDDED_OBS_INTENT_OVERRIDE] trace=${traceId} from=${_prevRoute} ` +
+            `to=PEST_DISEASE_TREATMENT codes=[${_embeddedObs.join(',')}]`,
+          );
+        }
+      } catch (ovErr) {
+        console.warn(`[EMBEDDED_OBS_INTENT_OVERRIDE_FAILED] err=${(ovErr as Error).message}`);
+      }
+
       const routeRequirements = getRouteRequirements(queryRoute.route);
+
       
       // PHASE-13: ROUTE GREETING THROUGH SYMBOLIC PIPELINE
       if (queryRoute.route === 'GREETING') {
@@ -5674,7 +5760,39 @@ export class AIAgentOrchestrator {
             [...(authoredObservations?.listByAuthority?.(ObservationAuthority.EXTRACTED) ?? [])]
               .map((c: unknown) => String(c).trim().toLowerCase()),
           );
+          // ── FIX A (2026-08-08) — EMBEDDED obs_keys → FARMER-CONFIRMED ─────
+          // Codes harvested from the UI markers enter the ledger at CONFIRMED
+          // authority so they survive the stale purge and reach the graph.
+          try {
+            const _embeddedObs: string[] = ((this as any).__embeddedConfirmedObs || []) as string[];
+            if (_embeddedObs.length > 0) {
+              const { assertObservationsExist: _assertObs } = await import('../runtime/graph-contracts.ts');
+              const _check = await _assertObs(this.supabase, _embeddedObs);
+              const _known = new Set((_check?.known ?? []).map((c: string) => String(c).toLowerCase()));
+              const _added: string[] = [];
+              for (const code of _embeddedObs) {
+                const k = String(code).toLowerCase();
+                if (!_known.has(k)) {
+                  console.warn(`[EMBEDDED_OBS_UNKNOWN] trace=${traceId} code=${code}`);
+                  continue;
+                }
+                authoredObservations.add(code, ObservationAuthority.CONFIRMED, 'EMBEDDED_OBS_KEY');
+                _turnAsserted.add(k);
+                if (!raw_evidence_codes.some((c) => String(c).toLowerCase() === k)) {
+                  raw_evidence_codes.push(code);
+                }
+                _added.push(code);
+              }
+              console.log(
+                `[EMBEDDED_OBS_INGESTED] trace=${traceId} codes=[${_added.join(',')}] count=${_added.length}`,
+              );
+            }
+          } catch (embErr) {
+            console.warn(`[EMBEDDED_OBS_INGEST_FAILED] trace=${traceId} err=${(embErr as Error).message}`);
+          }
+
           const real_codes_pre: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+
           const real_codes: string[] = real_codes_pre.filter((code) => {
             const k = String(code).trim().toLowerCase();
             if (!_staleKeys.has(k)) return true;              // not a carryover
