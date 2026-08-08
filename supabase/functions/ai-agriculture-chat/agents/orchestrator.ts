@@ -2035,7 +2035,27 @@ export class AIAgentOrchestrator {
         }
       }
       
+      // FIX A (2026-08-08) — EMBEDDED-OBS INTENT OVERRIDE. A turn carrying
+      // farmer-confirmed observation markers is ALWAYS a diagnostic
+      // continuation; it must never fall into greeting/general templates.
+      try {
+        const _embeddedObs: string[] = (this as any).__embeddedConfirmedObs || [];
+        if (_embeddedObs.length > 0 && ['GREETING', 'GENERAL_INFO', 'GENERAL', 'APP_HELP'].includes(String(queryRoute.route))) {
+          const _prevRoute = queryRoute.route;
+          (queryRoute as any).route = 'PEST_DISEASE_TREATMENT';
+          queryRoute.confidence = Math.max(queryRoute.confidence ?? 0, 0.8);
+          agentsUsed.push('EMBEDDED_OBS_INTENT_OVERRIDE');
+          console.log(
+            `[EMBEDDED_OBS_INTENT_OVERRIDE] trace=${traceId} from=${_prevRoute} ` +
+            `to=PEST_DISEASE_TREATMENT codes=[${_embeddedObs.join(',')}]`,
+          );
+        }
+      } catch (ovErr) {
+        console.warn(`[EMBEDDED_OBS_INTENT_OVERRIDE_FAILED] err=${(ovErr as Error).message}`);
+      }
+
       const routeRequirements = getRouteRequirements(queryRoute.route);
+
       
       // PHASE-13: ROUTE GREETING THROUGH SYMBOLIC PIPELINE
       if (queryRoute.route === 'GREETING') {
