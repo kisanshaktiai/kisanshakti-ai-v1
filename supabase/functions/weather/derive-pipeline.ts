@@ -39,6 +39,7 @@ import {
   type HourlyWetnessInput,
   type MethodsMap,
 } from "./agricultural-calculations.ts";
+import { resolveNdviQuality, type NdviCandidateRow } from "./ndvi-resolver.ts";
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
@@ -232,10 +233,11 @@ export async function deriveLandDaily(
       .eq("location_key", cell)
       .gte("forecast_time", new Date(Date.now() - 36 * 3600 * 1000).toISOString())
       .order("forecast_time", { ascending: true }).limit(400),
-    supabase.from("soil_health").select("sand_percent, clay_percent, organic_carbon")
+    supabase.from("soil_health").select("sand_percent, clay_percent, organic_carbon, sand_std, clay_std")
       .eq("land_id", land.id).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("ndvi_data").select("ndvi_value, mean_ndvi, date")
-      .eq("land_id", land.id).order("date", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("ndvi_data")
+      .select("ndvi_value, mean_ndvi, median_ndvi, date, quality_score, valid_fraction, is_interpolated, rvi_value")
+      .eq("land_id", land.id).order("date", { ascending: false }).limit(8),
     supabase.from("land_weather_state").select("metric_date, root_depletion_mm, taw_mm, disease_risk_score, heat_stress_dh, frost_risk_score, raw_mm")
       .eq("land_id", land.id).lt("metric_date", day)
       .order("metric_date", { ascending: false }).limit(1).maybeSingle(),
@@ -250,7 +252,7 @@ export async function deriveLandDaily(
   const agg = aggRes?.data ?? null;
   const forecasts = (fcRes?.data ?? []) as Array<Record<string, unknown>>;
   const soil = soilRes?.data ?? null;
-  const ndviRow = ndviRes?.data ?? null;
+  const ndviRows = (ndviRes?.data ?? []) as NdviCandidateRow[];
   const prev = prevRes?.data ?? null;
   const cur = curRes?.data ?? null;
   const stage = stageRes?.data ?? null;
@@ -348,9 +350,19 @@ export async function deriveLandDaily(
   const isSensitiveStage = SENSITIVE_STAGE_RE.test(stageName);
 
   // ---- (d) Kc / ETc --------------------------------------------------------
-  const ndviRaw = num(ndviRow?.ndvi_value) ?? num(ndviRow?.mean_ndvi);
-  const ndviRel = ndviRaw === null ? null : clamp((ndviRaw - 0.2) / (0.8 - 0.2), 0, 1);
-  if (ndviRel === null) out.reasons.push("NO_NDVI");
+  // NDVI_QUALITY_RESOLVER@1.0: quality-gated selection (skips cloud-null and
+  // stale scenes; interpolation and age reduce confidence). Replaces the
+  // naive latest-row read that died on monsoon null scenes.
+  const ndviPick = resolveNdviQuality(ndviRows, methods);
+  const ndviRel = ndviPick?.ndviRel ?? null;
+  if (ndviPick === null) {
+    out.reasons.push("NO_NDVI");
+  } else if (ndviPick.mode === "SAR_PENDING") {
+    // Governance gate falls out of the loader: sci-methods loads ONLY approved
+    // rows, so KC_SAR_RVI_FALLBACK is absent from `methods` until an
+    // agronomist approves it. Until then: optical-unavailable, Kc stays static.
+    out.reasons.push("NDVI_UNAVAILABLE_OPTICAL");
+  }
   const kc = resolveKc(crop, stageBucket, ndviRel, methods);
   const kcUsed = ndviRel === null ? kc.kcStatic : kc.kcAdjusted;
   const etc = et0 !== null ? kcUsed * et0 : null;
@@ -359,10 +371,12 @@ export async function deriveLandDaily(
   let sandFrac = num(soil?.sand_percent) !== null ? (num(soil!.sand_percent) as number) / 100 : null;
   let clayFrac = num(soil?.clay_percent) !== null ? (num(soil!.clay_percent) as number) / 100 : null;
   let omPct = num(soil?.organic_carbon) !== null ? (num(soil!.organic_carbon) as number) * 1.724 : undefined;
+  let tawMethod: string | null = sandFrac !== null && clayFrac !== null ? "saxton_rawls" : null;
   if (sandFrac === null || clayFrac === null) {
     const t = SOIL_TEXTURE_DEFAULTS[String(land.soil_type ?? "").toLowerCase()];
     if (t) {
       sandFrac = t.sand; clayFrac = t.clay; omPct = omPct ?? t.om;
+      tawMethod = "soil_type_fallback";
       out.reasons.push("SOIL_TEXTURE_FROM_CLASS_DEFAULT");
     } else {
       out.reasons.push("NO_SOIL_TEXTURE");
@@ -372,6 +386,18 @@ export async function deriveLandDaily(
   const tawRaw = sandFrac !== null && clayFrac !== null
     ? computeTawRaw({ sandFrac, clayFrac, omPct }, rootDepth, methods)
     : null;
+  // u_std(TAW) by symmetric perturbation through the pedotransfer, using the
+  // SoilGrids per-land spread columns when measured fractions are present
+  // (GUM finite-difference pattern, as in Prompt 2).
+  let uStdTaw: number | null = null;
+  const sandStd = num(soil?.sand_std);
+  const clayStd = num(soil?.clay_std);
+  if (tawRaw && tawMethod === "saxton_rawls" && (sandStd !== null || clayStd !== null)) {
+    const dSand = (sandStd ?? 0) / 100, dClay = (clayStd ?? 0) / 100;
+    const hi = computeTawRaw({ sandFrac: clamp(sandFrac! + dSand, 0, 1), clayFrac: clamp(clayFrac! + dClay, 0, 1), omPct }, rootDepth, methods);
+    const lo = computeTawRaw({ sandFrac: clamp(sandFrac! - dSand, 0, 1), clayFrac: clamp(clayFrac! - dClay, 0, 1), omPct }, rootDepth, methods);
+    uStdTaw = Math.abs(hi.taw_mm - lo.taw_mm) / 2;
+  }
 
   let depletion: number | null = null;
   if (tawRaw) {
@@ -461,6 +487,11 @@ export async function deriveLandDaily(
     lwd_est_hours: lwd,
     kc_static: r2(kc.kcStatic),
     kc_ndvi_adj: ndviRel === null ? null : r2(kc.kcAdjusted),
+    taw_method: tawMethod,
+    u_std_taw: r2(uStdTaw),
+    ndvi_used: ndviPick?.mode === "OPTICAL" ? r2(ndviPick.ndvi) : null,
+    ndvi_age_days: ndviPick?.mode === "OPTICAL" ? ndviPick.ageDays : null,
+    ndvi_source: ndviPick?.mode === "OPTICAL" ? ndviPick.satellite : null,
     etc_mm: r2(etc),
     taw_mm: tawRaw ? r2(tawRaw.taw_mm) : null,
     raw_mm: tawRaw ? r2(tawRaw.raw_mm) : null,
@@ -491,6 +522,15 @@ export async function deriveLandDaily(
       AIR_TEMP_MAX: tmax, AIR_TEMP_MIN: tmin,
       RH: rhMean, RAIN: rain, WIND_10M: wind10,
     },
+    extraObs: ndviPick?.mode === "OPTICAL" && sourceCodeMap?.["SENTINEL2"]
+      ? [{
+          land_id: land.id, cell_key: land.cell_key, property_code: "NDVI",
+          valid_time: ndviPick.sceneIso, issue_time: ndviPick.sceneIso,
+          value: ndviPick.ndvi, source_id: sourceCodeMap["SENTINEL2"],
+          qc_level: 2, qc_flags: ndviPick.qcFlags,
+          confidence: Math.round(ndviPick.confidence * 1000) / 1000,
+        }]
+      : undefined,
     derived: {
       ET0: { value: et0, u_std: pm.u_std, method: et0Method },
       VPD: { value: vpd, method: "VPD_TETENS@1.0" },
@@ -544,6 +584,10 @@ interface SpinePayload {
   skill: number;
   raw: Record<string, number | null>;
   derived: Record<string, { value: number | null; u_std?: number | null; method: string }>;
+  /** Fully-specified measured observations from non-provider sources (e.g. the
+   *  NDVI scene actually used for Kc). Appended to the raw batch so their
+   *  obs_ids enter the lineage of every derived value of the day. */
+  extraObs?: Array<Record<string, unknown>>;
 }
 
 async function writeSpine(supabase: Sb, runId: string, p: SpinePayload, log: LogFn) {
@@ -574,6 +618,8 @@ async function writeSpine(supabase: Sb, runId: string, p: SpinePayload, log: Log
         qc_level: qc.level, qc_flags: qc.flags, confidence: Math.round(conf * 1000) / 1000,
       };
     });
+
+  if (p.extraObs?.length) rawRows.push(...(p.extraObs as typeof rawRows));
 
   let inputIds: number[] = [];
   if (rawRows.length) {
