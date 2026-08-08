@@ -834,3 +834,122 @@ export async function runDailyDerive(
   log(runId, "info", "daily_derive_summary", summary);
   return { summary, outcomes };
 }
+
+// ---------------------------------------------------------------------------
+// D11 — FORECAST ENSEMBLE SPINE WRITE
+// ---------------------------------------------------------------------------
+/**
+ * 2026-08-08 — D11: write the next 7 forecast days of BOTH the serving provider
+ * and the best-effort Tomorrow.io second opinion into env_observations.
+ * Best-effort and invisible to clients: never throws, never alters the
+ * `weather` response shape. Provider priority is untouched.
+ */
+interface ForecastDayLike {
+  dt: number;
+  temp: { min: number; max: number };
+  pop: number;
+  rain?: number | null;
+  wind_speed: number;
+}
+
+const FC_PROPS = ["AIR_TEMP_MAX", "AIR_TEMP_MIN", "RAIN", "RAIN_PROB", "WIND_10M"] as const;
+type FcProp = typeof FC_PROPS[number];
+
+function fcValues(d: ForecastDayLike): Record<FcProp, number | null> {
+  return {
+    AIR_TEMP_MAX: num(d.temp?.max),
+    AIR_TEMP_MIN: num(d.temp?.min),
+    RAIN: num(d.rain ?? 0),
+    RAIN_PROB: num((d.pop ?? 0) * 100),
+    // wind_speed is m/s; the spine stores m/s (wind_speed_kmh / 3.6).
+    WIND_10M: num((d.wind_speed ?? 0) * 3.6 / 3.6),
+  };
+}
+
+function agreementFor(prop: FcProp, a: number | null, b: number | null, methods?: MethodsMap): number {
+  if (a === null || b === null) return 1.0; // no evidence of disagreement
+  if (prop === "RAIN") {
+    const wa = a >= 0.5, wb = b >= 0.5;
+    if (!wa && !wb) return 1.0;
+    if (wa && wb) return 0.8;
+    return 0.3;
+  }
+  if (prop === "RAIN_PROB") {
+    const wa = a >= 50, wb = b >= 50;
+    if (wa === wb) return wa ? 0.8 : 1.0;
+    return 0.3;
+  }
+  const sigma = prop.startsWith("AIR_TEMP") ? (sigmaRefFor("AIR_TEMP", methods) || 2) : 2;
+  return Math.max(0, 1 - Math.abs(a - b) / sigma);
+}
+
+export async function writeForecastSpine(
+  supabase: Sb,
+  runId: string,
+  cellKey: string,
+  primaryDaily: { provider: string; days: ForecastDayLike[] } | null,
+  ensembleDaily: { provider: string; days: ForecastDayLike[] } | null,
+  methods: MethodsMap,
+): Promise<void> {
+  try {
+    if (!cellKey) return;
+    await loadSpineRefs(supabase);
+    const nowIso = new Date().toISOString();
+    const conflict = "entity_key,property_code,valid_time,source_id,issue_time";
+
+    const byDay = (f: { days: ForecastDayLike[] } | null) => {
+      const m = new Map<string, ForecastDayLike>();
+      for (const d of (f?.days ?? []).slice(0, 7)) {
+        if (!Number.isFinite(d?.dt)) continue;
+        m.set(istDayString(new Date(d.dt * 1000)), d);
+      }
+      return m;
+    };
+    const pMap = byDay(primaryDaily);
+    const eMap = byDay(ensembleDaily);
+    const days = [...new Set([...pMap.keys(), ...eMap.keys()])].sort().slice(0, 7);
+    if (!days.length) return;
+
+    const rows: Array<Record<string, unknown>> = [];
+    const push = (
+      day: string, idx: number, d: ForecastDayLike | undefined,
+      other: ForecastDayLike | undefined, provider: string,
+    ) => {
+      if (!d) return;
+      const srcId = providerSourceId(provider);
+      if (!srcId) return;
+      const mine = fcValues(d);
+      const theirs = other ? fcValues(other) : null;
+      const validTime = istDayAnchor(day).toISOString();
+      for (const prop of FC_PROPS) {
+        const value = mine[prop];
+        if (value === null) continue;
+        const qc = qcFor(prop, value);
+        const conf = computeConfidence({
+          agreement: agreementFor(prop, value, theirs ? theirs[prop] : null, methods),
+          freshnessAgeMin: 0, ttlMin: 1440, horizonDays: idx,
+          isPrecip: prop === "RAIN" || prop === "RAIN_PROB",
+        }, methods);
+        rows.push({
+          land_id: null, cell_key: cellKey, property_code: prop,
+          valid_time: validTime, issue_time: nowIso,
+          value, source_id: srcId,
+          qc_level: qc.level, qc_flags: qc.flags,
+          confidence: Math.round(conf * 1000) / 1000,
+        });
+      }
+    };
+
+    days.forEach((day, idx) => {
+      push(day, idx, pMap.get(day), eMap.get(day), primaryDaily?.provider ?? "OPENWEATHER");
+      push(day, idx, eMap.get(day), pMap.get(day), ensembleDaily?.provider ?? "TOMORROW_IO");
+    });
+
+    if (!rows.length) return;
+    const { error } = await supabase.from("env_observations").upsert(rows, { onConflict: conflict });
+    if (error) console.warn(`[${runId}] forecast_spine_write_failed`, error.message);
+    else console.log(`[${runId}] forecast_spine_written rows=${rows.length} days=${days.length}`);
+  } catch (e) {
+    console.warn(`[${runId}] forecast_spine_failed`, String(e));
+  }
+}
