@@ -705,7 +705,52 @@ async function checkCache(
 // PERSISTENCE
 // ============================================================================
 
+/**
+ * D11: shared daily-forecast row mapping. Used by the serving-provider cache
+ * write AND by the Tomorrow.io ensemble second-opinion write.
+ */
+function buildDailyForecastRows(
+  forecast: DailyForecast[],
+  provider: string,
+  locationKey: string,
+  rounded: { lat: number; lon: number },
+  tenantId: string | undefined,
+  current: CurrentWeatherData,
+  now: Date,
+) {
+  return forecast.map((day) => ({
+    location_key: locationKey,
+    latitude: rounded.lat,
+    longitude: rounded.lon,
+    land_id: null, // LAYER 1 shared measurement
+    tenant_id: tenantId ?? null,
+    forecast_time: new Date(day.dt * 1000).toISOString(),
+    forecast_type: "daily" as const,
+    temperature_celsius: day.temp.day,
+    temperature_min_celsius: day.temp.min,
+    temperature_max_celsius: day.temp.max,
+    feels_like_celsius: day.temp.day,
+    humidity_percent: Math.round(day.humidity),
+    wind_speed_kmh: day.wind_speed * 3.6,
+    weather_description: day.weather[0]?.description ?? "Unknown",
+    weather_main: day.weather[0]?.main ?? "Unknown",
+    weather_icon: day.weather[0]?.icon ?? "01d",
+    rain_probability_percent: Math.round(day.pop * 100),
+    rain_amount_mm: day.rain ?? 0,
+    uv_index: day.uv_index ?? 0,
+    data_source: provider,
+    rain_prob_source: day.pop_source ?? null,
+    imd_station_code: current.imd_station_code ?? null,
+    imd_distance_km: current.imd_distance_km ?? null,
+    issued_at: now.toISOString(),
+    station_ref: current.station_ref ?? current.imd_station_code ?? null,
+    station_distance_km: current.imd_distance_km ?? null,
+    created_at: now.toISOString(),
+  }));
+}
+
 async function cacheWeatherData(
+
   supabase: SupabaseClient,
   runId: string,
   locationKey: string,
