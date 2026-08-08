@@ -1,152 +1,243 @@
-// CROP CODE NORMALIZER - Single Source of Truth
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP CODE NORMALIZER — Single Source of Truth  (v2.0.0, 2026-08-08)
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL WIRE FORMAT (final decision, crop_code audit 2026-08-08):
+//   lowercase snake_case values of  public.crops.value  (UNIQUE constraint).
+//   e.g. 'sugarcane', 'cotton', 'pigeon_pea', 'green_gram', 'grapes'.
+//
+// WHAT CHANGED vs v1.0.0 (and why):
+//   • v1 normalized to UPPERCASE SHORT codes ('SC','CTN','SOY','WHT'...) — a
+//     third vocabulary matching NEITHER the DB (lowercase full names,
+//     1,802/1,866 decision_rules verified) NOR the UPPER full-name literals
+//     in agents. Short codes leaked into canonical_hint_mapping (42 rows) and
+//     observation_translations (18 rows). v2 outputs the DB value directly.
+//   • v1 mapped unknown crops to 'ALL' — silent scope escalation (a farmer
+//     with an unrecognized crop received ALL-crop rules; Invariant-8
+//     violation). v2 returns '' (falsy) so existing `|| undefined` / `|| ''`
+//     guards route to clarification instead. Strict variant provided below.
+//   • v1 targets 'TUR','GRAM','MUNG','URAD','GRP' do not exist in crops.value
+//     (verified 2026-08-08: canonical are pigeon_pea, chickpea, green_gram,
+//     black_gram, grapes). v2 maps aliases to the verified values.
+//   • 'TURMERIC'/'HALDI' and 'GINGER'/'ADRAK' were mapped to codes ('TUR_C',
+//     'GNG') that have NO row in crops master. v2 does NOT invent codes for
+//     them — see UNREGISTERED_CROPS. Register them in public.crops first.
+//   • 'PEPPER' alias removed: ambiguous between crops.value 'chilli' and
+//     'capsicum' (both exist). Ambiguous input → clarification, not a guess.
+//     ('MIRCHI'/'मिरची'/'मिर्च' remain → 'chilli'.)
+//
+// DROP-IN COMPATIBILITY (verified against live import graph, 182 files):
+//   Exported symbols unchanged: CROP_CODE_NORMALIZER_VERSION,
+//   normalizeCropCode(raw): string, getFullCropName(code): string,
+//   getCropCodeVariants(raw): string[].
+//   • orchestrator.ts calls `.toLowerCase()` on normalizeCropCode() output —
+//     return type stays `string`; output is already lowercase (no-op).
+//   • bundled-rules/loader.ts & layered-rule-evaluator.ts lowercase the
+//     variants and match rule.crop_code — v2 variants now INCLUDE the
+//     canonical lowercase value (v1 did not; matching only worked via the
+//     legacy shotgun). Legacy SHORT/UPPER variants retained transitionally
+//     so any contaminated DB rows still match until Phase-cleanup runs.
+//   • getFullCropName keeps v1 behavior (UPPERCASE display name) — it is
+//     DISPLAY-ONLY. Never write its output to any crop_code column.
+// ═══════════════════════════════════════════════════════════════════════════
 
-export const CROP_CODE_NORMALIZER_VERSION = '1.0.0';
+export const CROP_CODE_NORMALIZER_VERSION = '2.0.0';
 
-// FORWARD MAP: Any crop name → DB short code
+// ─────────────────────────────────────────────────────────────────────────
+// CANONICAL CODES — every value below verified present & active in
+// public.crops.value on 2026-08-08. Do NOT add codes here without a
+// corresponding crops-master row.
+// ─────────────────────────────────────────────────────────────────────────
+const CANONICAL_CODES = new Set<string>([
+  'sugarcane', 'cotton', 'soybean', 'rice', 'wheat', 'maize',
+  'tomato', 'onion', 'chilli', 'potato', 'brinjal',
+  'groundnut', 'mustard', 'sunflower',
+  'pigeon_pea', 'chickpea', 'green_gram', 'black_gram', 'lentil', 'cowpea',
+  'bajra', 'jowar',
+  'banana', 'grapes', 'pomegranate', 'mango', 'orange',
+  'okra', 'cabbage', 'cauliflower', 'capsicum',
+]);
 
-const CROP_TO_SHORT: Record<string, string> = {
-  // English full names
-  'SUGARCANE': 'SC', 'SUGAR_CANE': 'SC', 'CANE': 'SC', 'GANNA': 'SC',
-  'COTTON': 'CTN', 'KAPAS': 'CTN', 'KAPUS': 'CTN',
-  'SOYBEAN': 'SOY', 'SOYA': 'SOY', 'SOYABEAN': 'SOY',
-  'RICE': 'RICE', 'PADDY': 'RICE', 'DHAN': 'RICE', 'CHAWAL': 'RICE', 'BHAT': 'RICE',
-  'WHEAT': 'WHT', 'GEHUN': 'WHT',
-  'MAIZE': 'MZ', 'CORN': 'MZ', 'MAKKA': 'MZ',
-  'TOMATO': 'TOM', 'TAMATAR': 'TOM',
-  'ONION': 'ONI', 'KANDA': 'ONI', 'PYAZ': 'ONI',
-  'CHILLI': 'CHI', 'CHILI': 'CHI', 'PEPPER': 'CHI', 'MIRCHI': 'CHI',
-  'GROUNDNUT': 'GN', 'PEANUT': 'GN', 'MOONGFALI': 'GN',
-  'BANANA': 'BAN',
-  'GRAPE': 'GRP', 'GRAPES': 'GRP',
-  'POMEGRANATE': 'POM',
-  'TUR': 'TUR', 'ARHAR': 'TUR', 'PIGEON_PEA': 'TUR', 'PIGEONPEA': 'TUR',
-  'GRAM': 'GRAM', 'CHICKPEA': 'GRAM', 'CHANA': 'GRAM',
-  'MUNG': 'MUNG', 'MOONG': 'MUNG',
-  'URAD': 'URAD', 'BLACK_GRAM': 'URAD',
-  'MANGO': 'MANGO',
-  'ORANGE': 'ORANGE', 'CITRUS': 'ORANGE',
-  'MUSTARD': 'MUSTARD', 'SARSON': 'MUSTARD',
-  'SUNFLOWER': 'SFL',
-  'TURMERIC': 'TUR_C', 'HALDI': 'TUR_C',
-  'GINGER': 'GNG', 'ADRAK': 'GNG',
-  'OKRA': 'OKRA', 'BHINDI': 'OKRA',
-  'BRINJAL': 'BRN', 'EGGPLANT': 'BRN',
-  'CABBAGE': 'CAB',
-  'CAULIFLOWER': 'CFL',
-  'POTATO': 'POT', 'ALOO': 'POT',
+// Sanctioned scope tokens (NOT crops; appear in DB by design:
+// decision_rules 'all', observation_translations 'universal').
+const SCOPE_TOKENS = new Set<string>(['all', 'universal', 'general', '*']);
 
-  // Short codes → themselves (passthrough)
-  'SC': 'SC', 'CTN': 'CTN', 'SOY': 'SOY', 'MZ': 'MZ', 'WHT': 'WHT',
-  'TOM': 'TOM', 'ONI': 'ONI', 'CHI': 'CHI', 'GN': 'GN', 'BAN': 'BAN',
-  'GRP': 'GRP', 'POM': 'POM', 'SFL': 'SFL', 'TUR_C': 'TUR_C',
-  'GNG': 'GNG', 'BRN': 'BRN', 'CAB': 'CAB', 'CFL': 'CFL', 'POT': 'POT',
-  'ALL': 'ALL',
+// ─────────────────────────────────────────────────────────────────────────
+// ALIAS MAP: any input spelling → canonical crops.value
+// Sections: canonical passthrough · English · legacy v1 SHORT codes ·
+// Marathi (verified vs crops.label_mr 2026-08-08) · Hindi.
+// ─────────────────────────────────────────────────────────────────────────
+const ALIAS_TO_CANONICAL: Record<string, string> = {
+  // English full names & common variants
+  'SUGARCANE': 'sugarcane', 'SUGAR_CANE': 'sugarcane', 'CANE': 'sugarcane', 'GANNA': 'sugarcane',
+  'COTTON': 'cotton', 'KAPAS': 'cotton', 'KAPUS': 'cotton',
+  'SOYBEAN': 'soybean', 'SOYA': 'soybean', 'SOYABEAN': 'soybean',
+  'RICE': 'rice', 'PADDY': 'rice', 'DHAN': 'rice', 'CHAWAL': 'rice', 'BHAT': 'rice',
+  'WHEAT': 'wheat', 'GEHUN': 'wheat',
+  'MAIZE': 'maize', 'CORN': 'maize', 'MAKKA': 'maize',
+  'TOMATO': 'tomato', 'TAMATAR': 'tomato',
+  'ONION': 'onion', 'KANDA': 'onion', 'PYAZ': 'onion',
+  'CHILLI': 'chilli', 'CHILI': 'chilli', 'MIRCHI': 'chilli',
+  'CAPSICUM': 'capsicum', 'BELL_PEPPER': 'capsicum', 'SHIMLA_MIRCH': 'capsicum',
+  'POTATO': 'potato', 'ALOO': 'potato',
+  'BRINJAL': 'brinjal', 'EGGPLANT': 'brinjal', 'AUBERGINE': 'brinjal',
+  'GROUNDNUT': 'groundnut', 'PEANUT': 'groundnut', 'MOONGFALI': 'groundnut',
+  'MUSTARD': 'mustard', 'SARSON': 'mustard', 'RAPESEED': 'mustard',
+  'SUNFLOWER': 'sunflower',
+  'PIGEON_PEA': 'pigeon_pea', 'PIGEONPEA': 'pigeon_pea', 'TUR': 'pigeon_pea', 'ARHAR': 'pigeon_pea', 'TOOR': 'pigeon_pea',
+  'CHICKPEA': 'chickpea', 'GRAM': 'chickpea', 'CHANA': 'chickpea', 'BENGAL_GRAM': 'chickpea', 'HARBHARA': 'chickpea',
+  'GREEN_GRAM': 'green_gram', 'MUNG': 'green_gram', 'MOONG': 'green_gram', 'MUNGBEAN': 'green_gram',
+  'BLACK_GRAM': 'black_gram', 'URAD': 'black_gram', 'URD': 'black_gram',
+  'LENTIL': 'lentil', 'MASOOR': 'lentil',
+  'COWPEA': 'cowpea', 'LOBIA': 'cowpea', 'CHAVALI': 'cowpea',
+  'BAJRA': 'bajra', 'PEARL_MILLET': 'bajra', 'MILLET': 'bajra',
+  'JOWAR': 'jowar', 'SORGHUM': 'jowar', 'JOWARI': 'jowar',
+  'BANANA': 'banana', 'KELA': 'banana',
+  'GRAPE': 'grapes', 'GRAPES': 'grapes',
+  'POMEGRANATE': 'pomegranate', 'ANAR': 'pomegranate',
+  'MANGO': 'mango', 'AAM': 'mango',
+  'ORANGE': 'orange', 'CITRUS': 'orange', 'SANTRA': 'orange',
+  'OKRA': 'okra', 'BHINDI': 'okra', 'LADYFINGER': 'okra',
+  'CABBAGE': 'cabbage',
+  'CAULIFLOWER': 'cauliflower',
 
-  // Marathi (मराठी)
-  'कापूस': 'CTN', 'सोयाबीन': 'SOY', 'सोयाबिन': 'SOY',
-  'भात': 'RICE', 'तांदूळ': 'RICE',
-  'गहू': 'WHT',
-  'ऊस': 'SC',
-  'मका': 'MZ',
-  'टोमॅटो': 'TOM',
-  'कांदा': 'ONI',
-  'मिरची': 'CHI',
-  'भुईमूग': 'GN', 'शेंगदाणा': 'GN',
-  'हरभरा': 'GRAM',
-  'तूर': 'TUR',
-  'मूग': 'MUNG',
-  'उडीद': 'URAD',
-  'केळी': 'BAN',
-  'आंबा': 'MANGO',
-  'द्राक्षे': 'GRP',
-  'डाळिंब': 'POM',
-  'मोहरी': 'MUSTARD',
-  'सूर्यफूल': 'SFL',
-  'हळद': 'TUR_C',
-  'आले': 'GNG',
-  'वांगी': 'BRN',
-  'भेंडी': 'OKRA',
-  'कोबी': 'CAB',
-  'फ्लॉवर': 'CFL',
-  'बटाटा': 'POT',
+  // Legacy v1 SHORT codes (transitional; remove after DB cleanup verifies
+  // zero short-code rows remain in canonical_hint_mapping /
+  // observation_translations)
+  'SC': 'sugarcane', 'CTN': 'cotton', 'SOY': 'soybean', 'WHT': 'wheat',
+  'MZ': 'maize', 'TOM': 'tomato', 'ONI': 'onion', 'CHI': 'chilli',
+  'GN': 'groundnut', 'BAN': 'banana', 'GRP': 'grapes', 'POM': 'pomegranate',
+  'SFL': 'sunflower', 'BRN': 'brinjal', 'CAB': 'cabbage', 'CFL': 'cauliflower',
+  'POT': 'potato',
 
-  // Hindi (हिंदी)
-  'कपास': 'CTN', 'रुई': 'CTN',
-  'धान': 'RICE', 'चावल': 'RICE',
-  'गेहूं': 'WHT', 'गेहूँ': 'WHT',
-  'गन्ना': 'SC', 'ईख': 'SC',
-  'मक्का': 'MZ',
-  'टमाटर': 'TOM',
-  'प्याज': 'ONI',
-  'मिर्च': 'CHI',
-  'मूंगफली': 'GN',
-  'चना': 'GRAM',
-  'अरहर': 'TUR',
-  'केला': 'BAN',
-  'आम': 'MANGO',
-  'अंगूर': 'GRP',
-  'अनार': 'POM',
-  'सरसों': 'MUSTARD',
-  'सूरजमुखी': 'SFL',
-  'अदरक': 'GNG',
-  'आलू': 'POT',
-  'बैंगन': 'BRN',
-  'भिंडी': 'OKRA',
-  'बंदगोभी': 'CAB',
-  'फूलगोभी': 'CFL',
+  // Marathi — every mapping verified against crops.label_mr (2026-08-08)
+  'कापूस': 'cotton', 'सोयाबीन': 'soybean', 'सोयाबिन': 'soybean',
+  'भात': 'rice', 'तांदूळ': 'rice',
+  'गहू': 'wheat', 'ऊस': 'sugarcane', 'मका': 'maize',
+  'टोमॅटो': 'tomato', 'कांदा': 'onion', 'मिरची': 'chilli',
+  'भुईमूग': 'groundnut', 'शेंगदाणा': 'groundnut',
+  'हरभरा': 'chickpea', 'तूर': 'pigeon_pea',
+  'मूग': 'green_gram', 'उडीद': 'black_gram', 'मसूर': 'lentil',
+  'चवळी': 'cowpea', 'बाजरी': 'bajra', 'ज्वारी': 'jowar',
+  'मोहरी': 'mustard', 'सूर्यफूल': 'sunflower',
+  'केळी': 'banana', 'आंबा': 'mango', 'द्राक्षे': 'grapes', 'डाळिंब': 'pomegranate',
+  'वांगी': 'brinjal', 'वांगे': 'brinjal', 'भेंडी': 'okra',
+  'कोबी': 'cabbage', 'फ्लॉवर': 'cauliflower', 'बटाटा': 'potato',
 
+  // Hindi
+  'कपास': 'cotton', 'रुई': 'cotton',
+  'धान': 'rice', 'चावल': 'rice',
+  'गेहूं': 'wheat', 'गेहूँ': 'wheat',
+  'गन्ना': 'sugarcane', 'ईख': 'sugarcane', 'मक्का': 'maize',
+  'टमाटर': 'tomato', 'प्याज': 'onion', 'मिर्च': 'chilli',
+  'मूंगफली': 'groundnut', 'चना': 'chickpea', 'अरहर': 'pigeon_pea',
+  'केला': 'banana', 'आम': 'mango', 'अंगूर': 'grapes', 'अनार': 'pomegranate',
+  'सरसों': 'mustard', 'सूरजमुखी': 'sunflower',
+  'अदरक': '', // ginger — NOT in crops master, see UNREGISTERED_CROPS
+  'आलू': 'potato', 'बैंगन': 'brinjal', 'भिंडी': 'okra',
+  'बंदगोभी': 'cabbage', 'फूलगोभी': 'cauliflower',
 };
 
-// REVERSE MAP: DB short code → full English name
-
-const SHORT_TO_FULL: Record<string, string> = {
-  'SC': 'SUGARCANE', 'CTN': 'COTTON', 'SOY': 'SOYBEAN',
-  'RICE': 'RICE', 'WHT': 'WHEAT', 'MZ': 'MAIZE',
-  'TOM': 'TOMATO', 'ONI': 'ONION', 'CHI': 'CHILLI',
-  'GN': 'GROUNDNUT', 'BAN': 'BANANA', 'GRP': 'GRAPE',
-  'POM': 'POMEGRANATE', 'TUR': 'TUR', 'GRAM': 'GRAM',
-  'MUNG': 'MUNG', 'URAD': 'URAD', 'MANGO': 'MANGO',
-  'ORANGE': 'ORANGE', 'MUSTARD': 'MUSTARD', 'SFL': 'SUNFLOWER',
-  'TUR_C': 'TURMERIC', 'GNG': 'GINGER', 'OKRA': 'OKRA',
-  'BRN': 'BRINJAL', 'CAB': 'CABBAGE', 'CFL': 'CAULIFLOWER',
-  'POT': 'POTATO', 'ALL': 'ALL',
+// Crops the app receives as input but which have NO row in public.crops
+// (verified absent 2026-08-08). Per the no-fabrication rule they resolve to
+// '' (unknown → clarification). To support them: INSERT into public.crops
+// first, then move the alias into ALIAS_TO_CANONICAL.
+export const UNREGISTERED_CROPS: Record<string, string> = {
+  'TURMERIC': 'no crops.value row (v1 invented TUR_C)',
+  'HALDI': 'no crops.value row',
+  'हळद': 'no crops.value row',
+  'GINGER': 'no crops.value row (v1 invented GNG)',
+  'ADRAK': 'no crops.value row',
+  'आले': 'no crops.value row',
+  'PEPPER': 'ambiguous: chilli vs capsicum — ask, do not guess',
 };
 
-// PUBLIC API
+// DISPLAY names (UPPERCASE, v1-compatible). DISPLAY-ONLY — never a DB value.
+const DISPLAY_NAME: Record<string, string> = Object.fromEntries(
+  [...CANONICAL_CODES].map((c) => [c, c.toUpperCase()]),
+);
 
-// Normalize any crop name/code to the DB short code.
+// ─────────────────────────────────────────────────────────────────────────
+// PUBLIC API (drop-in: same four exported symbols as v1)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Normalize any crop name/code (EN/HI/MR, any case, legacy short codes) to
+ * the canonical lowercase public.crops.value.
+ * Returns '' (falsy) when the crop is unknown/unregistered/ambiguous —
+ * NEVER 'ALL'. Existing guards (`|| undefined`, `|| ''`) route '' into the
+ * no-crop-context / clarification path instead of universal-scope leakage.
+ * Scope tokens ('all','ALL','*','universal','general') pass through
+ * lowercased, since DB rows legitimately use them as applicability scope.
+ */
 export function normalizeCropCode(raw: string | undefined | null): string {
-  if (!raw || raw.trim() === '') return 'ALL';
-  
+  if (!raw || raw.trim() === '') return '';
   const trimmed = raw.trim();
-  // Try exact match first (handles Devanagari)
-  if (CROP_TO_SHORT[trimmed]) return CROP_TO_SHORT[trimmed];
-  
-  // Uppercase for English
+
+  // Devanagari / exact alias first
+  const direct = ALIAS_TO_CANONICAL[trimmed];
+  if (direct !== undefined) return direct;
+
   const upper = trimmed.toUpperCase().replace(/[\s-]+/g, '_');
-  if (CROP_TO_SHORT[upper]) return CROP_TO_SHORT[upper];
-  
-  // Already a valid short code?
-  if (SHORT_TO_FULL[upper]) return upper;
-  
-  console.warn(`[CropCodeNormalizer] Unknown crop: "${raw}", returning ALL`);
-  return 'ALL';
+  const lower = trimmed.toLowerCase().replace(/[\s-]+/g, '_');
+
+  if (CANONICAL_CODES.has(lower)) return lower;        // already canonical
+  if (SCOPE_TOKENS.has(lower)) return lower;           // sanctioned scope token
+  const aliased = ALIAS_TO_CANONICAL[upper];
+  if (aliased !== undefined) return aliased;           // '' for unregistered
+
+  console.warn(`[CropCodeNormalizer v2] Unknown crop: "${raw}" → '' (clarification path; v1 returned 'ALL')`);
+  return '';
 }
 
-// Get full English crop name from DB short code.
-export function getFullCropName(shortCode: string | undefined | null): string {
-  if (!shortCode) return 'UNKNOWN';
-  const upper = shortCode.toUpperCase().trim();
-  return SHORT_TO_FULL[upper] || upper;
+/** Strict variant for gates/new code: null instead of '' for unknown. */
+export function normalizeCropCodeStrict(raw: string | undefined | null): string | null {
+  const c = normalizeCropCode(raw);
+  return c === '' ? null : c;
 }
 
-// Get all possible crop code variants for flexible DB matching.
+/** True iff the value is a registered crop code (scope tokens excluded). */
+export function isKnownCropCode(code: string | undefined | null): boolean {
+  return !!code && CANONICAL_CODES.has(code.toLowerCase());
+}
+
+/**
+ * Full English DISPLAY name (UPPERCASE — v1-compatible for prompts/UI).
+ * DISPLAY-ONLY: never write this into any crop_code column or query filter.
+ */
+export function getFullCropName(code: string | undefined | null): string {
+  if (!code) return 'UNKNOWN';
+  const canonical = normalizeCropCode(code);
+  if (canonical && DISPLAY_NAME[canonical]) return DISPLAY_NAME[canonical];
+  if (canonical && SCOPE_TOKENS.has(canonical)) return canonical.toUpperCase();
+  return 'UNKNOWN';
+}
+
+/**
+ * All match variants for filtering rule/mapping rows by crop.
+ * v2 guarantees the CANONICAL LOWERCASE value is present (v1 did not — DB
+ * matching only worked via case-folding of the UPPER full name), keeps the
+ * v1 legacy variants (SHORT + UPPER full + raw-upper) transitionally so any
+ * still-contaminated DB rows match until cleanup completes, and includes the
+ * sanctioned scope tokens exactly as they appear in the database.
+ */
 export function getCropCodeVariants(raw: string | undefined | null): string[] {
-  const short = normalizeCropCode(raw);
-  const full = getFullCropName(short);
-  const variants = new Set<string>([short, full, 'ALL', 'all', '*', 'universal']);
-  if (raw) {
-    variants.add(raw.toUpperCase().trim());
+  const canonical = normalizeCropCode(raw);
+  const variants = new Set<string>(['all', 'ALL', '*', 'universal']);
+  if (canonical && !SCOPE_TOKENS.has(canonical)) {
+    variants.add(canonical);                          // e.g. 'sugarcane'  ← DB truth
+    variants.add(canonical.toUpperCase());            // 'SUGARCANE'       ← legacy literals
+    // legacy v1 short code, if one existed for this crop (transitional)
+    for (const [alias, canon] of Object.entries(ALIAS_TO_CANONICAL)) {
+      if (canon === canonical && alias.length <= 4 && alias === alias.toUpperCase()) {
+        variants.add(alias);                          // 'SC'
+        variants.add(alias.toLowerCase());            // 'sc' (contaminated rows)
+      }
+    }
+  }
+  if (raw && raw.trim()) {
+    variants.add(raw.trim());
+    variants.add(raw.trim().toUpperCase());
+    variants.add(raw.trim().toLowerCase());
   }
   return Array.from(variants);
 }
