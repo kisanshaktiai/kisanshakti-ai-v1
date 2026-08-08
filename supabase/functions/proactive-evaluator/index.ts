@@ -508,8 +508,9 @@ async function processOneTenant(
       if (isEnvRule) {
         const envRes = evaluateEnvRule(rule.rule_code, rule.conditions, {
           crop_code: ctx.crop_code,
+          das: ctx.das,
           derived: ctx.derived,
-          weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h },
+          weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h, tmin_forecast_night: ctx.forecast_tmin_night },
           forecast: { tmax_mean_5d: ctx.forecast_tmax_mean_5d },
           ndvi: { value: ctx.ndvi, previous: ctx.ndvi_previous,
                   drop: (ctx.ndvi != null && ctx.ndvi_previous != null) ? ctx.ndvi_previous - ctx.ndvi : null },
