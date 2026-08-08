@@ -5,6 +5,10 @@
 // 2026-08-07 12:20 UTC — Created: derived namespace hydration from
 //   land_weather_state + land_gdd_daily + risk_episodes, derived.* predicate
 //   evaluation, episode phase-transition gating, farmer-visibility guard.
+// 2026-08-08 (v124) — EnvEvalContext gains an `ndvi` evidence namespace
+//   (ndvi.value / ndvi.previous / ndvi.drop) so compiled decision rules can
+//   reference satellite evidence declaratively. This adds a DATA PATH only —
+//   no NDVI thresholds live in code; thresholds come from rule rows.
 //
 // Additive only. No existing evaluation path is modified by this module.
 
@@ -243,6 +247,9 @@ export interface EnvEvalContext {
   derived: DerivedState;
   weather: Record<string, any>;
   forecast: Record<string, any>;
+  /** v124: satellite evidence namespace — DATA PATHS ONLY, thresholds come
+   *  from rule rows (paths: ndvi.value, ndvi.previous, ndvi.drop). */
+  ndvi?: { value: number | null; previous: number | null; drop: number | null };
 }
 
 export interface EnvEvalResult {
