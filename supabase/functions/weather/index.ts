@@ -58,7 +58,7 @@ import {
   type HourlyWetnessInput,
 } from "./agricultural-calculations.ts";
 import { loadSciMethods, type MethodsMap } from "./sci-methods.ts";
-import { runDailyDerive } from "./derive-pipeline.ts";
+import { runDailyDerive, writeForecastSpine } from "./derive-pipeline.ts";
 
 
 // Scientific coefficients come from public.sci_method_registry. ONE read per
