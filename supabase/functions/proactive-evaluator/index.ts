@@ -1055,7 +1055,8 @@ export function normalizeSoilType(s: string | null | undefined): string | null {
   const MAP: Record<string, string> = {
     black_soil: 'black',
     red_soil: 'red',
-    black_cotton_soil: 'black_cotton',
+    black_cotton_soil: 'black',
+    black_cotton: 'black',
   };
   return MAP[base] ?? base;
 }
