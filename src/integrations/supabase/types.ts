@@ -2561,6 +2561,30 @@ export type Database = {
           },
         ]
       }
+      alert_suppression_matrix: {
+        Row: {
+          is_active: boolean
+          rationale: string | null
+          suppressed_category: string
+          suppression_hours: number
+          suppressor_rule_code: string
+        }
+        Insert: {
+          is_active?: boolean
+          rationale?: string | null
+          suppressed_category: string
+          suppression_hours?: number
+          suppressor_rule_code: string
+        }
+        Update: {
+          is_active?: boolean
+          rationale?: string | null
+          suppressed_category?: string
+          suppression_hours?: number
+          suppressor_rule_code?: string
+        }
+        Relationships: []
+      }
       analytics_forecasts: {
         Row: {
           ai_reasoning: string | null
@@ -8426,7 +8450,10 @@ export type Database = {
           cause: string
           chemical_class: string | null
           climate_zone_applicable: string[] | null
+          compile_notes: string | null
+          compile_status: string | null
           condition_code: string
+          conditions_compiled: Json | null
           conditions_json: Json
           confidence_score: number | null
           contraindications: string[] | null
@@ -8600,7 +8627,10 @@ export type Database = {
           cause: string
           chemical_class?: string | null
           climate_zone_applicable?: string[] | null
+          compile_notes?: string | null
+          compile_status?: string | null
           condition_code: string
+          conditions_compiled?: Json | null
           conditions_json: Json
           confidence_score?: number | null
           contraindications?: string[] | null
@@ -8774,7 +8804,10 @@ export type Database = {
           cause?: string
           chemical_class?: string | null
           climate_zone_applicable?: string[] | null
+          compile_notes?: string | null
+          compile_status?: string | null
           condition_code?: string
+          conditions_compiled?: Json | null
           conditions_json?: Json
           confidence_score?: number | null
           contraindications?: string[] | null
@@ -19202,6 +19235,33 @@ export type Database = {
         }
         Relationships: []
       }
+      observation_wiring_queue: {
+        Row: {
+          created_at: string | null
+          observation_category: string | null
+          observation_code: string
+          reachability: string
+          recommended_action: string | null
+          review_status: string
+        }
+        Insert: {
+          created_at?: string | null
+          observation_category?: string | null
+          observation_code: string
+          reachability: string
+          recommended_action?: string | null
+          review_status?: string
+        }
+        Update: {
+          created_at?: string | null
+          observation_category?: string | null
+          observation_code?: string
+          reachability?: string
+          recommended_action?: string | null
+          review_status?: string
+        }
+        Relationships: []
+      }
       offline_sync_queue: {
         Row: {
           action_type: string
@@ -21815,6 +21875,30 @@ export type Database = {
           },
         ]
       }
+      proactive_evaluator_config: {
+        Row: {
+          config_key: string
+          config_value: Json
+          description: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          config_key: string
+          config_value: Json
+          description?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          config_key?: string
+          config_value?: Json
+          description?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       proactive_events: {
         Row: {
           alerts_generated: number | null
@@ -23862,6 +23946,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      region_recommendation_scope: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          derivation: string
+          evidence_excerpt: string | null
+          id: string
+          is_enforced: boolean
+          matched_pattern: string | null
+          region_code: string | null
+          review_status: string
+          rule_id: string
+          scope_level: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          derivation: string
+          evidence_excerpt?: string | null
+          id?: string
+          is_enforced?: boolean
+          matched_pattern?: string | null
+          region_code?: string | null
+          review_status?: string
+          rule_id: string
+          scope_level: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          derivation?: string
+          evidence_excerpt?: string | null
+          id?: string
+          is_enforced?: boolean
+          matched_pattern?: string | null
+          region_code?: string | null
+          review_status?: string
+          rule_id?: string
+          scope_level?: string
+        }
+        Relationships: []
       }
       report_executions: {
         Row: {
@@ -26008,6 +26134,36 @@ export type Database = {
           rule_id?: string | null
           scientific_name?: string | null
           source?: string | null
+        }
+        Relationships: []
+      }
+      scope_vocabulary: {
+        Row: {
+          code: string
+          created_at: string | null
+          domain: string
+          equivalent_of: string | null
+          evidence_note: string | null
+          label: string | null
+          review_status: string
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          domain: string
+          equivalent_of?: string | null
+          evidence_note?: string | null
+          label?: string | null
+          review_status?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          domain?: string
+          equivalent_of?: string | null
+          evidence_note?: string | null
+          label?: string | null
+          review_status?: string
         }
         Relationships: []
       }

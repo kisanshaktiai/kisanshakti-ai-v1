@@ -86,3 +86,7 @@ verify_jwt = false
 
 [functions.youtube-channel-feed]
 verify_jwt = false
+
+[functions.rag-ingest]
+verify_jwt = false
+
