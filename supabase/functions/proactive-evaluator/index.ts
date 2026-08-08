@@ -1951,6 +1951,7 @@ const CROP_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
   BANANA:    { mr: 'केळी', hi: 'केला', en: 'banana' },
   GRAPE:     { mr: 'द्राक्ष', hi: 'अंगूर', en: 'grape' },
   PIGEONPEA: { mr: 'तूर', hi: 'अरहर', en: 'pigeonpea' },
+  RAJMA:     { mr: 'राजमा', hi: 'राजमा', en: 'rajma' },
 };
 
 function cropLabel(code: string | null | undefined, lang: 'mr' | 'hi' | 'en'): string {
@@ -2304,7 +2305,7 @@ const IRRIGATION_EFFICIENCY: Record<string, number> = {
 };
 
 const SOIL_WATER_FACTOR: Record<string, number> = {
-  BLACK: 0.85, RED: 1.1, LATERITE: 1.15, ALLUVIAL: 0.95, SANDY: 1.3, CLAY: 0.8, LOAMY: 1.0, MEDIUM_BLACK: 0.9,
+  black: 0.85, red: 1.1, laterite: 1.15, alluvial: 0.95, sandy: 1.3, clay: 0.8, loamy: 1.0, medium_black: 0.9,
 };
 
 function calculateIrrigationForLand(ctx: LandContext): {
