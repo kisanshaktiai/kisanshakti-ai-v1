@@ -5738,7 +5738,39 @@ export class AIAgentOrchestrator {
             [...(authoredObservations?.listByAuthority?.(ObservationAuthority.EXTRACTED) ?? [])]
               .map((c: unknown) => String(c).trim().toLowerCase()),
           );
+          // ── FIX A (2026-08-08) — EMBEDDED obs_keys → FARMER-CONFIRMED ─────
+          // Codes harvested from the UI markers enter the ledger at CONFIRMED
+          // authority so they survive the stale purge and reach the graph.
+          try {
+            const _embeddedObs: string[] = ((this as any).__embeddedConfirmedObs || []) as string[];
+            if (_embeddedObs.length > 0) {
+              const { assertObservationsExist: _assertObs } = await import('../runtime/graph-contracts.ts');
+              const _check = await _assertObs(this.supabase, _embeddedObs);
+              const _known = new Set((_check?.known ?? []).map((c: string) => String(c).toLowerCase()));
+              const _added: string[] = [];
+              for (const code of _embeddedObs) {
+                const k = String(code).toLowerCase();
+                if (!_known.has(k)) {
+                  console.warn(`[EMBEDDED_OBS_UNKNOWN] trace=${traceId} code=${code}`);
+                  continue;
+                }
+                authoredObservations.add(code, ObservationAuthority.CONFIRMED, 'EMBEDDED_OBS_KEY');
+                _turnAsserted.add(k);
+                if (!raw_evidence_codes.some((c) => String(c).toLowerCase() === k)) {
+                  raw_evidence_codes.push(code);
+                }
+                _added.push(code);
+              }
+              console.log(
+                `[EMBEDDED_OBS_INGESTED] trace=${traceId} codes=[${_added.join(',')}] count=${_added.length}`,
+              );
+            }
+          } catch (embErr) {
+            console.warn(`[EMBEDDED_OBS_INGEST_FAILED] trace=${traceId} err=${(embErr as Error).message}`);
+          }
+
           const real_codes_pre: string[] = raw_evidence_codes.filter((code) => isRealObservation(code));
+
           const real_codes: string[] = real_codes_pre.filter((code) => {
             const k = String(code).trim().toLowerCase();
             if (!_staleKeys.has(k)) return true;              // not a carryover
