@@ -1734,6 +1734,35 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // ---- STEP 4b: D11 ensemble persistence + forecast spine (best-effort) ---
+    if (forecast?.length && current) {
+      try {
+        if (ensembleForecast?.length) {
+          const ensembleRows = buildDailyForecastRows(
+            ensembleForecast, "Tomorrow.io", rounded.key, rounded, tenant.id, current, new Date(),
+          );
+          const { error: ensErr } = await supabase.from("weather_forecasts").upsert(ensembleRows, {
+            onConflict: "location_key,forecast_type,forecast_time,issued_at,data_source",
+            ignoreDuplicates: true,
+          });
+          if (ensErr) log(runId, "warn", "ensemble_forecast_insert_failed", { error: ensErr.message });
+          else log(runId, "info", "ensemble_forecasts_cached", { count: ensembleRows.length });
+        }
+
+        const methods = await getSciMethods(supabase, runId);
+        await writeForecastSpine(
+          supabase, runId, rounded.key,
+          { provider: dataProvider.split("+")[0], days: forecast },
+          ensembleForecast?.length ? { provider: "Tomorrow.io", days: ensembleForecast } : null,
+          methods,
+        );
+      } catch (e) {
+        log(runId, "warn", "forecast_spine_stage_failed", { error: String(e) });
+      }
+    }
+
+
+
     // ---- STEP 5: respond ----------------------------------------------------
     const response: Record<string, unknown> = {
       tenant: { id: tenant.id, name: tenant.name },
