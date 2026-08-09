@@ -8789,6 +8789,7 @@ export type Database = {
           owner_tenant_id: string | null
           pest_code: string | null
           phi_days: number | null
+          phi_status: string | null
           prediction_type: string | null
           prerequisite_rule_ids: string[] | null
           priority: number
@@ -8966,6 +8967,7 @@ export type Database = {
           owner_tenant_id?: string | null
           pest_code?: string | null
           phi_days?: number | null
+          phi_status?: string | null
           prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
           priority: number
@@ -9143,6 +9145,7 @@ export type Database = {
           owner_tenant_id?: string | null
           pest_code?: string | null
           phi_days?: number | null
+          phi_status?: string | null
           prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
           priority?: number
@@ -9246,6 +9249,641 @@ export type Database = {
             referencedColumns: ["observation_code"]
           },
         ]
+      }
+      decision_rules_ai_audit: {
+        Row: {
+          audit_run_id: string
+          category: string | null
+          claude_review: string | null
+          condition_status: string | null
+          created_at: string | null
+          crop_code: string | null
+          dual_ai_agreement: boolean | null
+          duplicate_group: boolean | null
+          final_verification_status: string
+          graph_status: string | null
+          id: number
+          is_chemical: boolean | null
+          is_proactive: boolean | null
+          openai_review: string | null
+          reason: string | null
+          regulatory_status: string | null
+          rule_id: string | null
+          rule_pk: string
+          safety_status: string | null
+          source_status: string | null
+          stage_status: string | null
+        }
+        Insert: {
+          audit_run_id: string
+          category?: string | null
+          claude_review?: string | null
+          condition_status?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          dual_ai_agreement?: boolean | null
+          duplicate_group?: boolean | null
+          final_verification_status: string
+          graph_status?: string | null
+          id?: never
+          is_chemical?: boolean | null
+          is_proactive?: boolean | null
+          openai_review?: string | null
+          reason?: string | null
+          regulatory_status?: string | null
+          rule_id?: string | null
+          rule_pk: string
+          safety_status?: string | null
+          source_status?: string | null
+          stage_status?: string | null
+        }
+        Update: {
+          audit_run_id?: string
+          category?: string | null
+          claude_review?: string | null
+          condition_status?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          dual_ai_agreement?: boolean | null
+          duplicate_group?: boolean | null
+          final_verification_status?: string
+          graph_status?: string | null
+          id?: never
+          is_chemical?: boolean | null
+          is_proactive?: boolean | null
+          openai_review?: string | null
+          reason?: string | null
+          regulatory_status?: string | null
+          rule_id?: string | null
+          rule_pk?: string
+          safety_status?: string | null
+          source_status?: string | null
+          stage_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "decision_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "qa_rule_crop_content_mismatch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "v_chemical_serving_gate"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "v_decision_rules_admin"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      decision_rules_backup_20260808: {
+        Row: {
+          action_text: string | null
+          action_type: string | null
+          active_ingredient: string | null
+          affected_crops: string[] | null
+          alternatives: Json | null
+          applicability_scope: string | null
+          application_method: string | null
+          approval_date: string | null
+          approved_by: string | null
+          aquatic_toxicity: string | null
+          bee_toxicity: string | null
+          biological_group: string | null
+          blocked_ingredient_ref: string | null
+          blocks_rule_ids: string[] | null
+          botanical_name: string | null
+          canonical_group: string | null
+          canonical_status: string | null
+          category: string | null
+          cause: string | null
+          chemical_class: string | null
+          climate_zone_applicable: string[] | null
+          compile_notes: string | null
+          compile_status: string | null
+          condition_code: string | null
+          conditions_compiled: Json | null
+          conditions_json: Json | null
+          confidence_score: number | null
+          contraindications: string[] | null
+          created_at: string | null
+          crop_age_days_max: number | null
+          crop_age_days_min: number | null
+          crop_category: string | null
+          crop_code: string | null
+          crop_cycle: string | null
+          crop_family: string | null
+          crop_group: string | null
+          crop_tags: string[] | null
+          cultivation_method_applicable: string[] | null
+          cycle_number_max: number | null
+          cycle_number_min: number | null
+          data_authority_rank: number | null
+          days_to_harvest_max: number | null
+          days_to_harvest_min: number | null
+          decision_trace_template: string | null
+          deprecated_at: string | null
+          deprecation_reason: string | null
+          derived_from: string | null
+          diagnostic_confidence_threshold: number | null
+          differentiating_questions: Json | null
+          dosage_per_acre: string | null
+          enables_rule_ids: string[] | null
+          engine_layer: number | null
+          equipment_cost_per_acre: number | null
+          equipment_required: string[] | null
+          etl_applicable: boolean | null
+          etl_threshold: string | null
+          etl_unit: string | null
+          etl_unit_type: string | null
+          etl_value_max: number | null
+          etl_value_min: number | null
+          expert_approved: boolean | null
+          expert_override_required: boolean | null
+          failure_indicators: string[] | null
+          farmer_safety_level: string | null
+          field_validated: boolean | null
+          forecast_horizon_days: number | null
+          gdd_max: number | null
+          gdd_min: number | null
+          growth_stage: string | null
+          humidity_max_pct: number | null
+          humidity_min_pct: number | null
+          i18n_key: string | null
+          icar_package: string | null
+          icar_package_ref: string | null
+          id: string | null
+          input_cost_per_acre_max: number | null
+          input_cost_per_acre_min: number | null
+          interaction_type: string | null
+          ipm_level: number | null
+          irrigation_method_applicable: string[] | null
+          is_active: boolean | null
+          is_farmer_servable: boolean | null
+          is_proactive_rule: boolean | null
+          is_safety_block: boolean | null
+          is_system_derived: boolean | null
+          knowledge_text: string | null
+          labor_cost_per_acre_max: number | null
+          labor_cost_per_acre_min: number | null
+          labor_hours_per_acre: number | null
+          last_backup_at: string | null
+          match_explanation_template: string | null
+          material_cost_per_acre_max: number | null
+          material_cost_per_acre_min: number | null
+          maturity_group: string | null
+          max_temperature: number | null
+          max_wind_speed: number | null
+          measurement_method: string | null
+          min_data_completeness: number | null
+          min_temperature: number | null
+          mode_of_action: string | null
+          mutually_exclusive_with: string[] | null
+          ndvi_change_rate: string | null
+          ndvi_max: number | null
+          ndvi_min: number | null
+          observable_characteristics: Json | null
+          observation_confidence_weight: number | null
+          organic_alternative: string | null
+          owner_tenant_id: string | null
+          pest_code: string | null
+          phi_days: number | null
+          prediction_type: string | null
+          prerequisite_rule_ids: string[] | null
+          priority: number | null
+          probability_threshold: number | null
+          rain_delay_hours: number | null
+          rainfall_probability_min_pct: number | null
+          reason_text: string | null
+          reentry_interval_hours: number | null
+          region_code: string | null
+          regulatory_status: string | null
+          required_observation_category: string[] | null
+          required_plant_part: string[] | null
+          requires_field_action: boolean | null
+          research_paper_ref: string | null
+          resistance_group: string | null
+          response_severity: string | null
+          risk_level: string | null
+          roi_confidence: number | null
+          roi_cost_saved_max: number | null
+          roi_cost_saved_min: number | null
+          roi_net_score: number | null
+          roi_yield_gain_pct: number | null
+          roi_yield_risk_pct: number | null
+          rule_id: string | null
+          rule_id_lc: string | null
+          rule_id_v2: string | null
+          rule_intent: string | null
+          rule_version: string | null
+          scientific_basis: string | null
+          scientific_source: string | null
+          scope: string | null
+          season_applicable: string[] | null
+          sequence_after: string[] | null
+          soil_k_kg_ha_max: number | null
+          soil_k_kg_ha_min: number | null
+          soil_moisture_pct_max: number | null
+          soil_moisture_pct_min: number | null
+          soil_n_kg_ha_max: number | null
+          soil_n_kg_ha_min: number | null
+          soil_p_kg_ha_max: number | null
+          soil_p_kg_ha_min: number | null
+          soil_ph_max: number | null
+          soil_ph_min: number | null
+          soil_type_applicable: string[] | null
+          stage_applicable: string[] | null
+          success_indicators: string[] | null
+          supersedes_rule_id: string | null
+          target_pest_stage: string | null
+          temp_max_celsius: number | null
+          temp_min_celsius: number | null
+          total_cost_estimated: number | null
+          treatment_type: string | null
+          triggers_rule_ids: string[] | null
+          uncertainty_handling_mode: string | null
+          university_source: string | null
+          updated_at: string | null
+          validation_trials: number | null
+          variety_applicable: string[] | null
+          verification_status: string | null
+          version: string | null
+          version_hash: string | null
+          visual_markers: Json | null
+          water_volume_per_acre: string | null
+          weather_dependency: Json | null
+          wind_speed_max_kmph: number | null
+        }
+        Insert: {
+          action_text?: string | null
+          action_type?: string | null
+          active_ingredient?: string | null
+          affected_crops?: string[] | null
+          alternatives?: Json | null
+          applicability_scope?: string | null
+          application_method?: string | null
+          approval_date?: string | null
+          approved_by?: string | null
+          aquatic_toxicity?: string | null
+          bee_toxicity?: string | null
+          biological_group?: string | null
+          blocked_ingredient_ref?: string | null
+          blocks_rule_ids?: string[] | null
+          botanical_name?: string | null
+          canonical_group?: string | null
+          canonical_status?: string | null
+          category?: string | null
+          cause?: string | null
+          chemical_class?: string | null
+          climate_zone_applicable?: string[] | null
+          compile_notes?: string | null
+          compile_status?: string | null
+          condition_code?: string | null
+          conditions_compiled?: Json | null
+          conditions_json?: Json | null
+          confidence_score?: number | null
+          contraindications?: string[] | null
+          created_at?: string | null
+          crop_age_days_max?: number | null
+          crop_age_days_min?: number | null
+          crop_category?: string | null
+          crop_code?: string | null
+          crop_cycle?: string | null
+          crop_family?: string | null
+          crop_group?: string | null
+          crop_tags?: string[] | null
+          cultivation_method_applicable?: string[] | null
+          cycle_number_max?: number | null
+          cycle_number_min?: number | null
+          data_authority_rank?: number | null
+          days_to_harvest_max?: number | null
+          days_to_harvest_min?: number | null
+          decision_trace_template?: string | null
+          deprecated_at?: string | null
+          deprecation_reason?: string | null
+          derived_from?: string | null
+          diagnostic_confidence_threshold?: number | null
+          differentiating_questions?: Json | null
+          dosage_per_acre?: string | null
+          enables_rule_ids?: string[] | null
+          engine_layer?: number | null
+          equipment_cost_per_acre?: number | null
+          equipment_required?: string[] | null
+          etl_applicable?: boolean | null
+          etl_threshold?: string | null
+          etl_unit?: string | null
+          etl_unit_type?: string | null
+          etl_value_max?: number | null
+          etl_value_min?: number | null
+          expert_approved?: boolean | null
+          expert_override_required?: boolean | null
+          failure_indicators?: string[] | null
+          farmer_safety_level?: string | null
+          field_validated?: boolean | null
+          forecast_horizon_days?: number | null
+          gdd_max?: number | null
+          gdd_min?: number | null
+          growth_stage?: string | null
+          humidity_max_pct?: number | null
+          humidity_min_pct?: number | null
+          i18n_key?: string | null
+          icar_package?: string | null
+          icar_package_ref?: string | null
+          id?: string | null
+          input_cost_per_acre_max?: number | null
+          input_cost_per_acre_min?: number | null
+          interaction_type?: string | null
+          ipm_level?: number | null
+          irrigation_method_applicable?: string[] | null
+          is_active?: boolean | null
+          is_farmer_servable?: boolean | null
+          is_proactive_rule?: boolean | null
+          is_safety_block?: boolean | null
+          is_system_derived?: boolean | null
+          knowledge_text?: string | null
+          labor_cost_per_acre_max?: number | null
+          labor_cost_per_acre_min?: number | null
+          labor_hours_per_acre?: number | null
+          last_backup_at?: string | null
+          match_explanation_template?: string | null
+          material_cost_per_acre_max?: number | null
+          material_cost_per_acre_min?: number | null
+          maturity_group?: string | null
+          max_temperature?: number | null
+          max_wind_speed?: number | null
+          measurement_method?: string | null
+          min_data_completeness?: number | null
+          min_temperature?: number | null
+          mode_of_action?: string | null
+          mutually_exclusive_with?: string[] | null
+          ndvi_change_rate?: string | null
+          ndvi_max?: number | null
+          ndvi_min?: number | null
+          observable_characteristics?: Json | null
+          observation_confidence_weight?: number | null
+          organic_alternative?: string | null
+          owner_tenant_id?: string | null
+          pest_code?: string | null
+          phi_days?: number | null
+          prediction_type?: string | null
+          prerequisite_rule_ids?: string[] | null
+          priority?: number | null
+          probability_threshold?: number | null
+          rain_delay_hours?: number | null
+          rainfall_probability_min_pct?: number | null
+          reason_text?: string | null
+          reentry_interval_hours?: number | null
+          region_code?: string | null
+          regulatory_status?: string | null
+          required_observation_category?: string[] | null
+          required_plant_part?: string[] | null
+          requires_field_action?: boolean | null
+          research_paper_ref?: string | null
+          resistance_group?: string | null
+          response_severity?: string | null
+          risk_level?: string | null
+          roi_confidence?: number | null
+          roi_cost_saved_max?: number | null
+          roi_cost_saved_min?: number | null
+          roi_net_score?: number | null
+          roi_yield_gain_pct?: number | null
+          roi_yield_risk_pct?: number | null
+          rule_id?: string | null
+          rule_id_lc?: string | null
+          rule_id_v2?: string | null
+          rule_intent?: string | null
+          rule_version?: string | null
+          scientific_basis?: string | null
+          scientific_source?: string | null
+          scope?: string | null
+          season_applicable?: string[] | null
+          sequence_after?: string[] | null
+          soil_k_kg_ha_max?: number | null
+          soil_k_kg_ha_min?: number | null
+          soil_moisture_pct_max?: number | null
+          soil_moisture_pct_min?: number | null
+          soil_n_kg_ha_max?: number | null
+          soil_n_kg_ha_min?: number | null
+          soil_p_kg_ha_max?: number | null
+          soil_p_kg_ha_min?: number | null
+          soil_ph_max?: number | null
+          soil_ph_min?: number | null
+          soil_type_applicable?: string[] | null
+          stage_applicable?: string[] | null
+          success_indicators?: string[] | null
+          supersedes_rule_id?: string | null
+          target_pest_stage?: string | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
+          total_cost_estimated?: number | null
+          treatment_type?: string | null
+          triggers_rule_ids?: string[] | null
+          uncertainty_handling_mode?: string | null
+          university_source?: string | null
+          updated_at?: string | null
+          validation_trials?: number | null
+          variety_applicable?: string[] | null
+          verification_status?: string | null
+          version?: string | null
+          version_hash?: string | null
+          visual_markers?: Json | null
+          water_volume_per_acre?: string | null
+          weather_dependency?: Json | null
+          wind_speed_max_kmph?: number | null
+        }
+        Update: {
+          action_text?: string | null
+          action_type?: string | null
+          active_ingredient?: string | null
+          affected_crops?: string[] | null
+          alternatives?: Json | null
+          applicability_scope?: string | null
+          application_method?: string | null
+          approval_date?: string | null
+          approved_by?: string | null
+          aquatic_toxicity?: string | null
+          bee_toxicity?: string | null
+          biological_group?: string | null
+          blocked_ingredient_ref?: string | null
+          blocks_rule_ids?: string[] | null
+          botanical_name?: string | null
+          canonical_group?: string | null
+          canonical_status?: string | null
+          category?: string | null
+          cause?: string | null
+          chemical_class?: string | null
+          climate_zone_applicable?: string[] | null
+          compile_notes?: string | null
+          compile_status?: string | null
+          condition_code?: string | null
+          conditions_compiled?: Json | null
+          conditions_json?: Json | null
+          confidence_score?: number | null
+          contraindications?: string[] | null
+          created_at?: string | null
+          crop_age_days_max?: number | null
+          crop_age_days_min?: number | null
+          crop_category?: string | null
+          crop_code?: string | null
+          crop_cycle?: string | null
+          crop_family?: string | null
+          crop_group?: string | null
+          crop_tags?: string[] | null
+          cultivation_method_applicable?: string[] | null
+          cycle_number_max?: number | null
+          cycle_number_min?: number | null
+          data_authority_rank?: number | null
+          days_to_harvest_max?: number | null
+          days_to_harvest_min?: number | null
+          decision_trace_template?: string | null
+          deprecated_at?: string | null
+          deprecation_reason?: string | null
+          derived_from?: string | null
+          diagnostic_confidence_threshold?: number | null
+          differentiating_questions?: Json | null
+          dosage_per_acre?: string | null
+          enables_rule_ids?: string[] | null
+          engine_layer?: number | null
+          equipment_cost_per_acre?: number | null
+          equipment_required?: string[] | null
+          etl_applicable?: boolean | null
+          etl_threshold?: string | null
+          etl_unit?: string | null
+          etl_unit_type?: string | null
+          etl_value_max?: number | null
+          etl_value_min?: number | null
+          expert_approved?: boolean | null
+          expert_override_required?: boolean | null
+          failure_indicators?: string[] | null
+          farmer_safety_level?: string | null
+          field_validated?: boolean | null
+          forecast_horizon_days?: number | null
+          gdd_max?: number | null
+          gdd_min?: number | null
+          growth_stage?: string | null
+          humidity_max_pct?: number | null
+          humidity_min_pct?: number | null
+          i18n_key?: string | null
+          icar_package?: string | null
+          icar_package_ref?: string | null
+          id?: string | null
+          input_cost_per_acre_max?: number | null
+          input_cost_per_acre_min?: number | null
+          interaction_type?: string | null
+          ipm_level?: number | null
+          irrigation_method_applicable?: string[] | null
+          is_active?: boolean | null
+          is_farmer_servable?: boolean | null
+          is_proactive_rule?: boolean | null
+          is_safety_block?: boolean | null
+          is_system_derived?: boolean | null
+          knowledge_text?: string | null
+          labor_cost_per_acre_max?: number | null
+          labor_cost_per_acre_min?: number | null
+          labor_hours_per_acre?: number | null
+          last_backup_at?: string | null
+          match_explanation_template?: string | null
+          material_cost_per_acre_max?: number | null
+          material_cost_per_acre_min?: number | null
+          maturity_group?: string | null
+          max_temperature?: number | null
+          max_wind_speed?: number | null
+          measurement_method?: string | null
+          min_data_completeness?: number | null
+          min_temperature?: number | null
+          mode_of_action?: string | null
+          mutually_exclusive_with?: string[] | null
+          ndvi_change_rate?: string | null
+          ndvi_max?: number | null
+          ndvi_min?: number | null
+          observable_characteristics?: Json | null
+          observation_confidence_weight?: number | null
+          organic_alternative?: string | null
+          owner_tenant_id?: string | null
+          pest_code?: string | null
+          phi_days?: number | null
+          prediction_type?: string | null
+          prerequisite_rule_ids?: string[] | null
+          priority?: number | null
+          probability_threshold?: number | null
+          rain_delay_hours?: number | null
+          rainfall_probability_min_pct?: number | null
+          reason_text?: string | null
+          reentry_interval_hours?: number | null
+          region_code?: string | null
+          regulatory_status?: string | null
+          required_observation_category?: string[] | null
+          required_plant_part?: string[] | null
+          requires_field_action?: boolean | null
+          research_paper_ref?: string | null
+          resistance_group?: string | null
+          response_severity?: string | null
+          risk_level?: string | null
+          roi_confidence?: number | null
+          roi_cost_saved_max?: number | null
+          roi_cost_saved_min?: number | null
+          roi_net_score?: number | null
+          roi_yield_gain_pct?: number | null
+          roi_yield_risk_pct?: number | null
+          rule_id?: string | null
+          rule_id_lc?: string | null
+          rule_id_v2?: string | null
+          rule_intent?: string | null
+          rule_version?: string | null
+          scientific_basis?: string | null
+          scientific_source?: string | null
+          scope?: string | null
+          season_applicable?: string[] | null
+          sequence_after?: string[] | null
+          soil_k_kg_ha_max?: number | null
+          soil_k_kg_ha_min?: number | null
+          soil_moisture_pct_max?: number | null
+          soil_moisture_pct_min?: number | null
+          soil_n_kg_ha_max?: number | null
+          soil_n_kg_ha_min?: number | null
+          soil_p_kg_ha_max?: number | null
+          soil_p_kg_ha_min?: number | null
+          soil_ph_max?: number | null
+          soil_ph_min?: number | null
+          soil_type_applicable?: string[] | null
+          stage_applicable?: string[] | null
+          success_indicators?: string[] | null
+          supersedes_rule_id?: string | null
+          target_pest_stage?: string | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
+          total_cost_estimated?: number | null
+          treatment_type?: string | null
+          triggers_rule_ids?: string[] | null
+          uncertainty_handling_mode?: string | null
+          university_source?: string | null
+          updated_at?: string | null
+          validation_trials?: number | null
+          variety_applicable?: string[] | null
+          verification_status?: string | null
+          version?: string | null
+          version_hash?: string | null
+          visual_markers?: Json | null
+          water_volume_per_acre?: string | null
+          weather_dependency?: Json | null
+          wind_speed_max_kmph?: number | null
+        }
+        Relationships: []
       }
       decision_rules_history: {
         Row: {
@@ -13833,6 +14471,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_chemical_approval_backlog"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_chemical_serving_gate"
             referencedColumns: ["rule_id"]
           },
           {
@@ -25137,6 +25782,13 @@ export type Database = {
             foreignKeyName: "rule_product_mapping_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_chemical_serving_gate"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_chemical_variety_safety_violation"
             referencedColumns: ["rule_id"]
           },
@@ -35055,6 +35707,77 @@ export type Database = {
           },
         ]
       }
+      v_chemical_serving_gate: {
+        Row: {
+          active_ingredient: string | null
+          block_product_recommendation: boolean | null
+          category: string | null
+          chemical_gate_pass: boolean | null
+          condition_code: string | null
+          crop_code: string | null
+          id: string | null
+          phi_days: number | null
+          phi_status: string | null
+          reentry_interval_hours: number | null
+          rule_id: string | null
+        }
+        Insert: {
+          active_ingredient?: string | null
+          block_product_recommendation?: never
+          category?: string | null
+          chemical_gate_pass?: never
+          condition_code?: string | null
+          crop_code?: string | null
+          id?: string | null
+          phi_days?: number | null
+          phi_status?: string | null
+          reentry_interval_hours?: number | null
+          rule_id?: string | null
+        }
+        Update: {
+          active_ingredient?: string | null
+          block_product_recommendation?: never
+          category?: string | null
+          chemical_gate_pass?: never
+          condition_code?: string | null
+          crop_code?: string | null
+          id?: string | null
+          phi_days?: number | null
+          phi_status?: string | null
+          reentry_interval_hours?: number | null
+          rule_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "fk_decision_rules_condition_code"
+            columns: ["condition_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
+          },
+        ]
+      }
       v_chemical_variety_safety_violation: {
         Row: {
           active_ingredient: string | null
@@ -35431,6 +36154,60 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "observation_master"
             referencedColumns: ["observation_code"]
+          },
+        ]
+      }
+      v_dr_audit_metrics: {
+        Row: {
+          chemical: number | null
+          final_verification_status: string | null
+          graph_orphans: number | null
+          in_duplicate_groups: number | null
+          phi_missing: number | null
+          rules: number | null
+        }
+        Relationships: []
+      }
+      v_dr_human_review_queue: {
+        Row: {
+          active_ingredient: string | null
+          category: string | null
+          crop_code: string | null
+          final_verification_status: string | null
+          phi_days: number | null
+          rule_id: string | null
+          rule_pk: string | null
+          safety_status: string | null
+          scientific_source: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "decision_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "qa_rule_crop_content_mismatch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "v_chemical_serving_gate"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_rules_ai_audit_rule_pk_fkey"
+            columns: ["rule_pk"]
+            isOneToOne: false
+            referencedRelation: "v_decision_rules_admin"
+            referencedColumns: ["id"]
           },
         ]
       }
