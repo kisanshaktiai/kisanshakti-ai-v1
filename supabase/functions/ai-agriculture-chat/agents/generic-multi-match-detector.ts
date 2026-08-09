@@ -141,6 +141,7 @@ export async function detectCompetingMatches(
   const { data: dbRules, error } = await supabaseClient
     .from('decision_rules')
     .select('rule_id, cause, category, observable_characteristics, differentiating_questions, visual_markers')
+    .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8)
     .in('rule_id', ruleIds);
 
   if (error) {
@@ -354,6 +355,7 @@ export async function generateFallbackClarificationOptions(
       .from('decision_rules')
       .select('cause, category, observable_characteristics')
       .not('observable_characteristics', 'is', null)
+      .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8)
       .limit(5);
     
     // Filter by crop if known

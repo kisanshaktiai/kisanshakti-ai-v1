@@ -17,6 +17,16 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 
+// FIX-4 (P1-6, 2026-08-09): typed error so orchestrate() can distinguish
+// "knowledge DB unavailable" (fail CLOSED) from "no matching rules" (legitimate).
+// Name-based check mirrors the existing SafetyCacheUnavailableError pattern.
+export class KnowledgeLoadError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'KnowledgeLoadError';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // NORMALIZATION — moved verbatim out of bundled-rules/loader.ts (no rewrite).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,8 +220,10 @@ export async function getRuleSnapshot(supabaseClient?: any): Promise<RuleSnapsho
   const loadPromise = (async (): Promise<RuleSnapshot> => {
     const sb = client(supabaseClient);
     if (!sb) {
-      console.warn('⚠️ [RuleRepo] Missing Supabase credentials — serving empty snapshot');
-      return current ?? buildSnapshot([], '');
+      console.warn('⚠️ [RuleRepo] Missing Supabase credentials');
+      // FIX-4 (P1-6): no credentials + no warm snapshot = fail closed.
+      if (current) return current;
+      throw new KnowledgeLoadError('Missing Supabase credentials for decision_rules snapshot');
     }
     try {
       // version_hash invalidation: unchanged fingerprint -> extend TTL, skip refetch.
@@ -227,8 +239,15 @@ export async function getRuleSnapshot(supabaseClient?: any): Promise<RuleSnapsho
       console.log(`✅ [RuleRepo] Snapshot loaded: ${rows.length} active rules, ${snap.byCrop.size} crop buckets`);
       return snap;
     } catch (e) {
+      if ((e as Error)?.name === 'KnowledgeLoadError') throw e;
       console.error('❌ [RuleRepo] Snapshot load failed:', e);
-      return current ?? buildSnapshot([], '');
+      // FIX-4 (P1-6): serve a STALE snapshot if one exists (availability);
+      // never a silently-empty rulebook on cold-start failure (fail closed).
+      if (current) {
+        console.warn(`⚠️ [RuleRepo] Serving STALE snapshot (${current.rows.length} rules) after load failure`);
+        return current;
+      }
+      throw new KnowledgeLoadError(`decision_rules snapshot load failed: ${(e as Error)?.message ?? String(e)}`);
     }
   })();
 

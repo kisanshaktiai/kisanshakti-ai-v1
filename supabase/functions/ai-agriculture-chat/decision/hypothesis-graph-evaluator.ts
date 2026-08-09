@@ -929,6 +929,7 @@ async function queryRuleStageScope(
     const { data, error } = await supabase
       .from('decision_rules')
       .select('rule_id, stage_applicable, crop_age_days_min, crop_age_days_max')
+      .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8)
       .in('rule_id', ruleIds);
     if (error) {
       console.warn(`[HYP_RULE_SCOPE_ERR] ${error.message}`);

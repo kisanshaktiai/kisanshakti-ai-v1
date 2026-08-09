@@ -273,7 +273,8 @@ export async function evaluateBiologicalConstraints(
       .from('decision_rules')
       .select('id, rule_id, crop_code, conditions_json')
       .eq('category', 'BIOLOGICAL_CONSTRAINT')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .or('scope.eq.global,scope.is.null'); // FIX-7 (P1-8)
     if (cropCode) q = q.or(`crop_code.eq.${cropCode},crop_code.is.null`);
     else          q = q.is('crop_code', null);
 

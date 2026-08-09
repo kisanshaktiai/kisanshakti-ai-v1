@@ -586,14 +586,26 @@ export class SymbolicReasoner {
         if (result.matches) {
           metConditions++;
         } else if (c.fact) {
-          missing.push(c.fact);
+          // FIX-B4b (P1, 2026-08-09): distinguish ABSENT evidence (fact not
+          // available — UNKNOWN) from CONTRADICTED evidence (fact present but
+          // value mismatched). Reuses this.getFactValue — the same resolver the
+          // strict leaf evaluator uses at the `conditions.fact` branch above.
+          const _factVal = this.getFactValue(facts, c.fact);
+          if (_factVal === undefined || _factVal === null) {
+            missing.push(c.fact); // UNKNOWN — must block firing, may drive clarification
+          }
+          // contradicted facts stay out of `missing`: they lower partialScore
+          // (existing fuzzy tolerance) but are not "missing evidence".
         }
       }
       
       const partialScore = totalConditions > 0 ? metConditions / totalConditions : 0;
       
       return {
-        matches: partialScore >= minScore,
+        // FIX-B4b: a fuzzy match may tolerate near-miss VALUES up to minScore,
+        // but may NEVER fire while required evidence is ABSENT (unknown ≠ false;
+        // missing evidence routes to clarification, not to a recommendation).
+        matches: partialScore >= minScore && missing.length === 0,
         confidence: partialScore,
         missing
       };
@@ -641,6 +653,7 @@ export class SymbolicReasoner {
       .from('decision_rules')
       .select('*')
       .eq('is_active', true)
+      .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8): this direct query bypasses rule-repository's scopeToTenant()
       .or(orFilter)
       .is('deprecated_at', null)
       .order('data_authority_rank', { ascending: false })
@@ -649,7 +662,9 @@ export class SymbolicReasoner {
     
     if (error) {
       console.error('❌ Failed to load rules:', error);
-      return [];
+      // FIX-4 (P1-6): DB failure must not silently become "no rules for crop".
+      const { KnowledgeLoadError } = await import('../data/rule-repository.ts');
+      throw new KnowledgeLoadError(`decision_rules load failed (crop=${dbCode}): ${error.message}`);
     }
     
     const allRules = data || [];
@@ -947,9 +962,12 @@ export class SymbolicReasoner {
   ): { matches: boolean; confidence: number; reason: string; matched_conditions: string[] } {
     const matchedConditions: string[] = [];
     
-    // Handle empty conditions (always match with low confidence)
+    // FIX-B7 (P2, 2026-08-09): a rule with NO conditions must not auto-match.
+    // Live DB verified 2026-08-09: 0 of 1,857 active rules have empty
+    // conditions_json, so this is a latent-defect guard with zero behaviour
+    // change today. Paired DB constraint in fixes.sql pins it permanently.
     if (!conditions || Object.keys(conditions).length === 0) {
-      return { matches: true, confidence: 0.5, reason: 'No conditions (default)', matched_conditions: [] };
+      return { matches: false, confidence: 0, reason: 'NO_CONDITIONS — rule data error, refusing default match', matched_conditions: [] };
     }
     
     // PATH A: Recursive all/any/fact/operator format (future-proof)

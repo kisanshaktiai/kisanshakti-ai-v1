@@ -1285,8 +1285,34 @@ export class AIAgentOrchestrator {
           },
         } as unknown as OrchestratorResponse;
       }
+      // FIX-4 (P1-6): knowledge-DB failure must fail CLOSED, mirroring the
+      // SafetyCacheUnavailableError pattern above. Previously a cold-start
+      // decision_rules load failure became an EMPTY rulebook (fail-open).
+      if ((implErr as Error)?.name === 'KnowledgeLoadError') {
+        console.error(`[KNOWLEDGE_HARD_FAIL] trace=${traceId} ${(implErr as Error).message}`);
+        return {
+          type: 'SAFETY_BLOCKED',
+          session_id: sessionId,
+          blocked_reason: {
+            reason_en: 'Agronomy knowledge database unavailable — cannot generate a verified advisory this turn.',
+          },
+          alternatives: ['Please retry shortly, or contact your local KVK for immediate guidance.'],
+          metadata: {
+            confidence: 0,
+            safety_status: 'BLOCKED',
+            rules_applied: 0,
+            processing_time_ms: 0,
+            agents_used: [],
+            knowledge_hard_fail: true,
+          },
+        } as unknown as OrchestratorResponse;
+      }
       throw implErr;
     } finally {
+      // FIX-2 (P0-2): the module-level stage lock in clarification-strategy.ts was
+      // never cleared, leaking crop/stage across requests in a warm isolate.
+      try { clearLockedStage(); } catch { /* lock cleanup must not throw */ }
+      (this as any).__lockedStageCtx = null;
 
       // Emit handoff check even when the impl throws so we can attribute
       // GraphRuntime ownership violations from partial failures too.
@@ -1630,6 +1656,7 @@ export class AIAgentOrchestrator {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     (this as any).__decisionGraphSequence = 0;
     (this as any).__canonicalContextForExit = null;
+    (this as any).__lockedStageCtx = null; // FIX-2 (P0-2): per-request stage lock
     (this as any)._evidenceFrozen = false;
     (this as any)._graphExecuted = false;
     (this as any)._graphExecutionStarted = false;
@@ -1835,7 +1862,7 @@ export class AIAgentOrchestrator {
             const stageSource: 'BIOLOGICAL_STATE' | 'CROP_SCHEDULE' | 'LAND_CONTEXT' =
               _bioLocked ? 'BIOLOGICAL_STATE'
                 : (landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT');
-            lockStageForTurn(
+            (this as any).__lockedStageCtx = lockStageForTurn( // FIX-2 (P0-2): capture per-request
               landContext.current_crop,
               landContext.growth_stage,
               landContext.days_since_sowing || 0,
@@ -2542,7 +2569,7 @@ export class AIAgentOrchestrator {
           }
           
           // Phase H — LAND-FIRST priority. CanonicalContext (land-derived)
-          const lockedStageFromStrategy = getLockedStage();
+          const lockedStageFromStrategy = ((this as any).__lockedStageCtx ?? null); // FIX-2 (P0-2): per-request read
           const canonicalCropForOption = graph.canonical_context?.crop_code;
           const canonicalStageForOption = graph.canonical_context?.growth_stage;
           const cropName =
@@ -7119,7 +7146,7 @@ export class AIAgentOrchestrator {
       
       // PHASE-20: CLARIFICATION-FIRST TRIGGER CHECK
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
-      const lockedStage = getLockedStage();
+      const lockedStage = ((this as any).__lockedStageCtx ?? null); // FIX-2 (P0-2): per-request read
       
       // OBSERVATION_STATE_CONTRACT (F1) — feed the trigger with CONFIRMED-ONLY
       const __convState = (this as any).__conversationState;

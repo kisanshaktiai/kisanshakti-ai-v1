@@ -322,6 +322,7 @@ export async function loadObservationKeysFromDB(
         .in('crop_code', [crop, 'all'])
         .contains('stage_applicable', [st])
         .eq('is_active', true)
+        .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8)
         .not('observable_characteristics', 'is', null);
 
       if (res.error) {

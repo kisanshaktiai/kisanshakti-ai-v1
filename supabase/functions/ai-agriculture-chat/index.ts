@@ -228,13 +228,19 @@ function buildRichApplicationDetails(source: any, productName: string | null, pr
   };
 }
 
-let orchestrator: AIAgentOrchestrator | null = null;
-
+// FIX-1 (P0-1, 2026-08-09): per-request orchestrator. The previous warm-isolate
+// singleton shared request-scoped `(this as any).__*` fields (conversation state,
+// graph runtime state, embedded confirmed observations, canonical context) across
+// concurrent requests in the same isolate — cross-farmer/tenant contamination.
+// Knowledge caches are module-level and unaffected; the constructor performs zero
+// I/O (verified 2026-08-09), so per-request cost is one allocation.
+// ROLLBACK: restore the `let orchestrator` singleton block from v15.
 function getOrchestrator(): AIAgentOrchestrator {
-  if (!orchestrator) {
-    orchestrator = new AIAgentOrchestrator();
-  }
-  return orchestrator;
+  const _t0 = Date.now();
+  const _inst = new AIAgentOrchestrator();
+  const _dt = Date.now() - _t0;
+  if (_dt > 5) console.warn(`⚠️ [FIX-1] Orchestrator construction took ${_dt}ms (expected <5ms)`);
+  return _inst;
 }
 
 // Generate unique trace_id for request tracing
@@ -2262,7 +2268,15 @@ serve(async (req) => {
     
     if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
       console.log(`   🔄 Response not in target language, applying translation`);
-      responseContent = await forceTranslateResponse(responseContent, detectedLanguage);
+      // FIX-6 (P1-7): fidelity-guarded translation — on any dosage/product
+      // mutation, keep the untranslated gated text.
+      {
+        const _preTranslate = responseContent;
+        const _translated = await forceTranslateResponse(responseContent, detectedLanguage);
+        responseContent = verifyTranslationFidelity(_preTranslate, _translated, actions_returned)
+          ? _translated
+          : _preTranslate;
+      }
     }
     
     // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
@@ -2988,6 +3002,41 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
   if (scriptRegex) return scriptRegex.test(content);
   
   return true;
+}
+
+// FIX-6 (P1-7, 2026-08-09): post-translation invariant guard. The LLM rewrite in
+// forceTranslateResponse() is generative ("You are explaining, not translating");
+// dosage tokens and symbolic product names must survive VERBATIM or the
+// untranslated, fully-gated advisory is served instead. Pattern mirrors the
+// PHASE 6 NARRATION_BREACH dosage regex used at the call site.
+function verifyTranslationFidelity(original: string, translated: string, actionsReturned?: any[]): boolean {
+  try {
+    if (!translated || !translated.trim()) return false;
+    // 1) Every dosage-like token (number + unit) must survive verbatim.
+    const dosagePattern = /\d+(?:\.\d+)?\s*(?:ml|g|kg|l|gm|gram|liter|litre|मिली|ग्रॅम|किलो|लिटर|%)/gi;
+    const srcTokens = original.match(dosagePattern) || [];
+    const translatedFlat = translated.replace(/\s+/g, '');
+    for (const tok of srcTokens) {
+      if (!translatedFlat.includes(tok.replace(/\s+/g, ''))) {
+        console.error(`🚨 [FIX-6] TRANSLATION_FIDELITY_FAIL: dosage token lost/altered: "${tok}"`);
+        return false;
+      }
+    }
+    // 2) Symbolic product names present in the original must survive verbatim.
+    const products = (actionsReturned || [])
+      .map((a: any) => a?.product_name)
+      .filter((p: any) => typeof p === 'string' && p.length >= 3 && p !== 'N/A');
+    for (const p of products) {
+      if (original.includes(p) && !translated.includes(p)) {
+        console.error(`🚨 [FIX-6] TRANSLATION_FIDELITY_FAIL: product name lost: "${p}"`);
+        return false;
+      }
+    }
+    return true;
+  } catch (e) {
+    console.error('🚨 [FIX-6] fidelity guard threw — serving untranslated original:', (e as Error).message);
+    return false;
+  }
 }
 
 // Force translate response to target language.

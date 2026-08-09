@@ -96,7 +96,12 @@ export async function loadClarificationCandidates(
       source: 'hypothesis_graph',
     }));
   } catch (e) {
-    console.error('[CLARIFICATION_CONTRACT] exception:', e);
+    // FIX-B5b (P2, 2026-08-09): infrastructure failure, not "no candidates".
+    // Returning [] is SAFE here — verified consumer behaviour: the orchestrator
+    // refuses NLU fallback on empty candidates and emits an option-less
+    // clarification (a question, never an answer). Log is marked INFRA_FAILURE
+    // so audit can separate DB outages from legitimately-empty candidate sets.
+    console.error('[CLARIFICATION_CONTRACT] INFRA_FAILURE — fail-safe to option-less clarification:', e);
     return [];
   }
 }
@@ -113,13 +118,19 @@ export function assertClarificationContract<
   if (!Array.isArray(options) || options.length === 0) return [];
 
   // PATCH 4 (BUG 4) — DB is the authority for admissibility. If the caller
+  // FIX-B5a (P1, 2026-08-09): fail CLOSED. An empty allowlist means the DB
+  // admissibility set could not be established; passing options through
+  // unvalidated let un-vetted questions reach farmers. Returning [] routes the
+  // turn to the orchestrator's existing safe option-less clarification path
+  // (verified: it "refus[es] NLU fallback" and asks a generic observation
+  // question). ROLLBACK: restore the passthrough filter.
   if (!allowedKeys || allowedKeys.size === 0) {
-    console.warn(
-      `[CLARIFICATION_CONTRACT] empty allowlist — fail-open ` +
+    console.error(
+      `[CLARIFICATION_CONTRACT] empty allowlist — FAIL-CLOSED ` +
       `intent=${ctx.intent ?? '?'} crop=${ctx.crop ?? '?'} stage=${ctx.stage ?? '?'} ` +
-      `passthrough=${options.length}`,
+      `dropped=${options.length}`,
     );
-    return options.filter((opt) => !!canonicalizeObservationKey(opt?.observation_key || ''));
+    return [];
   }
 
   const kept: T[] = [];

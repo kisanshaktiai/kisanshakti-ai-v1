@@ -134,7 +134,17 @@ const TREATMENT_ACTIONS = new Set([
   'SOIL_APPLICATION',
   'DRENCH_APPLICATION',
   'SEED_TREATMENT',
-  'GRANULAR_APPLICATION'
+  'GRANULAR_APPLICATION',
+  // FIX-3 (P1-3, 2026-08-09): canonical DB action types that denote treatment.
+  // DB stores lowercase (apply_treatment, release_biocontrol, immediate_action,
+  // urgent_action); comparison is case-normalized in checkHasTreatmentActions.
+  // NOTE: 'RECOMMEND' is intentionally NOT listed — 865/1857 rules are general
+  // recommendations; chemical RECOMMENDs are caught by the product/dosage
+  // payload check instead (see checkHasTreatmentActions).
+  'APPLY_TREATMENT',
+  'RELEASE_BIOCONTROL',
+  'IMMEDIATE_ACTION',
+  'URGENT_ACTION'
 ]);
 
 const OBSERVATION_ACTIONS = new Set([
@@ -369,13 +379,25 @@ function checkIfYoungCrop(
 }
 
 function checkHasTreatmentActions(decision: SymbolicDecision): boolean {
+  // FIX-3 (P1-3, 2026-08-09): (a) case-normalize — DB stores lowercase action
+  // types so the previous raw .has() never matched any live rule; (b) a decision
+  // carrying a product/dosage payload IS a prescription regardless of its
+  // action_type label (covers chemical RECOMMENDs after normalizeActionType
+  // collapses apply_treatment → RECOMMEND on the bundled path).
+  const isTreatmentType = (t?: string): boolean =>
+    !!t && TREATMENT_ACTIONS.has(t.toUpperCase().trim());
+  const hasProductPayload = (ad?: { product_name?: string; dosage?: string; dosage_per_acre?: string }): boolean =>
+    !!(ad && (ad.product_name || ad.dosage || ad.dosage_per_acre));
+
   const primary = decision.primary_decision;
-  if (primary?.action_type && TREATMENT_ACTIONS.has(primary.action_type)) {
+  if (primary && (isTreatmentType(primary.action_type) || hasProductPayload(primary.application_details))) {
     return true;
   }
-  
+
   const actions = decision.actions_returned || [];
-  return actions.some(a => a.action_type && TREATMENT_ACTIONS.has(a.action_type));
+  return actions.some(a =>
+    isTreatmentType(a.action_type) || !!a.product_name || !!a.dosage
+  );
 }
 
 function extractAllowedFromSymbolic(decision: SymbolicDecision): {

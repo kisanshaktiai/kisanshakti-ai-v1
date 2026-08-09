@@ -189,8 +189,13 @@ export async function evaluateRules(input: RuleEvaluationInput): Promise<RuleEva
   
   // 2. Determine fuzzy matching options
   const fuzzyOptions = {
-    allowFuzzyMatch: input.options?.allowFuzzyMatch ?? 
-                     ((input.understanding?.confidence ?? 0) < 0.7),
+    // FIX-B4a (P1, 2026-08-09): fuzzy matching is now explicit opt-in only.
+    // Previously low understanding-confidence (<0.7) auto-enabled fuzzy rule
+    // matching — loosening evidence requirements exactly when the farmer was
+    // LEAST understood. Correct behaviour for low understanding confidence is
+    // clarification, not looser matching. ROLLBACK: restore `?? ((input.
+    // understanding?.confidence ?? 0) < 0.7)`.
+    allowFuzzyMatch: input.options?.allowFuzzyMatch ?? false,
     minFuzzyScore: input.options?.minFuzzyScore ?? 0.5,
     urgencyOverride: input.options?.urgencyOverride ?? 
                      (input.understanding?.urgency === 'EMERGENCY' ||
