@@ -190,27 +190,83 @@ export function generateDifferentialClarificationFromRules(
 
   const options: ClarificationOption[] = [];
 
+  // FIX-V18 (P0-UI, 2026-08-09): a rule with NO farmer-observable
+  // characteristics must not fabricate a UI option. Previously such rules fell
+  // through buildDescriptionFromCharacteristics with empty parts and received
+  // the hardcoded pest base-noun — four distinct nutrient-deficiency rules all
+  // rendered as "🐛 insects" (verified: RICE_NUTR_{N,K,P,FE}_DEFICIT_001 have
+  // observable_characteristics=NULL in live DB; stored turn metadata showed
+  // 4× identical labels). Policy mirrors decision/hypothesis-evaluator.ts:1027.
+  // Rules without characteristics still participate as competitors — their
+  // option label comes from the rule's own DB `cause` text (real, distinct,
+  // no invented agronomy). Duplicate labels are deduped (the exact regression
+  // class seen in production). Nothing in the output contract changes.
+  const hasFarmerObservableChars = (c: ObservableCharacteristics | null | undefined): boolean =>
+    !!c && (
+      (Array.isArray(c.color) && c.color.length > 0) ||
+      !!c.size ||
+      (Array.isArray(c.behavior) && c.behavior.length > 0) ||
+      (Array.isArray(c.secondary_symptoms) && c.secondary_symptoms.length > 0)
+    );
+
   // Generate option for each competing match (limit to top 4)
   const topMatches = competingMatches.slice(0, 4);
-  
+  const seenLabels = new Set<string>();
+
   for (const match of topMatches) {
     const chars = match.observable_characteristics;
 
-    // Build description from characteristics
-    const description = buildDescriptionFromCharacteristics(chars, language);
-    
-    options.push({
-      id: match.rule_id,
-      label: {
+    let labelMap: Record<string, string>;
+    let obsKeys: string[];
+
+    if (hasFarmerObservableChars(chars)) {
+      // Existing template path — unchanged for rules that carry real
+      // farmer-observable characteristics (the pest-differential design case).
+      const description = buildDescriptionFromCharacteristics(chars, language);
+      labelMap = {
         [language]: `${chars.icon || '🐛'} ${description[language] || description['en']}`,
         en: `${chars.icon || '🐛'} ${description['en']}`
-      },
+      };
+      obsKeys = extractObservationKeys(chars);
+    } else {
+      const causeText = (match.cause_code || '').trim();
+      if (!causeText || causeText === 'UNKNOWN') {
+        console.log(`   ℹ️ Rule ${match.rule_id}: no farmer-observable characteristics — kept as internal candidate (no UI options will be derived from it)`);
+        continue;
+      }
+      // DB `cause` text is the label in every language slot so the consumer's
+      // `label[lang] || label.mr` lookup always resolves; neutral icon — the
+      // pest icon/noun must never be implied for non-pest rules.
+      const causeLabel = `🔍 ${causeText}`;
+      labelMap = { mr: causeLabel, hi: causeLabel, en: causeLabel };
+      obsKeys = [];
+    }
+
+    const dedupeKey = (labelMap[language] || labelMap['en'] || '').toLowerCase();
+    if (dedupeKey && seenLabels.has(dedupeKey)) {
+      console.warn(`   ⚠️ [MultiMatch] duplicate option label suppressed for ${match.rule_id}: "${dedupeKey}"`);
+      continue;
+    }
+    if (dedupeKey) seenLabels.add(dedupeKey);
+
+    options.push({
+      id: match.rule_id,
+      label: labelMap,
       maps_to: {
         rule_id: match.rule_id,
         cause_code: match.cause_code,
-        observation_keys: extractObservationKeys(chars)
+        observation_keys: obsKeys
       }
     });
+  }
+
+  // FIX-V18: if no rule produced a farmer-meaningful option, do not emit a
+  // photo-only differential. Returning null lands on the orchestrator's
+  // existing guard (`has_competition && clarification_output`) and the turn
+  // proceeds exactly as it did before multi-match existed.
+  if (options.length === 0) {
+    console.warn(`   ⚠️ [MultiMatch] ${topMatches.length} competing rules, 0 UI-eligible options — returning null (no fabricated clarification)`);
+    return null;
   }
 
   // Add photo option
