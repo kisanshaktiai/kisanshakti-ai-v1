@@ -8789,7 +8789,10 @@ export type Database = {
           owner_tenant_id: string | null
           pest_code: string | null
           phi_days: number | null
+          phi_source: string | null
           phi_status: string | null
+          phi_verified_at: string | null
+          phi_verified_by: string | null
           prediction_type: string | null
           prerequisite_rule_ids: string[] | null
           priority: number
@@ -8967,7 +8970,10 @@ export type Database = {
           owner_tenant_id?: string | null
           pest_code?: string | null
           phi_days?: number | null
+          phi_source?: string | null
           phi_status?: string | null
+          phi_verified_at?: string | null
+          phi_verified_by?: string | null
           prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
           priority: number
@@ -9145,7 +9151,10 @@ export type Database = {
           owner_tenant_id?: string | null
           pest_code?: string | null
           phi_days?: number | null
+          phi_source?: string | null
           phi_status?: string | null
+          phi_verified_at?: string | null
+          phi_verified_by?: string | null
           prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
           priority?: number
