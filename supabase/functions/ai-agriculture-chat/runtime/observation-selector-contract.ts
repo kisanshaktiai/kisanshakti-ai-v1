@@ -52,6 +52,12 @@ export interface ObservationContractContext {
   realObservationCount?: number | null;
   /** Confirmed farmer-visible observation codes already selected/extracted. */
   confirmedObservationCodes?: ReadonlyArray<string> | null;
+  // 2026-08-12 — codes the F4 OBS_TO_HYP_GAP hard-router computed via
+  // getObservationsForIntent (IOM). Previously stashed on the orchestrator as
+  // write-only __observationCandidateCodes and never rendered (candidate_options=9
+  // → options=0 dead end). Threaded here so the rescue renders them when the
+  // hypothesis-graph path yields 0 options.
+  observationCandidateCodes?: ReadonlyArray<string> | null;
   // RC-1 (2026-07-26) — codes the perception layer grounded this turn but the
   perceivedObservationCodes?: ReadonlyArray<string> | null;
   // Reason surfaced with the clarification so operators can debug graph
@@ -91,7 +97,7 @@ export async function loadObservationSelectorOptions(
       biological_state: ctx.biological_state ?? null,
 
     });
-    return graph.options.map((o) => ({
+    const graphOptions = graph.options.map((o) => ({
       value: o.value,
       label: o.label,
       observation_key: o.observation_key,
@@ -103,10 +109,116 @@ export async function loadObservationSelectorOptions(
       graph_version: 'hypothesis_graph_v1',
       source: 'hypothesis_graph',
     }));
+    if (graphOptions.length > 0) return graphOptions;
+
+    // 2026-08-12 — FIX (candidate_options=N → options=0 dead end). When the
+    // hypothesis-graph path yields nothing (F4 OBS_TO_HYP_GAP: confirmed obs
+    // has no hypothesis edge), render the router's IOM candidate codes instead
+    // of returning []. Fail-closed: only ever ADDS options where there were 0.
+    const routerCodes = (ctx.observationCandidateCodes ?? [])
+      .map((c) => canonicalObsCode(String(c ?? '')))
+      .filter(Boolean);
+    if (routerCodes.length > 0) {
+      const fromRouter = await renderObservationCodeOptions(ctx, routerCodes);
+      if (fromRouter.length > 0) {
+        console.log(
+          `[OBS_SELECTOR_ROUTER_FALLBACK] trace=${ctx.traceId ?? 'n/a'} ` +
+          `candidate_codes=${routerCodes.length} rendered=${fromRouter.length}`,
+        );
+        return fromRouter;
+      }
+    }
+    return graphOptions; // empty — downstream intent-group fallback still runs
   } catch (err) {
     console.warn(
       `[OBS_SELECTOR_LOADER] trace=${ctx.traceId ?? 'n/a'} failed: ${(err as Error).message}`,
     );
+    return [];
+  }
+}
+
+// 2026-08-12 — Render a fixed list of observation codes into farmer-facing
+// options. Mirrors loadIntentGroupOptions exactly (same tables, same
+// farmer-lang→en labels, [OBS_LABEL_MISSING] drop, label dedupe, photo option)
+// — only the code source differs: the F4 router's IOM candidates.
+async function renderObservationCodeOptions(
+  ctx: ObservationContractContext,
+  codes: ReadonlyArray<string>,
+): Promise<ObservationOption[]> {
+  const lang = String(ctx.language || 'mr').trim().toLowerCase();
+  const confirmed = new Set(
+    (ctx.confirmedObservationCodes ?? []).map((c) => canonicalObsCode(String(c ?? ''))).filter(Boolean),
+  );
+  const candidates = Array.from(new Set(
+    codes.map((c) => canonicalObsCode(String(c ?? ''))).filter(Boolean),
+  )).filter((c) => !confirmed.has(c)).slice(0, 12);
+  if (candidates.length === 0) return [];
+
+  try {
+    // Farmer-observable gate — never surface an internal-only code.
+    const { data: masterRows, error: masterErr } = await ctx.supabase
+      .from('observation_master')
+      .select('observation_code, can_generate_question')
+      .in('observation_code', candidates)
+      .eq('is_active', true)
+      .eq('is_farmer_observable', true);
+    if (masterErr) {
+      console.warn(`[OBS_SELECTOR_ROUTER_FALLBACK] master query error=${masterErr.message}`);
+      return [];
+    }
+    const observable = new Set(
+      (masterRows ?? [])
+        .filter((r: any) => r?.can_generate_question !== false)
+        .map((r: any) => canonicalObsCode(String(r?.observation_code ?? '')))
+        .filter(Boolean),
+    );
+    const gated = candidates.filter((c) => observable.has(c));
+    if (gated.length === 0) {
+      console.warn(`[OBS_SELECTOR_ROUTER_FALLBACK] no farmer-observable codes among [${candidates.join(',')}]`);
+      return [];
+    }
+
+    const { data: trRows } = await ctx.supabase
+      .from('observation_translations')
+      .select('observation_code, display_text, description_text, language_code')
+      .in('observation_code', gated)
+      .in('language_code', Array.from(new Set([lang, 'en'])));
+
+    const primary = new Map<string, string>();
+    const fallback = new Map<string, string>();
+    for (const t of trRows ?? []) {
+      const k = canonicalObsCode(String(t?.observation_code ?? ''));
+      const text = String(t?.display_text || t?.description_text || '').trim();
+      if (!k || !text) continue;
+      if (String(t?.language_code).toLowerCase() === lang) primary.set(k, text);
+      else fallback.set(k, text);
+    }
+
+    const out: ObservationOption[] = [];
+    const seenLabels = new Set<string>();
+    for (const key of gated) {
+      const label = primary.get(key) || fallback.get(key);
+      if (!label) {
+        console.warn(`[OBS_LABEL_MISSING] source=router_candidate code=${key} lang=${lang} → option dropped`);
+        continue;
+      }
+      if (seenLabels.has(label)) {
+        console.warn(`[CLARIFICATION_LABEL_COLLISION] code=${key} lang=${lang} label="${label}" → dropped`);
+        continue;
+      }
+      seenLabels.add(label);
+      out.push({
+        value: key,
+        label,
+        observation_key: key,
+        i18n_key: `observation.${key}`,
+        observation_code: key,
+      });
+      if (out.length >= 4) break;
+    }
+    return out.length > 0 ? await withPhotoOption(ctx.supabase, lang, out) : out;
+  } catch (err) {
+    console.warn(`[OBS_SELECTOR_ROUTER_FALLBACK] exception=${(err as Error).message}`);
     return [];
   }
 }

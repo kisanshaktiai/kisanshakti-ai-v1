@@ -18,7 +18,17 @@ import { loadObservationLabels, type ObservationLabel } from '../i18n/observatio
 // FARMER-OBSERVABLE ONTOLOGY GATE — single source of truth for clarification keys
 import { assertFarmerObservable } from '../runtime/farmer-observable-gate.ts';
 
-export const DIAGNOSIS_FIRST_VERSION = '2.0.0';  // v2.0.0: DB-driven i18n, removed hardcoded CAUSE_TRANSLATIONS and OBSERVATION_LABELS
+// 2026-08-12 — v2.2.0 — Fail-closed farmer options (forensic audit fix):
+//   (a) formatForClarificationUI renders the OBSERVATION label (visible symptom)
+//       as the farmer chip, never the English decision_rules.cause;
+//   (b) options whose observation label is missing/synthetic are DROPPED with
+//       [OPTION_DROPPED_NO_OBSERVATION] (verified: RICE_NUTR_*_DEFICIT_001 are
+//       rule ids absent from observation_master — exactly the bad card seen);
+//   (c) language-leak lock: non-English session options must contain native
+//       script or are dropped with [LANGUAGE_LEAK];
+//   (d) DiagnosisFirstOutput.language carries session language into the
+//       formatter. Depends on observation-label-loader v1.1.0 (is_fallback).
+export const DIAGNOSIS_FIRST_VERSION = '2.2.0';  // v2.0.0: DB-driven i18n, removed hardcoded CAUSE_TRANSLATIONS and OBSERVATION_LABELS
 
 // TYPE DEFINITIONS
 
@@ -61,6 +71,9 @@ export interface DiagnosisFirstOutput {
   total_hypotheses_considered: number;
   timestamp: number;
   trace_id: string;
+  /** v2.2.0: session language — used by formatForClarificationUI for the
+   *  language-leak lock. Optional for backward compatibility. */
+  language?: string;
 }
 
 export interface DiagnosisFirstInput {
@@ -180,7 +193,11 @@ function getObservationLabelFromMap(
 ): string {
   const upperKey = key.toUpperCase();
   const label = labelsMap.get(upperKey);
-  if (label && label.display_text) {
+  // v2.2.0: is_fallback === true means no real DB label existed in the farmer
+  // language or English (observation-label-loader v1.1.0). Treat as "no
+  // observation label" so the option is dropped downstream instead of showing
+  // a raw snake_case code to the farmer.
+  if (label && label.display_text && (label as any).is_fallback !== true) {
     return label.display_text;
   }
   // Fallback: format code as readable label (English-only, language-agnostic)
@@ -593,7 +610,8 @@ export async function generateDiagnosisFirstResponse(
     growth_stage,
     total_hypotheses_considered: hypotheses.length,
     timestamp: Date.now(),
-    trace_id: traceIdFinal
+    trace_id: traceIdFinal,
+    language  // v2.2.0
   };
 }
 
@@ -679,7 +697,8 @@ export function createUnknownDiagnosisResponse(
     growth_stage,
     total_hypotheses_considered: 0,
     timestamp: Date.now(),
-    trace_id: traceIdFinal
+    trace_id: traceIdFinal,
+    language  // v2.2.0
   };
 }
 
@@ -724,29 +743,59 @@ export function formatForClarificationUI(
     return union > 0 && (intersection / union) > 0.7;
   };
 
-  // Convert diagnoses to clarification options format
-  const options = output.diagnoses.map(d => {
-    let displayLabel: string;
-    
-    // If cause_label already contains observation_label or they're very similar, use only cause_label
-    if (areLabelsSimilar(d.cause_label, d.observation_label)) {
-      // Only use cause_label (with icon) - CLEAN, no metadata
-      displayLabel = `${d.icon} ${d.cause_label}`;
-    } else {
-      // Combine both (no duplication) - CLEAN, no metadata
-      displayLabel = `${d.icon} ${d.cause_label} (${d.observation_label})`;
+  // v2.2.0: fail-closed, observation-first. The farmer chip is the OBSERVATION
+  // (visible symptom in the farmer's language); options with no farmer-
+  // observable observation label are dropped, never shown as an English rule
+  // cause or a raw code. Language-leak lock enforces native script.
+  const sessionLang = String(output.language || 'en').toLowerCase();
+  const hasNativeScript = (text: string, lang: string): boolean => {
+    if (lang === 'en' || !lang) return true;
+    const RANGES: Record<string, RegExp> = {
+      mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/, ta: /[\u0B80-\u0BFF]/,
+      te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/, ml: /[\u0D00-\u0D7F]/,
+      bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/, pa: /[\u0A00-\u0A7F]/,
+      or: /[\u0B00-\u0B7F]/,
+    };
+    const rx = RANGES[lang];
+    return rx ? rx.test(text) : true; // unknown script → don't over-filter
+  };
+  // Synthetic code fallbacks (raw observation_key / rule tokens), not labels:
+  // empty, contains underscores, or ALL_CAPS token. Real DB labels never carry
+  // underscores (verified against observation_translations.display_text).
+  const codeLike = (s: string): boolean =>
+    !s || s.includes('_') || /^[A-Z0-9 ]+$/.test(s.trim());
+
+  const options = output.diagnoses.flatMap(d => {
+    const obs = (d.observation_label || '').trim();
+    const cause = (d.cause_label || '').trim();
+
+    // Chip text: prefer the observation (what the farmer can SEE); fall back
+    // to cause_label only when it is a real human label (not code-like).
+    let chipText = '';
+    if (obs && !codeLike(obs)) chipText = obs;
+    else if (cause && !codeLike(cause)) chipText = cause;
+
+    // DROP: no usable farmer-observable label at all.
+    if (!chipText) {
+      console.warn(`[OPTION_DROPPED_NO_OBSERVATION] id=${d.id} obs_key=${d.observation_key} rule=${d.rule_id} — no farmer-observable label`);
+      return [];
     }
-    
-    // v2.1.0: Return CLEAN label for farmer UI
-      return {
-        id: d.id,
-        label: displayLabel,  // CLEAN: Farmer sees only readable text
-        observation_key: d.observation_key,  // ROUTING: Backend uses this for rule matching
-        rule_id: d.rule_id,
-        confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
-        icon: d.icon,
-        cause: d.cause
-      };
+
+    // LANGUAGE-LEAK LOCK: non-English session must show native script.
+    if (!hasNativeScript(chipText, sessionLang)) {
+      console.warn(`[LANGUAGE_LEAK] id=${d.id} lang=${sessionLang} label="${chipText.substring(0, 60)}" — option dropped (English leaked into ${sessionLang} card)`);
+      return [];
+    }
+
+    return [{
+      id: d.id,
+      label: `${d.icon} ${chipText}`,  // CLEAN: farmer sees the visible symptom
+      observation_key: d.observation_key,  // ROUTING: Backend uses this for rule matching
+      rule_id: d.rule_id,
+      confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
+      icon: d.icon,
+      cause: d.cause
+    }];
   });
   
   // Add photo option at end - CLEAN label, observation_key for routing
