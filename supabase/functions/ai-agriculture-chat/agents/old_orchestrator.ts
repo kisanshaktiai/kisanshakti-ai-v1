@@ -1230,17 +1230,6 @@ export class AIAgentOrchestrator {
     options: any = {},
   ): Promise<OrchestratorResponse> {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
-    // 2026-08-13 — MULTI-TENANT SAFETY: this orchestrator is a warm module
-    // singleton (getOrchestrator()), reused across requests and tenants. The
-    // F4 OBS_TO_HYP_GAP router writes __observationCandidateCodes/
-    // __observationRequired/__observationRouterReason on `this` and index.ts
-    // reads them post-orchestrate to render the fail-closed clarification
-    // rescue. Without a per-request reset, a prior request/tenant's values
-    // leak into a later request that does NOT fire the router. Reset here so
-    // every request starts clean and stale F4 state can never cross requests.
-    (this as any).__observationRequired = false;
-    (this as any).__observationCandidateCodes = [];
-    (this as any).__observationRouterReason = null;
     const requestMemo = new Map<string, Promise<any>>();
     const run = async (): Promise<OrchestratorResponse> => {
     // P0-A — boot caches.
