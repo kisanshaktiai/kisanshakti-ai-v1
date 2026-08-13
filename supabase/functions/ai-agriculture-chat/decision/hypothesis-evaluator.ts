@@ -1022,7 +1022,27 @@ export async function evaluateCandidateHypotheses(
       const observableChars = extractObservableCharacteristics(rule.observable_characteristics, obsMetadataMap);
       
       // CLARIFICATION ONTOLOGY CONTRACT:
-      const effectiveObsChars = observableChars;
+      // 2026-08-13 — condition_code fallback. Verified against live DB: 1,140
+      // decision_rules (including every RICE_NUTR_*_DEFICIT_001) have
+      // observable_characteristics = null, while their condition_code IS the
+      // canonical farmer-observable observation code (e.g. n_deficiency_rice),
+      // present in observation_master (is_farmer_observable=true) and
+      // observation_translations (mr/hi labels). Without this, the rule yields
+      // ZERO farmer-facing options and the clarification layer falls back to the
+      // English `cause` sentence. Deriving the observation from condition_code
+      // lets each option carry a real observation_key: the farmer-observable
+      // gate below still validates it, and the orchestrator's
+      // translateClarificationOptions resolves the farmer-language label from
+      // observation_translations. No hardcoded codes — condition_code is read
+      // from the rule row (rule-repository loads decision_rules with SELECT *).
+      let effectiveObsChars = observableChars;
+      if (effectiveObsChars.length === 0 && rule.condition_code) {
+        const fromCondition = extractObservableCharacteristics([rule.condition_code], obsMetadataMap);
+        if (fromCondition.length > 0) {
+          effectiveObsChars = fromCondition;
+          console.log(`   ✅ [ObsCharFromCondition] Rule ${rule.rule_id}: derived farmer-observable option from condition_code="${rule.condition_code}" (observable_characteristics was empty)`);
+        }
+      }
       if (effectiveObsChars.length === 0) {
         console.log(`   ℹ️ Rule ${rule.rule_id}: no farmer-observable characteristics — kept as internal candidate (no UI options will be derived from it)`);
       }
