@@ -801,6 +801,7 @@ async function translateClarificationOptions(
 
   const lang = (language || 'en').toLowerCase();
 
+  // Extract all labels and observation keys
   const optionEntries = options.map((opt, idx) => ({
     idx,
     isString: typeof opt === 'string',
@@ -809,53 +810,43 @@ async function translateClarificationOptions(
     original: opt
   }));
 
+  // Check which labels look like raw codes (ALL_CAPS_WITH_UNDERSCORES)
+  // FIX 33+: Robust normalization for emoji-prefixed labels like "🔍 GAPS IN FIELD"
   const RAW_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,}$/;
-  const EMOJI_PREFIX_PATTERN = /^[\p{Emoji}\p{Emoji_Presentation}\s\u{1F50D}]+\s*/u;
-  // 2026-08-13 — recover the observation code from an "[obs_keys:code,...]"
-  // annotation embedded in the label. Rule-driven options can arrive with the
-  // farmer-visible label set to decision_rules.cause (English) and an EMPTY
-  // observation_key field, but the code may be present in this annotation.
-  const OBS_KEYS_ANNOTATION = /\[obs_keys?:\s*([^\]]+)\]/i;
-
-  // Prefer the observation_key field; fall back to the annotation's first code.
-  const rawCodeFor = (label?: string | null, obsKey?: string | null): string | null => {
-    const key = (obsKey || '').trim();
-    if (key) return key;
-    const ann = (label || '').match(OBS_KEYS_ANNOTATION);
-    if (ann && ann[1]) {
-      const first = ann[1].split(',')[0].trim();
-      if (first) return first;
-    }
-    return null;
-  };
+  const EMOJI_PREFIX_PATTERN = /^[\p{Emoji}\p{Emoji_Presentation}\s🔍]+\s*/u;
 
   const normalizeObservationCode = (label?: string | null, obsKey?: string | null): string | null => {
-    const raw = rawCodeFor(label, obsKey);
-    if (raw) {
-      const up = raw.replace(/[\s.\-]+/g, '_').toUpperCase();
-      if (RAW_CODE_PATTERN.test(up)) return up;
-    }
+    const key = (obsKey || '').trim().toUpperCase();
+    if (key && RAW_CODE_PATTERN.test(key)) return key;
+
     const cleaned = (label || '')
-      .replace(OBS_KEYS_ANNOTATION, '')
       .replace(EMOJI_PREFIX_PATTERN, '')
       .trim()
       .replace(/\s+/g, '_')
       .toUpperCase();
+
     if (cleaned && RAW_CODE_PATTERN.test(cleaned)) return cleaned;
     return null;
   };
 
-  // Translate every option that resolves to an observation code — not only
-  // ALL_CAPS labels. Previously mixed-case English sentences (rule causes) were
-  // assumed "already human language" and leaked to the farmer untranslated.
-  const needsTranslation = optionEntries.filter(e => !!normalizeObservationCode(e.label, e.obsKey));
+  const needsTranslation = optionEntries.filter(e => {
+    const normalizedCode = normalizeObservationCode(e.label, e.obsKey);
+    if (normalizedCode) return true;
+
+    const label = (e.label || '').trim();
+    if (!label) return false;
+
+    // Already human language if mixed/lower-case with spaces
+    return false;
+  });
 
   if (needsTranslation.length === 0) {
     return options;
   }
 
-  console.log(`\u{1F310} [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
+  console.log(`🌐 [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
 
+  // Step 1: Look up labels from observation_translations (SSOT).
   const upperCodes = Array.from(new Set(
     needsTranslation
       .map(e => normalizeObservationCode(e.label, e.obsKey))
@@ -866,8 +857,8 @@ async function translateClarificationOptions(
     ...upperCodes.map(c => c.toLowerCase()),
   ]));
 
-  const labelMap = new Map<string, string>();
-  const fallbackEnMap = new Map<string, string>();
+  const labelMap = new Map<string, string>();      // primary chip label (lang)
+  const fallbackEnMap = new Map<string, string>(); // english fallback
 
   try {
     if (codesToLookup.length > 0) {
@@ -892,41 +883,39 @@ async function translateClarificationOptions(
       }
     }
   } catch (err) {
-    console.warn(`\u26A0\uFE0F [ClarificationTranslation] DB lookup failed: ${err}`);
+    console.warn(`⚠️ [ClarificationTranslation] DB lookup failed: ${err}`);
   }
 
+  // Step 2: Deterministic English fallback. The previous GPT-4o-mini
   for (const code of upperCodes) {
     if (labelMap.has(code)) continue;
     const en = fallbackEnMap.get(code);
     if (en) {
       labelMap.set(code, en);
-      console.warn(`\u26A0\uFE0F [OBS_LABEL_GAP] ${code} missing ${lang} translation \u2014 using EN fallback`);
+      console.warn(`⚠️ [OBS_LABEL_GAP] ${code} missing ${lang} translation — using EN fallback`);
     } else {
-      console.warn(`\u26A0\uFE0F [OBS_LABEL_GAP] ${code} has no ${lang} or EN row in observation_translations \u2014 using code fallback`);
+      console.warn(`⚠️ [OBS_LABEL_GAP] ${code} has no ${lang} or EN row in observation_translations — using code fallback`);
     }
   }
 
+  // Step 3: Apply translations to options
   let translatedCount = 0;
   const result = options.map((opt, idx) => {
     const entry = optionEntries[idx];
     const normalizedCode = normalizeObservationCode(entry.label, entry.obsKey);
-    const rawCode = rawCodeFor(entry.label, entry.obsKey);
     const translated = normalizedCode ? labelMap.get(normalizedCode) : undefined;
-
-    // Populate an empty observation_key field from the recovered code so
-    // downstream persistence + the farmer's next-turn selection can map back.
-    const withKey = (o: any) =>
-      (rawCode && (!o.observation_key || String(o.observation_key).trim() === ''))
-        ? { ...o, observation_key: rawCode }
-        : o;
 
     if (translated) {
       translatedCount++;
-      if (entry.isString) return translated;
-      return withKey({ ...(opt as any), label: translated });
+      if (entry.isString) {
+        return translated;
+      }
+      return { ...(opt as any), label: translated };
     }
 
+    // Fallback: avoid raw English leakage in non-English UI
     if (normalizedCode) {
+      // CRITICAL FIX: Humanize the code into readable text instead of
       const humanized = normalizedCode
         .replace(/_/g, ' ')
         .toLowerCase()
@@ -934,16 +923,15 @@ async function translateClarificationOptions(
         .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
       if (entry.isString) return humanized;
-      return withKey({ ...(opt as any), label: humanized });
+      return { ...(opt as any), label: humanized };
     }
 
     return opt;
   });
 
-  console.log(`\u2705 [ClarificationTranslation] Translated ${translatedCount}/${options.length} option labels`);
+  console.log(`✅ [ClarificationTranslation] Translated ${translatedCount}/${options.length} option labels`);
   return result;
 }
-
 
 // Response types
 export type OrchestratorResponseType = 
@@ -1242,9 +1230,14 @@ export class AIAgentOrchestrator {
     options: any = {},
   ): Promise<OrchestratorResponse> {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
-    // 2026-08-13 — MULTI-TENANT SAFETY: warm singleton (getOrchestrator()) is
-    // reused across requests/tenants. Reset the F4 router stash so a prior
-    // request's observation candidates cannot leak into a later one.
+    // 2026-08-13 — MULTI-TENANT SAFETY: this orchestrator is a warm module
+    // singleton (getOrchestrator()), reused across requests and tenants. The
+    // F4 OBS_TO_HYP_GAP router writes __observationCandidateCodes/
+    // __observationRequired/__observationRouterReason on `this` and index.ts
+    // reads them post-orchestrate to render the fail-closed clarification
+    // rescue. Without a per-request reset, a prior request/tenant's values
+    // leak into a later request that does NOT fire the router. Reset here so
+    // every request starts clean and stale F4 state can never cross requests.
     (this as any).__observationRequired = false;
     (this as any).__observationCandidateCodes = [];
     (this as any).__observationRouterReason = null;
@@ -7410,16 +7403,7 @@ export class AIAgentOrchestrator {
             `[OBS_GATE] awaiting_confirmed_observations intent=${intentCode} ` +
             `candidates=${observationStateCandidates.length} source=intent_observation_mapping`
           );
-          {
-            // 2026-08-13 — route observation-state candidates through the same
-            // farmer-language translation gate as the rule-driven branch.
-            const _xlObsState = await translateClarificationOptions(
-              observationStateCandidates.map((o: any) => ({ label: o.label, observation_key: o.observation_key })),
-              options.language || 'mr',
-              this.supabase,
-            );
-            finalClarificationOptions = _xlObsState.map((o: any) => (typeof o === 'string' ? o : o.label));
-          }
+          finalClarificationOptions = observationStateCandidates.map((o: any) => o.label);
           clarificationSource = 'DECISION_RULES';
           ruleDrivenClarification = {
             options: observationStateCandidates.map((o: any) => ({
