@@ -7446,6 +7446,11 @@ export class AIAgentOrchestrator {
             this.supabase
           );
           finalClarificationOptions = translatedRuleOptions.map(o => typeof o === 'string' ? o : o.label);
+          finalClarificationOptionObjects = translatedRuleOptions.map((o: any, i: number) =>
+            typeof o === 'string'
+              ? { label: o, observation_key: ruleDrivenClarification!.options[i]?.observation_key || '' }
+              : { ...o, observation_key: o.observation_key || ruleDrivenClarification!.options[i]?.observation_key || '' },
+          );
           clarificationSource = 'DECISION_RULES';
           
           // Log the rule-driven options for audit
