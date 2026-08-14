@@ -7350,6 +7350,10 @@ export class AIAgentOrchestrator {
         
         // TRUST-FIRST: Rule-Driven Options MUST Take Priority
         let finalClarificationOptions: string[];
+        // 2026-08-14 — keep the TRANSLATED option OBJECTS (farmer-language label
+        // + recovered observation_key). The render below must ship these, not the
+        // raw English rule options (which also lose observation_key).
+        let finalClarificationOptionObjects: Array<{ label: string; observation_key?: string; [k: string]: any }> = [];
         let clarificationSource: 'DECISION_RULES' | 'GRAPH_EMPTY' = 'GRAPH_EMPTY';
         // IOM-FIRST INVARIANT (Neuro-Symbolic Contract)
         const _intentStr = String(intentCode || 'UNKNOWN').toUpperCase();
