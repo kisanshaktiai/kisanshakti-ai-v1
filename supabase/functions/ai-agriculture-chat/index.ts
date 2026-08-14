@@ -228,14 +228,17 @@ function buildRichApplicationDetails(source: any, productName: string | null, pr
   };
 }
 
-let orchestrator: AIAgentOrchestrator | null = null;
-
+// FIX-1 P0-1 (restored 2026-08-14): per-request orchestrator instance.
+// The orchestrator stashes per-turn state on `this` (__conversationState,
+// __graphRuntimeState, __embeddedConfirmed*, __lockedStageCtx,
+// __canonicalContextForExit, __observationCandidateCodes, ...) across many
+// await boundaries. A module-level singleton lets concurrent farmer requests
+// interleave and overwrite each other's state (cross-farmer/tenant
+// contamination). NEVER reintroduce a shared instance.
 function getOrchestrator(): AIAgentOrchestrator {
-  if (!orchestrator) {
-    orchestrator = new AIAgentOrchestrator();
-  }
-  return orchestrator;
+  return new AIAgentOrchestrator();
 }
+
 
 // Generate unique trace_id for request tracing
 function generateTraceId(): string {
@@ -1094,7 +1097,7 @@ serve(async (req) => {
         // 2026-08-12 — F4 router IOM candidate codes: rendered by the rescue
         // when the hypothesis-graph path yields 0 options (fail-closed).
         observationCandidateCodes:
-          (orchestrator as any)?.__observationCandidateCodes ?? [],
+          (orch as any)?.__observationCandidateCodes ?? [],
         biological_state:
           (orchestratorResponse as any)?.metadata?.biological_state ??
           (orchestratorResponse as any)?.dataAudit?.land?.biological_state ??
@@ -2006,7 +2009,7 @@ serve(async (req) => {
                 (orchestratorResponse as any)?.metadata?.canonicalContext ?? null,
                 // 2026-08-12 — F4 router IOM candidate codes (see site 1).
                 observationCandidateCodes:
-                  (orchestrator as any)?.__observationCandidateCodes ?? [],
+                  (orch as any)?.__observationCandidateCodes ?? [],
               biological_state:
                 (orchestratorResponse as any)?.metadata?.biological_state ??
                 (orchestratorResponse as any)?.dataAudit?.land?.biological_state ??
@@ -2269,8 +2272,15 @@ serve(async (req) => {
     
     if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
       console.log(`   🔄 Response not in target language, applying translation`);
-      responseContent = await forceTranslateResponse(responseContent, detectedLanguage);
+      const _preTranslate = responseContent;
+      const _translated = await forceTranslateResponse(responseContent, detectedLanguage);
+      // Deterministic safety gate: never ship a rewrite that altered/dropped a
+      // dosage number or symbolic product name.
+      responseContent = verifyTranslationFidelity(_preTranslate, _translated, actions_returned)
+        ? _translated
+        : _preTranslate;
     }
+
     
     // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
     const symbolicProducts = actions_returned?.filter((a: any) => a.product_name && a.product_name !== 'N/A') || [];
@@ -2996,6 +3006,54 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
   
   return true;
 }
+
+/**
+ * SAFETY GATE (restored 2026-08-14): deterministic post-check on LLM language
+ * rewrites. Every dosage-like token (number + unit) and every symbolic product
+ * name present before the rewrite MUST survive it verbatim. If anything is
+ * dropped or mutated, the caller falls back to the untranslated, fully-gated
+ * advisory rather than shipping an altered dose to the farmer.
+ */
+function verifyTranslationFidelity(
+  original: string,
+  translated: string,
+  actionsReturned: any[] | null | undefined,
+): boolean {
+  if (typeof original !== 'string' || typeof translated !== 'string' || translated.trim().length === 0) {
+    return false;
+  }
+
+  const DOSAGE_RE = /\d+(?:[.,]\d+)?\s*(?:ml|g|gm|gram|kg|l|liter|litre|%|मिली|मिली\.|ग्रॅम|ग्राम|किलो|लिटर)\b/gi;
+  const originalDoses = original.match(DOSAGE_RE) ?? [];
+
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+  const translatedNorm = norm(translated);
+
+  for (const dose of originalDoses) {
+    if (!translatedNorm.includes(norm(dose))) {
+      // Unit words may legitimately localize; the NUMBER must never change.
+      const num = dose.match(/\d+(?:[.,]\d+)?/)?.[0];
+      if (!num || !translatedNorm.includes(num)) {
+        console.error(`🚨 [TRANSLATION_FIDELITY] dosage token lost/mutated: "${dose}" — falling back to untranslated advisory`);
+        return false;
+      }
+    }
+  }
+
+  const products = (actionsReturned ?? [])
+    .map((a: any) => a?.product_name)
+    .filter((p: any) => typeof p === 'string' && p.trim().length > 0 && p !== 'N/A');
+
+  for (const product of products) {
+    if (!translatedNorm.includes(norm(product)) && norm(original).includes(norm(product))) {
+      console.error(`🚨 [TRANSLATION_FIDELITY] product name lost: "${product}" — falling back to untranslated advisory`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
 
 // Force translate response to target language.
 // Force-translate response to target language using LLM.
