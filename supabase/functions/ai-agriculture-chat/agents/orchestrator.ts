@@ -1,4 +1,10 @@
 // CHANGE LOG (newest first)
+//   2026-08-14 17:20 UTC — CLARIFICATION RENDER FIX: the final clarification
+//     assembly shipped `ruleDrivenClarification.options` (English labels, empty
+//     observation_key) and discarded the already-translated options. Now keeps
+//     `finalClarificationOptionObjects` (farmer-language label + observation_key)
+//     from both translation branches and renders/persists those, restoring
+//     Devanagari option labels and non-empty pending_clarification_observation_keys.
 //   2026-08-08 02:20 UTC — FIX A: unconditional [obs_keys:] ingestion as CONFIRMED
 //     evidence + intent override; FIX B: exit invariant also publishes
 //     question.options and CLARIFICATION_QUESTION type.
