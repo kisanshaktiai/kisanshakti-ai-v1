@@ -7522,7 +7522,9 @@ export class AIAgentOrchestrator {
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
           clarificationResponse,
-          structuredOptions: ruleDrivenClarification?.options || [],
+          structuredOptions: finalClarificationOptionObjects.length > 0
+            ? finalClarificationOptionObjects
+            : (ruleDrivenClarification?.options || []),
           intentConfidence,
           inductionCoverage: inductionResult.symbol_coverage,
           inductionConfidence: inductionResult.aggregated_confidence,
