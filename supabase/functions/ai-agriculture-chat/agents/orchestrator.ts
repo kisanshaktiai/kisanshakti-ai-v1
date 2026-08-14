@@ -7463,6 +7463,7 @@ export class AIAgentOrchestrator {
             `(${nluClarificationOptions.length} proposed options dropped)`
           );
           finalClarificationOptions = [];
+          finalClarificationOptionObjects = [];
           
           // INVARIANT WARNING: When context exists, rule-driven options SHOULD exist
           if (lockedStage && inductionResult.symptoms.length > 0) {
