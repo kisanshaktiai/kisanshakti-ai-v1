@@ -7423,6 +7423,11 @@ export class AIAgentOrchestrator {
               this.supabase,
             );
             finalClarificationOptions = _xlObsState.map((o: any) => (typeof o === 'string' ? o : o.label));
+            finalClarificationOptionObjects = _xlObsState.map((o: any, i: number) =>
+              typeof o === 'string'
+                ? { label: o, observation_key: observationStateCandidates[i]?.observation_key || '' }
+                : { ...o, observation_key: o.observation_key || observationStateCandidates[i]?.observation_key || '' },
+            );
           }
           clarificationSource = 'DECISION_RULES';
           ruleDrivenClarification = {
