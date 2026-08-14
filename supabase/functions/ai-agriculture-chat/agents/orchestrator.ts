@@ -7494,7 +7494,13 @@ export class AIAgentOrchestrator {
                 farmerMessage,
                 landContext?.current_crop,
               ),
-              options: ruleDrivenClarification?.options || finalClarificationOptions.map((label) => ({ label })),
+              // 2026-08-14 — render the TRANSLATED objects (farmer-language label +
+              // observation_key). Raw rule options are English and key-less.
+              options: finalClarificationOptionObjects.length > 0
+                ? finalClarificationOptionObjects
+                : (finalClarificationOptions.length > 0
+                    ? finalClarificationOptions.map((label) => ({ label }))
+                    : (ruleDrivenClarification?.options || [])),
               photo_requested: false,
               clarification_prompt: 'GRAPH_BACKED_OBSERVATION_OPTIONS',
               scope: ClarificationScope.REFINE_OBSERVATION,
