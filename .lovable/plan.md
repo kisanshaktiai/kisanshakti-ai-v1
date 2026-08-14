@@ -1,50 +1,56 @@
-# Forensic Audit — Wrong / English observation options in AI chat
+# Fix: clarification card shows English options with empty observation keys
 
-## What the evidence shows
+## Verified findings (checked against live code + live DB)
 
-The last farmer-facing clarification stored in `ai_chat_messages` (session language `mr`) was:
+Code — `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`:
 
-```text
-🔍 Nitrogen deficiency observed mid-season [obs_keys:RICE_NUTR_N_DEFICIT_001]
-🔍 Potassium deficiency — leaf-tip burn + lodging risk [obs_keys:RICE_NUTR_K_DEFICIT_001]
-🔍 Iron deficiency in rice (upland/alkaline) [obs_keys:RICE_NUTR_FE_DEFICIT_001]
-```
+- Line 7416-7421 (observation-state branch) and 7434-7439 (rule-driven branch) both call
+  `translateClarificationOptions(...)` and then immediately reduce the result to label strings
+  (`finalClarificationOptions`). The translated **objects** are discarded.
+- Line 7482, the final render assembly:
+  `options: ruleDrivenClarification?.options || finalClarificationOptions.map((label) => ({ label }))`
+  — `ruleDrivenClarification.options` is always truthy on this branch, so the render always ships the
+  **untranslated** English labels. The translated Marathi result is computed and thrown away.
+- The fallback arm wraps bare label strings as `{ label }`, i.e. no `observation_key` at all.
 
-Three independent defects are visible in that one card, all confirmed against the database:
+Code — `supabase/functions/ai-agriculture-chat/index.ts` line 2605:
+`pending_clarification_observation_keys` is derived from `response.question.options[].observation_key`.
+Because the render ships the raw/unkeyed options, those keys persist as `""` and turn-2 selection cannot
+map back to an observation.
 
-1. **These are not observations.** `RICE_NUTR_N_DEFICIT_001` exists in `decision_rules` (1 row) and does **not** exist in `observation_master` (0 rows). The farmer was asked to confirm *diagnoses* (rule causes), not things he can see in the field. The farmer-observable ontology (1,692 active rows in `observation_master`) was bypassed on this path.
+Database (confirmed by query, no assumption): `observation_translations` already holds the Marathi rows —
+`n_deficiency_rice` (mr) = "खालची जुनी पाने फिकट पिवळी, फुटवे कमी", `k_deficiency_rice` (mr) =
+"जुन्या पानांच्या कडा व टोके करपल्यासारखी तपकिरी…". The data is complete; only the render is wrong.
 
-2. **The labels can never be Marathi.** `i18n/translation-loader.ts` (SOURCE 2) loads `decision_rules.i18n_key` and stores **only** `en: action_text/reason_text/cause`, with an explicit comment that "LLM translates at runtime". `diagnosis-first-generator.getCauseLabelFromDB()` asks the cache for the key, gets English, its `hasNativeScript()` check fails, and it falls through to `translateCause()` which returns the same English string. So every rule-derived option is structurally English regardless of the farmer's language.
+## The fix (one file, three small edits)
 
-3. **The i18n cache is silently truncated.** `observation_translations` holds **5,438 rows**; the loader issues `.select(...).limit(5000)` with no pagination, and PostgREST caps a single request at 1,000 rows. Roughly 80% of all translations — including Marathi labels that do exist — are never in the cache. The same bug applies to the `decision_rules` load (`.limit(2000)`, 1,824 keys, capped at 1,000).
+**File: `agents/orchestrator.ts` only.** No DB change, no new tables, no tenant filters on the global
+knowledge tables, no hardcoded observation codes or labels.
 
-Marathi data is **not** the problem: 1,671 of 1,692 farmer-observable observations already have a Marathi `observation_translations` row. The DB is right; the runtime is reading it wrong.
+1. Declare `let finalClarificationOptionObjects: Array<{ label: string; observation_key?: string; [k: string]: any }> = [];`
+   beside `finalClarificationOptions` (line 7352).
+2. In both translation branches, after mapping to label strings, also keep the full translated objects in
+   `finalClarificationOptionObjects` (they carry the farmer-language label *and* the recovered
+   `observation_key`). Set it to `[]` in the empty branch.
+3. Change the render assembly (line 7482) to prefer the translated objects:
+   translated objects → translated label strings wrapped as `{ label }` → raw options only as last resort.
+   Also feed `pendingClarificationResponse.structuredOptions` from the same translated objects so the
+   downstream persistence path in `index.ts` reads real `observation_key` values (no change needed in
+   `index.ts` — it already reads them from the shipped options).
 
-Secondary findings (same class, will be fixed in passing):
+## Not touched
 
-- `i18n/observation-label-loader.ts` queries only the requested language — no `en` fallback row and no `universal` crop row — so any per-crop miss degrades to `formatCodeAsLabel()`, i.e. the raw snake_case code shown to the farmer.
-- There are four competing label resolvers (`observation-label-loader`, `translation-loader`, `hypothesis-clarification-builder.loadTranslations`, `observation-selector-contract`), each with its own fallback policy. Only `observation-selector-contract` correctly drops an option when no DB label exists.
+`translateClarificationOptions`, `generateScopedClarification`, the hypothesis evaluator, the
+`orchestrate()` signature, and the response shape all stay exactly as they are.
 
-## Fix plan
+## Verification
 
-### 1. Paginate every translation read (root cause of most gaps)
-- `i18n/translation-loader.ts`: replace both single-shot `.limit()` queries with keyset pagination in 1,000-row pages until exhausted; log loaded row count per source and assert it matches the table count.
-- `decision/hypothesis-clarification-builder.ts` (`.limit(4000)`) and `runtime/observation-selector-contract.ts`: same pagination helper.
+Fresh Marathi session with "पिक पिवळे पडले आहे काय करावे" on a rice land, then read edge logs:
 
-### 2. Farmer-facing options must come from the observation ontology, never from rule causes
-- In `diagnosis-first-generator.ts`, each diagnosis's farmer-visible chip must render its `observation_key` label resolved from `observation_translations`, not `cause_label` from the rule. Where a hypothesis has no farmer-observable observation attached, the option is **dropped** (with `[OPTION_DROPPED_NO_OBSERVATION]` trace) rather than falling back to the English cause sentence.
-- Keep the rule id in the machine-readable payload (`rule_id` / `observation_key`) only — never inside the display string.
+- rendered options are Devanagari observation labels, not "Nitrogen deficiency observed mid-season";
+- `persisted_pending_obs_keys` contains real codes (e.g. `["n_deficiency_rice","k_deficiency_rice"]`),
+  not `["","",…]`;
+- tapping an option advances to a diagnosis instead of re-asking.
 
-### 3. Single label resolver, fail-closed
-- Make `i18n/observation-label-loader.ts` the one resolver: query the farmer language **and** `en` in one call, prefer crop-specific row → crop-agnostic → `en`, and return `null` (option dropped) instead of `formatCodeAsLabel()` when nothing exists. Emit `[OBS_LABEL_MISSING]` with code + language.
-- Point `hypothesis-clarification-builder` and `generic-multi-match-detector` at it; delete their private lookups.
-
-### 4. Language regression lock
-- Add a check that runs on every clarification exit: if the session language is non-English and any emitted option label contains no native-script character, log `[LANGUAGE_LEAK]` with the code and drop the option; if that empties the card, fall back to the DB rescue path that already exists in `observation-selector-contract.ts`.
-
-### 5. Verify
-- Re-run the Marathi rice query (`पिक पिवळे पडले आहे काय करावे`) against the deployed function and confirm the returned options are Devanagari `observation_master` codes with no `[obs_keys:` text and no rule ids in the visible label; confirm `[I18N] Total cache` logs ≈5,438 + 1,824 entries.
-
-## Technical notes
-
-Files touched: `supabase/functions/ai-agriculture-chat/i18n/translation-loader.ts`, `i18n/observation-label-loader.ts`, `decision/diagnosis-first-generator.ts`, `decision/hypothesis-clarification-builder.ts`, `runtime/observation-selector-contract.ts`, `agents/generic-multi-match-detector.ts`. No database migration is required — the translation data already exists. Each edited file gets its mandatory top-of-file CHANGE LOG entry, and the function is redeployed after the change.
+Then redeploy `ai-agriculture-chat` and add the CHANGE LOG entry required for files under
+`ai-agriculture-chat/**`.
