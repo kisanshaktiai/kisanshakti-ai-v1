@@ -2272,8 +2272,15 @@ serve(async (req) => {
     
     if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
       console.log(`   🔄 Response not in target language, applying translation`);
-      responseContent = await forceTranslateResponse(responseContent, detectedLanguage);
+      const _preTranslate = responseContent;
+      const _translated = await forceTranslateResponse(responseContent, detectedLanguage);
+      // Deterministic safety gate: never ship a rewrite that altered/dropped a
+      // dosage number or symbolic product name.
+      responseContent = verifyTranslationFidelity(_preTranslate, _translated, actions_returned)
+        ? _translated
+        : _preTranslate;
     }
+
     
     // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
     const symbolicProducts = actions_returned?.filter((a: any) => a.product_name && a.product_name !== 'N/A') || [];
