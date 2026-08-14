@@ -1,4 +1,10 @@
 // CHANGE LOG (newest first)
+//   2026-08-14 17:20 UTC — CLARIFICATION RENDER FIX: the final clarification
+//     assembly shipped `ruleDrivenClarification.options` (English labels, empty
+//     observation_key) and discarded the already-translated options. Now keeps
+//     `finalClarificationOptionObjects` (farmer-language label + observation_key)
+//     from both translation branches and renders/persists those, restoring
+//     Devanagari option labels and non-empty pending_clarification_observation_keys.
 //   2026-08-08 02:20 UTC — FIX A: unconditional [obs_keys:] ingestion as CONFIRMED
 //     evidence + intent override; FIX B: exit invariant also publishes
 //     question.options and CLARIFICATION_QUESTION type.
@@ -7350,6 +7356,10 @@ export class AIAgentOrchestrator {
         
         // TRUST-FIRST: Rule-Driven Options MUST Take Priority
         let finalClarificationOptions: string[];
+        // 2026-08-14 — keep the TRANSLATED option OBJECTS (farmer-language label
+        // + recovered observation_key). The render below must ship these, not the
+        // raw English rule options (which also lose observation_key).
+        let finalClarificationOptionObjects: Array<{ label: string; observation_key?: string; [k: string]: any }> = [];
         let clarificationSource: 'DECISION_RULES' | 'GRAPH_EMPTY' = 'GRAPH_EMPTY';
         // IOM-FIRST INVARIANT (Neuro-Symbolic Contract)
         const _intentStr = String(intentCode || 'UNKNOWN').toUpperCase();
@@ -7419,6 +7429,11 @@ export class AIAgentOrchestrator {
               this.supabase,
             );
             finalClarificationOptions = _xlObsState.map((o: any) => (typeof o === 'string' ? o : o.label));
+            finalClarificationOptionObjects = _xlObsState.map((o: any, i: number) =>
+              typeof o === 'string'
+                ? { label: o, observation_key: observationStateCandidates[i]?.observation_key || '' }
+                : { ...o, observation_key: o.observation_key || observationStateCandidates[i]?.observation_key || '' },
+            );
           }
           clarificationSource = 'DECISION_RULES';
           ruleDrivenClarification = {
@@ -7437,6 +7452,11 @@ export class AIAgentOrchestrator {
             this.supabase
           );
           finalClarificationOptions = translatedRuleOptions.map(o => typeof o === 'string' ? o : o.label);
+          finalClarificationOptionObjects = translatedRuleOptions.map((o: any, i: number) =>
+            typeof o === 'string'
+              ? { label: o, observation_key: ruleDrivenClarification!.options[i]?.observation_key || '' }
+              : { ...o, observation_key: o.observation_key || ruleDrivenClarification!.options[i]?.observation_key || '' },
+          );
           clarificationSource = 'DECISION_RULES';
           
           // Log the rule-driven options for audit
@@ -7449,6 +7469,7 @@ export class AIAgentOrchestrator {
             `(${nluClarificationOptions.length} proposed options dropped)`
           );
           finalClarificationOptions = [];
+          finalClarificationOptionObjects = [];
           
           // INVARIANT WARNING: When context exists, rule-driven options SHOULD exist
           if (lockedStage && inductionResult.symptoms.length > 0) {
@@ -7479,7 +7500,13 @@ export class AIAgentOrchestrator {
                 farmerMessage,
                 landContext?.current_crop,
               ),
-              options: ruleDrivenClarification?.options || finalClarificationOptions.map((label) => ({ label })),
+              // 2026-08-14 — render the TRANSLATED objects (farmer-language label +
+              // observation_key). Raw rule options are English and key-less.
+              options: finalClarificationOptionObjects.length > 0
+                ? finalClarificationOptionObjects
+                : (finalClarificationOptions.length > 0
+                    ? finalClarificationOptions.map((label) => ({ label }))
+                    : (ruleDrivenClarification?.options || [])),
               photo_requested: false,
               clarification_prompt: 'GRAPH_BACKED_OBSERVATION_OPTIONS',
               scope: ClarificationScope.REFINE_OBSERVATION,
@@ -7501,7 +7528,9 @@ export class AIAgentOrchestrator {
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
           clarificationResponse,
-          structuredOptions: ruleDrivenClarification?.options || [],
+          structuredOptions: finalClarificationOptionObjects.length > 0
+            ? finalClarificationOptionObjects
+            : (ruleDrivenClarification?.options || []),
           intentConfidence,
           inductionCoverage: inductionResult.symbol_coverage,
           inductionConfidence: inductionResult.aggregated_confidence,
