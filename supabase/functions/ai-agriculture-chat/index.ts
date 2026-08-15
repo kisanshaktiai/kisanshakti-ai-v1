@@ -777,6 +777,44 @@ serve(async (req) => {
     const canonicalLanguage = detectLanguage(userMessageContent, language);
     const detectedLanguage = canonicalLanguage;
 
+    // ui_translations is the SSOT for all farmer-facing chrome copy below.
+    try { await loadUiTranslations(supabase); } catch (_e) { /* seed fallback */ }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FARMING-MODE CHIP / SHEET TAP (land-scoped, 2026-08-15).
+    // The badge sheet sends the mode i18n key; we persist on land_crops
+    // (tenant + land scoped) and confirm once. One code path for the sheet
+    // and for the voice/text PREFERENCE_UPDATE confirmation chip.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      const tappedMode = MODE_OPTION_VALUES[userMessageContent.trim()];
+      if (tappedMode && landId) {
+        try {
+          await supabase
+            .from('land_crops')
+            .update({ farming_type: tappedMode })
+            .eq('land_id', landId)
+            .eq('tenant_id', finalTenantId);
+          console.log(`🌿 [FARMING_MODE] land=${landId} farming_type=${tappedMode}`);
+        } catch (modeErr) {
+          console.warn('[FARMING_MODE] persist failed:', (modeErr as Error).message);
+        }
+        return new Response(
+          JSON.stringify({
+            response: getUiString('preference.saved_land_confirm', detectedLanguage),
+            sessionId: currentSessionId,
+            metadata: {
+              trace_id: traceId,
+              orchestrator_type: 'PREFERENCE_SAVED',
+              farming_mode: tappedMode,
+              farming_mode_label: getUiString(modeLabelKey(tappedMode), detectedLanguage),
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // ORGANIC-PREFERENCE CHIP TAP (FIX 1.3) — non-agronomic, answered here.
     // The chip sends the i18n key as the message value; we persist the choice
@@ -810,6 +848,7 @@ serve(async (req) => {
         );
       }
     }
+
 
 
     // PHASE Y HARD GUARANTEE: initialize trace collector before any symbolic
