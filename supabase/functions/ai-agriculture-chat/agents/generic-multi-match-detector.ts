@@ -34,6 +34,8 @@ export interface CompetingMatch {
   cause_code: string;
   category: string;
   confidence: number;
+  condition_code?: string | null;
+  observation_label?: Record<string, string> | null;
   observable_characteristics: ObservableCharacteristics;
   differentiating_questions: DifferentiatingQuestion[];
   visual_markers: VisualMarkers;
