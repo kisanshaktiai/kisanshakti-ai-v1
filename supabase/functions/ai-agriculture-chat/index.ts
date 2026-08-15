@@ -3045,10 +3045,19 @@ serve(async (req) => {
       );
     }
 
+    // ─── FARMING-MODE METADATA (badge renders with zero extra calls) ───
+    (responsePayload as any).metadata = {
+      ...((responsePayload as any).metadata || {}),
+      farming_mode: farmingMode,
+      farming_mode_label: farmingMode === 'unset'
+        ? undefined
+        : getUiString(modeLabelKey(farmingMode), detectedLanguage),
+    };
+
     // ─── ONE-TIME ORGANIC-PREFERENCE ASK (FIX 1) ───
-    // Only after a real advisory, never during clarification, never repeated
-    // once farmers.farming_preference has been set.
-    if (farmingPreference === 'unset' && recommendationsProvided && !isClarificationResponse) {
+    // Rare fallback only: the chip appears when NEITHER land_crops.farming_type
+    // NOR farmers.farming_preference is set. Never during clarification.
+    if (farmingMode === 'unset' && farmingPreference === 'unset' && recommendationsProvided && !isClarificationResponse) {
       (responsePayload as any).metadata = {
         ...((responsePayload as any).metadata || {}),
         preference_prompt: {
@@ -3061,6 +3070,7 @@ serve(async (req) => {
         },
       };
     }
+
 
     return new Response(
       JSON.stringify(responsePayload),
