@@ -1005,14 +1005,34 @@ export async function formatStructuredResponseForLLM(
     }
   }
   
-  // Organic/IPM — translate ipm_label
-  if (response.organic.has_alternative) {
-    parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
-    if (response.organic.organic_alternative) {
-      parts.push(`🌿 Organic Option: ${response.organic.organic_alternative}`);
+  // Organic/IPM — preference-aware ordering (FIX 2). Content stays verbatim.
+  const org = response.organic;
+  if (org.suppress_organic) {
+    parts.push(`\nFARMER_PREFERENCE: conventional — DO NOT render any organic/IPM section.`);
+  } else if (org.no_organic_available) {
+    parts.push(`\n═══ 🌿 ORGANIC PREFERENCE ═══`);
+    parts.push(`FARMER_PREFERENCE: organic. ORGANIC_ALTERNATIVE is EMPTY for this rule.`);
+    parts.push(`State honestly (i18n advisory.no_organic_available): "${getUiString('advisory.no_organic_available', l)}"`);
+    parts.push(`Then render the standard advisory above. NEVER invent an organic option.`);
+  } else if (org.has_alternative) {
+    if (org.organic_same_as_main) {
+      parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
+      parts.push(`ORGANIC_SAME_AS_MAIN: render one advisory + this line: "${getUiString('advisory.organic_same', l)}"`);
+      if (org.organic_same_reason) parts.push(`Reason (verbatim source): ${org.organic_same_reason}`);
+    } else if (org.lead_with_organic) {
+      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farmer preference = organic) ═══`);
+      parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
+      parts.push(`🌿 PRIMARY RECOMMENDATION (organic, verbatim source): ${org.organic_alternative}`);
+      parts.push(`Then render the chemical action above as clearly-labelled SECONDARY under header: ${getUiString('advisory.chemical_alt_header', l)}`);
+    } else {
+      parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
+      parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
+      if (org.organic_alternative) {
+        parts.push(`🌿 Organic Option (verbatim source): ${org.organic_alternative}`);
+      }
     }
-    if (response.organic.ipm_label) {
-      const translatedIpm = await translateTechnicalTerm(response.organic.ipm_label, l, supabaseClient);
+    if (org.ipm_label) {
+      const translatedIpm = await translateTechnicalTerm(org.ipm_label, l, supabaseClient);
       parts.push(`IPM Level: ${translatedIpm}`);
     }
   }
