@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-08-15 08:15 UTC — MultiMatch differential options now render the rule's
+// condition_code observation label from observation_translations in the farmer's
+// language (English `cause` only as last resort); obsKeys carries condition_code.
 // 2026-07-09 21:15 UTC — getDefaultClarificationOptionsFallback() now
 // GENERIC MULTI-MATCH DETECTOR - World-Class Clarification System
 
