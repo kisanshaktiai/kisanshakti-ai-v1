@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-15 02:05 UTC — CLARIFICATION_ROUND_EXHAUSTED escalation now ships the
+ *   already-translated option objects (photo fallback) instead of an empty
+ *   clarification_options array; trigger logic unchanged.
  * 2026-08-08 02:20 UTC — FIX C: persist pending options whenever the turn
  *   ships question.options, regardless of response type string.
  * 2026-08-02 18:02 UTC — PERF: start farmer-profile read alongside orchestrator
