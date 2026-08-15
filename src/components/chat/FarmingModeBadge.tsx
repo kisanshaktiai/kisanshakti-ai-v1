@@ -15,21 +15,21 @@ const MODE_META: Record<Exclude<FarmingMode, 'unset'>, {
 }> = {
   organic_only: {
     i18nKey: 'mode.organic',
-    descKey: 'mode.organic.desc',
+    descKey: 'mode.organic_desc',
     icon: <Leaf className="h-3.5 w-3.5" />,
     pill: 'bg-mode-organic-soft text-mode-organic border-mode-organic/30',
     dot: 'bg-mode-organic',
   },
   organic_fertilizer: {
     i18nKey: 'mode.mixed',
-    descKey: 'mode.mixed.desc',
+    descKey: 'mode.mixed_desc',
     icon: <Sprout className="h-3.5 w-3.5" />,
     pill: 'bg-mode-mixed-soft text-mode-mixed border-mode-mixed/30',
     dot: 'bg-mode-mixed',
   },
   fertilizer_pesticide: {
     i18nKey: 'mode.chemical',
-    descKey: 'mode.chemical.desc',
+    descKey: 'mode.chemical_desc',
     icon: <FlaskConical className="h-3.5 w-3.5" />,
     pill: 'bg-mode-chemical-soft text-mode-chemical border-mode-chemical/30',
     dot: 'bg-mode-chemical',
