@@ -1797,6 +1797,10 @@ export function EnhancedAIChatInterface() {
         data.metadata?.orchestrator_type === 'CLARIFICATION_QUESTION'
       );
 
+      // One-time organic-preference chip (backend sends it only when the farmer
+      // has no saved farming_preference and a real advisory was produced).
+      const preferencePrompt = data.metadata?.preference_prompt;
+
       const clarificationOptions = isClarification && data.metadata?.options?.length ? {
         question: responseText,
         options: data.metadata.options.map((o: any) => ({
@@ -1806,7 +1810,11 @@ export function EnhancedAIChatInterface() {
           observation_key: typeof o === 'object' ? (o.observation_key || o.value) : undefined
         })),
         selectionType: (data.metadata?.selectionType || 'SINGLE_CHOICE') as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE'
-      } : undefined;
+      } : (preferencePrompt?.options?.length ? {
+        question: preferencePrompt.question,
+        options: preferencePrompt.options.map((o: any) => ({ label: o.label, value: o.value })),
+        selectionType: 'SINGLE_CHOICE' as const
+      } : undefined);
 
       const aiMessage: Message = {
         id: aiMessageId,
@@ -1955,6 +1963,11 @@ export function EnhancedAIChatInterface() {
         const matchingOption = lastAIMessage.clarificationOptions.options.find(
           (opt: any) => opt.label === selected || opt.value === selected
         );
+        // Farming-preference chip: send the raw preference key, no obs_keys wrapper.
+        if (typeof matchingOption?.value === 'string' && matchingOption.value.startsWith('preference.')) {
+          sendMessage(matchingOption.value);
+          return;
+        }
         if (matchingOption?.observation_key) {
           selectedObservationKeys.push(matchingOption.observation_key);
         } else if (matchingOption?.value) {
