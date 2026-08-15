@@ -119,6 +119,8 @@ export interface LLMFormatterInput {
   trace_id?: string;
   supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
   market_product_memo?: MarketProductMemo;
+  // Farmer's persisted farming preference (farmers.farming_preference).
+  farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
   // Presentation-only addressing payload (rural honorifics).
   farmer_addressing?: {
     primary: string;
