@@ -47,6 +47,9 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
+// Organic-preference flow (FIX 1/2): i18n chrome strings + preference vocabulary
+import { getUiString, normalizeFarmingPreference, PREFERENCE_OPTION_VALUES, type FarmingPreference } from './i18n/ui-strings.ts';
+import { initializeTranslationCache } from './i18n/translation-loader.ts';
 
 // Import orchestrator
 import { AIAgentOrchestrator, requiresAgronomicReasoningIntent } from './agents/orchestrator.ts';
