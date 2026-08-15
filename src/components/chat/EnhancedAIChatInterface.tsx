@@ -2278,6 +2278,12 @@ export function EnhancedAIChatInterface() {
           
           {/* Action Buttons */}
           <div className="flex items-center gap-1">
+            <FarmingModeBadge
+              mode={farmingMode}
+              onSelectModeKey={(modeKey) => sendMessage(modeKey)}
+              className="mr-1"
+            />
+
             <Button
               variant="ghost"
               size="icon"
