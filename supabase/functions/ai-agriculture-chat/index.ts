@@ -2230,7 +2230,14 @@ serve(async (req) => {
               gender: profile.gender,
               farmer_name: profile.farmer_name,
             });
-            farmingPreference = normalizeFarmingPreference((profile as any).farming_preference);
+            // Resolution chain: land_crops.farming_type wins; farmers.farming_preference is the fallback.
+            const profilePreference = normalizeFarmingPreference((profile as any).farming_preference);
+            if (farmingMode !== 'unset') {
+              farmingPreference = farmingModeToPreference(farmingMode);
+            } else {
+              farmingPreference = profilePreference;
+              farmingMode = preferenceToFarmingMode(profilePreference);
+            }
             console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}, farming_preference=${farmingPreference}`);
           } catch (e) {
             console.warn('[Addressing] load failed:', (e as Error).message);
