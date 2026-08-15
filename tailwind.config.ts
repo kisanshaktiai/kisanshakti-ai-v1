@@ -36,6 +36,18 @@ export default {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        "mode-organic": {
+          DEFAULT: "hsl(var(--mode-organic))",
+          soft: "hsl(var(--mode-organic-soft))",
+        },
+        "mode-mixed": {
+          DEFAULT: "hsl(var(--mode-mixed))",
+          soft: "hsl(var(--mode-mixed-soft))",
+        },
+        "mode-chemical": {
+          DEFAULT: "hsl(var(--mode-chemical))",
+          soft: "hsl(var(--mode-chemical-soft))",
+        },
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
