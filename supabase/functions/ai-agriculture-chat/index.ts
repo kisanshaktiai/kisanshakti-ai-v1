@@ -1,3 +1,8 @@
+// CHANGE LOG (newest first)
+//   2026-08-15 18:20 UTC — Farming-mode resolution chain: land_crops.farming_type
+//     (land-scoped SSOT) overrides farmers.farming_preference; farming_mode +
+//     label attached to every response metadata; one-time ask chip now fires
+//     only when BOTH sources are unset.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
