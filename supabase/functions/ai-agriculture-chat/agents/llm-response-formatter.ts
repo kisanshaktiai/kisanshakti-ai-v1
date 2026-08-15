@@ -1076,6 +1076,36 @@ function validateLLMOutput(
   };
 }
 
+/**
+ * NARRATION NUMERIC DRIFT DETECTOR
+ * Returns the list of measured values present in the narration but absent from
+ * the rule data given to the LLM. Only unit-bearing numbers are checked
+ * (%, g, kg, ml, l, ppm) so day counts / area multiplications stay allowed.
+ */
+function detectNarrationNumericDrift(narration: string, sourceData: string): string[] {
+  if (!narration || !sourceData) return [];
+  // Normalize Devanagari digits so transliterated numerals compare correctly.
+  const deva = '०१२३४५६७८९';
+  const norm = (s: string) => s.replace(/[०-९]/g, (d) => String(deva.indexOf(d)));
+  const src = norm(sourceData);
+  const out = norm(narration);
+
+  const UNIT_NUMBER = /(\d+(?:\.\d+)?)\s*(%|ppm|ml|मिली|ली|लिटर|g|ग्रॅम|ग्राम|kg|किलो|l\b|लि)/gi;
+  const violations: string[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = UNIT_NUMBER.exec(out)) !== null) {
+    const value = m[1];
+    if (seen.has(value)) continue;
+    seen.add(value);
+    // Number must appear somewhere in the supplied rule data (unit may differ
+    // after transliteration, so the numeric token alone is the anchor).
+    const anchored = new RegExp(`(^|[^\\d.])${value.replace('.', '\\.')}([^\\d]|$)`);
+    if (!anchored.test(src)) violations.push(m[0].trim());
+  }
+  return violations;
+}
+
 // PROMPT BUILDERS
 
 function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
