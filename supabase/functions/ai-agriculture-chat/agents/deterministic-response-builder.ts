@@ -176,6 +176,13 @@ export interface StructuredFarmerResponse {
     biological_group?: string;
     ipm_level?: number;
     ipm_label?: string;
+    // FIX 2 (2026-08-15): farmer farming_preference-driven render control.
+    farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
+    lead_with_organic?: boolean;   // preference='organic' AND organic text present
+    suppress_organic?: boolean;    // preference='conventional'
+    organic_same_as_main?: boolean; // organic_alternative starts with "Same"
+    organic_same_reason?: string;   // text after the em-dash of a "Same — ..." field
+    no_organic_available?: boolean; // preference='organic' but field empty
   };
   
   // Section 6: Cost Estimate
