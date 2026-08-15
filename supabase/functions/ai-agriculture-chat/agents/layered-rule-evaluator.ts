@@ -1,6 +1,11 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-15 05:05 UTC — ROOT CAUSE FIX: rule_category_master.semantic_class is a string
+ *   name but RuleCategory is a numeric enum; the DB map stored the raw string so every
+ *   rule fell out of groupRulesByCategory ("loaded=14 evaluated=0", no advisory after
+ *   farmer selection). Added semanticClassToRuleCategory coercion + defensive grouping.
  * 2026-07-29 10:55 UTC — FIX C1-b: stagesEquivalent stage-family bridge now runs inside the request-scoped cultivation lane bound by the orchestrator.
+
  * 2026-07-29 10:30 UTC — LATENCY L3: converted-rule cache per crop (5min TTL);
  *   getAllRulesWithBundled no longer rebuilds every rule closure twice a turn.
  */
