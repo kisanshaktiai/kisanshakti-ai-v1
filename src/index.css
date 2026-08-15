@@ -139,6 +139,14 @@ button, a, [role="button"], input, select, textarea, label,
     --accent: 180 100% 45%;
     --accent-foreground: 220 15% 12%;
     
+    /* Farming-mode tokens (land_crops.farming_type taxonomy) */
+    --mode-organic: 142 63% 29%;
+    --mode-organic-soft: 142 45% 92%;
+    --mode-mixed: 88 50% 47%;
+    --mode-mixed-soft: 88 45% 92%;
+    --mode-chemical: 200 15% 54%;
+    --mode-chemical-soft: 200 20% 93%;
+
     /* Status Colors */
     --success: 142 76% 45%;
     --success-foreground: 0 0% 100%;
