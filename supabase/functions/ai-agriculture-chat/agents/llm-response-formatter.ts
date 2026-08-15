@@ -1,5 +1,10 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-15 09:50 UTC — FIX 2 (organic preference): farming_preference threaded
+ *   into the deterministic builder (both LLM + template paths), no-invention
+ *   directive added to the system prompt, and [NARRATION_NUMERIC_DRIFT]
+ *   post-check falls back to deterministic rendering when the narration
+ *   introduces numbers absent from the rule data.
  * 2026-08-02 18:02 UTC — PERF: reuse request-local market-product lookup
  *   promises across validation and narration; validation logic unchanged.
  * 2026-07-29 10:30 UTC — LATENCY L1: narration budget capped at 14s total
