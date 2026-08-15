@@ -1122,7 +1122,25 @@ serve(async (req) => {
     const farmerProfilePromise = loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
     // Persisted farming preference (organic flow). Resolved when the profile is awaited.
     let farmingPreference: FarmingPreference = 'unset';
+    // Land-scoped farming mode (SSOT: land_crops.farming_type) — resolved below.
+    let farmingMode: FarmingMode = 'unset';
+    if (landId) {
+      try {
+        const { data: landCropRows } = await supabase
+          .from('land_crops')
+          .select('farming_type, updated_at')
+          .eq('land_id', landId)
+          .eq('tenant_id', finalTenantId)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        farmingMode = normalizeFarmingMode(landCropRows?.[0]?.farming_type);
+      } catch (modeErr) {
+        console.warn('[FARMING_MODE] land_crops read failed:', (modeErr as Error).message);
+      }
+    }
+    console.log(`🌿 [FARMING_MODE] resolved land-mode=${farmingMode} (land=${landId ?? 'none'})`);
     const marketProductMemo: MarketProductMemo = new Map();
+
     
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
