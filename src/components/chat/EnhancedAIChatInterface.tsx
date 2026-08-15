@@ -30,6 +30,7 @@ import { WorldClassCamera } from './WorldClassCamera';
 import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisCard';
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 import { DiagnosticResponseCard } from './DiagnosticResponseCard';
+import FarmingModeBadge, { type FarmingMode } from './FarmingModeBadge';
 import { CropRecommendationCard } from './CropRecommendationCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
@@ -264,6 +265,8 @@ export function EnhancedAIChatInterface() {
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // Land-scoped farming mode (SSOT: land_crops.farming_type, echoed in response metadata)
+  const [farmingMode, setFarmingMode] = useState<FarmingMode>('unset');
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
@@ -1774,6 +1777,11 @@ export function EnhancedAIChatInterface() {
       
       console.log('✅ [Orchestrator] Response received:', data.metadata?.type || 'DECISION_PROVIDED');
       console.log('🔍 [Trace ID]:', data.metadata?.trace_id || 'none');
+
+      // Farming-mode badge state comes from the backend metadata only.
+      if (data.metadata?.farming_mode) {
+        setFarmingMode(data.metadata.farming_mode as FarmingMode);
+      }
       
       // PHASE 5: Server already persists messages, so we DON'T save user message here
       // This eliminates duplicate message persistence and makes server the single writer
@@ -2278,6 +2286,12 @@ export function EnhancedAIChatInterface() {
           
           {/* Action Buttons */}
           <div className="flex items-center gap-1">
+            <FarmingModeBadge
+              mode={farmingMode}
+              onSelectModeKey={(modeKey) => sendMessage(modeKey)}
+              className="mr-1"
+            />
+
             <Button
               variant="ghost"
               size="icon"

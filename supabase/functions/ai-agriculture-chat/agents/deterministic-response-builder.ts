@@ -1,3 +1,7 @@
+// CHANGE LOG (newest first)
+//   2026-08-15 18:20 UTC — Farming-mode response matrix: conventional now emits a
+//     COLLAPSED organic teaser (organic_teaser) instead of full suppression;
+//     organic_only with no organic text offers the chemical reveal ask.
 // DETERMINISTIC RESPONSE BUILDER v2.1.0
 //
 // CHANGE LOG (newest first)
