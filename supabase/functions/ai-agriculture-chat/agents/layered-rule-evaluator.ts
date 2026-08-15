@@ -1,6 +1,11 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-15 05:05 UTC — ROOT CAUSE FIX: rule_category_master.semantic_class is a string
+ *   name but RuleCategory is a numeric enum; the DB map stored the raw string so every
+ *   rule fell out of groupRulesByCategory ("loaded=14 evaluated=0", no advisory after
+ *   farmer selection). Added semanticClassToRuleCategory coercion + defensive grouping.
  * 2026-07-29 10:55 UTC — FIX C1-b: stagesEquivalent stage-family bridge now runs inside the request-scoped cultivation lane bound by the orchestrator.
+
  * 2026-07-29 10:30 UTC — LATENCY L3: converted-rule cache per crop (5min TTL);
  *   getAllRulesWithBundled no longer rebuilds every rule closure twice a turn.
  */
@@ -1175,10 +1180,22 @@ export function evaluateRulesLayered(
 function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
   const grouped = new Map<RuleCategory, Rule[]>();
   for (const cat of [1,2,3,4,5,6]) grouped.set(cat as RuleCategory, []);
+  let dropped = 0;
   for (const rule of rules) {
     if (!rule.active) continue;
-    grouped.get(rule.category)?.push(rule);
+    // Defensive: coerce string category names ('DIAGNOSIS') to the numeric enum
+    // so a non-numeric category can never silently zero out the evaluation set.
+    const cat = typeof rule.category === 'number'
+      ? rule.category
+      : semanticClassToRuleCategory(rule.category);
+    const bucket = cat !== null ? grouped.get(cat as RuleCategory) : undefined;
+    if (!bucket) { dropped++; continue; }
+    bucket.push(rule);
   }
+  if (dropped > 0) {
+    console.warn(`⚠️ [SYMBOLIC_CONTRACT_VIOLATION] groupRulesByCategory dropped ${dropped}/${rules.length} rules with unresolvable category`);
+  }
+
   for (const [cat, catRules] of grouped) {
     // P2-2: Sort by data_authority_rank DESC then priority DESC
     catRules.sort((a, b) => {
@@ -1531,6 +1548,16 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
 let categoryMapCache: { at: number; map: Map<string, RuleCategory> } | null = null;
 const CATEGORY_CACHE_TTL = 300_000;
 
+/** DB stores semantic_class as an UPPERCASE NAME; the engine uses a numeric enum. */
+export function semanticClassToRuleCategory(value: unknown): RuleCategory | null {
+  if (typeof value === 'number' && RuleCategory[value] !== undefined) return value as RuleCategory;
+  const name = String(value ?? '').trim().toUpperCase();
+  if (!name) return null;
+  const numeric = (RuleCategory as any)[name];
+  return typeof numeric === 'number' ? (numeric as RuleCategory) : null;
+}
+
+
 export async function loadCategorySemantics(supabase: any): Promise<Map<string, RuleCategory>> {
   if (categoryMapCache && Date.now() - categoryMapCache.at < CATEGORY_CACHE_TTL) {
     return categoryMapCache.map;
@@ -1542,11 +1569,24 @@ export async function loadCategorySemantics(supabase: any): Promise<Map<string, 
       .select('category, semantic_class')
       .eq('is_active', true);
     if (error) throw new Error(error.message);
+    let unmapped = 0;
     for (const r of data ?? []) {
       const key = String(r.category ?? '').toLowerCase().trim();
       if (!key || !r.semantic_class) continue;
-      map.set(key, r.semantic_class as RuleCategory);
+      // CRITICAL: rule_category_master.semantic_class is a STRING NAME
+      // ('DIAGNOSIS', 'PRESCRIPTION', …) while RuleCategory is a NUMERIC enum.
+      // Storing the raw string made grouped.get(rule.category) miss every
+      // bucket → "loaded=N evaluated=0". Coerce to the numeric enum here.
+      const semantic = semanticClassToRuleCategory(r.semantic_class);
+      if (semantic === null) {
+        unmapped++;
+        console.warn(`⚠️ [SYMBOLIC_CONTRACT_VIOLATION] rule_category_master.semantic_class='${r.semantic_class}' (category='${key}') is not a known RuleCategory — category dropped`);
+        continue;
+      }
+      map.set(key, semantic);
     }
+    if (unmapped > 0) console.warn(`⚠️ [RULE_CATEGORY_SSOT] ${unmapped} unmapped semantic_class values`);
+
     if (map.size === 0) throw new Error('empty rule_category_master');
     categoryMapCache = { at: Date.now(), map };
     console.log(`📚 [RULE_CATEGORY_SSOT] loaded ${map.size} categories from rule_category_master`);
