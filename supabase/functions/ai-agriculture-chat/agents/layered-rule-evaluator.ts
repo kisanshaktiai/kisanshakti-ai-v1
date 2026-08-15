@@ -1542,11 +1542,24 @@ export async function loadCategorySemantics(supabase: any): Promise<Map<string, 
       .select('category, semantic_class')
       .eq('is_active', true);
     if (error) throw new Error(error.message);
+    let unmapped = 0;
     for (const r of data ?? []) {
       const key = String(r.category ?? '').toLowerCase().trim();
       if (!key || !r.semantic_class) continue;
-      map.set(key, r.semantic_class as RuleCategory);
+      // CRITICAL: rule_category_master.semantic_class is a STRING NAME
+      // ('DIAGNOSIS', 'PRESCRIPTION', …) while RuleCategory is a NUMERIC enum.
+      // Storing the raw string made grouped.get(rule.category) miss every
+      // bucket → "loaded=N evaluated=0". Coerce to the numeric enum here.
+      const semantic = semanticClassToRuleCategory(r.semantic_class);
+      if (semantic === null) {
+        unmapped++;
+        console.warn(`⚠️ [SYMBOLIC_CONTRACT_VIOLATION] rule_category_master.semantic_class='${r.semantic_class}' (category='${key}') is not a known RuleCategory — category dropped`);
+        continue;
+      }
+      map.set(key, semantic);
     }
+    if (unmapped > 0) console.warn(`⚠️ [RULE_CATEGORY_SSOT] ${unmapped} unmapped semantic_class values`);
+
     if (map.size === 0) throw new Error('empty rule_category_master');
     categoryMapCache = { at: Date.now(), map };
     console.log(`📚 [RULE_CATEGORY_SSOT] loaded ${map.size} categories from rule_category_master`);
