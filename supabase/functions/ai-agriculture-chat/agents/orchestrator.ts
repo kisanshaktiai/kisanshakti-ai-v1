@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-08-15 03:45 UTC — MULTIMATCH SELECTION FIX: the differential question
+//     options carried the observation code only inside `maps_to`, so persistence
+//     (which reads top-level `observation_key`) stored ["",…] and the next turn
+//     fell back to the SYMBOLIC_ID_LEAK heuristic → wrong observation → 0 rules.
+//     Now surfaces `observation_key = maps_to.observation_keys[0]` (additive).
 //   2026-08-14 17:20 UTC — CLARIFICATION RENDER FIX: the final clarification
 //     assembly shipped `ruleDrivenClarification.options` (English labels, empty
 //     observation_key) and discarded the already-translated options. Now keeps
@@ -9248,6 +9253,11 @@ export class AIAgentOrchestrator {
                         options: multiMatchResult.clarification_output.options.map(opt => ({
                           value: opt.id,
                           label: opt.label[options.language || 'mr'] || opt.label.mr,
+                          // Surface the observation key at top level so persistence
+                          // (pending_clarification_observation_keys) and the next-turn
+                          // selection resolver find a real code instead of falling back
+                          // to the SYMBOLIC_ID_LEAK heuristic.
+                          observation_key: opt.maps_to?.observation_keys?.[0] || '',
                           maps_to: opt.maps_to
                         })),
                         selection_type: multiMatchResult.clarification_output.selection_type
