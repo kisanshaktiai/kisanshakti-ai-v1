@@ -723,6 +723,16 @@ export async function formatRecommendationsWithLLM(
   // ═══ SANITIZATION GATE: Strip any leaked technical data from LLM output ═══
   formattedResponse = sanitizeFarmerResponse(formattedResponse);
 
+  // ═══ NARRATION NUMERIC DRIFT GATE (FIX 2 / no-invention guardrail) ═══
+  // Any measured number in the narration must exist in the rule data supplied to
+  // the LLM. Invented dosages/percentages (the bio-insecticide incident) are a
+  // safety defect → fall back to deterministic rendering of the raw fields.
+  const drift = detectNarrationNumericDrift(formattedResponse, `${userPrompt}\n${systemPrompt}`);
+  if (drift.length > 0) {
+    console.error(`🚫 [NARRATION_NUMERIC_DRIFT] trace=${input.trace_id || 'n/a'} invented values: ${drift.join(', ')}`);
+    return buildTemplateFallback(input, startTime);
+  }
+
   const processingTime = Date.now() - startTime;
   console.log(`   ✅ PHASE 5 complete in ${processingTime}ms`);
   
