@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-08-15 03:45 UTC — MULTIMATCH SELECTION FIX: the differential question
+//     options carried the observation code only inside `maps_to`, so persistence
+//     (which reads top-level `observation_key`) stored ["",…] and the next turn
+//     fell back to the SYMBOLIC_ID_LEAK heuristic → wrong observation → 0 rules.
+//     Now surfaces `observation_key = maps_to.observation_keys[0]` (additive).
 //   2026-08-14 17:20 UTC — CLARIFICATION RENDER FIX: the final clarification
 //     assembly shipped `ruleDrivenClarification.options` (English labels, empty
 //     observation_key) and discarded the already-translated options. Now keeps
