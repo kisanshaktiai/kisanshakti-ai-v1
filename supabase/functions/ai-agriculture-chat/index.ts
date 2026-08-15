@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-15 02:05 UTC — CLARIFICATION_ROUND_EXHAUSTED escalation now ships the
+ *   already-translated option objects (photo fallback) instead of an empty
+ *   clarification_options array; trigger logic unchanged.
  * 2026-08-08 02:20 UTC — FIX C: persist pending options whenever the turn
  *   ships question.options, regardless of response type string.
  * 2026-08-02 18:02 UTC — PERF: start farmer-profile read alongside orchestrator
@@ -1224,13 +1227,24 @@ serve(async (req) => {
             `repeat_subset=${_isSubsetOfAsked} outgoing=[${_outKeys.slice(0, 6).join(',')}] ` +
             `asked=${_priorAskedObservationKeys.length} action=escalate_instead_of_reask`,
           );
+          // 2026-08-15: never emit a 0-option escalation. Reuse the options that
+          // were already built + translated for this turn (farmer-language label
+          // + real observation_key). Photo fallback only if genuinely empty.
+          const _preparedForEscalation =
+            (((orchestratorResponse as any)?.question?.options ?? []) as any[])
+              .filter((o: any) => o && (o.observation_key || o.value));
+          const _escalationOptions = _preparedForEscalation.length > 0
+            ? _preparedForEscalation
+            : [{ value: 'photo_upload', observation_key: 'photo_upload', label: '📷' }];
+          const _preservedSelectionType = (orchestratorResponse as any)?.metadata?.selectionType;
+
           (orchestratorResponse as any).type = 'DIAGNOSTIC_ESCALATION';
           (orchestratorResponse as any).question = undefined;
           (orchestratorResponse as any).metadata = {
             ...((orchestratorResponse as any).metadata ?? {}),
             orchestrator_type: 'DIAGNOSTIC_ESCALATION',
-            clarification_options: [],
-            selectionType: undefined,
+            clarification_options: _escalationOptions,
+            selectionType: _preservedSelectionType,
             escalation_reason: _isSubsetOfAsked ? 'REPEATED_CLARIFICATION_BLOCKED' : 'CLARIFICATION_BUDGET_EXHAUSTED',
           };
         } else {
