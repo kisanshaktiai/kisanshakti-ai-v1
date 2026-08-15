@@ -8,6 +8,8 @@ export interface FarmerProfileLite {
   language?: string | null;   // language_preference from farmers
   gender?: Gender | null;     // from user_profiles
   state?: string | null;      // from user_profiles
+  /** farmers.farming_preference — 'unset' | 'conventional' | 'organic' | 'integrated' */
+  farming_preference?: string | null;
 }
 
 interface HonorificSet {
