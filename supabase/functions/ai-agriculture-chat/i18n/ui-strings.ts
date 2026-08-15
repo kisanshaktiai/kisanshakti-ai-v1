@@ -237,5 +237,3 @@ export const MODE_OPTION_VALUES: Record<string, FarmingMode> = {
   'mode.mixed': 'organic_fertilizer',
   'mode.organic': 'organic_only',
 };
-
-};
