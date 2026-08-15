@@ -498,7 +498,8 @@ export function buildDeterministicResponse(
   ruleData: RichRuleData,
   landAreaAcres?: number,
   cropContext?: CropContext,
-  weather?: WeatherContext
+  weather?: WeatherContext,
+  farmingPreference: 'unset' | 'conventional' | 'organic' | 'integrated' = 'unset'
 ): StructuredFarmerResponse {
   const area = landAreaAcres && landAreaAcres > 0 ? landAreaAcres : 0;
   const actionTypeUpper = (ruleData.action_type || '').toUpperCase();
