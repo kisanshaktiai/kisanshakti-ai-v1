@@ -366,6 +366,13 @@ button, a, [role="button"], input, select, textarea, label,
     --accent: 180 100% 50%;
     --accent-foreground: 220 15% 12%;
     
+    --mode-organic: 142 55% 45%;
+    --mode-organic-soft: 142 40% 18%;
+    --mode-mixed: 88 45% 55%;
+    --mode-mixed-soft: 88 35% 18%;
+    --mode-chemical: 200 12% 62%;
+    --mode-chemical-soft: 200 12% 20%;
+
     --success: 142 76% 50%;
     --success-foreground: 0 0% 100%;
     --success-soft: 142 40% 20%;
