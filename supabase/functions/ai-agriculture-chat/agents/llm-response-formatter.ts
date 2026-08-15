@@ -1321,6 +1321,16 @@ Show the TOTAL quantity the farmer needs, not per-acre rate.
 ═══ PHI TRANSLATION ═══
 Translate phi_days to: "Stop spraying at least X days before harvest" (in natural ${langName}).
 
+═══ NO-INVENTION GUARDRAIL (ORGANIC / ALTERNATIVES) ═══
+FARMER_FARMING_PREFERENCE: ${input.farming_preference || 'unset'}
+Never add treatments, alternatives, percentages or numeric values not present in the provided rule data.
+Omit any section whose source field is empty. Organic content may ONLY be rendered from the
+ORGANIC_ALTERNATIVE / alternatives fields supplied below — never from your own knowledge.
+If the data says the organic option is empty, say so honestly using the provided line; do not substitute one.
+If preference = conventional, do NOT render any organic section (safety/block content still renders).
+If preference = organic and an organic option exists, render it FIRST and mark the chemical action as secondary.
+
+
 ${ruralRules}
 ${cropStageConstraints}
 
