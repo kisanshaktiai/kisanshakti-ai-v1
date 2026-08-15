@@ -187,7 +187,8 @@ export interface StructuredFarmerResponse {
     // FIX 2 (2026-08-15): farmer farming_preference-driven render control.
     farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
     lead_with_organic?: boolean;   // preference='organic' AND organic text present
-    suppress_organic?: boolean;    // preference='conventional'
+    suppress_organic?: boolean;    // conventional AND no organic text at all
+    organic_teaser?: boolean;      // conventional + organic text → collapsed footer teaser
     organic_same_as_main?: boolean; // organic_alternative starts with "Same"
     organic_same_reason?: string;   // text after the em-dash of a "Same — ..." field
     no_organic_available?: boolean; // preference='organic' but field empty
@@ -660,15 +661,19 @@ export function buildDeterministicResponse(
     safety_score: safetyScore,
   };
   
-  // Section 5: Organic/IPM — preference-aware (FIX 2)
+  // Section 5: Organic/IPM — farming-mode aware (2026-08-15 response matrix)
   // Content is ALWAYS verbatim from decision_rules.organic_alternative; the
-  // preference only decides ordering / suppression. Never invent an option.
+  // mode only decides ordering / collapse. Never invent an option.
+  //   conventional (fertilizer_pesticide) → chemical primary + COLLAPSED teaser
+  //   integrated   (organic_fertilizer)   → chemical primary + expanded organic
+  //   organic      (organic_only)         → organic primary, chemical on request
   const organicText = (ruleData.organic_alternative || '').trim();
   const organicSame = /^same\b/i.test(organicText);
   const organicSameReason = organicSame
     ? (organicText.split(/—|--|-\s/)[1] || '').trim() || undefined
     : undefined;
-  const suppressOrganic = farmingPreference === 'conventional';
+  const organicTeaser = farmingPreference === 'conventional' && !!organicText && !organicSame;
+  const suppressOrganic = farmingPreference === 'conventional' && !organicText;
   const leadWithOrganic = farmingPreference === 'organic' && !!organicText && !organicSame;
   const noOrganicAvailable = farmingPreference === 'organic' && !organicText;
   const hasAlternative = !suppressOrganic && !!(organicText || ruleData.ipm_level);
@@ -681,10 +686,12 @@ export function buildDeterministicResponse(
     farming_preference: farmingPreference,
     lead_with_organic: leadWithOrganic,
     suppress_organic: suppressOrganic,
+    organic_teaser: organicTeaser,
     organic_same_as_main: organicSame,
     organic_same_reason: organicSameReason,
     no_organic_available: noOrganicAvailable,
   };
+
   
   // Section 6: Cost (suppressed if not TREAT mode)
   const hasCost = !suppressTreatment && !!(ruleData.material_cost_per_acre_min || ruleData.material_cost_per_acre_max || 
@@ -1013,25 +1020,31 @@ export async function formatStructuredResponseForLLM(
     }
   }
   
-  // Organic/IPM — preference-aware ordering (FIX 2). Content stays verbatim.
+  // Organic/IPM — farming-mode aware ordering. Content stays verbatim.
   const org = response.organic;
   if (org.suppress_organic) {
-    parts.push(`\nFARMER_PREFERENCE: conventional — DO NOT render any organic/IPM section.`);
+    parts.push(`\nFARMING_MODE: chemical and ORGANIC_ALTERNATIVE is EMPTY — DO NOT render any organic/IPM section.`);
   } else if (org.no_organic_available) {
     parts.push(`\n═══ 🌿 ORGANIC PREFERENCE ═══`);
-    parts.push(`FARMER_PREFERENCE: organic. ORGANIC_ALTERNATIVE is EMPTY for this rule.`);
+    parts.push(`FARMING_MODE: organic_only. ORGANIC_ALTERNATIVE is EMPTY for this rule.`);
     parts.push(`State honestly (i18n advisory.no_organic_available): "${getUiString('advisory.no_organic_available', l)}"`);
-    parts.push(`Then render the standard advisory above. NEVER invent an organic option.`);
+    parts.push(`Then offer the chemical option as a question (i18n advisory.show_chemical_ask): "${getUiString('advisory.show_chemical_ask', l)}"`);
+    parts.push(`Render the chemical advisory above LAST, clearly labelled. NEVER invent an organic option.`);
   } else if (org.has_alternative) {
     if (org.organic_same_as_main) {
       parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
       parts.push(`ORGANIC_SAME_AS_MAIN: render one advisory + this line: "${getUiString('advisory.organic_same', l)}"`);
       if (org.organic_same_reason) parts.push(`Reason (verbatim source): ${org.organic_same_reason}`);
     } else if (org.lead_with_organic) {
-      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farmer preference = organic) ═══`);
+      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farming mode = organic_only) ═══`);
       parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
       parts.push(`🌿 PRIMARY RECOMMENDATION (organic, verbatim source): ${org.organic_alternative}`);
       parts.push(`Then render the chemical action above as clearly-labelled SECONDARY under header: ${getUiString('advisory.chemical_alt_header', l)}`);
+    } else if (org.organic_teaser) {
+      parts.push(`\n═══ 🌿 ORGANIC TEASER (farming mode = fertilizer_pesticide) ═══`);
+      parts.push(`Render the chemical advisory above FIRST and COMPLETE.`);
+      parts.push(`Then, as the very LAST block, one short line header (i18n advisory.organic_teaser): ${getUiString('advisory.organic_teaser', l)}`);
+      parts.push(`🌿 Organic Option (verbatim source, one short paragraph): ${org.organic_alternative}`);
     } else {
       parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
       parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
@@ -1039,6 +1052,7 @@ export async function formatStructuredResponseForLLM(
         parts.push(`🌿 Organic Option (verbatim source): ${org.organic_alternative}`);
       }
     }
+
     if (org.ipm_label) {
       const translatedIpm = await translateTechnicalTerm(org.ipm_label, l, supabaseClient);
       parts.push(`IPM Level: ${translatedIpm}`);

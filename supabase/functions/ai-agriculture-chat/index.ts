@@ -48,7 +48,19 @@ import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 // Organic-preference flow (FIX 1/2): i18n chrome strings + preference vocabulary
-import { getUiString, normalizeFarmingPreference, PREFERENCE_OPTION_VALUES, type FarmingPreference } from './i18n/ui-strings.ts';
+import {
+  getUiString,
+  loadUiTranslations,
+  normalizeFarmingPreference,
+  normalizeFarmingMode,
+  preferenceToFarmingMode,
+  farmingModeToPreference,
+  modeLabelKey,
+  PREFERENCE_OPTION_VALUES,
+  MODE_OPTION_VALUES,
+  type FarmingPreference,
+  type FarmingMode,
+} from './i18n/ui-strings.ts';
 import { initializeTranslationCache } from './i18n/translation-loader.ts';
 
 // Import orchestrator
@@ -777,6 +789,44 @@ serve(async (req) => {
     const canonicalLanguage = detectLanguage(userMessageContent, language);
     const detectedLanguage = canonicalLanguage;
 
+    // ui_translations is the SSOT for all farmer-facing chrome copy below.
+    try { await loadUiTranslations(supabase); } catch (_e) { /* seed fallback */ }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FARMING-MODE CHIP / SHEET TAP (land-scoped, 2026-08-15).
+    // The badge sheet sends the mode i18n key; we persist on land_crops
+    // (tenant + land scoped) and confirm once. One code path for the sheet
+    // and for the voice/text PREFERENCE_UPDATE confirmation chip.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      const tappedMode = MODE_OPTION_VALUES[userMessageContent.trim()];
+      if (tappedMode && landId) {
+        try {
+          await supabase
+            .from('land_crops')
+            .update({ farming_type: tappedMode })
+            .eq('land_id', landId)
+            .eq('tenant_id', finalTenantId);
+          console.log(`🌿 [FARMING_MODE] land=${landId} farming_type=${tappedMode}`);
+        } catch (modeErr) {
+          console.warn('[FARMING_MODE] persist failed:', (modeErr as Error).message);
+        }
+        return new Response(
+          JSON.stringify({
+            response: getUiString('preference.saved_land_confirm', detectedLanguage),
+            sessionId: currentSessionId,
+            metadata: {
+              trace_id: traceId,
+              orchestrator_type: 'PREFERENCE_SAVED',
+              farming_mode: tappedMode,
+              farming_mode_label: getUiString(modeLabelKey(tappedMode), detectedLanguage),
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // ORGANIC-PREFERENCE CHIP TAP (FIX 1.3) — non-agronomic, answered here.
     // The chip sends the i18n key as the message value; we persist the choice
@@ -810,6 +860,7 @@ serve(async (req) => {
         );
       }
     }
+
 
 
     // PHASE Y HARD GUARANTEE: initialize trace collector before any symbolic
@@ -1071,7 +1122,25 @@ serve(async (req) => {
     const farmerProfilePromise = loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
     // Persisted farming preference (organic flow). Resolved when the profile is awaited.
     let farmingPreference: FarmingPreference = 'unset';
+    // Land-scoped farming mode (SSOT: land_crops.farming_type) — resolved below.
+    let farmingMode: FarmingMode = 'unset';
+    if (landId) {
+      try {
+        const { data: landCropRows } = await supabase
+          .from('land_crops')
+          .select('farming_type, updated_at')
+          .eq('land_id', landId)
+          .eq('tenant_id', finalTenantId)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        farmingMode = normalizeFarmingMode(landCropRows?.[0]?.farming_type);
+      } catch (modeErr) {
+        console.warn('[FARMING_MODE] land_crops read failed:', (modeErr as Error).message);
+      }
+    }
+    console.log(`🌿 [FARMING_MODE] resolved land-mode=${farmingMode} (land=${landId ?? 'none'})`);
     const marketProductMemo: MarketProductMemo = new Map();
+
     
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
@@ -2161,7 +2230,14 @@ serve(async (req) => {
               gender: profile.gender,
               farmer_name: profile.farmer_name,
             });
-            farmingPreference = normalizeFarmingPreference((profile as any).farming_preference);
+            // Resolution chain: land_crops.farming_type wins; farmers.farming_preference is the fallback.
+            const profilePreference = normalizeFarmingPreference((profile as any).farming_preference);
+            if (farmingMode !== 'unset') {
+              farmingPreference = farmingModeToPreference(farmingMode);
+            } else {
+              farmingPreference = profilePreference;
+              farmingMode = preferenceToFarmingMode(profilePreference);
+            }
             console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}, farming_preference=${farmingPreference}`);
           } catch (e) {
             console.warn('[Addressing] load failed:', (e as Error).message);
@@ -2969,10 +3045,19 @@ serve(async (req) => {
       );
     }
 
+    // ─── FARMING-MODE METADATA (badge renders with zero extra calls) ───
+    (responsePayload as any).metadata = {
+      ...((responsePayload as any).metadata || {}),
+      farming_mode: farmingMode,
+      farming_mode_label: farmingMode === 'unset'
+        ? undefined
+        : getUiString(modeLabelKey(farmingMode), detectedLanguage),
+    };
+
     // ─── ONE-TIME ORGANIC-PREFERENCE ASK (FIX 1) ───
-    // Only after a real advisory, never during clarification, never repeated
-    // once farmers.farming_preference has been set.
-    if (farmingPreference === 'unset' && recommendationsProvided && !isClarificationResponse) {
+    // Rare fallback only: the chip appears when NEITHER land_crops.farming_type
+    // NOR farmers.farming_preference is set. Never during clarification.
+    if (farmingMode === 'unset' && farmingPreference === 'unset' && recommendationsProvided && !isClarificationResponse) {
       (responsePayload as any).metadata = {
         ...((responsePayload as any).metadata || {}),
         preference_prompt: {
@@ -2985,6 +3070,7 @@ serve(async (req) => {
         },
       };
     }
+
 
     return new Response(
       JSON.stringify(responsePayload),

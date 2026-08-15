@@ -1,10 +1,15 @@
 // UI STRINGS — farmer-facing chrome text resolved through the i18n path only.
 //
 // CHANGE LOG (newest first)
+//   2026-08-15 17:45 UTC — Farming-mode system: land-scoped mode taxonomy
+//     (`land_crops.farming_type`), DB-first resolution through `ui_translations`
+//     (loadUiTranslations), mode<->preference mapping helpers and MODE_OPTION
+//     values for the badge/sheet + PREFERENCE_UPDATE chip. No agronomic content.
 //   2026-08-15 09:40 UTC — NEW: DB-first resolver for the organic-preference
 //     flow keys (DOC 1 / FIX 1 + FIX 2). Resolution order:
-//       1. translation cache (observation_translations / decision_rules i18n_key)
-//       2. spec-provided seed copy below (used only until the DBA seeds DOC 2/3)
+//       1. ui_translations (DB SSOT)
+//       2. translation cache (observation_translations / decision_rules i18n_key)
+//       3. spec-provided seed copy below
 //     No agronomic content lives here — chrome/UI copy only.
 
 import { getTranslation } from './translation-loader.ts';
@@ -15,10 +20,24 @@ export type UiStringKey =
   | 'preference.organic_only'
   | 'preference.organic_never'
   | 'preference.saved_confirm'
+  | 'preference.confirm_land_ask'
+  | 'preference.saved_land_confirm'
+  | 'mode.chemical'
+  | 'mode.mixed'
+  | 'mode.organic'
+  | 'mode.chemical_desc'
+  | 'mode.mixed_desc'
+  | 'mode.organic_desc'
+  | 'mode.scope_note'
+  | 'common.yes'
+  | 'common.no'
   | 'advisory.organic_header'
   | 'advisory.chemical_alt_header'
   | 'advisory.organic_same'
+  | 'advisory.organic_teaser'
+  | 'advisory.show_chemical_ask'
   | 'advisory.no_organic_available';
+
 
 /**
  * Seed copy taken verbatim from the approved i18n seed list (DOC 1 / FIX 3).
@@ -70,11 +89,85 @@ const SEED: Record<UiStringKey, Record<string, string>> = {
     hi: 'इस समस्या के लिए जैविक विकल्प अभी उपलब्ध नहीं है',
     en: 'No organic option is available for this problem yet',
   },
+  'advisory.organic_teaser': {
+    mr: '🌿 जैविक पर्याय पहा',
+    hi: '🌿 जैविक विकल्प देखें',
+    en: '🌿 See organic option',
+  },
+  'advisory.show_chemical_ask': {
+    mr: 'रासायनिक उपाय पाहायचा का?',
+    hi: 'क्या रासायनिक उपाय देखना है?',
+    en: 'See the chemical option?',
+  },
+  'preference.confirm_land_ask': {
+    mr: 'या शेतासाठी 🌿 जैविक पर्याय नेहमी दाखवू?',
+    hi: 'क्या इस खेत के लिए 🌿 जैविक विकल्प हमेशा दिखाएँ?',
+    en: 'Always show 🌿 organic options for this land?',
+  },
+  'preference.saved_land_confirm': {
+    mr: 'या शेतासाठी बदलले ✓',
+    hi: 'इस खेत के लिए बदल दिया ✓',
+    en: 'Updated for this land ✓',
+  },
+  'mode.chemical': { mr: 'रासायनिक', hi: 'रासायनिक', en: 'Chemical' },
+  'mode.mixed': { mr: 'मिश्र', hi: 'मिश्रित', en: 'Mixed' },
+  'mode.organic': { mr: 'जैविक', hi: 'जैविक', en: 'Organic' },
+  'mode.chemical_desc': {
+    mr: 'रासायनिक खते व औषधे वापरतो',
+    hi: 'रासायनिक खाद व दवाएँ उपयोग करता हूँ',
+    en: 'I use chemical fertilizers and pesticides',
+  },
+  'mode.mixed_desc': {
+    mr: 'जैविक खते, पण औषधे रासायनिक',
+    hi: 'जैविक खाद, पर दवाएँ रासायनिक',
+    en: 'Organic fertilizers, chemical protection',
+  },
+  'mode.organic_desc': {
+    mr: 'पूर्ण जैविक शेती करतो',
+    hi: 'पूरी तरह जैविक खेती करता हूँ',
+    en: 'Fully organic farming',
+  },
+  'mode.scope_note': {
+    mr: 'हे फक्त या शेतासाठी लागू',
+    hi: 'यह केवल इस खेत के लिए लागू',
+    en: 'Applies to this land only',
+  },
+  'common.yes': { mr: 'हो', hi: 'हाँ', en: 'Yes' },
+  'common.no': { mr: 'नाही', hi: 'नहीं', en: 'No' },
 };
 
-/** Resolve a UI string: DB translation cache first, seed copy as fallback. */
+// ── ui_translations DB SSOT cache (chrome copy only) ─────────────────────────
+const uiTranslations = new Map<string, string>();   // `${key}::${lang}` → text
+let uiTranslationsLoadedAt = 0;
+const UI_TTL_MS = 3_600_000;
+
+/** Load the `ui_translations` table once per cold start (DB is SSOT). */
+export async function loadUiTranslations(supabase: any): Promise<void> {
+  if (Date.now() - uiTranslationsLoadedAt < UI_TTL_MS && uiTranslations.size > 0) return;
+  try {
+    const { data, error } = await supabase
+      .from('ui_translations')
+      .select('ui_key, language_code, display_text')
+      .limit(1000);
+    if (error) throw error;
+    uiTranslations.clear();
+    for (const row of data || []) {
+      if (!row?.ui_key || !row?.language_code || !row?.display_text) continue;
+      uiTranslations.set(`${row.ui_key}::${String(row.language_code).toLowerCase()}`, row.display_text);
+    }
+    uiTranslationsLoadedAt = Date.now();
+    console.log(`🗂️ [UI_I18N] ui_translations loaded: ${uiTranslations.size} entries`);
+  } catch (e) {
+    console.warn('[UI_I18N] ui_translations load failed:', (e as Error).message);
+  }
+}
+
+/** Resolve a UI string: ui_translations → translation cache → seed copy. */
 export function getUiString(key: UiStringKey, language: string): string {
   const lang = (language || 'en').toLowerCase();
+  const fromUi = uiTranslations.get(`${key}::${lang}`) || uiTranslations.get(`${key}::en`);
+  if (fromUi) return fromUi;
+
   const fromDb = getTranslation(key, lang);
   // getTranslation() returns a de-underscored key echo when nothing is cached.
   const keyEcho = key.toUpperCase().replace(/[.\s-]+/g, '_').replace(/_/g, ' ');
@@ -87,10 +180,48 @@ export function getUiString(key: UiStringKey, language: string): string {
 
 export type FarmingPreference = 'unset' | 'conventional' | 'organic' | 'integrated';
 
+/** Land-scoped taxonomy stored in `land_crops.farming_type` (DB SSOT). */
+export type FarmingMode = 'unset' | 'fertilizer_pesticide' | 'organic_fertilizer' | 'organic_only';
+
 export function normalizeFarmingPreference(value: unknown): FarmingPreference {
   const v = (value ?? '').toString().trim().toLowerCase();
   if (v === 'conventional' || v === 'organic' || v === 'integrated') return v;
   return 'unset';
+}
+
+export function normalizeFarmingMode(value: unknown): FarmingMode {
+  const v = (value ?? '').toString().trim().toLowerCase();
+  if (v === 'fertilizer_pesticide' || v === 'organic_fertilizer' || v === 'organic_only') return v;
+  return 'unset';
+}
+
+/** farmers.farming_preference → land-mode taxonomy (fallback leg of the chain). */
+export function preferenceToFarmingMode(pref: FarmingPreference): FarmingMode {
+  switch (pref) {
+    case 'organic': return 'organic_only';
+    case 'integrated': return 'organic_fertilizer';
+    case 'conventional': return 'fertilizer_pesticide';
+    default: return 'unset';
+  }
+}
+
+/** Land mode → the preference token the response builder already understands. */
+export function farmingModeToPreference(mode: FarmingMode): FarmingPreference {
+  switch (mode) {
+    case 'organic_only': return 'organic';
+    case 'organic_fertilizer': return 'integrated';
+    case 'fertilizer_pesticide': return 'conventional';
+    default: return 'unset';
+  }
+}
+
+/** i18n key of the badge label for a mode. */
+export function modeLabelKey(mode: FarmingMode): UiStringKey {
+  switch (mode) {
+    case 'organic_only': return 'mode.organic';
+    case 'organic_fertilizer': return 'mode.mixed';
+    default: return 'mode.chemical';
+  }
 }
 
 /** Option values shipped with the one-time preference chip. */
@@ -98,4 +229,11 @@ export const PREFERENCE_OPTION_VALUES: Record<string, FarmingPreference> = {
   'preference.organic_always': 'integrated',
   'preference.organic_only': 'organic',
   'preference.organic_never': 'conventional',
+};
+
+/** Mode chip / sheet values (land-scoped write to land_crops.farming_type). */
+export const MODE_OPTION_VALUES: Record<string, FarmingMode> = {
+  'mode.chemical': 'fertilizer_pesticide',
+  'mode.mixed': 'organic_fertilizer',
+  'mode.organic': 'organic_only',
 };
