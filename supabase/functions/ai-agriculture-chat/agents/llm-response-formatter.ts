@@ -1510,7 +1510,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
         is_raining: weatherMeta.is_raining,
       } : undefined;
       
-      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather);
+      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather, input.farming_preference || 'unset');
       const deterministicPrompt = await formatStructuredResponseForLLM(structuredResponse, undefined, input.supabase_client);
       
       // PRODUCT MAPPING: Look up market product names for LLM narration
@@ -2035,7 +2035,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
         days_since_sowing: input.land_context.days_since_sowing,
       } : undefined;
       
-      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext);
+      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, undefined, input.farming_preference || 'unset');
       const deterministicText = await formatStructuredResponseForLLM(structuredResponse, lang, input.supabase_client);
       
       console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);
