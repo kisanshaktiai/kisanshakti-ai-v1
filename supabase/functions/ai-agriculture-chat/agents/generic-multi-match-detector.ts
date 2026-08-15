@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-08-15 08:15 UTC — MultiMatch differential options now render the rule's
+// condition_code observation label from observation_translations in the farmer's
+// language (English `cause` only as last resort); obsKeys carries condition_code.
 // 2026-07-09 21:15 UTC — getDefaultClarificationOptionsFallback() now
 // GENERIC MULTI-MATCH DETECTOR - World-Class Clarification System
 
@@ -34,6 +37,8 @@ export interface CompetingMatch {
   cause_code: string;
   category: string;
   confidence: number;
+  condition_code?: string | null;
+  observation_label?: Record<string, string> | null;
   observable_characteristics: ObservableCharacteristics;
   differentiating_questions: DifferentiatingQuestion[];
   visual_markers: VisualMarkers;
@@ -140,7 +145,7 @@ export async function detectCompetingMatches(
 
   const { data: dbRules, error } = await supabaseClient
     .from('decision_rules')
-    .select('rule_id, cause, category, observable_characteristics, differentiating_questions, visual_markers')
+    .select('rule_id, cause, category, condition_code, observable_characteristics, differentiating_questions, visual_markers')
     .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8)
     .in('rule_id', ruleIds);
 
@@ -154,23 +159,50 @@ export async function detectCompetingMatches(
     return [];
   }
 
+  // 2026-08-15 — resolve farmer-language observation labels from each rule's
+  // condition_code (global table, no tenant coupling, no hardcoded codes).
+  const condCodes = Array.from(new Set(
+    (dbRules as any[]).map((r: any) => r.condition_code).filter(Boolean).map(String),
+  ));
+  const obsLabelByCode = new Map<string, Record<string, string>>();
+  if (condCodes.length > 0) {
+    const { data: trs, error: trErr } = await supabaseClient
+      .from('observation_translations')
+      .select('observation_code, language_code, display_text, description_text')
+      .in('observation_code', condCodes);
+    if (trErr) {
+      console.warn('   ⚠️ [MultiMatch] observation_translations fetch failed:', trErr.message);
+    }
+    for (const t of trs ?? []) {
+      const code = String(t.observation_code);
+      const txt = String(t.display_text || t.description_text || '').trim();
+      if (!txt) continue;
+      const e = obsLabelByCode.get(code) ?? {};
+      e[String(t.language_code).toLowerCase()] = txt;
+      obsLabelByCode.set(code, e);
+    }
+  }
+
   // Enrich with database metadata
   const enrichedMatches: CompetingMatch[] = competing.map(rule => {
     const ruleId = rule.rule_id || rule.ruleId;
     const dbRule = dbRules.find((r: any) => r.rule_id === ruleId);
+    const condCode = dbRule?.condition_code ? String(dbRule.condition_code) : null;
 
     return {
       rule_id: ruleId,
       cause_code: dbRule?.cause || rule.cause || 'UNKNOWN',
       category: dbRule?.category || rule.category || 'UNKNOWN',
       confidence: rule.confidence || 0,
+      condition_code: condCode,
+      observation_label: condCode ? (obsLabelByCode.get(condCode) || null) : null,
       observable_characteristics: dbRule?.observable_characteristics || {},
       differentiating_questions: dbRule?.differentiating_questions || [],
       visual_markers: dbRule?.visual_markers || {}
     };
   });
 
-  console.log(`   ✅ [MultiMatch] Enriched ${enrichedMatches.length} competing matches from database`);
+  console.log(`   ✅ [MultiMatch] Enriched ${enrichedMatches.length} competing matches from database (obs labels: ${obsLabelByCode.size}/${condCodes.length})`);
 
   return enrichedMatches;
 }
@@ -229,17 +261,29 @@ export function generateDifferentialClarificationFromRules(
       };
       obsKeys = extractObservationKeys(chars);
     } else {
+      // 2026-08-15 — prefer the rule's farmer-observable observation label in the
+      // farmer's language (observation_translations). English `cause` is a
+      // last-resort fallback only.
+      const lang = String(language || 'mr').toLowerCase();
+      const obsMap = match.observation_label || null;
+      const obsLabel = (obsMap && (obsMap[lang] || obsMap['en'])) || '';
       const causeText = (match.cause_code || '').trim();
-      if (!causeText || causeText === 'UNKNOWN') {
-        console.log(`   ℹ️ Rule ${match.rule_id}: no farmer-observable characteristics — kept as internal candidate (no UI options will be derived from it)`);
+      const visibleText = obsLabel || (causeText && causeText !== 'UNKNOWN' ? causeText : '');
+      if (!visibleText) {
+        console.log(`   ℹ️ Rule ${match.rule_id}: no observation label or cause — kept as internal candidate`);
         continue;
       }
-      // DB `cause` text is the label in every language slot so the consumer's
-      // `label[lang] || label.mr` lookup always resolves; neutral icon — the
-      // pest icon/noun must never be implied for non-pest rules.
-      const causeLabel = `🔍 ${causeText}`;
-      labelMap = { mr: causeLabel, hi: causeLabel, en: causeLabel };
-      obsKeys = [];
+
+      const optionLabel = `🔍 ${visibleText}`;
+      labelMap = obsLabel
+        ? {
+            [lang]: optionLabel,
+            mr: obsMap?.mr ? `🔍 ${obsMap.mr}` : optionLabel,
+            hi: obsMap?.hi ? `🔍 ${obsMap.hi}` : optionLabel,
+            en: obsMap?.en ? `🔍 ${obsMap.en}` : optionLabel,
+          }
+        : { mr: optionLabel, hi: optionLabel, en: optionLabel };
+      obsKeys = match.condition_code ? [String(match.condition_code)] : [];
     }
 
     const dedupeKey = (labelMap[language] || labelMap['en'] || '').toLowerCase();
