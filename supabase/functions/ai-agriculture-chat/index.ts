@@ -1069,6 +1069,8 @@ serve(async (req) => {
     const orch = getOrchestrator();
     currentSessionIdForError = currentSessionId;
     const farmerProfilePromise = loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+    // Persisted farming preference (organic flow). Resolved when the profile is awaited.
+    let farmingPreference: FarmingPreference = 'unset';
     const marketProductMemo: MarketProductMemo = new Map();
     
     
@@ -2159,7 +2161,8 @@ serve(async (req) => {
               gender: profile.gender,
               farmer_name: profile.farmer_name,
             });
-            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}`);
+            farmingPreference = normalizeFarmingPreference((profile as any).farming_preference);
+            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}, farming_preference=${farmingPreference}`);
           } catch (e) {
             console.warn('[Addressing] load failed:', (e as Error).message);
           }
@@ -2173,6 +2176,7 @@ serve(async (req) => {
             trace_id: traceId,
             supabase_client: supabase,
             market_product_memo: marketProductMemo,
+            farming_preference: farmingPreference,
             farmer_addressing: farmerAddressing,
           };
           
