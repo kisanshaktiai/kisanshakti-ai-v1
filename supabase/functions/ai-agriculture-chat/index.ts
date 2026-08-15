@@ -47,6 +47,9 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
+// Organic-preference flow (FIX 1/2): i18n chrome strings + preference vocabulary
+import { getUiString, normalizeFarmingPreference, PREFERENCE_OPTION_VALUES, type FarmingPreference } from './i18n/ui-strings.ts';
+import { initializeTranslationCache } from './i18n/translation-loader.ts';
 
 // Import orchestrator
 import { AIAgentOrchestrator, requiresAgronomicReasoningIntent } from './agents/orchestrator.ts';
@@ -774,6 +777,41 @@ serve(async (req) => {
     const canonicalLanguage = detectLanguage(userMessageContent, language);
     const detectedLanguage = canonicalLanguage;
 
+    // ─────────────────────────────────────────────────────────────────────
+    // ORGANIC-PREFERENCE CHIP TAP (FIX 1.3) — non-agronomic, answered here.
+    // The chip sends the i18n key as the message value; we persist the choice
+    // on the farmer row (tenant-safe by farmer UUID) and confirm once.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      const tapped = PREFERENCE_OPTION_VALUES[userMessageContent.trim()];
+      if (tapped) {
+        try {
+          await supabase
+            .from('farmers')
+            .update({ farming_preference: tapped })
+            .eq('id', finalFarmerId)
+            .eq('tenant_id', finalTenantId);
+          console.log(`🌿 [PREFERENCE] farmer=${finalFarmerId} farming_preference=${tapped}`);
+        } catch (prefErr) {
+          console.warn('[PREFERENCE] persist failed:', (prefErr as Error).message);
+        }
+        try { await initializeTranslationCache(supabase); } catch (_e) { /* seed fallback still works */ }
+        return new Response(
+          JSON.stringify({
+            response: getUiString('preference.saved_confirm', detectedLanguage),
+            sessionId: currentSessionId,
+            metadata: {
+              trace_id: traceId,
+              orchestrator_type: 'PREFERENCE_SAVED',
+              farming_preference: tapped,
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+
     // PHASE Y HARD GUARANTEE: initialize trace collector before any symbolic
     try {
       const earlyRuntimeTrace = resetRuntimeTraceCollector({
@@ -1031,6 +1069,8 @@ serve(async (req) => {
     const orch = getOrchestrator();
     currentSessionIdForError = currentSessionId;
     const farmerProfilePromise = loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+    // Persisted farming preference (organic flow). Resolved when the profile is awaited.
+    let farmingPreference: FarmingPreference = 'unset';
     const marketProductMemo: MarketProductMemo = new Map();
     
     
@@ -2121,7 +2161,8 @@ serve(async (req) => {
               gender: profile.gender,
               farmer_name: profile.farmer_name,
             });
-            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}`);
+            farmingPreference = normalizeFarmingPreference((profile as any).farming_preference);
+            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}, farming_preference=${farmingPreference}`);
           } catch (e) {
             console.warn('[Addressing] load failed:', (e as Error).message);
           }
@@ -2135,6 +2176,7 @@ serve(async (req) => {
             trace_id: traceId,
             supabase_client: supabase,
             market_product_memo: marketProductMemo,
+            farming_preference: farmingPreference,
             farmer_addressing: farmerAddressing,
           };
           
@@ -2925,6 +2967,23 @@ serve(async (req) => {
         `content_len=${typeof responseContent === 'string' ? responseContent.length : 0} ` +
         `ms=${Date.now() - startTime}`,
       );
+    }
+
+    // ─── ONE-TIME ORGANIC-PREFERENCE ASK (FIX 1) ───
+    // Only after a real advisory, never during clarification, never repeated
+    // once farmers.farming_preference has been set.
+    if (farmingPreference === 'unset' && recommendationsProvided && !isClarificationResponse) {
+      (responsePayload as any).metadata = {
+        ...((responsePayload as any).metadata || {}),
+        preference_prompt: {
+          question: getUiString('preference.organic_ask', detectedLanguage),
+          selectionType: 'single',
+          options: (Object.keys(PREFERENCE_OPTION_VALUES) as Array<keyof typeof PREFERENCE_OPTION_VALUES>).map((k) => ({
+            value: k,
+            label: getUiString(k as any, detectedLanguage),
+          })),
+        },
+      };
     }
 
     return new Response(

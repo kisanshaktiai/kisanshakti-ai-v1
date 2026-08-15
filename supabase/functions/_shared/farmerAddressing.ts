@@ -8,6 +8,8 @@ export interface FarmerProfileLite {
   language?: string | null;   // language_preference from farmers
   gender?: Gender | null;     // from user_profiles
   state?: string | null;      // from user_profiles
+  /** farmers.farming_preference — 'unset' | 'conventional' | 'organic' | 'integrated' */
+  farming_preference?: string | null;
 }
 
 interface HonorificSet {
@@ -289,7 +291,7 @@ export async function loadFarmerProfileLite(
     const [{ data: farmer }, { data: profile }] = await Promise.all([
       supabase
         .from('farmers')
-        .select('farmer_name, language_preference')
+        .select('farmer_name, language_preference, farming_preference')
         .eq('id', farmerId)
         .maybeSingle(),
       supabase
@@ -302,6 +304,7 @@ export async function loadFarmerProfileLite(
     if (farmer) {
       lite.farmer_name = farmer.farmer_name || lite.farmer_name;
       lite.language = farmer.language_preference || lite.language;
+      lite.farming_preference = farmer.farming_preference || 'unset';
     }
     if (profile) {
       const g = (profile.gender || '').toString().toLowerCase();

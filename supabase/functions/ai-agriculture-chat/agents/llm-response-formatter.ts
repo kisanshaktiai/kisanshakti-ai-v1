@@ -1,5 +1,10 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-15 09:50 UTC — FIX 2 (organic preference): farming_preference threaded
+ *   into the deterministic builder (both LLM + template paths), no-invention
+ *   directive added to the system prompt, and [NARRATION_NUMERIC_DRIFT]
+ *   post-check falls back to deterministic rendering when the narration
+ *   introduces numbers absent from the rule data.
  * 2026-08-02 18:02 UTC — PERF: reuse request-local market-product lookup
  *   promises across validation and narration; validation logic unchanged.
  * 2026-07-29 10:30 UTC — LATENCY L1: narration budget capped at 14s total
@@ -114,6 +119,8 @@ export interface LLMFormatterInput {
   trace_id?: string;
   supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
   market_product_memo?: MarketProductMemo;
+  // Farmer's persisted farming preference (farmers.farming_preference).
+  farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
   // Presentation-only addressing payload (rural honorifics).
   farmer_addressing?: {
     primary: string;
@@ -716,6 +723,16 @@ export async function formatRecommendationsWithLLM(
   // ═══ SANITIZATION GATE: Strip any leaked technical data from LLM output ═══
   formattedResponse = sanitizeFarmerResponse(formattedResponse);
 
+  // ═══ NARRATION NUMERIC DRIFT GATE (FIX 2 / no-invention guardrail) ═══
+  // Any measured number in the narration must exist in the rule data supplied to
+  // the LLM. Invented dosages/percentages (the bio-insecticide incident) are a
+  // safety defect → fall back to deterministic rendering of the raw fields.
+  const drift = detectNarrationNumericDrift(formattedResponse, `${userPrompt}\n${systemPrompt}`);
+  if (drift.length > 0) {
+    console.error(`🚫 [NARRATION_NUMERIC_DRIFT] trace=${input.trace_id || 'n/a'} invented values: ${drift.join(', ')}`);
+    return buildTemplateFallback(input, startTime);
+  }
+
   const processingTime = Date.now() - startTime;
   console.log(`   ✅ PHASE 5 complete in ${processingTime}ms`);
   
@@ -1059,6 +1076,36 @@ function validateLLMOutput(
   };
 }
 
+/**
+ * NARRATION NUMERIC DRIFT DETECTOR
+ * Returns the list of measured values present in the narration but absent from
+ * the rule data given to the LLM. Only unit-bearing numbers are checked
+ * (%, g, kg, ml, l, ppm) so day counts / area multiplications stay allowed.
+ */
+function detectNarrationNumericDrift(narration: string, sourceData: string): string[] {
+  if (!narration || !sourceData) return [];
+  // Normalize Devanagari digits so transliterated numerals compare correctly.
+  const deva = '०१२३४५६७८९';
+  const norm = (s: string) => s.replace(/[०-९]/g, (d) => String(deva.indexOf(d)));
+  const src = norm(sourceData);
+  const out = norm(narration);
+
+  const UNIT_NUMBER = /(\d+(?:\.\d+)?)\s*(%|ppm|ml|मिली|ली|लिटर|g|ग्रॅम|ग्राम|kg|किलो|l\b|लि)/gi;
+  const violations: string[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = UNIT_NUMBER.exec(out)) !== null) {
+    const value = m[1];
+    if (seen.has(value)) continue;
+    seen.add(value);
+    // Number must appear somewhere in the supplied rule data (unit may differ
+    // after transliteration, so the numeric token alone is the anchor).
+    const anchored = new RegExp(`(^|[^\\d.])${value.replace('.', '\\.')}([^\\d]|$)`);
+    if (!anchored.test(src)) violations.push(m[0].trim());
+  }
+  return violations;
+}
+
 // PROMPT BUILDERS
 
 function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
@@ -1314,6 +1361,16 @@ Show the TOTAL quantity the farmer needs, not per-acre rate.
 ═══ PHI TRANSLATION ═══
 Translate phi_days to: "Stop spraying at least X days before harvest" (in natural ${langName}).
 
+═══ NO-INVENTION GUARDRAIL (ORGANIC / ALTERNATIVES) ═══
+FARMER_FARMING_PREFERENCE: ${input.farming_preference || 'unset'}
+Never add treatments, alternatives, percentages or numeric values not present in the provided rule data.
+Omit any section whose source field is empty. Organic content may ONLY be rendered from the
+ORGANIC_ALTERNATIVE / alternatives fields supplied below — never from your own knowledge.
+If the data says the organic option is empty, say so honestly using the provided line; do not substitute one.
+If preference = conventional, do NOT render any organic section (safety/block content still renders).
+If preference = organic and an organic option exists, render it FIRST and mark the chemical action as secondary.
+
+
 ${ruralRules}
 ${cropStageConstraints}
 
@@ -1503,7 +1560,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
         is_raining: weatherMeta.is_raining,
       } : undefined;
       
-      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather);
+      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather, input.farming_preference || 'unset');
       const deterministicPrompt = await formatStructuredResponseForLLM(structuredResponse, undefined, input.supabase_client);
       
       // PRODUCT MAPPING: Look up market product names for LLM narration
@@ -2028,7 +2085,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
         days_since_sowing: input.land_context.days_since_sowing,
       } : undefined;
       
-      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext);
+      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, undefined, input.farming_preference || 'unset');
       const deterministicText = await formatStructuredResponseForLLM(structuredResponse, lang, input.supabase_client);
       
       console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);

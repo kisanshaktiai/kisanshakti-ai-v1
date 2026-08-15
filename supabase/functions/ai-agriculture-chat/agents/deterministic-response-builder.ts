@@ -1,7 +1,15 @@
-// DETERMINISTIC RESPONSE BUILDER v2.0.0
+// DETERMINISTIC RESPONSE BUILDER v2.1.0
+//
+// CHANGE LOG (newest first)
+//   2026-08-15 09:45 UTC — FIX 2 (organic preference): buildDeterministicResponse
+//     takes farming_preference and computes organic render control flags
+//     (lead_with_organic / suppress_organic / organic_same / no_organic_available).
+//     formatStructuredResponseForLLM renders the organic block accordingly using
+//     i18n headers. Organic content stays verbatim from decision_rules — never invented.
 
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
 import { getTranslation, initializeTranslationCache } from '../i18n/translation-loader.ts';
+import { getUiString } from '../i18n/ui-strings.ts';
 
 // TYPE: Rich Rule Data (all columns from decision_rules used in response)
 
@@ -176,6 +184,13 @@ export interface StructuredFarmerResponse {
     biological_group?: string;
     ipm_level?: number;
     ipm_label?: string;
+    // FIX 2 (2026-08-15): farmer farming_preference-driven render control.
+    farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
+    lead_with_organic?: boolean;   // preference='organic' AND organic text present
+    suppress_organic?: boolean;    // preference='conventional'
+    organic_same_as_main?: boolean; // organic_alternative starts with "Same"
+    organic_same_reason?: string;   // text after the em-dash of a "Same — ..." field
+    no_organic_available?: boolean; // preference='organic' but field empty
   };
   
   // Section 6: Cost Estimate
@@ -491,7 +506,8 @@ export function buildDeterministicResponse(
   ruleData: RichRuleData,
   landAreaAcres?: number,
   cropContext?: CropContext,
-  weather?: WeatherContext
+  weather?: WeatherContext,
+  farmingPreference: 'unset' | 'conventional' | 'organic' | 'integrated' = 'unset'
 ): StructuredFarmerResponse {
   const area = landAreaAcres && landAreaAcres > 0 ? landAreaAcres : 0;
   const actionTypeUpper = (ruleData.action_type || '').toUpperCase();
@@ -644,14 +660,30 @@ export function buildDeterministicResponse(
     safety_score: safetyScore,
   };
   
-  // Section 5: Organic/IPM
-  const hasAlternative = !!(ruleData.organic_alternative || ruleData.ipm_level);
+  // Section 5: Organic/IPM — preference-aware (FIX 2)
+  // Content is ALWAYS verbatim from decision_rules.organic_alternative; the
+  // preference only decides ordering / suppression. Never invent an option.
+  const organicText = (ruleData.organic_alternative || '').trim();
+  const organicSame = /^same\b/i.test(organicText);
+  const organicSameReason = organicSame
+    ? (organicText.split(/—|--|-\s/)[1] || '').trim() || undefined
+    : undefined;
+  const suppressOrganic = farmingPreference === 'conventional';
+  const leadWithOrganic = farmingPreference === 'organic' && !!organicText && !organicSame;
+  const noOrganicAvailable = farmingPreference === 'organic' && !organicText;
+  const hasAlternative = !suppressOrganic && !!(organicText || ruleData.ipm_level);
   const organic = {
     has_alternative: hasAlternative,
-    organic_alternative: ruleData.organic_alternative || undefined,
+    organic_alternative: organicText || undefined,
     biological_group: ruleData.biological_group || undefined,
     ipm_level: ruleData.ipm_level || undefined,
-    ipm_label: ruleData.ipm_level ? (IPM_LABELS[ruleData.ipm_level] || `IPM Level ${ruleData.ipm_level}`) : undefined
+    ipm_label: ruleData.ipm_level ? (IPM_LABELS[ruleData.ipm_level] || `IPM Level ${ruleData.ipm_level}`) : undefined,
+    farming_preference: farmingPreference,
+    lead_with_organic: leadWithOrganic,
+    suppress_organic: suppressOrganic,
+    organic_same_as_main: organicSame,
+    organic_same_reason: organicSameReason,
+    no_organic_available: noOrganicAvailable,
   };
   
   // Section 6: Cost (suppressed if not TREAT mode)
@@ -981,14 +1013,34 @@ export async function formatStructuredResponseForLLM(
     }
   }
   
-  // Organic/IPM — translate ipm_label
-  if (response.organic.has_alternative) {
-    parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
-    if (response.organic.organic_alternative) {
-      parts.push(`🌿 Organic Option: ${response.organic.organic_alternative}`);
+  // Organic/IPM — preference-aware ordering (FIX 2). Content stays verbatim.
+  const org = response.organic;
+  if (org.suppress_organic) {
+    parts.push(`\nFARMER_PREFERENCE: conventional — DO NOT render any organic/IPM section.`);
+  } else if (org.no_organic_available) {
+    parts.push(`\n═══ 🌿 ORGANIC PREFERENCE ═══`);
+    parts.push(`FARMER_PREFERENCE: organic. ORGANIC_ALTERNATIVE is EMPTY for this rule.`);
+    parts.push(`State honestly (i18n advisory.no_organic_available): "${getUiString('advisory.no_organic_available', l)}"`);
+    parts.push(`Then render the standard advisory above. NEVER invent an organic option.`);
+  } else if (org.has_alternative) {
+    if (org.organic_same_as_main) {
+      parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
+      parts.push(`ORGANIC_SAME_AS_MAIN: render one advisory + this line: "${getUiString('advisory.organic_same', l)}"`);
+      if (org.organic_same_reason) parts.push(`Reason (verbatim source): ${org.organic_same_reason}`);
+    } else if (org.lead_with_organic) {
+      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farmer preference = organic) ═══`);
+      parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
+      parts.push(`🌿 PRIMARY RECOMMENDATION (organic, verbatim source): ${org.organic_alternative}`);
+      parts.push(`Then render the chemical action above as clearly-labelled SECONDARY under header: ${getUiString('advisory.chemical_alt_header', l)}`);
+    } else {
+      parts.push(`\n═══ 🌿 ORGANIC/IPM ALTERNATIVE ═══`);
+      parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
+      if (org.organic_alternative) {
+        parts.push(`🌿 Organic Option (verbatim source): ${org.organic_alternative}`);
+      }
     }
-    if (response.organic.ipm_label) {
-      const translatedIpm = await translateTechnicalTerm(response.organic.ipm_label, l, supabaseClient);
+    if (org.ipm_label) {
+      const translatedIpm = await translateTechnicalTerm(org.ipm_label, l, supabaseClient);
       parts.push(`IPM Level: ${translatedIpm}`);
     }
   }
