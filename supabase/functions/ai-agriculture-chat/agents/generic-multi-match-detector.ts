@@ -142,7 +142,7 @@ export async function detectCompetingMatches(
 
   const { data: dbRules, error } = await supabaseClient
     .from('decision_rules')
-    .select('rule_id, cause, category, observable_characteristics, differentiating_questions, visual_markers')
+    .select('rule_id, cause, category, condition_code, observable_characteristics, differentiating_questions, visual_markers')
     .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8)
     .in('rule_id', ruleIds);
 
@@ -156,23 +156,50 @@ export async function detectCompetingMatches(
     return [];
   }
 
+  // 2026-08-15 — resolve farmer-language observation labels from each rule's
+  // condition_code (global table, no tenant coupling, no hardcoded codes).
+  const condCodes = Array.from(new Set(
+    (dbRules as any[]).map((r: any) => r.condition_code).filter(Boolean).map(String),
+  ));
+  const obsLabelByCode = new Map<string, Record<string, string>>();
+  if (condCodes.length > 0) {
+    const { data: trs, error: trErr } = await supabaseClient
+      .from('observation_translations')
+      .select('observation_code, language_code, display_text, description_text')
+      .in('observation_code', condCodes);
+    if (trErr) {
+      console.warn('   ⚠️ [MultiMatch] observation_translations fetch failed:', trErr.message);
+    }
+    for (const t of trs ?? []) {
+      const code = String(t.observation_code);
+      const txt = String(t.display_text || t.description_text || '').trim();
+      if (!txt) continue;
+      const e = obsLabelByCode.get(code) ?? {};
+      e[String(t.language_code).toLowerCase()] = txt;
+      obsLabelByCode.set(code, e);
+    }
+  }
+
   // Enrich with database metadata
   const enrichedMatches: CompetingMatch[] = competing.map(rule => {
     const ruleId = rule.rule_id || rule.ruleId;
     const dbRule = dbRules.find((r: any) => r.rule_id === ruleId);
+    const condCode = dbRule?.condition_code ? String(dbRule.condition_code) : null;
 
     return {
       rule_id: ruleId,
       cause_code: dbRule?.cause || rule.cause || 'UNKNOWN',
       category: dbRule?.category || rule.category || 'UNKNOWN',
       confidence: rule.confidence || 0,
+      condition_code: condCode,
+      observation_label: condCode ? (obsLabelByCode.get(condCode) || null) : null,
       observable_characteristics: dbRule?.observable_characteristics || {},
       differentiating_questions: dbRule?.differentiating_questions || [],
       visual_markers: dbRule?.visual_markers || {}
     };
   });
 
-  console.log(`   ✅ [MultiMatch] Enriched ${enrichedMatches.length} competing matches from database`);
+  console.log(`   ✅ [MultiMatch] Enriched ${enrichedMatches.length} competing matches from database (obs labels: ${obsLabelByCode.size}/${condCodes.length})`);
 
   return enrichedMatches;
 }
