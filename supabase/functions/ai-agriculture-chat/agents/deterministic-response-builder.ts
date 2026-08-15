@@ -652,14 +652,30 @@ export function buildDeterministicResponse(
     safety_score: safetyScore,
   };
   
-  // Section 5: Organic/IPM
-  const hasAlternative = !!(ruleData.organic_alternative || ruleData.ipm_level);
+  // Section 5: Organic/IPM — preference-aware (FIX 2)
+  // Content is ALWAYS verbatim from decision_rules.organic_alternative; the
+  // preference only decides ordering / suppression. Never invent an option.
+  const organicText = (ruleData.organic_alternative || '').trim();
+  const organicSame = /^same\b/i.test(organicText);
+  const organicSameReason = organicSame
+    ? (organicText.split(/—|--|-\s/)[1] || '').trim() || undefined
+    : undefined;
+  const suppressOrganic = farmingPreference === 'conventional';
+  const leadWithOrganic = farmingPreference === 'organic' && !!organicText && !organicSame;
+  const noOrganicAvailable = farmingPreference === 'organic' && !organicText;
+  const hasAlternative = !suppressOrganic && !!(organicText || ruleData.ipm_level);
   const organic = {
     has_alternative: hasAlternative,
-    organic_alternative: ruleData.organic_alternative || undefined,
+    organic_alternative: organicText || undefined,
     biological_group: ruleData.biological_group || undefined,
     ipm_level: ruleData.ipm_level || undefined,
-    ipm_label: ruleData.ipm_level ? (IPM_LABELS[ruleData.ipm_level] || `IPM Level ${ruleData.ipm_level}`) : undefined
+    ipm_label: ruleData.ipm_level ? (IPM_LABELS[ruleData.ipm_level] || `IPM Level ${ruleData.ipm_level}`) : undefined,
+    farming_preference: farmingPreference,
+    lead_with_organic: leadWithOrganic,
+    suppress_organic: suppressOrganic,
+    organic_same_as_main: organicSame,
+    organic_same_reason: organicSameReason,
+    no_organic_available: noOrganicAvailable,
   };
   
   // Section 6: Cost (suppressed if not TREAT mode)
