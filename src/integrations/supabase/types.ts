@@ -8677,6 +8677,119 @@ export type Database = {
         }
         Relationships: []
       }
+      decision_rule_qa_findings: {
+        Row: {
+          created_at: string
+          detail: string
+          detected_value: string | null
+          expected_value: string | null
+          finding_type: string
+          id: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          detail: string
+          detected_value?: string | null
+          expected_value?: string | null
+          finding_type: string
+          id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          detail?: string
+          detected_value?: string | null
+          expected_value?: string | null
+          finding_type?: string
+          id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "decision_rules"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "rule_authority_weights"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_blocking_rule_semantic_conflict"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_chemical_approval_backlog"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_chemical_serving_gate"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_chemical_variety_safety_violation"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_decision_rules_admin"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rule_dose_label_audit"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rule_id_grammar_violation"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rule_stage_method_mismatch"
+            referencedColumns: ["rule_id"]
+          },
+        ]
+      }
       decision_rules: {
         Row: {
           action_text: string | null
@@ -9227,6 +9340,13 @@ export type Database = {
             columns: ["category"]
             isOneToOne: false
             referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
             referencedColumns: ["category"]
           },
           {
@@ -12677,6 +12797,7 @@ export type Database = {
           farmer_code: string | null
           farmer_name: string | null
           farming_experience_years: number | null
+          farming_preference: string
           has_irrigation: boolean | null
           has_loan: boolean | null
           has_storage: boolean | null
@@ -12733,6 +12854,7 @@ export type Database = {
           farmer_code?: string | null
           farmer_name?: string | null
           farming_experience_years?: number | null
+          farming_preference?: string
           has_irrigation?: boolean | null
           has_loan?: boolean | null
           has_storage?: boolean | null
@@ -12789,6 +12911,7 @@ export type Database = {
           farmer_code?: string | null
           farmer_name?: string | null
           farming_experience_years?: number | null
+          farming_preference?: string
           has_irrigation?: boolean | null
           has_loan?: boolean | null
           has_storage?: boolean | null
@@ -14501,6 +14624,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_decision_rules_admin"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rule_dose_label_audit"
             referencedColumns: ["rule_id"]
           },
           {
@@ -25812,6 +25942,13 @@ export type Database = {
             foreignKeyName: "rule_product_mapping_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_rule_dose_label_audit"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_rule_id_grammar_violation"
             referencedColumns: ["rule_id"]
           },
@@ -35660,6 +35797,13 @@ export type Database = {
             referencedColumns: ["category"]
           },
           {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
             foreignKeyName: "decision_rules_crop_code_registry_fk"
             columns: ["crop_code"]
             isOneToOne: false
@@ -35698,6 +35842,13 @@ export type Database = {
             columns: ["category"]
             isOneToOne: false
             referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
             referencedColumns: ["category"]
           },
           {
@@ -35762,6 +35913,13 @@ export type Database = {
             columns: ["category"]
             isOneToOne: false
             referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
             referencedColumns: ["category"]
           },
           {
@@ -36144,6 +36302,13 @@ export type Database = {
             referencedColumns: ["category"]
           },
           {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
             foreignKeyName: "decision_rules_crop_code_registry_fk"
             columns: ["crop_code"]
             isOneToOne: false
@@ -36332,6 +36497,13 @@ export type Database = {
             columns: ["category"]
             isOneToOne: false
             referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
             referencedColumns: ["category"]
           },
         ]
@@ -36708,6 +36880,108 @@ export type Database = {
             referencedRelation: "rule_category_master"
             referencedColumns: ["category"]
           },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+        ]
+      }
+      v_rule_coverage_gaps: {
+        Row: {
+          category: string | null
+          crop_code: string | null
+          has_rule: boolean | null
+          stage: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      v_rule_dose_label_audit: {
+        Row: {
+          action_text: string | null
+          category: string | null
+          crop_code: string | null
+          gl_hi: number | null
+          gl_lo: number | null
+          is_mismatch: boolean | null
+          pct_hi: number | null
+          pct_lo: number | null
+          rule_id: string | null
+          unit: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      v_rule_governance_status: {
+        Row: {
+          active_rules: number | null
+          approved_pct: number | null
+          crop_code: string | null
+          expert_approved: number | null
+          farmer_servable: number | null
+          reason_pct: number | null
+          with_reason_text: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
         ]
       }
       v_rule_id_grammar_violation: {
@@ -36738,6 +37012,13 @@ export type Database = {
             columns: ["category"]
             isOneToOne: false
             referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
             referencedColumns: ["category"]
           },
           {
