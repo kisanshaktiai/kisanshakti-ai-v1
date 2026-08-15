@@ -187,7 +187,8 @@ export interface StructuredFarmerResponse {
     // FIX 2 (2026-08-15): farmer farming_preference-driven render control.
     farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
     lead_with_organic?: boolean;   // preference='organic' AND organic text present
-    suppress_organic?: boolean;    // preference='conventional'
+    suppress_organic?: boolean;    // conventional AND no organic text at all
+    organic_teaser?: boolean;      // conventional + organic text → collapsed footer teaser
     organic_same_as_main?: boolean; // organic_alternative starts with "Same"
     organic_same_reason?: string;   // text after the em-dash of a "Same — ..." field
     no_organic_available?: boolean; // preference='organic' but field empty
