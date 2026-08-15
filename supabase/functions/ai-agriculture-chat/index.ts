@@ -2969,6 +2969,23 @@ serve(async (req) => {
       );
     }
 
+    // ─── ONE-TIME ORGANIC-PREFERENCE ASK (FIX 1) ───
+    // Only after a real advisory, never during clarification, never repeated
+    // once farmers.farming_preference has been set.
+    if (farmingPreference === 'unset' && recommendationsProvided && !isClarificationResponse) {
+      (responsePayload as any).metadata = {
+        ...((responsePayload as any).metadata || {}),
+        preference_prompt: {
+          question: getUiString('preference.organic_ask', detectedLanguage),
+          selectionType: 'single',
+          options: (Object.keys(PREFERENCE_OPTION_VALUES) as Array<keyof typeof PREFERENCE_OPTION_VALUES>).map((k) => ({
+            value: k,
+            label: getUiString(k as any, detectedLanguage),
+          })),
+        },
+      };
+    }
+
     return new Response(
       JSON.stringify(responsePayload),
 
