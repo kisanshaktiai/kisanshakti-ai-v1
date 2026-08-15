@@ -1175,10 +1175,22 @@ export function evaluateRulesLayered(
 function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
   const grouped = new Map<RuleCategory, Rule[]>();
   for (const cat of [1,2,3,4,5,6]) grouped.set(cat as RuleCategory, []);
+  let dropped = 0;
   for (const rule of rules) {
     if (!rule.active) continue;
-    grouped.get(rule.category)?.push(rule);
+    // Defensive: coerce string category names ('DIAGNOSIS') to the numeric enum
+    // so a non-numeric category can never silently zero out the evaluation set.
+    const cat = typeof rule.category === 'number'
+      ? rule.category
+      : semanticClassToRuleCategory(rule.category);
+    const bucket = cat !== null ? grouped.get(cat as RuleCategory) : undefined;
+    if (!bucket) { dropped++; continue; }
+    bucket.push(rule);
   }
+  if (dropped > 0) {
+    console.warn(`⚠️ [SYMBOLIC_CONTRACT_VIOLATION] groupRulesByCategory dropped ${dropped}/${rules.length} rules with unresolvable category`);
+  }
+
   for (const [cat, catRules] of grouped) {
     // P2-2: Sort by data_authority_rank DESC then priority DESC
     catRules.sort((a, b) => {
