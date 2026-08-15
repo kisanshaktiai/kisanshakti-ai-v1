@@ -774,6 +774,41 @@ serve(async (req) => {
     const canonicalLanguage = detectLanguage(userMessageContent, language);
     const detectedLanguage = canonicalLanguage;
 
+    // ─────────────────────────────────────────────────────────────────────
+    // ORGANIC-PREFERENCE CHIP TAP (FIX 1.3) — non-agronomic, answered here.
+    // The chip sends the i18n key as the message value; we persist the choice
+    // on the farmer row (tenant-safe by farmer UUID) and confirm once.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      const tapped = PREFERENCE_OPTION_VALUES[userMessageContent.trim()];
+      if (tapped) {
+        try {
+          await supabase
+            .from('farmers')
+            .update({ farming_preference: tapped })
+            .eq('id', finalFarmerId)
+            .eq('tenant_id', finalTenantId);
+          console.log(`🌿 [PREFERENCE] farmer=${finalFarmerId} farming_preference=${tapped}`);
+        } catch (prefErr) {
+          console.warn('[PREFERENCE] persist failed:', (prefErr as Error).message);
+        }
+        try { await initializeTranslationCache(supabase); } catch (_e) { /* seed fallback still works */ }
+        return new Response(
+          JSON.stringify({
+            response: getUiString('preference.saved_confirm', detectedLanguage),
+            sessionId: currentSessionId,
+            metadata: {
+              trace_id: traceId,
+              orchestrator_type: 'PREFERENCE_SAVED',
+              farming_preference: tapped,
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+
     // PHASE Y HARD GUARANTEE: initialize trace collector before any symbolic
     try {
       const earlyRuntimeTrace = resetRuntimeTraceCollector({
