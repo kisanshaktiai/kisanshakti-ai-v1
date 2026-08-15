@@ -1,7 +1,15 @@
-// DETERMINISTIC RESPONSE BUILDER v2.0.0
+// DETERMINISTIC RESPONSE BUILDER v2.1.0
+//
+// CHANGE LOG (newest first)
+//   2026-08-15 09:45 UTC — FIX 2 (organic preference): buildDeterministicResponse
+//     takes farming_preference and computes organic render control flags
+//     (lead_with_organic / suppress_organic / organic_same / no_organic_available).
+//     formatStructuredResponseForLLM renders the organic block accordingly using
+//     i18n headers. Organic content stays verbatim from decision_rules — never invented.
 
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
 import { getTranslation, initializeTranslationCache } from '../i18n/translation-loader.ts';
+import { getUiString } from '../i18n/ui-strings.ts';
 
 // TYPE: Rich Rule Data (all columns from decision_rules used in response)
 
