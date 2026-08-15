@@ -1531,6 +1531,16 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
 let categoryMapCache: { at: number; map: Map<string, RuleCategory> } | null = null;
 const CATEGORY_CACHE_TTL = 300_000;
 
+/** DB stores semantic_class as an UPPERCASE NAME; the engine uses a numeric enum. */
+export function semanticClassToRuleCategory(value: unknown): RuleCategory | null {
+  if (typeof value === 'number' && RuleCategory[value] !== undefined) return value as RuleCategory;
+  const name = String(value ?? '').trim().toUpperCase();
+  if (!name) return null;
+  const numeric = (RuleCategory as any)[name];
+  return typeof numeric === 'number' ? (numeric as RuleCategory) : null;
+}
+
+
 export async function loadCategorySemantics(supabase: any): Promise<Map<string, RuleCategory>> {
   if (categoryMapCache && Date.now() - categoryMapCache.at < CATEGORY_CACHE_TTL) {
     return categoryMapCache.map;
