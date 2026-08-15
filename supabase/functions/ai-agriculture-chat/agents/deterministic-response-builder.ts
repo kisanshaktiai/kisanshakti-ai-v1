@@ -660,15 +660,19 @@ export function buildDeterministicResponse(
     safety_score: safetyScore,
   };
   
-  // Section 5: Organic/IPM — preference-aware (FIX 2)
+  // Section 5: Organic/IPM — farming-mode aware (2026-08-15 response matrix)
   // Content is ALWAYS verbatim from decision_rules.organic_alternative; the
-  // preference only decides ordering / suppression. Never invent an option.
+  // mode only decides ordering / collapse. Never invent an option.
+  //   conventional (fertilizer_pesticide) → chemical primary + COLLAPSED teaser
+  //   integrated   (organic_fertilizer)   → chemical primary + expanded organic
+  //   organic      (organic_only)         → organic primary, chemical on request
   const organicText = (ruleData.organic_alternative || '').trim();
   const organicSame = /^same\b/i.test(organicText);
   const organicSameReason = organicSame
     ? (organicText.split(/—|--|-\s/)[1] || '').trim() || undefined
     : undefined;
-  const suppressOrganic = farmingPreference === 'conventional';
+  const organicTeaser = farmingPreference === 'conventional' && !!organicText && !organicSame;
+  const suppressOrganic = farmingPreference === 'conventional' && !organicText;
   const leadWithOrganic = farmingPreference === 'organic' && !!organicText && !organicSame;
   const noOrganicAvailable = farmingPreference === 'organic' && !organicText;
   const hasAlternative = !suppressOrganic && !!(organicText || ruleData.ipm_level);
@@ -681,10 +685,12 @@ export function buildDeterministicResponse(
     farming_preference: farmingPreference,
     lead_with_organic: leadWithOrganic,
     suppress_organic: suppressOrganic,
+    organic_teaser: organicTeaser,
     organic_same_as_main: organicSame,
     organic_same_reason: organicSameReason,
     no_organic_available: noOrganicAvailable,
   };
+
   
   // Section 6: Cost (suppressed if not TREAT mode)
   const hasCost = !suppressTreatment && !!(ruleData.material_cost_per_acre_min || ruleData.material_cost_per_acre_max || 
