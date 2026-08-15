@@ -9248,6 +9248,11 @@ export class AIAgentOrchestrator {
                         options: multiMatchResult.clarification_output.options.map(opt => ({
                           value: opt.id,
                           label: opt.label[options.language || 'mr'] || opt.label.mr,
+                          // Surface the observation key at top level so persistence
+                          // (pending_clarification_observation_keys) and the next-turn
+                          // selection resolver find a real code instead of falling back
+                          // to the SYMBOLIC_ID_LEAK heuristic.
+                          observation_key: opt.maps_to?.observation_keys?.[0] || '',
                           maps_to: opt.maps_to
                         })),
                         selection_type: multiMatchResult.clarification_output.selection_type
