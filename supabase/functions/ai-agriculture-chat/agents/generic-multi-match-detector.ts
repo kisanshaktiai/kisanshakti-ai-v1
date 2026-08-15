@@ -258,17 +258,29 @@ export function generateDifferentialClarificationFromRules(
       };
       obsKeys = extractObservationKeys(chars);
     } else {
+      // 2026-08-15 — prefer the rule's farmer-observable observation label in the
+      // farmer's language (observation_translations). English `cause` is a
+      // last-resort fallback only.
+      const lang = String(language || 'mr').toLowerCase();
+      const obsMap = match.observation_label || null;
+      const obsLabel = (obsMap && (obsMap[lang] || obsMap['en'])) || '';
       const causeText = (match.cause_code || '').trim();
-      if (!causeText || causeText === 'UNKNOWN') {
-        console.log(`   ℹ️ Rule ${match.rule_id}: no farmer-observable characteristics — kept as internal candidate (no UI options will be derived from it)`);
+      const visibleText = obsLabel || (causeText && causeText !== 'UNKNOWN' ? causeText : '');
+      if (!visibleText) {
+        console.log(`   ℹ️ Rule ${match.rule_id}: no observation label or cause — kept as internal candidate`);
         continue;
       }
-      // DB `cause` text is the label in every language slot so the consumer's
-      // `label[lang] || label.mr` lookup always resolves; neutral icon — the
-      // pest icon/noun must never be implied for non-pest rules.
-      const causeLabel = `🔍 ${causeText}`;
-      labelMap = { mr: causeLabel, hi: causeLabel, en: causeLabel };
-      obsKeys = [];
+
+      const optionLabel = `🔍 ${visibleText}`;
+      labelMap = obsLabel
+        ? {
+            [lang]: optionLabel,
+            mr: obsMap?.mr ? `🔍 ${obsMap.mr}` : optionLabel,
+            hi: obsMap?.hi ? `🔍 ${obsMap.hi}` : optionLabel,
+            en: obsMap?.en ? `🔍 ${obsMap.en}` : optionLabel,
+          }
+        : { mr: optionLabel, hi: optionLabel, en: optionLabel };
+      obsKeys = match.condition_code ? [String(match.condition_code)] : [];
     }
 
     const dedupeKey = (labelMap[language] || labelMap['en'] || '').toLowerCase();
