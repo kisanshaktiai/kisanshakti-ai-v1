@@ -1,10 +1,15 @@
 // UI STRINGS — farmer-facing chrome text resolved through the i18n path only.
 //
 // CHANGE LOG (newest first)
+//   2026-08-15 17:45 UTC — Farming-mode system: land-scoped mode taxonomy
+//     (`land_crops.farming_type`), DB-first resolution through `ui_translations`
+//     (loadUiTranslations), mode<->preference mapping helpers and MODE_OPTION
+//     values for the badge/sheet + PREFERENCE_UPDATE chip. No agronomic content.
 //   2026-08-15 09:40 UTC — NEW: DB-first resolver for the organic-preference
 //     flow keys (DOC 1 / FIX 1 + FIX 2). Resolution order:
-//       1. translation cache (observation_translations / decision_rules i18n_key)
-//       2. spec-provided seed copy below (used only until the DBA seeds DOC 2/3)
+//       1. ui_translations (DB SSOT)
+//       2. translation cache (observation_translations / decision_rules i18n_key)
+//       3. spec-provided seed copy below
 //     No agronomic content lives here — chrome/UI copy only.
 
 import { getTranslation } from './translation-loader.ts';
@@ -15,10 +20,24 @@ export type UiStringKey =
   | 'preference.organic_only'
   | 'preference.organic_never'
   | 'preference.saved_confirm'
+  | 'preference.confirm_land_ask'
+  | 'preference.saved_land_confirm'
+  | 'mode.chemical'
+  | 'mode.mixed'
+  | 'mode.organic'
+  | 'mode.chemical_desc'
+  | 'mode.mixed_desc'
+  | 'mode.organic_desc'
+  | 'mode.scope_note'
+  | 'common.yes'
+  | 'common.no'
   | 'advisory.organic_header'
   | 'advisory.chemical_alt_header'
   | 'advisory.organic_same'
+  | 'advisory.organic_teaser'
+  | 'advisory.show_chemical_ask'
   | 'advisory.no_organic_available';
+
 
 /**
  * Seed copy taken verbatim from the approved i18n seed list (DOC 1 / FIX 3).
