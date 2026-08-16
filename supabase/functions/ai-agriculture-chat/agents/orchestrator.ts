@@ -8405,11 +8405,43 @@ export class AIAgentOrchestrator {
           );
         } catch { /* diagnostic-only */ }
 
-        layeredRuleResult = evaluateRulesLayered(rulesForEvaluator as any, canonicalStateWithQuery as any, {
+        // FIX 3 (latency) — scope candidate rules to CONFIRMED observations before
+        // the legacy layered lane runs. Narrow only when the scoped subset is
+        // non-empty so no working path loses coverage.
+        try {
+          const _confirmed: string[] = Array.isArray(confirmedObsCodes) ? confirmedObsCodes : [];
+          if (_confirmed.length > 0 && Array.isArray(rulesForEvaluator) && rulesForEvaluator.length > 0) {
+            const _confSet = new Set(_confirmed.map((c) => String(c).toUpperCase()));
+            const _scoped = (rulesForEvaluator as any[]).filter((r: any) => {
+              const blob = JSON.stringify(r?.if ?? r?.conditions ?? r?.when ?? {}).toUpperCase();
+              const code = String(r?.condition_code ?? '').toUpperCase();
+              for (const c of _confSet) {
+                if (c && (blob.includes(c) || code === c)) return true;
+              }
+              return false;
+            });
+            if (_scoped.length > 0 && _scoped.length < (rulesForEvaluator as any[]).length) {
+              console.log(`[RULE_SCOPE_CONFIRMED] trace=${traceId} from=${(rulesForEvaluator as any[]).length} to=${_scoped.length}`);
+              rulesForEvaluator = _scoped as any;
+            }
+          }
+        } catch { /* scoping is an optimization only */ }
 
-          prescriptionGateOverride: isPrescriptionGateOverride,
-          traceId: traceId
-        });
+        // FIX 3 — dead-lane short circuit: with zero candidate rules the legacy
+        // evaluator only burns latency and logs ZERO RULES MATCHED. Skip it and
+        // let the deterministic builder own the decision turn.
+        if (!Array.isArray(rulesForEvaluator) || (rulesForEvaluator as any[]).length === 0) {
+          console.warn(`[LAYERED_LANE_SKIPPED] trace=${traceId} reason=NO_CANDIDATE_RULES`);
+          layeredRuleResult = evaluateRulesLayered([] as any, canonicalStateWithQuery as any, {
+            prescriptionGateOverride: isPrescriptionGateOverride,
+            traceId: traceId
+          });
+        } else {
+          layeredRuleResult = evaluateRulesLayered(rulesForEvaluator as any, canonicalStateWithQuery as any, {
+            prescriptionGateOverride: isPrescriptionGateOverride,
+            traceId: traceId
+          });
+        }
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
 
         // STEP 8 — [RULE_RESULT] trace + coverage-gap / edge-missing surfacing

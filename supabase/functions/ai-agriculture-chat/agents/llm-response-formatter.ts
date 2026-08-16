@@ -37,6 +37,10 @@ import {
   formatStructuredResponseForLLM,
   extractRichRuleData,
   hasAdequateRuleContent,
+  collectSecondaryRuleBlocks,
+  renderSecondaryRuleBlocksForLLM,
+  renderSecondaryRuleBlocksPlain,
+  buildOrganicTailBlock,
 } from './deterministic-response-builder.ts';
 import type {
   RichRuleData,
@@ -1591,6 +1595,14 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push('');
       parts.push(deterministicPrompt);
       if (marketProductsLine) parts.push(marketProductsLine);
+
+      // FIX 4 — other confirmed observations that fired rules (e.g. K next to N)
+      const _secBlocks = collectSecondaryRuleBlocks(decision, primary?.rule_id, 2);
+      const _secPrompt = renderSecondaryRuleBlocksForLLM(_secBlocks);
+      if (_secPrompt) {
+        console.log(`[SECONDARY_RULE_BLOCKS] path=llm count=${_secBlocks.length}`);
+        parts.push(_secPrompt);
+      }
       
       // ═══ RULE ATOMICITY: Secondary actions stripped of treatment data ═══
       const secondary = decision.secondary_actions || decision.secondary_recommendations;
@@ -2086,7 +2098,22 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
       } : undefined;
       
       const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, undefined, input.farming_preference || 'unset');
-      const deterministicText = await formatStructuredResponseForLLM(structuredResponse, lang, input.supabase_client);
+      let deterministicText = await formatStructuredResponseForLLM(structuredResponse, lang, input.supabase_client);
+
+      // FIX 4 — secondary fired rules + farming-mode organic matrix on the
+      // template fallback (this is also what the timeout path renders).
+      const _secBlocks = collectSecondaryRuleBlocks(decision, primary?.rule_id, 2);
+      const _secText = renderSecondaryRuleBlocksPlain(_secBlocks);
+      if (_secText) {
+        console.log(`[SECONDARY_RULE_BLOCKS] path=template count=${_secBlocks.length}`);
+        deterministicText += `\n${_secText}`;
+      }
+      const _tail = buildOrganicTailBlock(
+        richData.organic_alternative,
+        (input.farming_preference || 'unset') as any,
+        lang,
+      );
+      if (_tail) deterministicText += `\n${_tail}`;
       
       console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);
       
