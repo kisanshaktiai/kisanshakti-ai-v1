@@ -83,6 +83,8 @@ import { getSessionSSOT } from './runtime/session-ssot.ts';
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
 import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent, collectSecondaryRuleBlocks, renderSecondaryRuleBlocksPlain, buildOrganicTailBlock } from './agents/deterministic-response-builder.ts';
 import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
+// FIX A (2026-08-16): brain-only text filter (diagnosis/differential/knowledge).
+import { farmerSafeActionText, oneLine } from './utils/farmer-text-filter.ts';
 
 // PHASE 5: Import LLM Response Formatter for natural language generation
 import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
