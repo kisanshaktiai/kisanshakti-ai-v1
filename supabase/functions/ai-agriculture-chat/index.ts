@@ -4228,12 +4228,12 @@ async function buildFormattedRecommendationsList(
 
     // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
     const app = primary.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
+    // FIX A: diagnosis-category action_text and knowledge_text stay brain-only.
+    const actionText = farmerSafeActionText(app.action_text, { ...app, rule_id: primary?.rule_id });
+    const reasonText = farmerSafeActionText(app.reason_text, { ...app, rule_id: primary?.rule_id });
 
     // English-only labels — forceTranslateResponse() handles localization
-    const richLabels = { action: 'Action', reason: 'Reason', knowledge: 'Knowledge' };
+    const richLabels = { action: 'Action', reason: 'Reason' };
 
     let primaryText = `**${recNumber}. ${productName}**`;
     if (dosage) primaryText += ` @ ${dosage}`;
@@ -4259,8 +4259,8 @@ async function buildFormattedRecommendationsList(
     }
 
     if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
-    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${reasonText}`;
-    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge}:** ${knowledgeText}`;
+    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${oneLine(reasonText, 240)}`;
+    // FIX A: knowledge_text intentionally omitted from farmer output.
 
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
