@@ -1790,7 +1790,7 @@ serve(async (req) => {
     
     // Calculate remaining time for timeout protection (25s total budget, minus time spent so far)
     const timeSpentSoFar = Date.now() - startTime;
-    const remainingTime = Math.max(25000 - timeSpentSoFar, 5000); // At least 5s for formatting
+    const remainingTime = Math.max(25000 - timeSpentSoFar, 10000); // hard floor: 10s for formatting
     console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
     // CRITICAL FIX: Check if Static Data Gate already handled this query
@@ -2305,6 +2305,10 @@ serve(async (req) => {
         } // End of prescription gate allowed block
         
       } catch (formatterError) {
+        const _isTimeout = (formatterError as Error)?.message === 'LLM formatter timeout';
+        if (_isTimeout) {
+          console.error(`[LLM_FORMATTER_TIMEOUT ms=${remainingTime - 2000}]`);
+        }
         console.error(`   ❌ LLM formatter failed:`, formatterError);
         // Fallback to template-based response
         console.log(`   📋 Falling back to template-based response`);
@@ -2321,6 +2325,22 @@ serve(async (req) => {
           ));
         } else {
           responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+        }
+
+        // The deterministic builder emits English. Never ship English to a
+        // non-English farmer on the timeout path — force-translate with the
+        // same dosage-gated path used on the happy path.
+        if (detectedLanguage !== 'en' && responseContent) {
+          try {
+            const _fbPre = responseContent;
+            const _fbTranslated = await forceTranslateResponse(_fbPre, detectedLanguage);
+            responseContent = verifyTranslationFidelity(_fbPre, _fbTranslated, actions_returned)
+              ? _fbTranslated
+              : _fbPre;
+            console.log(`[FALLBACK_TRANSLATED lang=${detectedLanguage}]`);
+          } catch (fbErr) {
+            console.warn(`[FALLBACK_TRANSLATED] failed: ${(fbErr as Error).message}`);
+          }
         }
       }
       } // End of STAGE_FALLBACK else block
@@ -3217,10 +3237,11 @@ function verifyTranslationFidelity(
     .map((a: any) => a?.product_name)
     .filter((p: any) => typeof p === 'string' && p.trim().length > 0 && p !== 'N/A');
 
+  // Product names legitimately transliterate (Urea → युरिया). Never reject the
+  // translation for this — warn and keep it. Dosage NUMBERS above stay hard-gated.
   for (const product of products) {
     if (!translatedNorm.includes(norm(product)) && norm(original).includes(norm(product))) {
-      console.error(`🚨 [TRANSLATION_FIDELITY] product name lost: "${product}" — falling back to untranslated advisory`);
-      return false;
+      console.warn(`[TRANSLATION_FIDELITY] product transliterated/absent: "${product}" — keeping translation`);
     }
   }
 
@@ -3268,6 +3289,7 @@ Agricultural symptom names must use the LOCAL FARMING TERM, not a literal Englis
 Avoid literal translation of English sentences — explain in local words.
 Keep all numbers, product names, dosages, emojis, and formatting exactly as-is.
 Do NOT add any new information. Do NOT change dosages or product names.
+Preserve every product name as its local name followed by English in parentheses, e.g. युरिया (Urea). Never change any number or unit.
 You are explaining, not translating.
 
 Text to rewrite in natural rural ${langName}:
