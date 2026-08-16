@@ -81,7 +81,7 @@ import { getSessionSSOT } from './runtime/session-ssot.ts';
 
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
-import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent } from './agents/deterministic-response-builder.ts';
+import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent, collectSecondaryRuleBlocks, renderSecondaryRuleBlocksPlain, buildOrganicTailBlock } from './agents/deterministic-response-builder.ts';
 import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
 
 // PHASE 5: Import LLM Response Formatter for natural language generation
@@ -2321,7 +2321,8 @@ serve(async (req) => {
             orchestratorResponse.decision_output, 
             detectedLanguage,
             supabase,
-            marketProductMemo
+            marketProductMemo,
+            farmingPreference as any
           ));
         } else {
           responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
@@ -4155,6 +4156,7 @@ async function buildFormattedRecommendationsList(
   lang: string,
   supabaseClient?: any,
   marketProductMemo: MarketProductMemo = new Map(),
+  farmingPreference: 'unset' | 'conventional' | 'organic' | 'integrated' = 'unset',
 ): Promise<string> {
   const parts: string[] = [];
   
@@ -4284,6 +4286,30 @@ async function buildFormattedRecommendationsList(
     }
     
     parts.push(recParts.join('\n'));
+
+    // FIX 4 — multi-observation completeness: every other fired rule gets a
+    // short DB-text-only block (ordered by priority), so N + K both render.
+    try {
+      const _secBlocks = collectSecondaryRuleBlocks(decision, primary?.rule_id, 2);
+      const _secText = renderSecondaryRuleBlocksPlain(_secBlocks);
+      if (_secText) {
+        console.log(`[SECONDARY_RULE_BLOCKS] count=${_secBlocks.length} ids=${_secBlocks.map(b => b.rule_id).join(',')}`);
+        parts.push(_secText.trim());
+      }
+    } catch (secErr) {
+      console.warn(`[SECONDARY_RULE_BLOCKS] failed: ${(secErr as Error).message}`);
+    }
+
+    // FIX 4 — farming-mode matrix on the fallback/timeout path so the collapsed
+    // organic teaser is not lost when the LLM formatter never ran.
+    try {
+      const _organicSource = (primary?.application_details?.organic_alternative
+        ?? richData?.organic_alternative ?? '') as string;
+      const _tail = buildOrganicTailBlock(_organicSource, farmingPreference, lang);
+      if (_tail) parts.push(_tail.trim());
+    } catch (orgErr) {
+      console.warn(`[ORGANIC_TAIL] failed: ${(orgErr as Error).message}`);
+    }
   }
   
   // Closing
