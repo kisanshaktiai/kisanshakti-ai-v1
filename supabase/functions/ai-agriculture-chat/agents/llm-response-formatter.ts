@@ -1784,23 +1784,23 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     const filteredResponses = filterRelevantResponses(matchedResponses, primaryRuleId, 3);
     
     parts.push(`\nAGRICULTURAL RECOMMENDATIONS (Use in farmer's language):`);
-    filteredResponses.forEach((resp: any, idx: number) => {
+    let _idx = 0;
+    filteredResponses.forEach((resp: any) => {
       const isPrimary = resp.rule_id === primaryRuleId;
+      // FIX A: diagnosis rules are brain-only — never narrated to the farmer.
+      if (isDiagnosisRule(resp)) return;
+      const action = farmerSafeActionText(resp.action_text, resp);
+      const reason = farmerSafeActionText(resp.reason_text, resp);
+      if (!action && !reason) return;
       // Format cause codes: DEAD_HEART_PRESENT → Dead heart present
       const causeLabel = resp.cause
         ? resp.cause.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())
         : 'Additional observation';
-      parts.push(`\n${idx + 1}. ${causeLabel}:`);
-      
-      if (resp.action_text) {
-        parts.push(`   Action: ${resp.action_text}`);
-      }
-      if (resp.reason_text) {
-        parts.push(`   Reason: ${resp.reason_text}`);
-      }
-      if (isPrimary && resp.knowledge_text) {
-        parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
-      }
+      parts.push(`\n${++_idx}. ${causeLabel}:`);
+      // Primary renders in full; secondaries contribute ONE short line only.
+      if (action) parts.push(`   Action: ${isPrimary ? action : oneLine(action)}`);
+      if (reason) parts.push(`   Reason: ${isPrimary ? oneLine(reason, 240) : oneLine(reason)}`);
+      // FIX A: knowledge_text never included.
     });
   }
   
