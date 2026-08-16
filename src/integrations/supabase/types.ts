@@ -4107,6 +4107,65 @@ export type Database = {
           },
         ]
       }
+      category_harmonization_map: {
+        Row: {
+          decided_at: string | null
+          decided_by: string | null
+          phase: number
+          rationale: string
+          source_category: string
+          status: string
+          target_category: string
+        }
+        Insert: {
+          decided_at?: string | null
+          decided_by?: string | null
+          phase: number
+          rationale: string
+          source_category: string
+          status?: string
+          target_category: string
+        }
+        Update: {
+          decided_at?: string | null
+          decided_by?: string | null
+          phase?: number
+          rationale?: string
+          source_category?: string
+          status?: string
+          target_category?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_harmonization_map_source_category_fkey"
+            columns: ["source_category"]
+            isOneToOne: true
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "category_harmonization_map_source_category_fkey"
+            columns: ["source_category"]
+            isOneToOne: true
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "category_harmonization_map_target_category_fkey"
+            columns: ["target_category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "category_harmonization_map_target_category_fkey"
+            columns: ["target_category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+        ]
+      }
       cause_fix_mapping: {
         Row: {
           fixed_at: string | null
