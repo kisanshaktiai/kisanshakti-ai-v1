@@ -242,3 +242,80 @@ export const MODE_OPTION_VALUES: Record<string, FarmingMode> = {
   'mode.mixed': 'organic_fertilizer',
   'mode.organic': 'organic_only',
 };
+
+// ── FIX 1: tap resolution by LABEL (chips send display text, not keys) ───────
+
+/** Trim, drop leading emoji/pictographs, collapse whitespace, lowercase Latin. */
+export function normalizeChip(text: string): string {
+  return (text ?? '')
+    .toString()
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{2BFF}\u{FE0F}\u{200D}✓✔•·]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/** All languages we have copy for (DB rows + seed). */
+function knownLanguages(): string[] {
+  const langs = new Set<string>(['en']);
+  for (const k of uiTranslations.keys()) {
+    const lang = k.split('::')[1];
+    if (lang) langs.add(lang);
+  }
+  for (const key of Object.keys(SEED) as UiStringKey[]) {
+    for (const lang of Object.keys(SEED[key])) langs.add(lang);
+  }
+  return [...langs];
+}
+
+/**
+ * Map a tapped display label back to its ui_key by comparing normalized copy
+ * for the farmer language first, then every other known language.
+ * Table/SEED-driven only — no hardcoded phrase lists.
+ */
+export function uiKeyForDisplayText(
+  normalizedLabel: string,
+  candidateKeys: string[],
+  language: string,
+): string | null {
+  if (!normalizedLabel) return null;
+  const primary = (language || 'en').toLowerCase();
+  const langs = [primary, ...knownLanguages().filter((l) => l !== primary)];
+  for (const lang of langs) {
+    for (const key of candidateKeys) {
+      const label = normalizeChip(getUiString(key as UiStringKey, lang));
+      if (label && label === normalizedLabel) return key;
+    }
+  }
+  return null;
+}
+
+const MODE_KEYS = Object.keys(MODE_OPTION_VALUES);
+const PREFERENCE_KEYS = Object.keys(PREFERENCE_OPTION_VALUES);
+
+/** Resolve a tapped chip/sheet message (key OR label, any language) → mode. */
+export function resolveTappedFarmingMode(message: string, language: string): FarmingMode | null {
+  const raw = (message ?? '').toString().trim();
+  if (!raw) return null;
+  if (MODE_OPTION_VALUES[raw]) return MODE_OPTION_VALUES[raw];
+
+  const norm = normalizeChip(raw);
+  const key = uiKeyForDisplayText(norm, MODE_KEYS, language);
+  if (key) return MODE_OPTION_VALUES[key] ?? null;
+
+  const pkey = uiKeyForDisplayText(norm, PREFERENCE_KEYS, language);
+  if (pkey) return preferenceToFarmingMode(PREFERENCE_OPTION_VALUES[pkey]);
+
+  return null;
+}
+
+/** Resolve a tapped preference chip (key OR label, any language) → preference. */
+export function resolveTappedPreference(message: string, language: string): FarmingPreference | null {
+  const raw = (message ?? '').toString().trim();
+  if (!raw) return null;
+  if (PREFERENCE_OPTION_VALUES[raw]) return PREFERENCE_OPTION_VALUES[raw];
+
+  const norm = normalizeChip(raw);
+  const pkey = uiKeyForDisplayText(norm, PREFERENCE_KEYS, language);
+  return pkey ? PREFERENCE_OPTION_VALUES[pkey] : null;
+}
