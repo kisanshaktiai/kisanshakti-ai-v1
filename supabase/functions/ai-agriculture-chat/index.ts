@@ -2337,11 +2337,31 @@ serve(async (req) => {
         if (detectedLanguage !== 'en' && responseContent) {
           try {
             const _fbPre = responseContent;
-            const _fbTranslated = await forceTranslateResponse(_fbPre, detectedLanguage);
-            responseContent = verifyTranslationFidelity(_fbPre, _fbTranslated, actions_returned)
-              ? _fbTranslated
-              : _fbPre;
-            console.log(`[FALLBACK_TRANSLATED lang=${detectedLanguage}]`);
+            const NON_LATIN = new Set(['hi','mr','bn','ta','te','kn','ml','gu','pa','or','as','ne','ur']);
+            const asciiRatio = (s: string) => {
+              const letters = (s.match(/\p{L}/gu) || []).length;
+              if (!letters) return 0;
+              return (s.match(/[A-Za-z]/g) || []).length / letters;
+            };
+            let _fbTranslated = await forceTranslateResponse(_fbPre, detectedLanguage);
+            // FIX B: a "translation" that is still mostly ASCII means the LLM
+            // echoed English — retry once on the core action/reason sections.
+            if (NON_LATIN.has(detectedLanguage) && asciiRatio(_fbTranslated) > 0.30) {
+              console.warn(`[FALLBACK_TRANSLATED] ascii_ratio=${asciiRatio(_fbTranslated).toFixed(2)} — retrying once`);
+              const _core = _fbPre.split('\n').filter((l) => /Action|Reason|🧾|🔍|📋/.test(l)).join('\n') || _fbPre;
+              const _retry = await forceTranslateResponse(_core, detectedLanguage);
+              if (asciiRatio(_retry) <= asciiRatio(_fbTranslated)) _fbTranslated = _retry;
+            }
+            const _fidelityOk = verifyTranslationFidelity(_fbPre, _fbTranslated, actions_returned);
+            if (_fidelityOk) {
+              responseContent = _fbTranslated;
+            } else if (NON_LATIN.has(detectedLanguage)) {
+              // Never ship the raw English blob: keep the least-English variant.
+              responseContent = asciiRatio(_fbTranslated) < asciiRatio(_fbPre) ? _fbTranslated : _fbPre;
+            } else {
+              responseContent = _fbPre;
+            }
+            console.log(`[FALLBACK_TRANSLATED lang=${detectedLanguage} fidelity=${_fidelityOk}]`);
           } catch (fbErr) {
             console.warn(`[FALLBACK_TRANSLATED] failed: ${(fbErr as Error).message}`);
           }
