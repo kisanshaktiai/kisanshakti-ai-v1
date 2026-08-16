@@ -8795,6 +8795,13 @@ export type Database = {
             foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_approval_portal_queue"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_blocking_rule_semantic_conflict"
             referencedColumns: ["rule_id"]
           },
@@ -14669,6 +14676,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "rule_authority_weights"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_approval_portal_queue"
             referencedColumns: ["rule_id"]
           },
           {
@@ -26059,6 +26073,13 @@ export type Database = {
             foreignKeyName: "rule_product_mapping_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_approval_portal_queue"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_blocking_rule_semantic_conflict"
             referencedColumns: ["rule_id"]
           },
@@ -26220,6 +26241,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "rule_authority_weights"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_approval_portal_queue"
             referencedColumns: ["rule_id"]
           },
           {
@@ -36101,6 +36129,107 @@ export type Database = {
           turns: number | null
         }
         Relationships: []
+      }
+      v_approval_portal_queue: {
+        Row: {
+          action_text: string | null
+          active_ingredient: string | null
+          category: string | null
+          crop_code: string | null
+          dosage_per_acre: string | null
+          evidence: Json | null
+          needs_dosage: boolean | null
+          needs_phi: boolean | null
+          needs_signature: boolean | null
+          open_findings: Json | null
+          phi_days: number | null
+          phi_source: string | null
+          phi_status: string | null
+          reason_text: string | null
+          regulatory_status: string | null
+          review_batch: string | null
+          rule_id: string | null
+          scientific_source: string | null
+          stage_applicable: string[] | null
+          verification_status: string | null
+          water_volume_per_acre: string | null
+        }
+        Insert: {
+          action_text?: string | null
+          active_ingredient?: string | null
+          category?: string | null
+          crop_code?: string | null
+          dosage_per_acre?: string | null
+          evidence?: never
+          needs_dosage?: never
+          needs_phi?: never
+          needs_signature?: never
+          open_findings?: never
+          phi_days?: number | null
+          phi_source?: string | null
+          phi_status?: string | null
+          reason_text?: string | null
+          regulatory_status?: string | null
+          review_batch?: never
+          rule_id?: string | null
+          scientific_source?: string | null
+          stage_applicable?: string[] | null
+          verification_status?: string | null
+          water_volume_per_acre?: string | null
+        }
+        Update: {
+          action_text?: string | null
+          active_ingredient?: string | null
+          category?: string | null
+          crop_code?: string | null
+          dosage_per_acre?: string | null
+          evidence?: never
+          needs_dosage?: never
+          needs_phi?: never
+          needs_signature?: never
+          open_findings?: never
+          phi_days?: number | null
+          phi_source?: string | null
+          phi_status?: string | null
+          reason_text?: string | null
+          regulatory_status?: string | null
+          review_batch?: never
+          rule_id?: string | null
+          scientific_source?: string | null
+          stage_applicable?: string[] | null
+          verification_status?: string | null
+          water_volume_per_acre?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
       }
       v_blocking_rule_semantic_conflict: {
         Row: {
