@@ -1,4 +1,8 @@
 // CHANGE LOG (newest first)
+//   2026-08-16 09:30 UTC — FIX 4 (incomplete answer): buildSecondaryRuleBlocks()
+//     renders short DB-text-only blocks for non-primary fired rules (multi
+//     observation turns, e.g. N + K), ordered by priority; buildOrganicTailBlock()
+//     applies the farming-mode matrix on the template/timeout fallback paths.
 //   2026-08-15 18:20 UTC — Farming-mode response matrix: conventional now emits a
 //     COLLAPSED organic teaser (organic_teaser) instead of full suppression;
 //     organic_only with no organic text offers the chemical reveal ask.
@@ -1321,3 +1325,100 @@ export function identifyMissingData(ruleData: RichRuleData, landAreaAcres?: numb
 }
 
 console.log('🏗️ [DeterministicResponseBuilder] v2.0.0 loaded — dose safety, PHI, env validation, confidence gating');
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX 4 — MULTI-RULE COMPLETENESS
+// When several confirmed observations fire several rules, the primary is
+// rendered in full and every other fired rule gets a SHORT secondary block.
+// DB text only (action_text / reason_text) — never synthesized agronomy,
+// never a dosage from a non-primary rule.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SecondaryRuleBlock {
+  rule_id: string;
+  cause?: string;
+  action_text?: string;
+  reason_text?: string;
+  priority: number;
+}
+
+export function collectSecondaryRuleBlocks(
+  decision: any,
+  primaryRuleId: string | null | undefined,
+  limit = 2,
+): SecondaryRuleBlock[] {
+  const matched: any[] = Array.isArray(decision?.matched_responses) ? decision.matched_responses : [];
+  const seen = new Set<string>();
+  const blocks: SecondaryRuleBlock[] = [];
+  for (const resp of matched) {
+    const rid = String(resp?.rule_id ?? '');
+    if (!rid || rid === String(primaryRuleId ?? '') || seen.has(rid)) continue;
+    const action = typeof resp?.action_text === 'string' ? resp.action_text.trim() : '';
+    const reason = typeof resp?.reason_text === 'string' ? resp.reason_text.trim() : '';
+    if (!action && !reason) continue;
+    seen.add(rid);
+    blocks.push({
+      rule_id: rid,
+      cause: resp?.cause ? String(resp.cause) : undefined,
+      action_text: action || undefined,
+      reason_text: reason || undefined,
+      priority: Number(resp?.priority ?? resp?.confidence_score ?? resp?.weighted_confidence ?? 0),
+    });
+  }
+  blocks.sort((a, b) => b.priority - a.priority);
+  return blocks.slice(0, limit);
+}
+
+/** Prompt-side rendering (English instruction text for the narrator). */
+export function renderSecondaryRuleBlocksForLLM(blocks: SecondaryRuleBlock[]): string {
+  if (blocks.length === 0) return '';
+  const parts: string[] = ['\n═══ SECONDARY CONFIRMED FINDINGS (render SHORT, after the primary) ═══'];
+  blocks.forEach((b, i) => {
+    const label = (b.cause || 'Additional finding').replace(/_/g, ' ').toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    parts.push(`${i + 1}. ${label}:`);
+    if (b.action_text) parts.push(`   Action (verbatim source): ${b.action_text}`);
+    if (b.reason_text) parts.push(`   Reason (verbatim source): ${b.reason_text}`);
+  });
+  parts.push('Do NOT invent a dosage for these — only the primary carries dose numbers.');
+  return parts.join('\n');
+}
+
+/** Plain-text rendering for template / timeout fallback paths. */
+export function renderSecondaryRuleBlocksPlain(blocks: SecondaryRuleBlock[]): string {
+  if (blocks.length === 0) return '';
+  const parts: string[] = [];
+  blocks.forEach((b) => {
+    const label = (b.cause || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    parts.push(`\n📋 ${label}`.trimEnd());
+    if (b.action_text) parts.push(b.action_text);
+    else if (b.reason_text) parts.push(b.reason_text);
+  });
+  return parts.join('\n');
+}
+
+/**
+ * Farming-mode matrix for fallback paths (template + timeout). Mirrors the
+ * matrix applied inside formatStructuredResponseForLLM so the collapsed
+ * organic teaser survives when the LLM formatter never ran.
+ */
+export function buildOrganicTailBlock(
+  organicAlternative: string | null | undefined,
+  farmingPreference: 'unset' | 'conventional' | 'organic' | 'integrated',
+  lang: string,
+): string {
+  const text = (organicAlternative || '').trim();
+  if (farmingPreference === 'organic' && !text) {
+    return `\n${getUiString('advisory.no_organic_available', lang)}\n${getUiString('advisory.show_chemical_ask', lang)}`;
+  }
+  if (!text) return '';
+  if (/^same\b/i.test(text)) {
+    return `\n${getUiString('advisory.organic_same', lang)}`;
+  }
+  if (farmingPreference === 'conventional') {
+    // collapsed teaser — one short line header + verbatim source text
+    return `\n${getUiString('advisory.organic_teaser', lang)}\n${text}`;
+  }
+  return `\n${getUiString('advisory.organic_header', lang)}\n${text}`;
+}
