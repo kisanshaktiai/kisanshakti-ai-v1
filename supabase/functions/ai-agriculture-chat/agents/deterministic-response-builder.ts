@@ -18,6 +18,8 @@
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
 import { getTranslation, initializeTranslationCache } from '../i18n/translation-loader.ts';
 import { getUiString } from '../i18n/ui-strings.ts';
+// FIX A (2026-08-16): diagnosis/differential/knowledge text is brain-only.
+import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 
 // TYPE: Rich Rule Data (all columns from decision_rules used in response)
 
@@ -574,15 +576,16 @@ export function buildDeterministicResponse(
   // Section 1: Problem Explanation (always shown)
   const problem = {
     cause: ruleData.cause || 'General advisory',
-    explanation: ruleData.reason_text || ruleData.knowledge_text || ruleData.cause || '',
+    // FIX A: knowledge_text is internal scientific reasoning — never farmer-facing.
+    explanation: (!isDifferentialText(ruleData.reason_text) ? (ruleData.reason_text || '') : '') || ruleData.cause || '',
     scientific_basis: ruleData.scientific_basis || undefined
   };
   
   // Section 2: Action
+  // FIX A: drop diagnosis/differential action text and never fall back to knowledge_text.
   const coalescedActionText =
-    (ruleData.action_text && ruleData.action_text.trim()) ||
-    (ruleData.reason_text && ruleData.reason_text.trim()) ||
-    (ruleData.knowledge_text && ruleData.knowledge_text.trim()) ||
+    farmerSafeActionText(ruleData.action_text, ruleData) ||
+    farmerSafeActionText(ruleData.reason_text, ruleData) ||
     (ruleData.cause && String(ruleData.cause).trim()) ||
     '';
   if (!ruleData.action_text && coalescedActionText) {
