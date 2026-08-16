@@ -63,6 +63,8 @@ import {
   modeLabelKey,
   PREFERENCE_OPTION_VALUES,
   MODE_OPTION_VALUES,
+  resolveTappedFarmingMode,
+  resolveTappedPreference,
   type FarmingPreference,
   type FarmingMode,
 } from './i18n/ui-strings.ts';
@@ -804,7 +806,14 @@ serve(async (req) => {
     // and for the voice/text PREFERENCE_UPDATE confirmation chip.
     // ─────────────────────────────────────────────────────────────────────
     {
-      const tappedMode = MODE_OPTION_VALUES[userMessageContent.trim()];
+      // FIX 1: chips arrive as LABEL text (any language), not as the i18n key.
+      // Prefer an explicit value when the client sends one, else resolve by label.
+      const explicitValue = typeof (requestBody as any)?.selected_value === 'string'
+        ? (requestBody as any).selected_value
+        : (typeof (lastUserMessage as any)?.selected_value === 'string'
+          ? (lastUserMessage as any).selected_value
+          : '');
+      const tappedMode = resolveTappedFarmingMode(explicitValue || userMessageContent, detectedLanguage);
       if (tappedMode && landId) {
         try {
           await supabase
@@ -812,7 +821,7 @@ serve(async (req) => {
             .update({ farming_type: tappedMode })
             .eq('land_id', landId)
             .eq('tenant_id', finalTenantId);
-          console.log(`🌿 [FARMING_MODE] land=${landId} farming_type=${tappedMode}`);
+          console.log(`🌿 [FARMING_MODE_SET] land=${landId} mode=${tappedMode} via=${explicitValue ? 'value' : 'label'}`);
         } catch (modeErr) {
           console.warn('[FARMING_MODE] persist failed:', (modeErr as Error).message);
         }
@@ -838,7 +847,7 @@ serve(async (req) => {
     // on the farmer row (tenant-safe by farmer UUID) and confirm once.
     // ─────────────────────────────────────────────────────────────────────
     {
-      const tapped = PREFERENCE_OPTION_VALUES[userMessageContent.trim()];
+      const tapped = resolveTappedPreference(userMessageContent, detectedLanguage);
       if (tapped) {
         try {
           await supabase
@@ -846,7 +855,7 @@ serve(async (req) => {
             .update({ farming_preference: tapped })
             .eq('id', finalFarmerId)
             .eq('tenant_id', finalTenantId);
-          console.log(`🌿 [PREFERENCE] farmer=${finalFarmerId} farming_preference=${tapped}`);
+          console.log(`🌿 [PREFERENCE_SAVED] farmer=${finalFarmerId} farming_preference=${tapped}`);
         } catch (prefErr) {
           console.warn('[PREFERENCE] persist failed:', (prefErr as Error).message);
         }
