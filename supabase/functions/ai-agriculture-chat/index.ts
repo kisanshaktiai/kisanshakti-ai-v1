@@ -847,7 +847,7 @@ serve(async (req) => {
     // on the farmer row (tenant-safe by farmer UUID) and confirm once.
     // ─────────────────────────────────────────────────────────────────────
     {
-      const tapped = PREFERENCE_OPTION_VALUES[userMessageContent.trim()];
+      const tapped = resolveTappedPreference(userMessageContent, detectedLanguage);
       if (tapped) {
         try {
           await supabase
@@ -855,7 +855,7 @@ serve(async (req) => {
             .update({ farming_preference: tapped })
             .eq('id', finalFarmerId)
             .eq('tenant_id', finalTenantId);
-          console.log(`🌿 [PREFERENCE] farmer=${finalFarmerId} farming_preference=${tapped}`);
+          console.log(`🌿 [PREFERENCE_SAVED] farmer=${finalFarmerId} farming_preference=${tapped}`);
         } catch (prefErr) {
           console.warn('[PREFERENCE] persist failed:', (prefErr as Error).message);
         }
