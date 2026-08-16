@@ -83,6 +83,8 @@ import { getSessionSSOT } from './runtime/session-ssot.ts';
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
 import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent, collectSecondaryRuleBlocks, renderSecondaryRuleBlocksPlain, buildOrganicTailBlock } from './agents/deterministic-response-builder.ts';
 import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
+// FIX A (2026-08-16): brain-only text filter (diagnosis/differential/knowledge).
+import { farmerSafeActionText, oneLine } from './utils/farmer-text-filter.ts';
 
 // PHASE 5: Import LLM Response Formatter for natural language generation
 import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
@@ -814,14 +816,35 @@ serve(async (req) => {
           ? (lastUserMessage as any).selected_value
           : '');
       const tappedMode = resolveTappedFarmingMode(explicitValue || userMessageContent, detectedLanguage);
-      if (tappedMode && landId) {
+      // FIX C: when the client omits land_id, resolve the farmer's active land
+      // instead of silently dropping the write.
+      let modeLandId: string | null = landId ?? null;
+      if (tappedMode && !modeLandId) {
+        try {
+          const { data: _al } = await supabase
+            .from('lands')
+            .select('id, updated_at')
+            .eq('farmer_id', finalFarmerId)
+            .eq('tenant_id', finalTenantId)
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          modeLandId = _al?.[0]?.id ?? null;
+          if (modeLandId) console.log(`🌿 [FARMING_MODE] resolved active land=${modeLandId}`);
+        } catch (e) {
+          console.warn('[FARMING_MODE] land resolve failed:', (e as Error).message);
+        }
+      }
+      if (tappedMode && !modeLandId) {
+        console.log('[FARMING_MODE_SKIPPED reason=no_land]');
+      }
+      if (tappedMode && modeLandId) {
         try {
           await supabase
             .from('land_crops')
             .update({ farming_type: tappedMode })
-            .eq('land_id', landId)
+            .eq('land_id', modeLandId)
             .eq('tenant_id', finalTenantId);
-          console.log(`🌿 [FARMING_MODE_SET] land=${landId} mode=${tappedMode} via=${explicitValue ? 'value' : 'label'}`);
+          console.log(`🌿 [FARMING_MODE_SET] land=${modeLandId} mode=${tappedMode} via=${explicitValue ? 'value' : 'label'}`);
         } catch (modeErr) {
           console.warn('[FARMING_MODE] persist failed:', (modeErr as Error).message);
         }
@@ -2335,11 +2358,31 @@ serve(async (req) => {
         if (detectedLanguage !== 'en' && responseContent) {
           try {
             const _fbPre = responseContent;
-            const _fbTranslated = await forceTranslateResponse(_fbPre, detectedLanguage);
-            responseContent = verifyTranslationFidelity(_fbPre, _fbTranslated, actions_returned)
-              ? _fbTranslated
-              : _fbPre;
-            console.log(`[FALLBACK_TRANSLATED lang=${detectedLanguage}]`);
+            const NON_LATIN = new Set(['hi','mr','bn','ta','te','kn','ml','gu','pa','or','as','ne','ur']);
+            const asciiRatio = (s: string) => {
+              const letters = (s.match(/\p{L}/gu) || []).length;
+              if (!letters) return 0;
+              return (s.match(/[A-Za-z]/g) || []).length / letters;
+            };
+            let _fbTranslated = await forceTranslateResponse(_fbPre, detectedLanguage);
+            // FIX B: a "translation" that is still mostly ASCII means the LLM
+            // echoed English — retry once on the core action/reason sections.
+            if (NON_LATIN.has(detectedLanguage) && asciiRatio(_fbTranslated) > 0.30) {
+              console.warn(`[FALLBACK_TRANSLATED] ascii_ratio=${asciiRatio(_fbTranslated).toFixed(2)} — retrying once`);
+              const _core = _fbPre.split('\n').filter((l) => /Action|Reason|🧾|🔍|📋/.test(l)).join('\n') || _fbPre;
+              const _retry = await forceTranslateResponse(_core, detectedLanguage);
+              if (asciiRatio(_retry) <= asciiRatio(_fbTranslated)) _fbTranslated = _retry;
+            }
+            const _fidelityOk = verifyTranslationFidelity(_fbPre, _fbTranslated, actions_returned);
+            if (_fidelityOk) {
+              responseContent = _fbTranslated;
+            } else if (NON_LATIN.has(detectedLanguage)) {
+              // Never ship the raw English blob: keep the least-English variant.
+              responseContent = asciiRatio(_fbTranslated) < asciiRatio(_fbPre) ? _fbTranslated : _fbPre;
+            } else {
+              responseContent = _fbPre;
+            }
+            console.log(`[FALLBACK_TRANSLATED lang=${detectedLanguage} fidelity=${_fidelityOk}]`);
           } catch (fbErr) {
             console.warn(`[FALLBACK_TRANSLATED] failed: ${(fbErr as Error).message}`);
           }
@@ -4184,13 +4227,12 @@ async function buildFormattedRecommendationsList(
 
     // If decision_rules provided rich text, include it so response stays SSOT-based
     const app = primary?.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
+    // FIX A: diagnosis/differential text + knowledge_text are brain-only.
+    const actionText = farmerSafeActionText(app.action_text, { ...app, rule_id: primary?.rule_id });
+    const reasonText = farmerSafeActionText(app.reason_text, { ...app, rule_id: primary?.rule_id });
 
     if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
-    if (knowledgeText) parts.push(`\n📚 **Knowledge:** ${knowledgeText}`);
+    if (reasonText) parts.push(`\n🔍 **Reason:** ${oneLine(reasonText, 240)}`);
 
     return parts.join('\n\n');
   }
@@ -4229,12 +4271,12 @@ async function buildFormattedRecommendationsList(
 
     // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
     const app = primary.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
+    // FIX A: diagnosis-category action_text and knowledge_text stay brain-only.
+    const actionText = farmerSafeActionText(app.action_text, { ...app, rule_id: primary?.rule_id });
+    const reasonText = farmerSafeActionText(app.reason_text, { ...app, rule_id: primary?.rule_id });
 
     // English-only labels — forceTranslateResponse() handles localization
-    const richLabels = { action: 'Action', reason: 'Reason', knowledge: 'Knowledge' };
+    const richLabels = { action: 'Action', reason: 'Reason' };
 
     let primaryText = `**${recNumber}. ${productName}**`;
     if (dosage) primaryText += ` @ ${dosage}`;
@@ -4260,8 +4302,8 @@ async function buildFormattedRecommendationsList(
     }
 
     if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
-    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${reasonText}`;
-    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge}:** ${knowledgeText}`;
+    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${oneLine(reasonText, 240)}`;
+    // FIX A: knowledge_text intentionally omitted from farmer output.
 
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
@@ -4385,9 +4427,11 @@ async function buildResponseFromDecisionOutput(
     parts.push('👀 **No action required at this time.** Continue monitoring.');
 
     const app = primary?.application_details || {};
-    if (app.action_text) parts.push(`\n🧾 **Action:** ${app.action_text}`);
-    if (app.reason_text) parts.push(`\n🔍 **Reason:** ${app.reason_text}`);
-    if (app.knowledge_text) parts.push(`\n📚 **Knowledge:** ${app.knowledge_text}`);
+    // FIX A: knowledge_text never rendered; diagnosis/differential text filtered.
+    const _a = farmerSafeActionText(app.action_text, { ...app, rule_id: primary?.rule_id });
+    const _r = farmerSafeActionText(app.reason_text, { ...app, rule_id: primary?.rule_id });
+    if (_a) parts.push(`\n🧾 **Action:** ${_a}`);
+    if (_r) parts.push(`\n🔍 **Reason:** ${oneLine(_r, 240)}`);
 
     return parts.join('\n\n');
   }

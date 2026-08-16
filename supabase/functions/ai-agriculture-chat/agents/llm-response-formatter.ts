@@ -42,6 +42,8 @@ import {
   renderSecondaryRuleBlocksPlain,
   buildOrganicTailBlock,
 } from './deterministic-response-builder.ts';
+// FIX A (2026-08-16): brain-only text filter (diagnosis/differential/knowledge).
+import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 import type {
   RichRuleData,
   WeatherContext,
@@ -1650,14 +1652,15 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     
     const appDetails = primary.application_details || {};
     
-    let actionText = appDetails.action_text;
-    let reasonText = appDetails.reason_text;
-    let knowledgeText = appDetails.knowledge_text;
+    // FIX A: diagnosis-category action_text is brain-only differential reasoning;
+    // knowledge_text is internal science. Neither may reach the farmer message.
+    let actionText = farmerSafeActionText(appDetails.action_text, { ...appDetails, rule_id: primary.rule_id, category: appDetails.category ?? (primary as any).category });
+    const reasonText = isDifferentialText(appDetails.reason_text) ? '' : appDetails.reason_text;
     
     if (!actionText) {
       const actionType = (primary.action_type || '').toUpperCase();
       if (actionType === 'NO_ACTION_REQUIRED' || actionType === 'NO_ACTION') {
-        actionText = knowledgeText || reasonText || 'No action required at this time. Continue regular monitoring.';
+        actionText = reasonText || 'No action required at this time. Continue regular monitoring.';
         console.log(`   ℹ️ [LLM Formatter] NO_ACTION_REQUIRED: Using fallback text for rule ${primary.rule_id}`);
       } else {
         if (appDetails.i18n_key) {
@@ -1667,7 +1670,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
           }
         }
         if (!actionText) {
-          actionText = knowledgeText || reasonText;
+          actionText = reasonText;
           if (!actionText) {
             console.error(`🚨 [LLM Formatter] action_text unavailable for rule ${primary.rule_id} — returning template fallback`);
             return buildTemplateFallback(input, startTime);
@@ -1683,11 +1686,9 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     parts.push(`\n═══ REFERENCE TEXTS (TRANSLATE TO ${langName.toUpperCase()}) ═══`);
     parts.push(`📋 ACTION (What to do - TRANSLATE this): ${actionText}`);
     if (reasonText) {
-      parts.push(`🔍 REASON (Why): ${reasonText}`);
+      parts.push(`🔍 REASON (Why): ${oneLine(reasonText, 240)}`);
     }
-    if (knowledgeText) {
-      parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText.substring(0, 600)}`);
-    }
+    // FIX A: knowledge_text intentionally NOT sent — internal scientific notes.
     parts.push(`═══════════════════════════════════════════════════`);
     
     const actionTypeUpper2 = (primary.action_type || '').toUpperCase();
@@ -1785,23 +1786,23 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     const filteredResponses = filterRelevantResponses(matchedResponses, primaryRuleId, 3);
     
     parts.push(`\nAGRICULTURAL RECOMMENDATIONS (Use in farmer's language):`);
-    filteredResponses.forEach((resp: any, idx: number) => {
+    let _idx = 0;
+    filteredResponses.forEach((resp: any) => {
       const isPrimary = resp.rule_id === primaryRuleId;
+      // FIX A: diagnosis rules are brain-only — never narrated to the farmer.
+      if (isDiagnosisRule(resp)) return;
+      const action = farmerSafeActionText(resp.action_text, resp);
+      const reason = farmerSafeActionText(resp.reason_text, resp);
+      if (!action && !reason) return;
       // Format cause codes: DEAD_HEART_PRESENT → Dead heart present
       const causeLabel = resp.cause
         ? resp.cause.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())
         : 'Additional observation';
-      parts.push(`\n${idx + 1}. ${causeLabel}:`);
-      
-      if (resp.action_text) {
-        parts.push(`   Action: ${resp.action_text}`);
-      }
-      if (resp.reason_text) {
-        parts.push(`   Reason: ${resp.reason_text}`);
-      }
-      if (isPrimary && resp.knowledge_text) {
-        parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
-      }
+      parts.push(`\n${++_idx}. ${causeLabel}:`);
+      // Primary renders in full; secondaries contribute ONE short line only.
+      if (action) parts.push(`   Action: ${isPrimary ? action : oneLine(action)}`);
+      if (reason) parts.push(`   Reason: ${isPrimary ? oneLine(reason, 240) : oneLine(reason)}`);
+      // FIX A: knowledge_text never included.
     });
   }
   

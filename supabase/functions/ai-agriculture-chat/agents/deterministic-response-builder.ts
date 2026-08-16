@@ -18,6 +18,8 @@
 import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
 import { getTranslation, initializeTranslationCache } from '../i18n/translation-loader.ts';
 import { getUiString } from '../i18n/ui-strings.ts';
+// FIX A (2026-08-16): diagnosis/differential/knowledge text is brain-only.
+import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 
 // TYPE: Rich Rule Data (all columns from decision_rules used in response)
 
@@ -574,15 +576,16 @@ export function buildDeterministicResponse(
   // Section 1: Problem Explanation (always shown)
   const problem = {
     cause: ruleData.cause || 'General advisory',
-    explanation: ruleData.reason_text || ruleData.knowledge_text || ruleData.cause || '',
+    // FIX A: knowledge_text is internal scientific reasoning — never farmer-facing.
+    explanation: (!isDifferentialText(ruleData.reason_text) ? (ruleData.reason_text || '') : '') || ruleData.cause || '',
     scientific_basis: ruleData.scientific_basis || undefined
   };
   
   // Section 2: Action
+  // FIX A: drop diagnosis/differential action text and never fall back to knowledge_text.
   const coalescedActionText =
-    (ruleData.action_text && ruleData.action_text.trim()) ||
-    (ruleData.reason_text && ruleData.reason_text.trim()) ||
-    (ruleData.knowledge_text && ruleData.knowledge_text.trim()) ||
+    farmerSafeActionText(ruleData.action_text, ruleData) ||
+    farmerSafeActionText(ruleData.reason_text, ruleData) ||
     (ruleData.cause && String(ruleData.cause).trim()) ||
     '';
   if (!ruleData.action_text && coalescedActionText) {
@@ -939,11 +942,9 @@ export async function formatStructuredResponseForLLM(
   parts.push(`═══ 🎯 PROBLEM EXPLANATION ═══`);
   parts.push(`Cause: ${response.problem.cause}`);
   if (response.problem.explanation) {
-    parts.push(`Explanation: ${response.problem.explanation}`);
+    parts.push(`Explanation: ${oneLine(response.problem.explanation, 220)}`);
   }
-  if (response.problem.scientific_basis) {
-    parts.push(`Scientific Basis: ${response.problem.scientific_basis}`);
-  }
+  // FIX A: scientific_basis is internal reasoning — never rendered to the farmer.
   
   // Action — translate action_type
   parts.push(`\n═══ 📋 RECOMMENDED ACTION ═══`);
@@ -1354,15 +1355,21 @@ export function collectSecondaryRuleBlocks(
   for (const resp of matched) {
     const rid = String(resp?.rule_id ?? '');
     if (!rid || rid === String(primaryRuleId ?? '') || seen.has(rid)) continue;
-    const action = typeof resp?.action_text === 'string' ? resp.action_text.trim() : '';
-    const reason = typeof resp?.reason_text === 'string' ? resp.reason_text.trim() : '';
+    // FIX A: diagnosis rules carry differential reasoning — brain-only.
+    if (isDiagnosisRule(resp)) {
+      console.log(`[FARMER_TEXT_FILTER] secondary diagnosis rule skipped rule=${rid}`);
+      continue;
+    }
+    // FIX A: at most ONE short line from the secondary's own action_text.
+    const action = oneLine(farmerSafeActionText(resp?.action_text, resp));
+    const reason = oneLine(farmerSafeActionText(resp?.reason_text, resp));
     if (!action && !reason) continue;
     seen.add(rid);
     blocks.push({
       rule_id: rid,
       cause: resp?.cause ? String(resp.cause) : undefined,
       action_text: action || undefined,
-      reason_text: reason || undefined,
+      reason_text: action ? undefined : (reason || undefined),
       priority: Number(resp?.priority ?? resp?.confidence_score ?? resp?.weighted_confidence ?? 0),
     });
   }

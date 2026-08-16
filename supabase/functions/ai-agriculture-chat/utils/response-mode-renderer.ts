@@ -2,6 +2,8 @@
 
 import { ResponseMode } from '../decision/authority-types.ts';
 import { safePreviewText, safeTrim, hasTextContent } from './safe-string.ts';
+// FIX A (2026-08-16): brain-only text filter.
+import { farmerSafeActionText, isDifferentialText, oneLine } from './farmer-text-filter.ts';
 
 // Re-export for compatibility
 export { ResponseMode };
@@ -319,8 +321,10 @@ function buildTreatmentMessage(
 ): string {
   const parts: string[] = [];
   
-  if (hasTextContent(treatment.action_text)) {
-    parts.push(`📋 ${treatment.action_text}`);
+  // FIX A: differential/diagnosis reasoning must never render as farmer advice.
+  const _safeAction = farmerSafeActionText(treatment.action_text);
+  if (_safeAction) {
+    parts.push(`📋 ${_safeAction}`);
   }
   
   if (hasTextContent(treatment.product_name)) {
@@ -335,13 +339,11 @@ function buildTreatmentMessage(
     parts.push(`⏰ Timing: ${treatment.timing}`);
   }
   
-  if (hasTextContent(treatment.reason_text)) {
-    parts.push(`🔍 Reason: ${treatment.reason_text}`);
+  if (hasTextContent(treatment.reason_text) && !isDifferentialText(treatment.reason_text)) {
+    parts.push(`🔍 Reason: ${oneLine(treatment.reason_text, 240)}`);
   }
   
-  if (hasTextContent(treatment.knowledge_text)) {
-    parts.push(`📚 Scientific basis: ${treatment.knowledge_text}`);
-  }
+  // FIX A (2026-08-16): knowledge_text is internal scientific text — never rendered.
   
   return parts.length > 0 ? parts.join('\n') : MODE_TEMPLATES.TREATMENT;
 }
