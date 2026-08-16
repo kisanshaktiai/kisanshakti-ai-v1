@@ -2296,7 +2296,8 @@ serve(async (req) => {
                 orchestratorResponse.decision_output, 
                 detectedLanguage,
                 supabase,
-                marketProductMemo
+                marketProductMemo,
+                farmingPreference as any
               ));
             } else {
               responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
