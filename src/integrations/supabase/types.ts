@@ -38806,6 +38806,13 @@ export type Database = {
         Args: { p_land_id: string; p_target_stage: string }
         Returns: Json
       }
+      expert_approve_rules: {
+        Args: { p_approver: string; p_basis: string; p_rule_ids: string[] }
+        Returns: {
+          result: string
+          rule_id: string
+        }[]
+      }
       expire_farmer_subscriptions: { Args: never; Returns: Json }
       expire_old_invites: { Args: never; Returns: number }
       extend_farmer_subscription: {
