@@ -816,14 +816,35 @@ serve(async (req) => {
           ? (lastUserMessage as any).selected_value
           : '');
       const tappedMode = resolveTappedFarmingMode(explicitValue || userMessageContent, detectedLanguage);
-      if (tappedMode && landId) {
+      // FIX C: when the client omits land_id, resolve the farmer's active land
+      // instead of silently dropping the write.
+      let modeLandId: string | null = landId ?? null;
+      if (tappedMode && !modeLandId) {
+        try {
+          const { data: _al } = await supabase
+            .from('lands')
+            .select('id, updated_at')
+            .eq('farmer_id', finalFarmerId)
+            .eq('tenant_id', finalTenantId)
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          modeLandId = _al?.[0]?.id ?? null;
+          if (modeLandId) console.log(`🌿 [FARMING_MODE] resolved active land=${modeLandId}`);
+        } catch (e) {
+          console.warn('[FARMING_MODE] land resolve failed:', (e as Error).message);
+        }
+      }
+      if (tappedMode && !modeLandId) {
+        console.log('[FARMING_MODE_SKIPPED reason=no_land]');
+      }
+      if (tappedMode && modeLandId) {
         try {
           await supabase
             .from('land_crops')
             .update({ farming_type: tappedMode })
-            .eq('land_id', landId)
+            .eq('land_id', modeLandId)
             .eq('tenant_id', finalTenantId);
-          console.log(`🌿 [FARMING_MODE_SET] land=${landId} mode=${tappedMode} via=${explicitValue ? 'value' : 'label'}`);
+          console.log(`🌿 [FARMING_MODE_SET] land=${modeLandId} mode=${tappedMode} via=${explicitValue ? 'value' : 'label'}`);
         } catch (modeErr) {
           console.warn('[FARMING_MODE] persist failed:', (modeErr as Error).message);
         }
