@@ -42,6 +42,8 @@ import {
   renderSecondaryRuleBlocksPlain,
   buildOrganicTailBlock,
 } from './deterministic-response-builder.ts';
+// FIX A (2026-08-16): brain-only text filter (diagnosis/differential/knowledge).
+import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 import type {
   RichRuleData,
   WeatherContext,
