@@ -63,6 +63,8 @@ import {
   modeLabelKey,
   PREFERENCE_OPTION_VALUES,
   MODE_OPTION_VALUES,
+  resolveTappedFarmingMode,
+  resolveTappedPreference,
   type FarmingPreference,
   type FarmingMode,
 } from './i18n/ui-strings.ts';
