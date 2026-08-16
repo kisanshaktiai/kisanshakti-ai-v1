@@ -4184,13 +4184,12 @@ async function buildFormattedRecommendationsList(
 
     // If decision_rules provided rich text, include it so response stays SSOT-based
     const app = primary?.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
+    // FIX A: diagnosis/differential text + knowledge_text are brain-only.
+    const actionText = farmerSafeActionText(app.action_text, { ...app, rule_id: primary?.rule_id });
+    const reasonText = farmerSafeActionText(app.reason_text, { ...app, rule_id: primary?.rule_id });
 
     if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
-    if (knowledgeText) parts.push(`\n📚 **Knowledge:** ${knowledgeText}`);
+    if (reasonText) parts.push(`\n🔍 **Reason:** ${oneLine(reasonText, 240)}`);
 
     return parts.join('\n\n');
   }
@@ -4385,9 +4384,11 @@ async function buildResponseFromDecisionOutput(
     parts.push('👀 **No action required at this time.** Continue monitoring.');
 
     const app = primary?.application_details || {};
-    if (app.action_text) parts.push(`\n🧾 **Action:** ${app.action_text}`);
-    if (app.reason_text) parts.push(`\n🔍 **Reason:** ${app.reason_text}`);
-    if (app.knowledge_text) parts.push(`\n📚 **Knowledge:** ${app.knowledge_text}`);
+    // FIX A: knowledge_text never rendered; diagnosis/differential text filtered.
+    const _a = farmerSafeActionText(app.action_text, { ...app, rule_id: primary?.rule_id });
+    const _r = farmerSafeActionText(app.reason_text, { ...app, rule_id: primary?.rule_id });
+    if (_a) parts.push(`\n🧾 **Action:** ${_a}`);
+    if (_r) parts.push(`\n🔍 **Reason:** ${oneLine(_r, 240)}`);
 
     return parts.join('\n\n');
   }
