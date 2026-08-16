@@ -1,6 +1,11 @@
 // UI STRINGS — farmer-facing chrome text resolved through the i18n path only.
 //
 // CHANGE LOG (newest first)
+//   2026-08-16 08:20 UTC — FIX 1 (mode tap never saved): the app sends the
+//     LABEL text, not the i18n key, so MODE_OPTION_VALUES[label] always missed.
+//     Added normalizeChip / uiKeyForDisplayText / resolveTappedFarmingMode /
+//     resolveTappedPreference — label→ui_key resolution across every loaded
+//     language (ui_translations + SEED), key-first, label fallback.
 //   2026-08-15 17:45 UTC — Farming-mode system: land-scoped mode taxonomy
 //     (`land_crops.farming_type`), DB-first resolution through `ui_translations`
 //     (loadUiTranslations), mode<->preference mapping helpers and MODE_OPTION
