@@ -2,6 +2,8 @@
 
 import { ResponseMode } from '../decision/authority-types.ts';
 import { safePreviewText, safeTrim, hasTextContent } from './safe-string.ts';
+// FIX A (2026-08-16): brain-only text filter.
+import { farmerSafeActionText, isDifferentialText, oneLine } from './farmer-text-filter.ts';
 
 // Re-export for compatibility
 export { ResponseMode };
@@ -319,8 +321,10 @@ function buildTreatmentMessage(
 ): string {
   const parts: string[] = [];
   
-  if (hasTextContent(treatment.action_text)) {
-    parts.push(`📋 ${treatment.action_text}`);
+  // FIX A: differential/diagnosis reasoning must never render as farmer advice.
+  const _safeAction = farmerSafeActionText(treatment.action_text);
+  if (_safeAction) {
+    parts.push(`📋 ${_safeAction}`);
   }
   
   if (hasTextContent(treatment.product_name)) {
