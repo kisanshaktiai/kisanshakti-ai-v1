@@ -2957,6 +2957,9 @@ export class AIAgentOrchestrator {
                   decision_state: 'awaiting_clarification',
                   pending_options: clarificationOptions.length,
                   pending_action: false,
+                  // FIX 1 (2026-08-17): round-trip the SSOT so the TAP turn
+                  // inherits intent_code / crop / stage / das.
+                  session_ssot: (this as any)._sessionSSOT ?? null,
                 },
               },
             } as any;
@@ -3050,6 +3053,9 @@ export class AIAgentOrchestrator {
                   decision_state: 'awaiting_clarification',
                   pending_options: clarificationOptions.length,
                   pending_action: false,
+                  // FIX 1 (2026-08-17): round-trip the SSOT so the TAP turn
+                  // inherits intent_code / crop / stage / das.
+                  session_ssot: (this as any)._sessionSSOT ?? null,
                 },
               },
             } as any;
@@ -3398,7 +3404,9 @@ export class AIAgentOrchestrator {
               pending_action: false,
               last_action_source: 'FARMER_SELECTION',
               clarification_answered: true,
-              clarification_resolved_at: new Date().toISOString()
+              clarification_resolved_at: new Date().toISOString(),
+              // FIX 1 (2026-08-17): keep the SSOT alive across the decision turn.
+              session_ssot: (this as any)._sessionSSOT ?? null
             };
             
             // MANDATORY LOGGING: Track decision state transition
@@ -8397,6 +8405,47 @@ export class AIAgentOrchestrator {
         // T1 — GraphTruth integrity check before layered rule evaluator
         assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_LAYERED_RULE_EVALUATOR');
 
+        // ── FIX 2 (2026-08-17) — CONDITION_CODE RECOVERY LANE ────────────────
+        // intent_code is a clarification-phase ROUTING HINT. Once an observation
+        // is CONFIRMED, decision_rules.condition_code is the decision path and
+        // must not be gated by a missing/degraded intent or by empty graph
+        // edges. Only fail-close when there is neither a confirmed observation
+        // nor any candidate rule.
+        try {
+          const _confirmedForRecovery: string[] = Array.isArray(confirmedObsCodes) ? confirmedObsCodes : [];
+          if ((!Array.isArray(rulesForEvaluator) || (rulesForEvaluator as any[]).length === 0) &&
+              _confirmedForRecovery.length > 0) {
+            const _confSet = new Set(
+              _confirmedForRecovery.map((c) => String(c ?? '').trim().toLowerCase()).filter(Boolean),
+            );
+            // Search the PRE-intent-filter set — recovery must ignore intent.
+            const _byConditionCode = (rulesToEvaluate as any[]).filter((r: any) => {
+              const cc = String(r?.condition_code ?? r?.then?.action_details?.condition_code ?? '')
+                .trim().toLowerCase();
+              return !!cc && _confSet.has(cc);
+            });
+            if (_byConditionCode.length > 0) {
+              rulesForEvaluator = _byConditionCode as any;
+              (this as any)._graphScopeBlocked = null;
+              console.warn(
+                `[CONDITION_CODE_RULE_RECOVERY] trace=${traceId} ` +
+                `confirmed=[${[..._confSet].slice(0, 8).join(',')}] ` +
+                `recovered=${_byConditionCode.length} ` +
+                `ids=[${_byConditionCode.map((r: any) => String(r?.id ?? r?.rule_id ?? '?')).slice(0, 8).join(',')}] ` +
+                `reason=intent_agnostic_condition_code_match`,
+              );
+            } else {
+              console.warn(
+                `[CONDITION_CODE_RULE_RECOVERY] trace=${traceId} ` +
+                `confirmed=[${[..._confSet].slice(0, 8).join(',')}] recovered=0 ` +
+                `reason=no_rule_with_matching_condition_code`,
+              );
+            }
+          }
+        } catch (e) {
+          console.warn(`[CONDITION_CODE_RULE_RECOVERY_FAILED] trace=${traceId} err=${(e as Error).message}`);
+        }
+
         // PR-7 F4: forensic snapshot of what actually reaches the layered
         try {
           const _rfe: any[] = rulesForEvaluator as any[];
@@ -8418,8 +8467,10 @@ export class AIAgentOrchestrator {
           if (_confirmed.length > 0 && Array.isArray(rulesForEvaluator) && rulesForEvaluator.length > 0) {
             const _confSet = new Set(_confirmed.map((c) => String(c).toUpperCase()));
             const _scoped = (rulesForEvaluator as any[]).filter((r: any) => {
-              const blob = JSON.stringify(r?.if ?? r?.conditions ?? r?.when ?? {}).toUpperCase();
-              const code = String(r?.condition_code ?? '').toUpperCase();
+              const blob = JSON.stringify(r?.if ?? r?.conditions ?? {}).toUpperCase();
+              const code = String(
+                r?.condition_code ?? r?.then?.action_details?.condition_code ?? '',
+              ).toUpperCase();
               for (const c of _confSet) {
                 if (c && (blob.includes(c) || code === c)) return true;
               }
