@@ -49,11 +49,33 @@ export async function reconcilePhenology(
     cropCode: string | null | undefined;
     das: number | null | undefined;
     phenologyRow: any | null;
+    /** v9 — anchor for das_reference='transplanting' stage windows. */
+    transplantDate?: string | null;
   },
 ): Promise<ReconciliationResult | null> {
-  const { landId, cropCode, das, phenologyRow } = args;
+  const { landId, cropCode, das, phenologyRow, transplantDate } = args;
 
   if (!phenologyRow || !cropCode) return null;
+
+  // ── v9 — DAT anchor (whole days since transplanting). Null when unknown. ──
+  const dat: number | null = (() => {
+    if (!transplantDate) return null;
+    const t = new Date(transplantDate as string);
+    if (Number.isNaN(t.getTime())) return null;
+    const ms = Date.now() - t.getTime();
+    return Math.floor(ms / 86400000);
+  })();
+
+  /** Which calendar anchor a crop_stage_master row's DAS window must use. */
+  const anchorFor = (row: any): 'das' | 'dat' =>
+    String(row?.das_reference ?? '').toLowerCase() === 'transplanting' ? 'dat' : 'das';
+
+  /** Transplant-anchored rows are ineligible when no transplant date exists. */
+  const rowEligible = (row: any): boolean => anchorFor(row) === 'das' || dat !== null;
+
+  const anchorValue = (row: any): number | null => (anchorFor(row) === 'dat' ? dat : (das ?? null));
+
+  const anchorLog: string[] = [];
 
   const dasCandidate: PhenologyCandidate = {
     growth_stage: phenologyRow.growth_stage ?? null,
@@ -64,6 +86,7 @@ export async function reconcilePhenology(
   };
 
   const candidates: PhenologyCandidate[] = [dasCandidate];
+
 
   // ── Candidate: GDD model ───────────────────────────────────────────────
   let gddCandidate: PhenologyCandidate | null = null;
