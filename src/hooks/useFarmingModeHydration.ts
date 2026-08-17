@@ -7,7 +7,9 @@
  *
  *   1. Instant paint from a per-land localStorage mirror (no spinner, no wait).
  *   2. Authoritative refresh from the same SSOT chain the edge function uses:
- *        land_crops.farming_type  →  farmers.farming_preference  →  unset
+ *        crop_schedules(active).farming_type  →  land_crops.farming_type
+ *        →  farmers.farming_preference  →  unset
+
  *
  * DB stays the only author — the cache is a mirror for offline / first paint.
  */
