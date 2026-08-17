@@ -3517,6 +3517,7 @@ export class AIAgentOrchestrator {
               last_action_source: 'BIOLOGICAL_ASSEMBLY_GATE',
               clarification_answered: true,
               clarification_resolved_at: new Date().toISOString(),
+              session_ssot: (this as any)._sessionSSOT ?? null,
             };
             const _ssotAsm = (this as any)._sessionSSOT as SessionSSOT | undefined;
             const _norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
@@ -3574,7 +3575,8 @@ export class AIAgentOrchestrator {
             pending_action: false,
             last_action_source: 'FARMER_SELECTION_STAGE_FALLBACK',
             clarification_answered: true,
-            clarification_resolved_at: new Date().toISOString()
+            clarification_resolved_at: new Date().toISOString(),
+            session_ssot: (this as any)._sessionSSOT ?? null
           };
           
           console.log(`\n🔄 [SESSION_STATE] ═══ DECISION STATE TRANSITION (Stage Fallback) ═══`);
