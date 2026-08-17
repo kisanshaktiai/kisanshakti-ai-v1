@@ -182,6 +182,45 @@ class SchedulesApiService {
       throw error;
     }
   }
+
+  /**
+   * PHASE 0 (security): all task mutations go through the authenticated
+   * schedules-api with server-side ownership checks. Never write to
+   * schedule_tasks directly from the client.
+   */
+  async updateTask(taskId: string, updates: Record<string, unknown>): Promise<any> {
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(`${SCHEDULES_API_URL}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to update task');
+    }
+    const result = await response.json();
+    return result.data;
+  }
+
+  async setTaskCompletion(taskId: string, completed: boolean, completedAt?: string): Promise<any> {
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(`${SCHEDULES_API_URL}/tasks/${taskId}/complete`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed, completed_at: completedAt }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to update task status');
+    }
+    const result = await response.json();
+    return result.data;
+  }
+}
+
 }
 
 export const schedulesApi = new SchedulesApiService();
