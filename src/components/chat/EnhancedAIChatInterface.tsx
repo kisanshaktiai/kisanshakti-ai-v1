@@ -31,6 +31,8 @@ import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisC
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 import { DiagnosticResponseCard } from './DiagnosticResponseCard';
 import FarmingModeBadge, { type FarmingMode } from './FarmingModeBadge';
+import { useFarmingModeHydration } from '@/hooks/useFarmingModeHydration';
+
 import { CropRecommendationCard } from './CropRecommendationCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
