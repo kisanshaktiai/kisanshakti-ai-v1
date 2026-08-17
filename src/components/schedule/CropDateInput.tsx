@@ -104,10 +104,39 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       return;
     }
 
+    // Transplanting lane: validate the captured transplant date (if any).
+    if (isReadyMadePlant && !notTransplantedYet && transplantDate) {
+      const today = startOfDay(new Date());
+      const tp = startOfDay(transplantDate);
+      if (tp > today) {
+        toast({
+          title: t('schedule.crop_input.transplant_date_label', 'Transplanting date'),
+          description: t(
+            'schedule.crop_input.transplant_future_error',
+            'Transplanting date cannot be in the future.'
+          ),
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (tp < startOfDay(sowingDate)) {
+        toast({
+          title: t('schedule.crop_input.transplant_date_label', 'Transplanting date'),
+          description: t(
+            'schedule.crop_input.transplant_before_sowing_error',
+            'Transplanting date cannot be before the nursery sowing date.'
+          ),
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     // Open farming type dialog instead of submitting directly
     console.log('🔔 [CropDateInput] Opening farming type dialog for:', cropName);
     setShowFarmingTypeDialog(true);
   };
+
 
   const handleFarmingTypeSelect = (farmingType: FarmingMode) => {
     console.log('✅ [CropDateInput] Farming type selected:', farmingType);
