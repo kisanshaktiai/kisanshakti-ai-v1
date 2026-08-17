@@ -1,6 +1,12 @@
 // UI STRINGS — farmer-facing chrome text resolved through the i18n path only.
 //
 // CHANGE LOG (newest first)
+//   2026-08-17 14:10 UTC — i18n forensic fix PART A: added the previously
+//     hardcoded farmer-visible keys (advisory.reason_header, clarify.*,
+//     data_audit.*, chat.greeting, chat.closing) to the key union, refreshed
+//     every SEED entry so it matches the current `ui_translations` en/hi/mr
+//     rows verbatim, and paginated the ui_translations load (the table now
+//     exceeds the PostgREST 1000-row cap).
 //   2026-08-16 08:20 UTC — FIX 1 (mode tap never saved): the app sends the
 //     LABEL text, not the i18n key, so MODE_OPTION_VALUES[label] always missed.
 //     Added normalizeChip / uiKeyForDisplayText / resolveTappedFarmingMode /
@@ -41,14 +47,30 @@ export type UiStringKey =
   | 'advisory.organic_same'
   | 'advisory.organic_teaser'
   | 'advisory.show_chemical_ask'
-  | 'advisory.no_organic_available';
+  | 'advisory.no_organic_available'
+  | 'advisory.reason_header'
+  | 'clarify.need_more_info'
+  | 'clarify.what_do_you_see'
+  | 'data_audit.header'
+  | 'data_audit.sources'
+  | 'data_audit.quality'
+  | 'data_audit.missing_soil_test'
+  | 'data_audit.missing_ndvi'
+  | 'chat.greeting'
+  | 'chat.closing';
 
 
 /**
- * Seed copy taken verbatim from the approved i18n seed list (DOC 1 / FIX 3).
- * The DB always wins once the same keys exist in the translation cache.
+ * DISASTER FALLBACK ONLY.
+ *
+ * `ui_translations` in the database is the single author of every
+ * farmer-facing server string. This SEED map exists purely so a cold start
+ * that cannot reach the DB still renders something non-broken. It is a
+ * verbatim mirror of the current en/hi/mr rows — if you change copy, change
+ * the DB row first and then refresh this mirror. Never author new copy here.
  */
 const SEED: Record<UiStringKey, Record<string, string>> = {
+
   'preference.organic_ask': {
     mr: 'तुम्हाला जैविक (सेंद्रिय) पर्यायही हवा असतो का?',
     hi: 'क्या आपको जैविक (ऑर्गेनिक) विकल्प भी चाहिए?',
