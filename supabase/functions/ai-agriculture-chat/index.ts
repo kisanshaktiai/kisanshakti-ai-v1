@@ -3642,7 +3642,7 @@ function generateValidationFailureFallback(
     const parts: string[] = [];
     
     // Greeting
-    parts.push('🌾 Hello farmer friend!');
+    parts.push(`🌾 ${getUiString('chat.greeting', lang)}`);
     
     // Header
     parts.push('📌 **What to do now:**');
@@ -3723,7 +3723,7 @@ function generateValidationFailureFallback(
     }
     
     // Closing
-    parts.push('\n✅ Best wishes! 🙏');
+    parts.push(`\n✅ ${getUiString('chat.closing', lang)} 🙏`);
     
     return parts.join('\n\n');
   }
@@ -3751,7 +3751,7 @@ function generateAllActionsFilteredResponse(
   const parts: string[] = [];
   
   // Greeting
-  parts.push('Hello farmer friend! 🌾');
+  parts.push(`${getUiString('chat.greeting', lang)} 🌾`);
   
   // Explanation
   parts.push('⚠️ Unable to provide recommendations at this time. Here\'s why:');
@@ -4174,7 +4174,7 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   const parts: string[] = [];
   
   // Greeting
-  parts.push('Hello farmer friend! 🌾');
+  parts.push(`${getUiString('chat.greeting', lang)} 🌾`);
   
   // Extract context clues from response
   const nluIntent = response.metadata?.nlu_output?.primary_intent;
@@ -4205,7 +4205,7 @@ async function buildFormattedRecommendationsList(
   const parts: string[] = [];
   
   // Greeting
-  parts.push('Hello farmer friend! 🌾');
+  parts.push(`${getUiString('chat.greeting', lang)} 🌾`);
   
   const primary = decision.primary_decision;
   
@@ -4356,7 +4356,7 @@ async function buildFormattedRecommendationsList(
   }
   
   // Closing
-  parts.push('\n✅ Best wishes! 🙏');
+  parts.push(`\n✅ ${getUiString('chat.closing', lang)} 🙏`);
   
   return parts.join('\n\n');
 }
@@ -4406,7 +4406,7 @@ async function buildResponseFromDecisionOutput(
   const parts: string[] = [];
   
   // English-only — forceTranslateResponse() handles localization at runtime
-  parts.push('Hello farmer friend! 🌾');
+  parts.push(`${getUiString('chat.greeting', language)} 🌾`);
   
   const primary = decision.primary_decision;
   
@@ -4503,7 +4503,7 @@ async function buildResponseFromDecisionOutput(
     });
   }
   
-  parts.push('\n✅ Best wishes! 🙏');
+  parts.push(`\n✅ ${getUiString('chat.closing', language)} 🙏`);
   
   return parts.join('\n');
 }

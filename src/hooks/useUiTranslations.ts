@@ -4,32 +4,78 @@ import { useLanguageStore } from '@/stores/languageStore';
 
 /**
  * DB-SSOT chrome copy for farmer-facing UI keys (`ui_translations`).
- * No hardcoded farmer-facing strings: the caller passes the key and gets
- * the DB text for the active language, or the key's English row, or ''.
+ *
+ * This is a MIRROR, never an author: the database owns every string. The
+ * local copy exists so a reopened chat renders the correct language offline.
+ * Server payload strings always win when present.
+ *
+ * - fetches the active language rows + the `en` fallback rows
+ * - persists to localStorage with a 24h TTL
+ * - refreshes on app start, on language change, and on foreground
  */
 const cache = new Map<string, string>(); // `${key}::${lang}` → text
-let loaded = false;
-let inflight: Promise<void> | null = null;
+const loadedLangs = new Set<string>();
+const inflight = new Map<string, Promise<void>>();
 
-async function loadOnce(): Promise<void> {
-  if (loaded) return;
-  if (!inflight) {
-    inflight = (async () => {
-      const { data, error } = await supabase
-        .from('ui_translations')
-        .select('ui_key, language_code, display_text')
-        .limit(1000);
-      if (!error) {
-        for (const row of data || []) {
-          if (!row?.ui_key || !row?.language_code || !row?.display_text) continue;
-          cache.set(`${row.ui_key}::${String(row.language_code).toLowerCase()}`, row.display_text);
-        }
-        loaded = true;
-      }
-      inflight = null;
-    })();
+const TTL_MS = 24 * 60 * 60 * 1000;
+const storageKey = (lang: string) => `ui_translations_mirror::${lang}`;
+
+type MirrorPayload = { at: number; rows: Array<[string, string]> };
+
+function hydrateFromStorage(lang: string): boolean {
+  try {
+    const raw = localStorage.getItem(storageKey(lang));
+    if (!raw) return false;
+    const parsed: MirrorPayload = JSON.parse(raw);
+    if (!parsed?.rows) return false;
+    for (const [k, v] of parsed.rows) cache.set(k, v);
+    return Date.now() - parsed.at < TTL_MS;
+  } catch {
+    return false;
   }
-  return inflight;
+}
+
+function persistToStorage(lang: string, rows: Array<[string, string]>) {
+  try {
+    localStorage.setItem(storageKey(lang), JSON.stringify({ at: Date.now(), rows } as MirrorPayload));
+  } catch {
+    /* quota / private mode — the in-memory cache still works */
+  }
+}
+
+async function loadLanguage(lang: string, force = false): Promise<void> {
+  if (!force && loadedLangs.has(lang)) return;
+  const existing = inflight.get(lang);
+  if (existing) return existing;
+
+  const fresh = !force && hydrateFromStorage(lang);
+  if (fresh) {
+    loadedLangs.add(lang);
+    return;
+  }
+
+  const p = (async () => {
+    const codes = Array.from(new Set([lang, 'en']));
+    const { data, error } = await supabase
+      .from('ui_translations')
+      .select('ui_key, language_code, display_text')
+      .in('language_code', codes);
+    if (!error) {
+      const rows: Array<[string, string]> = [];
+      for (const row of data || []) {
+        if (!row?.ui_key || !row?.language_code || !row?.display_text) continue;
+        const key = `${row.ui_key}::${String(row.language_code).toLowerCase()}`;
+        cache.set(key, row.display_text);
+        rows.push([key, row.display_text]);
+      }
+      persistToStorage(lang, rows);
+      loadedLangs.add(lang);
+    }
+    inflight.delete(lang);
+  })();
+
+  inflight.set(lang, p);
+  return p;
 }
 
 export function useUiTranslations() {
@@ -39,12 +85,25 @@ export function useUiTranslations() {
 
   useEffect(() => {
     let alive = true;
-    loadOnce().then(() => { if (alive) setTick((t) => t + 1); });
-    return () => { alive = false; };
-  }, []);
+    const bump = () => { if (alive) setTick((t) => t + 1); };
+
+    // offline-first: paint from the mirror immediately, then refresh
+    hydrateFromStorage(lang);
+    bump();
+    loadLanguage(lang).then(bump);
+
+    const onForeground = () => {
+      if (document.visibilityState === 'visible') loadLanguage(lang, true).then(bump);
+    };
+    document.addEventListener('visibilitychange', onForeground);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', onForeground);
+    };
+  }, [lang]);
 
   const t = (key: string): string =>
     cache.get(`${key}::${lang}`) || cache.get(`${key}::en`) || '';
 
-  return { t, ready: loaded, language: lang };
+  return { t, ready: loadedLangs.has(lang), language: lang };
 }

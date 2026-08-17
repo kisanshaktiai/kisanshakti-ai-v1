@@ -766,6 +766,7 @@ import { buildHypothesisClarificationOptions } from '../decision/hypothesis-clar
 import { resolveHypothesesFromObservations } from '../decision/observation-hypothesis-resolver.ts';
 import { canonicalObsCode, canonicalIntentCode, canonicalCropCode, canonicalSymbolCode } from '../utils/canonical-code.ts';
 import { logDebug } from '../utils/log.ts';
+import { getUiString } from '../i18n/ui-strings.ts';
 import { getRuleById, getRulesForCrop } from '../data/rule-repository.ts';
 
 // Request-local so concurrent turns handled by the module-level orchestrator
@@ -1024,6 +1025,9 @@ export interface DataAudit {
     data_quality_score: number; // 0-100
     critical_missing: string[];
     recommendations: string[];
+    /** Localized card chrome (ui_translations data_audit.*). */
+    labels?: { header: string; sources: string; quality: string };
+
   };
 }
 
@@ -1256,6 +1260,7 @@ export class AIAgentOrchestrator {
     // 2026-08-13 — MULTI-TENANT SAFETY: warm singleton (getOrchestrator()) is
     // reused across requests/tenants. Reset the F4 router stash so a prior
     // request's observation candidates cannot leak into a later one.
+    (this as any).__farmerLanguage = options?.language || 'en';
     (this as any).__observationRequired = false;
     (this as any).__observationCandidateCodes = [];
     (this as any).__observationRouterReason = null;
@@ -11211,7 +11216,11 @@ export class AIAgentOrchestrator {
   }
   
   // Build data audit object for debugging - shows what data was found/missing
-  private buildDataAudit(landContext: any, weatherData: any): DataAudit {
+  // 2026-08-17 — i18n: farmer-visible chips/labels come from ui_translations
+  // (data_audit.*) in the farmer's language. Never hardcode English here.
+  private buildDataAudit(landContext: any, weatherData: any, language?: string): DataAudit {
+    const auditLang = (language || (this as any).__farmerLanguage || 'en') as string;
+
     const now = new Date();
     
     // Land audit
@@ -11292,11 +11301,11 @@ export class AIAgentOrchestrator {
     const recommendations: string[] = [];
     
     if (!soilAudit.found) {
-      criticalMissing.push('Soil Test');
+      criticalMissing.push(getUiString('data_audit.missing_soil_test', auditLang));
       recommendations.push('Get soil tested for accurate fertilizer recommendations');
     }
     if (!ndviAudit.found) {
-      criticalMissing.push('NDVI');
+      criticalMissing.push(getUiString('data_audit.missing_ndvi', auditLang));
       recommendations.push('Add land boundaries for satellite monitoring');
     }
     if (!landAudit.has_coordinates) {
@@ -11314,9 +11323,14 @@ export class AIAgentOrchestrator {
         available_sources: availableSources,
         data_quality_score: Math.round((availableSources / 5) * 100),
         critical_missing: criticalMissing,
-        recommendations
+        recommendations,
+        labels: {
+          header: getUiString('data_audit.header', auditLang),
+          sources: getUiString('data_audit.sources', auditLang),
+          quality: getUiString('data_audit.quality', auditLang),
+        }
       }
-    };
+    } as DataAudit;
   }
   
   // Fetch weather data - NOW CONNECTED TO REAL DATA

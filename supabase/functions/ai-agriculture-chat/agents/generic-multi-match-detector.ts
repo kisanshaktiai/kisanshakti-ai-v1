@@ -6,6 +6,7 @@
 // GENERIC MULTI-MATCH DETECTOR - World-Class Clarification System
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
+import { getUiString } from '../i18n/ui-strings.ts';
 
 export const MULTI_MATCH_DETECTOR_VERSION = '1.0.0';
 
@@ -333,9 +334,10 @@ export function generateDifferentialClarificationFromRules(
   return {
     question_id: `differential_${Date.now()}`,
     question_text: {
-      en: '🔍 I need more information. What exactly do you see?',
-      mr: '', // @deprecated — LLM translates at runtime
-      hi: ''  // @deprecated — LLM translates at runtime
+      // i18n SSOT: ui_translations rows, never hardcoded farmer-facing copy.
+      en: `🔍 ${getUiString('clarify.need_more_info', 'en')} ${getUiString('clarify.what_do_you_see', 'en')}`,
+      mr: `🔍 ${getUiString('clarify.need_more_info', 'mr')} ${getUiString('clarify.what_do_you_see', 'mr')}`,
+      hi: `🔍 ${getUiString('clarify.need_more_info', 'hi')} ${getUiString('clarify.what_do_you_see', 'hi')}`
     },
     options,
     selection_type: 'SINGLE',

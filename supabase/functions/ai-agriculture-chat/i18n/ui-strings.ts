@@ -1,6 +1,12 @@
 // UI STRINGS — farmer-facing chrome text resolved through the i18n path only.
 //
 // CHANGE LOG (newest first)
+//   2026-08-17 14:10 UTC — i18n forensic fix PART A: added the previously
+//     hardcoded farmer-visible keys (advisory.reason_header, clarify.*,
+//     data_audit.*, chat.greeting, chat.closing) to the key union, refreshed
+//     every SEED entry so it matches the current `ui_translations` en/hi/mr
+//     rows verbatim, and paginated the ui_translations load (the table now
+//     exceeds the PostgREST 1000-row cap).
 //   2026-08-16 08:20 UTC — FIX 1 (mode tap never saved): the app sends the
 //     LABEL text, not the i18n key, so MODE_OPTION_VALUES[label] always missed.
 //     Added normalizeChip / uiKeyForDisplayText / resolveTappedFarmingMode /
@@ -41,38 +47,54 @@ export type UiStringKey =
   | 'advisory.organic_same'
   | 'advisory.organic_teaser'
   | 'advisory.show_chemical_ask'
-  | 'advisory.no_organic_available';
+  | 'advisory.no_organic_available'
+  | 'advisory.reason_header'
+  | 'clarify.need_more_info'
+  | 'clarify.what_do_you_see'
+  | 'data_audit.header'
+  | 'data_audit.sources'
+  | 'data_audit.quality'
+  | 'data_audit.missing_soil_test'
+  | 'data_audit.missing_ndvi'
+  | 'chat.greeting'
+  | 'chat.closing';
 
 
 /**
- * Seed copy taken verbatim from the approved i18n seed list (DOC 1 / FIX 3).
- * The DB always wins once the same keys exist in the translation cache.
+ * DISASTER FALLBACK ONLY.
+ *
+ * `ui_translations` in the database is the single author of every
+ * farmer-facing server string. This SEED map exists purely so a cold start
+ * that cannot reach the DB still renders something non-broken. It is a
+ * verbatim mirror of the current en/hi/mr rows — if you change copy, change
+ * the DB row first and then refresh this mirror. Never author new copy here.
  */
 const SEED: Record<UiStringKey, Record<string, string>> = {
+
   'preference.organic_ask': {
     mr: 'तुम्हाला जैविक (सेंद्रिय) पर्यायही हवा असतो का?',
-    hi: 'क्या आपको जैविक (ऑर्गेनिक) विकल्प भी चाहिए?',
+    hi: 'क्या आपको जैविक विकल्प भी चाहिए?',
     en: 'Would you also like organic options?',
   },
   'preference.organic_always': {
-    mr: 'हो, दोन्ही दाखवा',
-    hi: 'हाँ, दोनों दिखाएँ',
-    en: 'Yes, show both',
+    mr: 'नेहमी दाखवा',
+    hi: 'हमेशा दिखाएँ',
+    en: 'Always show',
   },
   'preference.organic_only': {
     mr: 'फक्त जैविक',
-    hi: 'सिर्फ़ जैविक',
+    hi: 'केवल जैविक',
     en: 'Organic only',
   },
   'preference.organic_never': {
-    mr: 'नको, फक्त रासायनिक',
-    hi: 'नहीं, सिर्फ़ रासायनिक',
-    en: 'No, chemical only',
+    mr: 'नको',
+    hi: 'नहीं चाहिए',
+    en: 'Not needed',
   },
   'preference.saved_confirm': {
-    mr: 'तुमची निवड जतन केली आहे. पुढील सल्ले याप्रमाणे मिळतील.',
-    hi: 'आपकी पसंद सहेज ली गई है। आगे की सलाह इसी अनुसार मिलेगी।',
-    en: 'Your preference is saved. Future advice will follow it.',
+    mr: 'तुमची पसंत जतन केली. कधीही प्रोफाइलमधून बदलू शकता.',
+    hi: 'आपकी पसंद सहेज ली गई है. प्रोफ़ाइल से कभी भी बदल सकते हैं.',
+    en: 'Preference saved. You can change it anytime in your profile.',
   },
   'advisory.organic_header': {
     mr: '🌿 जैविक पर्याय',
@@ -80,9 +102,9 @@ const SEED: Record<UiStringKey, Record<string, string>> = {
     en: '🌿 Organic option',
   },
   'advisory.chemical_alt_header': {
-    mr: '🧪 रासायनिक पर्याय (दुय्यम)',
-    hi: '🧪 रासायनिक विकल्प (द्वितीयक)',
-    en: '🧪 Chemical option (secondary)',
+    mr: 'रासायनिक पर्याय',
+    hi: 'रासायनिक विकल्प',
+    en: 'Chemical option',
   },
   'advisory.organic_same': {
     mr: 'हा सल्ला जैविक शेतीसाठीही योग्य आहे',
@@ -92,7 +114,7 @@ const SEED: Record<UiStringKey, Record<string, string>> = {
   'advisory.no_organic_available': {
     mr: 'या समस्येसाठी जैविक पर्याय अजून उपलब्ध नाही',
     hi: 'इस समस्या के लिए जैविक विकल्प अभी उपलब्ध नहीं है',
-    en: 'No organic option is available for this problem yet',
+    en: 'No organic option is available for this issue yet',
   },
   'advisory.organic_teaser': {
     mr: '🌿 जैविक पर्याय पहा',
@@ -139,6 +161,36 @@ const SEED: Record<UiStringKey, Record<string, string>> = {
   },
   'common.yes': { mr: 'हो', hi: 'हाँ', en: 'Yes' },
   'common.no': { mr: 'नाही', hi: 'नहीं', en: 'No' },
+  'advisory.reason_header': { mr: 'कारण', hi: 'कारण', en: 'Reason' },
+  'clarify.need_more_info': {
+    mr: 'मला थोडी अधिक माहिती हवी आहे.',
+    hi: 'मुझे थोड़ी और जानकारी चाहिए।',
+    en: 'I need more information.',
+  },
+  'clarify.what_do_you_see': {
+    mr: 'तुम्हाला नेमकं काय दिसतंय?',
+    hi: 'आपको वास्तव में क्या दिख रहा है?',
+    en: 'What exactly do you see?',
+  },
+  'data_audit.header': { mr: 'डेटा तपासणी', hi: 'डेटा जाँच', en: 'Data check' },
+  'data_audit.sources': { mr: 'स्रोत', hi: 'स्रोत', en: 'Sources' },
+  'data_audit.quality': { mr: 'गुणवत्ता', hi: 'गुणवत्ता', en: 'Quality' },
+  'data_audit.missing_soil_test': {
+    mr: 'उपलब्ध नाही: माती परीक्षण',
+    hi: 'अनुपलब्ध: मृदा परीक्षण',
+    en: 'Missing: Soil test',
+  },
+  'data_audit.missing_ndvi': {
+    mr: 'उपलब्ध नाही: उपग्रह (NDVI)',
+    hi: 'अनुपलब्ध: उपग्रह (NDVI)',
+    en: 'Missing: Satellite (NDVI)',
+  },
+  'chat.greeting': {
+    mr: 'नमस्कार, शेतकरी मित्रा!',
+    hi: 'नमस्ते, किसान मित्र!',
+    en: 'Hello, farmer friend!',
+  },
+  'chat.closing': { mr: 'शुभेच्छा!', hi: 'शुभकामनाएँ!', en: 'Best wishes!' },
 };
 
 // ── ui_translations DB SSOT cache (chrome copy only) ─────────────────────────
@@ -146,17 +198,29 @@ const uiTranslations = new Map<string, string>();   // `${key}::${lang}` → tex
 let uiTranslationsLoadedAt = 0;
 const UI_TTL_MS = 3_600_000;
 
-/** Load the `ui_translations` table once per cold start (DB is SSOT). */
+/**
+ * Load the whole `ui_translations` table once per cold start (DB is SSOT).
+ * PostgREST caps a single select at 1000 rows and the catalog (62 keys × 14
+ * languages) is already past that — page with an explicit range window.
+ */
 export async function loadUiTranslations(supabase: any): Promise<void> {
   if (Date.now() - uiTranslationsLoadedAt < UI_TTL_MS && uiTranslations.size > 0) return;
   try {
-    const { data, error } = await supabase
-      .from('ui_translations')
-      .select('ui_key, language_code, display_text')
-      .limit(1000);
-    if (error) throw error;
+    const PAGE = 1000;
+    const rows: any[] = [];
+    for (let from = 0; from < 20_000; from += PAGE) {
+      const { data, error } = await supabase
+        .from('ui_translations')
+        .select('ui_key, language_code, display_text')
+        .order('ui_key', { ascending: true })
+        .order('language_code', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE) break;
+    }
     uiTranslations.clear();
-    for (const row of data || []) {
+    for (const row of rows) {
       if (!row?.ui_key || !row?.language_code || !row?.display_text) continue;
       uiTranslations.set(`${row.ui_key}::${String(row.language_code).toLowerCase()}`, row.display_text);
     }
@@ -166,6 +230,7 @@ export async function loadUiTranslations(supabase: any): Promise<void> {
     console.warn('[UI_I18N] ui_translations load failed:', (e as Error).message);
   }
 }
+
 
 /** Resolve a UI string: ui_translations → translation cache → seed copy. */
 export function getUiString(key: UiStringKey, language: string): string {

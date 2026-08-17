@@ -16,6 +16,8 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useTranslation } from 'react-i18next';
+import { safeServerText } from '@/lib/i18nGuard';
 import { cn } from '@/lib/utils';
 import { 
   Check, HelpCircle, ChevronRight, Camera,
@@ -155,34 +157,8 @@ const getOptionIcon = (label: string, index: number, isDiagnostic?: boolean) => 
 // TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const LABELS: Record<string, Record<string, string>> = {
-  en: {
-    selectOne: 'Select one option',
-    selectMultiple: 'Select all that apply',
-    submit: 'Submit',
-    selected: 'Selected',
-    diagnosticTitle: 'Help us identify the cause',
-    diagnosticHint: 'Select what you observe in your field',
-  },
-  hi: {
-    selectOne: 'एक विकल्प चुनें',
-    selectMultiple: 'सभी लागू विकल्प चुनें',
-    submit: 'जमा करें',
-    selected: 'चयनित',
-    diagnosticTitle: 'कारण पहचानने में मदद करें',
-    diagnosticHint: 'अपने खेत में जो दिखता है उसे चुनें',
-  },
-  mr: {
-    selectOne: 'एक पर्याय निवडा',
-    selectMultiple: 'सर्व लागू पर्याय निवडा',
-    submit: 'पाठवा',
-    selected: 'निवडले',
-    diagnosticTitle: 'कारण ओळखण्यात मदत करा',
-    diagnosticHint: 'तुमच्या शेतात जे दिसते ते निवडा',
-  }
-};
-
-const getLabels = (lang: string) => LABELS[lang] || LABELS.en;
+// Shell chrome strings live in the app bundle (i18n keys `chat.chat_shell.*`),
+// never hardcoded. Server payload strings are still rendered verbatim.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SINGLE CHOICE OPTION - Enhanced for Diagnostic Mode
@@ -247,7 +223,7 @@ function SingleChoiceOption({ option, index, isSelected, onSelect, isDiagnostic 
             ? "text-info"
             : isSelected ? "text-primary" : "text-foreground"
         )}>
-          {cleanOptionLabel(option.label)}
+          {safeServerText(cleanOptionLabel(option.label))}
         </span>
         {option.description && (
           <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
@@ -330,7 +306,7 @@ function MultiChoiceOption({ option, index, isSelected, onToggle, isDiagnostic }
           "text-sm font-medium leading-snug block",
           isSelected ? "text-primary" : "text-foreground"
         )}>
-          {cleanOptionLabel(option.label)}
+          {safeServerText(cleanOptionLabel(option.label))}
         </span>
         {option.description && (
           <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
@@ -364,7 +340,12 @@ export function ClarificationOptionsUI({
   scope
 }: ClarificationOptionsUIProps) {
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = {
+    selectOne: t('chat.chat_shell.select_one'),
+    selectMultiple: t('chat.chat_shell.select_multiple'),
+    diagnosticHint: t('chat.chat_shell.diagnostic_hint'),
+  };
   
   // Auto-detect diagnostic confirmation mode from scope or question content
   const isDiagnostic = isDiagnosticConfirmation || 
@@ -470,11 +451,11 @@ export function ClarificationOptionsUI({
           }
         </div>
         <div className="flex-1 min-w-0">
-          <p className={cn(
+          <p dir="auto" className={cn(
             "text-sm font-medium leading-relaxed",
             isDiagnostic ? "text-warning" : "text-foreground"
           )}>
-            {question}
+            {safeServerText(question)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {isDiagnostic 
@@ -531,7 +512,7 @@ export function ClarificationOptionsUI({
             )}
           >
             <Check className="h-4 w-4 mr-2" />
-            {labels.submit} ({selectedOptions.size} {labels.selected})
+            {t('chat.chat_shell.send_selected', { count: selectedOptions.size })}
             <ChevronRight className="h-4 w-4 ml-2" />
           </Button>
         </motion.div>
