@@ -113,7 +113,7 @@ export async function reconcilePhenology(
 
       let stagesQ = supabase
         .from('crop_stage_master')
-        .select('growth_stage, stage_code, id, gdd_min, gdd_max, das_min, das_max, cultivation_method')
+        .select('growth_stage, stage_code, id, gdd_min, gdd_max, das_min, das_max, das_reference, cultivation_method')
         .eq('crop_code', cropCode)
         .eq('is_active', true);
       if (method) {
