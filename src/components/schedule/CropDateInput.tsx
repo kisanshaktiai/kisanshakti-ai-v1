@@ -155,12 +155,15 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
   const proceedWithSubmit = (farmingType: FarmingMode, backdatedConsent: boolean) => {
     if (sowingDate) {
+      const effectiveTransplantDate =
+        isReadyMadePlant && !notTransplantedYet && transplantDate ? transplantDate : null;
       console.log('🚀 [CropDateInput] Calling onSubmit with:', {
         cropName,
         farmingType,
         nurseryDays,
         intercrops,
         backdatedConsent,
+        transplantDate: effectiveTransplantDate,
       });
       onSubmit(
         cropName, 
@@ -171,8 +174,10 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         nurseryDays, 
         localizedCropName,
         intercrops,
-        backdatedConsent
+        backdatedConsent,
+        effectiveTransplantDate
       );
+
     }
   };
 
