@@ -4406,7 +4406,7 @@ async function buildResponseFromDecisionOutput(
   const parts: string[] = [];
   
   // English-only — forceTranslateResponse() handles localization at runtime
-  parts.push(`${getUiString('chat.greeting', lang)} 🌾`);
+  parts.push(`${getUiString('chat.greeting', language)} 🌾`);
   
   const primary = decision.primary_decision;
   
@@ -4503,7 +4503,7 @@ async function buildResponseFromDecisionOutput(
     });
   }
   
-  parts.push(`\n✅ ${getUiString('chat.closing', lang)} 🙏`);
+  parts.push(`\n✅ ${getUiString('chat.closing', language)} 🙏`);
   
   return parts.join('\n');
 }
