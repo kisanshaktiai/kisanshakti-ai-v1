@@ -69,7 +69,7 @@ serve(async (req) => {
 
       const { data: tasks } = await supabase
         .from("schedule_tasks")
-        .select("id, task_name, task_date, projected_date, days_from_sowing, anchor_type, anchor_stage, status, is_pinned")
+        .select("id, task_name, task_date, projected_date, days_from_sowing, anchor_type, anchor_stage, status, is_pinned, original_date")
         .eq("schedule_id", sched.id)
         .eq("status", "pending");
 
