@@ -155,7 +155,7 @@
     "chat_shell": {
       "select_one": "एक विकल्प चुनें",
       "select_multiple": "सभी लागू विकल्प चुनें",
-      "send_selected": "भेजें ({count} चयनित)",
+      "send_selected": "भेजें ({{count}} चयनित)",
       "diagnostic_title": "कारण पहचानने में मदद करें",
       "diagnostic_hint": "अपने खेत में जो दिखता है उसे चुनें"
     }

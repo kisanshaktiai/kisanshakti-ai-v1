@@ -157,7 +157,7 @@
     "chat_shell": {
       "select_one": "Select one option",
       "select_multiple": "Select all that apply",
-      "send_selected": "Send ({count} selected)",
+      "send_selected": "Send ({{count}} selected)",
       "diagnostic_title": "Help us identify the cause",
       "diagnostic_hint": "Select what you observe in your field"
     }

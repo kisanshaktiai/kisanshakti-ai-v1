@@ -118,7 +118,7 @@
     "chat_shell": {
       "select_one": "एक पर्याय निवडा",
       "select_multiple": "सर्व लागू पर्याय निवडा",
-      "send_selected": "पाठवा ({count} निवडले)",
+      "send_selected": "पाठवा ({{count}} निवडले)",
       "diagnostic_title": "कारण ओळखण्यात मदत करा",
       "diagnostic_hint": "तुमच्या शेतात जे दिसते ते निवडा"
     }
