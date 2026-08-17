@@ -132,27 +132,31 @@ export async function reconcilePhenology(
           if (m === 'any') return 1;
           return 2;
         };
+        // v9 — a row whose calendar window is honored by its own das_reference
+        // anchor (DAT for 'transplanting', DAS otherwise) is preferred.
+        const windowFits = (s: any): boolean => {
+          const lo = s?.das_min, hi = s?.das_max;
+          if (lo === null || lo === undefined || hi === null || hi === undefined) return true;
+          const v = anchorValue(s);
+          if (v === null) return true;
+          return v >= Number(lo) && v <= Number(hi);
+        };
         const hits = stages
           .filter(
             (s: any) =>
               s.cultivation_method != null &&
-              // v9 — transplant-anchored windows need a transplant date.
+              // v9 — transplant-anchored rows are ineligible without a transplant date.
               rowEligible(s) &&
               s.gdd_min !== null &&
               s.gdd_max !== null &&
               latestGdd >= Number(s.gdd_min) &&
-              latestGdd <= Number(s.gdd_max) &&
-              // v9 — honor das_reference: match the row's calendar window
-              // against DAT for transplanting-anchored rows, DAS otherwise.
-              (() => {
-                const lo = s.das_min, hi = s.das_max;
-                if (lo === null || hi === null) return true;
-                const v = anchorValue(s);
-                if (v === null) return true;
-                return v >= Number(lo) && v <= Number(hi);
-              })(),
+              latestGdd <= Number(s.gdd_max),
           )
-          .sort((a: any, b: any) => rank(a) - rank(b));
+          .sort(
+            (a: any, b: any) =>
+              (windowFits(a) ? 0 : 1) - (windowFits(b) ? 0 : 1) || rank(a) - rank(b),
+          );
+
         const hit = hits[0];
         if (hit) {
           // Freshness: prefer 0.90; if we had to fall back to phenologyRow.gdd_accumulated, use 0.80.
