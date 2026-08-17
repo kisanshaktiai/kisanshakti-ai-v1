@@ -28,6 +28,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useLandChatContext } from '@/hooks/useLandChatContext';
 import { cn } from '@/lib/utils';
+import { formatResolvedStage } from '@/lib/cropStage';
 
 interface LandContextCardProps {
   land: any;
