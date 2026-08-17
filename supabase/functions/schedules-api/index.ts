@@ -74,12 +74,45 @@ serve(async (req) => {
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(Boolean);
     const lastPart = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
-    
-    // Check if this is a /tasks route
+
+    // Task sub-routes: /schedules-api/tasks/:taskId[/complete]
+    const tasksIdx = pathParts.indexOf('tasks');
+    const taskId = tasksIdx >= 0 ? (pathParts[tasksIdx + 1] || null) : null;
+    const taskAction = tasksIdx >= 0 ? (pathParts[tasksIdx + 2] || null) : null;
+
+    // Check if this is a /tasks route (collection)
     const isTasksRoute = lastPart === 'tasks';
-    const scheduleId = (lastPart && lastPart !== 'schedules-api' && !isTasksRoute) ? lastPart : null;
+    const scheduleId = (lastPart && lastPart !== 'schedules-api' && !isTasksRoute && !taskId) ? lastPart : null;
     const landIdParam = url.searchParams.get('land_id');
     const scheduleIdParam = url.searchParams.get('schedule_id');
+
+    // Server-side ownership check for a task (never trust the client)
+    const assertTaskOwnership = async (id: string) => {
+      const { data: task, error } = await supabase
+        .from('schedule_tasks')
+        .select('id, schedule_id')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) return { ok: false as const, status: 503, message: 'Task lookup failed' };
+      if (!task) return { ok: false as const, status: 404, message: 'Task not found' };
+      const { data: sched, error: schedErr } = await supabase
+        .from('crop_schedules')
+        .select('id, farmer_id, tenant_id')
+        .eq('id', task.schedule_id)
+        .maybeSingle();
+      if (schedErr) return { ok: false as const, status: 503, message: 'Schedule lookup failed' };
+      if (!sched || sched.farmer_id !== farmerId || sched.tenant_id !== tenantId) {
+        return { ok: false as const, status: 403, message: 'Task does not belong to this farmer' };
+      }
+      return { ok: true as const, task };
+    };
+
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+
 
     // PHASE 3A: Optional incremental + pagination params (backward-compatible)
     const sinceParam = url.searchParams.get('since'); // ISO8601 timestamp
@@ -221,7 +254,68 @@ serve(async (req) => {
         }
       }
 
+      case 'PATCH': {
+        if (!taskId) return json({ error: 'Task ID is required' }, 400);
+        const owns = await assertTaskOwnership(taskId);
+        if (!owns.ok) return json({ error: owns.message }, owns.status);
+
+        const body = await req.json().catch(() => ({}));
+        const ALLOWED = [
+          'task_name', 'task_description', 'task_date', 'priority',
+          'status', 'completed_at', 'instructions', 'is_pinned',
+        ];
+        const updates: Record<string, unknown> = {};
+        for (const key of ALLOWED) {
+          if (key in body) updates[key] = body[key];
+        }
+        if (Object.keys(updates).length === 0) {
+          return json({ error: 'No updatable fields supplied' }, 400);
+        }
+        updates.updated_at = new Date().toISOString();
+
+        const { data, error } = await supabase
+          .from('schedule_tasks')
+          .update(updates)
+          .eq('id', taskId)
+          .select('*')
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ [SchedulesAPI] Task update failed:', error);
+          return json({ error: 'Failed to update task', details: error.message }, 500);
+        }
+        return json({ data });
+      }
+
+      case 'POST': {
+        if (!taskId || taskAction !== 'complete') {
+          return json({ error: 'Unsupported route' }, 404);
+        }
+        const owns = await assertTaskOwnership(taskId);
+        if (!owns.ok) return json({ error: owns.message }, owns.status);
+
+        const body = await req.json().catch(() => ({}));
+        const completed = body?.completed !== false;
+        const { data, error } = await supabase
+          .from('schedule_tasks')
+          .update({
+            status: completed ? 'completed' : 'pending',
+            completed_at: completed ? (body?.completed_at || new Date().toISOString()) : null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', taskId)
+          .select('*')
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ [SchedulesAPI] Task completion failed:', error);
+          return json({ error: 'Failed to update task status', details: error.message }, 500);
+        }
+        return json({ data });
+      }
+
       case 'DELETE': {
+
         if (!scheduleId || scheduleId === 'schedules-api') {
           return new Response(
             JSON.stringify({ error: 'Schedule ID is required for deletion' }),
@@ -231,7 +325,20 @@ serve(async (req) => {
 
         console.log('🗑️ [SchedulesAPI] Deleting schedule:', scheduleId);
         
-        // Soft delete by setting is_active to false
+        // Verify ownership, then remove tasks and soft-delete the schedule
+        const { data: owned, error: ownErr } = await supabase
+          .from('crop_schedules')
+          .select('id')
+          .eq('id', scheduleId)
+          .eq('tenant_id', tenantId)
+          .eq('farmer_id', farmerId)
+          .maybeSingle();
+
+        if (ownErr) return json({ error: 'Schedule lookup failed' }, 503);
+        if (!owned) return json({ error: 'Schedule not found for this farmer' }, 403);
+
+        await supabase.from('schedule_tasks').delete().eq('schedule_id', scheduleId);
+
         const { error } = await supabase
           .from('crop_schedules')
           .update({ 
@@ -241,6 +348,7 @@ serve(async (req) => {
           .eq('id', scheduleId)
           .eq('tenant_id', tenantId)
           .eq('farmer_id', farmerId);
+
 
         if (error) {
           console.error('❌ [SchedulesAPI] Error deleting schedule:', error);

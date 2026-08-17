@@ -106,22 +106,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
     });
 
     try {
-      // Background database update
-      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
-      const authenticatedClient = supabaseWithAuth();
-      
-      const { error } = await authenticatedClient
-        .from('schedule_tasks')
-        .update({
-          status: 'completed',
-          completed_at: completedAt,
-        })
-        .eq('id', taskId);
+      // PHASE 0 (security): server-side ownership-checked write
+      const { schedulesApi } = await import('@/services/schedulesApi');
+      await schedulesApi.setTaskCompletion(taskId, true, completedAt);
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
 
       // Confirm sync success
       console.log('Task completion synced to database');
@@ -162,18 +150,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
     });
 
     try {
-      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
-      const authenticatedClient = supabaseWithAuth();
-      
-      const { error } = await authenticatedClient
-        .from('schedule_tasks')
-        .update({
-          status: 'pending',
-          completed_at: null,
-        })
-        .eq('id', taskId);
+      // PHASE 0 (security): server-side ownership-checked write
+      const { schedulesApi } = await import('@/services/schedulesApi');
+      await schedulesApi.setTaskCompletion(taskId, false);
 
-      if (error) throw error;
 
       console.log('Task unmarked in database');
       

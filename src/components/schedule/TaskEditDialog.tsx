@@ -12,7 +12,7 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { schedulesApi } from '@/services/schedulesApi';
 
 interface Task {
   id: string;
@@ -56,22 +56,14 @@ const TaskEditDialog: React.FC<TaskEditDialogProps> = ({ task, open, onOpenChang
     
     setIsLoading(true);
     try {
-      const authenticatedClient = supabaseWithAuth();
-      
-      const updates = {
+      // PHASE 0 (security): write via authenticated schedules-api, never direct table access
+      await schedulesApi.updateTask(task.id, {
         task_name: taskName,
         task_description: taskDescription,
         task_date: taskDate ? format(taskDate, 'yyyy-MM-dd') : task.task_date,
         priority: priority,
-        updated_at: new Date().toISOString(),
-      };
+      });
 
-      const { error } = await authenticatedClient
-        .from('schedule_tasks')
-        .update(updates)
-        .eq('id', task.id);
-
-      if (error) throw error;
 
       toast.success(t('schedule.toast.task_updated') || 'Task updated successfully', {
         description: t('schedule.toast.changes_saved') || 'Your changes have been saved',
