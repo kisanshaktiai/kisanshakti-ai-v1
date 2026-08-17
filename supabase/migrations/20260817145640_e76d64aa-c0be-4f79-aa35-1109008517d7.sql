@@ -1,0 +1,1 @@
+UPDATE public.tenant_branding SET font_family = '''Noto Sans Devanagari'', ''Inter'', sans-serif';
