@@ -31,6 +31,8 @@ import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisC
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 import { DiagnosticResponseCard } from './DiagnosticResponseCard';
 import FarmingModeBadge, { type FarmingMode } from './FarmingModeBadge';
+import { useFarmingModeHydration } from '@/hooks/useFarmingModeHydration';
+
 import { CropRecommendationCard } from './CropRecommendationCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
@@ -265,8 +267,14 @@ export function EnhancedAIChatInterface() {
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  // Land-scoped farming mode (SSOT: land_crops.farming_type, echoed in response metadata)
-  const [farmingMode, setFarmingMode] = useState<FarmingMode>('unset');
+  // Land-scoped farming mode (SSOT: land_crops.farming_type → farmers.farming_preference).
+  // Hydrated on chat open (cached mirror for instant paint), refreshed from response metadata.
+  const { farmingMode, setFarmingMode } = useFarmingModeHydration({
+    landId: activeTab !== 'general' ? activeTab : null,
+    farmerId: user?.id,
+    tenantId: tenant?.id,
+  });
+
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
