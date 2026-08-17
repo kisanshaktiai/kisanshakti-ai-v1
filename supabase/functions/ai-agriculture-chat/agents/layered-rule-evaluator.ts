@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-17 23:30 UTC — FIX 2: converted rules now carry `condition_code` (top
+ *   level + action_details) so the orchestrator can recover rules by
+ *   confirmed-observation → condition_code match when intent_code is absent.
  * 2026-08-15 05:05 UTC — ROOT CAUSE FIX: rule_category_master.semantic_class is a string
  *   name but RuleCategory is a numeric enum; the DB map stored the raw string so every
  *   rule fell out of groupRulesByCategory ("loaded=14 evaluated=0", no advisory after
@@ -161,6 +164,12 @@ export interface RuleAssertions {
 
 export interface Rule {
   id: string;
+  /**
+   * 2026-08-17 — FIX 2: the DB match key (decision_rules.condition_code) is now
+   * carried on the converted rule so a confirmed observation can be matched to
+   * its rule WITHOUT an intent_code (condition_code is the decision path).
+   */
+  condition_code?: string | null;
   category: RuleCategory;
   priority: number;
   when: RuleConditions;
@@ -1249,8 +1258,16 @@ export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]>
 
 
 function convertBundledToRule(bundled: ExecutableRule): Rule {
+  // FIX 2 (2026-08-17): preserve the DB condition_code on the converted rule.
+  // loader.ts maps decision_rules.condition_code → conditionCode (default
+  // '() => true' when the column is null — that placeholder is not a code).
+  const _rawConditionCode = String((bundled as any).conditionCode ?? '').trim();
+  const _conditionCode = (!_rawConditionCode || _rawConditionCode.includes('=>'))
+    ? null
+    : _rawConditionCode;
   return {
     id: bundled.rule_id,
+    condition_code: _conditionCode,
     category: mapBundledCategory(bundled.category),
     priority: bundled.priority || 50,
     when: {
@@ -1531,6 +1548,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
         
         // CRITICAL: Include rule_id for traceability within action_details
         rule_id: bundled.rule_id,
+        condition_code: _conditionCode,
         // Fix 4: Include conditions_json for downstream arbitration
         conditions_json: bundled.conditions_json || null
       },
