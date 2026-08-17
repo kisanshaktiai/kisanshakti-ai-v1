@@ -43,6 +43,7 @@ import {
   buildOrganicTailBlock,
 } from './deterministic-response-builder.ts';
 // FIX A (2026-08-16): brain-only text filter (diagnosis/differential/knowledge).
+import { getUiString } from '../i18n/ui-strings.ts';
 import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 import type {
   RichRuleData,
@@ -2137,7 +2138,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   const parts: string[] = [];
   
   // English structural template — downstream forceTranslateResponse() will localize
-  parts.push('🌾 Hello farmer friend!');
+  parts.push(`🌾 ${getUiString('chat.greeting', lang)}`);
   
   const currentCrop = input.land_context?.current_crop;
   if (currentCrop) {
