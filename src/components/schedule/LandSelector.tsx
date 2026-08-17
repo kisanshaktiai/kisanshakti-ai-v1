@@ -200,23 +200,10 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       const status = scheduleStatuses.find(s => s.landId === scheduleToDelete);
       if (!status?.scheduleId) return;
 
-      const client = supabaseWithAuth(user.id, user.tenantId);
+      // PHASE 0 (security): deletion runs server-side with ownership checks
+      const { schedulesApi } = await import('@/services/schedulesApi');
+      await schedulesApi.deleteSchedule(status.scheduleId);
 
-      // Delete all tasks for this schedule
-      const { error: tasksError } = await client
-        .from('schedule_tasks')
-        .delete()
-        .eq('schedule_id', status.scheduleId);
-
-      if (tasksError) throw tasksError;
-
-      // Delete the schedule
-      const { error: scheduleError } = await client
-        .from('crop_schedules')
-        .delete()
-        .eq('id', status.scheduleId);
-
-      if (scheduleError) throw scheduleError;
 
       toast({
         title: t('schedule.land_selector.toast.deleted'),
