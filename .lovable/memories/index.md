@@ -27,6 +27,7 @@
 - intent_observation_mapping must NEVER delete grounded observations (clarification seed = UNION(confirmed, perceived, IOM-ranked)); rule/hypothesis ids are UPPER_SNAKE while observation/crop/stage codes are lower_snake (see mem://architecture/iom-weight-not-filter-and-id-casing).
 
 ## Memories
+- [Crop Schedule DB-SSOT](mem://architecture/crop-schedule-db-ssot) — Schedule pipeline is DB-only; no hardcoded seed/NPK/price/labor constants; gaps instead of invented values.
 - [Edge Deploy Size = Source Bytes](mem://architecture/edge-deploy-size-is-source-not-bundle) — Measured bundle 2.76 MB vs 4.57 MB source upload; comment compaction is the only lever.
 - [IOM Weight & ID Casing](mem://architecture/iom-weight-not-filter-and-id-casing) — RC-1 clarification-seed union, stage-differential recovery, DB-verified identifier casing table.
 - [Assertion Strength = Weight](mem://architecture/assertion-strength-weight-not-filter) — Removes LITERAL-only IOM gates, adds evidence-confidence stage, one canonical normalizer, DB-only stage families.

@@ -36,6 +36,9 @@ verify_jwt = false
 [functions.ai-smart-schedule]
 verify_jwt = false
 
+[functions.schedule-reconciler]
+verify_jwt = false
+
 [functions.ai-marketing-insights]
 verify_jwt = true
 
