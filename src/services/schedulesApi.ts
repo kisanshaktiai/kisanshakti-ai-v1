@@ -221,6 +221,5 @@ class SchedulesApiService {
   }
 }
 
-}
 
 export const schedulesApi = new SchedulesApiService();
