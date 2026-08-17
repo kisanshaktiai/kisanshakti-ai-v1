@@ -68,6 +68,13 @@ import {
   type FarmingPreference,
   type FarmingMode,
 } from './i18n/ui-strings.ts';
+// Land-scoped farming-mode SSOT (active crop_schedules row; land_crops mirror)
+import {
+  readFarmingMode,
+  writeFarmingMode,
+  backfillScheduleMode,
+} from './runtime/farming-mode-store.ts';
+
 import { initializeTranslationCache } from './i18n/translation-loader.ts';
 
 // Import orchestrator
