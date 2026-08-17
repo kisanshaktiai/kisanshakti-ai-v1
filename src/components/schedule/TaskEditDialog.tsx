@@ -12,7 +12,7 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { schedulesApi } from '@/services/schedulesApi';
 
 interface Task {
   id: string;
