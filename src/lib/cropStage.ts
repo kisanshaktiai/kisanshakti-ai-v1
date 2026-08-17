@@ -96,3 +96,90 @@ export function seasonToSowingDate(season: 'kharif' | 'rabi' | 'summer'): string
   const d = season === 'kharif' ? 15 : 15;
   return new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Honest stage display (FIX 6)
+//
+// The ONLY source of boundary-zone signals is the resolver
+// (`resolve_crop_phenology`) evidence array. Never compute grace days on the
+// client. `boundary_grace_days` is agronomist-populated in crop_stage_master;
+// until it is set the resolver emits nothing and this returns no framing.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Resolver sources that are calendar inferences, not observations. */
+export const PROVISIONAL_STAGE_SOURCES = [
+  'das_provisional',
+  'das_ledger_provisional',
+  'gate_constrained_calendar',
+] as const;
+
+export type StageBoundaryZone = 'approaching_next_stage' | 'recently_entered' | null;
+
+export interface StageDisplayDescriptor {
+  /** Raw stage name from the resolver (never derived client-side). */
+  stage: string | null;
+  /** Boundary framing signalled by the resolver's evidence array. */
+  boundaryZone: StageBoundaryZone;
+  /** True when the stage came from a calendar inference, not an observation. */
+  isEstimated: boolean;
+}
+
+interface PhenologyLike {
+  growth_stage?: string | null;
+  stage_code?: string | null;
+  source?: string | null;
+  evidence?: unknown;
+  evidence_sources?: unknown;
+}
+
+function evidenceList(phen: PhenologyLike | null | undefined): string[] {
+  const raw = (phen?.evidence ?? phen?.evidence_sources) as unknown;
+  if (Array.isArray(raw)) return raw.filter((e): e is string => typeof e === 'string');
+  return [];
+}
+
+export function describeResolvedStage(
+  phen: PhenologyLike | null | undefined,
+): StageDisplayDescriptor {
+  const stage = phen?.growth_stage ?? phen?.stage_code ?? null;
+  const zoneEntry = evidenceList(phen).find((e) => e.startsWith('boundary_zone:'));
+  const zoneValue = zoneEntry ? zoneEntry.slice('boundary_zone:'.length).trim() : null;
+  const boundaryZone: StageBoundaryZone =
+    zoneValue === 'approaching_next_stage' || zoneValue === 'recently_entered' ? zoneValue : null;
+  const source = (phen?.source ?? '').toLowerCase();
+  const isEstimated = (PROVISIONAL_STAGE_SOURCES as readonly string[]).includes(source);
+  return { stage, boundaryZone, isEstimated };
+}
+
+/**
+ * Render the descriptor into farmer-facing text. `t` is the i18next translator
+ * so every string stays translatable; defaults are English fallbacks only.
+ * Never emits day-precision phrasing for calendar-derived stages.
+ */
+export function formatResolvedStage(
+  phen: PhenologyLike | null | undefined,
+  t: (key: string, opts?: any) => string,
+): string | null {
+  const { stage, boundaryZone, isEstimated } = describeResolvedStage(phen);
+  if (!stage) return null;
+
+  let text: string;
+  if (boundaryZone === 'approaching_next_stage') {
+    text = t('stage.approachingNext', {
+      defaultValue: '{{stage}} (transitioning to the next stage around now)',
+      stage,
+    });
+  } else if (boundaryZone === 'recently_entered') {
+    text = t('stage.recentlyEntered', {
+      defaultValue: 'Recently entered {{stage}}',
+      stage,
+    });
+  } else {
+    text = stage;
+  }
+
+  if (isEstimated) {
+    text = t('stage.estimatedPrefix', { defaultValue: 'Estimated: {{text}}', text });
+  }
+  return text;
+}
