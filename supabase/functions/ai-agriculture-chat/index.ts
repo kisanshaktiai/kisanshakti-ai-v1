@@ -68,6 +68,13 @@ import {
   type FarmingPreference,
   type FarmingMode,
 } from './i18n/ui-strings.ts';
+// Land-scoped farming-mode SSOT (active crop_schedules row; land_crops mirror)
+import {
+  readFarmingMode,
+  writeFarmingMode,
+  backfillScheduleMode,
+} from './runtime/farming-mode-store.ts';
+
 import { initializeTranslationCache } from './i18n/translation-loader.ts';
 
 // Import orchestrator
@@ -841,16 +848,13 @@ serve(async (req) => {
         console.log('[FARMING_MODE_SKIPPED reason=no_land]');
       }
       if (tappedMode && modeLandId) {
-        try {
-          await supabase
-            .from('land_crops')
-            .update({ farming_type: tappedMode })
-            .eq('land_id', modeLandId)
-            .eq('tenant_id', finalTenantId);
-          console.log(`🌿 [FARMING_MODE_SET] land=${modeLandId} mode=${tappedMode} via=${explicitValue ? 'value' : 'label'}`);
-        } catch (modeErr) {
-          console.warn('[FARMING_MODE] persist failed:', (modeErr as Error).message);
-        }
+        // SSOT = active crop_schedules row for this land+tenant; land_crops mirrored.
+        const _w = await writeFarmingMode(supabase, modeLandId, finalTenantId, tappedMode as any);
+        console.log(
+          `🌿 [FARMING_MODE_SET] land=${modeLandId} mode=${tappedMode} ` +
+          `via=${explicitValue ? 'value' : 'label'} schedule=${_w.scheduleWritten} mirror=${_w.mirrorWritten}`,
+        );
+
         return new Response(
           JSON.stringify({
             response: getUiString('preference.saved_land_confirm', detectedLanguage),
@@ -1162,23 +1166,20 @@ serve(async (req) => {
     const farmerProfilePromise = loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
     // Persisted farming preference (organic flow). Resolved when the profile is awaited.
     let farmingPreference: FarmingPreference = 'unset';
-    // Land-scoped farming mode (SSOT: land_crops.farming_type) — resolved below.
+    // Land-scoped farming mode. SSOT = active crop_schedules.farming_type,
+    // land_crops.farming_type is the legacy mirror (self-heals on read).
     let farmingMode: FarmingMode = 'unset';
+    let farmingModeSource = 'none';
     if (landId) {
-      try {
-        const { data: landCropRows } = await supabase
-          .from('land_crops')
-          .select('farming_type, updated_at')
-          .eq('land_id', landId)
-          .eq('tenant_id', finalTenantId)
-          .order('updated_at', { ascending: false })
-          .limit(1);
-        farmingMode = normalizeFarmingMode(landCropRows?.[0]?.farming_type);
-      } catch (modeErr) {
-        console.warn('[FARMING_MODE] land_crops read failed:', (modeErr as Error).message);
+      const _read = await readFarmingMode(supabase, landId, finalTenantId);
+      farmingMode = _read.mode;
+      farmingModeSource = _read.source;
+      if (_read.source === 'land_crops' && _read.scheduleStale && _read.scheduleId && farmingMode !== 'unset') {
+        await backfillScheduleMode(supabase, _read.scheduleId, finalTenantId, farmingMode as any);
       }
     }
-    console.log(`🌿 [FARMING_MODE] resolved land-mode=${farmingMode} (land=${landId ?? 'none'})`);
+    console.log(`🌿 [FARMING_MODE] resolved land-mode=${farmingMode} via=${farmingModeSource} (land=${landId ?? 'none'})`);
+
     const marketProductMemo: MarketProductMemo = new Map();
 
     

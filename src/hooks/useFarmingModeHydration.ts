@@ -7,7 +7,9 @@
  *
  *   1. Instant paint from a per-land localStorage mirror (no spinner, no wait).
  *   2. Authoritative refresh from the same SSOT chain the edge function uses:
- *        land_crops.farming_type  →  farmers.farming_preference  →  unset
+ *        crop_schedules(active).farming_type  →  land_crops.farming_type
+ *        →  farmers.farming_preference  →  unset
+
  *
  * DB stays the only author — the cache is a mirror for offline / first paint.
  */
@@ -85,14 +87,28 @@ export function useFarmingModeHydration(params: {
         let resolved: FarmingMode = 'unset';
 
         if (landId) {
-          const { data } = await client
-            .from('land_crops')
+          // SSOT: the land's ACTIVE crop schedule.
+          const { data: sched } = await client
+            .from('crop_schedules')
             .select('farming_type, updated_at')
             .eq('land_id', landId)
             .eq('tenant_id', tenantId)
+            .eq('is_active', true)
             .order('updated_at', { ascending: false })
             .limit(1);
-          resolved = normalizeMode(data?.[0]?.farming_type);
+          resolved = normalizeMode(sched?.[0]?.farming_type);
+
+          // Legacy mirror.
+          if (resolved === 'unset') {
+            const { data } = await client
+              .from('land_crops')
+              .select('farming_type, updated_at')
+              .eq('land_id', landId)
+              .eq('tenant_id', tenantId)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            resolved = normalizeMode(data?.[0]?.farming_type);
+          }
         }
 
         if (resolved === 'unset') {
@@ -107,6 +123,7 @@ export function useFarmingModeHydration(params: {
         if (cancelled || cacheKeyRef.current !== cacheKey) return;
         setFarmingModeState(resolved);
         writeCache(cacheKey, resolved);
+
       } catch (err) {
         console.warn('[FarmingMode] hydration failed:', (err as Error).message);
       }
