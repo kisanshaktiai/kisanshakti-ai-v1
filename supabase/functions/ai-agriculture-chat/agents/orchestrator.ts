@@ -1025,6 +1025,9 @@ export interface DataAudit {
     data_quality_score: number; // 0-100
     critical_missing: string[];
     recommendations: string[];
+    /** Localized card chrome (ui_translations data_audit.*). */
+    labels?: { header: string; sources: string; quality: string };
+
   };
 }
 
