@@ -59,8 +59,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
   const [nurseryDays, setNurseryDays] = useState<number>(0);
+  const [transplantDate, setTransplantDate] = useState<Date | undefined>(undefined);
+  const [notTransplantedYet, setNotTransplantedYet] = useState(false);
   const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
   const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
+
   const [intercrops, setIntercrops] = useState<IntercropData[]>([]);
   const [showBackdatedConsent, setShowBackdatedConsent] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<{farmingType: FarmingMode} | null>(null);
