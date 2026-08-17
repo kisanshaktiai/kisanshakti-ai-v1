@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useEnhancedTTS } from '@/hooks/useEnhancedTTS';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
+import { useTenant } from '@/hooks/useTenant';
+import { toast } from '@/hooks/use-toast';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
 type Tone = 'destructive' | 'warning' | 'primary' | 'success' | 'info' | 'muted';
