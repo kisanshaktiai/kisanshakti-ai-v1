@@ -254,7 +254,68 @@ serve(async (req) => {
         }
       }
 
+      case 'PATCH': {
+        if (!taskId) return json({ error: 'Task ID is required' }, 400);
+        const owns = await assertTaskOwnership(taskId);
+        if (!owns.ok) return json({ error: owns.message }, owns.status);
+
+        const body = await req.json().catch(() => ({}));
+        const ALLOWED = [
+          'task_name', 'task_description', 'task_date', 'priority',
+          'status', 'completed_at', 'instructions', 'is_pinned',
+        ];
+        const updates: Record<string, unknown> = {};
+        for (const key of ALLOWED) {
+          if (key in body) updates[key] = body[key];
+        }
+        if (Object.keys(updates).length === 0) {
+          return json({ error: 'No updatable fields supplied' }, 400);
+        }
+        updates.updated_at = new Date().toISOString();
+
+        const { data, error } = await supabase
+          .from('schedule_tasks')
+          .update(updates)
+          .eq('id', taskId)
+          .select('*')
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ [SchedulesAPI] Task update failed:', error);
+          return json({ error: 'Failed to update task', details: error.message }, 500);
+        }
+        return json({ data });
+      }
+
+      case 'POST': {
+        if (!taskId || taskAction !== 'complete') {
+          return json({ error: 'Unsupported route' }, 404);
+        }
+        const owns = await assertTaskOwnership(taskId);
+        if (!owns.ok) return json({ error: owns.message }, owns.status);
+
+        const body = await req.json().catch(() => ({}));
+        const completed = body?.completed !== false;
+        const { data, error } = await supabase
+          .from('schedule_tasks')
+          .update({
+            status: completed ? 'completed' : 'pending',
+            completed_at: completed ? (body?.completed_at || new Date().toISOString()) : null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', taskId)
+          .select('*')
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ [SchedulesAPI] Task completion failed:', error);
+          return json({ error: 'Failed to update task status', details: error.message }, 500);
+        }
+        return json({ data });
+      }
+
       case 'DELETE': {
+
         if (!scheduleId || scheduleId === 'schedules-api') {
           return new Response(
             JSON.stringify({ error: 'Schedule ID is required for deletion' }),
