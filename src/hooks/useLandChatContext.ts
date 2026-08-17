@@ -73,6 +73,9 @@ export interface LandChatContext {
     reference_system: string | null;
     source: string | null;
     resolver_version: number | null;
+    /** Resolver-emitted evidence tokens, e.g. `boundary_zone:recently_entered`. */
+    evidence: string[] | null;
+    evidence_sources: string[] | null;
   } | null;
   soil: {
     ph_level: number | null;
