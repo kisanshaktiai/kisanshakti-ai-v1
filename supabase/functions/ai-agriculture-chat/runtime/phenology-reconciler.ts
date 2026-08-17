@@ -13,7 +13,12 @@
  *   5. crop_stage_master DAS window   → 0.70
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ *   2026-08-15 UTC — v9: honor crop_stage_master.das_reference. Rows anchored on
+ *     'transplanting' are matched against DAT (days since transplant_date) and are
+ *     ineligible when no transplant date exists; DAS remains the anchor otherwise.
+ *     Reason string now reports anchor_das / anchor_dat and per-candidate anchor.
  *   2026-07-29 UTC — v8: DAS demoted to provisional. Fixed stage_transition_log
+
  *     tier (was querying non-existent to_stage_code/transition_date; now
  *     to_stage_uuid/evaluated_at joined to crop_stage_master, with das/dat
  *     triggers capped at 0.5). Added morphological_evidence tier sourced from
