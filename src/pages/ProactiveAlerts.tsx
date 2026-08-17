@@ -21,6 +21,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/hooks/useTenant';
 import { toast } from '@/hooks/use-toast';
+import { useAnchorClarification } from '@/hooks/useAnchorClarification';
+import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
 type Tone = 'destructive' | 'warning' | 'primary' | 'success' | 'info' | 'muted';
@@ -87,6 +89,11 @@ export default function ProactiveAlerts() {
   const { user } = useAuthStore();
   const { tenant } = useTenant();
   const [answeringAlertId, setAnsweringAlertId] = useState<string | null>(null);
+  const { clarifications, submitSowingDate } = useAnchorClarification();
+  const ambiguousLandIds = useMemo(
+    () => new Set(clarifications.map(c => c.land_id)),
+    [clarifications],
+  );
 
   // One-tap germination answer → record_germination via edge function.
   const handleGerminationAnswer = async (alert: ProactiveAlert, confirmed: boolean) => {
@@ -443,7 +450,8 @@ export default function ProactiveAlerts() {
 
                       {/* One-tap germination question (DB-authored options) */}
                       {(alert.trigger_data as any)?.question?.type === 'GERMINATION_CHECK' &&
-                        alert.status !== 'ACTED' && (
+                        alert.status !== 'ACTED' &&
+                        !(alert.land_id && ambiguousLandIds.has(alert.land_id)) && (
                           <div className="flex flex-wrap items-center gap-2 mt-3">
                             {((alert.trigger_data as any).question.options || []).map((opt: any) => (
                               <Button
