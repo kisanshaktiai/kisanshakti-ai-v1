@@ -676,6 +676,9 @@ serve(async (req) => {
         source?: string;
         diagnostic_power?: string;
       }>;
+      // FIX 1 (2026-08-17): persisted SessionSSOT so the TAP turn inherits
+      // intent_code / crop / stage / das instead of fail-closing.
+      session_ssot?: Record<string, unknown> | null;
       // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
       lockedCropContext?: {
         crop_name?: string;
@@ -1211,6 +1214,8 @@ serve(async (req) => {
           clarificationRoundCounter: sessionState.clarification_round_counter || 0,
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
+          // FIX 1 (2026-08-17): the key the orchestrator TAP path already reads.
+          session_ssot: (sessionState as any).session_ssot ?? null,
           // PART 10: Pass problems_discussed for session continuity
           problems_discussed: sessionState.problems_discussed || [],
           last_query_hash: sessionState.last_query_hash,
@@ -3027,7 +3032,29 @@ serve(async (req) => {
       `asked=${cumulativeAskedObservationKeys.length} round=${_clarificationRoundCounter}`,
     );
 
+    // ── FIX 1 (2026-08-17) — SSOT PERSISTENCE ────────────────────────────────
+    // Chain: orchestrator._sessionSSOT / session_state_update.session_ssot
+    //        → decision_tracking.session_ssot
+    //        → next turn options.sessionState.session_ssot (TAP path).
+    const _ssotForSession =
+      (sessionStateUpdateFromOrchestrator as any)?.session_ssot ||
+      (orchestratorResponse as any)?.metadata?.session_ssot ||
+      (orchestratorResponse as any)?.decision_output?.metadata?.session_ssot ||
+      (orch as any)?._sessionSSOT ||
+      (sessionState as any)?.session_ssot ||
+      null;
+    if (_ssotForSession && (_ssotForSession as any).crop_code) {
+      console.log(
+        `[SSOT_PERSISTED_TO_SESSION] trace=${traceId} crop=${(_ssotForSession as any).crop_code} ` +
+        `stage=${(_ssotForSession as any).growth_stage} das=${(_ssotForSession as any).days_since_sowing} ` +
+        `intent=${(_ssotForSession as any).intent_code} state=${computedDecisionState}`,
+      );
+    } else {
+      console.warn(`[SSOT_NOT_PERSISTED] trace=${traceId} reason=no_ssot_available_this_turn`);
+    }
+
     const decisionTracking = {
+      session_ssot: _ssotForSession,
       confirmed_observation_keys: cumulativeConfirmedObservationKeys,
       asked_observation_keys: cumulativeAskedObservationKeys,
       clarification_round_counter: _clarificationRoundCounter,
