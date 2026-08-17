@@ -20,6 +20,7 @@ import {
 } from './config.ts';
 import { calculateIrrigationForLand } from './irrigation.ts';
 import { enrichAndUpdateAlerts, enrichmentAvailable } from './enrichment.ts';
+import { buildGerminationQuestionAlerts } from './germination-question.ts';
 
 // =====================================================
 // v124 — DATABASE-DRIVEN REBUILD (forensic-audit remediation)
