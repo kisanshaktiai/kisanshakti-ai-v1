@@ -1,5 +1,7 @@
 // OBSERVATION-TO-CAUSE MAPPER - Symbolic (No AI) Cause Inference
 
+import { getUiString } from '../i18n/ui-strings.ts';
+
 export const OBSERVATION_MAPPER_VERSION = '1.0.0';
 
 // TYPE DEFINITIONS
@@ -541,12 +543,8 @@ export function mapObservationsToCauses(
 // CLARIFICATION QUESTION GENERATORS
 
 function generateNoCauseQuestion(language?: string): string {
-  const questions = {
-    mr: 'पिकात नक्की काय दिसतंय? कृपया अधिक तपशील द्या - किडे, डाग, पानांचा रंग बदल इत्यादी.',
-    hi: 'फसल में क्या दिख रहा है? कृपया अधिक विवरण दें - कीड़े, धब्बे, पत्तों का रंग बदलाव आदि.',
-    en: 'What exactly do you see in the crop? Please provide more details - insects, spots, leaf color changes, etc.'
-  };
-  return questions[language || 'en'];
+  // i18n SSOT: ui_translations (clarify.what_do_you_see) — no hardcoded copy.
+  return getUiString('clarify.what_do_you_see', language || 'en');
 }
 
 function generateAmbiguityQuestion(cause_codes: string[], language?: string): string {
