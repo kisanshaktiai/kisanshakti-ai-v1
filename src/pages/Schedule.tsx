@@ -239,6 +239,29 @@ export default function Schedule() {
 
       // Reset retry count on success
       setRetryCount(0);
+
+      // Record the biological transplanting anchor (DAT) for transplanted crops.
+      if (transplantDate) {
+        try {
+          const { data: tpData, error: tpError } = await supabase.rpc('record_transplant', {
+            p_land_id: selectedLand.id,
+            p_transplant_date: format(transplantDate, 'yyyy-MM-dd'),
+          });
+          if (tpError) throw tpError;
+          console.log('🌱 [Schedule] record_transplant:', tpData);
+        } catch (tpErr: any) {
+          console.error('❌ [Schedule] record_transplant failed:', tpErr);
+          toast({
+            title: t('schedule.crop_input.transplant_date_label', 'Transplanting date'),
+            description:
+              tpErr?.message ||
+              t('schedule.crop_input.transplant_save_failed', 'Could not save the transplanting date.'),
+            variant: 'destructive',
+          });
+        }
+      }
+
+
       
       // Schedule notification for upcoming task (if schedule data contains tasks)
       if (data.schedule && data.schedule.length > 0) {
