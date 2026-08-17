@@ -359,7 +359,72 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     </p>
                   </div>
                 )}
+
+                {/* Transplanting Date - biological anchor for transplanted crops */}
+                {isReadyMadePlant && (
+                  <div className="p-3 bg-accent/10 rounded-xl border border-accent/30 space-y-2">
+                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      {t('schedule.crop_input.transplant_date_label', 'Transplanting date')}
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          disabled={notTransplantedYet}
+                          className={cn(
+                            'w-full justify-start text-left font-normal h-11 rounded-xl',
+                            'bg-white/50 dark:bg-black/20 backdrop-blur-sm border-accent/30',
+                            !transplantDate && 'text-muted-foreground'
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {transplantDate
+                            ? format(transplantDate, 'PPP')
+                            : t('schedule.crop_input.pick_date')}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={transplantDate}
+                          onSelect={(date) => date && setTransplantDate(date)}
+                          initialFocus
+                          disabled={(date) => {
+                            const today = startOfDay(new Date());
+                            const min = sowingDate ? startOfDay(sowingDate) : undefined;
+                            return date > today || (!!min && date < min);
+                          }}
+                          className={cn('p-3 pointer-events-auto')}
+                        />
+                      </PopoverContent>
+                    </Popover>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="not-transplanted-yet"
+                        checked={notTransplantedYet}
+                        onChange={(e) => {
+                          setNotTransplantedYet(e.target.checked);
+                          if (e.target.checked) setTransplantDate(undefined);
+                        }}
+                        className="h-4 w-4 rounded border-border accent-primary"
+                      />
+                      <Label htmlFor="not-transplanted-yet" className="text-xs cursor-pointer">
+                        {t('schedule.crop_input.not_transplanted_yet', 'Not transplanted yet')}
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'schedule.crop_input.transplant_date_help',
+                        'Used to time stage advice for transplanted crops.'
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
+
 
               {/* Date Selection */}
               <div className="space-y-2">
