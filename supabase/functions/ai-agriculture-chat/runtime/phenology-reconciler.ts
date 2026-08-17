@@ -136,16 +136,31 @@ export async function reconcilePhenology(
           .filter(
             (s: any) =>
               s.cultivation_method != null &&
+              // v9 — transplant-anchored windows need a transplant date.
+              rowEligible(s) &&
               s.gdd_min !== null &&
               s.gdd_max !== null &&
               latestGdd >= Number(s.gdd_min) &&
-              latestGdd <= Number(s.gdd_max),
+              latestGdd <= Number(s.gdd_max) &&
+              // v9 — honor das_reference: match the row's calendar window
+              // against DAT for transplanting-anchored rows, DAS otherwise.
+              (() => {
+                const lo = s.das_min, hi = s.das_max;
+                if (lo === null || hi === null) return true;
+                const v = anchorValue(s);
+                if (v === null) return true;
+                return v >= Number(lo) && v <= Number(hi);
+              })(),
           )
           .sort((a: any, b: any) => rank(a) - rank(b));
         const hit = hits[0];
         if (hit) {
           // Freshness: prefer 0.90; if we had to fall back to phenologyRow.gdd_accumulated, use 0.80.
           const freshness = gddRows && gddRows.length > 0 ? 0.90 : 0.80;
+          anchorLog.push(
+            `gdd_model:anchor=${anchorFor(hit)}` +
+            `(${anchorFor(hit) === 'dat' ? `dat=${dat}` : `das=${das ?? 'null'}`})`,
+          );
           gddCandidate = {
             growth_stage: hit.growth_stage ?? null,
             stage_code: hit.stage_code ?? null,
@@ -155,6 +170,7 @@ export async function reconcilePhenology(
           };
           candidates.push(gddCandidate);
         }
+
       }
     }
 
