@@ -325,7 +325,20 @@ serve(async (req) => {
 
         console.log('🗑️ [SchedulesAPI] Deleting schedule:', scheduleId);
         
-        // Soft delete by setting is_active to false
+        // Verify ownership, then remove tasks and soft-delete the schedule
+        const { data: owned, error: ownErr } = await supabase
+          .from('crop_schedules')
+          .select('id')
+          .eq('id', scheduleId)
+          .eq('tenant_id', tenantId)
+          .eq('farmer_id', farmerId)
+          .maybeSingle();
+
+        if (ownErr) return json({ error: 'Schedule lookup failed' }, 503);
+        if (!owned) return json({ error: 'Schedule not found for this farmer' }, 403);
+
+        await supabase.from('schedule_tasks').delete().eq('schedule_id', scheduleId);
+
         const { error } = await supabase
           .from('crop_schedules')
           .update({ 
@@ -335,6 +348,7 @@ serve(async (req) => {
           .eq('id', scheduleId)
           .eq('tenant_id', tenantId)
           .eq('farmer_id', farmerId);
+
 
         if (error) {
           console.error('❌ [SchedulesAPI] Error deleting schedule:', error);
