@@ -62,7 +62,18 @@ export function daysSinceAnchor(gate: GateSnapshot): number | null {
   return Math.floor((Date.now() - t) / 86400000);
 }
 
+/**
+ * The anchor resolver flags contradictory nursery/transplant dates. While that
+ * is unresolved we must NOT ask the emergence question or show favorability —
+ * reasoning from contradictory dates is worse than asking the farmer for one
+ * date (handled by the frontend clarification card).
+ */
+export function anchorNeedsClarification(gate: GateSnapshot): boolean {
+  return gate?.signal?.anchor?.needs_farmer_clarification === true;
+}
+
 export function isPromptDue(gate: GateSnapshot): boolean {
+  if (anchorNeedsClarification(gate)) return false;
   if (gate?.state !== 'conditions_favorable') return false;
   const d = daysSinceAnchor(gate);
   if (d == null || d < 0) return false;
