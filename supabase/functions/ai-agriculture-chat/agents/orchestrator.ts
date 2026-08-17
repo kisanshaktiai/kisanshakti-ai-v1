@@ -11211,7 +11211,11 @@ export class AIAgentOrchestrator {
   }
   
   // Build data audit object for debugging - shows what data was found/missing
-  private buildDataAudit(landContext: any, weatherData: any): DataAudit {
+  // 2026-08-17 — i18n: farmer-visible chips/labels come from ui_translations
+  // (data_audit.*) in the farmer's language. Never hardcode English here.
+  private buildDataAudit(landContext: any, weatherData: any, language?: string): DataAudit {
+    const auditLang = (language || (this as any).__farmerLanguage || 'en') as string;
+
     const now = new Date();
     
     // Land audit
