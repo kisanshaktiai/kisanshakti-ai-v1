@@ -20,6 +20,7 @@ import {
 } from './config.ts';
 import { calculateIrrigationForLand } from './irrigation.ts';
 import { enrichAndUpdateAlerts, enrichmentAvailable } from './enrichment.ts';
+import { buildGerminationQuestionAlerts } from './germination-question.ts';
 
 // =====================================================
 // v124 — DATABASE-DRIVEN REBUILD (forensic-audit remediation)
@@ -665,6 +666,37 @@ async function processOneTenant(
       farmerDailyCounts.set(ctx.farmer_id, dailyCount + 1);
       totalAlerts++;
     }
+  }
+
+  // =========================================================
+  // GERMINATION ONE-TAP QUESTION — biological gate, not calendar
+  // =========================================================
+  try {
+    const germRows = await buildGerminationQuestionAlerts(
+      supabase,
+      landContexts.map(c => ({
+        land_id: c.land_id,
+        farmer_id: c.farmer_id,
+        tenant_id: c.tenant_id,
+        land_name: c.land_name,
+        crop_code: c.crop_code,
+      })),
+      {
+        todayStr,
+        expiryDays: cfg.alert_expiry_days,
+        dailyCap: cfg.daily_alert_cap_per_farmer,
+        cooldownHours: cfg.default_cooldown_hours,
+        farmerDailyCounts,
+        isDuplicate: (dedupKey, ruleCode, landId, cooldownHours) =>
+          isDuplicate(dedupKey, ruleCode, landId, cooldownHours, alertMap),
+      },
+    );
+    if (germRows.length > 0) {
+      alertsToInsert.push(...germRows);
+      totalAlerts += germRows.length;
+    }
+  } catch (e) {
+    console.error('[GERM_QUESTION] seeding failed:', e instanceof Error ? e.message : e);
   }
 
   // =========================================================

@@ -17,6 +17,10 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useEnhancedTTS } from '@/hooks/useEnhancedTTS';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
+import { useTenant } from '@/hooks/useTenant';
+import { toast } from '@/hooks/use-toast';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
 type Tone = 'destructive' | 'warning' | 'primary' | 'success' | 'info' | 'muted';
@@ -80,6 +84,36 @@ export default function ProactiveAlerts() {
     useProactiveAlerts({ skipRealtime: true });
   const { speak, isSpeaking, stop } = useEnhancedTTS();
   const lang = i18n.language || 'en';
+  const { user } = useAuthStore();
+  const { tenant } = useTenant();
+  const [answeringAlertId, setAnsweringAlertId] = useState<string | null>(null);
+
+  // One-tap germination answer → record_germination via edge function.
+  const handleGerminationAnswer = async (alert: ProactiveAlert, confirmed: boolean) => {
+    if (!alert.land_id) return;
+    setAnsweringAlertId(alert.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('proactive-question-seed', {
+        body: {
+          action: 'germination_answer',
+          alertId: alert.id,
+          landId: alert.land_id,
+          confirmed,
+          language: lang,
+        },
+        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '' },
+      });
+      if (error) throw error;
+      const msg = (data as any)?.message;
+      if (msg) toast({ description: msg });
+      markActed(alert.id);
+      if ((data as any)?.needs_diagnosis) handleAskAI(alert);
+    } catch (e) {
+      console.error('[proactive] germination answer failed', e);
+    } finally {
+      setAnsweringAlertId(null);
+    }
+  };
 
   // URL-synced land filter (instant deep-link from home AlertsSummaryCard)
   const urlLandId = searchParams.get('landId');
@@ -401,6 +435,28 @@ export default function ProactiveAlerts() {
                         triggerData={alert.trigger_data || {}}
                         reasoning={alert.decision_reasoning}
                       />
+
+                      {/* One-tap germination question (DB-authored options) */}
+                      {(alert.trigger_data as any)?.question?.type === 'GERMINATION_CHECK' &&
+                        alert.status !== 'ACTED' && (
+                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                            {((alert.trigger_data as any).question.options || []).map((opt: any) => (
+                              <Button
+                                key={opt.key}
+                                size="sm"
+                                variant={opt.confirmed ? 'default' : 'outline'}
+                                disabled={answeringAlertId === alert.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleGerminationAnswer(alert, opt.confirmed === true);
+                                }}
+                                className="rounded-full h-8 text-xs"
+                              >
+                                {opt[`label_${lang}`] || opt.label_en || opt.key}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
 
                       {/* Action chips */}
                       <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border/60">

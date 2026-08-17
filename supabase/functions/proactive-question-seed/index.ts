@@ -205,9 +205,7 @@ Deno.serve(async (req: Request) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const body = await req.json().catch(() => ({}));
-    const alertId = String(body.alertId || "").trim();
-    if (!alertId) return json({ error: "alertId required" }, 400);
-
+    const action = String(body.action || "").trim();
     const admin = createClient(supabaseUrl, serviceKey);
 
     const { data: farmer } = await admin
@@ -219,6 +217,25 @@ Deno.serve(async (req: Request) => {
 
     if (!farmer) return json({ error: "Farmer profile not found" }, 403);
 
+    // ── One-tap germination answer (GERMINATION template) ────────────────
+    // The tap is written by the DB RPC `record_germination`, the only writer
+    // of GERMINATION_CONFIRMED / GERMINATION_NOT_OBSERVED lifecycle events.
+    if (action === "germination_answer") {
+      const answerLang: Lang = pickLang(body.language || farmer.language_preference, "en");
+      return await handleGerminationAnswer(admin, {
+        farmerId: farmer.id,
+        tenantId: tenantIdHeader,
+        landId: String(body.landId || "").trim(),
+        alertId: String(body.alertId || "").trim() || null,
+        confirmed: body.confirmed === true,
+        lang: answerLang,
+      });
+    }
+
+    const alertId = String(body.alertId || "").trim();
+    if (!alertId) return json({ error: "alertId required" }, 400);
+
+
     const { data: alert, error: alertErr } = await admin
       .from("proactive_alerts")
       .select("*")
@@ -229,6 +246,26 @@ Deno.serve(async (req: Request) => {
     if (alertErr || !alert) return json({ error: "Alert not found" }, 404);
 
     const lang: Lang = pickLang(body.language || farmer.language_preference, "en");
+
+    // ── GERMINATION template: deterministic, one-tap, DB-authored ─────────
+    if (String(alert?.trigger_data?.question?.type || "") === "GERMINATION_CHECK") {
+      const q = getLocalized(alert, "message", lang) || getLocalized(alert, "title", lang);
+      const opts = (alert.trigger_data.question.options || []).map((o: any) => ({
+        key: o.key,
+        confirmed: o.confirmed === true,
+        label: o[`label_${lang}`] || o.label_en || o.key,
+      }));
+      return json({
+        question: q,
+        language: lang,
+        source: "fallback",
+        primary_action: "MONITORING",
+        template: "GERMINATION_CHECK",
+        land_id: alert.land_id,
+        options: opts,
+      });
+    }
+
 
     let landName = "";
     let cropName: string | null = null;
@@ -371,5 +408,123 @@ function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// =====================================================
+// GERMINATION one-tap answer
+// "Yes" / "No" → public.record_germination (SSOT writer).
+// A "No" additionally surfaces a POSSIBLE_ESTABLISHMENT_FAILURE alert that
+// carries needs_diagnosis so the advisory brain picks it up. Every farmer
+// facing string comes from `ui_translations` — nothing is hardcoded here.
+// =====================================================
+async function loadUiText(admin: any, prefix: string): Promise<(key: string, lang: string) => string> {
+  const map = new Map<string, string>();
+  const { data } = await admin
+    .from("ui_translations")
+    .select("ui_key, language_code, display_text")
+    .like("ui_key", `${prefix}%`);
+  for (const r of data || []) {
+    map.set(`${r.ui_key}|${String(r.language_code).toLowerCase()}`, r.display_text);
+  }
+  return (key: string, lang: string) => map.get(`${key}|${lang}`) ?? map.get(`${key}|en`) ?? "";
+}
+
+function fillVars(text: string, vars: Record<string, string>): string {
+  return (text || "").replace(/\{\{(\w+)\}\}/g, (_m, k) => vars[k] ?? "");
+}
+
+async function handleGerminationAnswer(
+  admin: any,
+  args: {
+    farmerId: string;
+    tenantId: string;
+    landId: string;
+    alertId: string | null;
+    confirmed: boolean;
+    lang: Lang;
+  },
+): Promise<Response> {
+  const { farmerId, landId, alertId, confirmed, lang } = args;
+  if (!landId) return json({ error: "landId required" }, 400);
+
+  const { data: land } = await admin
+    .from("lands")
+    .select("id, name, farmer_id, tenant_id")
+    .eq("id", landId)
+    .maybeSingle();
+  if (!land || land.farmer_id !== farmerId) return json({ error: "Land not found" }, 403);
+
+  const observedDate = new Date().toISOString().slice(0, 10);
+  const { error: rpcErr } = await admin.rpc("record_germination", {
+    p_land_id: landId,
+    p_confirmed: confirmed,
+    p_observed_date: observedDate,
+  });
+  if (rpcErr) {
+    console.error("[proactive-question-seed] record_germination failed", rpcErr.message);
+    return json({ error: rpcErr.message }, 500);
+  }
+
+  if (alertId) {
+    await admin
+      .from("proactive_alerts")
+      .update({ status: "ACTED", acted_at: new Date().toISOString() })
+      .eq("id", alertId)
+      .eq("farmer_id", farmerId);
+  }
+
+  const ui = await loadUiText(admin, "germination.");
+  let followUpAlertId: string | null = null;
+
+  if (!confirmed) {
+    const vars = { land: (land.name || "").toString() };
+    const dedupKey = `GERM_FAIL:${landId}:${observedDate}`;
+    const { data: inserted } = await admin
+      .from("proactive_alerts")
+      .upsert(
+        [{
+          tenant_id: land.tenant_id,
+          land_id: landId,
+          farmer_id: farmerId,
+          rule_id: "POSSIBLE_ESTABLISHMENT_FAILURE",
+          alert_category: "CROP_STRESS",
+          priority: "HIGH",
+          title_en: ui("germination.failure.title", "en"),
+          title_hi: ui("germination.failure.title", "hi"),
+          title_mr: ui("germination.failure.title", "mr"),
+          message_en: fillVars(ui("germination.failure.body", "en"), vars),
+          message_hi: fillVars(ui("germination.failure.body", "hi"), vars),
+          message_mr: fillVars(ui("germination.failure.body", "mr"), vars),
+          action_text_en: ui("germination.failure.action", "en"),
+          action_text_hi: ui("germination.failure.action", "hi"),
+          action_text_mr: ui("germination.failure.action", "mr"),
+          risk_score: 70,
+          confidence: 0.9,
+          trigger_data: {
+            condition_code: "POSSIBLE_ESTABLISHMENT_FAILURE",
+            needs_diagnosis: true,
+            observed_date: observedDate,
+            source: "farmer_one_tap",
+          },
+          decision_reasoning: "farmer reported no emergence at the germination gate prompt",
+          status: "PENDING",
+          dedup_key: dedupKey,
+          expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+        }],
+        { onConflict: "dedup_key", ignoreDuplicates: true },
+      )
+      .select("id");
+    followUpAlertId = inserted?.[0]?.id ?? null;
+  }
+
+  console.log(`[GERM_ANSWER] land=${landId.slice(0, 8)} confirmed=${confirmed} followup=${followUpAlertId || "none"}`);
+
+  return json({
+    ok: true,
+    confirmed,
+    message: ui("germination.answered", lang),
+    needs_diagnosis: !confirmed,
+    follow_up_alert_id: followUpAlertId,
   });
 }
