@@ -264,6 +264,7 @@ export async function reconcilePhenology(
       if (morphHit) {
         const raw = Number(growthRows?.[0]?.confidence_score);
         const normalized = Number.isFinite(raw) ? (raw > 1 ? raw / 100 : raw) : null;
+        anchorLog.push(`morphological_evidence:anchor=${anchorFor(morphHit)}`);
         candidates.push({
           growth_stage: morphHit.growth_stage ?? null,
           stage_code: morphHit.stage_code ?? null,
@@ -271,6 +272,7 @@ export async function reconcilePhenology(
           source: 'morphological_evidence',
           confidence: Math.max(0.95, normalized ?? 0.95),
         });
+
       }
     }
   } catch (_e) {
