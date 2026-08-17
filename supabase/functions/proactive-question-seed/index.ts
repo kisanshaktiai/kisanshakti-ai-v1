@@ -205,9 +205,7 @@ Deno.serve(async (req: Request) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const body = await req.json().catch(() => ({}));
-    const alertId = String(body.alertId || "").trim();
-    if (!alertId) return json({ error: "alertId required" }, 400);
-
+    const action = String(body.action || "").trim();
     const admin = createClient(supabaseUrl, serviceKey);
 
     const { data: farmer } = await admin
@@ -218,6 +216,25 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!farmer) return json({ error: "Farmer profile not found" }, 403);
+
+    // ── One-tap germination answer (GERMINATION template) ────────────────
+    // The tap is written by the DB RPC `record_germination`, the only writer
+    // of GERMINATION_CONFIRMED / GERMINATION_NOT_OBSERVED lifecycle events.
+    if (action === "germination_answer") {
+      const answerLang: Lang = pickLang(body.language || farmer.language_preference, "en");
+      return await handleGerminationAnswer(admin, {
+        farmerId: farmer.id,
+        tenantId: tenantIdHeader,
+        landId: String(body.landId || "").trim(),
+        alertId: String(body.alertId || "").trim() || null,
+        confirmed: body.confirmed === true,
+        lang: answerLang,
+      });
+    }
+
+    const alertId = String(body.alertId || "").trim();
+    if (!alertId) return json({ error: "alertId required" }, 400);
+
 
     const { data: alert, error: alertErr } = await admin
       .from("proactive_alerts")
