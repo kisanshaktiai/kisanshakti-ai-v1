@@ -237,7 +237,7 @@ export async function reconcilePhenology(
         : null;
       let morphQ = supabase
         .from('crop_stage_master')
-        .select('growth_stage, stage_code, id, cultivation_method')
+        .select('growth_stage, stage_code, id, das_min, das_max, das_reference, cultivation_method')
         .eq('crop_code', cropCode)
         .eq('is_active', true)
         .ilike('growth_stage', detected);
@@ -247,7 +247,8 @@ export async function reconcilePhenology(
       const { data: morphStages } = await morphQ;
       const morphHit = Array.isArray(morphStages)
         ? morphStages
-            .filter((s: any) => s?.cultivation_method != null)
+            // v9 — transplant-anchored rows are ineligible without a transplant date.
+            .filter((s: any) => s?.cultivation_method != null && rowEligible(s))
             .sort((a: any, b: any) => {
               const r = (x: any) => {
                 const m = String(x.cultivation_method).toLowerCase();
@@ -258,6 +259,7 @@ export async function reconcilePhenology(
               return r(a) - r(b);
             })[0]
         : null;
+
 
       if (morphHit) {
         const raw = Number(growthRows?.[0]?.confidence_score);
