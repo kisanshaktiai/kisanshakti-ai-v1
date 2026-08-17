@@ -35,8 +35,11 @@ interface CropDateInputProps {
     nurseryDays: number, 
     localizedCropName: string,
     intercrops?: IntercropData[],
-    backdatedConsent?: boolean
+    backdatedConsent?: boolean,
+    /** Actual transplanting date (null when not transplanted yet / not applicable). */
+    transplantDate?: Date | null
   ) => void;
+
   onBack: () => void;
   loading?: boolean;
 }
