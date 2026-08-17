@@ -533,7 +533,10 @@ export function SmartLandConfirmCard({
                   <span className="font-medium text-foreground">
                     {t('lands.smartConfirm.stageNow', { defaultValue: 'Stage now' })}:
                   </span>{' '}
-                  {cycle.stage} ({cycle.daysSinceSowing}d)
+                  {cycle.stage} ({cycle.daysSinceSowing}d){' '}
+                  <span className="text-muted-foreground">
+                    · {t('lands.smartConfirm.stageEstimated', { defaultValue: 'estimated from calendar' })}
+                  </span>
                 </div>
               </div>
             )}
