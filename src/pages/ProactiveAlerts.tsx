@@ -257,6 +257,11 @@ export default function ProactiveAlerts() {
       />
 
       <div className="px-4 pt-3 pb-6 space-y-4">
+        {/* Ambiguous nursery/transplant dates — ask for one date before we reason */}
+        {clarifications.map(c => (
+          <AnchorClarificationCard key={c.land_id} item={c} onSubmit={submitSowingDate} />
+        ))}
+
         {/* Mini Report Summary */}
         <ReportSummary summary={summary} lang={lang} />
 
