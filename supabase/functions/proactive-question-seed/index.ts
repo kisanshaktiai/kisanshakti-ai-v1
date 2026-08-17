@@ -247,6 +247,26 @@ Deno.serve(async (req: Request) => {
 
     const lang: Lang = pickLang(body.language || farmer.language_preference, "en");
 
+    // ── GERMINATION template: deterministic, one-tap, DB-authored ─────────
+    if (String(alert?.trigger_data?.question?.type || "") === "GERMINATION_CHECK") {
+      const q = getLocalized(alert, "message", lang) || getLocalized(alert, "title", lang);
+      const opts = (alert.trigger_data.question.options || []).map((o: any) => ({
+        key: o.key,
+        confirmed: o.confirmed === true,
+        label: o[`label_${lang}`] || o.label_en || o.key,
+      }));
+      return json({
+        question: q,
+        language: lang,
+        source: "fallback",
+        primary_action: "MONITORING",
+        template: "GERMINATION_CHECK",
+        land_id: alert.land_id,
+        options: opts,
+      });
+    }
+
+
     let landName = "";
     let cropName: string | null = null;
     if (alert.land_id) {
