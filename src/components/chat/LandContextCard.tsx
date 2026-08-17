@@ -85,7 +85,9 @@ export function LandContextCard({ land, onQuickAction }: LandContextCardProps) {
 
   // Growth stage + DAS come ONLY from resolve_crop_phenology (variety-aware SSOT).
   // Never derive stage on the client.
-  const growthStage = phen?.growth_stage ?? null;
+  // Honest stage text: boundary framing + "Estimated:" prefix come from the
+  // resolver's evidence/source only — never computed on the client.
+  const growthStage = formatResolvedStage(phen, t as any);
   const das = phen?.current_das ?? daysBetween(sowingDate);
 
   const temperature = wx?.temperature_celsius;
