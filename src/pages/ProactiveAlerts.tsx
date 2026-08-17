@@ -436,6 +436,28 @@ export default function ProactiveAlerts() {
                         reasoning={alert.decision_reasoning}
                       />
 
+                      {/* One-tap germination question (DB-authored options) */}
+                      {(alert.trigger_data as any)?.question?.type === 'GERMINATION_CHECK' &&
+                        alert.status !== 'ACTED' && (
+                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                            {((alert.trigger_data as any).question.options || []).map((opt: any) => (
+                              <Button
+                                key={opt.key}
+                                size="sm"
+                                variant={opt.confirmed ? 'default' : 'outline'}
+                                disabled={answeringAlertId === alert.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleGerminationAnswer(alert, opt.confirmed === true);
+                                }}
+                                className="rounded-full h-8 text-xs"
+                              >
+                                {opt[`label_${lang}`] || opt.label_en || opt.key}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+
                       {/* Action chips */}
                       <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border/60">
                         <ChipButton onClick={(e) => { e.stopPropagation(); handleAskAI(alert); }} icon={<MessageCircle className="h-3.5 w-3.5" />}>
