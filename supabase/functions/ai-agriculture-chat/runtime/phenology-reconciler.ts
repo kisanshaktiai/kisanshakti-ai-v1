@@ -286,9 +286,14 @@ export async function reconcilePhenology(
     (winner.growth_stage ?? '') !== (dasCandidate.growth_stage ?? '') ||
     winner.source !== dasCandidate.source;
 
-  const reason = changed
+  const anchorSuffix =
+    ` anchor_das=${das ?? 'null'} anchor_dat=${dat ?? 'null'}` +
+    (anchorLog.length ? ` [${anchorLog.join(' ')}]` : '');
+
+  const reason = (changed
     ? `${winner.source}_conf=${winner.confidence.toFixed(2)}_beats_${dasCandidate.source}_conf=${dasCandidate.confidence.toFixed(2)}`
-    : (candidates.length === 1 ? 'only_das_available' : 'das_still_highest_confidence');
+    : (candidates.length === 1 ? 'only_das_available' : 'das_still_highest_confidence')) + anchorSuffix;
+
 
   return {
     winner,
