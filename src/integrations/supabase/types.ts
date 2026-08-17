@@ -7301,8 +7301,10 @@ export type Database = {
           id: string
           is_active: boolean
           is_concurrent_window: boolean
+          is_moisture_critical: boolean | null
           is_photoperiod_sensitive: boolean
           is_pre_emergence_gate_target: boolean | null
+          kc_coefficient: number | null
           next_stage_id: string | null
           ontology_id: string | null
           parent_stage_id: string | null
@@ -7338,8 +7340,10 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_concurrent_window?: boolean
+          is_moisture_critical?: boolean | null
           is_photoperiod_sensitive?: boolean
           is_pre_emergence_gate_target?: boolean | null
+          kc_coefficient?: number | null
           next_stage_id?: string | null
           ontology_id?: string | null
           parent_stage_id?: string | null
@@ -7375,8 +7379,10 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_concurrent_window?: boolean
+          is_moisture_critical?: boolean | null
           is_photoperiod_sensitive?: boolean
           is_pre_emergence_gate_target?: boolean | null
+          kc_coefficient?: number | null
           next_stage_id?: string | null
           ontology_id?: string | null
           parent_stage_id?: string | null
@@ -14989,6 +14995,48 @@ export type Database = {
         }
         Relationships: []
       }
+      input_prices: {
+        Row: {
+          created_at: string
+          effective_date: string
+          id: string
+          is_active: boolean
+          price: number
+          product_code: string
+          product_name: string
+          source: string
+          state: string | null
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          effective_date: string
+          id?: string
+          is_active?: boolean
+          price: number
+          product_code: string
+          product_name: string
+          source: string
+          state?: string | null
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          effective_date?: string
+          id?: string
+          is_active?: boolean
+          price?: number
+          product_code?: string
+          product_name?: string
+          source?: string
+          state?: string | null
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       integration_sync_logs: {
         Row: {
           completed_at: string | null
@@ -15813,6 +15861,51 @@ export type Database = {
           source_type?: string
           title?: string
           url?: string | null
+        }
+        Relationships: []
+      }
+      labor_rates: {
+        Row: {
+          created_at: string
+          currency: string
+          daily_wage: number
+          effective_date: string
+          id: string
+          is_active: boolean
+          operation_type: string | null
+          season: string | null
+          skill_tier: string | null
+          source: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          daily_wage: number
+          effective_date: string
+          id?: string
+          is_active?: boolean
+          operation_type?: string | null
+          season?: string | null
+          skill_tier?: string | null
+          source: string
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          daily_wage?: number
+          effective_date?: string
+          id?: string
+          is_active?: boolean
+          operation_type?: string | null
+          season?: string | null
+          skill_tier?: string | null
+          source?: string
+          state?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -27542,6 +27635,48 @@ export type Database = {
           },
         ]
       }
+      schedule_adjustments: {
+        Row: {
+          change_type: string
+          created_at: string
+          engine_version: string | null
+          evidence: Json | null
+          id: string
+          new_value: Json | null
+          old_value: Json | null
+          reason: string | null
+          run_at: string
+          schedule_id: string
+          task_id: string | null
+        }
+        Insert: {
+          change_type: string
+          created_at?: string
+          engine_version?: string | null
+          evidence?: Json | null
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          reason?: string | null
+          run_at?: string
+          schedule_id: string
+          task_id?: string | null
+        }
+        Update: {
+          change_type?: string
+          created_at?: string
+          engine_version?: string | null
+          evidence?: Json | null
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          reason?: string | null
+          run_at?: string
+          schedule_id?: string
+          task_id?: string | null
+        }
+        Relationships: []
+      }
       schedule_monitoring: {
         Row: {
           alerts_generated: number | null
@@ -27604,12 +27739,16 @@ export type Database = {
       }
       schedule_tasks: {
         Row: {
+          adjustment_reason: string | null
+          anchor_stage: string | null
+          anchor_type: string | null
           auto_rescheduled: boolean | null
           climate_adjusted: boolean | null
           climate_adjustment_reason: string | null
           completed_at: string | null
           completed_by: string | null
           completion_notes: string | null
+          confidence: number | null
           created_at: string | null
           currency: string | null
           days_from_sowing: number | null
@@ -27617,9 +27756,11 @@ export type Database = {
           duration_hours: number | null
           estimated_cost: number | null
           farmer_id: string | null
+          gdd_target: number | null
           id: string
           ideal_weather: Json | null
           instructions: string[] | null
+          is_pinned: boolean
           language: string | null
           original_date: string | null
           original_date_before_climate_adjust: string | null
@@ -27627,13 +27768,16 @@ export type Database = {
           priority: string | null
           product_recommendations: Json | null
           product_type: string | null
+          projected_date: string | null
           regional_terms: Json | null
           reschedule_reason: string | null
           resources: Json | null
+          rule_ids: string[] | null
           schedule_id: string
           sequence_order: number | null
           skip_penalty: string | null
           skip_penalty_details: Json | null
+          source_refs: Json | null
           stage_key: string | null
           stage_name: string | null
           stage_order: number | null
@@ -27643,6 +27787,7 @@ export type Database = {
           task_name: string
           task_type: string
           tenant_id: string
+          trigger_rule_id: string | null
           updated_at: string | null
           variety_id: string | null
           water_required_liters: number | null
@@ -27653,12 +27798,16 @@ export type Database = {
           yield_impact_details: Json | null
         }
         Insert: {
+          adjustment_reason?: string | null
+          anchor_stage?: string | null
+          anchor_type?: string | null
           auto_rescheduled?: boolean | null
           climate_adjusted?: boolean | null
           climate_adjustment_reason?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completion_notes?: string | null
+          confidence?: number | null
           created_at?: string | null
           currency?: string | null
           days_from_sowing?: number | null
@@ -27666,9 +27815,11 @@ export type Database = {
           duration_hours?: number | null
           estimated_cost?: number | null
           farmer_id?: string | null
+          gdd_target?: number | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
+          is_pinned?: boolean
           language?: string | null
           original_date?: string | null
           original_date_before_climate_adjust?: string | null
@@ -27676,13 +27827,16 @@ export type Database = {
           priority?: string | null
           product_recommendations?: Json | null
           product_type?: string | null
+          projected_date?: string | null
           regional_terms?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
+          rule_ids?: string[] | null
           schedule_id: string
           sequence_order?: number | null
           skip_penalty?: string | null
           skip_penalty_details?: Json | null
+          source_refs?: Json | null
           stage_key?: string | null
           stage_name?: string | null
           stage_order?: number | null
@@ -27692,6 +27846,7 @@ export type Database = {
           task_name: string
           task_type: string
           tenant_id?: string
+          trigger_rule_id?: string | null
           updated_at?: string | null
           variety_id?: string | null
           water_required_liters?: number | null
@@ -27702,12 +27857,16 @@ export type Database = {
           yield_impact_details?: Json | null
         }
         Update: {
+          adjustment_reason?: string | null
+          anchor_stage?: string | null
+          anchor_type?: string | null
           auto_rescheduled?: boolean | null
           climate_adjusted?: boolean | null
           climate_adjustment_reason?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completion_notes?: string | null
+          confidence?: number | null
           created_at?: string | null
           currency?: string | null
           days_from_sowing?: number | null
@@ -27715,9 +27874,11 @@ export type Database = {
           duration_hours?: number | null
           estimated_cost?: number | null
           farmer_id?: string | null
+          gdd_target?: number | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
+          is_pinned?: boolean
           language?: string | null
           original_date?: string | null
           original_date_before_climate_adjust?: string | null
@@ -27725,13 +27886,16 @@ export type Database = {
           priority?: string | null
           product_recommendations?: Json | null
           product_type?: string | null
+          projected_date?: string | null
           regional_terms?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
+          rule_ids?: string[] | null
           schedule_id?: string
           sequence_order?: number | null
           skip_penalty?: string | null
           skip_penalty_details?: Json | null
+          source_refs?: Json | null
           stage_key?: string | null
           stage_name?: string | null
           stage_order?: number | null
@@ -27741,6 +27905,7 @@ export type Database = {
           task_name?: string
           task_type?: string
           tenant_id?: string
+          trigger_rule_id?: string | null
           updated_at?: string | null
           variety_id?: string | null
           water_required_liters?: number | null
