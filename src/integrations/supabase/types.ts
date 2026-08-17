@@ -7280,6 +7280,7 @@ export type Database = {
       crop_stage_master: {
         Row: {
           base_temperature_c: number | null
+          boundary_grace_days: number | null
           canonical_stage_id: string | null
           created_at: string | null
           crop_code: string
@@ -7301,6 +7302,7 @@ export type Database = {
           is_active: boolean
           is_concurrent_window: boolean
           is_photoperiod_sensitive: boolean
+          is_pre_emergence_gate_target: boolean | null
           next_stage_id: string | null
           ontology_id: string | null
           parent_stage_id: string | null
@@ -7315,6 +7317,7 @@ export type Database = {
         }
         Insert: {
           base_temperature_c?: number | null
+          boundary_grace_days?: number | null
           canonical_stage_id?: string | null
           created_at?: string | null
           crop_code: string
@@ -7336,6 +7339,7 @@ export type Database = {
           is_active?: boolean
           is_concurrent_window?: boolean
           is_photoperiod_sensitive?: boolean
+          is_pre_emergence_gate_target?: boolean | null
           next_stage_id?: string | null
           ontology_id?: string | null
           parent_stage_id?: string | null
@@ -7350,6 +7354,7 @@ export type Database = {
         }
         Update: {
           base_temperature_c?: number | null
+          boundary_grace_days?: number | null
           canonical_stage_id?: string | null
           created_at?: string | null
           crop_code?: string
@@ -7371,6 +7376,7 @@ export type Database = {
           is_active?: boolean
           is_concurrent_window?: boolean
           is_photoperiod_sensitive?: boolean
+          is_pre_emergence_gate_target?: boolean | null
           next_stage_id?: string | null
           ontology_id?: string | null
           parent_stage_id?: string | null
@@ -7547,6 +7553,30 @@ export type Database = {
           season?: string | null
           source?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      crop_thermal_anchor_policy: {
+        Row: {
+          anchor_event: string
+          crop_code: string
+          cultivation_method: string
+          source_id: string
+          verification_status: string
+        }
+        Insert: {
+          anchor_event: string
+          crop_code: string
+          cultivation_method?: string
+          source_id: string
+          verification_status?: string
+        }
+        Update: {
+          anchor_event?: string
+          crop_code?: string
+          cultivation_method?: string
+          source_id?: string
+          verification_status?: string
         }
         Relationships: []
       }
@@ -13714,6 +13744,60 @@ export type Database = {
           },
         ]
       }
+      germination_gate_params: {
+        Row: {
+          allow_irrigation_signal: boolean
+          created_at: string | null
+          crop_code: string
+          id: string
+          is_enabled: boolean | null
+          max_swsi_for_germination: number | null
+          min_cum_effective_rain_mm: number | null
+          min_soil_moisture_pct: number | null
+          question_prompt_max_day: number | null
+          question_prompt_min_day: number | null
+          soil_texture: string
+          source_id: string | null
+          source_version: string | null
+          swsi_metric_contract: string | null
+          verification_status: string
+        }
+        Insert: {
+          allow_irrigation_signal?: boolean
+          created_at?: string | null
+          crop_code: string
+          id?: string
+          is_enabled?: boolean | null
+          max_swsi_for_germination?: number | null
+          min_cum_effective_rain_mm?: number | null
+          min_soil_moisture_pct?: number | null
+          question_prompt_max_day?: number | null
+          question_prompt_min_day?: number | null
+          soil_texture?: string
+          source_id?: string | null
+          source_version?: string | null
+          swsi_metric_contract?: string | null
+          verification_status?: string
+        }
+        Update: {
+          allow_irrigation_signal?: boolean
+          created_at?: string | null
+          crop_code?: string
+          id?: string
+          is_enabled?: boolean | null
+          max_swsi_for_germination?: number | null
+          min_cum_effective_rain_mm?: number | null
+          min_soil_moisture_pct?: number | null
+          question_prompt_max_day?: number | null
+          question_prompt_min_day?: number | null
+          soil_texture?: string
+          source_id?: string | null
+          source_version?: string | null
+          swsi_metric_contract?: string | null
+          verification_status?: string
+        }
+        Relationships: []
+      }
       governance_audit_reports: {
         Row: {
           created_at: string
@@ -16134,6 +16218,63 @@ export type Database = {
             referencedColumns: ["land_id"]
           },
         ]
+      }
+      land_gdd_daily_history: {
+        Row: {
+          anchor_date: string
+          anchor_type: string
+          base_temp_c: number
+          created_at: string
+          cumulative_gdd: number
+          daily_gdd: number
+          days_from_anchor: number
+          land_id: string
+          method: string
+          obs_date: string
+          source: string
+          superseded_at: string
+          superseded_by: string | null
+          tmax_c: number | null
+          tmin_c: number | null
+          upper_cap_c: number
+        }
+        Insert: {
+          anchor_date: string
+          anchor_type: string
+          base_temp_c: number
+          created_at?: string
+          cumulative_gdd?: number
+          daily_gdd?: number
+          days_from_anchor: number
+          land_id: string
+          method?: string
+          obs_date: string
+          source?: string
+          superseded_at?: string
+          superseded_by?: string | null
+          tmax_c?: number | null
+          tmin_c?: number | null
+          upper_cap_c?: number
+        }
+        Update: {
+          anchor_date?: string
+          anchor_type?: string
+          base_temp_c?: number
+          created_at?: string
+          cumulative_gdd?: number
+          daily_gdd?: number
+          days_from_anchor?: number
+          land_id?: string
+          method?: string
+          obs_date?: string
+          source?: string
+          superseded_at?: string
+          superseded_by?: string | null
+          tmax_c?: number | null
+          tmin_c?: number | null
+          upper_cap_c?: number
+        }
+        Relationships: []
       }
       land_tile_intersections: {
         Row: {
@@ -28871,6 +29012,36 @@ export type Database = {
         }
         Relationships: []
       }
+      stage_gate_state: {
+        Row: {
+          evidence: Json | null
+          gate: string
+          held_stage_uuid: string | null
+          land_id: string
+          reason: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          evidence?: Json | null
+          gate: string
+          held_stage_uuid?: string | null
+          land_id: string
+          reason?: string | null
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          evidence?: Json | null
+          gate?: string
+          held_stage_uuid?: string | null
+          land_id?: string
+          reason?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       stage_review_queue: {
         Row: {
           created_at: string
@@ -38712,6 +38883,7 @@ export type Database = {
         Args: { p_farmer_id: string; p_tenant_id: string }
         Returns: Json
       }
+      check_germination_gate: { Args: { p_land_id: string }; Returns: Json }
       check_harvest_quota: { Args: { p_tenant_id: string }; Returns: Json }
       check_mobile_number_exists: {
         Args: { mobile_num: string }
@@ -38899,6 +39071,7 @@ export type Database = {
         | { Args: { schema_name: string; table_name: string }; Returns: string }
         | { Args: { table_name: string }; Returns: string }
       enablelongtransactions: { Args: never; Returns: string }
+      enforce_germination_gate: { Args: { p_land_id: string }; Returns: Json }
       ensure_env_partitions: { Args: never; Returns: undefined }
       ensure_onboarding_workflow: {
         Args: { p_tenant_id: string }
@@ -38935,6 +39108,7 @@ export type Database = {
         Args: { p_land_id: string; p_target_stage: string }
         Returns: Json
       }
+      exec_governance_count: { Args: { sql_text: string }; Returns: number }
       expert_approve_rules: {
         Args: { p_approver: string; p_basis: string; p_rule_ids: string[] }
         Returns: {
@@ -39639,6 +39813,35 @@ export type Database = {
         }[]
       }
       gettransactionid: { Args: never; Returns: unknown }
+      governance_bulk_transition: {
+        Args: { p_new_state: string; p_note?: string; p_workflow_ids: string[] }
+        Returns: {
+          result: string
+          rule_id: string
+        }[]
+      }
+      governance_resolve_finding: {
+        Args: { p_finding_id: string; p_note?: string }
+        Returns: {
+          created_at: string
+          detail: string
+          detected_value: string | null
+          expected_value: string | null
+          finding_type: string
+          id: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_id: string
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "decision_rule_qa_findings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       governance_rollback_rule_to_version: {
         Args: { p_notes?: string; p_version_id: string }
         Returns: {
@@ -39668,6 +39871,31 @@ export type Database = {
         Args: { p_rule_id: string; p_sample_input: Json }
         Returns: Json
       }
+      governance_submit_rule_for_review: {
+        Args: { p_note?: string; p_rule_uuid: string }
+        Returns: {
+          agronomist_notes: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          proposed_payload: Json | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          rule_id: string
+          rule_version_id: string | null
+          state: string
+          submitted_at: string | null
+          submitted_by: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rule_approval_workflow"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       governance_transition_approval_state: {
         Args: { p_new_state: string; p_notes?: string; p_workflow_id: string }
         Returns: {
@@ -39692,6 +39920,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      governance_update_rule_fields: {
+        Args: { p_fields: Json; p_rule_id: string }
+        Returns: Json
       }
       has_role: {
         Args: {
@@ -39998,12 +40230,32 @@ export type Database = {
         }[]
       }
       reactivate_tenant: { Args: { p_tenant_id: string }; Returns: Json }
+      reanchor_land_gdd: {
+        Args: {
+          p_anchor_date: string
+          p_anchor_type: string
+          p_land_id: string
+        }
+        Returns: number
+      }
       reassign_lead: {
         Args: { p_lead_id: string; p_new_admin_id: string; p_reason?: string }
         Returns: boolean
       }
       record_failed_login: {
         Args: { p_email: string; p_ip_address?: unknown }
+        Returns: Json
+      }
+      record_germination: {
+        Args: {
+          p_confirmed: boolean
+          p_land_id: string
+          p_observed_date?: string
+        }
+        Returns: Json
+      }
+      record_transplant: {
+        Args: { p_land_id: string; p_transplant_date?: string }
         Returns: Json
       }
       redeem_promo_code: {
@@ -40173,6 +40425,7 @@ export type Database = {
         Returns: Json
       }
       resolve_farmer_features: { Args: { _farmer: string }; Returns: Json }
+      resolve_germination_anchor: { Args: { p_land_id: string }; Returns: Json }
       resolve_observation_canonical: {
         Args: { _language?: string; _raw: string }
         Returns: {
@@ -40183,6 +40436,7 @@ export type Database = {
       }
       resolve_tenant_by_slug: { Args: { p_slug: string }; Returns: Json }
       resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
+      run_daily_phenology: { Args: never; Returns: Json }
       run_env_verification: { Args: never; Returns: Json }
       sanitize_white_label_config: {
         Args: { config_data: Json }
@@ -41085,6 +41339,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      water_signal_since_anchor: { Args: { p_land_id: string }; Returns: Json }
       weather_ingest_health: { Args: never; Returns: Json }
     }
     Enums: {

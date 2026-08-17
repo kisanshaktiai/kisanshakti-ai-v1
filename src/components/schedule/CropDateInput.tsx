@@ -35,8 +35,11 @@ interface CropDateInputProps {
     nurseryDays: number, 
     localizedCropName: string,
     intercrops?: IntercropData[],
-    backdatedConsent?: boolean
+    backdatedConsent?: boolean,
+    /** Actual transplanting date (null when not transplanted yet / not applicable). */
+    transplantDate?: Date | null
   ) => void;
+
   onBack: () => void;
   loading?: boolean;
 }
@@ -56,8 +59,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
   const [nurseryDays, setNurseryDays] = useState<number>(0);
+  const [transplantDate, setTransplantDate] = useState<Date | undefined>(undefined);
+  const [notTransplantedYet, setNotTransplantedYet] = useState(false);
   const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
   const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
+
   const [intercrops, setIntercrops] = useState<IntercropData[]>([]);
   const [showBackdatedConsent, setShowBackdatedConsent] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<{farmingType: FarmingMode} | null>(null);
@@ -98,10 +104,39 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       return;
     }
 
+    // Transplanting lane: validate the captured transplant date (if any).
+    if (isReadyMadePlant && !notTransplantedYet && transplantDate) {
+      const today = startOfDay(new Date());
+      const tp = startOfDay(transplantDate);
+      if (tp > today) {
+        toast({
+          title: t('schedule.crop_input.transplant_date_label', 'Transplanting date'),
+          description: t(
+            'schedule.crop_input.transplant_future_error',
+            'Transplanting date cannot be in the future.'
+          ),
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (tp < startOfDay(sowingDate)) {
+        toast({
+          title: t('schedule.crop_input.transplant_date_label', 'Transplanting date'),
+          description: t(
+            'schedule.crop_input.transplant_before_sowing_error',
+            'Transplanting date cannot be before the nursery sowing date.'
+          ),
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     // Open farming type dialog instead of submitting directly
     console.log('🔔 [CropDateInput] Opening farming type dialog for:', cropName);
     setShowFarmingTypeDialog(true);
   };
+
 
   const handleFarmingTypeSelect = (farmingType: FarmingMode) => {
     console.log('✅ [CropDateInput] Farming type selected:', farmingType);
@@ -120,12 +155,15 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
   const proceedWithSubmit = (farmingType: FarmingMode, backdatedConsent: boolean) => {
     if (sowingDate) {
+      const effectiveTransplantDate =
+        isReadyMadePlant && !notTransplantedYet && transplantDate ? transplantDate : null;
       console.log('🚀 [CropDateInput] Calling onSubmit with:', {
         cropName,
         farmingType,
         nurseryDays,
         intercrops,
         backdatedConsent,
+        transplantDate: effectiveTransplantDate,
       });
       onSubmit(
         cropName, 
@@ -136,8 +174,10 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         nurseryDays, 
         localizedCropName,
         intercrops,
-        backdatedConsent
+        backdatedConsent,
+        effectiveTransplantDate
       );
+
     }
   };
 
@@ -279,8 +319,13 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     checked={isReadyMadePlant}
                     onChange={(e) => {
                       setIsReadyMadePlant(e.target.checked);
-                      if (!e.target.checked) setNurseryDays(0);
+                      if (!e.target.checked) {
+                        setNurseryDays(0);
+                        setTransplantDate(undefined);
+                        setNotTransplantedYet(false);
+                      }
                     }}
+
                     className="mt-1 h-5 w-5 rounded border-border accent-primary"
                   />
                   <div className="flex-1">
@@ -314,7 +359,72 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     </p>
                   </div>
                 )}
+
+                {/* Transplanting Date - biological anchor for transplanted crops */}
+                {isReadyMadePlant && (
+                  <div className="p-3 bg-accent/10 rounded-xl border border-accent/30 space-y-2">
+                    <Label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      {t('schedule.crop_input.transplant_date_label', 'Transplanting date')}
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          disabled={notTransplantedYet}
+                          className={cn(
+                            'w-full justify-start text-left font-normal h-11 rounded-xl',
+                            'bg-white/50 dark:bg-black/20 backdrop-blur-sm border-accent/30',
+                            !transplantDate && 'text-muted-foreground'
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {transplantDate
+                            ? format(transplantDate, 'PPP')
+                            : t('schedule.crop_input.pick_date')}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={transplantDate}
+                          onSelect={(date) => date && setTransplantDate(date)}
+                          initialFocus
+                          disabled={(date) => {
+                            const today = startOfDay(new Date());
+                            const min = sowingDate ? startOfDay(sowingDate) : undefined;
+                            return date > today || (!!min && date < min);
+                          }}
+                          className={cn('p-3 pointer-events-auto')}
+                        />
+                      </PopoverContent>
+                    </Popover>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="not-transplanted-yet"
+                        checked={notTransplantedYet}
+                        onChange={(e) => {
+                          setNotTransplantedYet(e.target.checked);
+                          if (e.target.checked) setTransplantDate(undefined);
+                        }}
+                        className="h-4 w-4 rounded border-border accent-primary"
+                      />
+                      <Label htmlFor="not-transplanted-yet" className="text-xs cursor-pointer">
+                        {t('schedule.crop_input.not_transplanted_yet', 'Not transplanted yet')}
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'schedule.crop_input.transplant_date_help',
+                        'Used to time stage advice for transplanted crops.'
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
+
 
               {/* Date Selection */}
               <div className="space-y-2">

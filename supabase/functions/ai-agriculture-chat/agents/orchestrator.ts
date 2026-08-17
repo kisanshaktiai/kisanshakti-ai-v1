@@ -10825,7 +10825,10 @@ export class AIAgentOrchestrator {
             cropCode: phenology.crop_code ?? land.current_crop ?? null,
             das: phenology.current_das ?? daysSinceSowing ?? null,
             phenologyRow: phenology,
+            transplantDate:
+              (phenology as any)?.transplant_date ?? (land as any)?.transplant_date ?? null,
           });
+
           if (recon) {
             console.log(
               `[PHENOLOGY_RECONCILIATION] das_stage=${recon.das_stage ?? 'null'} ` +
