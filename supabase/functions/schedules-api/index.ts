@@ -74,12 +74,45 @@ serve(async (req) => {
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(Boolean);
     const lastPart = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
-    
-    // Check if this is a /tasks route
+
+    // Task sub-routes: /schedules-api/tasks/:taskId[/complete]
+    const tasksIdx = pathParts.indexOf('tasks');
+    const taskId = tasksIdx >= 0 ? (pathParts[tasksIdx + 1] || null) : null;
+    const taskAction = tasksIdx >= 0 ? (pathParts[tasksIdx + 2] || null) : null;
+
+    // Check if this is a /tasks route (collection)
     const isTasksRoute = lastPart === 'tasks';
-    const scheduleId = (lastPart && lastPart !== 'schedules-api' && !isTasksRoute) ? lastPart : null;
+    const scheduleId = (lastPart && lastPart !== 'schedules-api' && !isTasksRoute && !taskId) ? lastPart : null;
     const landIdParam = url.searchParams.get('land_id');
     const scheduleIdParam = url.searchParams.get('schedule_id');
+
+    // Server-side ownership check for a task (never trust the client)
+    const assertTaskOwnership = async (id: string) => {
+      const { data: task, error } = await supabase
+        .from('schedule_tasks')
+        .select('id, schedule_id')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) return { ok: false as const, status: 503, message: 'Task lookup failed' };
+      if (!task) return { ok: false as const, status: 404, message: 'Task not found' };
+      const { data: sched, error: schedErr } = await supabase
+        .from('crop_schedules')
+        .select('id, farmer_id, tenant_id')
+        .eq('id', task.schedule_id)
+        .maybeSingle();
+      if (schedErr) return { ok: false as const, status: 503, message: 'Schedule lookup failed' };
+      if (!sched || sched.farmer_id !== farmerId || sched.tenant_id !== tenantId) {
+        return { ok: false as const, status: 403, message: 'Task does not belong to this farmer' };
+      }
+      return { ok: true as const, task };
+    };
+
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+
 
     // PHASE 3A: Optional incremental + pagination params (backward-compatible)
     const sinceParam = url.searchParams.get('since'); // ISO8601 timestamp
