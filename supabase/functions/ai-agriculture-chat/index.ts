@@ -841,16 +841,13 @@ serve(async (req) => {
         console.log('[FARMING_MODE_SKIPPED reason=no_land]');
       }
       if (tappedMode && modeLandId) {
-        try {
-          await supabase
-            .from('land_crops')
-            .update({ farming_type: tappedMode })
-            .eq('land_id', modeLandId)
-            .eq('tenant_id', finalTenantId);
-          console.log(`🌿 [FARMING_MODE_SET] land=${modeLandId} mode=${tappedMode} via=${explicitValue ? 'value' : 'label'}`);
-        } catch (modeErr) {
-          console.warn('[FARMING_MODE] persist failed:', (modeErr as Error).message);
-        }
+        // SSOT = active crop_schedules row for this land+tenant; land_crops mirrored.
+        const _w = await writeFarmingMode(supabase, modeLandId, finalTenantId, tappedMode as any);
+        console.log(
+          `🌿 [FARMING_MODE_SET] land=${modeLandId} mode=${tappedMode} ` +
+          `via=${explicitValue ? 'value' : 'label'} schedule=${_w.scheduleWritten} mirror=${_w.mirrorWritten}`,
+        );
+
         return new Response(
           JSON.stringify({
             response: getUiString('preference.saved_land_confirm', detectedLanguage),
