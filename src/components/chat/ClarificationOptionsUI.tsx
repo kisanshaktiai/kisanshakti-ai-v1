@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useTranslation } from 'react-i18next';
+import { safeServerText } from '@/lib/i18nGuard';
 import { cn } from '@/lib/utils';
 import { 
   Check, HelpCircle, ChevronRight, Camera,
@@ -222,7 +223,7 @@ function SingleChoiceOption({ option, index, isSelected, onSelect, isDiagnostic 
             ? "text-info"
             : isSelected ? "text-primary" : "text-foreground"
         )}>
-          {cleanOptionLabel(option.label)}
+          {safeServerText(cleanOptionLabel(option.label))}
         </span>
         {option.description && (
           <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
@@ -305,7 +306,7 @@ function MultiChoiceOption({ option, index, isSelected, onToggle, isDiagnostic }
           "text-sm font-medium leading-snug block",
           isSelected ? "text-primary" : "text-foreground"
         )}>
-          {cleanOptionLabel(option.label)}
+          {safeServerText(cleanOptionLabel(option.label))}
         </span>
         {option.description && (
           <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
@@ -450,11 +451,11 @@ export function ClarificationOptionsUI({
           }
         </div>
         <div className="flex-1 min-w-0">
-          <p className={cn(
+          <p dir="auto" className={cn(
             "text-sm font-medium leading-relaxed",
             isDiagnostic ? "text-warning" : "text-foreground"
           )}>
-            {question}
+            {safeServerText(question)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {isDiagnostic 
