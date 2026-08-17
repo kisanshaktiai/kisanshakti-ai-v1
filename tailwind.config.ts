@@ -177,7 +177,7 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Noto Sans Devanagari", "Inter", "system-ui", "sans-serif"],
         devanagari: ["Noto Sans Devanagari", "sans-serif"],
       },
       backgroundImage: {
