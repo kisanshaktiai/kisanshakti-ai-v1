@@ -319,8 +319,13 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     checked={isReadyMadePlant}
                     onChange={(e) => {
                       setIsReadyMadePlant(e.target.checked);
-                      if (!e.target.checked) setNurseryDays(0);
+                      if (!e.target.checked) {
+                        setNurseryDays(0);
+                        setTransplantDate(undefined);
+                        setNotTransplantedYet(false);
+                      }
                     }}
+
                     className="mt-1 h-5 w-5 rounded border-border accent-primary"
                   />
                   <div className="flex-1">
