@@ -33,6 +33,7 @@ export interface BaselineTask {
   anchor_stage: string | null;
   gdd_target: number | null;
   stage_key: string | null;
+  stage_uuid: string | null;
   stage_name: string | null;
   stage_order: number;
   priority: string;
@@ -133,6 +134,12 @@ export async function generateBaseline(
   coverage.stages = stages.length > 0;
   if (!stages.length) gaps.push("crop_stage_master_no_rows");
 
+  // A stage label that cannot be resolved to a crop_stage_master row is reported,
+  // never invented.
+  const noteUnmappableStage = (stageKey: string | null, stageId: string | null | undefined) => {
+    if (stageKey && !stageId) gaps.push("task_stage_unmappable");
+  };
+
   const durationDays = stages.reduce((max, s) => Math.max(max, s.das_max ?? 0), 0) || null;
 
   // ── Seed / planting task ───────────────────────────────────────────────────
@@ -156,6 +163,7 @@ export async function generateBaseline(
       anchor_stage: sowStage?.stage_code || sowStage?.growth_stage || null,
       gdd_target: sowStage?.gdd_min ?? null,
       stage_key: sowStage?.stage_code || null,
+      stage_uuid: sowStage?.id || null,
       stage_name: sowStage?.growth_stage || null,
       stage_order: 1,
       priority: "critical",
@@ -229,6 +237,8 @@ export async function generateBaseline(
         anchor_stage: stage?.stage_code || stage?.growth_stage || null,
         gdd_target: stage?.gdd_min ?? null,
         stage_key: stage?.stage_code || null,
+        stage_uuid: stage?.id || null,
+        stage_uuid: stage?.id || null,
         stage_name: stage?.growth_stage || null,
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: "high",
@@ -332,6 +342,7 @@ export async function generateBaseline(
         anchor_stage: stage.stage_code || stage.growth_stage,
         gdd_target: stage.gdd_min ?? null,
         stage_key: stage.stage_code,
+        stage_uuid: stage.id || null,
         stage_name: stage.growth_stage,
         stage_order: stageOrderOf(stages, stage.stage_code),
         priority: priorityFromRule(rule.priority),
