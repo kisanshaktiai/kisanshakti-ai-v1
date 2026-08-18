@@ -280,8 +280,8 @@ serve(async (req) => {
         function_name: "ai-smart-schedule",
         user_id: farmerId || null,
         payload: {
-          landId: landId ?? null,
-          cropCode: inputs?.cropCode ?? cropName,
+          landId,
+          cropCode: resolvedCropCode ?? cropName,
           http_status: 500,
           task_count: 0,
           error: (error as Error)?.message ?? String(error),
