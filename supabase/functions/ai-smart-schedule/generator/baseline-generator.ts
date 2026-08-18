@@ -1,6 +1,9 @@
 // CHANGE LOG
 // 2026-08-17 14:02 UTC — Phase 2: created day-0 baseline generator. Builds the whole schedule
 //   from database rows only. Any missing source is reported as a coverage gap — never invented.
+// 2026-08-18 15:25 UTC — 546 fix: guarded the irrigation expansion loop (interval must be >=1,
+//   valid DAS range, max 200 events per guideline row) — a 0-interval DB row looped forever
+//   and exhausted the edge worker memory.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
