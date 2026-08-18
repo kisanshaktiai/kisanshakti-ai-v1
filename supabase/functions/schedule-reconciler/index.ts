@@ -1,7 +1,10 @@
 // CHANGE LOG
+// 2026-08-18 18:55 UTC — Phase B: accept { landId } so a stage-changing event can reconcile
+//   just that land immediately (nightly cron still runs the full sweep).
 // 2026-08-17 14:16 UTC — Phase 4: created the living-schedule reconciler. Re-anchors pending
 //   tasks to the biological stage resolved from land state, logs every change with evidence.
 //   No agronomic constants: all thresholds come from DB rows.
+
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -29,6 +32,7 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
+    const landIdFilter: string | null = body?.landId ?? body?.land_id ?? null;
 
     let q = supabase
       .from("crop_schedules")
@@ -37,6 +41,7 @@ serve(async (req) => {
       .eq("status", "active")
       .limit(500);
     if (scheduleIdFilter) q = q.eq("id", scheduleIdFilter);
+    if (landIdFilter) q = q.eq("land_id", landIdFilter);
     const { data: schedules, error } = await q;
     if (error) throw error;
 
