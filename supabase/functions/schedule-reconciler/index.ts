@@ -32,6 +32,7 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
+    const landIdFilter: string | null = body?.landId ?? body?.land_id ?? null;
 
     let q = supabase
       .from("crop_schedules")
@@ -40,6 +41,7 @@ serve(async (req) => {
       .eq("status", "active")
       .limit(500);
     if (scheduleIdFilter) q = q.eq("id", scheduleIdFilter);
+    if (landIdFilter) q = q.eq("land_id", landIdFilter);
     const { data: schedules, error } = await q;
     if (error) throw error;
 
