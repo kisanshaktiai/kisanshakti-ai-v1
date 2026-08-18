@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-08-18 18:20 UTC — Phase A: every task now carries stage_uuid (crop_stage_master.id) alongside
+//   stage_key; unresolvable stage labels stay null and add the "task_stage_unmappable" gap.
 // 2026-08-18 15:45 UTC — hardened the fertilizer split loop: malformed splits skipped with a named gap,
 //   dasFromSplit guarded, and splits with a non-computable dose are recorded instead of emitting null-dose tasks.
 // 2026-08-17 14:02 UTC — Phase 2: created day-0 baseline generator. Builds the whole schedule
