@@ -371,6 +371,10 @@ export async function generateBaseline(
 
   tasks.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order);
 
+  // A task labelled with a stage that could not be resolved to a crop_stage_master
+  // row is reported as a gap — the stage link is left null, never invented.
+  if (tasks.some((t) => t.stage_key && !t.stage_uuid)) gaps.push("task_stage_unmappable");
+
   return {
     tasks,
     gaps: [...new Set(gaps)],
