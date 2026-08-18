@@ -52,6 +52,7 @@ interface Task {
   estimated_cost?: number;
   currency?: string;
   completed_at?: string;
+  stage_uuid?: string | null;
 }
 
 interface TaskTimelineProps {
@@ -61,9 +62,12 @@ interface TaskTimelineProps {
   onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void;
   onTakePhoto?: (task: Task) => void;
   onEditTask?: (task: Task) => void;
+  /** Reads the land stage SSOT; the timeline never computes a stage itself. */
+  stagePhaseOfTask?: (task: { stage_uuid?: string | null }) => StagePhase;
 }
 
-const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate, onTakePhoto, onEditTask }) => {
+const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate, onTakePhoto, onEditTask, stagePhaseOfTask }) => {
+
   const { t } = useTranslation();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
