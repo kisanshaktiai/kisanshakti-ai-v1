@@ -1,6 +1,9 @@
 // CHANGE LOG
 // 2026-08-17 14:06 UTC — Phase 2: LLM narration layer. Translation ONLY. The model may never
 //   invent, add, remove or alter any number, unit, product or date.
+// 2026-08-18 15:20 UTC — 504 fix: narration now chunks tasks (20/call) and runs chunks in
+//   parallel under a 45s wall-clock budget; partial/failed chunks fall back to source text
+//   instead of hanging the request until the 150s idle timeout.
 
 export interface NarratableTask {
   task_name: string;
