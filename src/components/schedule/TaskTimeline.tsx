@@ -16,9 +16,13 @@ import { toast } from 'sonner';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTranslation } from 'react-i18next';
 
+import StagePhaseBadge from './StagePhaseBadge';
+import type { StagePhase } from '@/hooks/useLandStage';
+
 interface Task {
   id: string;
   task_date: string;
+
   task_type: string;
   task_name: string;
   task_description?: string;
@@ -48,6 +52,7 @@ interface Task {
   estimated_cost?: number;
   currency?: string;
   completed_at?: string;
+  stage_uuid?: string | null;
 }
 
 interface TaskTimelineProps {
@@ -57,9 +62,12 @@ interface TaskTimelineProps {
   onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void;
   onTakePhoto?: (task: Task) => void;
   onEditTask?: (task: Task) => void;
+  /** Reads the land stage SSOT; the timeline never computes a stage itself. */
+  stagePhaseOfTask?: (task: { stage_uuid?: string | null }) => StagePhase;
 }
 
-const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate, onTakePhoto, onEditTask }) => {
+const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate, onTakePhoto, onEditTask, stagePhaseOfTask }) => {
+
   const { t } = useTranslation();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
@@ -401,12 +409,16 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               {/* Content */}
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-2">
-                                  <h4 className={cn(
-                                    "font-semibold text-sm mb-2",
-                                    isCompleted ? "line-through text-muted-foreground" : "text-foreground"
-                                  )}>
-                                    {task.task_name}
-                                  </h4>
+                                  <div className="flex items-center gap-2 mb-2 min-w-0">
+                                    <h4 className={cn(
+                                      "font-semibold text-sm",
+                                      isCompleted ? "line-through text-muted-foreground" : "text-foreground"
+                                    )}>
+                                      {task.task_name}
+                                    </h4>
+                                    <StagePhaseBadge phase={stagePhaseOfTask?.(task)} />
+                                  </div>
+
                                   
                                   {/* Chevron */}
                                   <motion.div

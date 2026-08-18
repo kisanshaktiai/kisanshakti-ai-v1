@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-08-18 18:20 UTC — Phase A: every task now carries stage_uuid (crop_stage_master.id) alongside
+//   stage_key; unresolvable stage labels stay null and add the "task_stage_unmappable" gap.
 // 2026-08-18 15:45 UTC — hardened the fertilizer split loop: malformed splits skipped with a named gap,
 //   dasFromSplit guarded, and splits with a non-computable dose are recorded instead of emitting null-dose tasks.
 // 2026-08-17 14:02 UTC — Phase 2: created day-0 baseline generator. Builds the whole schedule
@@ -33,6 +35,7 @@ export interface BaselineTask {
   anchor_stage: string | null;
   gdd_target: number | null;
   stage_key: string | null;
+  stage_uuid: string | null;
   stage_name: string | null;
   stage_order: number;
   priority: string;
@@ -133,6 +136,7 @@ export async function generateBaseline(
   coverage.stages = stages.length > 0;
   if (!stages.length) gaps.push("crop_stage_master_no_rows");
 
+
   const durationDays = stages.reduce((max, s) => Math.max(max, s.das_max ?? 0), 0) || null;
 
   // ── Seed / planting task ───────────────────────────────────────────────────
@@ -156,6 +160,7 @@ export async function generateBaseline(
       anchor_stage: sowStage?.stage_code || sowStage?.growth_stage || null,
       gdd_target: sowStage?.gdd_min ?? null,
       stage_key: sowStage?.stage_code || null,
+      stage_uuid: sowStage?.id || null,
       stage_name: sowStage?.growth_stage || null,
       stage_order: 1,
       priority: "critical",
@@ -229,6 +234,7 @@ export async function generateBaseline(
         anchor_stage: stage?.stage_code || stage?.growth_stage || null,
         gdd_target: stage?.gdd_min ?? null,
         stage_key: stage?.stage_code || null,
+        stage_uuid: stage?.id || null,
         stage_name: stage?.growth_stage || null,
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: "high",
@@ -279,6 +285,7 @@ export async function generateBaseline(
         anchor_stage: stage?.stage_code || g.growthStage || null,
         gdd_target: stage?.gdd_min ?? null,
         stage_key: stage?.stage_code || null,
+        stage_uuid: stage?.id || null,
         stage_name: stage?.growth_stage || g.growthStage || null,
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: stage?.is_moisture_critical ? "critical" : "high",
@@ -332,6 +339,7 @@ export async function generateBaseline(
         anchor_stage: stage.stage_code || stage.growth_stage,
         gdd_target: stage.gdd_min ?? null,
         stage_key: stage.stage_code,
+        stage_uuid: stage.id || null,
         stage_name: stage.growth_stage,
         stage_order: stageOrderOf(stages, stage.stage_code),
         priority: priorityFromRule(rule.priority),
@@ -364,6 +372,10 @@ export async function generateBaseline(
   if (estimatedCost == null) gaps.push("input_prices_no_rows_cost_not_estimated");
 
   tasks.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order);
+
+  // A task labelled with a stage that could not be resolved to a crop_stage_master
+  // row is reported as a gap — the stage link is left null, never invented.
+  if (tasks.some((t) => t.stage_key && !t.stage_uuid)) gaps.push("task_stage_unmappable");
 
   return {
     tasks,

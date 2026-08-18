@@ -293,6 +293,15 @@
       "field_actions": "Pest & disease actions — our agronomists are finalizing this for your crop",
       "labor_rate": "Labour cost estimate — our agronomists are finalizing this for your crop",
       "generic": "This section — our agronomists are finalizing this for your crop"
+    },
+    "stage_phase": {
+      "now": "Now",
+      "past": "Past",
+      "upcoming": "Upcoming"
+    },
+    "current_stage": {
+      "label": "Your crop:",
+      "mismatch": "Your crop stage was updated from a recent observation, but this schedule was built around different stages. You may want to regenerate the schedule."
     }
   },
   "common": {

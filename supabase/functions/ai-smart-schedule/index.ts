@@ -1,4 +1,5 @@
 // CHANGE LOG
+// 2026-08-18 18:20 UTC — Phase A: persist stage_uuid (crop_stage_master FK) on inserted tasks.
 // 2026-08-18 17:58 UTC — PROMPT 1.6: insert an edge_invocation_logs row on both success and
 //   error paths (function_name, user_id, payload={landId,cropCode,http_status,task_count,gaps,
 //   coverage,execution_time_ms}); wrapped so a logging failure never breaks generation.
@@ -190,6 +191,7 @@ serve(async (req) => {
       anchor_stage: t.anchor_stage,
       gdd_target: t.gdd_target,
       stage_key: t.stage_key,
+      stage_uuid: t.stage_uuid ?? null,
       stage_name: t.stage_name,
       stage_order: t.stage_order,
       priority: t.priority,
