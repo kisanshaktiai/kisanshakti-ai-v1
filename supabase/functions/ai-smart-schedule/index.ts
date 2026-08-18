@@ -222,6 +222,27 @@ serve(async (req) => {
       .map(([key]) => key);
     const missingSectionLabelKeys = missingSections.map((k) => `schedule.section_pending.${k}`);
 
+    const httpStatus = 200;
+    // Observability: log this invocation to edge_invocation_logs. Wrapped so a logging
+    // failure never breaks generation — the schedule still returns to the farmer.
+    try {
+      await supabase.from("edge_invocation_logs").insert({
+        function_name: "ai-smart-schedule",
+        user_id: farmerId || null,
+        payload: {
+          landId,
+          cropCode: inputs.cropCode,
+          http_status: httpStatus,
+          task_count: baseline.tasks.length,
+          gaps: baseline.gaps,
+          coverage: baseline.coverage,
+          execution_time_ms: Date.now() - startTime,
+        },
+      });
+    } catch (logErr) {
+      console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr);
+    }
+
     return json({
       success: true,
       scheduleId: savedSchedule.id,
@@ -246,6 +267,23 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("❌ [ai-smart-schedule] Error:", error);
+    // Observability on failure too — best effort, never blocks the error response.
+    try {
+      await supabase.from("edge_invocation_logs").insert({
+        function_name: "ai-smart-schedule",
+        user_id: farmerId || null,
+        payload: {
+          landId: landId ?? null,
+          cropCode: inputs?.cropCode ?? cropName,
+          http_status: 500,
+          task_count: 0,
+          error: (error as Error)?.message ?? String(error),
+          execution_time_ms: Date.now() - startTime,
+        },
+      });
+    } catch (logErr) {
+      console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr);
+    }
     return json({ error: (error as Error).message || "Schedule generation failed", executionTimeMs: Date.now() - startTime }, 500);
   }
 });
