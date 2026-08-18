@@ -21,6 +21,7 @@ import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
+import PendingSectionsNotice from './PendingSectionsNotice';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
@@ -528,6 +529,13 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             </div>
           </Card>
         </div>
+
+        {/* Sections with no database-backed agronomy yet — shown as explicitly pending */}
+        <PendingSectionsNotice
+          className="mb-3"
+          missingSections={(schedule as any).metadata?.missing_sections}
+          coverage={(schedule as any).metadata?.coverage}
+        />
 
         {/* Climate Alert Banner */}
         <ClimateAlertBanner data={climateData} />
