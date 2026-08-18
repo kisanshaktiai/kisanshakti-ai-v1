@@ -283,7 +283,17 @@
     "listen": "Listen",
     "close": "Close",
     "done": "Done",
-    "skipped": "Skipped"
+    "skipped": "Skipped",
+    "section_pending": {
+      "title": "Some sections are still being finalized",
+      "stages": "Crop stage plan — our agronomists are finalizing this for your crop",
+      "seed": "Seed rate — our agronomists are finalizing this for your crop",
+      "fertilizer": "Fertilizer plan — our agronomists are finalizing this for your crop",
+      "irrigation": "Irrigation plan — our agronomists are finalizing this for your crop",
+      "field_actions": "Pest & disease actions — our agronomists are finalizing this for your crop",
+      "labor_rate": "Labour cost estimate — our agronomists are finalizing this for your crop",
+      "generic": "This section — our agronomists are finalizing this for your crop"
+    }
   },
   "common": {
     "cancel": "Cancel",
