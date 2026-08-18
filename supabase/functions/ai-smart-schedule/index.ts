@@ -28,6 +28,12 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const startTime = Date.now();
+  // Hoisted so the catch-block observability log can read them.
+  let landId: string | null = null;
+  let cropName: string | null = null;
+  let farmerId: string | null = null;
+  let tenantId: string | null = null;
+  let resolvedCropCode: string | null = null;
 
   try {
     const supabase = createClient(
@@ -36,21 +42,19 @@ serve(async (req) => {
     );
 
     const body = await req.json();
-    const {
-      landId,
-      cropName,
-      cropVariety = null,
-      cultivationMethod = null,
-      cropCycle = null,
-      sowingDate = null,
-      transplantDate = null,
-      farmingType = null,
-      backdatedConsent = false,
-      language = "en",
-    } = body || {};
+    landId = body?.landId ?? null;
+    cropName = body?.cropName ?? null;
+    const cropVariety = body?.cropVariety ?? null;
+    const cultivationMethod = body?.cultivationMethod ?? null;
+    const cropCycle = body?.cropCycle ?? null;
+    const sowingDate = body?.sowingDate ?? null;
+    const transplantDate = body?.transplantDate ?? null;
+    const farmingType = body?.farmingType ?? null;
+    const backdatedConsent = body?.backdatedConsent ?? false;
+    const language = body?.language ?? "en";
 
-    const tenantId = req.headers.get("x-tenant-id") || "";
-    const farmerId = req.headers.get("x-farmer-id") || "";
+    tenantId = req.headers.get("x-tenant-id") || "";
+    farmerId = req.headers.get("x-farmer-id") || "";
 
     if (!landId || !cropName) return json({ error: "landId and cropName are required" }, 400);
     if (!tenantId || !farmerId) return json({ error: "Missing tenant/farmer context" }, 401);
