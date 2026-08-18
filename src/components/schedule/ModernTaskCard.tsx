@@ -83,7 +83,9 @@ export default function ModernTaskCard({
   onSpeak,
   isSpeaking = false,
   readOnly = false,
-  onTakePhoto
+  onTakePhoto,
+  stagePhase
+
 }: TaskCardProps) {
   const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
