@@ -229,11 +229,25 @@ export async function generateBaseline(
   for (const g of irrigation) {
     if (g.waterMm != null) waterMm += g.waterMm;
     if (g.intervalDays == null || g.dasStart == null || g.dasEnd == null) continue;
+    // Guard: a 0/negative/NaN interval in the DB row would loop forever and blow the
+    // worker memory limit (546 WORKER_RESOURCE_LIMIT). Skip the row and report a gap.
+    const step = Number(g.intervalDays);
+    if (!Number.isFinite(step) || step < 1) {
+      gaps.push("irrigation_interval_invalid_row_skipped");
+      continue;
+    }
+    if (!Number.isFinite(g.dasStart) || !Number.isFinite(g.dasEnd) || g.dasEnd < g.dasStart) {
+      gaps.push("irrigation_das_range_invalid_row_skipped");
+      continue;
+    }
     provenance.push(g.provenance);
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
     ) || stageForDas(stages, g.dasStart);
-    for (let das = g.dasStart; das <= g.dasEnd; das += g.intervalDays) {
+    const MAX_EVENTS = 200;
+    let events = 0;
+    for (let das = g.dasStart; das <= g.dasEnd && events < MAX_EVENTS; das += step, events++) {
+
       tasks.push({
         task_name: "Irrigation",
         task_type: "irrigation",
