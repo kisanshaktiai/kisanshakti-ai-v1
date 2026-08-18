@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-08-18 17:58 UTC — PROMPT 1.6: insert an edge_invocation_logs row on both success and
+//   error paths (function_name, user_id, payload={landId,cropCode,http_status,task_count,gaps,
+//   coverage,execution_time_ms}); wrapped so a logging failure never breaks generation.
 // 2026-08-18 15:45 UTC — success response (and crop_schedules.metadata) now carries missing_sections +
 //   i18n label keys so partial schedules render pending sections instead of silent gaps.
 // 2026-08-17 14:10 UTC — Phases 1/2/6: replaced the legacy 4.5k-line generator (hardcoded seed
