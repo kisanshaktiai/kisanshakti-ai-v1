@@ -39,6 +39,8 @@ import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductRecommendationCard from './ProductRecommendationCard';
+import StagePhaseBadge from './StagePhaseBadge';
+import type { StagePhase } from '@/hooks/useLandStage';
 
 interface TaskCardProps {
   task: any;
@@ -48,6 +50,8 @@ interface TaskCardProps {
   isSpeaking?: boolean;
   readOnly?: boolean;
   onTakePhoto?: () => void;
+  /** Phase of this task relative to the land stage SSOT. */
+  stagePhase?: StagePhase;
 }
 
 const taskTypeConfig = {
@@ -156,7 +160,10 @@ export default function ModernTaskCard({
                 </div>
                 
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-sm text-foreground leading-tight line-clamp-2">{task.task_name}</h3>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="font-bold text-sm text-foreground leading-tight line-clamp-2">{task.task_name}</h3>
+                    <StagePhaseBadge phase={stagePhase} />
+                  </div>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <Badge variant="outline" className={cn("text-[10px] px-2 py-0.5 font-semibold", dateLabel.badge)}>
                       <Calendar className="h-3 w-3 mr-1" />
