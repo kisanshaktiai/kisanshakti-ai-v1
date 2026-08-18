@@ -62,6 +62,8 @@ interface ScheduleTask {
   completion_notes?: string;
   language?: string;
   currency?: string;
+  stage_uuid?: string | null;
+
 }
 
 interface CropScheduleViewProps {
