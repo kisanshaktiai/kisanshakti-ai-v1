@@ -27781,6 +27781,7 @@ export type Database = {
           stage_key: string | null
           stage_name: string | null
           stage_order: number | null
+          stage_uuid: string | null
           status: string | null
           task_date: string
           task_description: string | null
@@ -27840,6 +27841,7 @@ export type Database = {
           stage_key?: string | null
           stage_name?: string | null
           stage_order?: number | null
+          stage_uuid?: string | null
           status?: string | null
           task_date: string
           task_description?: string | null
@@ -27899,6 +27901,7 @@ export type Database = {
           stage_key?: string | null
           stage_name?: string | null
           stage_order?: number | null
+          stage_uuid?: string | null
           status?: string | null
           task_date?: string
           task_description?: string | null
@@ -27921,6 +27924,20 @@ export type Database = {
             columns: ["schedule_id"]
             isOneToOne: false
             referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_tasks_stage_uuid_fkey"
+            columns: ["stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "crop_stage_master"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_tasks_stage_uuid_fkey"
+            columns: ["stage_uuid"]
+            isOneToOne: false
+            referencedRelation: "v_crop_stage_master_null_method"
             referencedColumns: ["id"]
           },
           {
