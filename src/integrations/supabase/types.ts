@@ -40424,6 +40424,10 @@ export type Database = {
         Args: { p_lead_id: string; p_new_admin_id: string; p_reason?: string }
         Returns: boolean
       }
+      reconcile_schedule_for_land: {
+        Args: { p_land_id: string }
+        Returns: Json
+      }
       record_failed_login: {
         Args: { p_email: string; p_ip_address?: unknown }
         Returns: Json
