@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-08-18 17:58 UTC — PROMPT 1.6: insert an edge_invocation_logs row on both success and
+//   error paths (function_name, user_id, payload={landId,cropCode,http_status,task_count,gaps,
+//   coverage,execution_time_ms}); wrapped so a logging failure never breaks generation.
 // 2026-08-18 15:45 UTC — success response (and crop_schedules.metadata) now carries missing_sections +
 //   i18n label keys so partial schedules render pending sections instead of silent gaps.
 // 2026-08-17 14:10 UTC — Phases 1/2/6: replaced the legacy 4.5k-line generator (hardcoded seed
@@ -28,6 +31,12 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const startTime = Date.now();
+  // Hoisted so the catch-block observability log can read them.
+  let landId: string | null = null;
+  let cropName: string | null = null;
+  let farmerId: string | null = null;
+  let tenantId: string | null = null;
+  let resolvedCropCode: string | null = null;
 
   try {
     const supabase = createClient(
@@ -36,21 +45,19 @@ serve(async (req) => {
     );
 
     const body = await req.json();
-    const {
-      landId,
-      cropName,
-      cropVariety = null,
-      cultivationMethod = null,
-      cropCycle = null,
-      sowingDate = null,
-      transplantDate = null,
-      farmingType = null,
-      backdatedConsent = false,
-      language = "en",
-    } = body || {};
+    landId = body?.landId ?? null;
+    cropName = body?.cropName ?? null;
+    const cropVariety = body?.cropVariety ?? null;
+    const cultivationMethod = body?.cultivationMethod ?? null;
+    const cropCycle = body?.cropCycle ?? null;
+    const sowingDate = body?.sowingDate ?? null;
+    const transplantDate = body?.transplantDate ?? null;
+    const farmingType = body?.farmingType ?? null;
+    const backdatedConsent = body?.backdatedConsent ?? false;
+    const language = body?.language ?? "en";
 
-    const tenantId = req.headers.get("x-tenant-id") || "";
-    const farmerId = req.headers.get("x-farmer-id") || "";
+    tenantId = req.headers.get("x-tenant-id") || "";
+    farmerId = req.headers.get("x-farmer-id") || "";
 
     if (!landId || !cropName) return json({ error: "landId and cropName are required" }, 400);
     if (!tenantId || !farmerId) return json({ error: "Missing tenant/farmer context" }, 401);
@@ -77,6 +84,9 @@ serve(async (req) => {
       transplantDate,
       language,
     });
+
+    resolvedCropCode = inputs.cropCode || null;
+
 
     if (!inputs.cropCode) {
       return json(
@@ -222,6 +232,27 @@ serve(async (req) => {
       .map(([key]) => key);
     const missingSectionLabelKeys = missingSections.map((k) => `schedule.section_pending.${k}`);
 
+    const httpStatus = 200;
+    // Observability: log this invocation to edge_invocation_logs. Wrapped so a logging
+    // failure never breaks generation — the schedule still returns to the farmer.
+    try {
+      await supabase.from("edge_invocation_logs").insert({
+        function_name: "ai-smart-schedule",
+        user_id: farmerId || null,
+        payload: {
+          landId,
+          cropCode: inputs.cropCode,
+          http_status: httpStatus,
+          task_count: baseline.tasks.length,
+          gaps: baseline.gaps,
+          coverage: baseline.coverage,
+          execution_time_ms: Date.now() - startTime,
+        },
+      });
+    } catch (logErr) {
+      console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr);
+    }
+
     return json({
       success: true,
       scheduleId: savedSchedule.id,
@@ -246,6 +277,27 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("❌ [ai-smart-schedule] Error:", error);
+    // Observability on failure too — best effort, never blocks the error response.
+    try {
+      const logClient = createClient(
+        Deno.env.get("SUPABASE_URL") || "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+      );
+      await logClient.from("edge_invocation_logs").insert({
+        function_name: "ai-smart-schedule",
+        user_id: farmerId || null,
+        payload: {
+          landId,
+          cropCode: resolvedCropCode ?? cropName,
+          http_status: 500,
+          task_count: 0,
+          error: (error as Error)?.message ?? String(error),
+          execution_time_ms: Date.now() - startTime,
+        },
+      });
+    } catch (logErr) {
+      console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr);
+    }
     return json({ error: (error as Error).message || "Schedule generation failed", executionTimeMs: Date.now() - startTime }, 500);
   }
 });
