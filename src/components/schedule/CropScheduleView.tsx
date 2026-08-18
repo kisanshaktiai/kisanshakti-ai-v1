@@ -22,6 +22,8 @@ import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
 import PendingSectionsNotice from './PendingSectionsNotice';
+import CurrentStageHeader from './CurrentStageHeader';
+import { useLandStage } from '@/hooks/useLandStage';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
@@ -81,6 +83,9 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
              i18n.language === 'ta' ? 'ta-IN' : 'en-US'
   });
   
+  // Land stage SSOT (lands.stage_uuid) — read-only; tasks never compute their own stage
+  const { stage: landStage, phaseOfTask, hasStageDisagreement } = useLandStage(landId);
+
   // Use React Query hook for schedules - replaces offlineDataService
   const { schedules, isLoading: loadingSchedules, refetch: refetchSchedules, isError, error } = useSchedules(landId);
   
@@ -530,6 +535,13 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           </Card>
         </div>
 
+        {/* Current crop stage from the land SSOT + stage-disagreement guardrail */}
+        <CurrentStageHeader
+          className="mb-3"
+          stage={landStage}
+          disagreement={hasStageDisagreement(tasks as any[])}
+        />
+
         {/* Sections with no database-backed agronomy yet — shown as explicitly pending */}
         <PendingSectionsNotice
           className="mb-3"
@@ -699,6 +711,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                     onTaskComplete={refetchSchedules}
                     onTaskUpdate={handleTaskUpdate}
                     onTakePhoto={(task: any) => setPhotoUploadTask(task as ScheduleTask)}
+                    stagePhaseOfTask={phaseOfTask}
                   />
                 ) : (
                   <div className="grid gap-3">
@@ -717,6 +730,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                             daysUntil={daysUntil}
                             readOnly={true}
                             onTakePhoto={() => setPhotoUploadTask(task)}
+                            stagePhase={phaseOfTask(task as any)}
                           />
                         </div>
                       );
