@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-08-18 15:45 UTC — success response (and crop_schedules.metadata) now carries missing_sections +
+//   i18n label keys so partial schedules render pending sections instead of silent gaps.
 // 2026-08-17 14:10 UTC — Phases 1/2/6: replaced the legacy 4.5k-line generator (hardcoded seed
 //   rates, NPK targets, labor rates, product lists, IPM thresholds) with the DB-SSOT pipeline:
 //   resolve-inputs -> baseline-generator -> narrate. LLM is narration-only.
@@ -154,6 +156,7 @@ serve(async (req) => {
         },
         metadata: {
           coverage: baseline.coverage,
+          missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k),
           gaps: baseline.gaps,
           provenance: baseline.provenance,
         },
@@ -212,6 +215,13 @@ serve(async (req) => {
       })
       .eq("id", landId);
 
+    // Sections the agronomic database could not cover for this crop. They are returned
+    // explicitly so the app can render them as "pending" instead of silently omitting them.
+    const missingSections = Object.entries(baseline.coverage)
+      .filter(([, ok]) => ok === false)
+      .map(([key]) => key);
+    const missingSectionLabelKeys = missingSections.map((k) => `schedule.section_pending.${k}`);
+
     return json({
       success: true,
       scheduleId: savedSchedule.id,
@@ -226,6 +236,8 @@ serve(async (req) => {
       totalTasks: baseline.tasks.length,
       totals: baseline.totals,
       coverage: baseline.coverage,
+      missing_sections: missingSections,
+      missing_section_label_keys: missingSectionLabelKeys,
       gaps: baseline.gaps,
       generatorVersion: GENERATOR_VERSION,
       narrationApplied: narration.narrated,

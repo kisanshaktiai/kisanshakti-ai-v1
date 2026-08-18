@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-08-18 15:45 UTC — hardened the fertilizer split loop: malformed splits skipped with a named gap,
+//   dasFromSplit guarded, and splits with a non-computable dose are recorded instead of emitting null-dose tasks.
 // 2026-08-17 14:02 UTC — Phase 2: created day-0 baseline generator. Builds the whole schedule
 //   from database rows only. Any missing source is reported as a coverage gap — never invented.
 // 2026-08-18 15:25 UTC — 546 fix: guarded the irrigation expansion loop (interval must be >=1,
@@ -79,6 +81,7 @@ function stageForDas(stages: StageRow[], das: number): StageRow | null {
 
 /** Read a DAS anchor out of a DB split-schedule entry without assuming any agronomy. */
 function dasFromSplit(split: Record<string, unknown>, stages: StageRow[]): { das: number | null; stage: StageRow | null } {
+  if (!split || typeof split !== "object") return { das: null, stage: null };
   const dasKeys = ["das", "day", "days", "days_after_sowing", "dap", "das_start"];
   for (const k of dasKeys) {
     const v = split[k];
@@ -181,10 +184,22 @@ export async function generateBaseline(
       pKg = fert.p2o5_kg_ha != null ? Number((fert.p2o5_kg_ha * areaHa).toFixed(2)) : null;
       kKg = fert.k2o_kg_ha != null ? Number((fert.k2o_kg_ha * areaHa).toFixed(2)) : null;
     }
+    if (fert.gaps?.length) gaps.push(...fert.gaps);
     if (!fert.splits.length) gaps.push("fertilizer_split_schedule_missing");
 
     for (const split of fert.splits) {
-      const { das, stage } = dasFromSplit(split, stages);
+      if (!split || typeof split !== "object" || Array.isArray(split)) {
+        gaps.push("fertilizer_split_malformed");
+        continue;
+      }
+      let das: number | null = null;
+      let stage: StageRow | null = null;
+      try {
+        ({ das, stage } = dasFromSplit(split, stages));
+      } catch {
+        gaps.push("fertilizer_split_malformed");
+        continue;
+      }
       if (das == null) {
         gaps.push("fertilizer_split_without_timing_skipped");
         continue;
@@ -199,7 +214,11 @@ export async function generateBaseline(
       const nutrient = String(split.nutrient ?? split.name ?? "NPK");
       const qtyBase = nutrient.toUpperCase().startsWith("N") ? nKg : nutrient.toUpperCase().startsWith("P") ? pKg : nutrient.toUpperCase().startsWith("K") ? kKg : null;
       const qty = fraction != null && qtyBase != null ? Number((qtyBase * fraction).toFixed(2)) : null;
-      if (qty == null) gaps.push("fertilizer_split_dose_not_computable");
+      if (qty == null) {
+        // Never emit a task with an unknown dose — record the gap and move on.
+        gaps.push("fertilizer_split_dose_not_computable");
+        continue;
+      }
 
       tasks.push({
         task_name: `Fertilizer application (${nutrient})`,
@@ -214,7 +233,7 @@ export async function generateBaseline(
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: "high",
         weather_dependent: true,
-        quantity: qty != null ? { value: qty, unit: "kg" } : null,
+        quantity: { value: qty, unit: "kg" },
         estimated_cost: null,
         rule_ids: [],
         confidence: fert.provenance.confidence ?? null,

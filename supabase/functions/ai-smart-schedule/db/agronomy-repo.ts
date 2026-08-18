@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-08-18 15:45 UTC — getFertilizerPlan: JSON.parse text-stored split_schedule (was always []);
+//   unparseable payloads report a "fertilizer_split_schedule_unparseable" gap instead of failing silently.
 // 2026-08-17 13:58 UTC — Phase 2: created DB-only agronomy repository. Every agronomic number
 //   returned here comes from a database row and carries provenance. No constants, no fallbacks.
 
@@ -106,6 +108,7 @@ export interface FertilizerPlan {
   p2o5_kg_ha: number | null;
   k2o_kg_ha: number | null;
   splits: Array<Record<string, unknown>>;
+  gaps: string[];
   provenance: Provenance;
 }
 
@@ -129,14 +132,36 @@ export async function getFertilizerPlan(
     (r.region_code == null ? 1 : 0);
 
   const best = [...rows].sort((a, b) => score(b) - score(a))[0];
-  const splitRaw = best.split_schedule;
-  const splits = Array.isArray(splitRaw) ? splitRaw : splitRaw && typeof splitRaw === "object" ? Object.values(splitRaw) : [];
+  const gaps: string[] = [];
+
+  // split_schedule is stored as text (a JSON string) in the DB, so parse it before
+  // normalizing. A parse failure is reported as a visible gap, never silently dropped.
+  let splitParsed: unknown = best.split_schedule;
+  if (typeof splitParsed === "string") {
+    const trimmed = splitParsed.trim();
+    if (!trimmed) {
+      splitParsed = null;
+    } else {
+      try {
+        splitParsed = JSON.parse(trimmed);
+      } catch {
+        splitParsed = null;
+        gaps.push("fertilizer_split_schedule_unparseable");
+      }
+    }
+  }
+  const splits = Array.isArray(splitParsed)
+    ? splitParsed
+    : splitParsed && typeof splitParsed === "object"
+      ? Object.values(splitParsed)
+      : [];
 
   return {
     n_kg_ha: best.n_kg_ha != null ? Number(best.n_kg_ha) : null,
     p2o5_kg_ha: best.p2o5_kg_ha != null ? Number(best.p2o5_kg_ha) : null,
     k2o_kg_ha: best.k2o_kg_ha != null ? Number(best.k2o_kg_ha) : null,
     splits: splits as Array<Record<string, unknown>>,
+    gaps,
     provenance: {
       table: "fertilizer_recommendation_master",
       row_id: best.id,
