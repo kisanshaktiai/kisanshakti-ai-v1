@@ -276,7 +276,11 @@ serve(async (req) => {
     console.error("❌ [ai-smart-schedule] Error:", error);
     // Observability on failure too — best effort, never blocks the error response.
     try {
-      await supabase.from("edge_invocation_logs").insert({
+      const logClient = createClient(
+        Deno.env.get("SUPABASE_URL") || "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+      );
+      await logClient.from("edge_invocation_logs").insert({
         function_name: "ai-smart-schedule",
         user_id: farmerId || null,
         payload: {
