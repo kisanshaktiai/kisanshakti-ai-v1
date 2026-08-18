@@ -134,11 +134,6 @@ export async function generateBaseline(
   coverage.stages = stages.length > 0;
   if (!stages.length) gaps.push("crop_stage_master_no_rows");
 
-  // A stage label that cannot be resolved to a crop_stage_master row is reported,
-  // never invented.
-  const noteUnmappableStage = (stageKey: string | null, stageId: string | null | undefined) => {
-    if (stageKey && !stageId) gaps.push("task_stage_unmappable");
-  };
 
   const durationDays = stages.reduce((max, s) => Math.max(max, s.das_max ?? 0), 0) || null;
 
