@@ -82,6 +82,9 @@ serve(async (req) => {
       language,
     });
 
+    resolvedCropCode = inputs.cropCode || null;
+
+
     if (!inputs.cropCode) {
       return json(
         { error: "Crop could not be resolved to the crop master", cropName, gaps: inputs.gaps },
