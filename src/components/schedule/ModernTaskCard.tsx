@@ -187,7 +187,6 @@ export default function ModernTaskCard({
                     adjustmentReason={task.adjustment_reason ?? task.reschedule_reason}
                   />
                 </div>
-                </div>
               </div>
               
               {/* Action buttons */}
