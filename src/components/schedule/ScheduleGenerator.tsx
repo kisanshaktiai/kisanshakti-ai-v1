@@ -129,7 +129,25 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
         },
       });
 
-      if (response.error) throw response.error;
+      if (response.error) {
+        // Non-2xx: the readable message lives in the response body, not error.message
+        const ctx = (response.error as any)?.context;
+        let body: any = null;
+        try {
+          body = ctx && typeof ctx.json === 'function' ? await ctx.json() : null;
+        } catch { /* body already consumed or not JSON */ }
+
+        if (body?.code === 'LAND_NOT_AVAILABLE') {
+          toast({
+            title: 'Active crop on this land',
+            description: body.error,
+            variant: 'destructive',
+          });
+          setGenerating(false);
+          return;
+        }
+        throw new Error(body?.error || response.error.message || 'Failed to generate schedule');
+      }
 
       const { data } = response;
       
