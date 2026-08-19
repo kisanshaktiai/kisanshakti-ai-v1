@@ -136,7 +136,7 @@ export default function FarmingModeBadge({ mode, onSelectModeKey, className }: F
                     {meta.icon}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold">{t(meta.i18nKey)}</span>
+                    <span className="block text-sm font-semibold">{label_(meta.i18nKey)}</span>
                     <span className="block truncate text-xs text-muted-foreground">{t(meta.descKey)}</span>
                   </span>
                   {selected && <Check className="h-4 w-4 shrink-0" />}
