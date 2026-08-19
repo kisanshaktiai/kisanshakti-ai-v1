@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatQuantity } from '@/lib/scheduleFormat';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductRecommendationCard from './ProductRecommendationCard';
 import StagePhaseBadge from './StagePhaseBadge';
