@@ -267,13 +267,38 @@ export function EnhancedAIChatInterface() {
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  // Land-scoped farming mode (SSOT: land_crops.farming_type → farmers.farming_preference).
+  // Land-scoped farming mode (SSOT: crop_schedules.farming_type → land_crops → farmers).
   // Hydrated on chat open (cached mirror for instant paint), refreshed from response metadata.
+  // FIX 5 (2026-08-19): on the "general" tab there is no land in the tab id, which
+  // used to skip the land-scoped SSOT entirely. Resolve the farmer's most recently
+  // updated land and use it for HYDRATION ONLY (active tab is unchanged).
+  const [hydrationFallbackLandId, setHydrationFallbackLandId] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'general' || !user?.id || !tenant?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('lands')
+          .select('id')
+          .eq('farmer_id', user.id)
+          .eq('tenant_id', tenant.id)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (!cancelled) setHydrationFallbackLandId(data?.[0]?.id ?? null);
+      } catch {
+        /* hydration fallback is best-effort */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, user?.id, tenant?.id]);
+
   const { farmingMode, setFarmingMode } = useFarmingModeHydration({
-    landId: activeTab !== 'general' ? activeTab : null,
+    landId: activeTab !== 'general' ? activeTab : hydrationFallbackLandId,
     farmerId: user?.id,
     tenantId: tenant?.id,
   });
+
 
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
