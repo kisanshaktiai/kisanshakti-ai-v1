@@ -131,7 +131,7 @@ interface CacheState {
   loadingPromise?: Promise<RuleSnapshot>;
 }
 
-const SNAPSHOT_TTL_MS = 300_000;           // 5 min backstop (same as crop-vocabulary-cache)
+const SNAPSHOT_TTL_MS = 1_800_000;         // FIX 4 (2026-08-19): 30 min backstop — warm invocations skip the 15s rule load
 const cache: CacheState = { snapshot: null };
 
 function client(explicit?: any): any {

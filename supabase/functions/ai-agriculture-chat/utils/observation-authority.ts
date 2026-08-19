@@ -11,7 +11,12 @@ export enum ObservationAuthority {
   /** Alias expansion, LLM semantic extraction, intent-to-observation mapping */
   INFERRED = 'INFERRED',
   /** Cross-crop injection, obsKeyExpansion, router fallback injection */
-  SYNTHETIC = 'SYNTHETIC'
+  SYNTHETIC = 'SYNTHETIC',
+  /**
+   * Intent candidate-space only (intent_observation_mapping expansion).
+   * NEVER evidence — these are questions to ask, not things the farmer reported.
+   */
+  CANDIDATE = 'CANDIDATE'
 }
 
 /** Numeric rank for authority comparison (higher = more authoritative) */
@@ -19,8 +24,10 @@ const AUTHORITY_RANK: Record<ObservationAuthority, number> = {
   [ObservationAuthority.CONFIRMED]: 4,
   [ObservationAuthority.EXTRACTED]: 3,
   [ObservationAuthority.INFERRED]: 2,
-  [ObservationAuthority.SYNTHETIC]: 1
+  [ObservationAuthority.SYNTHETIC]: 1,
+  [ObservationAuthority.CANDIDATE]: 0
 };
+
 
 // A single observation with its authority metadata.
 export interface AuthoredObservation {
@@ -111,12 +118,15 @@ export class AuthoredObservationSet {
     const extracted = this.getCodesByAuthority(ObservationAuthority.EXTRACTED);
     const inferred = this.getCodesByAuthority(ObservationAuthority.INFERRED);
     const synthetic = this.getCodesByAuthority(ObservationAuthority.SYNTHETIC);
+    const candidate = this.getCodesByAuthority(ObservationAuthority.CANDIDATE);
     
     const parts: string[] = [];
     if (confirmed.length > 0) parts.push(`CONFIRMED(${confirmed.length}): [${confirmed.join(', ')}]`);
     if (extracted.length > 0) parts.push(`EXTRACTED(${extracted.length}): [${extracted.join(', ')}]`);
     if (inferred.length > 0) parts.push(`INFERRED(${inferred.length}): [${inferred.join(', ')}]`);
     if (synthetic.length > 0) parts.push(`SYNTHETIC(${synthetic.length}): [${synthetic.join(', ')}]`);
+    if (candidate.length > 0) parts.push(`CANDIDATE(${candidate.length}): [${candidate.join(', ')}]`);
+
     
     return parts.join(' | ') || 'EMPTY';
   }

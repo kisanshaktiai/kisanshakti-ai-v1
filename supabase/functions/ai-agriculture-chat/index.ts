@@ -2872,14 +2872,45 @@ serve(async (req) => {
     const priorLockedCropContext = sessionState?.lockedCropContext || null;
 
     // Prefer response-provided context only when it actually carries a crop_name;
-    const lockedCropContextForSession =
+    const lockedCropContextForSession: any =
       (candidateLockedCropContextFromResponse && candidateLockedCropContextFromResponse.crop_name)
         ? {
             crop_name: candidateLockedCropContextFromResponse.crop_name ?? priorLockedCropContext?.crop_name,
             growth_stage: candidateLockedCropContextFromResponse.growth_stage ?? priorLockedCropContext?.growth_stage,
             days_since_sowing: candidateLockedCropContextFromResponse.days_since_sowing ?? priorLockedCropContext?.days_since_sowing,
           }
-        : priorLockedCropContext;
+        : (priorLockedCropContext ? { ...priorLockedCropContext } : null);
+
+    // SURGICAL FIX 2 (2026-08-19) — days_since_sowing is NEVER preserved from the
+    // session. Recompute it from crop_schedules.sowing_date on every turn and
+    // overwrite whatever the session carried.
+    if (lockedCropContextForSession && landId) {
+      try {
+        const { data: _schedRows } = await supabase
+          .from('crop_schedules')
+          .select('sowing_date')
+          .eq('land_id', landId)
+          .not('sowing_date', 'is', null)
+          .order('sowing_date', { ascending: false })
+          .limit(1);
+        const _sow = _schedRows?.[0]?.sowing_date ?? null;
+        if (_sow) {
+          const _ms = new Date(_sow as string).getTime();
+          if (Number.isFinite(_ms)) {
+            const _das = Math.max(0, Math.floor((Date.now() - _ms) / 86400000));
+            const _prev = lockedCropContextForSession.days_since_sowing;
+            lockedCropContextForSession.days_since_sowing = _das;
+            console.log(
+              `🌾 [DAS_RECOMPUTE] land=${landId} sowing_date=${_sow} das=${_das} ` +
+              `(was=${_prev ?? 'null'}) source=crop_schedules`,
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(`[DAS_RECOMPUTE] failed: ${(e as Error).message}`);
+      }
+    }
+
 
     console.log(`\n🧭 [CANONICAL_CONTEXT_TRACE] ═══ PRE-PERSIST CONTEXT ═══`);
     console.log(`   response_type:           ${orchestratorResponse.type}`);
