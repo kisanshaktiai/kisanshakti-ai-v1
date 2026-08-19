@@ -25,6 +25,15 @@ export function safeString(val: unknown): string {
   if (typeof val === 'object') {
     const obj = val as Record<string, unknown>;
     
+    // ActionTiming shape guard: never surface obj.reason (internal provenance)
+    if ('recommended_start' in obj || 'recommended_end' in obj) {
+      const timingCandidates = [obj.recommended_start, obj.fallback_text];
+      for (const c of timingCandidates) {
+        if (typeof c === 'string' && c.trim()) return c;
+      }
+      return '';
+    }
+    
     // Priority extraction for known ActionTiming-like objects
     const candidates = [
       obj.reason,

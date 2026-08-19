@@ -232,7 +232,7 @@ export function PrimaryActionCard({ action, index, language }: PrimaryActionCard
             )}
             <Badge variant="secondary" className="text-xs gap-1 bg-success/20 text-success">
               <BookOpen className="h-3 w-3" />
-              {action.ruleSources.join(' + ')}
+              {Array.isArray(action.ruleSources) ? action.ruleSources.join(' + ') : ''}
             </Badge>
           </div>
         </div>
@@ -273,7 +273,7 @@ export function SecondaryActionCard({ action, index, language }: SecondaryAction
             )}
             <Badge variant="secondary" className="text-xs gap-1 bg-warning/20 text-warning">
               <BookOpen className="h-3 w-3" />
-              {action.ruleSources.join(' + ')}
+              {Array.isArray(action.ruleSources) ? action.ruleSources.join(' + ') : ''}
             </Badge>
           </div>
         </div>
@@ -312,7 +312,7 @@ export function BlockedActionCard({ blockedAction, index, language }: BlockedAct
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <Badge variant="secondary" className="text-xs gap-1 bg-destructive/20 text-destructive">
               <AlertOctagon className="h-3 w-3" />
-              {blockedAction.blockedByRules.join(', ')}
+              {Array.isArray(blockedAction.blockedByRules) ? blockedAction.blockedByRules.join(', ') : ''}
             </Badge>
           </div>
         </div>
@@ -391,6 +391,17 @@ interface DecisionBrainCardsProps {
 export function DecisionBrainCards({ response }: DecisionBrainCardsProps) {
   const { t } = useTranslation();
   const labels = getLabels(t);
+  
+  // TRUE-DEGENERATE SUPPRESSION: hide only when there is genuinely nothing to show.
+  // Low confidence alone NEVER hides a card.
+  const normalizedConfidence = Number(response.confidence?.confidence) || 0;
+  const rulesApplied = Number(response.confidence?.rulesApplied) || 0;
+  const hasRealActions = (response.primaryActions || []).some(
+    (a) => typeof a?.action === 'string' && a.action.trim().length > 0
+  );
+  if (normalizedConfidence === 0 && rulesApplied === 0 && !hasRealActions) {
+    return null;
+  }
   
   return (
     <div className="w-full max-w-full overflow-hidden space-y-3 p-3">
