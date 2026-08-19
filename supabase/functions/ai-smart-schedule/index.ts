@@ -192,7 +192,20 @@ serve(async (req) => {
       .select()
       .single();
 
-    if (scheduleError) throw new Error(`Failed to save schedule: ${scheduleError.message}`);
+    if (scheduleError) {
+      if ((scheduleError.message || "").includes("LAND_NOT_AVAILABLE")) {
+        return json(
+          {
+            error:
+              "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
+            code: "LAND_NOT_AVAILABLE",
+            landId,
+          },
+          409,
+        );
+      }
+      throw new Error(`Failed to save schedule: ${scheduleError.message}`);
+    }
 
     const tasksToInsert = baseline.tasks.map((t, idx) => ({
       schedule_id: savedSchedule.id,
