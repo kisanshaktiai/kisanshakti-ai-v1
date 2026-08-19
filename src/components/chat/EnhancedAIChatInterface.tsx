@@ -278,7 +278,7 @@ export function EnhancedAIChatInterface() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase
+        const { data } = await supabaseWithAuth(user.id, tenant.id)
           .from('lands')
           .select('id')
           .eq('farmer_id', user.id)
