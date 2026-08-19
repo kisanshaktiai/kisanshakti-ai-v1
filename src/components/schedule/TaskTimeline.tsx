@@ -10,6 +10,7 @@ import { VideoHelpButton } from './VideoHelpButton';
 import ProductRecommendationCard from './ProductRecommendationCard';
 import TaskEditDialog from './TaskEditDialog';
 import { cn } from '@/lib/utils';
+import { formatQuantity } from '@/lib/scheduleFormat';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
@@ -609,26 +610,26 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {task.resources && (
                               <div className="space-y-3">
                                 {/* Quantity */}
-                                {task.resources.quantity && task.resources.quantity !== 'null' && (
+                                {formatQuantity(task.resources.quantity) && (
                                   <div>
                                     <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
                                       <Package className="h-4 w-4 text-info" />
                                       {t('schedule.task_card.quantity')}
                                     </h5>
                                     <p className="text-sm text-muted-foreground p-2 rounded-lg bg-info/5 border border-info/20">
-                                      {task.resources.quantity}
+                                      {formatQuantity(task.resources.quantity)}
                                     </p>
                                   </div>
                                 )}
                                 {/* Product Details */}
-                                {task.resources.product_details && task.resources.product_details !== 'null' && (
+                                {formatQuantity(task.resources.product_details) && (
                                   <div>
                                     <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
                                       <Leaf className="h-4 w-4 text-success" />
                                       {t('schedule.task_card.product_details')}
                                     </h5>
                                     <p className="text-sm text-muted-foreground p-2 rounded-lg bg-success/5 border border-success/20">
-                                      {task.resources.product_details}
+                                      {formatQuantity(task.resources.product_details)}
                                     </p>
                                   </div>
                                 )}

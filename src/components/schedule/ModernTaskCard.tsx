@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatQuantity } from '@/lib/scheduleFormat';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductRecommendationCard from './ProductRecommendationCard';
 import StagePhaseBadge from './StagePhaseBadge';
@@ -69,11 +70,17 @@ const taskTypeConfig = {
   other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'from-muted to-muted/20', borderColor: 'border-border/30', gradient: 'from-muted-foreground to-muted-foreground/60', emoji: '📋' }
 };
 
-// Check if a value is valid
+// Check if a value is valid (safe to render / show a block for)
 const isValidValue = (value: any): boolean => {
   if (value === null || value === undefined) return false;
   if (typeof value === 'string' && (value.trim() === '' || value.toLowerCase() === 'null' || value === 'undefined')) return false;
   if (Array.isArray(value) && value.length === 0) return false;
+  // Structured quantity object { value, unit }: only valid when value is present.
+  // Any other plain object is not safely renderable as a React child — treat as invalid.
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    if ('value' in value) return value.value !== null && value.value !== undefined;
+    return false;
+  }
   return true;
 };
 
@@ -370,27 +377,27 @@ export default function ModernTaskCard({
             )}
 
             {/* Quantity */}
-            {isValidValue(quantity) && (
+            {formatQuantity(quantity) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
                   <Package className="h-4 w-4 text-info" />
                   {t('schedule.task_card.quantity')}
                 </h4>
                 <div className="p-3 rounded-xl bg-info/5 border border-info/20">
-                  <p className="text-sm font-medium text-foreground">{quantity}</p>
+                  <p className="text-sm font-medium text-foreground">{formatQuantity(quantity)}</p>
                 </div>
               </div>
             )}
 
             {/* Product Details */}
-            {isValidValue(productDetails) && (
+            {formatQuantity(productDetails) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
                   <Leaf className="h-4 w-4 text-success" />
                   {t('schedule.task_card.product_details')}
                 </h4>
                 <div className="p-3 rounded-xl bg-success/5 border border-success/20">
-                  <p className="text-sm text-muted-foreground leading-relaxed">{productDetails}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{formatQuantity(productDetails)}</p>
                 </div>
               </div>
             )}
