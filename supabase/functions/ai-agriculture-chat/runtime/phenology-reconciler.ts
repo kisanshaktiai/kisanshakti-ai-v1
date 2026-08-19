@@ -13,6 +13,11 @@
  *   5. crop_stage_master DAS window   → 0.70
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ *   2026-08-19 12:45 UTC — v10: stage_transition_log authority hardening.
+ *     trigger_type='autonomous_init' capped at its own stored confidence (never
+ *     inflated to 0.90), age decay of 0.05 per 7 days (floor 0.30), and a
+ *     stale-transition tie-break (>14 days loses to a disagreeing biological
+ *     ledger candidate).
  *   2026-08-15 UTC — v9: honor crop_stage_master.das_reference. Rows anchored on
  *     'transplanting' are matched against DAT (days since transplant_date) and are
  *     ineligible when no transplant date exists; DAS remains the anchor otherwise.
@@ -188,10 +193,19 @@ export async function reconcilePhenology(
   }
 
   // ── Candidate: completed stage transitions (biological ledger) ─────────
+  // SURGICAL FIX 2 (2026-08-19):
+  //   • trigger_type='autonomous_init' is a bootstrap marker, NOT field evidence —
+  //     it can never be inflated above its own stored confidence.
+  //   • Age decay: −0.05 per 7 days since evaluated_at/transitioned_at (floor 0.30).
+  //   • Tie-break: a transition record older than 14 days loses to the biological
+  //     ledger (GDD / morphological / calendar candidates) when they disagree.
+  let transitionCandidate: PhenologyCandidate | null = null;
+  let transitionAgeDays: number | null = null;
+  let transitionTrigger: string | null = null;
   try {
     const { data: transitions } = await supabase
       .from('stage_transition_log')
-      .select('to_stage_uuid, trigger_type, confidence, evaluated_at')
+      .select('to_stage_uuid, trigger_type, confidence, evaluated_at, transitioned_at')
       .eq('land_id', landId)
       .not('to_stage_uuid', 'is', null)
       .order('evaluated_at', { ascending: false })
@@ -204,23 +218,49 @@ export async function reconcilePhenology(
         .eq('id', t.to_stage_uuid)
         .maybeSingle();
       if (stageRow) {
-        const isCalendarTrigger =
-          typeof t.trigger_type === 'string' &&
-          ['das', 'dat'].includes(String(t.trigger_type).toLowerCase());
-        candidates.push({
+        const trigger = typeof t.trigger_type === 'string' ? t.trigger_type.toLowerCase() : '';
+        transitionTrigger = trigger || null;
+        const stored = Number.isFinite(Number(t.confidence)) ? Number(t.confidence) : 0.5;
+        const isCalendarTrigger = ['das', 'dat'].includes(trigger);
+        const isAutonomousInit = trigger === 'autonomous_init';
+
+        let conf: number;
+        if (isAutonomousInit) {
+          // Never inflate a bootstrap row — cap at its OWN stored confidence.
+          conf = Math.min(stored, 0.5);
+        } else if (isCalendarTrigger) {
+          conf = Math.min(0.5, stored);
+        } else {
+          conf = Math.max(0.90, stored);
+        }
+
+        // Age decay from the freshest available timestamp.
+        const ts = t.transitioned_at ?? t.evaluated_at ?? null;
+        const tsMs = ts ? new Date(ts as string).getTime() : NaN;
+        if (Number.isFinite(tsMs)) {
+          transitionAgeDays = Math.max(0, Math.floor((Date.now() - tsMs) / 86400000));
+          const decay = Math.floor(transitionAgeDays / 7) * 0.05;
+          conf = Math.max(0.30, conf - decay);
+        }
+
+        transitionCandidate = {
           growth_stage: stageRow.growth_stage ?? null,
           stage_code: stageRow.stage_code ?? null,
           stage_uuid: stageRow.id ?? null,
           source: 'completed_stage_transitions',
-          confidence: isCalendarTrigger
-            ? Math.min(0.5, Number(t.confidence ?? 0.5))
-            : Math.max(0.90, Number(t.confidence ?? 0.90)),
-        });
+          confidence: conf,
+        };
+        candidates.push(transitionCandidate);
+        anchorLog.push(
+          `transition:trigger=${trigger || 'unknown'} stored=${stored.toFixed(2)} ` +
+          `age_days=${transitionAgeDays ?? 'null'} conf=${conf.toFixed(2)}`,
+        );
       }
     }
   } catch (_e) {
     // Optional signal.
   }
+
 
   // ── Candidate: morphological field evidence (highest authority) ────────
   try {
@@ -285,8 +325,26 @@ export async function reconcilePhenology(
   }
 
 
+  // SURGICAL FIX 2 — stale-transition tie-break: a transition record older than
+  // 14 days loses to a disagreeing biological-ledger candidate.
+  let eligible = candidates;
+  if (transitionCandidate && (transitionAgeDays ?? 0) > 14) {
+    const disagreeing = candidates.some(
+      (c) =>
+        c !== transitionCandidate &&
+        (c.growth_stage ?? '') !== (transitionCandidate!.growth_stage ?? ''),
+    );
+    if (disagreeing) {
+      eligible = candidates.filter((c) => c !== transitionCandidate);
+      anchorLog.push(
+        `transition_demoted:stale age_days=${transitionAgeDays} trigger=${transitionTrigger ?? 'unknown'}`,
+      );
+    }
+  }
+
   // Pick highest-confidence candidate.
-  const winner = candidates.reduce((best, c) => (c.confidence > best.confidence ? c : best), dasCandidate);
+  const winner = eligible.reduce((best, c) => (c.confidence > best.confidence ? c : best), dasCandidate);
+
   const changed =
     (winner.growth_stage ?? '') !== (dasCandidate.growth_stage ?? '') ||
     winner.source !== dasCandidate.source;

@@ -1,4 +1,7 @@
 /**
+ * CHANGE LOG (newest first)
+ *   2026-08-19 09:10 UTC — FIX 4: snapshot TTL 5min → 30min so warm invocations
+ *     skip the ~15s decision_rules load.
  * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/data/rule-repository.ts
  * ROLE:      Single in-memory snapshot of public.decision_rules (PERF ONLY).
@@ -131,7 +134,7 @@ interface CacheState {
   loadingPromise?: Promise<RuleSnapshot>;
 }
 
-const SNAPSHOT_TTL_MS = 300_000;           // 5 min backstop (same as crop-vocabulary-cache)
+const SNAPSHOT_TTL_MS = 1_800_000;         // FIX 4 (2026-08-19): 30 min backstop — warm invocations skip the 15s rule load
 const cache: CacheState = { snapshot: null };
 
 function client(explicit?: any): any {

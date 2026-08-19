@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG
+ * 2026-08-19 09:10 UTC — FIX 3: STAGE_GRAPH_MISS logs de-duplicated per (crop,stage) per 60s — stops the per-hypothesis log flood.
  * 2026-07-29 10:55 UTC — FIX C1-b: cultivationMethod arg resolves against the request-scoped lane (AsyncLocalStorage in stage-knowledge-cache) when omitted. No hardcoded families.
  * ═══════════════════════════════════════════════════════════════════════════
  * STAGE GRAPH READER — DB-backed replacement for the old shim
@@ -21,6 +22,21 @@
  *   - stagesEquivalent(a, b, crop?)           DB check or strict equality
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
+// SURGICAL FIX 3 (2026-08-19) — STAGE_GRAPH_MISS log de-duplication.
+// Stage lookups are already served from the in-memory stage-knowledge cache
+// (no DB round-trip), but an un-curated (crop, stage) pair used to log on every
+// hypothesis, flooding the turn log. Log each distinct miss once per window.
+const _missLogged = new Map<string, number>();
+const _MISS_LOG_TTL_MS = 60_000;
+function logMissOnce(key: string, line: string): void {
+  const now = Date.now();
+  const last = _missLogged.get(key);
+  if (last && now - last < _MISS_LOG_TTL_MS) return;
+  if (_missLogged.size > 500) _missLogged.clear();
+  _missLogged.set(key, now);
+  console.log(line);
+}
 
 /** Normalize any stage-like string to the canonical lowercase snake form. */
 export function normalizeStageKey(s: unknown): string {
@@ -67,9 +83,9 @@ export function stageFamily(
       const out = Array.from(new Set([k, ...fam.map((s) => normalizeStageKey(s))]));
       return out;
     }
-    console.log(`[STAGE_GRAPH_MISS] source=crop_stage_graph crop=${cropKey} stage=${k} action=singleton_fallback`);
+    logMissOnce(`fam:${cropKey}:${k}`, `[STAGE_GRAPH_MISS] source=crop_stage_graph crop=${cropKey} stage=${k} action=singleton_fallback`);
   } else if (cropKey) {
-    console.log(`[STAGE_GRAPH_MISS] source=cache_unavailable crop=${cropKey} stage=${k} action=singleton_fallback`);
+    logMissOnce(`nocache:${cropKey}:${k}`, `[STAGE_GRAPH_MISS] source=cache_unavailable crop=${cropKey} stage=${k} action=singleton_fallback`);
   }
   return [k];
 }
@@ -97,7 +113,7 @@ export function stagesEquivalent(
   if (result === false) return false;
   // null → DB has no data for either side; treat as unknown-not-equivalent
   // (previously this would consult the hardcoded map — now removed).
-  console.log(`[STAGE_GRAPH_MISS] source=crop_stage_graph crop=${cropKey} a=${x} b=${y} action=strict_fallback`);
+  logMissOnce(`eq:${cropKey}:${x}:${y}`, `[STAGE_GRAPH_MISS] source=crop_stage_graph crop=${cropKey} a=${x} b=${y} action=strict_fallback`);
   return false;
 }
 

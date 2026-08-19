@@ -3796,6 +3796,27 @@ export class AIAgentOrchestrator {
       // STEP 2b: Vocabulary bridge expansion (generic ↔ specific)
       // Adds canonical codes for any aliases and also adds aliases for any canonical codes.
       let expandedObservationCodes: string[] = (mappedCodes?.observation_codes || []) as unknown as string[];
+
+      // SURGICAL FIX 1 (2026-08-19) — intent candidate-space is NOT evidence.
+      // Codes produced by intent_observation_mapping expansion are tagged
+      // `intent:<INTENT>→<CODE>` in patterns_matched. Everything that is NOT
+      // text-derived is candidate space and may never be authored as
+      // EXTRACTED/CONFIRMED.
+      const _up = (c: unknown) => String(c ?? '').trim().toUpperCase();
+      const _intentDerivedCodes = new Set<string>(
+        (mappedCodes?.patterns_matched || [])
+          .filter((p: string) => typeof p === 'string' && p.startsWith('intent:') && p.includes('→'))
+          .map((p: string) => _up(p.split('→')[1]))
+          .filter(Boolean),
+      );
+      const textDerivedObsCodes = new Set<string>(
+        (mappedCodes?.observation_codes || [])
+          .map((c: string) => _up(c))
+          .filter((c: string) => c && !_intentDerivedCodes.has(c)),
+      );
+      /** True when the code did NOT come from the farmer's own text. */
+      const isIntentCandidateCode = (code: unknown) => !textDerivedObsCodes.has(_up(code));
+
       try {
         const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase);
         if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
@@ -4051,9 +4072,14 @@ export class AIAgentOrchestrator {
           expandedObservationCodes = expandedObservationCodes.map(c => aliasedMap[c] || c);
           // Deduplicate after aliasing
           expandedObservationCodes = Array.from(new Set(expandedObservationCodes));
+          // SURGICAL FIX 1 — keep the text-derived provenance set in sync with aliasing.
+          for (const [from, to] of Object.entries(aliasedMap)) {
+            if (textDerivedObsCodes.has(_up(from))) textDerivedObsCodes.add(_up(to));
+          }
           console.log(`      🔗 [LLM_VALIDATION] Aliased ${aliasedCount} generic codes → canonical peers: ${JSON.stringify(aliasedMap)}`);
           agentsUsed.push('OBSERVATION_ALIAS_RESOLVER');
         }
+
 
         if (!llmValidation.valid) {
           console.warn(`      ⚠️ [LLM_VALIDATION] Rejected: ${llmValidation.reason}`);
@@ -4094,12 +4120,23 @@ export class AIAgentOrchestrator {
       const safeConfidence = typeof semanticExtraction?.intent_confidence === 'number'
         ? semanticExtraction.intent_confidence
         : (typeof semanticExtraction?.confidence === 'number' ? semanticExtraction.confidence : 0.5);
-      
+
+      // SURGICAL FIX 1 (2026-08-19) — intent candidate-space stays OUT of the
+      // induction result (= out of the evidence ledger). It is handed to the
+      // clarification / hypothesis layers as candidates only.
+      const intentCandidateCodes: string[] = expandedObservationCodes.filter(isIntentCandidateCode);
+      const textDerivedMergeCodes: string[] = expandedObservationCodes.filter(c => !isIntentCandidateCode(c));
+      (this as any)._intentCandidateCodes = intentCandidateCodes;
+      console.log(
+        `      🧭 [INTENT_CANDIDATE_SPACE] candidates=${intentCandidateCodes.length} ` +
+        `text_derived=${textDerivedMergeCodes.length} (candidates are NOT evidence)`,
+      );
+
       if (expandedObservationCodes.length > 0) {
-        console.log(`      🔄 MERGING ${expandedObservationCodes.length} LLM+alias-expanded codes into induction result`);
+        console.log(`      🔄 MERGING ${textDerivedMergeCodes.length} text-derived codes into induction result`);
         
         // Convert codes to symptom symbols for the induction result
-        for (const code of expandedObservationCodes) {
+        for (const code of textDerivedMergeCodes) {
           // Check if symptom already exists in inductionResult
           const existingSymptom = inductionResult.symptoms.find(s => s.symbol === code);
           if (!existingSymptom) {
@@ -4111,6 +4148,8 @@ export class AIAgentOrchestrator {
             inductionResult.total_symbols_extracted++;
           }
         }
+        
+
         
         // Add affected part and distribution from LLM extraction
         if (mappedCodes.affected_part_code) {
@@ -4943,13 +4982,19 @@ export class AIAgentOrchestrator {
         });
       }
       
-      // Add from mapped codes - tagged as INFERRED (LLM semantic extraction)
+      // Add from mapped codes - INFERRED for text-derived, CANDIDATE for intent-space
       if (mappedCodes?.observation_codes) {
         mappedCodes.observation_codes.forEach((code: string) => {
           const norm = acceptSymbol(code);
           if (norm) {
             allObservationsForPreAuth.add(norm);
-            authoredObservations.add(norm, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
+            // SURGICAL FIX 1 — intent_observation_mapping expansion is candidate space.
+            if (isIntentCandidateCode(norm)) {
+              authoredObservations.add(norm, ObservationAuthority.CANDIDATE, 'INTENT_CANDIDATE_SPACE');
+            } else {
+              authoredObservations.add(norm, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
+            }
+
           } else {
             filteredOutCount++;
             console.log(`   🔇 [SYMBOL_CONTRACT] Rejected empty/invalid mapped code: "${String(code).substring(0, 30)}"`);
@@ -5173,7 +5218,12 @@ export class AIAgentOrchestrator {
             for (const code of preEc.real_codes) {
               if (!allObservationsForPreAuth.has(code)) {
                 allObservationsForPreAuth.add(code);
-                try { authoredObservations.add(code, ObservationAuthority.EXTRACTED, 'EVIDENCE_LOSS_RECOVERY'); } catch {/**/}
+                // SURGICAL FIX 1 — never promote intent candidate-space to evidence.
+                const recoveryAuthority = isIntentCandidateCode(code)
+                  ? ObservationAuthority.CANDIDATE
+                  : ObservationAuthority.EXTRACTED;
+                try { authoredObservations.add(code, recoveryAuthority, 'EVIDENCE_LOSS_RECOVERY'); } catch {/**/}
+
               }
             }
           } catch {/* non-fatal */}

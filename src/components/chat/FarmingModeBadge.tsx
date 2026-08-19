@@ -42,6 +42,31 @@ const ORDER: Array<Exclude<FarmingMode, 'unset'>> = [
   'fertilizer_pesticide',
 ];
 
+/**
+ * FIX 5 (2026-08-19) — first-paint fallback labels.
+ * `t()` returns '' until the ui_translations fetch resolves (or after the 24h
+ * mirror expires), which used to render NOTHING. These labels are used ONLY
+ * when the DB-backed string is still empty; ui_translations stays the author.
+ */
+const FALLBACK_LABELS: Record<string, Record<string, string>> = {
+  'mode.unset': { en: 'Select mode', hi: 'तरीका चुनें', mr: 'पद्धत निवडा' },
+  'mode.organic': { en: 'Organic', hi: 'जैविक', mr: 'जैविक' },
+  'mode.mixed': { en: 'Mixed', hi: 'मिश्र', mr: 'मिश्रित' },
+  'mode.chemical': { en: 'Chemical', hi: 'रासायनिक', mr: 'रासायनिक' },
+};
+
+const pickFallback = (key: string): string => {
+  const row = FALLBACK_LABELS[key];
+  if (!row) return '';
+  let lang = 'en';
+  try {
+    lang = (localStorage.getItem('i18nextLng') || navigator.language || 'en').slice(0, 2).toLowerCase();
+  } catch {
+    /* storage unavailable — default to en */
+  }
+  return row[lang] || row.en;
+};
+
 interface FarmingModeBadgeProps {
   mode: FarmingMode;
   /** Emits the i18n key of the picked mode (backend maps key → farming_type). */
@@ -53,9 +78,15 @@ export default function FarmingModeBadge({ mode, onSelectModeKey, className }: F
   const { t } = useUiTranslations();
   const [open, setOpen] = useState(false);
 
+  /** DB string first; hardcoded fallback only while translations are empty. */
+  const label_ = (key: string) => {
+    const v = t(key);
+    return (v && String(v).trim()) || pickFallback(key);
+  };
+
   const active = mode !== 'unset' ? MODE_META[mode] : null;
-  const label = active ? t(active.i18nKey) : t('mode.unset');
-  if (!label) return null;
+  const label = active ? label_(active.i18nKey) : label_('mode.unset');
+
 
   return (
     <>
@@ -105,7 +136,7 @@ export default function FarmingModeBadge({ mode, onSelectModeKey, className }: F
                     {meta.icon}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold">{t(meta.i18nKey)}</span>
+                    <span className="block text-sm font-semibold">{label_(meta.i18nKey)}</span>
                     <span className="block truncate text-xs text-muted-foreground">{t(meta.descKey)}</span>
                   </span>
                   {selected && <Check className="h-4 w-4 shrink-0" />}

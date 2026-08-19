@@ -84,41 +84,40 @@ export function useFarmingModeHydration(params: {
     (async () => {
       try {
         const client = supabaseWithAuth(farmerId, tenantId);
-        let resolved: FarmingMode = 'unset';
 
-        if (landId) {
-          // SSOT: the land's ACTIVE crop schedule.
-          const { data: sched } = await client
-            .from('crop_schedules')
-            .select('farming_type, updated_at')
-            .eq('land_id', landId)
-            .eq('tenant_id', tenantId)
-            .eq('is_active', true)
-            .order('updated_at', { ascending: false })
-            .limit(1);
-          resolved = normalizeMode(sched?.[0]?.farming_type);
-
-          // Legacy mirror.
-          if (resolved === 'unset') {
-            const { data } = await client
-              .from('land_crops')
-              .select('farming_type, updated_at')
-              .eq('land_id', landId)
-              .eq('tenant_id', tenantId)
-              .order('updated_at', { ascending: false })
-              .limit(1);
-            resolved = normalizeMode(data?.[0]?.farming_type);
-          }
-        }
-
-        if (resolved === 'unset') {
-          const { data: farmer } = await client
+        // FIX 5 (2026-08-19): all three legs fire in PARALLEL; priority is
+        // applied to the results, not to the network round-trips.
+        const [schedRes, cropsRes, farmerRes] = await Promise.all([
+          landId
+            ? client
+                .from('crop_schedules')
+                .select('farming_type, updated_at')
+                .eq('land_id', landId)
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+            : Promise.resolve({ data: null } as any),
+          landId
+            ? client
+                .from('land_crops')
+                .select('farming_type, updated_at')
+                .eq('land_id', landId)
+                .eq('tenant_id', tenantId)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+            : Promise.resolve({ data: null } as any),
+          client
             .from('farmers')
             .select('farming_preference')
             .eq('id', farmerId)
-            .maybeSingle();
-          resolved = preferenceToMode((farmer as any)?.farming_preference);
-        }
+            .maybeSingle(),
+        ]);
+
+        // Priority: active crop schedule → legacy land_crops mirror → farmer preference.
+        let resolved: FarmingMode = normalizeMode(schedRes?.data?.[0]?.farming_type);
+        if (resolved === 'unset') resolved = normalizeMode(cropsRes?.data?.[0]?.farming_type);
+        if (resolved === 'unset') resolved = preferenceToMode((farmerRes?.data as any)?.farming_preference);
 
         if (cancelled || cacheKeyRef.current !== cacheKey) return;
         setFarmingModeState(resolved);
@@ -128,6 +127,7 @@ export function useFarmingModeHydration(params: {
         console.warn('[FarmingMode] hydration failed:', (err as Error).message);
       }
     })();
+
 
     return () => { cancelled = true; };
   }, [landId, farmerId, tenantId, cacheKey]);

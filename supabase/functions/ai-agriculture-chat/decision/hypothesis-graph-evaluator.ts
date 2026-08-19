@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-19 09:10 UTC — FIX 3: queryAnchorHypotheses() is crop-scoped at the
+ *   source (hypothesis_master.crop_code IN crop/all/universal) — stops wheat &
+ *   sugarcane hypotheses anchoring on a rice field via generic keys.
  * 2026-07-29 10:30 UTC — LATENCY L2: evaluateHypothesisGraph memoized (20s TTL)
  *   on (crop, group, stage, das, obs-set, stage-conf). One traversal per turn
  *   shared by orchestrator / clarification builder / seed expander. Callers get
@@ -342,7 +345,7 @@ async function evaluateHypothesisGraphUncached(
   }
 
   // Step 1 — anchor hypotheses that mention ANY observed code
-  const anchorHypIds = await queryAnchorHypotheses(input.supabase, observed, trace);
+  const anchorHypIds = await queryAnchorHypotheses(input.supabase, observed, trace, input.crop_code);
   if (anchorHypIds.length === 0) {
     emitObsToHyp(trace, input, observed.observations, [], [], []);
     emitGraphDataGap(trace, observed.observations, 'NO_OBSERVATION_CONDITION_MATCH');
@@ -811,17 +814,45 @@ function hasDasCondition(conds: ConditionRow[]): boolean {
 
 // DB QUERIES
 
-async function queryAnchorHypotheses(supabase: any, observed: ObservationSet, trace: string): Promise<string[]> {
+async function queryAnchorHypotheses(
+  supabase: any,
+  observed: ObservationSet,
+  trace: string,
+  crop?: string | null,
+): Promise<string[]> {
   try {
+    // SURGICAL FIX 3 (2026-08-19) — crop scoping at the SOURCE.
+    // Previously every OBSERVATION condition row (565+) was scanned, so a
+    // generic key like `leaf_yellowing` anchored wheat/sugarcane hypotheses on
+    // a rice field. Restrict to the crop's own hypotheses (+ universal ones)
+    // inside the query itself.
+    let cropHypIds: string[] | null = null;
+    const cropKey = String(crop ?? '').trim().toLowerCase();
+    if (cropKey) {
+      const { data: masterRows, error: masterErr } = await supabase
+        .from('hypothesis_master')
+        .select('hypothesis_id')
+        .eq('is_active', true)
+        .in('crop_code', [cropKey, 'all', 'universal']);
+      if (masterErr) {
+        console.warn(`[HYP_GRAPH_CROP_SCOPE_ERR] ${masterErr.message} — falling back to unscoped scan`);
+      } else {
+        cropHypIds = [...new Set((masterRows ?? []).map((r: any) => String(r.hypothesis_id)).filter(Boolean))];
+        console.log(`[HYP_GRAPH_CROP_SCOPE] trace=${trace} crop=${cropKey} hypotheses=${cropHypIds.length}`);
+        if (cropHypIds.length === 0) cropHypIds = null; // nothing curated → don't blank the graph
+      }
+    }
+
     const rows: ConditionRow[] = [];
     const pageSize = 1000;
     for (let from = 0; ; from += pageSize) {
-      const { data, error } = await supabase
+      let q = supabase
         .from('hypothesis_conditions')
         .select('hypothesis_id, condition_type, condition_key, operator, value_json, is_required, weight')
         .eq('condition_type', 'OBSERVATION')
-        .eq('is_quarantined', false)
-        .range(from, from + pageSize - 1);
+        .eq('is_quarantined', false);
+      if (cropHypIds) q = q.in('hypothesis_id', cropHypIds);
+      const { data, error } = await q.range(from, from + pageSize - 1);
       if (error) {
         console.warn(`[HYP_GRAPH_ANCHOR_ERR] ${error.message}`);
         return [];
@@ -843,10 +874,11 @@ async function queryAnchorHypotheses(supabase: any, observed: ObservationSet, tr
       }
     }
     console.log(
-      `[OBS_CONDITION_MATCHER] trace=${trace} scanned=${rows.length} matched_rows=${matchedRows.length} ` +
+      `[OBS_CONDITION_MATCHER] trace=${trace} crop=${cropKey || 'n/a'} scanned=${rows.length} matched_rows=${matchedRows.length} ` +
         `hyp=[${cap(matchedRows.map((m) => m.hypothesis_id)).join(',')}]`,
     );
     return [...set];
+
   } catch (e) {
     console.warn(`[HYP_GRAPH_ANCHOR_EX] ${(e as Error).message}`);
     return [];
