@@ -1,3 +1,6 @@
+// EnhancedAIChatInterface = container (state/history/send).
+// ModernChatUI = per-message renderer.
+// All message-bubble/card changes go in ModernChatUI or the card components it imports.
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -47,133 +50,12 @@ import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
 import GeneralChatLandPicker from './GeneralChatLandPicker';
 import { useQueryClient } from '@tanstack/react-query';
 import { prefetchLandChatContext } from '@/hooks/useLandChatContext';
+import type { Message } from './types';
+import { normalizeConfidencePct } from './types';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  isPlaying?: boolean;
-  landContext?: any;
-  imageUrl?: string;
-  imageUrls?: string[];
-  videoUrl?: string;
-  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution' | 'orchestrator';
-  analysisResult?: VisionAnalysisResult;
-  awaitingSuggestionSelection?: boolean;
-  suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
-  structured?: {
-    greeting?: string;
-    landContext?: string;
-    sections?: Array<{type: string, title: string, content: string, color: string}>;
-    closingMessage?: string;
-    irrigation?: string;
-    fertilizer?: string;
-    pest?: string;
-    weather?: string;
-  };
-  structuredResponse?: {
-    cards: Array<{
-      id: string;
-      type: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation';
-      title: string;
-      content: string;
-      color: string;
-      gradient: string[];
-      icon: string;
-      priority: number;
-    }>;
-    language: string;
-  };
-  decisionBrainResponse?: DecisionBrainResponse;
-  // ✅ NEW: Data Audit for debugging - shows what data was found/missing
-  dataAudit?: any;
-  diagnosticData?: {
-    landName?: string;
-    cropName?: string;
-    daysAfterSowing?: number;
-    growthStage?: string;
-    areaDisplay?: string;
-    soilMoisture?: number;
-    ndviValue?: number;
-    temperature?: number;
-    symptomDetected?: string;
-    rankedCauses: Array<{
-      cause_name: string;
-      probability: number;
-      differentiating_factors: string[];
-    }>;
-    eliminatedCauses?: Array<{ causeName: string; eliminationReason: string }>;
-    disambiguationQuestions: Array<{
-      question: string;
-      yesIndicates: string;
-      noIndicates: string;
-    }>;
-    photoRequired?: boolean;
-    photoInstructions?: string[];
-    confidence: number;
-    mode: 'DIAGNOSTIC' | 'ACTION' | 'PHOTO_REQUIRED';
-  };
-  feedback?: 'like' | 'dislike' | null;
-  // ✅ Canonical Farmer Advisory structured JSON from backend
-  structuredAdvisory?: any;
-  isCopied?: boolean;
-  // Orchestrator response metadata
-  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
-  // ✅ NEW: Diagnostic Escalation data for expert-quality intermediate responses
-  diagnosticEscalationData?: {
-    hypotheses: Array<{
-      cause_code: string;
-      cause_name: string;
-      category: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'WEATHER' | 'OTHER';
-      confidence: number;
-      supporting_evidence: string[];
-      confirming_evidence: string[];
-      ruling_out_evidence: string[];
-      explanation?: string;
-    }>;
-    required_inputs: Array<{
-      type: 'PHOTO' | 'SEVERITY' | 'DISTRIBUTION' | 'SYMPTOM_DETAIL';
-      target: string;
-      rationale: string;
-      priority: 'HIGH' | 'MEDIUM' | 'LOW';
-      photo_guidance?: {
-        what_to_capture: string;
-        angle: string;
-        lighting: string;
-      };
-    }>;
-    current_confidence: number;
-    threshold_for_treatment: number;
-    diagnostic_summary?: string;
-    interim_monitoring?: string[];
-    photo_recommended?: boolean;
-  };
-  // PHASE 5: Add trace_id for debugging
-  traceId?: string;
-  analytics?: {
-    responseTime?: number;
-    tokensUsed?: {
-      prompt: number;
-      completion: number;
-      total: number;
-    };
-    queryComplexity?: string;
-  };
-  // Clarification options for Decision Brain interactive UI
-  clarificationOptions?: {
-    question?: string;
-    options?: Array<{ label: string; value?: string; description?: string; observation_key?: string }>;
-    selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
-  };
-  // ⚡ OPTIMISTIC UPDATE: Message status for WhatsApp-like UX
-  status?: MessageStatus;
-  // For retry logic
-  tempId?: string;
-}
 
 export function EnhancedAIChatInterface() {
   const { t } = useTranslation();
@@ -633,15 +515,15 @@ export function EnhancedAIChatInterface() {
           primaryActions: (metadata.decision_brain_data.primary_decision ? [metadata.decision_brain_data.primary_decision] : []).map((d: any) => ({
             action: d.action_text || d.action || '',
             reason: d.reason_text || d.reason || '',
-            timing: typeof d.timing === 'object' ? (d.timing?.reason || d.timing?.recommended_start || '') : (d.timing || ''),
-            ruleSources: d.rules_applied || d.rule_sources || [],
+            timing: typeof d.timing === 'object' ? (d.timing?.recommended_start || '') : (d.timing || ''),
+            ruleSources: Array.isArray(d.rules_applied) ? d.rules_applied : (Array.isArray(d.rule_sources) ? d.rule_sources : []),
             priority: d.priority || 1
           })),
           secondaryActions: (metadata.decision_brain_data.secondary_decisions || []).map((d: any) => ({
             action: d.action_text || d.action || '',
             reason: d.reason_text || d.reason || '',
-            timing: typeof d.timing === 'object' ? (d.timing?.reason || d.timing?.recommended_start || '') : (d.timing || ''),
-            ruleSources: d.rules_applied || d.rule_sources || [],
+            timing: typeof d.timing === 'object' ? (d.timing?.recommended_start || '') : (d.timing || ''),
+            ruleSources: Array.isArray(d.rules_applied) ? d.rules_applied : (Array.isArray(d.rule_sources) ? d.rule_sources : []),
             priority: d.priority || 2
           })),
           blockedActions: (metadata.decision_brain_data.blocked_actions || []).map((b: any) => ({
@@ -651,9 +533,9 @@ export function EnhancedAIChatInterface() {
           })),
           confidence: {
             riskLevel: metadata.decision_brain_data.risk_level || 'LOW',
-            confidence: metadata.decision_brain_data.confidence || 0,
+            confidence: normalizeConfidencePct(metadata.decision_brain_data.confidence),
             explanations: [],
-            rulesApplied: metadata?.rules_applied?.length || 0
+            rulesApplied: typeof metadata?.rules_applied === 'number' ? metadata.rules_applied : (Array.isArray(metadata?.rules_applied) ? metadata.rules_applied.length : 0)
           },
           farmerMessage: msg.content || '',
           language: msg.language || 'en'
@@ -791,6 +673,11 @@ export function EnhancedAIChatInterface() {
                   return false;
                 }
                 
+                // Filter 2b: Drop assistant rows persisted with internal debug provenance
+                if (msg.role === 'assistant' && (content.includes('layered_rule_result') || content.includes('OPTION_SELECTED path'))) {
+                  return false;
+                }
+
                 // Filter 3: Skip system acknowledgment messages
                 if (content === 'Response generated' || content === 'Processing...') {
                   return false;
@@ -995,6 +882,11 @@ export function EnhancedAIChatInterface() {
                 return false;
               }
               
+              // Filter 2b: Drop assistant rows persisted with internal debug provenance
+              if (msg.role === 'assistant' && (content.includes('layered_rule_result') || content.includes('OPTION_SELECTED path'))) {
+                return false;
+              }
+
               // Filter 3: Skip system acknowledgment messages
               if (content === 'Response generated' || content === 'Processing...') {
                 return false;
