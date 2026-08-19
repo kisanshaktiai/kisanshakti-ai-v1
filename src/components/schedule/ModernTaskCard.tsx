@@ -377,27 +377,27 @@ export default function ModernTaskCard({
             )}
 
             {/* Quantity */}
-            {isValidValue(quantity) && (
+            {formatQuantity(quantity) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
                   <Package className="h-4 w-4 text-info" />
                   {t('schedule.task_card.quantity')}
                 </h4>
                 <div className="p-3 rounded-xl bg-info/5 border border-info/20">
-                  <p className="text-sm font-medium text-foreground">{quantity}</p>
+                  <p className="text-sm font-medium text-foreground">{formatQuantity(quantity)}</p>
                 </div>
               </div>
             )}
 
             {/* Product Details */}
-            {isValidValue(productDetails) && (
+            {formatQuantity(productDetails) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
                   <Leaf className="h-4 w-4 text-success" />
                   {t('schedule.task_card.product_details')}
                 </h4>
                 <div className="p-3 rounded-xl bg-success/5 border border-success/20">
-                  <p className="text-sm text-muted-foreground leading-relaxed">{productDetails}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{formatQuantity(productDetails)}</p>
                 </div>
               </div>
             )}
