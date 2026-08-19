@@ -178,6 +178,15 @@ export default function ModernTaskCard({
                       </Badge>
                     )}
                   </div>
+                  <RescheduledNotice
+                    variant="full"
+                    className="mt-2"
+                    autoRescheduled={task.auto_rescheduled}
+                    originalDate={task.original_date}
+                    taskDate={task.task_date}
+                    adjustmentReason={task.adjustment_reason ?? task.reschedule_reason}
+                  />
+                </div>
                 </div>
               </div>
               
