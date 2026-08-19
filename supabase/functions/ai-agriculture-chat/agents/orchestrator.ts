@@ -3290,8 +3290,9 @@ export class AIAgentOrchestrator {
                   recommended_start: new Date().toISOString(),
                   recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                   weather_dependency: false,
-                  reason: 'Built from layered_rule_result.primary_decision in OPTION_SELECTED path'
+                  reason: null
                 },
+                provenance: 'Built from layered_rule_result.primary_decision in OPTION_SELECTED path',
                 application_details: {
                   product_name: layeredPrimaryDecision.active_ingredient || (layeredPrimaryDecision.action_text?.split(' ').slice(1, 3).join(' ')) || 'IPM',
                   product_type: 'IPM',
@@ -3371,8 +3372,9 @@ export class AIAgentOrchestrator {
                     recommended_start: new Date().toISOString(),
                     recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                     weather_dependency: false,
-                    reason: 'Built from matched_responses fallback in OPTION_SELECTED path'
+                    reason: null
                   },
+                  provenance: 'Built from matched_responses fallback in OPTION_SELECTED path',
                   application_details: {
                     product_name: (firstMatch as any).active_ingredient || (firstMatch.action_text?.split(' ').slice(1, 3).join(' ')) || 'IPM',
                     product_type: 'IPM',
@@ -9696,8 +9698,9 @@ export class AIAgentOrchestrator {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                 weather_dependency: false,
-                reason: 'Recovered from layered_rule_result.primary_decision in orchestrator'
+                reason: null
               },
+              provenance: 'Recovered from layered_rule_result.primary_decision in orchestrator',
               application_details: {
                 // BUG-B FIX: Use actual active_ingredient instead of placeholder
                 product_name: ruleActiveIngredient || 'See structured response',

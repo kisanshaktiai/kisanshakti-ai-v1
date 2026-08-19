@@ -1586,8 +1586,9 @@ serve(async (req) => {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                 weather_dependency: false,
-                reason: 'Recovered from layered_rule_result.primary_decision'
+                reason: null
               },
+              provenance: 'Recovered from layered_rule_result.primary_decision',
               application_details: buildRichApplicationDetails(layeredPrimaryDecision, recoveredProductName, recoveredProductType),
               expected_outcomes: {
                 efficacy_percent: layeredPrimaryDecision.weighted_confidence 
