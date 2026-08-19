@@ -108,6 +108,8 @@
       "generated_success": "AI अनुसूची बनाई गई!",
       "generated_description": "{{crop}} के लिए स्मार्ट खेती अनुसूची बनाई गई",
       "generation_failed": "बनाना विफल",
+      "land_not_available_title": "इस खेत में फसल सक्रिय है",
+      "land_not_available_description": "नई फसल अनुसूची शुरू करने से पहले पिछली कटाई की पुष्टि करें।",
       "refreshing": "रीफ्रेश हो रहा है",
       "syncing_latest": "नवीनतम डेटा सिंक हो रहा है..."
     },

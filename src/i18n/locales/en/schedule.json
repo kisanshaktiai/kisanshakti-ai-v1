@@ -168,6 +168,8 @@
       "generated_success": "AI Schedule Generated!",
       "generated_description": "Smart farming schedule created for {{crop}}",
       "generation_failed": "Generation Failed",
+      "land_not_available_title": "Active crop on this land",
+      "land_not_available_description": "Confirm the previous harvest before starting a new crop schedule.",
       "refreshing": "Refreshing",
       "syncing_latest": "Syncing latest data..."
     },
