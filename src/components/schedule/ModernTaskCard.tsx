@@ -70,11 +70,17 @@ const taskTypeConfig = {
   other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'from-muted to-muted/20', borderColor: 'border-border/30', gradient: 'from-muted-foreground to-muted-foreground/60', emoji: '📋' }
 };
 
-// Check if a value is valid
+// Check if a value is valid (safe to render / show a block for)
 const isValidValue = (value: any): boolean => {
   if (value === null || value === undefined) return false;
   if (typeof value === 'string' && (value.trim() === '' || value.toLowerCase() === 'null' || value === 'undefined')) return false;
   if (Array.isArray(value) && value.length === 0) return false;
+  // Structured quantity object { value, unit }: only valid when value is present.
+  // Any other plain object is not safely renderable as a React child — treat as invalid.
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    if ('value' in value) return value.value !== null && value.value !== undefined;
+    return false;
+  }
   return true;
 };
 
