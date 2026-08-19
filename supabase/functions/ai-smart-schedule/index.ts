@@ -66,13 +66,30 @@ serve(async (req) => {
     // Ownership: the land must belong to this farmer + tenant
     const { data: ownedLand } = await supabase
       .from("lands")
-      .select("id, farmer_id, tenant_id")
+      .select("id, farmer_id, tenant_id, lifecycle_status, active_schedule_id, current_crop")
       .eq("id", landId)
       .maybeSingle();
     if (!ownedLand) return json({ error: "Land not found" }, 404);
     if (ownedLand.farmer_id !== farmerId || ownedLand.tenant_id !== tenantId) {
       return json({ error: "Land does not belong to this farmer" }, 403);
     }
+
+    // Fail fast (409) instead of burning ~45s of generation only to hit the
+    // LAND_NOT_AVAILABLE guard at insert time.
+    if (ownedLand.lifecycle_status === "CROP_ACTIVE") {
+      return json(
+        {
+          error:
+            "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
+          code: "LAND_NOT_AVAILABLE",
+          landId,
+          currentCrop: ownedLand.current_crop ?? null,
+          activeScheduleId: ownedLand.active_schedule_id ?? null,
+        },
+        409,
+      );
+    }
+
 
     // ── PHASE 1: resolve farmer inputs to database IDs ──────────────────────
     const inputs = await resolveInputs(supabase, {
@@ -175,7 +192,20 @@ serve(async (req) => {
       .select()
       .single();
 
-    if (scheduleError) throw new Error(`Failed to save schedule: ${scheduleError.message}`);
+    if (scheduleError) {
+      if ((scheduleError.message || "").includes("LAND_NOT_AVAILABLE")) {
+        return json(
+          {
+            error:
+              "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
+            code: "LAND_NOT_AVAILABLE",
+            landId,
+          },
+          409,
+        );
+      }
+      throw new Error(`Failed to save schedule: ${scheduleError.message}`);
+    }
 
     const tasksToInsert = baseline.tasks.map((t, idx) => ({
       schedule_id: savedSchedule.id,
