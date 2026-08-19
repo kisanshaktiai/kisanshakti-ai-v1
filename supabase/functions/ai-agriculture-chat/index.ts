@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-19 09:10 UTC — FIX 2: locked_context.days_since_sowing is recomputed
+//     from crop_schedules.sowing_date on EVERY turn and overwrites the value
+//     preserved from the session (no more frozen DAS).
 //   2026-08-15 18:20 UTC — Farming-mode resolution chain: land_crops.farming_type
 //     (land-scoped SSOT) overrides farmers.farming_preference; farming_mode +
 //     label attached to every response metadata; one-time ask chip now fires

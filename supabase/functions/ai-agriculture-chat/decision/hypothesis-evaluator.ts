@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-19 09:10 UTC — FIX 4: turn-scoped memo on evaluateCandidateHypotheses
+//     (trace_id + authoritative inputs); the legacy path no longer re-runs the
+//     full candidate evaluation a second time per turn.
 //   2026-08-07 17:50 UTC — GAP A: CandidateHypothesis carries decision_rules.i18n_key
 //     so the clarification UI translates by key, not by English sentence.
 /**

@@ -1,4 +1,7 @@
 /**
+ * CHANGE LOG (newest first)
+ *   2026-08-19 09:10 UTC — FIX 4: snapshot TTL 5min → 30min so warm invocations
+ *     skip the ~15s decision_rules load.
  * ═══════════════════════════════════════════════════════════════════════════
  * FILE:      supabase/functions/ai-agriculture-chat/data/rule-repository.ts
  * ROLE:      Single in-memory snapshot of public.decision_rules (PERF ONLY).

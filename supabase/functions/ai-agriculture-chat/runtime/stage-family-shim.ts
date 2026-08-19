@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG
+ * 2026-08-19 09:10 UTC — FIX 3: STAGE_GRAPH_MISS logs de-duplicated per (crop,stage) per 60s — stops the per-hypothesis log flood.
  * 2026-07-29 10:55 UTC — FIX C1-b: cultivationMethod arg resolves against the request-scoped lane (AsyncLocalStorage in stage-knowledge-cache) when omitted. No hardcoded families.
  * ═══════════════════════════════════════════════════════════════════════════
  * STAGE GRAPH READER — DB-backed replacement for the old shim

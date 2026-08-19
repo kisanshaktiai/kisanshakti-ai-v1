@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-19 09:10 UTC — FIX 3: queryAnchorHypotheses() is crop-scoped at the
+ *   source (hypothesis_master.crop_code IN crop/all/universal) — stops wheat &
+ *   sugarcane hypotheses anchoring on a rice field via generic keys.
  * 2026-07-29 10:30 UTC — LATENCY L2: evaluateHypothesisGraph memoized (20s TTL)
  *   on (crop, group, stage, das, obs-set, stage-conf). One traversal per turn
  *   shared by orchestrator / clarification builder / seed expander. Callers get
