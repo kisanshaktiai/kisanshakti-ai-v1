@@ -32,6 +32,10 @@ interface Task {
   weather_dependent: boolean;
   climate_adjusted?: boolean;
   climate_adjustment_reason?: string;
+  auto_rescheduled?: boolean | null;
+  original_date?: string | null;
+  adjustment_reason?: string | null;
+  reschedule_reason?: string | null;
   instructions?: string[];
   precautions?: string[];
   resources?: Record<string, any>;
