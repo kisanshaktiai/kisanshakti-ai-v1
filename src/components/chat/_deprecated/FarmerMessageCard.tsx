@@ -28,7 +28,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { safeString, safeStringArray } from './utils/safe-render';
+import { safeString, safeStringArray } from '../utils/safe-render';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
