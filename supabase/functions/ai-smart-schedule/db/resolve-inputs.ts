@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-08-19 18:10 UTC — cropCycle fix: exclude 'universal' from the stage-graph distinct-cycle
+//   check (it means "applies to any cycle", not a real cycle) and default to 'plant' when no
+//   single non-universal cycle can be inferred. Prevents NOT NULL violation on
+//   crop_schedules.crop_cycle for crops like rice (plant/ratoon/universal).
 // 2026-08-17 13:55 UTC — Phase 1: created server-side input resolver. Resolves farmer free-text
 //   crop/variety/cultivation inputs to database IDs. ZERO hardcoded agronomy.
 
@@ -207,7 +211,11 @@ export async function resolveInputs(
   );
   if (!cultivationMethod) gaps.push("cultivation_method_unresolved");
 
-  // Crop cycle from land record or the crop's stage graph
+  // Crop cycle from land record or the crop's stage graph. `universal` is not a
+  // real cycle — it means "applies to any cycle" — so it must never be used as the
+  // selected cycle. Only a single non-universal distinct cycle can be inferred from
+  // the stage graph; otherwise we fall back to the standard main-crop cycle 'plant'
+  // (the column's DB default and one of the two CHECK-allowed values 'plant'/'ratoon').
   let cropCycle = params.cropCycle || (land?.crop_cycle as string) || null;
   if (!cropCycle && cropCode) {
     const { data: cycles } = await supabase
@@ -215,9 +223,19 @@ export async function resolveInputs(
       .select("crop_cycle")
       .eq("crop_code", cropCode)
       .eq("is_active", true);
-    const distinct = [...new Set((cycles || []).map((c: Record<string, unknown>) => c.crop_cycle).filter(Boolean).map(String))];
+    const distinct = [
+      ...new Set(
+        (cycles || [])
+          .map((c: Record<string, unknown>) => c.crop_cycle)
+          .filter(Boolean)
+          .map(String)
+          .filter((c) => c.toLowerCase() !== "universal"),
+      ),
+    ];
     if (distinct.length === 1) cropCycle = distinct[0];
   }
+  // Never return null for a crop that has a schedule: default to the standard main-crop cycle.
+  if (!cropCycle) cropCycle = "plant";
 
   // Soil fertility class from the latest soil test (never assumed)
   let soilFertilityClass: string | null = null;
