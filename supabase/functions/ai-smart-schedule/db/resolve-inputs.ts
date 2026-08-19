@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-08-19 18:10 UTC — cropCycle fix: exclude 'universal' from the stage-graph distinct-cycle
+//   check (it means "applies to any cycle", not a real cycle) and default to 'plant' when no
+//   single non-universal cycle can be inferred. Prevents NOT NULL violation on
+//   crop_schedules.crop_cycle for crops like rice (plant/ratoon/universal).
 // 2026-08-17 13:55 UTC — Phase 1: created server-side input resolver. Resolves farmer free-text
 //   crop/variety/cultivation inputs to database IDs. ZERO hardcoded agronomy.
 
