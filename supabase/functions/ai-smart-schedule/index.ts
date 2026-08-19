@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-08-19 19:08 UTC — Normalize LAND_NOT_AVAILABLE errors in the outer boundary so
+//   concurrent lifecycle changes always return an expected 409 instead of a fatal 500.
 // 2026-08-18 18:20 UTC — Phase A: persist stage_uuid (crop_stage_master FK) on inserted tasks.
 // 2026-08-18 17:58 UTC — PROMPT 1.6: insert an edge_invocation_logs row on both success and
 //   error paths (function_name, user_id, payload={landId,cropCode,http_status,task_count,gaps,
@@ -308,7 +310,12 @@ serve(async (req) => {
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("❌ [ai-smart-schedule] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const landNotAvailable = errorMessage.includes("LAND_NOT_AVAILABLE");
+
+    if (!landNotAvailable) {
+      console.error("❌ [ai-smart-schedule] Error:", error);
+    }
     // Observability on failure too — best effort, never blocks the error response.
     try {
       const logClient = createClient(
@@ -321,15 +328,28 @@ serve(async (req) => {
         payload: {
           landId,
           cropCode: resolvedCropCode ?? cropName,
-          http_status: 500,
+          http_status: landNotAvailable ? 409 : 500,
           task_count: 0,
-          error: (error as Error)?.message ?? String(error),
+          error: errorMessage,
           execution_time_ms: Date.now() - startTime,
         },
       });
     } catch (logErr) {
       console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr);
     }
-    return json({ error: (error as Error).message || "Schedule generation failed", executionTimeMs: Date.now() - startTime }, 500);
+    if (landNotAvailable) {
+      return json(
+        {
+          error:
+            "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
+          code: "LAND_NOT_AVAILABLE",
+          landId,
+          executionTimeMs: Date.now() - startTime,
+        },
+        409,
+      );
+    }
+
+    return json({ error: errorMessage || "Schedule generation failed", executionTimeMs: Date.now() - startTime }, 500);
   }
 });

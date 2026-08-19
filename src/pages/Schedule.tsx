@@ -132,17 +132,6 @@ export default function Schedule() {
     
     try {
 
-      // First, deactivate any existing active schedules for this land
-      const { error: deactivateError } = await supabase
-        .from('crop_schedules')
-        .update({ is_active: false })
-        .eq('land_id', selectedLand.id)
-        .eq('is_active', true);
-
-      if (deactivateError) {
-        console.error('Error deactivating old schedules:', deactivateError);
-      }
-
       // Structure weather data for AI with proper error handling (using hooks called at component top level)
       const weatherData = {
         current: currentWeather ? {
@@ -207,8 +196,27 @@ export default function Schedule() {
 
       // Handle edge function errors
       if (response.error) {
+        const context = (response.error as { context?: Response }).context;
+        let errorBody: { code?: string; error?: string } | null = null;
+
+        try {
+          errorBody = context ? await context.clone().json() : null;
+        } catch {
+          errorBody = null;
+        }
+
+        if (errorBody?.code === 'LAND_NOT_AVAILABLE') {
+          setRetryCount(0);
+          toast({
+            title: t('schedule.main.land_not_available_title'),
+            description: t('schedule.main.land_not_available_description'),
+            variant: 'destructive',
+          });
+          return;
+        }
+
         console.error('❌ [Schedule] Edge function error:', response.error);
-        throw new Error(response.error.message || 'Edge function returned an error');
+        throw new Error(errorBody?.error || response.error.message || 'Edge function returned an error');
       }
 
       const { data } = response;

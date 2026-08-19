@@ -108,6 +108,8 @@
       "generated_success": "AI वेळापत्रक तयार केले!",
       "generated_description": "{{crop}} साठी स्मार्ट शेती वेळापत्रक तयार केले",
       "generation_failed": "तयार करणे अयशस्वी",
+      "land_not_available_title": "या शेतात पीक सक्रिय आहे",
+      "land_not_available_description": "नवीन पीक वेळापत्रक सुरू करण्यापूर्वी मागील कापणीची पुष्टी करा.",
       "refreshing": "रीफ्रेश होत आहे",
       "syncing_latest": "नवीनतम डेटा सिंक होत आहे..."
     },
