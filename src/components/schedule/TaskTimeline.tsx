@@ -418,6 +418,12 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                       {task.task_name}
                                     </h4>
                                     <StagePhaseBadge phase={stagePhaseOfTask?.(task)} />
+                                    <RescheduledNotice
+                                      autoRescheduled={task.auto_rescheduled}
+                                      originalDate={task.original_date}
+                                      taskDate={task.task_date}
+                                      adjustmentReason={task.adjustment_reason ?? task.reschedule_reason}
+                                    />
                                   </div>
 
                                   
