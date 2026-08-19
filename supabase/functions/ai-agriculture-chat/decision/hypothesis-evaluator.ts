@@ -679,9 +679,55 @@ function getCropCodeVariantsForDB(cropCode: string): string[] {
   return Array.from(variants);
 }
 
-export async function evaluateCandidateHypotheses(
+// ───────────────────────────────────────────────────────────────────────────
+// FIX 4 (2026-08-19) — TURN-SCOPED MEMO
+// The candidate set was evaluated TWICE per turn (graph path + legacy path),
+// duplicating the full rule scan. Memoize by trace_id + the authoritative
+// inputs so the second caller reuses the first evaluation. The legacy path
+// itself is untouched.
+// ───────────────────────────────────────────────────────────────────────────
+const HYP_EVAL_MEMO_TTL_MS = 120_000;
+const hypEvalMemo = new Map<string, { at: number; result: Promise<HypothesisEvaluationOutput> }>();
+
+function hypEvalMemoKey(input: HypothesisEvaluationInput): string {
+  const gt = (input as any).graph_truth ?? null;
+  return [
+    String(input.trace_id ?? ''),
+    String(gt?.crop_code ?? input.crop_code ?? ''),
+    String(gt?.biological_stage ?? input.growth_stage ?? ''),
+    String(gt?.DAS ?? input.days_since_sowing ?? ''),
+    String((input as any).variety_id ?? ''),
+    [...(gt?.canonical_observations ?? input.known_observations ?? [])].map(String).sort().join(','),
+  ].join('::').toLowerCase();
+}
+
+export function evaluateCandidateHypotheses(
   input: HypothesisEvaluationInput
 ): Promise<HypothesisEvaluationOutput> {
+  const now = Date.now();
+  for (const [k, v] of hypEvalMemo) if (now - v.at > HYP_EVAL_MEMO_TTL_MS) hypEvalMemo.delete(k);
+
+  // No trace id → cannot scope safely to a turn; always evaluate fresh.
+  if (!input.trace_id) return evaluateCandidateHypothesesUncached(input);
+
+  const key = hypEvalMemoKey(input);
+  const hit = hypEvalMemo.get(key);
+  if (hit) {
+    console.log(`[HYP_EVAL_MEMO_HIT] trace=${input.trace_id} age_ms=${now - hit.at}`);
+    return hit.result;
+  }
+  const result = evaluateCandidateHypothesesUncached(input).catch((e) => {
+    hypEvalMemo.delete(key);
+    throw e;
+  });
+  hypEvalMemo.set(key, { at: now, result });
+  return result;
+}
+
+async function evaluateCandidateHypothesesUncached(
+  input: HypothesisEvaluationInput
+): Promise<HypothesisEvaluationOutput> {
+
   const traceId = input.trace_id || `hyp_${Date.now()}`;
 
   // Step 3 — HYPOTHESIS CONTRACT: GraphTruth is the sole authority.
