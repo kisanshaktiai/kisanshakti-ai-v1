@@ -1,3 +1,4 @@
+// DEPRECATED — not mounted anywhere. Do not edit for chat fixes.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * WHAT → HOW → WHY RESPONSE CARD - Mobile-First 2030-Ready UI

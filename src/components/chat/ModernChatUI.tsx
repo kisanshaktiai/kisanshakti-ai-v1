@@ -1,3 +1,6 @@
+// EnhancedAIChatInterface = container (state/history/send).
+// ModernChatUI = per-message renderer.
+// All message-bubble/card changes go in ModernChatUI or the card components it imports.
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Check, Zap, CheckCircle, Play } from 'lucide-react';
@@ -16,6 +19,7 @@ import { DataAuditCards, type DataAudit } from './DataAuditCards';
 import { ClarificationOptionsUI } from './ClarificationOptionsUI';
 import { DiagnosticEscalationUI } from './DiagnosticEscalationUI';
 import { CanonicalAdvisoryCard } from './CanonicalAdvisoryCard';
+import type { Message } from './types';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC ESCALATION TYPES
@@ -54,65 +58,6 @@ export interface DiagnosticEscalationData {
   photo_recommended?: boolean;
 }
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  isPlaying?: boolean;
-  feedback?: 'like' | 'dislike' | null;
-  isCopied?: boolean;
-  // Image/video support
-  imageUrl?: string;
-  imageUrls?: string[];
-  videoUrl?: string;
-  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution' | 'orchestrator';
-  // Full analysis result for detailed cards
-  analysisResult?: VisionAnalysisResult;
-  // For targeted solutions
-  suggestionType?: SuggestionType;
-  awaitingSuggestionSelection?: boolean;
-  structuredResponse?: {
-    cards: Array<{
-      id: string;
-      type: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation';
-      title: string;
-      content: string;
-      color: string;
-      gradient: string[];
-      icon: string;
-      priority: number;
-    }>;
-    language: string;
-  };
-  // ✅ NEW: Decision Brain structured response
-  decisionBrainResponse?: DecisionBrainResponse;
-  // Data Audit for debugging
-  dataAudit?: DataAudit;
-  // PHASE 5: trace_id for debugging
-  traceId?: string;
-  analytics?: {
-    responseTime?: number;
-    tokensUsed?: {
-      prompt: number;
-      completion: number;
-      total: number;
-    };
-    queryComplexity?: string;
-  };
-  // Clarification options from Decision Brain
-  clarificationOptions?: {
-    question?: string;
-    options?: Array<{ label: string; value?: string; description?: string; observation_key?: string }>;
-    selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
-  };
-  // Orchestrator type for detecting clarification questions
-  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
-  // ✅ Canonical Advisory structured JSON
-  structuredAdvisory?: any;
-  // ✅ NEW: Diagnostic Escalation data for expert-quality intermediate responses
-  diagnosticEscalationData?: DiagnosticEscalationData;
-}
 
 interface ModernChatUIProps {
   message: Message;

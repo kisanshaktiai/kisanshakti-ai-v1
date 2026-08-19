@@ -1,3 +1,4 @@
+// DEPRECATED — not mounted anywhere. Do not edit for chat fixes.
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * FARMER MESSAGE CARD - Structured Response Renderer

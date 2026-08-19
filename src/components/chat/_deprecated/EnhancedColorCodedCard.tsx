@@ -1,3 +1,4 @@
+// DEPRECATED — not mounted anywhere. Do not edit for chat fixes.
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
