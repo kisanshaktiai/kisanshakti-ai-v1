@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductRecommendationCard from './ProductRecommendationCard';
 import StagePhaseBadge from './StagePhaseBadge';
+import RescheduledNotice from './RescheduledNotice';
 import type { StagePhase } from '@/hooks/useLandStage';
 
 interface TaskCardProps {
@@ -177,6 +178,14 @@ export default function ModernTaskCard({
                       </Badge>
                     )}
                   </div>
+                  <RescheduledNotice
+                    variant="full"
+                    className="mt-2"
+                    autoRescheduled={task.auto_rescheduled}
+                    originalDate={task.original_date}
+                    taskDate={task.task_date}
+                    adjustmentReason={task.adjustment_reason ?? task.reschedule_reason}
+                  />
                 </div>
               </div>
               

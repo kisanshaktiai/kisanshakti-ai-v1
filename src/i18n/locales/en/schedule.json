@@ -302,6 +302,13 @@
     "current_stage": {
       "label": "Your crop:",
       "mismatch": "Your crop stage was updated from a recent observation, but this schedule was built around different stages. You may want to regenerate the schedule."
+    },
+    "rescheduled": {
+      "label": "Date changed",
+      "later": "Moved {{days}} day(s) later — your crop reached this stage later than expected",
+      "earlier": "Moved {{days}} day(s) earlier — your crop reached this stage sooner than expected",
+      "generic": "This date was adjusted to match your crop's actual growth stage",
+      "was": "Was {{date}}"
     }
   },
   "common": {
