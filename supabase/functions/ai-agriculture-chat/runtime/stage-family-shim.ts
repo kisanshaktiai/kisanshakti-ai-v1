@@ -82,7 +82,7 @@ export function stageFamily(
       const out = Array.from(new Set([k, ...fam.map((s) => normalizeStageKey(s))]));
       return out;
     }
-    console.log(`[STAGE_GRAPH_MISS] source=crop_stage_graph crop=${cropKey} stage=${k} action=singleton_fallback`);
+    logMissOnce(`fam:${cropKey}:${k}`, `[STAGE_GRAPH_MISS] source=crop_stage_graph crop=${cropKey} stage=${k} action=singleton_fallback`);
   } else if (cropKey) {
     logMissOnce(`nocache:${cropKey}:${k}`, `[STAGE_GRAPH_MISS] source=cache_unavailable crop=${cropKey} stage=${k} action=singleton_fallback`);
   }
