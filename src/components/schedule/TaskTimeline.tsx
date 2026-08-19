@@ -17,6 +17,7 @@ import { useLanguageStore } from '@/stores/languageStore';
 import { useTranslation } from 'react-i18next';
 
 import StagePhaseBadge from './StagePhaseBadge';
+import RescheduledNotice from './RescheduledNotice';
 import type { StagePhase } from '@/hooks/useLandStage';
 
 interface Task {

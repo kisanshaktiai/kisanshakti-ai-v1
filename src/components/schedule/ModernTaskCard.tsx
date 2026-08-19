@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductRecommendationCard from './ProductRecommendationCard';
 import StagePhaseBadge from './StagePhaseBadge';
+import RescheduledNotice from './RescheduledNotice';
 import type { StagePhase } from '@/hooks/useLandStage';
 
 interface TaskCardProps {
