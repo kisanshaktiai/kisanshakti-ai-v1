@@ -10,6 +10,7 @@ import { VideoHelpButton } from './VideoHelpButton';
 import ProductRecommendationCard from './ProductRecommendationCard';
 import TaskEditDialog from './TaskEditDialog';
 import { cn } from '@/lib/utils';
+import { formatQuantity } from '@/lib/scheduleFormat';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
