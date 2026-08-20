@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-08-20 01:35 UTC — Return LAND_NOT_AVAILABLE as a typed domain result over HTTP 200;
+//   Supabase invoke treats every non-2xx response as a runtime FunctionsHttpError, which caused
+//   an expected active-crop conflict to be reported as a blank-screen edge-function failure.
 // 2026-08-19 19:08 UTC — Normalize LAND_NOT_AVAILABLE errors in the outer boundary so
 //   concurrent lifecycle changes always return an expected 409 instead of a fatal 500.
 // 2026-08-18 18:20 UTC — Phase A: persist stage_uuid (crop_stage_master FK) on inserted tasks.
@@ -76,11 +79,14 @@ serve(async (req) => {
       return json({ error: "Land does not belong to this farmer" }, 403);
     }
 
-    // Fail fast (409) instead of burning ~45s of generation only to hit the
-    // LAND_NOT_AVAILABLE guard at insert time.
+    // Fail fast instead of burning ~45s of generation only to hit the
+    // LAND_NOT_AVAILABLE guard at insert time. This is an expected domain result,
+    // not a transport failure: Supabase invoke turns any non-2xx status into a
+    // FunctionsHttpError before the client can consume the typed result.
     if (ownedLand.lifecycle_status === "CROP_ACTIVE") {
       return json(
         {
+          success: false,
           error:
             "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
           code: "LAND_NOT_AVAILABLE",
@@ -88,7 +94,7 @@ serve(async (req) => {
           currentCrop: ownedLand.current_crop ?? null,
           activeScheduleId: ownedLand.active_schedule_id ?? null,
         },
-        409,
+        200,
       );
     }
 
@@ -198,12 +204,13 @@ serve(async (req) => {
       if ((scheduleError.message || "").includes("LAND_NOT_AVAILABLE")) {
         return json(
           {
+            success: false,
             error:
               "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
             code: "LAND_NOT_AVAILABLE",
             landId,
           },
-          409,
+          200,
         );
       }
       throw new Error(`Failed to save schedule: ${scheduleError.message}`);
@@ -328,7 +335,8 @@ serve(async (req) => {
         payload: {
           landId,
           cropCode: resolvedCropCode ?? cropName,
-          http_status: landNotAvailable ? 409 : 500,
+          http_status: landNotAvailable ? 200 : 500,
+          domain_code: landNotAvailable ? "LAND_NOT_AVAILABLE" : null,
           task_count: 0,
           error: errorMessage,
           execution_time_ms: Date.now() - startTime,
@@ -340,13 +348,14 @@ serve(async (req) => {
     if (landNotAvailable) {
       return json(
         {
+          success: false,
           error:
             "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
           code: "LAND_NOT_AVAILABLE",
           landId,
           executionTimeMs: Date.now() - startTime,
         },
-        409,
+        200,
       );
     }
 

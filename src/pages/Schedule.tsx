@@ -220,6 +220,18 @@ export default function Schedule() {
       }
 
       const { data } = response;
+
+      // LAND_NOT_AVAILABLE is an expected domain result returned over HTTP 200 so
+      // Supabase does not promote it to a FunctionsHttpError/runtime failure.
+      if (data?.code === 'LAND_NOT_AVAILABLE') {
+        setRetryCount(0);
+        toast({
+          title: t('schedule.main.land_not_available_title'),
+          description: t('schedule.main.land_not_available_description'),
+          variant: 'destructive',
+        });
+        return;
+      }
       
       // Check if data contains an error response from the edge function
       if (data?.error) {
