@@ -1048,7 +1048,7 @@ export async function formatStructuredResponseForLLM(
       parts.push(`ORGANIC_SAME_AS_MAIN: render one advisory + this line: "${getUiString('advisory.organic_same', l)}"`);
       if (org.organic_same_reason) parts.push(`Reason (verbatim source): ${org.organic_same_reason}`);
     } else if (org.lead_with_organic) {
-      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farming mode = organic_only) ═══`);
+      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farming mode is organic-leaning) ═══`);
       parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
       parts.push(`🌿 PRIMARY RECOMMENDATION (organic, verbatim source): ${org.organic_alternative}`);
       parts.push(`Then render the chemical action above as clearly-labelled SECONDARY under header: ${getUiString('advisory.chemical_alt_header', l)}`);
