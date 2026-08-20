@@ -150,6 +150,17 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
       }
 
       const { data } = response;
+
+      // Expected active-crop conflict: the function returns a typed HTTP-200
+      // domain result so Supabase does not surface it as a runtime error.
+      if (data?.code === 'LAND_NOT_AVAILABLE') {
+        toast({
+          title: t('schedule.main.land_not_available_title'),
+          description: t('schedule.main.land_not_available_description'),
+          variant: 'destructive',
+        });
+        return;
+      }
       
       // Check for suitability warning
       if (data.suitabilityWarning && !forceGenerate) {
