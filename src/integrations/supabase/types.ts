@@ -8731,6 +8731,7 @@ export type Database = {
           temp_min_celsius: number | null
           total_cost_estimated: number | null
           treatment_type: string | null
+          trigger_class: string
           triggers_rule_ids: string[] | null
           uncertainty_handling_mode: string | null
           university_source: string | null
@@ -8913,6 +8914,7 @@ export type Database = {
           temp_min_celsius?: number | null
           total_cost_estimated?: number | null
           treatment_type?: string | null
+          trigger_class?: string
           triggers_rule_ids?: string[] | null
           uncertainty_handling_mode?: string | null
           university_source?: string | null
@@ -9095,6 +9097,7 @@ export type Database = {
           temp_min_celsius?: number | null
           total_cost_estimated?: number | null
           treatment_type?: string | null
+          trigger_class?: string
           triggers_rule_ids?: string[] | null
           uncertainty_handling_mode?: string | null
           university_source?: string | null
