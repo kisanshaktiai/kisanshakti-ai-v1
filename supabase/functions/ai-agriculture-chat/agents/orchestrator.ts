@@ -4650,6 +4650,11 @@ export class AIAgentOrchestrator {
         console.log(`\n✅ [INDUCTION_GATE] Allowing symbolic brain for ${queryRoute.route} route WITHOUT symptoms (uses crop/stage/NDVI rules)`);
         agentsUsed.push('SYMPTOM_FREE_ROUTE');
       }
+
+      // 2026-08-20 — LANE B eligibility: symptom-free route + zero farmer-text
+      // symptoms → context-driven (crop/stage/DAS) rule selection is allowed.
+      (this as any).__laneBEligible =
+        isSymptomFreeRoute && !hasSymptoms && Number((this as any).__textOnlySymptomCount ?? 0) === 0;
       
       console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
       
