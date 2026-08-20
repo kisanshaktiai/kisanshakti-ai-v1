@@ -4264,7 +4264,7 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
     case 'SYSTEM_ERROR':
       console.log(`   ⚠️ SYSTEM_ERROR response - generating helpful fallback`);
       const fallbackAdvice = response.error?.fallback_advice || '';
-      return generateHelpfulErrorResponse(lang, fallbackAdvice);
+      return generateHelpfulErrorResponse(lang, fallbackAdvice, __landCtx);
 
     // SC-2 FIX (2026-07-25): DIAGNOSTIC_ESCALATION — emitted by
     case 'DIAGNOSTIC_ESCALATION': {
@@ -4281,7 +4281,7 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
     default:
       // NEVER silent - even for unknown types, provide helpful response
       console.log(`   ⚠️ Unknown response type: ${response.type} - generating helpful fallback`);
-      return generateHelpfulErrorResponse(lang, '');
+      return generateHelpfulErrorResponse(lang, '', __landCtx);
   }
 }
 
@@ -4489,7 +4489,17 @@ function generateGenericAcknowledgment(lang: string): string {
 }
 
 // PRODUCTION FIX: Generate helpful error response with actionable guidance
-function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
+function generateHelpfulErrorResponse(
+  lang: string,
+  fallbackAdvice: string,
+  landCtx?: FallbackLandCtx | null,
+): string {
+  // 2026-08-20 — when the land-scoped canonical context already knows the crop,
+  // never ask the farmer what the crop is. Localized, context-aware prompt.
+  const ctxText = buildContextAwareFallback(landCtx, lang);
+  if (ctxText) {
+    return `${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}${ctxText}`;
+  }
   // English-only — forceTranslateResponse() handles localization at runtime
   return `🙏 Hello Farmer Friend!
 
