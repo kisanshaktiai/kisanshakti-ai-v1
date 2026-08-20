@@ -4130,8 +4130,61 @@ function generateActionDescription(primary: any, lang: string): string {
 }
 
 // POST-PROCESSING: Convert Decision Brain output to natural language
+/**
+ * 2026-08-20 — CONTEXT-AWARE FALLBACKS. A land-scoped room already knows the
+ * crop / stage / DAS. No farmer-visible fallback may ask for them again.
+ */
+export interface FallbackLandCtx {
+  crop_name?: string | null;
+  growth_stage?: string | null;
+  days_since_sowing?: number | null;
+}
+
+function deriveLandCtx(response: any): FallbackLandCtx | null {
+  const land = response?.dataAudit?.land;
+  const canon = response?.metadata?.canonicalContext;
+  const crop = land?.current_crop ?? canon?.crop_code ?? canon?.crop_name ?? null;
+  if (!crop) return null;
+  return {
+    crop_name: String(crop),
+    growth_stage: land?.growth_stage ?? canon?.growth_stage ?? null,
+    days_since_sowing: land?.days_since_sowing ?? canon?.days_since_sowing ?? null,
+  };
+}
+
+const FALLBACK_STAGE_LABELS: Record<string, Record<string, string>> = {
+  mr: { germination: 'उगवण', seedling: 'रोपे', tillering: 'फुटवे', vegetative: 'वाढ', panicle_initiation: 'लोंबी सुरुवात', booting: 'पोटरी', flowering: 'फुलोरा', maturity: 'पक्वता' },
+  hi: { germination: 'अंकुरण', seedling: 'अंकुर', tillering: 'कल्ले', vegetative: 'बढ़वार', panicle_initiation: 'बाली प्रारंभ', booting: 'गोभ', flowering: 'फूल', maturity: 'परिपक्वता' },
+};
+
+function stageLabel(stage: string | null | undefined, lang: string): string {
+  const key = String(stage ?? '').trim().toLowerCase();
+  if (!key) return '';
+  return FALLBACK_STAGE_LABELS[lang]?.[key] || key.replace(/_/g, ' ');
+}
+
+/** Localized fallback that NEVER asks for information already in context. */
+function buildContextAwareFallback(landCtx: FallbackLandCtx | null | undefined, lang: string): string | null {
+  if (!landCtx?.crop_name) return null;
+  const crop = landCtx.crop_name;
+  const das = landCtx.days_since_sowing;
+  const stage = stageLabel(landCtx.growth_stage, lang);
+  const dasPart = (typeof das === 'number' && isFinite(das)) ? das : null;
+  if (lang === 'mr') {
+    const ctx = [dasPart !== null ? `दिवस ${dasPart}` : '', stage].filter(Boolean).join(', ');
+    return `तुमच्या ${crop} पिकासाठी${ctx ? ` (${ctx})` : ''} नेमकं काय हवं आहे ते थोडक्यात सांगा — खत, पाणी, फवारणी की दुसरं काही?`;
+  }
+  if (lang === 'hi') {
+    const ctx = [dasPart !== null ? `दिन ${dasPart}` : '', stage].filter(Boolean).join(', ');
+    return `आपकी ${crop} फसल के लिए${ctx ? ` (${ctx})` : ''} आपको क्या चाहिए, संक्षेप में बताइए — खाद, पानी, छिड़काव या कुछ और?`;
+  }
+  const ctx = [dasPart !== null ? `day ${dasPart}` : '', stage].filter(Boolean).join(', ');
+  return `For your ${crop} crop${ctx ? ` (${ctx})` : ''}, tell me briefly what you need — fertiliser, water, spraying or something else?`;
+}
+
 async function getResponseContent(response: OrchestratorResponse, language: string): Promise<string> {
   const lang = language;
+  const __landCtx = deriveLandCtx(response as any);
   console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
   console.log(`📝 [PostProcessor] Response assembly:`, {
     has_communication: !!response.communication,
@@ -4211,7 +4264,7 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
     case 'SYSTEM_ERROR':
       console.log(`   ⚠️ SYSTEM_ERROR response - generating helpful fallback`);
       const fallbackAdvice = response.error?.fallback_advice || '';
-      return generateHelpfulErrorResponse(lang, fallbackAdvice);
+      return generateHelpfulErrorResponse(lang, fallbackAdvice, __landCtx);
 
     // SC-2 FIX (2026-07-25): DIAGNOSTIC_ESCALATION — emitted by
     case 'DIAGNOSTIC_ESCALATION': {
@@ -4228,7 +4281,7 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
     default:
       // NEVER silent - even for unknown types, provide helpful response
       console.log(`   ⚠️ Unknown response type: ${response.type} - generating helpful fallback`);
-      return generateHelpfulErrorResponse(lang, '');
+      return generateHelpfulErrorResponse(lang, '', __landCtx);
   }
 }
 
@@ -4436,7 +4489,17 @@ function generateGenericAcknowledgment(lang: string): string {
 }
 
 // PRODUCTION FIX: Generate helpful error response with actionable guidance
-function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
+function generateHelpfulErrorResponse(
+  lang: string,
+  fallbackAdvice: string,
+  landCtx?: FallbackLandCtx | null,
+): string {
+  // 2026-08-20 — when the land-scoped canonical context already knows the crop,
+  // never ask the farmer what the crop is. Localized, context-aware prompt.
+  const ctxText = buildContextAwareFallback(landCtx, lang);
+  if (ctxText) {
+    return `${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}${ctxText}`;
+  }
   // English-only — forceTranslateResponse() handles localization at runtime
   return `🙏 Hello Farmer Friend!
 
@@ -4832,7 +4895,13 @@ function transformOrchestratorResponseWithContent(
   }
 
   // For other types, delegate to the original function
-  return transformOrchestratorResponse(response, language, sessionId, startTime);
+  // 2026-08-20 — the persisted, translated content is authoritative for every
+  // turn: whatever the client sees must equal what ai_chat_messages stored.
+  const legacyPayload = transformOrchestratorResponse(response, language, sessionId, startTime);
+  if (typeof preGeneratedContent === 'string' && preGeneratedContent.trim()) {
+    legacyPayload.response = preGeneratedContent;
+  }
+  return legacyPayload;
 }
 
 function transformOrchestratorResponse(
@@ -4999,14 +5068,45 @@ function transformOrchestratorResponse(
         source: 'orchestrator_v1'
       };
 
+    // 2026-08-20 — DIAGNOSTIC_ESCALATION must never fall through to default.
+    case 'DIAGNOSTIC_ESCALATION': {
+      const dLandCtx = deriveLandCtx(response as any);
+      const dComm = (response.communication?.main_message?.full_text as any);
+      const dText = dComm?.[language] || dComm?.en
+        || response.communication?.farmer_message
+        || (response.escalation as any)?.[`message_${language}`]
+        || response.escalation?.message_en
+        || buildContextAwareFallback(dLandCtx, language)
+        || 'Please share a bit more detail so I can advise you.';
+      return {
+        response: dText,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        dataAudit: response.dataAudit,
+        metadata: {
+          type: 'diagnostic_escalation',
+          orchestrator_type: 'DIAGNOSTIC_ESCALATION',
+          confidence: response.metadata?.confidence,
+          agents_used: response.metadata?.agents_used,
+          trace_id: response.metadata?.trace_id
+        },
+        source: 'orchestrator_v1'
+      };
+    }
+
     case 'SYSTEM_ERROR':
     default:
       // CRITICAL FIX: Try to provide helpful response instead of error
       // Use fallback advice from error response if available
       const fallbackAdvice = response.error?.fallback_advice;
-      
-      // Build a helpful message instead of just "sorry"
-      const helpfulMessage = `🙏 Working on your question.
+      const errLandCtx = deriveLandCtx(response as any);
+      const ctxPrompt = buildContextAwareFallback(errLandCtx, language);
+
+      // Context-aware: never ask for crop/problem the land room already knows.
+      const helpfulMessage = ctxPrompt
+        ? `${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}${ctxPrompt}`
+        : `🙏 Working on your question.
 
 ${fallbackAdvice || 'Please ask your question again or provide more details.'}
 

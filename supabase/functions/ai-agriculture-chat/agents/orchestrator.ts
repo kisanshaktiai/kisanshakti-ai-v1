@@ -4140,6 +4140,13 @@ export class AIAgentOrchestrator {
       );
 
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
+
+      // 2026-08-20 — TEXT-ONLY SYMPTOM COUNTER. Only real observation symbols
+      // extracted from the farmer's own text count as symptoms for the DB
+      // intent contract. Candidate/IOM seeds must never inflate this.
+      (this as any).__textOnlySymptomCount = Array.isArray((inductionResult as any)?.symptoms)
+        ? (inductionResult as any).symptoms.filter((s: any) => isRealObservation(String(s?.symbol ?? s))).length
+        : 0;
       
       console.log(`      ${getInductionSummary(inductionResult)}`);
       console.log(`      Symptoms: [${getSymptomSymbolsForRules(inductionResult).join(', ')}]`);
@@ -4365,9 +4372,7 @@ export class AIAgentOrchestrator {
       // 2026-08-20 — DB INTENT CONTRACT AUTHORITY. A DIRECT / 0-round intent whose
       // turn produced ZERO farmer-text symptom extractions must never be forced
       // into symptom clarification (seed, preempt or route veto).
-      const __turnTextSymptomCount = Array.isArray((inductionResult as any)?.symptoms)
-        ? (inductionResult as any).symptoms.length
-        : 0;
+      const __turnTextSymptomCount = Number((this as any).__textOnlySymptomCount ?? 0);
       const directContractNoSymptoms = directHardBypass && __turnTextSymptomCount === 0;
       (this as any).__directContractNoSymptoms = directContractNoSymptoms;
       const diagnosticIntentOwnsClarification =
@@ -4645,6 +4650,11 @@ export class AIAgentOrchestrator {
         console.log(`\n✅ [INDUCTION_GATE] Allowing symbolic brain for ${queryRoute.route} route WITHOUT symptoms (uses crop/stage/NDVI rules)`);
         agentsUsed.push('SYMPTOM_FREE_ROUTE');
       }
+
+      // 2026-08-20 — LANE B eligibility: symptom-free route + zero farmer-text
+      // symptoms → context-driven (crop/stage/DAS) rule selection is allowed.
+      (this as any).__laneBEligible =
+        isSymptomFreeRoute && !hasSymptoms && Number((this as any).__textOnlySymptomCount ?? 0) === 0;
       
       console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
       
@@ -8618,6 +8628,64 @@ export class AIAgentOrchestrator {
           });
         }
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
+
+        // ── LANE B (2026-08-20) — CONTEXT-DRIVEN RULE SELECTION ──────────────
+        // Zero-observation advisory turns (symptom-free route + DIRECT/0 intent)
+        // select decision_rules by trigger_class + crop/stage/DAS/cultivation,
+        // with NO observation filter. Lane A is untouched.
+        try {
+          if ((this as any).__laneBEligible === true) {
+            const { selectContextRules, toMatchedResponse } =
+              await import('../decision/context-rule-selector.ts');
+            const _laneBCrop =
+              (canonicalState as any)?.crop_type ?? landContext?.current_crop ?? null;
+            const _laneBStage =
+              (canonicalState as any)?.crop_stage ?? landContext?.growth_stage ?? null;
+            const _laneBDas =
+              (canonicalState as any)?.days_since_sowing ??
+              (landContext as any)?.days_since_sowing ?? null;
+            const _laneBCultivation =
+              (this as any)._sessionSSOT?.cultivation_method ??
+              (landContext as any)?.cultivation_method ?? null;
+
+            const ctxSel = await selectContextRules(this.supabase, {
+              cropCode: _laneBCrop,
+              growthStage: _laneBStage,
+              das: typeof _laneBDas === 'number' ? _laneBDas : Number(_laneBDas ?? NaN),
+              cultivationMethod: _laneBCultivation,
+              traceId: traceId,
+            });
+
+            if (ctxSel.applicable.length > 0) {
+              const matched = ctxSel.applicable.map((r: any) => toMatchedResponse(r));
+              layeredRuleResult = {
+                ...(layeredRuleResult ?? {}),
+                matched_responses: matched,
+                primary_decision: matched[0],
+                rules_evaluated: (layeredRuleResult?.rules_evaluated ?? 0) + ctxSel.applicable.length,
+                rules_matched: matched.length,
+                rules_applied: matched.map((m: any) => m.rule_id),
+                prescription_allowed: true,
+                safety_blocks: Array.isArray(layeredRuleResult?.safety_blocks)
+                  ? layeredRuleResult.safety_blocks : [],
+                observations: [],
+                diagnoses: [],
+                lane: 'CONTEXT',
+              } as any;
+              agentsUsed.push('CONTEXT_RULE_SELECTOR');
+              console.log(
+                `[LANE_B_APPLIED] trace=${traceId} winner=${matched[0]?.rule_id} ` +
+                `rules=${matched.map((m: any) => m.rule_id).join(',')} ` +
+                `blocked_doses=${ctxSel.suppressed.map((s: any) => s.rule_id).join(',') || 'none'}`,
+              );
+            }
+          }
+        } catch (laneBErr) {
+          console.warn(
+            `[LANE_B_CONTEXT_RULES] non-fatal failure: ` +
+            `${laneBErr instanceof Error ? laneBErr.message : String(laneBErr)}`,
+          );
+        }
 
         // STEP 8 — [RULE_RESULT] trace + coverage-gap / edge-missing surfacing
         try {
