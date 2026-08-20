@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-08-20 04:20 UTC — MULTI-OBSERVATION RENDERING: secondary findings are
+//     confirmed observations with their OWN DB rule, so they now keep their own
+//     full verbatim action text + their own dose (never the primary's).
+//     buildSecondaryDecisions() exported for the orchestrator. Organic-leaning
+//     modes (organic_only AND organic_fertilizer) both lead with organic.
 //   2026-08-16 09:30 UTC — FIX 4 (incomplete answer): buildSecondaryRuleBlocks()
 //     renders short DB-text-only blocks for non-primary fired rules (multi
 //     observation turns, e.g. N + K), ordered by priority; buildOrganicTailBlock()
