@@ -4140,6 +4140,13 @@ export class AIAgentOrchestrator {
       );
 
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
+
+      // 2026-08-20 — TEXT-ONLY SYMPTOM COUNTER. Only real observation symbols
+      // extracted from the farmer's own text count as symptoms for the DB
+      // intent contract. Candidate/IOM seeds must never inflate this.
+      (this as any).__textOnlySymptomCount = Array.isArray((inductionResult as any)?.symptoms)
+        ? (inductionResult as any).symptoms.filter((s: any) => isRealObservation(String(s?.symbol ?? s))).length
+        : 0;
       
       console.log(`      ${getInductionSummary(inductionResult)}`);
       console.log(`      Symptoms: [${getSymptomSymbolsForRules(inductionResult).join(', ')}]`);
