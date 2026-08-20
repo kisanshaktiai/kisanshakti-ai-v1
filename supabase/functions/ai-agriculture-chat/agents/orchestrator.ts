@@ -8629,6 +8629,64 @@ export class AIAgentOrchestrator {
         }
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
 
+        // ── LANE B (2026-08-20) — CONTEXT-DRIVEN RULE SELECTION ──────────────
+        // Zero-observation advisory turns (symptom-free route + DIRECT/0 intent)
+        // select decision_rules by trigger_class + crop/stage/DAS/cultivation,
+        // with NO observation filter. Lane A is untouched.
+        try {
+          if ((this as any).__laneBEligible === true) {
+            const { selectContextRules, toMatchedResponse } =
+              await import('../decision/context-rule-selector.ts');
+            const _laneBCrop =
+              (canonicalState as any)?.crop_type ?? landContext?.current_crop ?? null;
+            const _laneBStage =
+              (canonicalState as any)?.crop_stage ?? landContext?.growth_stage ?? null;
+            const _laneBDas =
+              (canonicalState as any)?.days_since_sowing ??
+              (landContext as any)?.days_since_sowing ?? null;
+            const _laneBCultivation =
+              (this as any)._sessionSSOT?.cultivation_method ??
+              (landContext as any)?.cultivation_method ?? null;
+
+            const ctxSel = await selectContextRules(this.supabase, {
+              cropCode: _laneBCrop,
+              growthStage: _laneBStage,
+              das: typeof _laneBDas === 'number' ? _laneBDas : Number(_laneBDas ?? NaN),
+              cultivationMethod: _laneBCultivation,
+              traceId: traceId,
+            });
+
+            if (ctxSel.applicable.length > 0) {
+              const matched = ctxSel.applicable.map((r: any) => toMatchedResponse(r));
+              layeredRuleResult = {
+                ...(layeredRuleResult ?? {}),
+                matched_responses: matched,
+                primary_decision: matched[0],
+                rules_evaluated: (layeredRuleResult?.rules_evaluated ?? 0) + ctxSel.applicable.length,
+                rules_matched: matched.length,
+                rules_applied: matched.map((m: any) => m.rule_id),
+                prescription_allowed: true,
+                safety_blocks: Array.isArray(layeredRuleResult?.safety_blocks)
+                  ? layeredRuleResult.safety_blocks : [],
+                observations: [],
+                diagnoses: [],
+                lane: 'CONTEXT',
+              } as any;
+              agentsUsed.push('CONTEXT_RULE_SELECTOR');
+              console.log(
+                `[LANE_B_APPLIED] trace=${traceId} winner=${matched[0]?.rule_id} ` +
+                `rules=${matched.map((m: any) => m.rule_id).join(',')} ` +
+                `blocked_doses=${ctxSel.suppressed.map((s: any) => s.rule_id).join(',') || 'none'}`,
+              );
+            }
+          }
+        } catch (laneBErr) {
+          console.warn(
+            `[LANE_B_CONTEXT_RULES] non-fatal failure: ` +
+            `${laneBErr instanceof Error ? laneBErr.message : String(laneBErr)}`,
+          );
+        }
+
         // STEP 8 — [RULE_RESULT] trace + coverage-gap / edge-missing surfacing
         try {
           const winnerId = (layeredRuleResult?.primary_decision?.rule_id
