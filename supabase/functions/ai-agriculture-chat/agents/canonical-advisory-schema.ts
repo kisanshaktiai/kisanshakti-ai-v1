@@ -115,6 +115,8 @@ export interface CanonicalFarmerAdvisory {
       cause: string;
       action_type: string;
       action_text: string;
+      dosage_per_acre?: string;
+      organic_alternative?: string;
       confidence: number;
     }>;
     monitoring_advice: string[];
