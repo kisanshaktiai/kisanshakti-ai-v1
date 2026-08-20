@@ -4372,9 +4372,7 @@ export class AIAgentOrchestrator {
       // 2026-08-20 — DB INTENT CONTRACT AUTHORITY. A DIRECT / 0-round intent whose
       // turn produced ZERO farmer-text symptom extractions must never be forced
       // into symptom clarification (seed, preempt or route veto).
-      const __turnTextSymptomCount = Array.isArray((inductionResult as any)?.symptoms)
-        ? (inductionResult as any).symptoms.length
-        : 0;
+      const __turnTextSymptomCount = Number((this as any).__textOnlySymptomCount ?? 0);
       const directContractNoSymptoms = directHardBypass && __turnTextSymptomCount === 0;
       (this as any).__directContractNoSymptoms = directContractNoSymptoms;
       const diagnosticIntentOwnsClarification =
