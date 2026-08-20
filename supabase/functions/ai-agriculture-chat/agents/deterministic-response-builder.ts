@@ -685,7 +685,10 @@ export function buildDeterministicResponse(
     : undefined;
   const organicTeaser = farmingPreference === 'conventional' && !!organicText && !organicSame;
   const suppressOrganic = farmingPreference === 'conventional' && !organicText;
-  const leadWithOrganic = farmingPreference === 'organic' && !!organicText && !organicSame;
+  // 2026-08-20 — organic-leaning modes (organic_only AND organic_fertilizer)
+  // both lead with the organic block; chemical follows as labelled secondary.
+  const leadWithOrganic = (farmingPreference === 'organic' || farmingPreference === 'integrated')
+    && !!organicText && !organicSame;
   const noOrganicAvailable = farmingPreference === 'organic' && !organicText;
   const hasAlternative = !suppressOrganic && !!(organicText || ruleData.ipm_level);
   const organic = {
