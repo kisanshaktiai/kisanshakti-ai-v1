@@ -6331,13 +6331,16 @@ export type Database = {
           last_weather_update: string | null
           lifecycle_status: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata: Json | null
+          nutrient_policy: string | null
           organic_fertilizer_kg: number | null
           organic_input_details: Json | null
           organic_manure_kg: number | null
           outcome_recorded_at: string | null
           pesticide_requirements: Json | null
           pgr_hormone_ml: number | null
+          policy_needs_confirmation: boolean
           products_recommended_count: number | null
+          protection_policy: string | null
           recommendation_order: string | null
           recommended_products: Json | null
           regional_dialect_zone: string | null
@@ -6447,13 +6450,16 @@ export type Database = {
           last_weather_update?: string | null
           lifecycle_status?: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata?: Json | null
+          nutrient_policy?: string | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
           organic_manure_kg?: number | null
           outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          policy_needs_confirmation?: boolean
           products_recommended_count?: number | null
+          protection_policy?: string | null
           recommendation_order?: string | null
           recommended_products?: Json | null
           regional_dialect_zone?: string | null
@@ -6563,13 +6569,16 @@ export type Database = {
           last_weather_update?: string | null
           lifecycle_status?: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata?: Json | null
+          nutrient_policy?: string | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
           organic_manure_kg?: number | null
           outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          policy_needs_confirmation?: boolean
           products_recommended_count?: number | null
+          protection_policy?: string | null
           recommendation_order?: string | null
           recommended_products?: Json | null
           regional_dialect_zone?: string | null
@@ -8630,6 +8639,7 @@ export type Database = {
           icar_package: string | null
           icar_package_ref: string | null
           id: string
+          input_class: string | null
           input_cost_per_acre_max: number | null
           input_cost_per_acre_min: number | null
           interaction_type: string | null
@@ -8811,6 +8821,7 @@ export type Database = {
           icar_package?: string | null
           icar_package_ref?: string | null
           id?: string
+          input_class?: string | null
           input_cost_per_acre_max?: number | null
           input_cost_per_acre_min?: number | null
           interaction_type?: string | null
@@ -8992,6 +9003,7 @@ export type Database = {
           icar_package?: string | null
           icar_package_ref?: string | null
           id?: string
+          input_class?: string | null
           input_cost_per_acre_max?: number | null
           input_cost_per_acre_min?: number | null
           interaction_type?: string | null
@@ -12000,6 +12012,8 @@ export type Database = {
           associated_tenants: string[] | null
           created_at: string | null
           current_subscription_id: string | null
+          default_nutrient_policy: string | null
+          default_protection_policy: string | null
           failed_login_attempts: number | null
           farm_type: string | null
           farmer_code: string | null
@@ -12024,6 +12038,7 @@ export type Database = {
           metadata: Json | null
           mobile_number: string | null
           notes: string | null
+          organic_standard: string | null
           pin_hash: string | null
           pin_updated_at: string | null
           preferred_contact_method: string | null
@@ -12057,6 +12072,8 @@ export type Database = {
           associated_tenants?: string[] | null
           created_at?: string | null
           current_subscription_id?: string | null
+          default_nutrient_policy?: string | null
+          default_protection_policy?: string | null
           failed_login_attempts?: number | null
           farm_type?: string | null
           farmer_code?: string | null
@@ -12081,6 +12098,7 @@ export type Database = {
           metadata?: Json | null
           mobile_number?: string | null
           notes?: string | null
+          organic_standard?: string | null
           pin_hash?: string | null
           pin_updated_at?: string | null
           preferred_contact_method?: string | null
@@ -12114,6 +12132,8 @@ export type Database = {
           associated_tenants?: string[] | null
           created_at?: string | null
           current_subscription_id?: string | null
+          default_nutrient_policy?: string | null
+          default_protection_policy?: string | null
           failed_login_attempts?: number | null
           farm_type?: string | null
           farmer_code?: string | null
@@ -12138,6 +12158,7 @@ export type Database = {
           metadata?: Json | null
           mobile_number?: string | null
           notes?: string | null
+          organic_standard?: string | null
           pin_hash?: string | null
           pin_updated_at?: string | null
           preferred_contact_method?: string | null
@@ -15152,6 +15173,8 @@ export type Database = {
           land_id: string
           metadata: Json | null
           notes: string | null
+          nutrient_policy: string | null
+          protection_policy: string | null
           schedule_id: string | null
           sowing_date: string | null
           status: string | null
@@ -15177,6 +15200,8 @@ export type Database = {
           land_id: string
           metadata?: Json | null
           notes?: string | null
+          nutrient_policy?: string | null
+          protection_policy?: string | null
           schedule_id?: string | null
           sowing_date?: string | null
           status?: string | null
@@ -15202,6 +15227,8 @@ export type Database = {
           land_id?: string
           metadata?: Json | null
           notes?: string | null
+          nutrient_policy?: string | null
+          protection_policy?: string | null
           schedule_id?: string | null
           sowing_date?: string | null
           status?: string | null
