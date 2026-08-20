@@ -174,12 +174,14 @@ export function buildCanonicalAdvisory(
     }
   }
   
-  // ═══ RULE ATOMICITY: Secondary observations stripped of treatment data ═══
+  // ═══ 1 RULE = 1 BLOCK: each secondary keeps its OWN verbatim text + dose ═══
   const secondaryObs = (secondaryDecisions || []).map((d: any) => ({
     rule_id: d.rule_id || 'UNKNOWN',
     cause: d.cause || d.cause_name || '',
     action_type: d.action_type || 'MONITOR',
-    action_text: '', // BLOCKED: action_text may contain treatment/dosage from different rule
+    action_text: d.action_text || d.reason_text || '',
+    dosage_per_acre: d.dosage_per_acre || '',
+    organic_alternative: d.organic_alternative || '',
     confidence: d.confidence_score || d.weighted_confidence || 0
   }));
   
