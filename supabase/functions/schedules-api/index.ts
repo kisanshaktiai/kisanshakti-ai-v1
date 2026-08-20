@@ -328,7 +328,7 @@ serve(async (req) => {
         // Verify ownership, then remove tasks and soft-delete the schedule
         const { data: owned, error: ownErr } = await supabase
           .from('crop_schedules')
-          .select('id')
+          .select('id, land_id')
           .eq('id', scheduleId)
           .eq('tenant_id', tenantId)
           .eq('farmer_id', farmerId)
