@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-20 04:20 UTC — decision_output.secondary_decisions now populated from
+//     matched_responses (OPTION_SELECTED, main and immediate paths) so every
+//     confirmed observation that fired a rule renders its own advisory block.
 //   2026-08-15 03:45 UTC — MULTIMATCH SELECTION FIX: the differential question
 //     options carried the observation code only inside `maps_to`, so persistence
 //     (which reads top-level `observation_key`) stored ["",…] and the next turn
