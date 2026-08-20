@@ -1266,6 +1266,8 @@ export class AIAgentOrchestrator {
     // request's observation candidates cannot leak into a later one.
     (this as any).__farmerLanguage = options?.language || 'en';
     (this as any).__observationRequired = false;
+    (this as any).__directContractNoSymptoms = false;
+
     (this as any).__observationCandidateCodes = [];
     (this as any).__observationRouterReason = null;
     const requestMemo = new Map<string, Promise<any>>();
