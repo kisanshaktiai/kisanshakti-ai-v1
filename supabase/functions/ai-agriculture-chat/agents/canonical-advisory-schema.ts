@@ -305,12 +305,17 @@ export function buildMultiRuleAdvisory(
     return (b.data_authority_rank || 0) - (a.data_authority_rank || 0);
   });
   
-  // ═══ RULE ATOMICITY: Strip treatment data from secondary observations ═══
+  // ═══ 1 RULE = 1 BLOCK ═══
+  // Each secondary is a confirmed observation with its OWN DB rule, so it keeps
+  // its own verbatim action text and its own dose. Nothing is ever copied
+  // between rules — that is what rule atomicity protects against.
   const secondaryObs = sorted.slice(0, 3).map((d: any) => ({
     rule_id: d.rule_id || 'UNKNOWN',
     cause: d.cause || d.cause_name || '',
     action_type: d.action_type || 'MONITOR',
-    action_text: '', // BLOCKED: prevents cross-rule treatment contamination
+    action_text: d.action_text || d.reason_text || '',
+    dosage_per_acre: d.dosage_per_acre || '',
+    organic_alternative: d.organic_alternative || '',
     confidence: d.confidence_score || d.weighted_confidence || 0
   }));
   
