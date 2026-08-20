@@ -4130,8 +4130,61 @@ function generateActionDescription(primary: any, lang: string): string {
 }
 
 // POST-PROCESSING: Convert Decision Brain output to natural language
+/**
+ * 2026-08-20 — CONTEXT-AWARE FALLBACKS. A land-scoped room already knows the
+ * crop / stage / DAS. No farmer-visible fallback may ask for them again.
+ */
+export interface FallbackLandCtx {
+  crop_name?: string | null;
+  growth_stage?: string | null;
+  days_since_sowing?: number | null;
+}
+
+function deriveLandCtx(response: any): FallbackLandCtx | null {
+  const land = response?.dataAudit?.land;
+  const canon = response?.metadata?.canonicalContext;
+  const crop = land?.current_crop ?? canon?.crop_code ?? canon?.crop_name ?? null;
+  if (!crop) return null;
+  return {
+    crop_name: String(crop),
+    growth_stage: land?.growth_stage ?? canon?.growth_stage ?? null,
+    days_since_sowing: land?.days_since_sowing ?? canon?.days_since_sowing ?? null,
+  };
+}
+
+const FALLBACK_STAGE_LABELS: Record<string, Record<string, string>> = {
+  mr: { germination: 'उगवण', seedling: 'रोपे', tillering: 'फुटवे', vegetative: 'वाढ', panicle_initiation: 'लोंबी सुरुवात', booting: 'पोटरी', flowering: 'फुलोरा', maturity: 'पक्वता' },
+  hi: { germination: 'अंकुरण', seedling: 'अंकुर', tillering: 'कल्ले', vegetative: 'बढ़वार', panicle_initiation: 'बाली प्रारंभ', booting: 'गोभ', flowering: 'फूल', maturity: 'परिपक्वता' },
+};
+
+function stageLabel(stage: string | null | undefined, lang: string): string {
+  const key = String(stage ?? '').trim().toLowerCase();
+  if (!key) return '';
+  return FALLBACK_STAGE_LABELS[lang]?.[key] || key.replace(/_/g, ' ');
+}
+
+/** Localized fallback that NEVER asks for information already in context. */
+function buildContextAwareFallback(landCtx: FallbackLandCtx | null | undefined, lang: string): string | null {
+  if (!landCtx?.crop_name) return null;
+  const crop = landCtx.crop_name;
+  const das = landCtx.days_since_sowing;
+  const stage = stageLabel(landCtx.growth_stage, lang);
+  const dasPart = (typeof das === 'number' && isFinite(das)) ? das : null;
+  if (lang === 'mr') {
+    const ctx = [dasPart !== null ? `दिवस ${dasPart}` : '', stage].filter(Boolean).join(', ');
+    return `तुमच्या ${crop} पिकासाठी${ctx ? ` (${ctx})` : ''} नेमकं काय हवं आहे ते थोडक्यात सांगा — खत, पाणी, फवारणी की दुसरं काही?`;
+  }
+  if (lang === 'hi') {
+    const ctx = [dasPart !== null ? `दिन ${dasPart}` : '', stage].filter(Boolean).join(', ');
+    return `आपकी ${crop} फसल के लिए${ctx ? ` (${ctx})` : ''} आपको क्या चाहिए, संक्षेप में बताइए — खाद, पानी, छिड़काव या कुछ और?`;
+  }
+  const ctx = [dasPart !== null ? `day ${dasPart}` : '', stage].filter(Boolean).join(', ');
+  return `For your ${crop} crop${ctx ? ` (${ctx})` : ''}, tell me briefly what you need — fertiliser, water, spraying or something else?`;
+}
+
 async function getResponseContent(response: OrchestratorResponse, language: string): Promise<string> {
   const lang = language;
+  const __landCtx = deriveLandCtx(response as any);
   console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
   console.log(`📝 [PostProcessor] Response assembly:`, {
     has_communication: !!response.communication,
