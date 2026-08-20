@@ -3442,6 +3442,12 @@ export class AIAgentOrchestrator {
                 actions_returned: actionsToReturn,
                 // CRITICAL: Include matched_responses for LLM to use
                 matched_responses: ruleResult.matched_responses,
+                // 2026-08-20 — one advisory block per confirmed observation:
+                // every non-primary rule that fired becomes a secondary decision.
+                secondary_decisions: buildSecondaryDecisions(
+                  { matched_responses: ruleResult.matched_responses },
+                  primaryDecisionObject?.rule_id,
+                ),
                 warnings: ruleResult.warnings,
                 metadata: {
                   confidence: ruleResult.confidence_in_result,
