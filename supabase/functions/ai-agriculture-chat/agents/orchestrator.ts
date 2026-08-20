@@ -1266,6 +1266,8 @@ export class AIAgentOrchestrator {
     // request's observation candidates cannot leak into a later one.
     (this as any).__farmerLanguage = options?.language || 'en';
     (this as any).__observationRequired = false;
+    (this as any).__directContractNoSymptoms = false;
+
     (this as any).__observationCandidateCodes = [];
     (this as any).__observationRouterReason = null;
     const requestMemo = new Map<string, Promise<any>>();
@@ -1618,7 +1620,28 @@ export class AIAgentOrchestrator {
       console.warn(`[EMPTY_RESPONSE_INVARIANT_FAILED] trace=${traceId} err=${(emptyErr as Error).message}`);
     }
 
+    // EDIT 4 (2026-08-20) — DIRECT/0 advisory turns with zero farmer-text symptoms
+    // close with ONE non-blocking invitation line (never a clarification card).
+    try {
+      if ((this as any).__directContractNoSymptoms && response) {
+        const _opts = (response as any)?.clarification_options;
+        const _qOpts = (response as any)?.question?.options;
+        const _hasCard =
+          (Array.isArray(_opts) && _opts.length > 0) ||
+          (Array.isArray(_qOpts) && _qOpts.length > 0);
+        const _line = 'कोणतीही लक्षणं (पिवळी पाने, ठिपके, किडी) दिसत असतील तर सांगा.';
+        const _key = (['message', 'response', 'text', 'farmer_response'] as const)
+          .find((k) => typeof (response as any)?.[k] === 'string' && (response as any)[k].trim());
+        if (!_hasCard && _key && !(response as any)[_key].includes(_line)) {
+          (response as any)[_key] = `${(response as any)[_key].trimEnd()}\n\n${_line}`;
+        }
+      }
+    } catch (_closeErr) {
+      // non-blocking
+    }
+
     return response;
+
     };
     return await turnMemoStorage.run(requestMemo, run);
 
@@ -4339,9 +4362,18 @@ export class AIAgentOrchestrator {
       const directHardBypass =
         intentMetaFromDB?.clarification_mode === 'DIRECT' &&
         (intentMetaFromDB?.max_clarification_rounds ?? -1) === 0;
+      // 2026-08-20 — DB INTENT CONTRACT AUTHORITY. A DIRECT / 0-round intent whose
+      // turn produced ZERO farmer-text symptom extractions must never be forced
+      // into symptom clarification (seed, preempt or route veto).
+      const __turnTextSymptomCount = Array.isArray((inductionResult as any)?.symptoms)
+        ? (inductionResult as any).symptoms.length
+        : 0;
+      const directContractNoSymptoms = directHardBypass && __turnTextSymptomCount === 0;
+      (this as any).__directContractNoSymptoms = directContractNoSymptoms;
       const diagnosticIntentOwnsClarification =
         requiresAgronomicReasoningIntent(intentCode) ||
         symptomBasedIntents.includes(currentIntentForGate);
+
       // F3 — HARD PREEMPT: diagnostic intent + zero confirmed observations
       const __preemptConvState = (this as any).__conversationState;
       const __preemptConfirmed = __preemptConvState?.informative_count ?? 0;
@@ -4362,7 +4394,14 @@ export class AIAgentOrchestrator {
         }, 0);
       }
 
-      const __preemptHardBlock = __preemptIsDiagnostic && __diagnosticConfirmed === 0;
+      // EDIT 2 — a DB-declared DIRECT/0 advisory intent with no farmer-text symptoms
+      // must not be preempted by in-memory authority mode alone. SYMPTOM_DRIVEN and
+      // legacy diagnostic intents keep the preempt unchanged.
+      const __preemptHardBlock =
+        __preemptIsDiagnostic &&
+        __diagnosticConfirmed === 0 &&
+        !(directContractNoSymptoms && (intentAdvisoryBypass || routeDirectModeBypass));
+
 
       if (__preemptHardBlock) {
         console.log(
@@ -5497,7 +5536,17 @@ export class AIAgentOrchestrator {
         }
 
         // Fix F: For DIRECT-hard intents (e.g. GENERAL_CROP_INFO), seed the rule
-        if (directHardBypass) {
+        // EDIT 1 (2026-08-20) — IOM rows for DIRECT/0 intents are rule-candidate
+        // hints, NOT evidence. Seeding them made the authority derive DIAGNOSIS
+        // mode with zero confirmed observations and forced a symptom questionnaire
+        // onto pure advisory questions (e.g. FERTILIZER_SCHEDULE).
+        if (directHardBypass && directContractNoSymptoms) {
+          console.log(
+            `   ⏭️ [DIRECT_HARD_IOM_SEED_SKIPPED] intent=${intentCode} reason=direct_contract_no_symptoms`,
+          );
+          agentsUsed.push('DIRECT_HARD_IOM_SEED_SKIPPED');
+        } else if (directHardBypass) {
+
           try {
             // PHASE-1 OBSERVATION-BEATS-INTENT GUARD
             const STRESS_MARKERS = [
@@ -7327,14 +7376,19 @@ export class AIAgentOrchestrator {
           (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
           (this as any).__conversationState?.mode === 'MIXED'
         );
-      if (observationAuthorityRequiresClarification && isSymptomFreeRoute) {
+      // EDIT 3 (2026-08-20) — a DB-declared DIRECT/0 intent with no farmer-text
+      // symptoms keeps its symptom-free exemption; authority mode alone may not
+      // veto it. SYMPTOM_DRIVEN intents are unaffected.
+      const __directContractBypassNow =
+        !!(this as any).__directContractNoSymptoms && isAdvisoryRoute(intentCode);
+      if (observationAuthorityRequiresClarification && isSymptomFreeRoute && !__directContractBypassNow) {
         console.log(
           `   🛑 [SYMPTOM_FREE_ROUTE_VETO] route=${queryRoute.route} intent=${intentCode} ` +
           `reason=${(this as any).__conversationState?.clarification_reason}`
         );
         agentsUsed.push('SYMPTOM_FREE_ROUTE_VETO');
       }
-      if (observationAuthorityRequiresClarification && bypassClarification) {
+      if (observationAuthorityRequiresClarification && bypassClarification && !__directContractBypassNow) {
         console.log(
           `   🛑 [BYPASS_CLARIFICATION_VETO] diagnostic observation authority requires UI; ` +
           `confirmed=${(this as any).__conversationState?.confirmed?.length ?? 0}`
@@ -7344,7 +7398,8 @@ export class AIAgentOrchestrator {
         agentsUsed.push('BYPASS_CLARIFICATION_VETO');
       }
 
-      const shouldPrepareClarification = (!isSymptomFreeRoute || observationAuthorityRequiresClarification) && (
+      const shouldPrepareClarification = (!isSymptomFreeRoute || (observationAuthorityRequiresClarification && !__directContractBypassNow)) && (
+
         (clarificationTrigger.should_clarify && !clarificationTrigger.bypass_allowed) || 
         (inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass))
       );
