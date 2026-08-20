@@ -176,17 +176,24 @@ function buildSnapshot(rows: RawRuleRow[], fingerprint: string): RuleSnapshot {
   return { rows, byCrop, byCropGroup, byRuleId, versionFingerprint: fingerprint, loadedAt: Date.now() };
 }
 
+// A3 (2026-08-20): fingerprint = count(*) + max(updated_at) over active rules.
+// max(version_hash) missed edits to non-hashed columns; any mismatch forces a reload.
 async function readVersionFingerprint(sb: any): Promise<string> {
   try {
-    const { data, error } = await sb
-      .from('decision_rules')
-      .select('version_hash')
-      .eq('is_active', true)
-      .order('version_hash', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) return '';
-    return String((data as any)?.version_hash ?? '');
+    const [countRes, latestRes] = await Promise.all([
+      sb.from('decision_rules').select('rule_id', { count: 'exact', head: true }).eq('is_active', true),
+      sb.from('decision_rules')
+        .select('updated_at')
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (countRes?.error || latestRes?.error) return '';
+    const count = countRes?.count ?? null;
+    if (count == null) return '';
+    const maxUpdatedAt = String((latestRes?.data as any)?.updated_at ?? '');
+    return `${count}|${maxUpdatedAt}`;
   } catch {
     return '';
   }
