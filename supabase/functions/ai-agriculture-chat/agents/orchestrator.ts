@@ -9937,6 +9937,13 @@ export class AIAgentOrchestrator {
         if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
         }
+        // 2026-08-20 — one advisory block per confirmed observation (immediate path).
+        if (!decisionOutput.secondary_decisions?.length && decisionOutput.matched_responses?.length) {
+          decisionOutput.secondary_decisions = buildSecondaryDecisions(
+            { matched_responses: decisionOutput.matched_responses },
+            decisionOutput.primary_decision?.rule_id,
+          );
+        }
         
         // [STEP 7 REMOVED] Local PHI + Pollinator enforcement.
         let immediateSafetyStatus = 'APPROVED';
