@@ -358,6 +358,63 @@ serve(async (req) => {
           );
         }
 
+        // Mirror cleanup: deactivate land_crops rows tied to this schedule.
+        // Never gate the primary deletion — log failures and continue.
+        try {
+          const nowIso = new Date().toISOString();
+
+          const { error: lcErr, count: lcCount } = await supabase
+            .from('land_crops')
+            .update({ is_active: false, updated_at: nowIso }, { count: 'exact' })
+            .eq('schedule_id', scheduleId)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('is_active', true);
+
+          if (lcErr) {
+            console.error('⚠️ [SchedulesAPI] land_crops deactivation failed (non-fatal):', lcErr.message);
+          } else {
+            console.log('✅ [SchedulesAPI] land_crops deactivated by schedule_id:', lcCount ?? 0);
+          }
+
+          // Legacy rows with schedule_id IS NULL: only safe when the land has
+          // no other active schedule left.
+          const landId = (owned as { land_id?: string | null }).land_id;
+          if (landId) {
+            const { data: stillActive, error: activeErr } = await supabase
+              .from('crop_schedules')
+              .select('id')
+              .eq('land_id', landId)
+              .eq('tenant_id', tenantId)
+              .eq('farmer_id', farmerId)
+              .eq('is_active', true)
+              .limit(1);
+
+            if (activeErr) {
+              console.error('⚠️ [SchedulesAPI] Active-schedule check failed (non-fatal):', activeErr.message);
+            } else if (!stillActive || stillActive.length === 0) {
+              const { error: legacyErr, count: legacyCount } = await supabase
+                .from('land_crops')
+                .update({ is_active: false, updated_at: nowIso }, { count: 'exact' })
+                .is('schedule_id', null)
+                .eq('land_id', landId)
+                .eq('tenant_id', tenantId)
+                .eq('farmer_id', farmerId)
+                .eq('is_active', true);
+
+              if (legacyErr) {
+                console.error('⚠️ [SchedulesAPI] Legacy land_crops deactivation failed (non-fatal):', legacyErr.message);
+              } else {
+                console.log('✅ [SchedulesAPI] Legacy land_crops deactivated:', legacyCount ?? 0);
+              }
+            } else {
+              console.log('ℹ️ [SchedulesAPI] Land still has an active schedule; legacy rows untouched');
+            }
+          }
+        } catch (mirrorErr) {
+          console.error('⚠️ [SchedulesAPI] land_crops mirror cleanup threw (non-fatal):', mirrorErr);
+        }
+
         console.log('✅ [SchedulesAPI] Schedule deleted (soft):', scheduleId);
         return new Response(
           JSON.stringify({ success: true }),
