@@ -1618,7 +1618,28 @@ export class AIAgentOrchestrator {
       console.warn(`[EMPTY_RESPONSE_INVARIANT_FAILED] trace=${traceId} err=${(emptyErr as Error).message}`);
     }
 
+    // EDIT 4 (2026-08-20) — DIRECT/0 advisory turns with zero farmer-text symptoms
+    // close with ONE non-blocking invitation line (never a clarification card).
+    try {
+      if ((this as any).__directContractNoSymptoms && response) {
+        const _opts = (response as any)?.clarification_options;
+        const _qOpts = (response as any)?.question?.options;
+        const _hasCard =
+          (Array.isArray(_opts) && _opts.length > 0) ||
+          (Array.isArray(_qOpts) && _qOpts.length > 0);
+        const _line = 'कोणतीही लक्षणं (पिवळी पाने, ठिपके, किडी) दिसत असतील तर सांगा.';
+        const _key = (['message', 'response', 'text', 'farmer_response'] as const)
+          .find((k) => typeof (response as any)?.[k] === 'string' && (response as any)[k].trim());
+        if (!_hasCard && _key && !(response as any)[_key].includes(_line)) {
+          (response as any)[_key] = `${(response as any)[_key].trimEnd()}\n\n${_line}`;
+        }
+      }
+    } catch (_closeErr) {
+      // non-blocking
+    }
+
     return response;
+
     };
     return await turnMemoStorage.run(requestMemo, run);
 
