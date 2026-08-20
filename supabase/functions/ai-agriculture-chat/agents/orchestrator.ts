@@ -4371,7 +4371,14 @@ export class AIAgentOrchestrator {
         }, 0);
       }
 
-      const __preemptHardBlock = __preemptIsDiagnostic && __diagnosticConfirmed === 0;
+      // EDIT 2 — a DB-declared DIRECT/0 advisory intent with no farmer-text symptoms
+      // must not be preempted by in-memory authority mode alone. SYMPTOM_DRIVEN and
+      // legacy diagnostic intents keep the preempt unchanged.
+      const __preemptHardBlock =
+        __preemptIsDiagnostic &&
+        __diagnosticConfirmed === 0 &&
+        !(directContractNoSymptoms && (intentAdvisoryBypass || routeDirectModeBypass));
+
 
       if (__preemptHardBlock) {
         console.log(
