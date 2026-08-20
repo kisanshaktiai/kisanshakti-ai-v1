@@ -1,4 +1,7 @@
 // CHANGE LOG (newest first)
+//   2026-08-20 04:20 UTC — decision_output.secondary_decisions now populated from
+//     matched_responses (OPTION_SELECTED, main and immediate paths) so every
+//     confirmed observation that fired a rule renders its own advisory block.
 //   2026-08-15 03:45 UTC — MULTIMATCH SELECTION FIX: the differential question
 //     options carried the observation code only inside `maps_to`, so persistence
 //     (which reads top-level `observation_key`) stored ["",…] and the next turn
@@ -146,6 +149,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { getLanguageName } from '../utils/language-utils.ts';
+import { buildSecondaryDecisions } from './deterministic-response-builder.ts';
 
 // Phase H — Canonical Conversation State (single runtime authority)
 import { buildConversationState, type ConversationState } from '../runtime/conversation-state.ts';
@@ -3441,6 +3445,12 @@ export class AIAgentOrchestrator {
                 actions_returned: actionsToReturn,
                 // CRITICAL: Include matched_responses for LLM to use
                 matched_responses: ruleResult.matched_responses,
+                // 2026-08-20 — one advisory block per confirmed observation:
+                // every non-primary rule that fired becomes a secondary decision.
+                secondary_decisions: buildSecondaryDecisions(
+                  { matched_responses: ruleResult.matched_responses },
+                  primaryDecisionObject?.rule_id,
+                ),
                 warnings: ruleResult.warnings,
                 metadata: {
                   confidence: ruleResult.confidence_in_result,
@@ -9813,6 +9823,13 @@ export class AIAgentOrchestrator {
         // Also attach matched_responses for additional recovery options
         if (layeredRuleResult.matched_responses && layeredRuleResult.matched_responses.length > 0) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
+          // 2026-08-20 — one advisory block per confirmed observation.
+          if (!decisionOutput.secondary_decisions?.length) {
+            decisionOutput.secondary_decisions = buildSecondaryDecisions(
+              { matched_responses: layeredRuleResult.matched_responses },
+              decisionOutput.primary_decision?.rule_id,
+            );
+          }
         }
 
         
@@ -9922,6 +9939,13 @@ export class AIAgentOrchestrator {
         // Wire matched_responses into IMMEDIATE return path
         if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
+        }
+        // 2026-08-20 — one advisory block per confirmed observation (immediate path).
+        if (!decisionOutput.secondary_decisions?.length && decisionOutput.matched_responses?.length) {
+          decisionOutput.secondary_decisions = buildSecondaryDecisions(
+            { matched_responses: decisionOutput.matched_responses },
+            decisionOutput.primary_decision?.rule_id,
+          );
         }
         
         // [STEP 7 REMOVED] Local PHI + Pollinator enforcement.

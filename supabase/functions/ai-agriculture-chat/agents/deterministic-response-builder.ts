@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-08-20 04:20 UTC — MULTI-OBSERVATION RENDERING: secondary findings are
+//     confirmed observations with their OWN DB rule, so they now keep their own
+//     full verbatim action text + their own dose (never the primary's).
+//     buildSecondaryDecisions() exported for the orchestrator. Organic-leaning
+//     modes (organic_only AND organic_fertilizer) both lead with organic.
 //   2026-08-16 09:30 UTC — FIX 4 (incomplete answer): buildSecondaryRuleBlocks()
 //     renders short DB-text-only blocks for non-primary fired rules (multi
 //     observation turns, e.g. N + K), ordered by priority; buildOrganicTailBlock()
@@ -685,7 +690,10 @@ export function buildDeterministicResponse(
     : undefined;
   const organicTeaser = farmingPreference === 'conventional' && !!organicText && !organicSame;
   const suppressOrganic = farmingPreference === 'conventional' && !organicText;
-  const leadWithOrganic = farmingPreference === 'organic' && !!organicText && !organicSame;
+  // 2026-08-20 — organic-leaning modes (organic_only AND organic_fertilizer)
+  // both lead with the organic block; chemical follows as labelled secondary.
+  const leadWithOrganic = (farmingPreference === 'organic' || farmingPreference === 'integrated')
+    && !!organicText && !organicSame;
   const noOrganicAvailable = farmingPreference === 'organic' && !organicText;
   const hasAlternative = !suppressOrganic && !!(organicText || ruleData.ipm_level);
   const organic = {
@@ -1045,7 +1053,7 @@ export async function formatStructuredResponseForLLM(
       parts.push(`ORGANIC_SAME_AS_MAIN: render one advisory + this line: "${getUiString('advisory.organic_same', l)}"`);
       if (org.organic_same_reason) parts.push(`Reason (verbatim source): ${org.organic_same_reason}`);
     } else if (org.lead_with_organic) {
-      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farming mode = organic_only) ═══`);
+      parts.push(`\n═══ 🌿 ORGANIC-FIRST RENDER (farming mode is organic-leaning) ═══`);
       parts.push(`Header (i18n advisory.organic_header): ${getUiString('advisory.organic_header', l)}`);
       parts.push(`🌿 PRIMARY RECOMMENDATION (organic, verbatim source): ${org.organic_alternative}`);
       parts.push(`Then render the chemical action above as clearly-labelled SECONDARY under header: ${getUiString('advisory.chemical_alt_header', l)}`);
@@ -1341,6 +1349,9 @@ export interface SecondaryRuleBlock {
   cause?: string;
   action_text?: string;
   reason_text?: string;
+  /** The secondary rule's OWN dose — never borrowed from the primary. */
+  dosage_per_acre?: string;
+  organic_alternative?: string;
   priority: number;
 }
 
@@ -1360,16 +1371,20 @@ export function collectSecondaryRuleBlocks(
       console.log(`[FARMER_TEXT_FILTER] secondary diagnosis rule skipped rule=${rid}`);
       continue;
     }
-    // FIX A: at most ONE short line from the secondary's own action_text.
-    const action = oneLine(farmerSafeActionText(resp?.action_text, resp));
-    const reason = oneLine(farmerSafeActionText(resp?.reason_text, resp));
+    // 2026-08-20 — a secondary finding is a CONFIRMED observation with its own
+    // DB rule, so it gets its own full advisory text (and its own dose), not a
+    // one-line teaser. Provenance stays 1 rule = 1 block: nothing is merged.
+    const action = farmerSafeActionText(resp?.action_text, resp);
+    const reason = farmerSafeActionText(resp?.reason_text, resp);
     if (!action && !reason) continue;
     seen.add(rid);
     blocks.push({
       rule_id: rid,
       cause: resp?.cause ? String(resp.cause) : undefined,
       action_text: action || undefined,
-      reason_text: action ? undefined : (reason || undefined),
+      reason_text: reason || undefined,
+      dosage_per_acre: resp?.dosage_per_acre ? String(resp.dosage_per_acre) : undefined,
+      organic_alternative: resp?.organic_alternative ? String(resp.organic_alternative) : undefined,
       priority: Number(resp?.priority ?? resp?.confidence_score ?? resp?.weighted_confidence ?? 0),
     });
   }
@@ -1377,18 +1392,59 @@ export function collectSecondaryRuleBlocks(
   return blocks.slice(0, limit);
 }
 
+/**
+ * Secondary decisions for the structured card / advisory JSON.
+ * One entry per additional confirmed observation that fired its own DB rule.
+ */
+export function buildSecondaryDecisions(
+  decision: any,
+  primaryRuleId: string | null | undefined,
+  limit = 3,
+): any[] {
+  const matched: any[] = Array.isArray(decision?.matched_responses) ? decision.matched_responses : [];
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const resp of matched) {
+    const rid = String(resp?.rule_id ?? '');
+    if (!rid || rid === String(primaryRuleId ?? '') || seen.has(rid)) continue;
+    if (isDiagnosisRule(resp)) continue;
+    if (!resp?.action_text && !resp?.reason_text) continue;
+    seen.add(rid);
+    out.push({
+      rule_id: rid,
+      cause: resp?.cause ?? null,
+      action_type: resp?.action_type ?? 'MONITOR',
+      action_text: resp?.action_text ?? null,
+      reason_text: resp?.reason_text ?? null,
+      dosage_per_acre: resp?.dosage_per_acre ?? null,
+      organic_alternative: resp?.organic_alternative ?? null,
+      success_indicators: resp?.success_indicators ?? null,
+      observation_code: resp?.observation_code ?? resp?.condition_code ?? null,
+      priority: Number(resp?.priority ?? 0),
+      confidence_score: Number(resp?.confidence_score ?? resp?.weighted_confidence ?? 0),
+    });
+    if (out.length >= limit) break;
+  }
+  console.log(`[SECONDARY_DECISIONS] primary=${primaryRuleId ?? 'NONE'} secondary=${out.map(o => o.rule_id).join(',') || 'none'}`);
+  return out;
+}
+
 /** Prompt-side rendering (English instruction text for the narrator). */
 export function renderSecondaryRuleBlocksForLLM(blocks: SecondaryRuleBlock[]): string {
   if (blocks.length === 0) return '';
-  const parts: string[] = ['\n═══ SECONDARY CONFIRMED FINDINGS (render SHORT, after the primary) ═══'];
+  const parts: string[] = [
+    '\n═══ SECONDARY CONFIRMED FINDINGS (render each as its OWN block, after the primary) ═══',
+  ];
   blocks.forEach((b, i) => {
     const label = (b.cause || 'Additional finding').replace(/_/g, ' ').toLowerCase()
       .replace(/\b\w/g, (c) => c.toUpperCase());
     parts.push(`${i + 1}. ${label}:`);
     if (b.action_text) parts.push(`   Action (verbatim source): ${b.action_text}`);
     if (b.reason_text) parts.push(`   Reason (verbatim source): ${b.reason_text}`);
+    if (b.dosage_per_acre) parts.push(`   Dose (verbatim, belongs to THIS finding only): ${b.dosage_per_acre}`);
+    if (b.organic_alternative) parts.push(`   Organic option (verbatim source): ${b.organic_alternative}`);
   });
-  parts.push('Do NOT invent a dosage for these — only the primary carries dose numbers.');
+  parts.push('Each finding keeps its OWN product and dose. NEVER move a dose or product between findings, and NEVER invent one.');
   return parts.join('\n');
 }
 
