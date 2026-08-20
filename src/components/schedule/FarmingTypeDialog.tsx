@@ -19,7 +19,7 @@ interface FarmingOption {
   icon: React.ReactNode;
   title: Record<string, string>;
   subtitle: Record<string, string>;
-  yield: string;
+  tradeoff: Record<string, string>;
   color: string;
   bgColor: string;
   borderColor: string;
@@ -44,7 +44,13 @@ const farmingOptions: FarmingOption[] = [
       pa: 'ਜ਼ੀਰੋ ਕੈਮੀਕਲ, ਵਧੀਆ ਕੀਮਤ',
       ta: 'ரசாயனம் இல்லை, சிறந்த விலை',
     },
-    yield: '2x',
+    tradeoff: {
+      en: 'Lower yield, premium price, lower input cost',
+      hi: 'कम उपज, बेहतर दाम, कम लागत',
+      mr: 'कमी उत्पादन, चांगला भाव, कमी खर्च',
+      pa: 'ਘੱਟ ਝਾੜ, ਵਧੀਆ ਭਾਅ, ਘੱਟ ਲਾਗਤ',
+      ta: 'குறைந்த மகசூல், சிறந்த விலை, குறைந்த செலவு',
+    },
     color: 'text-success dark:text-success',
     bgColor: 'bg-success-soft dark:bg-success/30',
     borderColor: 'border-success/30 dark:border-success',
@@ -67,7 +73,13 @@ const farmingOptions: FarmingOption[] = [
       pa: 'ਜੈਵਿਕ + ਰਸਾਇਣਕ ਮਿਲਾਵਟ',
       ta: 'இயற்கை + உரம் கலவை',
     },
-    yield: '4x',
+    tradeoff: {
+      en: 'Balanced yield and cost',
+      hi: 'संतुलित उपज और लागत',
+      mr: 'संतुलित उत्पादन आणि खर्च',
+      pa: 'ਸੰਤੁਲਿਤ ਝਾੜ ਅਤੇ ਲਾਗਤ',
+      ta: 'சமநிலையான மகசூலும் செலவும்',
+    },
     color: 'text-info dark:text-info',
     bgColor: 'bg-info-soft dark:bg-info/30',
     borderColor: 'border-info/30 dark:border-info',
@@ -90,7 +102,13 @@ const farmingOptions: FarmingOption[] = [
       pa: 'ਪੂਰੇ ਰਸਾਇਣ, ਵੱਧ ਝਾੜ',
       ta: 'முழு ரசாயனம், அதிக விளைச்சல்',
     },
-    yield: '6x',
+    tradeoff: {
+      en: 'Highest yield, highest input cost',
+      hi: 'सबसे अधिक उपज, सबसे अधिक लागत',
+      mr: 'सर्वाधिक उत्पादन, सर्वाधिक खर्च',
+      pa: 'ਸਭ ਤੋਂ ਵੱਧ ਝਾੜ, ਸਭ ਤੋਂ ਵੱਧ ਲਾਗਤ',
+      ta: 'அதிக மகசூல், அதிக செலவு',
+    },
     color: 'text-warning dark:text-warning',
     bgColor: 'bg-warning-soft dark:bg-warning/30',
     borderColor: 'border-warning/30 dark:border-warning',
@@ -161,17 +179,12 @@ export default function FarmingTypeDialog({ open, onOpenChange, onSelect, cropNa
                   <span className={cn("font-semibold text-sm", option.color)}>
                     {option.title[lang] || option.title.en}
                   </span>
-                  <span className={cn(
-                    "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
-                    "bg-white dark:bg-background border shadow-sm",
-                    option.borderColor,
-                    option.color
-                  )}>
-                    {option.yield}
-                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
                   {option.subtitle[lang] || option.subtitle.en}
+                </p>
+                <p className="text-[11px] text-muted-foreground/80 mt-0.5">
+                  {option.tradeoff[lang] || option.tradeoff.en}
                 </p>
               </div>
 
