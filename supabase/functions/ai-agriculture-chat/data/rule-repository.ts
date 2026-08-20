@@ -134,7 +134,13 @@ interface CacheState {
   loadingPromise?: Promise<RuleSnapshot>;
 }
 
-const SNAPSHOT_TTL_MS = 1_800_000;         // FIX 4 (2026-08-19): 30 min backstop — warm invocations skip the 15s rule load
+// FIX 4 (2026-08-19): 30 min backstop — warm invocations skip the 15s rule load.
+// A3 (2026-08-20): TTL now configurable via env RULE_SNAPSHOT_TTL_MS.
+const SNAPSHOT_TTL_MS = (() => {
+  const raw = Deno.env.get('RULE_SNAPSHOT_TTL_MS');
+  const n = raw != null ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 1_800_000;
+})();
 const cache: CacheState = { snapshot: null };
 
 function client(explicit?: any): any {
@@ -170,17 +176,24 @@ function buildSnapshot(rows: RawRuleRow[], fingerprint: string): RuleSnapshot {
   return { rows, byCrop, byCropGroup, byRuleId, versionFingerprint: fingerprint, loadedAt: Date.now() };
 }
 
+// A3 (2026-08-20): fingerprint = count(*) + max(updated_at) over active rules.
+// max(version_hash) missed edits to non-hashed columns; any mismatch forces a reload.
 async function readVersionFingerprint(sb: any): Promise<string> {
   try {
-    const { data, error } = await sb
-      .from('decision_rules')
-      .select('version_hash')
-      .eq('is_active', true)
-      .order('version_hash', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) return '';
-    return String((data as any)?.version_hash ?? '');
+    const [countRes, latestRes] = await Promise.all([
+      sb.from('decision_rules').select('rule_id', { count: 'exact', head: true }).eq('is_active', true),
+      sb.from('decision_rules')
+        .select('updated_at')
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (countRes?.error || latestRes?.error) return '';
+    const count = countRes?.count ?? null;
+    if (count == null) return '';
+    const maxUpdatedAt = String((latestRes?.data as any)?.updated_at ?? '');
+    return `${count}|${maxUpdatedAt}`;
   } catch {
     return '';
   }

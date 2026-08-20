@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
+import ScheduleErrorBoundary from './ScheduleErrorBoundary';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
@@ -723,18 +724,20 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                       const daysUntil = differenceInDays(taskDate, new Date());
                       
                       return (
-                        <div key={task.id} onClick={() => setSelectedTask(task)}>
-                          <ModernTaskCard
-                            task={task}
-                            onSpeak={() => speakTask(task)}
-                            isSpeaking={isSpeaking && speakingTaskId === task.id}
-                            isOverdue={isOverdue}
-                            daysUntil={daysUntil}
-                            readOnly={true}
-                            onTakePhoto={() => setPhotoUploadTask(task)}
-                            stagePhase={phaseOfTask(task as any)}
-                          />
-                        </div>
+                        <ScheduleErrorBoundary key={task.id}>
+                          <div onClick={() => setSelectedTask(task)}>
+                            <ModernTaskCard
+                              task={task}
+                              onSpeak={() => speakTask(task)}
+                              isSpeaking={isSpeaking && speakingTaskId === task.id}
+                              isOverdue={isOverdue}
+                              daysUntil={daysUntil}
+                              readOnly={true}
+                              onTakePhoto={() => setPhotoUploadTask(task)}
+                              stagePhase={phaseOfTask(task as any)}
+                            />
+                          </div>
+                        </ScheduleErrorBoundary>
                       );
                     })}
                   </div>

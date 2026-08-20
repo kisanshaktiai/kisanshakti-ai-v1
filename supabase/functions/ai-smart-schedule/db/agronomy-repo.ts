@@ -234,14 +234,19 @@ export async function getFieldActionRules(
   supabase: SupabaseClient,
   cropCode: string,
 ): Promise<FieldActionRule[]> {
+  const FIELD_ACTION_RULE_LIMIT = 1000;
   const { data } = await supabase
     .from("decision_rules")
     .select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, crop_code")
     .eq("is_active", true)
     .eq("requires_field_action", true)
     .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL,crop_code.is.null`)
-    .limit(500);
-  return (data || []) as FieldActionRule[];
+    .limit(FIELD_ACTION_RULE_LIMIT);
+  const rows = (data || []) as FieldActionRule[];
+  if (rows.length === FIELD_ACTION_RULE_LIMIT) {
+    console.warn({ event: "rule_limit_hit", crop: cropCode, count: rows.length });
+  }
+  return rows;
 }
 
 export async function getBannedChemicals(supabase: SupabaseClient): Promise<Set<string>> {
