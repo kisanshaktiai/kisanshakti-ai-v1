@@ -26876,6 +26876,7 @@ export type Database = {
           ideal_weather: Json | null
           instructions: string[] | null
           is_pinned: boolean
+          land_crop_id: string | null
           language: string | null
           original_date: string | null
           original_date_before_climate_adjust: string | null
@@ -26936,6 +26937,7 @@ export type Database = {
           ideal_weather?: Json | null
           instructions?: string[] | null
           is_pinned?: boolean
+          land_crop_id?: string | null
           language?: string | null
           original_date?: string | null
           original_date_before_climate_adjust?: string | null
@@ -26996,6 +26998,7 @@ export type Database = {
           ideal_weather?: Json | null
           instructions?: string[] | null
           is_pinned?: boolean
+          land_crop_id?: string | null
           language?: string | null
           original_date?: string | null
           original_date_before_climate_adjust?: string | null
@@ -27034,6 +27037,13 @@ export type Database = {
           yield_impact_details?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "schedule_tasks_land_crop_id_fkey"
+            columns: ["land_crop_id"]
+            isOneToOne: false
+            referencedRelation: "land_crops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "schedule_tasks_schedule_id_fkey"
             columns: ["schedule_id"]
