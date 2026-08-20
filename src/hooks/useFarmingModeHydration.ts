@@ -120,6 +120,8 @@ export function useFarmingModeHydration(params: {
         if (resolved === 'unset') resolved = preferenceToMode((farmerRes?.data as any)?.farming_preference);
 
         if (cancelled || cacheKeyRef.current !== cacheKey) return;
+        // A DB read that resolves to nothing must never wipe a known mode.
+        if (resolved === 'unset' && readCache(cacheKey) !== 'unset') return;
         setFarmingModeState(resolved);
         writeCache(cacheKey, resolved);
 
