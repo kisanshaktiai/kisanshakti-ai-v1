@@ -134,7 +134,13 @@ interface CacheState {
   loadingPromise?: Promise<RuleSnapshot>;
 }
 
-const SNAPSHOT_TTL_MS = 1_800_000;         // FIX 4 (2026-08-19): 30 min backstop — warm invocations skip the 15s rule load
+// FIX 4 (2026-08-19): 30 min backstop — warm invocations skip the 15s rule load.
+// A3 (2026-08-20): TTL now configurable via env RULE_SNAPSHOT_TTL_MS.
+const SNAPSHOT_TTL_MS = (() => {
+  const raw = Deno.env.get('RULE_SNAPSHOT_TTL_MS');
+  const n = raw != null ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 1_800_000;
+})();
 const cache: CacheState = { snapshot: null };
 
 function client(explicit?: any): any {
