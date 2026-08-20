@@ -7353,14 +7353,19 @@ export class AIAgentOrchestrator {
           (this as any).__conversationState?.mode === 'DIAGNOSIS' ||
           (this as any).__conversationState?.mode === 'MIXED'
         );
-      if (observationAuthorityRequiresClarification && isSymptomFreeRoute) {
+      // EDIT 3 (2026-08-20) — a DB-declared DIRECT/0 intent with no farmer-text
+      // symptoms keeps its symptom-free exemption; authority mode alone may not
+      // veto it. SYMPTOM_DRIVEN intents are unaffected.
+      const __directContractBypassNow =
+        !!(this as any).__directContractNoSymptoms && isAdvisoryRoute(intentCode);
+      if (observationAuthorityRequiresClarification && isSymptomFreeRoute && !__directContractBypassNow) {
         console.log(
           `   🛑 [SYMPTOM_FREE_ROUTE_VETO] route=${queryRoute.route} intent=${intentCode} ` +
           `reason=${(this as any).__conversationState?.clarification_reason}`
         );
         agentsUsed.push('SYMPTOM_FREE_ROUTE_VETO');
       }
-      if (observationAuthorityRequiresClarification && bypassClarification) {
+      if (observationAuthorityRequiresClarification && bypassClarification && !__directContractBypassNow) {
         console.log(
           `   🛑 [BYPASS_CLARIFICATION_VETO] diagnostic observation authority requires UI; ` +
           `confirmed=${(this as any).__conversationState?.confirmed?.length ?? 0}`
@@ -7370,7 +7375,8 @@ export class AIAgentOrchestrator {
         agentsUsed.push('BYPASS_CLARIFICATION_VETO');
       }
 
-      const shouldPrepareClarification = (!isSymptomFreeRoute || observationAuthorityRequiresClarification) && (
+      const shouldPrepareClarification = (!isSymptomFreeRoute || (observationAuthorityRequiresClarification && !__directContractBypassNow)) && (
+
         (clarificationTrigger.should_clarify && !clarificationTrigger.bypass_allowed) || 
         (inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass))
       );
