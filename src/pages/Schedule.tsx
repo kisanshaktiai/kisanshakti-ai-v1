@@ -168,6 +168,15 @@ export default function Schedule() {
         userLanguage: user?.language
       });
       
+      // Cultivation lane: transplanted when the farmer starts from ready-made plants
+      // or raises a nursery; otherwise direct-seeded. An explicit farmer/land selection wins.
+      const explicitCultivationMethod =
+        (selectedLand as unknown as { cultivation_method?: string })?.cultivation_method || null;
+      const cultivationMethod =
+        explicitCultivationMethod ||
+        (isReadyMadePlant || (nurseryDays || 0) > 0 ? 'transplanted' : 'direct_seeded');
+      const cropCycle = (selectedLand as unknown as { crop_cycle?: string })?.crop_cycle || null;
+
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId: selectedLand.id,
@@ -178,6 +187,8 @@ export default function Schedule() {
           nurseryDays: nurseryDays || 0,
           localizedCropName: localizedCropName || cropName,
           farmingType: farmingType,
+          cultivationMethod,
+          ...(cropCycle ? { cropCycle } : {}),
           weather: weatherData,
           regenerate: true,
           language: scheduleLanguage,
