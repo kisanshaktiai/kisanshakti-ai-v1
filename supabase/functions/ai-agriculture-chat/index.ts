@@ -4895,7 +4895,13 @@ function transformOrchestratorResponseWithContent(
   }
 
   // For other types, delegate to the original function
-  return transformOrchestratorResponse(response, language, sessionId, startTime);
+  // 2026-08-20 — the persisted, translated content is authoritative for every
+  // turn: whatever the client sees must equal what ai_chat_messages stored.
+  const legacyPayload = transformOrchestratorResponse(response, language, sessionId, startTime);
+  if (typeof preGeneratedContent === 'string' && preGeneratedContent.trim()) {
+    legacyPayload.response = preGeneratedContent;
+  }
+  return legacyPayload;
 }
 
 function transformOrchestratorResponse(
@@ -5062,14 +5068,45 @@ function transformOrchestratorResponse(
         source: 'orchestrator_v1'
       };
 
+    // 2026-08-20 — DIAGNOSTIC_ESCALATION must never fall through to default.
+    case 'DIAGNOSTIC_ESCALATION': {
+      const dLandCtx = deriveLandCtx(response as any);
+      const dComm = (response.communication?.main_message?.full_text as any);
+      const dText = dComm?.[language] || dComm?.en
+        || response.communication?.farmer_message
+        || (response.escalation as any)?.[`message_${language}`]
+        || response.escalation?.message_en
+        || buildContextAwareFallback(dLandCtx, language)
+        || 'Please share a bit more detail so I can advise you.';
+      return {
+        response: dText,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        dataAudit: response.dataAudit,
+        metadata: {
+          type: 'diagnostic_escalation',
+          orchestrator_type: 'DIAGNOSTIC_ESCALATION',
+          confidence: response.metadata?.confidence,
+          agents_used: response.metadata?.agents_used,
+          trace_id: response.metadata?.trace_id
+        },
+        source: 'orchestrator_v1'
+      };
+    }
+
     case 'SYSTEM_ERROR':
     default:
       // CRITICAL FIX: Try to provide helpful response instead of error
       // Use fallback advice from error response if available
       const fallbackAdvice = response.error?.fallback_advice;
-      
-      // Build a helpful message instead of just "sorry"
-      const helpfulMessage = `🙏 Working on your question.
+      const errLandCtx = deriveLandCtx(response as any);
+      const ctxPrompt = buildContextAwareFallback(errLandCtx, language);
+
+      // Context-aware: never ask for crop/problem the land room already knows.
+      const helpfulMessage = ctxPrompt
+        ? `${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}${ctxPrompt}`
+        : `🙏 Working on your question.
 
 ${fallbackAdvice || 'Please ask your question again or provide more details.'}
 
