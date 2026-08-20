@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
+import ScheduleErrorBoundary from './ScheduleErrorBoundary';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
