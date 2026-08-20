@@ -1,4 +1,10 @@
 // CANONICAL FARMER ADVISORY SCHEMA v1.0
+//
+// CHANGE LOG (newest first)
+//   2026-08-20 04:20 UTC — secondary observations keep their own verbatim
+//     action_text / dosage_per_acre / organic_alternative (1 rule = 1 block).
+//     Cross-rule contamination is prevented by never merging blocks, not by
+//     blanking the secondary's own DB text.
 
 import type { RichRuleData, StructuredFarmerResponse } from './deterministic-response-builder.ts';
 
