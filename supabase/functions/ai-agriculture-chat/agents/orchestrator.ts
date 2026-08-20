@@ -9820,6 +9820,13 @@ export class AIAgentOrchestrator {
         // Also attach matched_responses for additional recovery options
         if (layeredRuleResult.matched_responses && layeredRuleResult.matched_responses.length > 0) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
+          // 2026-08-20 — one advisory block per confirmed observation.
+          if (!decisionOutput.secondary_decisions?.length) {
+            decisionOutput.secondary_decisions = buildSecondaryDecisions(
+              { matched_responses: layeredRuleResult.matched_responses },
+              decisionOutput.primary_decision?.rule_id,
+            );
+          }
         }
 
         
