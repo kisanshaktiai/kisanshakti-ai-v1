@@ -146,6 +146,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { getLanguageName } from '../utils/language-utils.ts';
+import { buildSecondaryDecisions } from './deterministic-response-builder.ts';
 
 // Phase H — Canonical Conversation State (single runtime authority)
 import { buildConversationState, type ConversationState } from '../runtime/conversation-state.ts';
