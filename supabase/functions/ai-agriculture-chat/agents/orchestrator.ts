@@ -5513,7 +5513,17 @@ export class AIAgentOrchestrator {
         }
 
         // Fix F: For DIRECT-hard intents (e.g. GENERAL_CROP_INFO), seed the rule
-        if (directHardBypass) {
+        // EDIT 1 (2026-08-20) — IOM rows for DIRECT/0 intents are rule-candidate
+        // hints, NOT evidence. Seeding them made the authority derive DIAGNOSIS
+        // mode with zero confirmed observations and forced a symptom questionnaire
+        // onto pure advisory questions (e.g. FERTILIZER_SCHEDULE).
+        if (directHardBypass && directContractNoSymptoms) {
+          console.log(
+            `   ⏭️ [DIRECT_HARD_IOM_SEED_SKIPPED] intent=${intentCode} reason=direct_contract_no_symptoms`,
+          );
+          agentsUsed.push('DIRECT_HARD_IOM_SEED_SKIPPED');
+        } else if (directHardBypass) {
+
           try {
             // PHASE-1 OBSERVATION-BEATS-INTENT GUARD
             const STRESS_MARKERS = [
