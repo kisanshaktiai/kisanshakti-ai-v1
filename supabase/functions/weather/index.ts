@@ -1097,19 +1097,38 @@ async function updateWeatherAggregate(
         observation_count: obsCount + 1,
       };
 
-      // Running daily min/max from real observations (the instantaneous reading
-      // IS a legitimate observation for these columns; only ET0/GDD required
-      // true daily extremes).
-      const candMin = Math.min(current.temp, dailyMin ?? current.temp);
-      const candMax = Math.max(current.temp, dailyMax ?? current.temp);
-      if (existing.temp_min_celsius == null || candMin < existing.temp_min_celsius) updates.temp_min_celsius = candMin;
-      if (existing.temp_max_celsius == null || candMax > existing.temp_max_celsius) updates.temp_max_celsius = candMax;
+      // FIX E1/E3: extremes hygiene.
+      //   observed provider extremes always win and widen the running range;
+      //   a synthesized range NEVER downgrades an already-observed row.
+      const newAvg = (existing.temp_avg_celsius ?? current.temp)
+        + (current.temp - (existing.temp_avg_celsius ?? current.temp)) / (obsCount + 1);
+      if (extremes.source === "observed") {
+        updates.temp_min_celsius = existing.temp_min_celsius == null
+          ? extremes.tmin : Math.min(existing.temp_min_celsius, extremes.tmin);
+        updates.temp_max_celsius = existing.temp_max_celsius == null
+          ? extremes.tmax : Math.max(existing.temp_max_celsius, extremes.tmax);
+        updates.temp_source = "observed";
+      } else if (existing.temp_source === "observed") {
+        // Keep the observed range, only widen it with the live reading.
+        if (existing.temp_min_celsius == null || current.temp < existing.temp_min_celsius) {
+          updates.temp_min_celsius = current.temp;
+        }
+        if (existing.temp_max_celsius == null || current.temp > existing.temp_max_celsius) {
+          updates.temp_max_celsius = current.temp;
+        }
+      } else {
+        // Synthesized row: re-centre the seasonal range on the running mean and
+        // widen it with any real reading seen so far.
+        const syn = resolveDailyExtremes(null, null, newAvg, today);
+        updates.temp_min_celsius = Math.min(syn.tmin, current.temp, existing.temp_min_celsius ?? syn.tmin);
+        updates.temp_max_celsius = Math.max(syn.tmax, current.temp, existing.temp_max_celsius ?? syn.tmax);
+        updates.temp_source = "mean_only_synthesized";
+      }
 
       // Incremental mean: avg += (new - avg) / (n + 1)
-      const prevT = existing.temp_avg_celsius ?? current.temp;
       const prevH = existing.humidity_avg_percent ?? current.humidity;
       const prevW = existing.wind_speed_avg_kmh ?? current.wind_speed * 3.6;
-      updates.temp_avg_celsius = prevT + (current.temp - prevT) / (obsCount + 1);
+      updates.temp_avg_celsius = newAvg;
       updates.humidity_avg_percent = prevH + (current.humidity - prevH) / (obsCount + 1);
       updates.wind_speed_avg_kmh = prevW + (current.wind_speed * 3.6 - prevW) / (obsCount + 1);
       if (current.wind_speed * 3.6 > (existing.wind_speed_max_kmh || 0)) {
@@ -1127,7 +1146,10 @@ async function updateWeatherAggregate(
       if (sunshine !== null) updates.sunshine_hours = sunshine;
 
       await supabase.from("weather_aggregates").update(updates).eq("id", existing.id);
-      log(runId, "info", "aggregate_updated", { date: today, obs_count: obsCount + 1, rain_total: updates.rain_mm_total });
+      log(runId, "info", "aggregate_updated", {
+        date: today, obs_count: obsCount + 1, rain_total: updates.rain_mm_total,
+        temp_source: updates.temp_source ?? existing.temp_source,
+      });
     } else {
       const indices = calculateAllAgriculturalIndices(indicesInput, methods);
 
@@ -1139,8 +1161,9 @@ async function updateWeatherAggregate(
         aggregate_date: today,
         rain_mm_total: rain24,
         [rainColumn]: rain24,
-        temp_min_celsius: dailyMin ?? current.temp,
-        temp_max_celsius: dailyMax ?? current.temp,
+        temp_min_celsius: extremes.tmin,
+        temp_max_celsius: extremes.tmax,
+        temp_source: extremes.source,
         temp_avg_celsius: current.temp,
         humidity_avg_percent: current.humidity,
         wind_speed_avg_kmh: current.wind_speed * 3.6,
@@ -1158,8 +1181,36 @@ async function updateWeatherAggregate(
       }, { onConflict: "tenant_id,location_key,aggregate_date,land_id", ignoreDuplicates: false });
 
       if (error) log(runId, "warn", "aggregate_insert_failed", { error: error.message });
-      else log(runId, "info", "aggregate_created", { date: today });
+      else log(runId, "info", "aggregate_created", { date: today, temp_source: extremes.source });
     }
+
+    // FIX E4: when the fetch was made for a specific land, mirror the day's
+    // measurement into a land-scoped aggregate row so the GDD accumulator can
+    // prefer land-specific data over the shared cell row. Upsert on the natural
+    // key (tenant, location_key, date, land_id) — never a blind insert, which is
+    // what produced the duplicate for land 6b0d9b65 on 2026-01-06.
+    if (landId) {
+      const { error: landAggErr } = await supabase.from("weather_aggregates").upsert({
+        tenant_id: tenantId,
+        farmer_id: farmerId ?? null,
+        land_id: landId,
+        location_key: locationKey,
+        aggregate_date: today,
+        rain_mm_total: rain24,
+        temp_min_celsius: extremes.tmin,
+        temp_max_celsius: extremes.tmax,
+        temp_source: extremes.source,
+        temp_avg_celsius: current.temp,
+        humidity_avg_percent: current.humidity,
+        wind_speed_avg_kmh: current.wind_speed * 3.6,
+        observation_count: 1,
+        gdd_accumulated: dailyGDD,
+        evapotranspiration_mm: et0,
+        updated_at: now.toISOString(),
+      }, { onConflict: "tenant_id,location_key,aggregate_date,land_id", ignoreDuplicates: false });
+      if (landAggErr) log(runId, "warn", "land_aggregate_upsert_failed", { error: landAggErr.message });
+    }
+
 
     await archiveToWeatherHistorical(supabase, runId, tenantId, landId, locationKey, latitude, _longitude);
   } catch (e) {
