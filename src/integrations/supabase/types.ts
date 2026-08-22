@@ -756,6 +756,13 @@ export type Database = {
             foreignKeyName: "advisory_audit_log_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "advisory_audit_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -2245,6 +2252,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "alert_notifications_land_id_fkey"
@@ -4858,6 +4872,13 @@ export type Database = {
             foreignKeyName: "copernicus_api_calls_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "copernicus_api_calls_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -5503,6 +5524,13 @@ export type Database = {
             foreignKeyName: "crop_growth_alerts_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -5652,6 +5680,13 @@ export type Database = {
             foreignKeyName: "crop_growth_analysis_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -5746,6 +5781,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "crop_growth_history_land_id_fkey"
@@ -5868,6 +5910,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "crop_growth_uploads_land_id_fkey"
@@ -6007,6 +6056,13 @@ export type Database = {
             foreignKeyName: "crop_health_assessments_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_health_assessments_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -6106,6 +6162,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "crop_history_land_id_fkey"
@@ -6240,6 +6303,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "crop_lifecycle_events_land_id_fkey"
@@ -6650,6 +6720,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "crop_schedules_land_id_fkey"
@@ -13424,6 +13501,13 @@ export type Database = {
             foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -15105,6 +15189,13 @@ export type Database = {
             foreignKeyName: "land_activities_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_activities_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -15279,6 +15370,13 @@ export type Database = {
             foreignKeyName: "land_crops_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -15417,6 +15515,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "land_gdd_daily_land_id_fkey"
@@ -15612,6 +15717,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_tile_mapping_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: true
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "land_tile_mapping_land_id_fkey"
@@ -15840,6 +15952,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_weather_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "land_weather_state_land_id_fkey"
@@ -17602,6 +17721,13 @@ export type Database = {
             foreignKeyName: "marketplace_products_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "marketplace_products_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -19094,6 +19220,13 @@ export type Database = {
             foreignKeyName: "ndvi_data_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -19220,6 +19353,13 @@ export type Database = {
             foreignKeyName: "ndvi_micro_tiles_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_micro_tiles_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -19313,6 +19453,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_processing_logs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "ndvi_processing_logs_land_id_fkey"
@@ -22380,6 +22527,13 @@ export type Database = {
             foreignKeyName: "prescription_maps_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "prescription_maps_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -22608,6 +22762,13 @@ export type Database = {
             foreignKeyName: "proactive_alerts_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "proactive_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -22811,6 +22972,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proactive_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "proactive_events_land_id_fkey"
@@ -26403,6 +26571,13 @@ export type Database = {
             foreignKeyName: "satellite_alerts_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -26555,6 +26730,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_imagery_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "satellite_imagery_land_id_fkey"
@@ -28127,6 +28309,13 @@ export type Database = {
             foreignKeyName: "soil_health_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -28527,6 +28716,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "stage_transition_log_land_id_fkey"
@@ -31665,6 +31861,13 @@ export type Database = {
             foreignKeyName: "treatment_outcomes_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -33663,6 +33866,13 @@ export type Database = {
             foreignKeyName: "weather_aggregates_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_aggregates_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -33997,6 +34207,13 @@ export type Database = {
             foreignKeyName: "weather_current_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -34189,6 +34406,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "weather_forecasts_land_id_fkey"
@@ -34388,6 +34612,13 @@ export type Database = {
             foreignKeyName: "fk_weather_land"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -34439,6 +34670,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "weather_observations_land_id_fkey"
@@ -35306,6 +35544,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "ndvi_data_land_id_fkey"
@@ -36321,6 +36566,22 @@ export type Database = {
           },
         ]
       }
+      v_gdd_pipeline_health: {
+        Row: {
+          bad_base_temp: boolean | null
+          current_crop: string | null
+          current_gdd: number | null
+          daily_rows: number | null
+          gdd_anchor_date: string | null
+          has_null_temp_rows: boolean | null
+          health: string | null
+          land_id: string | null
+          last_positive_gdd: string | null
+          latest_obs: string | null
+          zero_days: number | null
+        }
+        Relationships: []
+      }
       v_harvest_market_context: {
         Row: {
           crop_code: string | null
@@ -36600,6 +36861,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "ndvi_data_land_id_fkey"
@@ -37624,6 +37892,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "soil_health_land_id_fkey"
@@ -39431,6 +39706,10 @@ export type Database = {
       reassign_lead: {
         Args: { p_lead_id: string; p_new_admin_id: string; p_reason?: string }
         Returns: boolean
+      }
+      recompute_land_gdd_daily: {
+        Args: { p_from?: string; p_land_id: string }
+        Returns: number
       }
       reconcile_schedule_for_land: {
         Args: { p_land_id: string }

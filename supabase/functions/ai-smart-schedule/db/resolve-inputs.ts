@@ -1,4 +1,13 @@
 // CHANGE LOG
+// 2026-08-22 06:10 UTC — cropCycle fallback fix (cycle-aware). The prior fallback ('plant',
+//   added 2026-08-19) zeroed out getStages for the 23/24 crops whose crop_stage_master rows are
+//   all crop_cycle='universal' (rice, wheat, cotton, maize, …) → empty schedules. Switching the
+//   fallback to 'universal' fixes those crops but BREAKS sugarcane, whose stages are tagged
+//   'plant'(21)+'ratoon'(3) with no 'universal' rows (verified: 0 stages, crop_stage_master_no_rows).
+//   Sugarcane has 2 distinct non-universal cycles so the distinct-cycle inference can't pick one.
+//   Resolution: cycle-aware fallback that reuses the already-fetched stage cycles — 'universal'
+//   when the crop has any universal stage, else the crop's primary real cycle ('plant' when
+//   present, which is how sugarcane resolves to plant). The single-cycle inference is retained.
 // 2026-08-19 18:10 UTC — cropCycle fix: exclude 'universal' from the stage-graph distinct-cycle
 //   check (it means "applies to any cycle", not a real cycle) and default to 'plant' when no
 //   single non-universal cycle can be inferred. Prevents NOT NULL violation on
@@ -211,31 +220,51 @@ export async function resolveInputs(
   );
   if (!cultivationMethod) gaps.push("cultivation_method_unresolved");
 
-  // Crop cycle from land record or the crop's stage graph. `universal` is not a
-  // real cycle — it means "applies to any cycle" — so it must never be used as the
-  // selected cycle. Only a single non-universal distinct cycle can be inferred from
-  // the stage graph; otherwise we fall back to the standard main-crop cycle 'plant'
-  // (the column's DB default and one of the two CHECK-allowed values 'plant'/'ratoon').
+  // Crop cycle resolution. Priority: explicit param → land record → inferred from the
+  // crop's stage graph → cycle-aware fallback. getStages filters
+  // `crop_cycle.eq.<cycle>,crop_cycle.is.null`, so the resolved cycle MUST match at least
+  // one row's crop_cycle or the stage list is zeroed out (→ empty schedule).
+  //
+  // Two real cases:
+  //  - Most crops (rice, wheat, cotton, maize, …) tag every stage crop_cycle='universal'.
+  //    The distinct-cycle inference finds zero non-universal cycles, so the fallback must
+  //    be 'universal' or getStages returns nothing.
+  //  - Sugarcane tags stages 'plant' (21) and 'ratoon' (3) — no 'universal' rows — so the
+  //    distinct-cycle inference sees 2 distinct cycles and cannot pick one. The fallback
+  //    must be a real cycle that exists for the crop; 'universal' would zero out sugarcane.
+  // The cycle-aware fallback below handles both: prefer 'universal' when the crop has any
+  // universal stage, otherwise the crop's primary non-universal cycle ('plant' when present),
+  // falling back to 'universal' only when no stage rows exist at all (DB default).
   let cropCycle = params.cropCycle || (land?.crop_cycle as string) || null;
+  let stageCycles: string[] = [];
   if (!cropCycle && cropCode) {
     const { data: cycles } = await supabase
       .from("crop_stage_master")
       .select("crop_cycle")
       .eq("crop_code", cropCode)
       .eq("is_active", true);
-    const distinct = [
-      ...new Set(
-        (cycles || [])
-          .map((c: Record<string, unknown>) => c.crop_cycle)
-          .filter(Boolean)
-          .map(String)
-          .filter((c) => c.toLowerCase() !== "universal"),
-      ),
+    stageCycles = (cycles || [])
+      .map((c: Record<string, unknown>) => c.crop_cycle)
+      .filter(Boolean)
+      .map(String);
+    const distinctNonUniversal = [
+      ...new Set(stageCycles.filter((c) => c.toLowerCase() !== "universal")),
     ];
-    if (distinct.length === 1) cropCycle = distinct[0];
+    // A crop with exactly one real cycle (e.g. a future plant-only crop) infers it directly.
+    if (distinctNonUniversal.length === 1) cropCycle = distinctNonUniversal[0];
   }
-  // Never return null for a crop that has a schedule: default to the standard main-crop cycle.
-  if (!cropCycle) cropCycle = "plant";
+  if (!cropCycle) {
+    const hasUniversal = stageCycles.some((c) => c.toLowerCase() === "universal");
+    if (hasUniversal) {
+      cropCycle = "universal";
+    } else {
+      const nonUniversal = stageCycles.filter((c) => c.toLowerCase() !== "universal");
+      // Prefer 'plant' (the standard main-crop cycle) when the crop has it; this is how
+      // sugarcane resolves to its primary plant-cycle stages. Otherwise take the first
+      // real cycle present.
+      cropCycle = nonUniversal.find((c) => c.toLowerCase() === "plant") || nonUniversal[0] || "universal";
+    }
+  }
 
   // Soil fertility class from the latest soil test (never assumed)
   let soilFertilityClass: string | null = null;
