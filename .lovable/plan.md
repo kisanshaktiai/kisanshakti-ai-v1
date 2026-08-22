@@ -1,68 +1,52 @@
-# Crop schedule forensic audit — findings and fix plan
+# GDD Pipeline — Code-Side Repair (Fixes E, G, H, I)
 
-## Part 1 — "This land already has an active crop" on a freshly added land
+The database side (accumulator functions, guardrail constraints, health view, cron) is already repaired and is treated as untouchable. This plan covers only the remaining code work.
 
-Verified in the database:
+## Verified current state
 
-- Land `8897e53d…` ("Kodoli Mala", created 2026-08-18) has `lifecycle_status = CROP_ACTIVE` and `active_schedule_id = a3eb23c2…`.
-- That schedule row `a3eb23c2…` has `is_active = false`, `lifecycle_status = PLANNED`, `harvest_status = NOT_STARTED`, 248 tasks.
-- So the land has **zero active schedules** but is still flagged CROP_ACTIVE. It is the only land in this state today (all other CROP_ACTIVE lands have exactly one active schedule).
+- No TypeScript writes `land_gdd_daily`. All hits are reads (`env-intelligence`, `proactive-evaluator/env-derived`, `ai-agriculture-chat` phenology reconciler and state loader). So there is no duplicate writer to delete — only a check to keep it that way.
+- `weather_aggregates` has **no `temp_source` column** yet; it must be added.
+- `weather_aggregates` already has `UNIQUE NULLS NOT DISTINCT (tenant_id, location_key, aggregate_date, land_id)`, and the weather function already upserts on that key. What is missing is min/max hygiene and land-scoped rows.
+- `location_key` is built by `roundCoordinates()` in `supabase/functions/weather/index.ts` using `toFixed(2)` + `Number()`, which drops trailing zeros ('16.9,74') — the format bug named in the report. Cell resolution comes from `CONFIG.CELL_RESOLUTION_DEG`.
+- `land_weather_state`: 439 rows, **all** have `gdd_daily = 0`; it is written in `weather/index.ts` from `indices.gdd`.
+- `weather_aggregates` spans 2025-12-30..2026-08-22 but only 579 rows; `land_gdd_daily` has 222 rows for 10 anchored lands — consistent with the ~3-week effective window.
+- `v_gdd_pipeline_health` and `system_health_events` exist and are readable by `authenticated`.
+- Admin-facing diagnostics page already exists at route `diagnostics/environment` (`src/pages/EnvDiagnostics.tsx`) with a role gate for super_admin / tenant_admin / tenant_manager — Fix I lands there rather than in a new page.
 
-Cause chain (all verified by reading the code and the trigger sources):
+## Fix E — Weather ingestion hygiene (`supabase/functions/weather/index.ts`)
 
-1. `ai-smart-schedule` inserts the schedule with `is_active = true`. The trigger `fn_block_double_active_schedule` promotes `lands.lifecycle_status → CROP_ACTIVE` and sets `active_schedule_id`.
-2. `schedules-api` DELETE is a **soft delete**: it deletes `schedule_tasks` and sets `crop_schedules.is_active = false`. It never touches `lands.lifecycle_status` / `active_schedule_id`.
-3. The only demotion path back to `AVAILABLE` is `fn_cascade_harvest_completion`, which fires only on `harvest_status = FULLY_HARVESTED` or `ABANDONED`. A soft-deleted/deactivated schedule never triggers it.
-4. Next generation attempt hits the fail-fast guard in `ai-smart-schedule/index.ts` (`lifecycle_status === 'CROP_ACTIVE'`) and returns `LAND_NOT_AVAILABLE` — the message the farmer sees.
+1. Migration: add `weather_aggregates.temp_source text` (nullable, no default backfill) plus a check limiting it to `observed | mean_only_synthesized | reanalysis`.
+2. Canonical key: change `roundCoordinates()` to emit `lat.toFixed(1) + ',' + lon.toFixed(1)` so the decimal is always present. Existing rows are left alone (the DB join tolerates both).
+3. Diurnal synthesis: in `updateWeatherAggregate`, when the provider gives no true daily extremes, stop writing `current.temp` into both min and max. Synthesize from the mean with the seasonal range (6 °C Jun–Sep, 14 °C Dec–Feb, 10 °C otherwise) and set `temp_source='mean_only_synthesized'`; write `'observed'` when real extremes exist. Never let a synthesized row overwrite an observed one.
+4. Land scoping: when the fetch was made for a specific land, also write the land-scoped aggregate row with `land_id` set, upserting on the same natural key so a repeated fetch updates instead of duplicating.
 
-### Fixes
+## Fix G — `land_weather_state.gdd_daily`
 
-1. **Trigger (migration):** add an `AFTER UPDATE` trigger on `crop_schedules` — when a row goes `is_active true → false` and no other active schedule remains for that land, release the land: `lifecycle_status = 'AVAILABLE'`, `active_schedule_id = NULL`, `lifecycle_changed_at = now()`, and log a `crop_lifecycle_events` row (`SCHEDULE_DEACTIVATED`). Harvest/abandon paths keep their existing behaviour.
-2. **Backfill (same migration):** release every land that is CROP_ACTIVE with zero active schedules (currently exactly `8897e53d…`), with an audit event per land.
-3. **Server guard (`schedules-api`):** after the soft delete, explicitly reconcile the land, so the API is correct even if the trigger is bypassed.
-4. **Guard hardening (`ai-smart-schedule/index.ts`):** before returning `LAND_NOT_AVAILABLE`, verify an active schedule actually exists. If the land is CROP_ACTIVE but has none, self-heal (release the land) and continue generating instead of blocking.
-5. **Client message:** keep the existing localized 409/200 domain toast; add the current crop name and an "confirm harvest" affordance when the block is genuine.
+- Change the `land_weather_state` upsert in `weather/index.ts` to source `gdd_daily` from `land_gdd_daily` for `(land_id, metric_date)` instead of `indices.gdd`; write `null` (not 0) when the canonical row does not exist yet, so the two tables can never disagree.
+- One-time migration backfill: `UPDATE land_weather_state s SET gdd_daily = d.daily_gdd FROM land_gdd_daily d WHERE d.land_id = s.land_id AND d.obs_date = s.metric_date;`
 
-## Part 2 — Farming-mode preset matrix: is it applied?
+## Fix H — Historical weather backfill (highest priority)
 
-**No. It is not applied anywhere.** Verified:
+New edge function `supabase/functions/backfill-historical-weather/`:
 
-- Columns exist: `crop_schedules.nutrient_policy` / `protection_policy`, `land_crops.nutrient_policy` / `protection_policy`, `farmers.default_nutrient_policy` / `default_protection_policy`, each with a CHECK constraint allowing `organic_only | integrated | inorganic_allowed` (nutrient) and `organic_only | integrated | synthetic_allowed` (protection).
-- No trigger, no default, no DB function derives these columns from `farming_type`.
-- Current data contradicts the requested matrix: `organic_fertilizer` rows are stored as `organic_only / NULL` (12 rows) and `organic_only / integrated` (4 rows). Target is `integrated / organic_only`.
-- Grep across `supabase/functions` and `src`: **zero** reads of `nutrient_policy` / `protection_policy` outside the generated types file. They are dead columns.
-- `ai-smart-schedule` contains no occurrence of "organic" or "farming" other than storing `body.farmingType` verbatim on the schedule row. Schedule generation today is completely farming-mode-blind: the baseline generator picks fertilizer/protection tasks with no policy filter.
+1. Target cells from `lands` with a non-null `gdd_anchor_date`, grouped to 0.1°, earliest anchor per cell.
+2. Per cell, fetch Open-Meteo ERA5 archive (`temperature_2m_max`, `temperature_2m_min`, `timezone=Asia/Kolkata`) from that anchor to 2026-08-03, with retry/backoff and a bounded per-run cell budget.
+3. Upsert into `weather_aggregates` with the canonical `location_key`, `temp_source='reanalysis'`, `observation_count=1`; skip rows whose existing `temp_source='observed'`. Idempotent — a second run changes nothing.
+4. Recompute GDD via `recompute_land_gdd_daily(id)` for every anchored land.
+5. Print the sanity table (Adsali cane ~3,800–4,600; Dec-2025 cane ~2,300–2,700; rice ~950–1,150 with stage agreement) plus `v_gdd_pipeline_health`.
 
-### Where the data comes from during generation (today)
+Interim gate (step 6): until the sanity table passes, mark `current_gdd` low-confidence where it feeds the rule engine (`proactive-evaluator` env-derived / GDD-gated rules) so GDD-gated rules require stage-gate corroboration. This is a temporary flag removed in the same session once backfill acceptance passes.
 
-`CropDateInput` / `ScheduleGenerator` (default `organic_fertilizer`) → `Schedule.tsx` → request body `farmingType` → written to `crop_schedules.farming_type`. Nothing else reads it. `land_crops.farming_type` and the chat farming-mode store are a separate lane.
+## Fix I — Surface the telemetry
 
-### Proposed final, deterministic, versioned design
+Extend `src/pages/EnvDiagnostics.tsx` (existing role gate reused) with a "GDD pipeline" section:
 
-1. **Preset table (SSOT), new migration:** `public.farming_mode_presets` — `farming_type` (PK), `nutrient_policy`, `protection_policy`, `version` int, `is_active`, `rationale`, `effective_from`. Seed exactly the matrix given:
+- `v_gdd_pipeline_health` rendered as a table, rows with `health <> 'OK'` highlighted destructive.
+- Recent `system_health_events` filtered to `gdd_batch_run` / `gdd_land_error`.
+- Per-land sparkline of `daily_gdd` and `cumulative_gdd` from `land_gdd_daily` for the land already selected on that page.
 
-   ```text
-   organic_only         → organic_only        / organic_only
-   organic_fertilizer   → integrated          / organic_only
-   fertilizer_pesticide → inorganic_allowed   / synthetic_allowed
-   ipm (reserved, inactive) → integrated      / integrated
-   ```
+## Technical notes
 
-   Grants: `SELECT` to `anon`/`authenticated`, `ALL` to `service_role`; RLS on with a read-only public policy (reference data).
-
-2. **Deterministic derivation:** a `BEFORE INSERT OR UPDATE` trigger on `crop_schedules` and `land_crops` fills `nutrient_policy` / `protection_policy` from the active preset whenever `farming_type` is set or changed, and stamps `policy_version`. Explicit caller-supplied policies are never silently overwritten by a *different* value — a mismatch raises, so the preset stays the only author.
-
-3. **Backfill:** rewrite existing rows to the matrix (16 `organic_fertilizer` rows change to `integrated / organic_only`), recorded with the preset version.
-
-4. **Generator consumption (`ai-smart-schedule`):** resolve the preset once in `db/resolve-inputs.ts` (farming type from request → preset row) and thread `nutrient_policy` / `protection_policy` into `generator/baseline-generator.ts`:
-   - nutrient tasks: `organic_only` → organic sources only; `integrated` → organic-first, synthetic top-up allowed and labelled; `inorganic_allowed` → unrestricted.
-   - protection tasks: `organic_only` → bio/cultural only, synthetic rules skipped and pushed to `gaps[]` with reason `policy_excluded`; `integrated` → organic-first with synthetic fallback; `synthetic_allowed` → unrestricted.
-   - Every emitted task keeps `source_refs` / `rule_ids`; nothing is invented, missing organic coverage becomes a gap, never a substituted chemical.
-
-5. **Chat/advisory alignment:** the existing farming-mode store keeps `crop_schedules` as SSOT; it will additionally write `farming_type` only, letting the trigger derive the policies, so chat and schedule can never diverge.
-
-6. **Tests:** extend `tests/edge/schedule/` with a preset-contract test (each `farming_type` maps to the exact policy pair) and a policy-filter test (an `organic_fertilizer` schedule contains no synthetic protection task).
-
-## Sequencing
-
-Part 1 (lifecycle release + backfill + self-heal) ships first and unblocks the land immediately. Part 2 ships as one migration plus the generator wiring, behind the same deploy.
+- Files touched: `supabase/functions/weather/index.ts`, new `supabase/functions/backfill-historical-weather/index.ts`, `supabase/functions/proactive-evaluator/env-derived.ts` (temporary confidence flag), `src/pages/EnvDiagnostics.tsx`, plus two migrations (temp_source column; land_weather_state backfill).
+- No new writer of `land_gdd_daily` is introduced; the backfill triggers recomputation only through the existing RPC.
+- Verification: `rg` for TS writers, an idempotency re-run of the backfill, a constraint-violation probe against `chk_gdd_no_silent_zero`, and a `land_weather_state` vs `land_gdd_daily` equality query.
