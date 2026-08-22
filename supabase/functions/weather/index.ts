@@ -1369,7 +1369,7 @@ async function computeLandWeatherMetrics(
       land_id: landId,
       tenant_id: tenantId,
       cell_key: locationKey,
-      metric_date: istDate(),
+      metric_date: metricDate,
       temperature_c: current.temp,
       humidity_percent: current.humidity,
       wind_speed_kmh: current.wind_speed * 3.6,
