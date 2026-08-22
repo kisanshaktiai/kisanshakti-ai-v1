@@ -1041,6 +1041,9 @@ async function updateWeatherAggregate(
   const dailyMax = Number.isFinite(current.temp_max as number) ? (current.temp_max as number) : null;
   const dailyMin = Number.isFinite(current.temp_min as number) ? (current.temp_min as number) : null;
   const hasDaily = dailyMax !== null && dailyMin !== null;
+  // FIX E1/E3: never store a collapsed diurnal range. When the provider gave no
+  // usable extremes we synthesize a seasonal range around the mean and label it.
+  const extremes = resolveDailyExtremes(dailyMax, dailyMin, current.temp, today);
   const hasLat = Number.isFinite(latitude);
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
 
