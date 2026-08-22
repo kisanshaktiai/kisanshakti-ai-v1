@@ -1,10 +1,13 @@
 // CHANGE LOG
-// 2026-08-22 06:05 UTC — cropCycle fallback fix: changed final fallback from 'plant' to 'universal'.
-//   The 'plant' fallback (added 2026-08-19) broke schedule generation for 23/24 crops: their
-//   crop_stage_master rows are all crop_cycle='universal', so getStages (which filters
-//   crop_cycle.eq + crop_cycle.is.null) returned zero stages → empty schedules. 'universal'
-//   is the DB default and the correct fallback. Distinct-cycle inference + 'universal'
-//   exclusion for crops with a genuine split (e.g. sugarcane → plant/ratoon) is unchanged.
+// 2026-08-22 06:10 UTC — cropCycle fallback fix (cycle-aware). The prior fallback ('plant',
+//   added 2026-08-19) zeroed out getStages for the 23/24 crops whose crop_stage_master rows are
+//   all crop_cycle='universal' (rice, wheat, cotton, maize, …) → empty schedules. Switching the
+//   fallback to 'universal' fixes those crops but BREAKS sugarcane, whose stages are tagged
+//   'plant'(21)+'ratoon'(3) with no 'universal' rows (verified: 0 stages, crop_stage_master_no_rows).
+//   Sugarcane has 2 distinct non-universal cycles so the distinct-cycle inference can't pick one.
+//   Resolution: cycle-aware fallback that reuses the already-fetched stage cycles — 'universal'
+//   when the crop has any universal stage, else the crop's primary real cycle ('plant' when
+//   present, which is how sugarcane resolves to plant). The single-cycle inference is retained.
 // 2026-08-19 18:10 UTC — cropCycle fix: exclude 'universal' from the stage-graph distinct-cycle
 //   check (it means "applies to any cycle", not a real cycle) and default to 'plant' when no
 //   single non-universal cycle can be inferred. Prevents NOT NULL violation on
