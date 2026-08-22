@@ -1347,6 +1347,24 @@ async function computeLandWeatherMetrics(
     if (et0 !== null && effectiveRainfall > et0 * 1.5) waterBalance = "SURPLUS";
     else if ((waterDeficit ?? 0) > 3) waterBalance = "DEFICIT";
 
+    // FIX G (2026-08-22): gdd_daily is a MIRROR of the canonical land_gdd_daily
+    // table, never a second computation. `indices.gdd` used a DEFAULT crop base
+    // temperature and a collapsed diurnal range, which is why all 409 rows read
+    // 0.00. The two tables must never disagree; when the canonical row does not
+    // exist yet we write NULL (unknown), not 0 (a false measurement).
+    const metricDate = istDate();
+    let canonicalGddDaily: number | null = null;
+    try {
+      const { data: gddRow } = await supabase.from("land_gdd_daily")
+        .select("daily_gdd")
+        .eq("land_id", landId)
+        .eq("obs_date", metricDate)
+        .maybeSingle();
+      canonicalGddDaily = gddRow?.daily_gdd == null ? null : Number(gddRow.daily_gdd);
+    } catch (_e) {
+      canonicalGddDaily = null;
+    }
+
     const { error } = await supabase.from("land_weather_state").upsert({
       land_id: landId,
       tenant_id: tenantId,
