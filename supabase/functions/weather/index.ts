@@ -211,15 +211,68 @@ function log(runId: string, level: "info" | "warn" | "error", event: string, dat
 // UTILITIES
 // ============================================================================
 
-/** Shared weather cell key. All farmers in the cell reuse one record. */
+/**
+ * Shared weather cell key. All farmers in the cell reuse one record.
+ *
+ * FIX E2 (2026-08-22): the key is now CANONICAL — always one decimal place on
+ * both axes ('16.9,74.0'). The old `Number(x.toFixed(2))` dropped trailing
+ * zeros and emitted '16.9,74', which broke the GDD accumulator's numeric join
+ * on location_key. Existing rows are left alone; the DB join tolerates both.
+ */
+export function canonicalLocationKey(lat: number, lon: number): string {
+  return `${lat.toFixed(1)},${lon.toFixed(1)}`;
+}
+
 function roundCoordinates(lat: number, lon: number): { lat: number; lon: number; key: string } {
   const r = CONFIG.CELL_RESOLUTION_DEG;
   const roundedLat = Math.round(lat / r) * r;
   const roundedLon = Math.round(lon / r) * r;
   const nLat = Number(roundedLat.toFixed(2));
   const nLon = Number(roundedLon.toFixed(2));
-  return { lat: nLat, lon: nLon, key: `${nLat},${nLon}` };
+  return { lat: nLat, lon: nLon, key: canonicalLocationKey(nLat, nLon) };
 }
+
+/**
+ * FIX E3 — diurnal collapse guard.
+ * 33% of weather_aggregates rows had temp_max == temp_min because a mean-only
+ * provider fallback wrote the instantaneous mean into both columns, which
+ * zeroes GDD and ET0. When true daily extremes are unavailable we synthesize a
+ * climatologically plausible range around the mean and LABEL the row so the
+ * downstream pipeline can tell fabricated extremes from observed ones.
+ */
+function seasonalDiurnalRange(isoDate: string): number {
+  const month = Number(isoDate.slice(5, 7));
+  if (month >= 6 && month <= 9) return 6;   // monsoon: compressed range
+  if (month === 12 || month <= 2) return 14; // dry winter: wide range
+  return 10;
+}
+
+type DailyExtremes = {
+  tmax: number;
+  tmin: number;
+  source: "observed" | "mean_only_synthesized";
+};
+
+function resolveDailyExtremes(
+  dailyMax: number | null,
+  dailyMin: number | null,
+  meanTemp: number,
+  isoDate: string,
+): DailyExtremes {
+  if (dailyMax !== null && dailyMin !== null && dailyMax > dailyMin) {
+    return { tmax: dailyMax, tmin: dailyMin, source: "observed" };
+  }
+  const r = seasonalDiurnalRange(isoDate);
+  const base = Number.isFinite(dailyMax as number) && Number.isFinite(dailyMin as number)
+    ? ((dailyMax as number) + (dailyMin as number)) / 2
+    : meanTemp;
+  return {
+    tmax: Math.round((base + r / 2) * 10) / 10,
+    tmin: Math.round((base - r / 2) * 10) / 10,
+    source: "mean_only_synthesized",
+  };
+}
+
 
 /** IST calendar date. Farms are in IST; the Deno runtime is UTC. */
 function istDate(at: Date = new Date()): string {
@@ -988,6 +1041,9 @@ async function updateWeatherAggregate(
   const dailyMax = Number.isFinite(current.temp_max as number) ? (current.temp_max as number) : null;
   const dailyMin = Number.isFinite(current.temp_min as number) ? (current.temp_min as number) : null;
   const hasDaily = dailyMax !== null && dailyMin !== null;
+  // FIX E1/E3: never store a collapsed diurnal range. When the provider gave no
+  // usable extremes we synthesize a seasonal range around the mean and label it.
+  const extremes = resolveDailyExtremes(dailyMax, dailyMin, current.temp, today);
   const hasLat = Number.isFinite(latitude);
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
 
@@ -1041,19 +1097,38 @@ async function updateWeatherAggregate(
         observation_count: obsCount + 1,
       };
 
-      // Running daily min/max from real observations (the instantaneous reading
-      // IS a legitimate observation for these columns; only ET0/GDD required
-      // true daily extremes).
-      const candMin = Math.min(current.temp, dailyMin ?? current.temp);
-      const candMax = Math.max(current.temp, dailyMax ?? current.temp);
-      if (existing.temp_min_celsius == null || candMin < existing.temp_min_celsius) updates.temp_min_celsius = candMin;
-      if (existing.temp_max_celsius == null || candMax > existing.temp_max_celsius) updates.temp_max_celsius = candMax;
+      // FIX E1/E3: extremes hygiene.
+      //   observed provider extremes always win and widen the running range;
+      //   a synthesized range NEVER downgrades an already-observed row.
+      const newAvg = (existing.temp_avg_celsius ?? current.temp)
+        + (current.temp - (existing.temp_avg_celsius ?? current.temp)) / (obsCount + 1);
+      if (extremes.source === "observed") {
+        updates.temp_min_celsius = existing.temp_min_celsius == null
+          ? extremes.tmin : Math.min(existing.temp_min_celsius, extremes.tmin);
+        updates.temp_max_celsius = existing.temp_max_celsius == null
+          ? extremes.tmax : Math.max(existing.temp_max_celsius, extremes.tmax);
+        updates.temp_source = "observed";
+      } else if (existing.temp_source === "observed") {
+        // Keep the observed range, only widen it with the live reading.
+        if (existing.temp_min_celsius == null || current.temp < existing.temp_min_celsius) {
+          updates.temp_min_celsius = current.temp;
+        }
+        if (existing.temp_max_celsius == null || current.temp > existing.temp_max_celsius) {
+          updates.temp_max_celsius = current.temp;
+        }
+      } else {
+        // Synthesized row: re-centre the seasonal range on the running mean and
+        // widen it with any real reading seen so far.
+        const syn = resolveDailyExtremes(null, null, newAvg, today);
+        updates.temp_min_celsius = Math.min(syn.tmin, current.temp, existing.temp_min_celsius ?? syn.tmin);
+        updates.temp_max_celsius = Math.max(syn.tmax, current.temp, existing.temp_max_celsius ?? syn.tmax);
+        updates.temp_source = "mean_only_synthesized";
+      }
 
       // Incremental mean: avg += (new - avg) / (n + 1)
-      const prevT = existing.temp_avg_celsius ?? current.temp;
       const prevH = existing.humidity_avg_percent ?? current.humidity;
       const prevW = existing.wind_speed_avg_kmh ?? current.wind_speed * 3.6;
-      updates.temp_avg_celsius = prevT + (current.temp - prevT) / (obsCount + 1);
+      updates.temp_avg_celsius = newAvg;
       updates.humidity_avg_percent = prevH + (current.humidity - prevH) / (obsCount + 1);
       updates.wind_speed_avg_kmh = prevW + (current.wind_speed * 3.6 - prevW) / (obsCount + 1);
       if (current.wind_speed * 3.6 > (existing.wind_speed_max_kmh || 0)) {
@@ -1071,7 +1146,10 @@ async function updateWeatherAggregate(
       if (sunshine !== null) updates.sunshine_hours = sunshine;
 
       await supabase.from("weather_aggregates").update(updates).eq("id", existing.id);
-      log(runId, "info", "aggregate_updated", { date: today, obs_count: obsCount + 1, rain_total: updates.rain_mm_total });
+      log(runId, "info", "aggregate_updated", {
+        date: today, obs_count: obsCount + 1, rain_total: updates.rain_mm_total,
+        temp_source: updates.temp_source ?? existing.temp_source,
+      });
     } else {
       const indices = calculateAllAgriculturalIndices(indicesInput, methods);
 
@@ -1083,8 +1161,9 @@ async function updateWeatherAggregate(
         aggregate_date: today,
         rain_mm_total: rain24,
         [rainColumn]: rain24,
-        temp_min_celsius: dailyMin ?? current.temp,
-        temp_max_celsius: dailyMax ?? current.temp,
+        temp_min_celsius: extremes.tmin,
+        temp_max_celsius: extremes.tmax,
+        temp_source: extremes.source,
         temp_avg_celsius: current.temp,
         humidity_avg_percent: current.humidity,
         wind_speed_avg_kmh: current.wind_speed * 3.6,
@@ -1102,8 +1181,36 @@ async function updateWeatherAggregate(
       }, { onConflict: "tenant_id,location_key,aggregate_date,land_id", ignoreDuplicates: false });
 
       if (error) log(runId, "warn", "aggregate_insert_failed", { error: error.message });
-      else log(runId, "info", "aggregate_created", { date: today });
+      else log(runId, "info", "aggregate_created", { date: today, temp_source: extremes.source });
     }
+
+    // FIX E4: when the fetch was made for a specific land, mirror the day's
+    // measurement into a land-scoped aggregate row so the GDD accumulator can
+    // prefer land-specific data over the shared cell row. Upsert on the natural
+    // key (tenant, location_key, date, land_id) — never a blind insert, which is
+    // what produced the duplicate for land 6b0d9b65 on 2026-01-06.
+    if (landId) {
+      const { error: landAggErr } = await supabase.from("weather_aggregates").upsert({
+        tenant_id: tenantId,
+        farmer_id: farmerId ?? null,
+        land_id: landId,
+        location_key: locationKey,
+        aggregate_date: today,
+        rain_mm_total: rain24,
+        temp_min_celsius: extremes.tmin,
+        temp_max_celsius: extremes.tmax,
+        temp_source: extremes.source,
+        temp_avg_celsius: current.temp,
+        humidity_avg_percent: current.humidity,
+        wind_speed_avg_kmh: current.wind_speed * 3.6,
+        observation_count: 1,
+        gdd_accumulated: dailyGDD,
+        evapotranspiration_mm: et0,
+        updated_at: now.toISOString(),
+      }, { onConflict: "tenant_id,location_key,aggregate_date,land_id", ignoreDuplicates: false });
+      if (landAggErr) log(runId, "warn", "land_aggregate_upsert_failed", { error: landAggErr.message });
+    }
+
 
     await archiveToWeatherHistorical(supabase, runId, tenantId, landId, locationKey, latitude, _longitude);
   } catch (e) {
@@ -1240,11 +1347,29 @@ async function computeLandWeatherMetrics(
     if (et0 !== null && effectiveRainfall > et0 * 1.5) waterBalance = "SURPLUS";
     else if ((waterDeficit ?? 0) > 3) waterBalance = "DEFICIT";
 
+    // FIX G (2026-08-22): gdd_daily is a MIRROR of the canonical land_gdd_daily
+    // table, never a second computation. `indices.gdd` used a DEFAULT crop base
+    // temperature and a collapsed diurnal range, which is why all 409 rows read
+    // 0.00. The two tables must never disagree; when the canonical row does not
+    // exist yet we write NULL (unknown), not 0 (a false measurement).
+    const metricDate = istDate();
+    let canonicalGddDaily: number | null = null;
+    try {
+      const { data: gddRow } = await supabase.from("land_gdd_daily")
+        .select("daily_gdd")
+        .eq("land_id", landId)
+        .eq("obs_date", metricDate)
+        .maybeSingle();
+      canonicalGddDaily = gddRow?.daily_gdd == null ? null : Number(gddRow.daily_gdd);
+    } catch (_e) {
+      canonicalGddDaily = null;
+    }
+
     const { error } = await supabase.from("land_weather_state").upsert({
       land_id: landId,
       tenant_id: tenantId,
       cell_key: locationKey,
-      metric_date: istDate(),
+      metric_date: metricDate,
       temperature_c: current.temp,
       humidity_percent: current.humidity,
       wind_speed_kmh: current.wind_speed * 3.6,
@@ -1255,7 +1380,7 @@ async function computeLandWeatherMetrics(
       soil_type_used: soilType,
       irrigation_needed: indices.irrigation_need?.needs_irrigation ?? null,
       irrigation_urgency: indices.irrigation_need?.priority ?? null,
-      gdd_daily: indices.gdd,
+      gdd_daily: canonicalGddDaily, // FIX G: mirror of land_gdd_daily.daily_gdd
       et0_mm: et0,
       et0_method: indices.et0_method,
       u_std_et0: indices.et0_u_std,

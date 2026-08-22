@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.weather]
 verify_jwt = false
 
+[functions.backfill-historical-weather]
+verify_jwt = false
+
 [functions.env-intelligence]
 verify_jwt = false
 
