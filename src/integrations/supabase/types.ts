@@ -33749,6 +33749,7 @@ export type Database = {
           temp_avg_celsius: number | null
           temp_max_celsius: number | null
           temp_min_celsius: number | null
+          temp_source: string | null
           tenant_id: string
           updated_at: string
           wind_speed_avg_kmh: number | null
@@ -33778,6 +33779,7 @@ export type Database = {
           temp_avg_celsius?: number | null
           temp_max_celsius?: number | null
           temp_min_celsius?: number | null
+          temp_source?: string | null
           tenant_id: string
           updated_at?: string
           wind_speed_avg_kmh?: number | null
@@ -33807,6 +33809,7 @@ export type Database = {
           temp_avg_celsius?: number | null
           temp_max_celsius?: number | null
           temp_min_celsius?: number | null
+          temp_source?: string | null
           tenant_id?: string
           updated_at?: string
           wind_speed_avg_kmh?: number | null
