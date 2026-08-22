@@ -693,7 +693,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             </div>
 
                             {/* Ideal Weather */}
-                            {task.ideal_weather && (
+                            {task.ideal_weather && typeof task.ideal_weather === 'object' && (task.ideal_weather.temperature || task.ideal_weather.humidity || task.ideal_weather.conditions) && (
                               <div>
                                 <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
                                   <Thermometer className="h-4 w-4 text-info" />

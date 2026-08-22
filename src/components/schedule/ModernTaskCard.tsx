@@ -519,7 +519,7 @@ export default function ModernTaskCard({
             ) : null}
 
             {/* Ideal Weather */}
-            {isValidValue(idealWeather) && typeof idealWeather === 'object' && (
+            {idealWeather && typeof idealWeather === 'object' && (isValidValue(idealWeather.temperature) || isValidValue(idealWeather.humidity) || isValidValue(idealWeather.conditions)) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2 text-info dark:text-info">
                   <Sun className="h-4 w-4" />
