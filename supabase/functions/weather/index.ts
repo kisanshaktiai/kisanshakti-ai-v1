@@ -1380,7 +1380,7 @@ async function computeLandWeatherMetrics(
       soil_type_used: soilType,
       irrigation_needed: indices.irrigation_need?.needs_irrigation ?? null,
       irrigation_urgency: indices.irrigation_need?.priority ?? null,
-      gdd_daily: indices.gdd,
+      gdd_daily: canonicalGddDaily, // FIX G: mirror of land_gdd_daily.daily_gdd
       et0_mm: et0,
       et0_method: indices.et0_method,
       u_std_et0: indices.et0_u_std,
