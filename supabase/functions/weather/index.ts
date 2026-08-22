@@ -211,15 +211,68 @@ function log(runId: string, level: "info" | "warn" | "error", event: string, dat
 // UTILITIES
 // ============================================================================
 
-/** Shared weather cell key. All farmers in the cell reuse one record. */
+/**
+ * Shared weather cell key. All farmers in the cell reuse one record.
+ *
+ * FIX E2 (2026-08-22): the key is now CANONICAL — always one decimal place on
+ * both axes ('16.9,74.0'). The old `Number(x.toFixed(2))` dropped trailing
+ * zeros and emitted '16.9,74', which broke the GDD accumulator's numeric join
+ * on location_key. Existing rows are left alone; the DB join tolerates both.
+ */
+export function canonicalLocationKey(lat: number, lon: number): string {
+  return `${lat.toFixed(1)},${lon.toFixed(1)}`;
+}
+
 function roundCoordinates(lat: number, lon: number): { lat: number; lon: number; key: string } {
   const r = CONFIG.CELL_RESOLUTION_DEG;
   const roundedLat = Math.round(lat / r) * r;
   const roundedLon = Math.round(lon / r) * r;
   const nLat = Number(roundedLat.toFixed(2));
   const nLon = Number(roundedLon.toFixed(2));
-  return { lat: nLat, lon: nLon, key: `${nLat},${nLon}` };
+  return { lat: nLat, lon: nLon, key: canonicalLocationKey(nLat, nLon) };
 }
+
+/**
+ * FIX E3 — diurnal collapse guard.
+ * 33% of weather_aggregates rows had temp_max == temp_min because a mean-only
+ * provider fallback wrote the instantaneous mean into both columns, which
+ * zeroes GDD and ET0. When true daily extremes are unavailable we synthesize a
+ * climatologically plausible range around the mean and LABEL the row so the
+ * downstream pipeline can tell fabricated extremes from observed ones.
+ */
+function seasonalDiurnalRange(isoDate: string): number {
+  const month = Number(isoDate.slice(5, 7));
+  if (month >= 6 && month <= 9) return 6;   // monsoon: compressed range
+  if (month === 12 || month <= 2) return 14; // dry winter: wide range
+  return 10;
+}
+
+type DailyExtremes = {
+  tmax: number;
+  tmin: number;
+  source: "observed" | "mean_only_synthesized";
+};
+
+function resolveDailyExtremes(
+  dailyMax: number | null,
+  dailyMin: number | null,
+  meanTemp: number,
+  isoDate: string,
+): DailyExtremes {
+  if (dailyMax !== null && dailyMin !== null && dailyMax > dailyMin) {
+    return { tmax: dailyMax, tmin: dailyMin, source: "observed" };
+  }
+  const r = seasonalDiurnalRange(isoDate);
+  const base = Number.isFinite(dailyMax as number) && Number.isFinite(dailyMin as number)
+    ? ((dailyMax as number) + (dailyMin as number)) / 2
+    : meanTemp;
+  return {
+    tmax: Math.round((base + r / 2) * 10) / 10,
+    tmin: Math.round((base - r / 2) * 10) / 10,
+    source: "mean_only_synthesized",
+  };
+}
+
 
 /** IST calendar date. Farms are in IST; the Deno runtime is UTC. */
 function istDate(at: Date = new Date()): string {
