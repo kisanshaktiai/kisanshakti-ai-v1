@@ -217,11 +217,11 @@ export async function resolveInputs(
   );
   if (!cultivationMethod) gaps.push("cultivation_method_unresolved");
 
-  // Crop cycle from land record or the crop's stage graph. `universal` is not a
-  // real cycle — it means "applies to any cycle" — so it must never be used as the
-  // selected cycle. Only a single non-universal distinct cycle can be inferred from
-  // the stage graph; otherwise we fall back to the standard main-crop cycle 'plant'
-  // (the column's DB default and one of the two CHECK-allowed values 'plant'/'ratoon').
+  // Crop cycle from land record or the crop's stage graph. For crops with a genuine
+  // plant/ratoon split (e.g. sugarcane), a single non-'universal' distinct cycle is
+  // inferred from the stage graph. For all other crops — whose crop_stage_master rows
+  // are tagged crop_cycle='universal' — we fall back to 'universal' (the DB default),
+  // which is what getStages expects so it does not zero out the stage list.
   let cropCycle = params.cropCycle || (land?.crop_cycle as string) || null;
   if (!cropCycle && cropCode) {
     const { data: cycles } = await supabase
