@@ -234,8 +234,13 @@ export async function resolveInputs(
     ];
     if (distinct.length === 1) cropCycle = distinct[0];
   }
-  // Never return null for a crop that has a schedule: default to the standard main-crop cycle.
-  if (!cropCycle) cropCycle = "plant";
+  // Never return null for a crop that has a schedule: default to 'universal', the DB default and
+  // the value crop_stage_master rows are tagged with for the vast majority of crops. Using 'plant'
+  // here would zero out getStages (which filters crop_cycle.eq + crop_cycle.is.null) for any crop
+  // whose stages are all 'universal', producing an empty schedule. Crops with a genuine plant/
+  // ratoon split (e.g. sugarcane) resolve to the specific cycle via the distinct-cycle inference
+  // above and never reach this fallback.
+  if (!cropCycle) cropCycle = "universal";
 
   // Soil fertility class from the latest soil test (never assumed)
   let soilFertilityClass: string | null = null;
