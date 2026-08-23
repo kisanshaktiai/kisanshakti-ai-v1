@@ -325,7 +325,9 @@ export async function generateBaseline(
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: stage?.is_moisture_critical ? "critical" : "high",
         weather_dependent: true,
+        nutrient: null,
         quantity: g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
+
         estimated_cost: null,
         rule_ids: [],
         confidence: null,
