@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-08-23 06:20 UTC — FIX 1/2/3: field-action rules restricted to trigger_class=CONTEXT_SCHEDULE
+//   (OBSERVATION rules are conditional, never dated tasks) + one weekly "Field scouting" task per
+//   stage carrying OBSERVATION rules; costing keyed on a new structured `nutrient` field
+//   (N→UREA, P→SSP, K→MOP) instead of task_name, compound splits reported as a gap;
+//   sowing/planting task emitted unconditionally whenever stages exist.
 // 2026-08-18 18:20 UTC — Phase A: every task now carries stage_uuid (crop_stage_master.id) alongside
 //   stage_key; unresolvable stage labels stay null and add the "task_stage_unmappable" gap.
 // 2026-08-18 15:45 UTC — hardened the fertilizer split loop: malformed splits skipped with a named gap,
@@ -17,6 +22,7 @@ import {
   getFertilizerPlan,
   getIrrigationGuidelines,
   getFieldActionRules,
+  getObservationRules,
   getBannedChemicals,
   getLaborRate,
   getInputPrice,
@@ -24,7 +30,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.0.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.1.0";
 
 export interface BaselineTask {
   task_name: string;
@@ -40,6 +46,7 @@ export interface BaselineTask {
   stage_order: number;
   priority: string;
   weather_dependent: boolean;
+  nutrient: string | null;
   quantity: { value: number; unit: string } | null;
   estimated_cost: number | null;
   rule_ids: string[];
