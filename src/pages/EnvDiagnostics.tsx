@@ -13,7 +13,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { envIntelligenceApi } from '@/services/envIntelligenceApi';
-import { ShieldAlert, FlaskConical, Activity } from 'lucide-react';
+import { ShieldAlert, FlaskConical, Activity, Thermometer } from 'lucide-react';
 
 export default function EnvDiagnostics() {
   const { t } = useTranslation();
@@ -115,6 +115,42 @@ export default function EnvDiagnostics() {
     },
     enabled: allowed && !!landId,
   });
+
+  // ── FIX I (2026-08-23): GDD pipeline telemetry ────────────────────────────
+  const { data: gddHealth } = useQuery({
+    queryKey: ['env-diag', 'gdd-health'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('v_gdd_pipeline_health')
+        .select(
+          'land_id, current_crop, gdd_anchor_date, current_gdd, daily_rows, zero_days, latest_obs, last_positive_gdd, has_null_temp_rows, bad_base_temp, health',
+        )
+        .limit(200);
+      return data ?? [];
+    },
+    enabled: allowed,
+  });
+
+  const { data: gddSeries } = useQuery({
+    queryKey: ['env-diag', 'gdd-series', landId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('land_gdd_daily')
+        .select('obs_date, daily_gdd, cumulative_gdd, tmax_c, tmin_c, base_temp_c')
+        .eq('land_id', landId)
+        .order('obs_date', { ascending: false })
+        .limit(60);
+      return (data ?? []).slice().reverse();
+    },
+    enabled: allowed && !!landId,
+  });
+
+  const landNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (lands ?? []).forEach((l: any) => map.set(l.id, l.name));
+    return map;
+  }, [lands]);
+
 
   if (rolesLoading) {
     return <div className="p-4"><div className="h-40 animate-pulse rounded-2xl bg-muted" /></div>;
@@ -229,9 +265,110 @@ export default function EnvDiagnostics() {
           ])}
         />
       </Section>
+
+      <Section
+        icon={<Thermometer className="h-4 w-4 text-primary" />}
+        title="GDD pipeline health"
+      >
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="text-muted-foreground">
+              {['land', 'crop', 'anchor', 'cum GDD', 'days', 'zero days', 'latest obs', 'health'].map((h) => (
+                <th key={h} className="whitespace-nowrap py-1 pr-3 font-medium">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(gddHealth ?? []).map((g: any) => {
+              const bad = g.health !== 'OK';
+              return (
+                <tr
+                  key={g.land_id}
+                  className={`cursor-pointer border-t border-border/40 ${bad ? 'bg-destructive/10' : ''}`}
+                  onClick={() => setLandId(g.land_id)}
+                >
+                  <td className="whitespace-nowrap py-1 pr-3 text-foreground">
+                    {landNameById.get(g.land_id) ?? String(g.land_id).slice(0, 8)}
+                  </td>
+                  <td className="whitespace-nowrap py-1 pr-3 text-foreground">{g.current_crop ?? '—'}</td>
+                  <td className="whitespace-nowrap py-1 pr-3 text-foreground">{g.gdd_anchor_date ?? '—'}</td>
+                  <td className="whitespace-nowrap py-1 pr-3 text-foreground">
+                    {g.current_gdd != null ? Number(g.current_gdd).toFixed(0) : '—'}
+                  </td>
+                  <td className="whitespace-nowrap py-1 pr-3 text-foreground">{g.daily_rows ?? 0}</td>
+                  <td className="whitespace-nowrap py-1 pr-3 text-foreground">{g.zero_days ?? 0}</td>
+                  <td className="whitespace-nowrap py-1 pr-3 text-foreground">{g.latest_obs ?? '—'}</td>
+                  <td className="whitespace-nowrap py-1 pr-3">
+                    <Badge variant={bad ? 'destructive' : 'outline'}>{g.health ?? '—'}</Badge>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {!(gddHealth ?? []).length && <p className="text-sm text-muted-foreground">—</p>}
+      </Section>
+
+      {!!landId && (
+        <Section
+          icon={<Thermometer className="h-4 w-4 text-warning" />}
+          title="Daily GDD (last 60 days)"
+        >
+          <GddSparkline series={(gddSeries ?? []) as any[]} />
+          <Table
+            head={['date', 'tmax', 'tmin', 'base', 'daily', 'cumulative']}
+            rows={(gddSeries ?? [])
+              .slice()
+              .reverse()
+              .slice(0, 14)
+              .map((d: any) => [
+                String(d.obs_date),
+                d.tmax_c != null ? Number(d.tmax_c).toFixed(1) : '—',
+                d.tmin_c != null ? Number(d.tmin_c).toFixed(1) : '—',
+                d.base_temp_c != null ? Number(d.base_temp_c).toFixed(1) : '—',
+                d.daily_gdd != null ? Number(d.daily_gdd).toFixed(2) : '—',
+                d.cumulative_gdd != null ? Number(d.cumulative_gdd).toFixed(0) : '—',
+              ])}
+          />
+        </Section>
+      )}
     </div>
   );
 }
+
+function GddSparkline({ series }: { series: any[] }) {
+  const points = series.filter((d) => d?.daily_gdd != null);
+  if (points.length < 2) {
+    return <p className="mb-2 text-sm text-muted-foreground">—</p>;
+  }
+  const values = points.map((d) => Number(d.daily_gdd));
+  const max = Math.max(...values, 1);
+  const w = 100;
+  const h = 28;
+  const path = values
+    .map((v, i) => `${(i / (values.length - 1)) * w},${h - (v / max) * h}`)
+    .join(' ');
+  return (
+    <div className="mb-3">
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-10 w-full">
+        <polyline
+          points={path}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1}
+          className="text-primary"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <p className="text-[10px] text-muted-foreground">
+        max {max.toFixed(1)} °Cd/day · {values.length} days
+      </p>
+    </div>
+  );
+}
+
 
 function Section({
   icon,
