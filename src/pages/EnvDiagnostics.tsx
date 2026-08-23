@@ -116,6 +116,42 @@ export default function EnvDiagnostics() {
     enabled: allowed && !!landId,
   });
 
+  // ── FIX I (2026-08-23): GDD pipeline telemetry ────────────────────────────
+  const { data: gddHealth } = useQuery({
+    queryKey: ['env-diag', 'gdd-health'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('v_gdd_pipeline_health')
+        .select(
+          'land_id, current_crop, gdd_anchor_date, current_gdd, daily_rows, zero_days, latest_obs, last_positive_gdd, has_null_temp_rows, bad_base_temp, health',
+        )
+        .limit(200);
+      return data ?? [];
+    },
+    enabled: allowed,
+  });
+
+  const { data: gddSeries } = useQuery({
+    queryKey: ['env-diag', 'gdd-series', landId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('land_gdd_daily')
+        .select('obs_date, daily_gdd, cumulative_gdd, tmax_c, tmin_c, base_temp_c')
+        .eq('land_id', landId)
+        .order('obs_date', { ascending: false })
+        .limit(60);
+      return (data ?? []).slice().reverse();
+    },
+    enabled: allowed && !!landId,
+  });
+
+  const landNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (lands ?? []).forEach((l: any) => map.set(l.id, l.name));
+    return map;
+  }, [lands]);
+
+
   if (rolesLoading) {
     return <div className="p-4"><div className="h-40 animate-pulse rounded-2xl bg-muted" /></div>;
   }
