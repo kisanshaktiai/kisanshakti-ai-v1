@@ -140,21 +140,34 @@ export async function generateBaseline(
   const durationDays = stages.reduce((max, s) => Math.max(max, s.das_max ?? 0), 0) || null;
 
   // ── Seed / planting task ───────────────────────────────────────────────────
+  // The day-0 anchor operation is always emitted when a phenology spine exists.
+  // A missing seed rate degrades the quantity to null (with a named gap) — it never
+  // removes the operation itself.
   const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod);
   coverage.seed = !!seed;
   let seedKg: number | null = null;
   if (!seed) {
     gaps.push("seed_rate_unavailable");
-  } else if (areaAcres == null) {
-    gaps.push("seed_quantity_not_computed_missing_area");
   } else {
-    seedKg = Number((seed.kgPerAcre * areaAcres).toFixed(2));
     provenance.push(seed.provenance);
+    if (areaAcres == null) {
+      gaps.push("seed_quantity_not_computed_missing_area");
+    } else {
+      seedKg = Number((seed.kgPerAcre * areaAcres).toFixed(2));
+    }
+  }
+
+  if (stages.length) {
     const sowStage = stages.find((s) => (s.das_min ?? 0) <= 0) || stages[0] || null;
+    const sowProvenance: Provenance[] = seed
+      ? [seed.provenance]
+      : sowStage
+        ? [{ table: "crop_stage_master", row_id: sowStage.id }]
+        : [];
     tasks.push({
       task_name: "Sowing / planting",
       task_type: "planting",
-      task_description: seed.rationale || "",
+      task_description: seed?.rationale || "",
       days_from_sowing: 0,
       anchor_type: "DAS",
       anchor_stage: sowStage?.stage_code || sowStage?.growth_stage || null,
@@ -165,14 +178,16 @@ export async function generateBaseline(
       stage_order: 1,
       priority: "critical",
       weather_dependent: true,
-      quantity: { value: seedKg, unit: "kg" },
+      nutrient: null,
+      quantity: seedKg != null ? { value: seedKg, unit: "kg" } : null,
       estimated_cost: null,
       rule_ids: [],
-      confidence: 0.9,
-      source_refs: [seed.provenance],
+      confidence: seed ? 0.9 : null,
+      source_refs: sowProvenance,
       instructions: [],
     });
   }
+
 
   // ── Fertilizer split tasks ─────────────────────────────────────────────────
   const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass);
