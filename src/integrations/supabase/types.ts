@@ -30219,6 +30219,21 @@ export type Database = {
           },
         ]
       }
+      task_type_map: {
+        Row: {
+          canonical: string
+          raw_value: string
+        }
+        Insert: {
+          canonical: string
+          raw_value: string
+        }
+        Update: {
+          canonical?: string
+          raw_value?: string
+        }
+        Relationships: []
+      }
       tax_configurations: {
         Row: {
           country_code: string
