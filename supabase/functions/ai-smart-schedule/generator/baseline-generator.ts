@@ -1,9 +1,15 @@
 // CHANGE LOG
+// 2026-08-23 07:20 UTC — Phase 2 taxonomy: emitted task_type values are canonical
+//   ("sowing"/"nutrition"), field-action rule categories are canonicalised through the
+//   DB table task_type_map (loaded once per generation, unmapped → "advisory" + gap
+//   "task_type_unmapped"), and fertilizer splits without a nutrient are skipped with the
+//   "fertilizer_split_nutrient_missing" gap instead of defaulting to NPK.
 // 2026-08-23 06:20 UTC — FIX 1/2/3: field-action rules restricted to trigger_class=CONTEXT_SCHEDULE
 //   (OBSERVATION rules are conditional, never dated tasks) + one weekly "Field scouting" task per
 //   stage carrying OBSERVATION rules; costing keyed on a new structured `nutrient` field
 //   (N→UREA, P→SSP, K→MOP) instead of task_name, compound splits reported as a gap;
 //   sowing/planting task emitted unconditionally whenever stages exist.
+
 // 2026-08-18 18:20 UTC — Phase A: every task now carries stage_uuid (crop_stage_master.id) alongside
 //   stage_key; unresolvable stage labels stay null and add the "task_stage_unmappable" gap.
 // 2026-08-18 15:45 UTC — hardened the fertilizer split loop: malformed splits skipped with a named gap,
