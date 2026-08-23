@@ -1,9 +1,15 @@
 // CHANGE LOG
+// 2026-08-23 07:20 UTC — Phase 2 taxonomy: emitted task_type values are canonical
+//   ("sowing"/"nutrition"), field-action rule categories are canonicalised through the
+//   DB table task_type_map (loaded once per generation, unmapped → "advisory" + gap
+//   "task_type_unmapped"), and fertilizer splits without a nutrient are skipped with the
+//   "fertilizer_split_nutrient_missing" gap instead of defaulting to NPK.
 // 2026-08-23 06:20 UTC — FIX 1/2/3: field-action rules restricted to trigger_class=CONTEXT_SCHEDULE
 //   (OBSERVATION rules are conditional, never dated tasks) + one weekly "Field scouting" task per
 //   stage carrying OBSERVATION rules; costing keyed on a new structured `nutrient` field
 //   (N→UREA, P→SSP, K→MOP) instead of task_name, compound splits reported as a gap;
 //   sowing/planting task emitted unconditionally whenever stages exist.
+
 // 2026-08-18 18:20 UTC — Phase A: every task now carries stage_uuid (crop_stage_master.id) alongside
 //   stage_key; unresolvable stage labels stay null and add the "task_stage_unmappable" gap.
 // 2026-08-18 15:45 UTC — hardened the fertilizer split loop: malformed splits skipped with a named gap,
@@ -30,7 +36,40 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.1.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.2.0";
+
+/** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
+const CANONICAL_TASK_TYPES = new Set([
+  "land_preparation", "seed_treatment", "nursery", "sowing", "gap_filling",
+  "nutrition", "micronutrient", "irrigation", "weed_management", "intercultural",
+  "pest_management", "disease_management", "growth_regulation", "monitoring",
+  "harvest", "post_harvest", "residue_management", "planning", "advisory",
+]);
+
+/** Loads public.task_type_map once per generation. DB is the only taxonomy author. */
+async function loadTaskTypeMap(supabase: SupabaseClient): Promise<Map<string, string>> {
+  const { data } = await supabase.from("task_type_map").select("raw_value, canonical").limit(2000);
+  const map = new Map<string, string>();
+  for (const r of (data || []) as Array<{ raw_value: string; canonical: string }>) {
+    map.set(String(r.raw_value), String(r.canonical));
+    map.set(String(r.raw_value).toLowerCase(), String(r.canonical));
+  }
+  return map;
+}
+
+function canonicaliseTaskType(
+  map: Map<string, string>,
+  ...candidates: Array<string | null | undefined>
+): { taskType: string; unmapped: boolean } {
+  for (const c of candidates) {
+    const raw = (c ?? "").trim();
+    if (!raw) continue;
+    const hit = map.get(raw) ?? map.get(raw.toLowerCase());
+    if (hit && CANONICAL_TASK_TYPES.has(hit)) return { taskType: hit, unmapped: false };
+    if (CANONICAL_TASK_TYPES.has(raw.toLowerCase())) return { taskType: raw.toLowerCase(), unmapped: false };
+  }
+  return { taskType: "advisory", unmapped: true };
+}
 
 export interface BaselineTask {
   task_name: string;
@@ -173,7 +212,7 @@ export async function generateBaseline(
         : [];
     tasks.push({
       task_name: "Sowing / planting",
-      task_type: "planting",
+      task_type: "sowing",
       task_description: seed?.rationale || "",
       days_from_sowing: 0,
       anchor_type: "DAS",
@@ -238,7 +277,13 @@ export async function generateBaseline(
             ? Number(fractionRaw) / 100
             : Number(fractionRaw)
           : null;
-      const nutrientRaw = String(split.nutrient ?? split.name ?? "NPK").trim().toUpperCase();
+      const nutrientSource = split.nutrient ?? split.name ?? null;
+      if (nutrientSource == null || String(nutrientSource).trim() === "") {
+        // No nutrient named by the DB row — never assume a compound blend.
+        gaps.push("fertilizer_split_nutrient_missing");
+        continue;
+      }
+      const nutrientRaw = String(nutrientSource).trim().toUpperCase();
       // Exact nutrient semantics — no prefix guessing, no compound approximation.
       const nutrient =
         nutrientRaw === "N"
@@ -267,7 +312,7 @@ export async function generateBaseline(
 
       tasks.push({
         task_name: `Fertilizer application (${nutrient})`,
-        task_type: "fertilizer",
+        task_type: "nutrition",
         task_description: String(split.note ?? split.description ?? ""),
         days_from_sowing: das,
         anchor_type: stage ? "STAGE" : "DAS",
@@ -347,6 +392,7 @@ export async function generateBaseline(
   // ── Field-action rules (scouting, protection, operations) ──────────────────
   const rules = await getFieldActionRules(supabase, inputs.cropCode);
   const banned = await getBannedChemicals(supabase);
+  const taskTypeMap = await loadTaskTypeMap(supabase);
   coverage.field_actions = rules.length > 0;
   if (!rules.length) gaps.push("decision_rules_no_field_actions");
 
@@ -374,9 +420,11 @@ export async function generateBaseline(
     for (const stage of matched) {
       const das = stage.das_min ?? null;
       if (das == null) continue;
+      const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
+      if (unmapped) gaps.push("task_type_unmapped");
       tasks.push({
         task_name: rule.action_text || rule.category || rule.rule_id,
-        task_type: rule.category || rule.action_type || "advisory",
+        task_type: taskType,
         task_description: rule.action_text || "",
         days_from_sowing: das,
         anchor_type: "STAGE",
@@ -478,7 +526,7 @@ export async function generateBaseline(
   // display string (task_name / task_description / stage_name).
   const NUTRIENT_PRODUCT: Record<string, string> = { N: "UREA", P: "SSP", K: "MOP" };
   for (const t of tasks) {
-    if (t.quantity && t.task_type === "fertilizer") {
+    if (t.quantity && t.task_type === "nutrition") {
       const product = t.nutrient ? NUTRIENT_PRODUCT[t.nutrient] : undefined;
       if (!product) {
         gaps.push("input_price_product_unmapped");
