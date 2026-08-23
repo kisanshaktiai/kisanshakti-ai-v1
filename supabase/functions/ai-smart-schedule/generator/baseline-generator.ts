@@ -212,7 +212,7 @@ export async function generateBaseline(
         : [];
     tasks.push({
       task_name: "Sowing / planting",
-      task_type: "planting",
+      task_type: "sowing",
       task_description: seed?.rationale || "",
       days_from_sowing: 0,
       anchor_type: "DAS",
@@ -277,7 +277,13 @@ export async function generateBaseline(
             ? Number(fractionRaw) / 100
             : Number(fractionRaw)
           : null;
-      const nutrientRaw = String(split.nutrient ?? split.name ?? "NPK").trim().toUpperCase();
+      const nutrientSource = split.nutrient ?? split.name ?? null;
+      if (nutrientSource == null || String(nutrientSource).trim() === "") {
+        // No nutrient named by the DB row — never assume a compound blend.
+        gaps.push("fertilizer_split_nutrient_missing");
+        continue;
+      }
+      const nutrientRaw = String(nutrientSource).trim().toUpperCase();
       // Exact nutrient semantics — no prefix guessing, no compound approximation.
       const nutrient =
         nutrientRaw === "N"
@@ -306,7 +312,7 @@ export async function generateBaseline(
 
       tasks.push({
         task_name: `Fertilizer application (${nutrient})`,
-        task_type: "fertilizer",
+        task_type: "nutrition",
         task_description: String(split.note ?? split.description ?? ""),
         days_from_sowing: das,
         anchor_type: stage ? "STAGE" : "DAS",
@@ -517,7 +523,7 @@ export async function generateBaseline(
   // display string (task_name / task_description / stage_name).
   const NUTRIENT_PRODUCT: Record<string, string> = { N: "UREA", P: "SSP", K: "MOP" };
   for (const t of tasks) {
-    if (t.quantity && t.task_type === "fertilizer") {
+    if (t.quantity && t.task_type === "nutrition") {
       const product = t.nutrient ? NUTRIENT_PRODUCT[t.nutrient] : undefined;
       if (!product) {
         gaps.push("input_price_product_unmapped");
