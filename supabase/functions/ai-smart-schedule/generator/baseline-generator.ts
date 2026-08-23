@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-08-23 06:20 UTC — FIX 1/2/3: field-action rules restricted to trigger_class=CONTEXT_SCHEDULE
+//   (OBSERVATION rules are conditional, never dated tasks) + one weekly "Field scouting" task per
+//   stage carrying OBSERVATION rules; costing keyed on a new structured `nutrient` field
+//   (N→UREA, P→SSP, K→MOP) instead of task_name, compound splits reported as a gap;
+//   sowing/planting task emitted unconditionally whenever stages exist.
 // 2026-08-18 18:20 UTC — Phase A: every task now carries stage_uuid (crop_stage_master.id) alongside
 //   stage_key; unresolvable stage labels stay null and add the "task_stage_unmappable" gap.
 // 2026-08-18 15:45 UTC — hardened the fertilizer split loop: malformed splits skipped with a named gap,
@@ -17,6 +22,7 @@ import {
   getFertilizerPlan,
   getIrrigationGuidelines,
   getFieldActionRules,
+  getObservationRules,
   getBannedChemicals,
   getLaborRate,
   getInputPrice,
@@ -24,7 +30,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.0.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.1.0";
 
 export interface BaselineTask {
   task_name: string;
@@ -40,6 +46,7 @@ export interface BaselineTask {
   stage_order: number;
   priority: string;
   weather_dependent: boolean;
+  nutrient: string | null;
   quantity: { value: number; unit: string } | null;
   estimated_cost: number | null;
   rule_ids: string[];
@@ -140,21 +147,34 @@ export async function generateBaseline(
   const durationDays = stages.reduce((max, s) => Math.max(max, s.das_max ?? 0), 0) || null;
 
   // ── Seed / planting task ───────────────────────────────────────────────────
+  // The day-0 anchor operation is always emitted when a phenology spine exists.
+  // A missing seed rate degrades the quantity to null (with a named gap) — it never
+  // removes the operation itself.
   const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod);
   coverage.seed = !!seed;
   let seedKg: number | null = null;
   if (!seed) {
     gaps.push("seed_rate_unavailable");
-  } else if (areaAcres == null) {
-    gaps.push("seed_quantity_not_computed_missing_area");
   } else {
-    seedKg = Number((seed.kgPerAcre * areaAcres).toFixed(2));
     provenance.push(seed.provenance);
+    if (areaAcres == null) {
+      gaps.push("seed_quantity_not_computed_missing_area");
+    } else {
+      seedKg = Number((seed.kgPerAcre * areaAcres).toFixed(2));
+    }
+  }
+
+  if (stages.length) {
     const sowStage = stages.find((s) => (s.das_min ?? 0) <= 0) || stages[0] || null;
+    const sowProvenance: Provenance[] = seed
+      ? [seed.provenance]
+      : sowStage
+        ? [{ table: "crop_stage_master", row_id: sowStage.id }]
+        : [];
     tasks.push({
       task_name: "Sowing / planting",
       task_type: "planting",
-      task_description: seed.rationale || "",
+      task_description: seed?.rationale || "",
       days_from_sowing: 0,
       anchor_type: "DAS",
       anchor_stage: sowStage?.stage_code || sowStage?.growth_stage || null,
@@ -165,14 +185,16 @@ export async function generateBaseline(
       stage_order: 1,
       priority: "critical",
       weather_dependent: true,
-      quantity: { value: seedKg, unit: "kg" },
+      nutrient: null,
+      quantity: seedKg != null ? { value: seedKg, unit: "kg" } : null,
       estimated_cost: null,
       rule_ids: [],
-      confidence: 0.9,
-      source_refs: [seed.provenance],
+      confidence: seed ? 0.9 : null,
+      source_refs: sowProvenance,
       instructions: [],
     });
   }
+
 
   // ── Fertilizer split tasks ─────────────────────────────────────────────────
   const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass);
@@ -216,9 +238,27 @@ export async function generateBaseline(
             ? Number(fractionRaw) / 100
             : Number(fractionRaw)
           : null;
-      const nutrient = String(split.nutrient ?? split.name ?? "NPK");
-      const qtyBase = nutrient.toUpperCase().startsWith("N") ? nKg : nutrient.toUpperCase().startsWith("P") ? pKg : nutrient.toUpperCase().startsWith("K") ? kKg : null;
-      const qty = fraction != null && qtyBase != null ? Number((qtyBase * fraction).toFixed(2)) : null;
+      const nutrientRaw = String(split.nutrient ?? split.name ?? "NPK").trim().toUpperCase();
+      // Exact nutrient semantics — no prefix guessing, no compound approximation.
+      const nutrient =
+        nutrientRaw === "N"
+          ? "N"
+          : nutrientRaw === "P" || nutrientRaw === "P2O5"
+            ? "P"
+            : nutrientRaw === "K" || nutrientRaw === "K2O"
+              ? "K"
+              : nutrientRaw;
+      const qtyBase = nutrient === "N" ? nKg : nutrient === "P" ? pKg : nutrient === "K" ? kKg : null;
+      if (qtyBase == null) {
+        // A compound/unknown nutrient split cannot be resolved to a single dose.
+        gaps.push(
+          nutrient === "N" || nutrient === "P" || nutrient === "K"
+            ? "fertilizer_split_dose_not_computable"
+            : "fertilizer_split_compound_dose_ambiguous",
+        );
+        continue;
+      }
+      const qty = fraction != null ? Number((qtyBase * fraction).toFixed(2)) : null;
       if (qty == null) {
         // Never emit a task with an unknown dose — record the gap and move on.
         gaps.push("fertilizer_split_dose_not_computable");
@@ -239,8 +279,10 @@ export async function generateBaseline(
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: "high",
         weather_dependent: true,
+        nutrient,
         quantity: { value: qty, unit: "kg" },
         estimated_cost: null,
+
         rule_ids: [],
         confidence: fert.provenance.confidence ?? null,
         source_refs: [fert.provenance],
@@ -290,7 +332,9 @@ export async function generateBaseline(
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: stage?.is_moisture_critical ? "critical" : "high",
         weather_dependent: true,
+        nutrient: null,
         quantity: g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
+
         estimated_cost: null,
         rule_ids: [],
         confidence: null,
@@ -344,6 +388,7 @@ export async function generateBaseline(
         stage_order: stageOrderOf(stages, stage.stage_code),
         priority: priorityFromRule(rule.priority),
         weather_dependent: true,
+        nutrient: null,
         quantity: null,
         estimated_cost: null,
         rule_ids: [rule.rule_id],
@@ -354,14 +399,92 @@ export async function generateBaseline(
     }
   }
 
+  // ── Recurring scouting (derived from conditional OBSERVATION rules) ────────
+  // OBSERVATION rules are conditional knowledge and are never materialised as dated
+  // tasks. Instead, a stage that carries at least one active OBSERVATION rule gets one
+  // weekly field-scouting task inside its DAS window.
+  const observationRules = await getObservationRules(supabase, inputs.cropCode);
+  coverage.monitoring = false;
+  if (observationRules.length) {
+    const byStage = new Map<string, { stage: StageRow; ruleIds: string[]; priority: number | null }>();
+    for (const r of observationRules) {
+      const stageList: string[] = Array.isArray(r.stage_applicable)
+        ? (r.stage_applicable as string[])
+        : r.stage_applicable
+          ? [String(r.stage_applicable)]
+          : [];
+      const matched = stages.filter((s) =>
+        stageList.some(
+          (sa) =>
+            sa &&
+            ((s.stage_code || "").toLowerCase() === sa.toLowerCase() ||
+              (s.growth_stage || "").toLowerCase() === sa.toLowerCase()),
+        ),
+      );
+      for (const stage of matched) {
+        const entry = byStage.get(stage.id) || { stage, ruleIds: [], priority: null };
+        entry.ruleIds.push(r.rule_id);
+        const p = r.priority != null ? Number(r.priority) : null;
+        if (p != null && (entry.priority == null || p > entry.priority)) entry.priority = p;
+        byStage.set(stage.id, entry);
+      }
+    }
+    const WEEK = 7;
+    const MAX_SCOUT_EVENTS = 40;
+    for (const { stage, ruleIds, priority } of byStage.values()) {
+      const start = stage.das_min;
+      const end = stage.das_max;
+      if (start == null || end == null || !Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+        gaps.push("monitoring_stage_das_range_missing");
+        continue;
+      }
+      let events = 0;
+      for (let das = start; das <= end && events < MAX_SCOUT_EVENTS; das += WEEK, events++) {
+        tasks.push({
+          task_name: "Field scouting",
+          task_type: "monitoring",
+          task_description: "",
+          days_from_sowing: das,
+          anchor_type: "STAGE",
+          anchor_stage: stage.stage_code || stage.growth_stage,
+          gdd_target: stage.gdd_min ?? null,
+          stage_key: stage.stage_code,
+          stage_uuid: stage.id || null,
+          stage_name: stage.growth_stage,
+          stage_order: stageOrderOf(stages, stage.stage_code),
+          priority: priorityFromRule(priority),
+          weather_dependent: false,
+          nutrient: null,
+          quantity: null,
+          estimated_cost: null,
+          rule_ids: ruleIds,
+          confidence: null,
+          source_refs: [{ table: "decision_rules" }],
+          instructions: [],
+        });
+      }
+      coverage.monitoring = true;
+    }
+  }
+
+
+
   // ── Costing (only from priced DB rows) ─────────────────────────────────────
   const labor = await getLaborRate(supabase, inputs.state, null);
   coverage.labor_rate = !!labor;
   if (!labor) gaps.push("labor_rates_no_row");
   let estimatedCost: number | null = null;
+  // Product mapping is keyed on the structured nutrient field only — never on any
+  // display string (task_name / task_description / stage_name).
+  const NUTRIENT_PRODUCT: Record<string, string> = { N: "UREA", P: "SSP", K: "MOP" };
   for (const t of tasks) {
     if (t.quantity && t.task_type === "fertilizer") {
-      const price = await getInputPrice(supabase, t.task_name.includes("N") ? "UREA" : "NPK", inputs.state);
+      const product = t.nutrient ? NUTRIENT_PRODUCT[t.nutrient] : undefined;
+      if (!product) {
+        gaps.push("input_price_product_unmapped");
+        continue;
+      }
+      const price = await getInputPrice(supabase, product, inputs.state);
       if (price) {
         t.estimated_cost = Number((price.price * t.quantity.value).toFixed(2));
         t.source_refs.push(price.provenance);
@@ -369,6 +492,7 @@ export async function generateBaseline(
       }
     }
   }
+
   if (estimatedCost == null) gaps.push("input_prices_no_rows_cost_not_estimated");
 
   tasks.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order);

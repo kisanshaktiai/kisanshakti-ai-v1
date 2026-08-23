@@ -228,7 +228,9 @@ export interface FieldActionRule {
 
 /**
  * Field-action rules for the crop. Selection is DB-driven: only rules explicitly flagged
- * `requires_field_action` become schedule tasks.
+ * `requires_field_action` AND classified as true scheduled operations
+ * (`trigger_class = 'CONTEXT_SCHEDULE'`) become calendar tasks. OBSERVATION rules are
+ * conditional alert-layer knowledge and must never be materialised as dated tasks.
  */
 export async function getFieldActionRules(
   supabase: SupabaseClient,
@@ -240,7 +242,8 @@ export async function getFieldActionRules(
     .select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, crop_code")
     .eq("is_active", true)
     .eq("requires_field_action", true)
-    .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL,crop_code.is.null`)
+    .eq("trigger_class", "CONTEXT_SCHEDULE")
+    .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
     .limit(FIELD_ACTION_RULE_LIMIT);
   const rows = (data || []) as FieldActionRule[];
   if (rows.length === FIELD_ACTION_RULE_LIMIT) {
@@ -248,6 +251,31 @@ export async function getFieldActionRules(
   }
   return rows;
 }
+
+export interface ObservationRuleRef {
+  rule_id: string;
+  stage_applicable: unknown;
+  priority: number | null;
+}
+
+/**
+ * Conditional (OBSERVATION) rules for the crop. These are NOT scheduled operations —
+ * they are used only to decide which stages warrant recurring scouting.
+ */
+export async function getObservationRules(
+  supabase: SupabaseClient,
+  cropCode: string,
+): Promise<ObservationRuleRef[]> {
+  const { data } = await supabase
+    .from("decision_rules")
+    .select("rule_id, stage_applicable, priority")
+    .eq("is_active", true)
+    .eq("trigger_class", "OBSERVATION")
+    .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
+    .limit(2000);
+  return (data || []) as ObservationRuleRef[];
+}
+
 
 export async function getBannedChemicals(supabase: SupabaseClient): Promise<Set<string>> {
   const { data } = await supabase
