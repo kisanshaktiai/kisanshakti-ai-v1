@@ -7,13 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Save, Edit2, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { safeString } from './utils/safe-render';
+import { formatQuantity } from '@/lib/scheduleFormat';
 
 export interface ScheduleRow {
   id: string;
   stage: string;
   timing: string;
   material: string;
-  quantity: string;
+  quantity: string | { value: number; unit?: string } | null;
   completed?: boolean;
 }
 
@@ -43,7 +44,7 @@ export function InteractiveScheduleTable({
 
   const handleStartEdit = (row: ScheduleRow) => {
     setEditingRow(row.id);
-    setEditedQuantity(row.quantity);
+    setEditedQuantity(formatQuantity(row.quantity) ?? '');
   };
 
   const handleSaveEdit = (id: string) => {
@@ -182,7 +183,7 @@ export function InteractiveScheduleTable({
                           "text-sm",
                           row.completed && "text-muted-foreground line-through"
                         )}>
-                          {row.quantity}
+                          {formatQuantity(row.quantity)}
                         </span>
                         <Button
                           size="icon"
