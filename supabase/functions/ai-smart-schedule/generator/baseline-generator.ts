@@ -36,7 +36,40 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.1.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.2.0";
+
+/** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
+const CANONICAL_TASK_TYPES = new Set([
+  "land_preparation", "seed_treatment", "nursery", "sowing", "gap_filling",
+  "nutrition", "micronutrient", "irrigation", "weed_management", "intercultural",
+  "pest_management", "disease_management", "growth_regulation", "monitoring",
+  "harvest", "post_harvest", "residue_management", "planning", "advisory",
+]);
+
+/** Loads public.task_type_map once per generation. DB is the only taxonomy author. */
+async function loadTaskTypeMap(supabase: SupabaseClient): Promise<Map<string, string>> {
+  const { data } = await supabase.from("task_type_map").select("raw_value, canonical").limit(2000);
+  const map = new Map<string, string>();
+  for (const r of (data || []) as Array<{ raw_value: string; canonical: string }>) {
+    map.set(String(r.raw_value), String(r.canonical));
+    map.set(String(r.raw_value).toLowerCase(), String(r.canonical));
+  }
+  return map;
+}
+
+function canonicaliseTaskType(
+  map: Map<string, string>,
+  ...candidates: Array<string | null | undefined>
+): { taskType: string; unmapped: boolean } {
+  for (const c of candidates) {
+    const raw = (c ?? "").trim();
+    if (!raw) continue;
+    const hit = map.get(raw) ?? map.get(raw.toLowerCase());
+    if (hit && CANONICAL_TASK_TYPES.has(hit)) return { taskType: hit, unmapped: false };
+    if (CANONICAL_TASK_TYPES.has(raw.toLowerCase())) return { taskType: raw.toLowerCase(), unmapped: false };
+  }
+  return { taskType: "advisory", unmapped: true };
+}
 
 export interface BaselineTask {
   task_name: string;
