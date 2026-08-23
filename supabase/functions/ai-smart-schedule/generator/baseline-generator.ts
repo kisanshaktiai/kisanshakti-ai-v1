@@ -392,6 +392,7 @@ export async function generateBaseline(
   // ── Field-action rules (scouting, protection, operations) ──────────────────
   const rules = await getFieldActionRules(supabase, inputs.cropCode);
   const banned = await getBannedChemicals(supabase);
+  const taskTypeMap = await loadTaskTypeMap(supabase);
   coverage.field_actions = rules.length > 0;
   if (!rules.length) gaps.push("decision_rules_no_field_actions");
 
