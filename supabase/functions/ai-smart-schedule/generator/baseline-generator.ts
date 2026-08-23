@@ -381,6 +381,7 @@ export async function generateBaseline(
         stage_order: stageOrderOf(stages, stage.stage_code),
         priority: priorityFromRule(rule.priority),
         weather_dependent: true,
+        nutrient: null,
         quantity: null,
         estimated_cost: null,
         rule_ids: [rule.rule_id],
@@ -390,6 +391,76 @@ export async function generateBaseline(
       });
     }
   }
+
+  // ── Recurring scouting (derived from conditional OBSERVATION rules) ────────
+  // OBSERVATION rules are conditional knowledge and are never materialised as dated
+  // tasks. Instead, a stage that carries at least one active OBSERVATION rule gets one
+  // weekly field-scouting task inside its DAS window.
+  const observationRules = await getObservationRules(supabase, inputs.cropCode);
+  coverage.monitoring = false;
+  if (observationRules.length) {
+    const byStage = new Map<string, { stage: StageRow; ruleIds: string[]; priority: number | null }>();
+    for (const r of observationRules) {
+      const stageList: string[] = Array.isArray(r.stage_applicable)
+        ? (r.stage_applicable as string[])
+        : r.stage_applicable
+          ? [String(r.stage_applicable)]
+          : [];
+      const matched = stages.filter((s) =>
+        stageList.some(
+          (sa) =>
+            sa &&
+            ((s.stage_code || "").toLowerCase() === sa.toLowerCase() ||
+              (s.growth_stage || "").toLowerCase() === sa.toLowerCase()),
+        ),
+      );
+      for (const stage of matched) {
+        const entry = byStage.get(stage.id) || { stage, ruleIds: [], priority: null };
+        entry.ruleIds.push(r.rule_id);
+        const p = r.priority != null ? Number(r.priority) : null;
+        if (p != null && (entry.priority == null || p > entry.priority)) entry.priority = p;
+        byStage.set(stage.id, entry);
+      }
+    }
+    const WEEK = 7;
+    const MAX_SCOUT_EVENTS = 40;
+    for (const { stage, ruleIds, priority } of byStage.values()) {
+      const start = stage.das_min;
+      const end = stage.das_max;
+      if (start == null || end == null || !Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+        gaps.push("monitoring_stage_das_range_missing");
+        continue;
+      }
+      let events = 0;
+      for (let das = start; das <= end && events < MAX_SCOUT_EVENTS; das += WEEK, events++) {
+        tasks.push({
+          task_name: "Field scouting",
+          task_type: "monitoring",
+          task_description: "",
+          days_from_sowing: das,
+          anchor_type: "STAGE",
+          anchor_stage: stage.stage_code || stage.growth_stage,
+          gdd_target: stage.gdd_min ?? null,
+          stage_key: stage.stage_code,
+          stage_uuid: stage.id || null,
+          stage_name: stage.growth_stage,
+          stage_order: stageOrderOf(stages, stage.stage_code),
+          priority: priorityFromRule(priority),
+          weather_dependent: false,
+          nutrient: null,
+          quantity: null,
+          estimated_cost: null,
+          rule_ids: ruleIds,
+          confidence: null,
+          source_refs: [{ table: "decision_rules" }],
+          instructions: [],
+        });
+      }
+      coverage.monitoring = true;
+    }
+  }
+
+
 
   // ── Costing (only from priced DB rows) ─────────────────────────────────────
   const labor = await getLaborRate(supabase, inputs.state, null);
