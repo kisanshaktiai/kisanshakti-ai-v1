@@ -44,7 +44,7 @@ export function InteractiveScheduleTable({
 
   const handleStartEdit = (row: ScheduleRow) => {
     setEditingRow(row.id);
-    setEditedQuantity(row.quantity);
+    setEditedQuantity(formatQuantity(row.quantity) ?? '');
   };
 
   const handleSaveEdit = (id: string) => {
