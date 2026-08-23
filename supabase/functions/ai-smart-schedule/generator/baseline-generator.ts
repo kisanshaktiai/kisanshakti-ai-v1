@@ -231,9 +231,27 @@ export async function generateBaseline(
             ? Number(fractionRaw) / 100
             : Number(fractionRaw)
           : null;
-      const nutrient = String(split.nutrient ?? split.name ?? "NPK");
-      const qtyBase = nutrient.toUpperCase().startsWith("N") ? nKg : nutrient.toUpperCase().startsWith("P") ? pKg : nutrient.toUpperCase().startsWith("K") ? kKg : null;
-      const qty = fraction != null && qtyBase != null ? Number((qtyBase * fraction).toFixed(2)) : null;
+      const nutrientRaw = String(split.nutrient ?? split.name ?? "NPK").trim().toUpperCase();
+      // Exact nutrient semantics — no prefix guessing, no compound approximation.
+      const nutrient =
+        nutrientRaw === "N"
+          ? "N"
+          : nutrientRaw === "P" || nutrientRaw === "P2O5"
+            ? "P"
+            : nutrientRaw === "K" || nutrientRaw === "K2O"
+              ? "K"
+              : nutrientRaw;
+      const qtyBase = nutrient === "N" ? nKg : nutrient === "P" ? pKg : nutrient === "K" ? kKg : null;
+      if (qtyBase == null) {
+        // A compound/unknown nutrient split cannot be resolved to a single dose.
+        gaps.push(
+          nutrient === "N" || nutrient === "P" || nutrient === "K"
+            ? "fertilizer_split_dose_not_computable"
+            : "fertilizer_split_compound_dose_ambiguous",
+        );
+        continue;
+      }
+      const qty = fraction != null ? Number((qtyBase * fraction).toFixed(2)) : null;
       if (qty == null) {
         // Never emit a task with an unknown dose — record the gap and move on.
         gaps.push("fertilizer_split_dose_not_computable");
@@ -254,8 +272,10 @@ export async function generateBaseline(
         stage_order: stageOrderOf(stages, stage?.stage_code || null),
         priority: "high",
         weather_dependent: true,
+        nutrient,
         quantity: { value: qty, unit: "kg" },
         estimated_cost: null,
+
         rule_ids: [],
         confidence: fert.provenance.confidence ?? null,
         source_refs: [fert.provenance],
