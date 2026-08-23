@@ -467,9 +467,17 @@ export async function generateBaseline(
   coverage.labor_rate = !!labor;
   if (!labor) gaps.push("labor_rates_no_row");
   let estimatedCost: number | null = null;
+  // Product mapping is keyed on the structured nutrient field only — never on any
+  // display string (task_name / task_description / stage_name).
+  const NUTRIENT_PRODUCT: Record<string, string> = { N: "UREA", P: "SSP", K: "MOP" };
   for (const t of tasks) {
     if (t.quantity && t.task_type === "fertilizer") {
-      const price = await getInputPrice(supabase, t.task_name.includes("N") ? "UREA" : "NPK", inputs.state);
+      const product = t.nutrient ? NUTRIENT_PRODUCT[t.nutrient] : undefined;
+      if (!product) {
+        gaps.push("input_price_product_unmapped");
+        continue;
+      }
+      const price = await getInputPrice(supabase, product, inputs.state);
       if (price) {
         t.estimated_cost = Number((price.price * t.quantity.value).toFixed(2));
         t.source_refs.push(price.provenance);
@@ -477,6 +485,7 @@ export async function generateBaseline(
       }
     }
   }
+
   if (estimatedCost == null) gaps.push("input_prices_no_rows_cost_not_estimated");
 
   tasks.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order);
