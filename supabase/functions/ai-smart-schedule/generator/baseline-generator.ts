@@ -420,9 +420,11 @@ export async function generateBaseline(
     for (const stage of matched) {
       const das = stage.das_min ?? null;
       if (das == null) continue;
+      const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
+      if (unmapped) gaps.push("task_type_unmapped");
       tasks.push({
         task_name: rule.action_text || rule.category || rule.rule_id,
-        task_type: rule.category || rule.action_type || "advisory",
+        task_type: taskType,
         task_description: rule.action_text || "",
         days_from_sowing: das,
         anchor_type: "STAGE",
