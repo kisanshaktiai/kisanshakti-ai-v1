@@ -3851,9 +3851,13 @@ export type Database = {
           chemical_class: string | null
           chemical_name: string
           created_at: string | null
+          effective_from: string | null
           id: string
+          npop_conditions: string | null
+          npop_status: string | null
           reason: string | null
           regulatory_body: string | null
+          source_ref: string | null
           status: string
           who_toxicity_class: string | null
         }
@@ -3863,9 +3867,13 @@ export type Database = {
           chemical_class?: string | null
           chemical_name: string
           created_at?: string | null
+          effective_from?: string | null
           id?: string
+          npop_conditions?: string | null
+          npop_status?: string | null
           reason?: string | null
           regulatory_body?: string | null
+          source_ref?: string | null
           status: string
           who_toxicity_class?: string | null
         }
@@ -3875,9 +3883,13 @@ export type Database = {
           chemical_class?: string | null
           chemical_name?: string
           created_at?: string | null
+          effective_from?: string | null
           id?: string
+          npop_conditions?: string | null
+          npop_status?: string | null
           reason?: string | null
           regulatory_body?: string | null
+          source_ref?: string | null
           status?: string
           who_toxicity_class?: string | null
         }
