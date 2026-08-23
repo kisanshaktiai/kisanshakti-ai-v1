@@ -183,7 +183,7 @@ export function InteractiveScheduleTable({
                           "text-sm",
                           row.completed && "text-muted-foreground line-through"
                         )}>
-                          {row.quantity}
+                          {formatQuantity(row.quantity)}
                         </span>
                         <Button
                           size="icon"
