@@ -128,6 +128,19 @@ function stageForDas(stages: StageRow[], das: number): StageRow | null {
   );
 }
 
+/**
+ * Stage tokens on decision_rules.stage_applicable are short labels ("booting"), while
+ * crop_stage_master.stage_code is namespaced ("RICE_TP_BOOTING"). Match on suffix,
+ * exact code, or growth_stage — all case-insensitive.
+ */
+function stageMatchesToken(stage: StageRow, token: string): boolean {
+  const t = String(token ?? "").trim().toLowerCase();
+  if (!t) return false;
+  const code = (stage.stage_code || "").toLowerCase();
+  const growth = (stage.growth_stage || "").toLowerCase();
+  return code === t || growth === t || (!!code && code.endsWith(`_${t}`));
+}
+
 /** Read a DAS anchor out of a DB split-schedule entry without assuming any agronomy. */
 function dasFromSplit(split: Record<string, unknown>, stages: StageRow[]): { das: number | null; stage: StageRow | null } {
   if (!split || typeof split !== "object") return { das: null, stage: null };
