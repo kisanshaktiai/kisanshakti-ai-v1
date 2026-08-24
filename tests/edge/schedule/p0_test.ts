@@ -15,9 +15,9 @@ import type { ResolvedInputs } from "../../../supabase/functions/ai-smart-schedu
 type Row = Record<string, unknown>;
 
 const RICE_STAGES: Row[] = [
-  { id: "s-nur", crop_code: "rice", growth_stage: "nursery", stage_code: "RICE_TP_NURSERY", das_min: 0, das_max: 24, das_reference: "sowing", clock_reference: "sowing", gdd_min: null, gdd_max: null, base_temperature_c: 10, cultivation_method: "transplanted", crop_cycle: "universal", is_moisture_critical: true, kc_coefficient: 1, boundary_grace_days: 0 },
-  { id: "s-tp-till", crop_code: "rice", growth_stage: "tillering", stage_code: "RICE_TP_TILLERING", das_min: 10, das_max: 40, das_reference: "transplanting", clock_reference: "transplanting", gdd_min: null, gdd_max: null, base_temperature_c: 10, cultivation_method: "transplanted", crop_cycle: "universal", is_moisture_critical: true, kc_coefficient: 1, boundary_grace_days: 0 },
-  { id: "s-dsr-till", crop_code: "rice", growth_stage: "tillering", stage_code: "RICE_TILLERING", das_min: 35, das_max: 65, das_reference: "sowing", clock_reference: "sowing", gdd_min: null, gdd_max: null, base_temperature_c: 10, cultivation_method: "direct_seeded", crop_cycle: "universal", is_moisture_critical: true, kc_coefficient: 1, boundary_grace_days: 0 },
+  { id: "s-nur", crop_code: "rice", growth_stage: "nursery", stage_code: "RICE_TP_NURSERY", das_min: 0, das_max: 24, das_reference: "sowing", clock_reference: "sowing", gdd_min: null, gdd_max: null, base_temperature_c: 10, cultivation_method: "transplanted", crop_cycle: "universal", is_moisture_critical: true, kc_coefficient: 1, boundary_grace_days: 0, is_active: true },
+  { id: "s-tp-till", crop_code: "rice", growth_stage: "tillering", stage_code: "RICE_TP_TILLERING", das_min: 10, das_max: 40, das_reference: "transplanting", clock_reference: "transplanting", gdd_min: null, gdd_max: null, base_temperature_c: 10, cultivation_method: "transplanted", crop_cycle: "universal", is_moisture_critical: true, kc_coefficient: 1, boundary_grace_days: 0, is_active: true },
+  { id: "s-dsr-till", crop_code: "rice", growth_stage: "tillering", stage_code: "RICE_TILLERING", das_min: 35, das_max: 65, das_reference: "sowing", clock_reference: "sowing", gdd_min: null, gdd_max: null, base_temperature_c: 10, cultivation_method: "direct_seeded", crop_cycle: "universal", is_moisture_critical: true, kc_coefficient: 1, boundary_grace_days: 0, is_active: true },
 ];
 
 const DECISION_RULES: Row[] = [
