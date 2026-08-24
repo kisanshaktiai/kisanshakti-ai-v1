@@ -237,7 +237,7 @@ export async function resolveInputs(
   // falling back to 'universal' only when no stage rows exist at all (DB default).
   let cropCycle = params.cropCycle || (land?.crop_cycle as string) || null;
   let stageCycles: string[] = [];
-  if (!cropCycle && cropCode) {
+  if (cropCode) {
     const { data: cycles } = await supabase
       .from("crop_stage_master")
       .select("crop_cycle")
@@ -247,23 +247,23 @@ export async function resolveInputs(
       .map((c: Record<string, unknown>) => c.crop_cycle)
       .filter(Boolean)
       .map(String);
-    const distinctNonUniversal = [
-      ...new Set(stageCycles.filter((c) => c.toLowerCase() !== "universal")),
-    ];
-    // A crop with exactly one real cycle (e.g. a future plant-only crop) infers it directly.
-    if (distinctNonUniversal.length === 1) cropCycle = distinctNonUniversal[0];
   }
+  const distinctNonUniversal = [
+    ...new Set(stageCycles.filter((c) => c.toLowerCase() !== "universal")),
+  ];
+  const hasUniversal = stageCycles.some((c) => c.toLowerCase() === "universal");
+
+  // When the crop's stage graph is exclusively 'universal', that IS the crop's cycle —
+  // an inherited land/param value like 'plant' would resolve to zero stages.
+  if (stageCycles.length && !distinctNonUniversal.length) {
+    cropCycle = "universal";
+  }
+
   if (!cropCycle) {
-    const hasUniversal = stageCycles.some((c) => c.toLowerCase() === "universal");
-    if (hasUniversal) {
-      cropCycle = "universal";
-    } else {
-      const nonUniversal = stageCycles.filter((c) => c.toLowerCase() !== "universal");
-      // Prefer 'plant' (the standard main-crop cycle) when the crop has it; this is how
-      // sugarcane resolves to its primary plant-cycle stages. Otherwise take the first
-      // real cycle present.
-      cropCycle = nonUniversal.find((c) => c.toLowerCase() === "plant") || nonUniversal[0] || "universal";
-    }
+    // A crop with exactly one real cycle infers it directly.
+    if (distinctNonUniversal.length === 1) cropCycle = distinctNonUniversal[0];
+    else if (hasUniversal) cropCycle = "universal";
+    else cropCycle = distinctNonUniversal.find((c) => c.toLowerCase() === "plant") || distinctNonUniversal[0] || "universal";
   }
 
   // Soil fertility class from the latest soil test (never assumed)

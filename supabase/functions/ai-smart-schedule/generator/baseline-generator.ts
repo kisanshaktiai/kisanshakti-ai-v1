@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-08-24 17:05 UTC — BUG B/C: irrigation expansion de-duplicated to one task per DAS
+//   (narrowest overlapping window wins; interval<=0 → "irrigation_interval_invalid";
+//   overlaps reported once as "irrigation_windows_overlapping"), and stage_applicable tokens
+//   now match namespaced stage_codes via stageMatchesToken (suffix / exact / growth_stage).
 // 2026-08-23 07:20 UTC — Phase 2 taxonomy: emitted task_type values are canonical
 //   ("sowing"/"nutrition"), field-action rule categories are canonicalised through the
 //   DB table task_type_map (loaded once per generation, unmapped → "advisory" + gap
@@ -126,6 +130,19 @@ function stageForDas(stages: StageRow[], das: number): StageRow | null {
   return (
     stages.find((s) => s.das_min != null && s.das_max != null && das >= s.das_min && das <= s.das_max) || null
   );
+}
+
+/**
+ * Stage tokens on decision_rules.stage_applicable are short labels ("booting"), while
+ * crop_stage_master.stage_code is namespaced ("RICE_TP_BOOTING"). Match on suffix,
+ * exact code, or growth_stage — all case-insensitive.
+ */
+function stageMatchesToken(stage: StageRow, token: string): boolean {
+  const t = String(token ?? "").trim().toLowerCase();
+  if (!t) return false;
+  const code = (stage.stage_code || "").toLowerCase();
+  const growth = (stage.growth_stage || "").toLowerCase();
+  return code === t || growth === t || (!!code && code.endsWith(`_${t}`));
 }
 
 /** Read a DAS anchor out of a DB split-schedule entry without assuming any agronomy. */
@@ -337,18 +354,20 @@ export async function generateBaseline(
   }
 
   // ── Irrigation tasks (stage-wise, DB intervals only) ───────────────────────
+  // Guideline windows overlap in the DB (rice: 12 windows), so expansion is de-duplicated:
+  // at most ONE irrigation task per DAS, keeping the narrowest (most specific) window.
   const irrigation = await getIrrigationGuidelines(supabase, inputs.cropCode, inputs.varietyId);
   coverage.irrigation = irrigation.length > 0;
   if (!irrigation.length) gaps.push("crop_baseline_guidelines_v2_no_irrigation_rows");
   let waterMm = 0;
+  const irrigationByDas = new Map<number, { task: BaselineTask; width: number }>();
+  let irrigationOverlap = false;
   for (const g of irrigation) {
     if (g.waterMm != null) waterMm += g.waterMm;
     if (g.intervalDays == null || g.dasStart == null || g.dasEnd == null) continue;
-    // Guard: a 0/negative/NaN interval in the DB row would loop forever and blow the
-    // worker memory limit (546 WORKER_RESOURCE_LIMIT). Skip the row and report a gap.
     const step = Number(g.intervalDays);
     if (!Number.isFinite(step) || step < 1) {
-      gaps.push("irrigation_interval_invalid_row_skipped");
+      gaps.push("irrigation_interval_invalid");
       continue;
     }
     if (!Number.isFinite(g.dasStart) || !Number.isFinite(g.dasEnd) || g.dasEnd < g.dasStart) {
@@ -359,11 +378,11 @@ export async function generateBaseline(
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
     ) || stageForDas(stages, g.dasStart);
+    const width = g.dasEnd - g.dasStart;
     const MAX_EVENTS = 200;
     let events = 0;
     for (let das = g.dasStart; das <= g.dasEnd && events < MAX_EVENTS; das += step, events++) {
-
-      tasks.push({
+      const task: BaselineTask = {
         task_name: "Irrigation",
         task_type: "irrigation",
         task_description: "",
@@ -379,15 +398,23 @@ export async function generateBaseline(
         weather_dependent: true,
         nutrient: null,
         quantity: g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
-
         estimated_cost: null,
         rule_ids: [],
         confidence: null,
         source_refs: [g.provenance],
         instructions: [],
-      });
+      };
+      const existing = irrigationByDas.get(das);
+      if (!existing) {
+        irrigationByDas.set(das, { task, width });
+      } else {
+        irrigationOverlap = true;
+        if (width < existing.width) irrigationByDas.set(das, { task, width });
+      }
     }
   }
+  if (irrigationOverlap) gaps.push("irrigation_windows_overlapping");
+  for (const { task } of irrigationByDas.values()) tasks.push(task);
 
   // ── Field-action rules (scouting, protection, operations) ──────────────────
   const rules = await getFieldActionRules(supabase, inputs.cropCode);
@@ -407,14 +434,7 @@ export async function generateBaseline(
       : rule.stage_applicable
         ? [String(rule.stage_applicable)]
         : [];
-    const matched = stages.filter((s) =>
-      stageList.some(
-        (sa) =>
-          sa &&
-          ((s.stage_code || "").toLowerCase() === sa.toLowerCase() ||
-            (s.growth_stage || "").toLowerCase() === sa.toLowerCase()),
-      ),
-    );
+    const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
     if (!matched.length) continue;
 
     for (const stage of matched) {
@@ -461,14 +481,7 @@ export async function generateBaseline(
         : r.stage_applicable
           ? [String(r.stage_applicable)]
           : [];
-      const matched = stages.filter((s) =>
-        stageList.some(
-          (sa) =>
-            sa &&
-            ((s.stage_code || "").toLowerCase() === sa.toLowerCase() ||
-              (s.growth_stage || "").toLowerCase() === sa.toLowerCase()),
-        ),
-      );
+      const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
       for (const stage of matched) {
         const entry = byStage.get(stage.id) || { stage, ruleIds: [], priority: null };
         entry.ruleIds.push(r.rule_id);
