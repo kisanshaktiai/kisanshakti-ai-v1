@@ -661,6 +661,17 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               </div>
                             )}
 
+                            {/* Safety net — a card must never render empty */}
+                            {!task.task_description &&
+                              !(task.instructions?.length) &&
+                              !(task.precautions?.length) &&
+                              !formatQuantity(task.resources?.quantity) && (
+                                <p className="text-sm text-muted-foreground italic">
+                                  {t('schedule.task_card.no_details', 'No further details recorded for this task.')}
+                                </p>
+                              )}
+
+
                             {/* Product Recommendations with FULL labor breakdown */}
                             {(Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0) || (task.resources?.labor_cost > 0) ? (
                               <ProductRecommendationCard 
