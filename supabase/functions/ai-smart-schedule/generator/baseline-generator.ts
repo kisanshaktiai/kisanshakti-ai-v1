@@ -337,18 +337,20 @@ export async function generateBaseline(
   }
 
   // ── Irrigation tasks (stage-wise, DB intervals only) ───────────────────────
+  // Guideline windows overlap in the DB (rice: 12 windows), so expansion is de-duplicated:
+  // at most ONE irrigation task per DAS, keeping the narrowest (most specific) window.
   const irrigation = await getIrrigationGuidelines(supabase, inputs.cropCode, inputs.varietyId);
   coverage.irrigation = irrigation.length > 0;
   if (!irrigation.length) gaps.push("crop_baseline_guidelines_v2_no_irrigation_rows");
   let waterMm = 0;
+  const irrigationByDas = new Map<number, { task: BaselineTask; width: number }>();
+  let irrigationOverlap = false;
   for (const g of irrigation) {
     if (g.waterMm != null) waterMm += g.waterMm;
     if (g.intervalDays == null || g.dasStart == null || g.dasEnd == null) continue;
-    // Guard: a 0/negative/NaN interval in the DB row would loop forever and blow the
-    // worker memory limit (546 WORKER_RESOURCE_LIMIT). Skip the row and report a gap.
     const step = Number(g.intervalDays);
     if (!Number.isFinite(step) || step < 1) {
-      gaps.push("irrigation_interval_invalid_row_skipped");
+      gaps.push("irrigation_interval_invalid");
       continue;
     }
     if (!Number.isFinite(g.dasStart) || !Number.isFinite(g.dasEnd) || g.dasEnd < g.dasStart) {
@@ -359,11 +361,11 @@ export async function generateBaseline(
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
     ) || stageForDas(stages, g.dasStart);
+    const width = g.dasEnd - g.dasStart;
     const MAX_EVENTS = 200;
     let events = 0;
     for (let das = g.dasStart; das <= g.dasEnd && events < MAX_EVENTS; das += step, events++) {
-
-      tasks.push({
+      const task: BaselineTask = {
         task_name: "Irrigation",
         task_type: "irrigation",
         task_description: "",
@@ -379,15 +381,23 @@ export async function generateBaseline(
         weather_dependent: true,
         nutrient: null,
         quantity: g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
-
         estimated_cost: null,
         rule_ids: [],
         confidence: null,
         source_refs: [g.provenance],
         instructions: [],
-      });
+      };
+      const existing = irrigationByDas.get(das);
+      if (!existing) {
+        irrigationByDas.set(das, { task, width });
+      } else {
+        irrigationOverlap = true;
+        if (width < existing.width) irrigationByDas.set(das, { task, width });
+      }
     }
   }
+  if (irrigationOverlap) gaps.push("irrigation_windows_overlapping");
+  for (const { task } of irrigationByDas.values()) tasks.push(task);
 
   // ── Field-action rules (scouting, protection, operations) ──────────────────
   const rules = await getFieldActionRules(supabase, inputs.cropCode);
