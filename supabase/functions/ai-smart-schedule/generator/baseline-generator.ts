@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-08-24 17:47 UTC — P0: transplant clock (crop_stage_master.clock_reference='transplanting'
+//   stages are days-after-transplant and are shifted onto the sowing axis via toDas /
+//   transplantOffset; unresolvable offset → gap transplant_offset_unresolved + skip);
+//   CONTEXT_SCHEDULE rules emit exactly ONE task (earliest matched stage); scouting rule_ids
+//   capped at the top 12 by priority; deterministic final sort.
 // 2026-08-24 17:05 UTC — BUG B/C: irrigation expansion de-duplicated to one task per DAS
 //   (narrowest overlapping window wins; interval<=0 → "irrigation_interval_invalid";
 //   overlaps reported once as "irrigation_windows_overlapping"), and stage_applicable tokens
