@@ -155,7 +155,9 @@ async function resolveCultivationMethod(
     if (distinct.length === 1) return distinct[0];
   }
 
-  // If the crop's stage graph only defines one method, use it
+  // If the crop's stage graph only defines one method, use it. If it defines MORE than
+  // one and nothing above resolved a method, the schedule is structurally ambiguous
+  // (rice would merge transplanted + DSR phenologies) — surface it, never guess.
   if (cropCode) {
     const { data: stages } = await supabase
       .from("crop_stage_master")
@@ -164,10 +166,12 @@ async function resolveCultivationMethod(
       .eq("is_active", true);
     const distinct = [...new Set((stages || []).map((r: Record<string, unknown>) => r.cultivation_method).filter(Boolean).map(String))];
     if (distinct.length === 1) return distinct[0];
+    if (!requested && distinct.length > 1) return AMBIGUOUS_CULTIVATION_METHOD;
   }
 
   return requested ? String(requested) : null;
 }
+
 
 export async function resolveInputs(
   supabase: SupabaseClient,
