@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-08-24 17:47 UTC — P0: getStages is now HARD-scoped by cultivation_method (no
+//   fallback to the unscoped set — that merged transplanted + DSR rice phenologies),
+//   selects clock_reference, and applies a deterministic final sort (das_min, stage_code).
+//   getObservationRules restricted to protection categories so scouting tasks never carry
+//   economics/safety/management rule_ids.
 // 2026-08-18 15:45 UTC — getFertilizerPlan: JSON.parse text-stored split_schedule (was always []);
 //   unparseable payloads report a "fertilizer_split_schedule_unparseable" gap instead of failing silently.
 // 2026-08-17 13:58 UTC — Phase 2: created DB-only agronomy repository. Every agronomic number
