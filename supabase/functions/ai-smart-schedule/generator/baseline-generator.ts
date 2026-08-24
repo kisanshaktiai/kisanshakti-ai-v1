@@ -656,7 +656,14 @@ export async function generateBaseline(
 
   if (estimatedCost == null) gaps.push("input_prices_no_rows_cost_not_estimated");
 
-  tasks.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order);
+  // Total order — two identical runs must produce byte-identical task lists.
+  tasks.sort(
+    (a, b) =>
+      a.days_from_sowing - b.days_from_sowing ||
+      a.stage_order - b.stage_order ||
+      a.task_type.localeCompare(b.task_type) ||
+      a.task_name.localeCompare(b.task_name),
+  );
 
   // A task labelled with a stage that could not be resolved to a crop_stage_master
   // row is reported as a gap — the stage link is left null, never invented.
