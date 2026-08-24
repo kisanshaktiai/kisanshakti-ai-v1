@@ -492,6 +492,9 @@ export async function generateBaseline(
     }
     const WEEK = 7;
     const MAX_SCOUT_EVENTS = 40;
+    // Stage DAS windows overlap in the DB, so keep at most one scouting task per DAS,
+    // merging rule ids and keeping the highest priority.
+    const scoutByDas = new Map<number, { task: BaselineTask; width: number }>();
     for (const { stage, ruleIds, priority } of byStage.values()) {
       const start = stage.das_min;
       const end = stage.das_max;
@@ -499,9 +502,10 @@ export async function generateBaseline(
         gaps.push("monitoring_stage_das_range_missing");
         continue;
       }
+      const width = end - start;
       let events = 0;
       for (let das = start; das <= end && events < MAX_SCOUT_EVENTS; das += WEEK, events++) {
-        tasks.push({
+        const task: BaselineTask = {
           task_name: "Field scouting",
           task_type: "monitoring",
           task_description: "",
@@ -522,10 +526,21 @@ export async function generateBaseline(
           confidence: null,
           source_refs: [{ table: "decision_rules" }],
           instructions: [],
-        });
+        };
+        const existing = scoutByDas.get(das);
+        if (!existing) {
+          scoutByDas.set(das, { task, width });
+        } else {
+          existing.task.rule_ids = [...new Set([...(existing.task.rule_ids || []), ...ruleIds])];
+          if (width < existing.width) {
+            task.rule_ids = existing.task.rule_ids;
+            scoutByDas.set(das, { task, width });
+          }
+        }
       }
       coverage.monitoring = true;
     }
+    for (const { task } of scoutByDas.values()) tasks.push(task);
   }
 
 
