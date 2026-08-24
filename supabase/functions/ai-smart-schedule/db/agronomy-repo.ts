@@ -27,6 +27,7 @@ export interface StageRow {
   das_min: number | null;
   das_max: number | null;
   das_reference: string | null;
+  clock_reference: string | null;
   gdd_min: number | null;
   gdd_max: number | null;
   base_temperature_c: number | null;
@@ -46,7 +47,7 @@ export async function getStages(
   let q = supabase
     .from("crop_stage_master")
     .select(
-      "id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days",
+      "id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, clock_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days",
     )
     .eq("crop_code", cropCode)
     .eq("is_active", true)
@@ -71,17 +72,27 @@ export async function getStages(
       const prevSpecific = String(prev.crop_cycle ?? "").toLowerCase() === wanted;
       if (rSpecific && !prevSpecific) byKey.set(key, r);
     }
-    rows = [...byKey.values()].sort((a, b) => (a.das_min ?? 0) - (b.das_min ?? 0));
+    rows = [...byKey.values()];
   }
 
+  // HARD scope. A two-method crop (rice: transplanted + direct_seeded) must never mix
+  // phenologies — the old `if (scoped.length) rows = scoped` fallback silently merged them.
+  // Method-agnostic rows (null / 'any') stay in; everything else must match exactly.
   if (cultivationMethod) {
-    const scoped = rows.filter(
-      (r) => !r.cultivation_method || r.cultivation_method.toLowerCase() === cultivationMethod.toLowerCase(),
-    );
-    if (scoped.length) rows = scoped;
+    const wanted = cultivationMethod.toLowerCase();
+    rows = rows.filter((r) => {
+      const m = String(r.cultivation_method ?? "").trim().toLowerCase();
+      return !m || m === "any" || m === wanted;
+    });
   }
-  return rows;
+
+  return rows.sort(
+    (a, b) =>
+      (a.das_min ?? 0) - (b.das_min ?? 0) ||
+      String(a.stage_code ?? "").localeCompare(String(b.stage_code ?? "")),
+  );
 }
+
 
 export interface SeedRateResult {
   kgPerAcre: number;
