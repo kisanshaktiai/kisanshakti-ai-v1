@@ -131,9 +131,57 @@ function stageOrderOf(stages: StageRow[], stageCode: string | null): number {
   return idx >= 0 ? idx + 1 : 0;
 }
 
-function stageForDas(stages: StageRow[], das: number): StageRow | null {
+/**
+ * Transplant clock. Stages tagged clock_reference='transplanting' count days AFTER
+ * transplanting, but the whole schedule is dated days-after-sowing. The offset is the
+ * nursery duration: the measured sowing→transplant gap when both dates are known,
+ * otherwise the largest das_max among the crop's nursery / transplanting stages.
+ * Never invented — when neither source exists the caller reports a gap and skips.
+ */
+export function computeTransplantOffset(
+  stages: StageRow[],
+  sowingDate: string | null,
+  transplantDate: string | null,
+): number | null {
+  if (sowingDate && transplantDate) {
+    const d = Math.round(
+      (new Date(transplantDate).getTime() - new Date(sowingDate).getTime()) / 86400000,
+    );
+    if (Number.isFinite(d) && d >= 0) return d;
+  }
+  let best: number | null = null;
+  for (const s of stages) {
+    const code = String(s.stage_code ?? "").toUpperCase();
+    const growth = String(s.growth_stage ?? "").toUpperCase();
+    const isNursery =
+      code.endsWith("_NURSERY") || code.endsWith("_TRANSPLANTING") ||
+      growth === "NURSERY" || growth === "TRANSPLANTING";
+    if (isNursery && s.das_max != null && Number.isFinite(Number(s.das_max))) {
+      const v = Number(s.das_max);
+      if (best == null || v > best) best = v;
+    }
+  }
+  return best;
+}
+
+const isTransplantClock = (stage: StageRow): boolean =>
+  String(stage.clock_reference ?? "sowing").toLowerCase() === "transplanting";
+
+/** Convert a stage-relative day onto the days-after-sowing axis. */
+export function toDas(stage: StageRow, d: number | null, transplantOffset: number | null): number | null {
+  if (d == null || !Number.isFinite(Number(d))) return null;
+  if (!isTransplantClock(stage)) return Number(d);
+  if (transplantOffset == null) return null;
+  return Number(d) + transplantOffset;
+}
+
+function stageForDas(stages: StageRow[], das: number, transplantOffset: number | null): StageRow | null {
   return (
-    stages.find((s) => s.das_min != null && s.das_max != null && das >= s.das_min && das <= s.das_max) || null
+    stages.find((s) => {
+      const min = toDas(s, s.das_min, transplantOffset);
+      const max = toDas(s, s.das_max, transplantOffset);
+      return min != null && max != null && das >= min && das <= max;
+    }) || null
   );
 }
 
@@ -151,14 +199,18 @@ function stageMatchesToken(stage: StageRow, token: string): boolean {
 }
 
 /** Read a DAS anchor out of a DB split-schedule entry without assuming any agronomy. */
-function dasFromSplit(split: Record<string, unknown>, stages: StageRow[]): { das: number | null; stage: StageRow | null } {
+function dasFromSplit(
+  split: Record<string, unknown>,
+  stages: StageRow[],
+  transplantOffset: number | null,
+): { das: number | null; stage: StageRow | null } {
   if (!split || typeof split !== "object") return { das: null, stage: null };
   const dasKeys = ["das", "day", "days", "days_after_sowing", "dap", "das_start"];
   for (const k of dasKeys) {
     const v = split[k];
     if (v != null && !isNaN(Number(v))) {
       const das = Number(v);
-      return { das, stage: stageForDas(stages, das) };
+      return { das, stage: stageForDas(stages, das, transplantOffset) };
     }
   }
   const stageKeys = ["stage", "stage_code", "growth_stage", "timing"];
@@ -170,7 +222,7 @@ function dasFromSplit(split: Record<string, unknown>, stages: StageRow[]): { das
           (s.stage_code || "").toLowerCase() === v.toLowerCase() ||
           (s.growth_stage || "").toLowerCase() === v.toLowerCase(),
       );
-      if (stage) return { das: stage.das_min ?? null, stage };
+      if (stage) return { das: toDas(stage, stage.das_min, transplantOffset), stage };
     }
   }
   return { das: null, stage: null };
