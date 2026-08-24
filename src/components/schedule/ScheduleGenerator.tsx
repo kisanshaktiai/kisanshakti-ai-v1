@@ -442,13 +442,27 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
         {/* Crop Variety */}
         <div className="space-y-2">
           <Label htmlFor="variety">Crop Variety (Optional)</Label>
-          <Input
-            id="variety"
-            placeholder="e.g., Basmati, BT Cotton, etc."
-            value={cropVariety}
-            onChange={(e) => setCropVariety(e.target.value)}
-          />
+          {varieties.length > 0 ? (
+            <Select value={cropVariety} onValueChange={setCropVariety}>
+              <SelectTrigger id="variety">
+                <SelectValue placeholder={varietiesLoading ? 'Loading varieties…' : 'Choose a variety'} />
+              </SelectTrigger>
+              <SelectContent>
+                {varieties.map((v) => (
+                  <SelectItem key={v.id} value={v.name}>{v.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="variety"
+              placeholder="e.g., Basmati, BT Cotton, etc."
+              value={cropVariety}
+              onChange={(e) => setCropVariety(e.target.value)}
+            />
+          )}
         </div>
+
 
         {/* Farming Type will be selected via popup dialog */}
 
