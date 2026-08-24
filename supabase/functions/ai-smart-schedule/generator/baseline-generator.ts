@@ -500,19 +500,26 @@ export async function generateBaseline(
       : rule.stage_applicable
         ? [String(rule.stage_applicable)]
         : [];
-    const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
+    // ONE task per rule. A rule whose stage token matches several stages (rice matched
+    // both the transplanted and the DSR tillering rows) was emitted once per match —
+    // the farmer saw N_TOP1 twice and would have applied double nitrogen.
+    const matched = stages
+      .filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)))
+      .map((s) => ({ stage: s, das: das0(s, s.das_min) }))
+      .filter((m) => m.das != null)
+      .sort((a, b) => (a.das as number) - (b.das as number) ||
+        String(a.stage.stage_code ?? "").localeCompare(String(b.stage.stage_code ?? "")));
     if (!matched.length) continue;
 
-    for (const stage of matched) {
-      const das = stage.das_min ?? null;
-      if (das == null) continue;
+    {
+      const { stage, das } = matched[0];
       const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
       tasks.push({
         task_name: rule.action_text || rule.category || rule.rule_id,
         task_type: taskType,
         task_description: rule.action_text || "",
-        days_from_sowing: das,
+        days_from_sowing: das as number,
         anchor_type: "STAGE",
         anchor_stage: stage.stage_code || stage.growth_stage,
         gdd_target: stage.gdd_min ?? null,
@@ -535,12 +542,20 @@ export async function generateBaseline(
 
   // ── Recurring scouting (derived from conditional OBSERVATION rules) ────────
   // OBSERVATION rules are conditional knowledge and are never materialised as dated
-  // tasks. Instead, a stage that carries at least one active OBSERVATION rule gets one
-  // weekly field-scouting task inside its DAS window.
+  // tasks. Instead, a stage that carries at least one active protection OBSERVATION rule
+  // gets one weekly field-scouting task inside its DAS window.
+  const MAX_SCOUT_RULE_IDS = 12;
+  /** Top rule ids by priority, deterministically ordered. */
+  const topRuleIds = (refs: Array<{ id: string; p: number | null }>): string[] =>
+    [...new Map(refs.map((r) => [r.id, r])).values()]
+      .sort((a, b) => (b.p ?? -1) - (a.p ?? -1) || a.id.localeCompare(b.id))
+      .slice(0, MAX_SCOUT_RULE_IDS)
+      .map((r) => r.id);
+
   const observationRules = await getObservationRules(supabase, inputs.cropCode);
   coverage.monitoring = false;
   if (observationRules.length) {
-    const byStage = new Map<string, { stage: StageRow; ruleIds: string[]; priority: number | null }>();
+    const byStage = new Map<string, { stage: StageRow; refs: Array<{ id: string; p: number | null }>; priority: number | null }>();
     for (const r of observationRules) {
       const stageList: string[] = Array.isArray(r.stage_applicable)
         ? (r.stage_applicable as string[])
@@ -549,9 +564,9 @@ export async function generateBaseline(
           : [];
       const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
       for (const stage of matched) {
-        const entry = byStage.get(stage.id) || { stage, ruleIds: [], priority: null };
-        entry.ruleIds.push(r.rule_id);
+        const entry = byStage.get(stage.id) || { stage, refs: [], priority: null };
         const p = r.priority != null ? Number(r.priority) : null;
+        entry.refs.push({ id: r.rule_id, p });
         if (p != null && (entry.priority == null || p > entry.priority)) entry.priority = p;
         byStage.set(stage.id, entry);
       }
@@ -560,10 +575,10 @@ export async function generateBaseline(
     const MAX_SCOUT_EVENTS = 40;
     // Stage DAS windows overlap in the DB, so keep at most one scouting task per DAS,
     // merging rule ids and keeping the highest priority.
-    const scoutByDas = new Map<number, { task: BaselineTask; width: number }>();
-    for (const { stage, ruleIds, priority } of byStage.values()) {
-      const start = stage.das_min;
-      const end = stage.das_max;
+    const scoutByDas = new Map<number, { task: BaselineTask; width: number; refs: Array<{ id: string; p: number | null }> }>();
+    for (const { stage, refs, priority } of byStage.values()) {
+      const start = das0(stage, stage.das_min);
+      const end = das0(stage, stage.das_max);
       if (start == null || end == null || !Number.isFinite(start) || !Number.isFinite(end) || end < start) {
         gaps.push("monitoring_stage_das_range_missing");
         continue;
@@ -588,19 +603,22 @@ export async function generateBaseline(
           nutrient: null,
           quantity: null,
           estimated_cost: null,
-          rule_ids: ruleIds,
+          rule_ids: topRuleIds(refs),
           confidence: null,
           source_refs: [{ table: "decision_rules" }],
           instructions: [],
         };
         const existing = scoutByDas.get(das);
         if (!existing) {
-          scoutByDas.set(das, { task, width });
+          scoutByDas.set(das, { task, width, refs: [...refs] });
         } else {
-          existing.task.rule_ids = [...new Set([...(existing.task.rule_ids || []), ...ruleIds])];
+          const mergedRefs = [...existing.refs, ...refs];
           if (width < existing.width) {
-            task.rule_ids = existing.task.rule_ids;
-            scoutByDas.set(das, { task, width });
+            task.rule_ids = topRuleIds(mergedRefs);
+            scoutByDas.set(das, { task, width, refs: mergedRefs });
+          } else {
+            existing.refs = mergedRefs;
+            existing.task.rule_ids = topRuleIds(mergedRefs);
           }
         }
       }
@@ -608,6 +626,7 @@ export async function generateBaseline(
     }
     for (const { task } of scoutByDas.values()) tasks.push(task);
   }
+
 
 
 
