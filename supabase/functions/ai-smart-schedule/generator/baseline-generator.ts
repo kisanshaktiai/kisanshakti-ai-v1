@@ -443,7 +443,7 @@ export async function generateBaseline(
     provenance.push(g.provenance);
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
-    ) || stageForDas(stages, g.dasStart);
+    ) || stageForDas(stages, g.dasStart, transplantOffset);
     const width = g.dasEnd - g.dasStart;
     const MAX_EVENTS = 200;
     let events = 0;
