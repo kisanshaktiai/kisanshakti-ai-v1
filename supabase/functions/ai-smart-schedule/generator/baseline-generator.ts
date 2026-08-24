@@ -477,14 +477,7 @@ export async function generateBaseline(
         : r.stage_applicable
           ? [String(r.stage_applicable)]
           : [];
-      const matched = stages.filter((s) =>
-        stageList.some(
-          (sa) =>
-            sa &&
-            ((s.stage_code || "").toLowerCase() === sa.toLowerCase() ||
-              (s.growth_stage || "").toLowerCase() === sa.toLowerCase()),
-        ),
-      );
+      const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
       for (const stage of matched) {
         const entry = byStage.get(stage.id) || { stage, ruleIds: [], priority: null };
         entry.ruleIds.push(r.rule_id);
