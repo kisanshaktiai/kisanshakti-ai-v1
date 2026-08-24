@@ -54,7 +54,9 @@ serve(async (req) => {
     landId = body?.landId ?? null;
     cropName = body?.cropName ?? null;
     const cropVariety = body?.cropVariety ?? null;
-    const cultivationMethod = body?.cultivationMethod ?? null;
+    let cultivationMethod = body?.cultivationMethod ?? null;
+    // The wizard's "ready-made plant" answer IS the transplanted method.
+    if (!cultivationMethod && body?.isReadyMadePlant === true) cultivationMethod = "transplanted";
     const cropCycle = body?.cropCycle ?? null;
     const sowingDate = body?.sowingDate ?? null;
     const transplantDate = body?.transplantDate ?? null;
