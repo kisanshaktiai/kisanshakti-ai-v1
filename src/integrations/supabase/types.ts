@@ -7020,6 +7020,7 @@ export type Database = {
           base_temperature_c: number | null
           boundary_grace_days: number | null
           canonical_stage_id: string | null
+          clock_reference: string
           created_at: string | null
           crop_code: string
           crop_cycle: string
@@ -7059,6 +7060,7 @@ export type Database = {
           base_temperature_c?: number | null
           boundary_grace_days?: number | null
           canonical_stage_id?: string | null
+          clock_reference?: string
           created_at?: string | null
           crop_code: string
           crop_cycle?: string
@@ -7098,6 +7100,7 @@ export type Database = {
           base_temperature_c?: number | null
           boundary_grace_days?: number | null
           canonical_stage_id?: string | null
+          clock_reference?: string
           created_at?: string | null
           crop_code?: string
           crop_cycle?: string
