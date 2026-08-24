@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-08-24 17:47 UTC — P0: accept isReadyMadePlant as the transplanted cultivation method and
+//   422 CULTIVATION_METHOD_REQUIRED (with DB-derived options) when the crop defines several.
 // 2026-08-20 01:35 UTC — Return LAND_NOT_AVAILABLE as a typed domain result over HTTP 200;
 //   Supabase invoke treats every non-2xx response as a runtime FunctionsHttpError, which caused
 //   an expected active-crop conflict to be reported as a blank-screen edge-function failure.
@@ -16,7 +18,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
-import { resolveInputs } from "./db/resolve-inputs.ts";
+import {
+  resolveInputs,
+  AMBIGUOUS_CULTIVATION_METHOD,
+  getCultivationMethodOptions,
+} from "./db/resolve-inputs.ts";
 import { generateBaseline, GENERATOR_VERSION } from "./generator/baseline-generator.ts";
 import { narrateTasks } from "./generator/narrate.ts";
 
@@ -54,7 +60,9 @@ serve(async (req) => {
     landId = body?.landId ?? null;
     cropName = body?.cropName ?? null;
     const cropVariety = body?.cropVariety ?? null;
-    const cultivationMethod = body?.cultivationMethod ?? null;
+    let cultivationMethod = body?.cultivationMethod ?? null;
+    // The wizard's "ready-made plant" answer IS the transplanted method.
+    if (!cultivationMethod && body?.isReadyMadePlant === true) cultivationMethod = "transplanted";
     const cropCycle = body?.cropCycle ?? null;
     const sowingDate = body?.sowingDate ?? null;
     const transplantDate = body?.transplantDate ?? null;
@@ -123,6 +131,22 @@ serve(async (req) => {
     if (!inputs.sowingDate) {
       return json({ error: "Sowing date is required and was not found", gaps: inputs.gaps }, 422);
     }
+    // Cultivation method is as structural as the sowing date for any two-method crop
+    // (rice, sugarcane, onion, tomato, brinjal, chilli): generating without it merges
+    // two phenologies into one calendar. Ask instead of guessing.
+    if (inputs.cultivationMethod === AMBIGUOUS_CULTIVATION_METHOD) {
+      return json(
+        {
+          error: "Cultivation method is required for this crop",
+          code: "CULTIVATION_METHOD_REQUIRED",
+          cropCode: inputs.cropCode,
+          options: await getCultivationMethodOptions(supabase, inputs.cropCode),
+          gaps: inputs.gaps,
+        },
+        422,
+      );
+    }
+
 
     // ── PHASE 2: day-0 baseline, database rows only ─────────────────────────
     const baseline = await generateBaseline(supabase, inputs);

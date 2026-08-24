@@ -167,6 +167,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant,
+          cultivationMethod: isReadyMadePlant ? 'transplanted' : null,
           farmingType: effectiveFarmingType, // Pass farming type selection
           weather: weatherData,
           regenerate: false,

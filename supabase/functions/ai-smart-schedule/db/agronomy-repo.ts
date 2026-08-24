@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-08-24 17:47 UTC — P0: getStages is now HARD-scoped by cultivation_method (no
+//   fallback to the unscoped set — that merged transplanted + DSR rice phenologies),
+//   selects clock_reference, and applies a deterministic final sort (das_min, stage_code).
+//   getObservationRules restricted to protection categories so scouting tasks never carry
+//   economics/safety/management rule_ids.
 // 2026-08-18 15:45 UTC — getFertilizerPlan: JSON.parse text-stored split_schedule (was always []);
 //   unparseable payloads report a "fertilizer_split_schedule_unparseable" gap instead of failing silently.
 // 2026-08-17 13:58 UTC — Phase 2: created DB-only agronomy repository. Every agronomic number
@@ -22,6 +27,7 @@ export interface StageRow {
   das_min: number | null;
   das_max: number | null;
   das_reference: string | null;
+  clock_reference: string | null;
   gdd_min: number | null;
   gdd_max: number | null;
   base_temperature_c: number | null;
@@ -41,7 +47,7 @@ export async function getStages(
   let q = supabase
     .from("crop_stage_master")
     .select(
-      "id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days",
+      "id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, clock_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days",
     )
     .eq("crop_code", cropCode)
     .eq("is_active", true)
@@ -66,17 +72,27 @@ export async function getStages(
       const prevSpecific = String(prev.crop_cycle ?? "").toLowerCase() === wanted;
       if (rSpecific && !prevSpecific) byKey.set(key, r);
     }
-    rows = [...byKey.values()].sort((a, b) => (a.das_min ?? 0) - (b.das_min ?? 0));
+    rows = [...byKey.values()];
   }
 
+  // HARD scope. A two-method crop (rice: transplanted + direct_seeded) must never mix
+  // phenologies — the old `if (scoped.length) rows = scoped` fallback silently merged them.
+  // Method-agnostic rows (null / 'any') stay in; everything else must match exactly.
   if (cultivationMethod) {
-    const scoped = rows.filter(
-      (r) => !r.cultivation_method || r.cultivation_method.toLowerCase() === cultivationMethod.toLowerCase(),
-    );
-    if (scoped.length) rows = scoped;
+    const wanted = cultivationMethod.toLowerCase();
+    rows = rows.filter((r) => {
+      const m = String(r.cultivation_method ?? "").trim().toLowerCase();
+      return !m || m === "any" || m === wanted;
+    });
   }
-  return rows;
+
+  return rows.sort(
+    (a, b) =>
+      (a.das_min ?? 0) - (b.das_min ?? 0) ||
+      String(a.stage_code ?? "").localeCompare(String(b.stage_code ?? "")),
+  );
 }
+
 
 export interface SeedRateResult {
   kgPerAcre: number;
@@ -278,9 +294,21 @@ export interface ObservationRuleRef {
   priority: number | null;
 }
 
+/** Categories that a field-scouting task can legitimately be derived from. */
+export const SCOUTING_RULE_CATEGORIES = [
+  "pest",
+  "disease",
+  "weed",
+  "stress",
+  "ipm",
+  "proactive_pest",
+  "proactive_monitoring",
+];
+
 /**
  * Conditional (OBSERVATION) rules for the crop. These are NOT scheduled operations —
- * they are used only to decide which stages warrant recurring scouting.
+ * they are used only to decide which stages warrant recurring scouting, so only
+ * protection categories qualify (economics/safety/management are never scoutable).
  */
 export async function getObservationRules(
   supabase: SupabaseClient,
@@ -291,10 +319,12 @@ export async function getObservationRules(
     .select("rule_id, stage_applicable, priority")
     .eq("is_active", true)
     .eq("trigger_class", "OBSERVATION")
+    .in("category", SCOUTING_RULE_CATEGORIES)
     .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
     .limit(2000);
   return (data || []) as ObservationRuleRef[];
 }
+
 
 
 export async function getBannedChemicals(supabase: SupabaseClient): Promise<Set<string>> {

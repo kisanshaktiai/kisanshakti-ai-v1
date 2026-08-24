@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-08-24 17:47 UTC — P0: transplant clock (crop_stage_master.clock_reference='transplanting'
+//   stages are days-after-transplant and are shifted onto the sowing axis via toDas /
+//   transplantOffset; unresolvable offset → gap transplant_offset_unresolved + skip);
+//   CONTEXT_SCHEDULE rules emit exactly ONE task (earliest matched stage); scouting rule_ids
+//   capped at the top 12 by priority; deterministic final sort.
 // 2026-08-24 17:05 UTC — BUG B/C: irrigation expansion de-duplicated to one task per DAS
 //   (narrowest overlapping window wins; interval<=0 → "irrigation_interval_invalid";
 //   overlaps reported once as "irrigation_windows_overlapping"), and stage_applicable tokens
@@ -126,9 +131,57 @@ function stageOrderOf(stages: StageRow[], stageCode: string | null): number {
   return idx >= 0 ? idx + 1 : 0;
 }
 
-function stageForDas(stages: StageRow[], das: number): StageRow | null {
+/**
+ * Transplant clock. Stages tagged clock_reference='transplanting' count days AFTER
+ * transplanting, but the whole schedule is dated days-after-sowing. The offset is the
+ * nursery duration: the measured sowing→transplant gap when both dates are known,
+ * otherwise the largest das_max among the crop's nursery / transplanting stages.
+ * Never invented — when neither source exists the caller reports a gap and skips.
+ */
+export function computeTransplantOffset(
+  stages: StageRow[],
+  sowingDate: string | null,
+  transplantDate: string | null,
+): number | null {
+  if (sowingDate && transplantDate) {
+    const d = Math.round(
+      (new Date(transplantDate).getTime() - new Date(sowingDate).getTime()) / 86400000,
+    );
+    if (Number.isFinite(d) && d >= 0) return d;
+  }
+  let best: number | null = null;
+  for (const s of stages) {
+    const code = String(s.stage_code ?? "").toUpperCase();
+    const growth = String(s.growth_stage ?? "").toUpperCase();
+    const isNursery =
+      code.endsWith("_NURSERY") || code.endsWith("_TRANSPLANTING") ||
+      growth === "NURSERY" || growth === "TRANSPLANTING";
+    if (isNursery && s.das_max != null && Number.isFinite(Number(s.das_max))) {
+      const v = Number(s.das_max);
+      if (best == null || v > best) best = v;
+    }
+  }
+  return best;
+}
+
+const isTransplantClock = (stage: StageRow): boolean =>
+  String(stage.clock_reference ?? "sowing").toLowerCase() === "transplanting";
+
+/** Convert a stage-relative day onto the days-after-sowing axis. */
+export function toDas(stage: StageRow, d: number | null, transplantOffset: number | null): number | null {
+  if (d == null || !Number.isFinite(Number(d))) return null;
+  if (!isTransplantClock(stage)) return Number(d);
+  if (transplantOffset == null) return null;
+  return Number(d) + transplantOffset;
+}
+
+function stageForDas(stages: StageRow[], das: number, transplantOffset: number | null): StageRow | null {
   return (
-    stages.find((s) => s.das_min != null && s.das_max != null && das >= s.das_min && das <= s.das_max) || null
+    stages.find((s) => {
+      const min = toDas(s, s.das_min, transplantOffset);
+      const max = toDas(s, s.das_max, transplantOffset);
+      return min != null && max != null && das >= min && das <= max;
+    }) || null
   );
 }
 
@@ -146,14 +199,18 @@ function stageMatchesToken(stage: StageRow, token: string): boolean {
 }
 
 /** Read a DAS anchor out of a DB split-schedule entry without assuming any agronomy. */
-function dasFromSplit(split: Record<string, unknown>, stages: StageRow[]): { das: number | null; stage: StageRow | null } {
+function dasFromSplit(
+  split: Record<string, unknown>,
+  stages: StageRow[],
+  transplantOffset: number | null,
+): { das: number | null; stage: StageRow | null } {
   if (!split || typeof split !== "object") return { das: null, stage: null };
   const dasKeys = ["das", "day", "days", "days_after_sowing", "dap", "das_start"];
   for (const k of dasKeys) {
     const v = split[k];
     if (v != null && !isNaN(Number(v))) {
       const das = Number(v);
-      return { das, stage: stageForDas(stages, das) };
+      return { das, stage: stageForDas(stages, das, transplantOffset) };
     }
   }
   const stageKeys = ["stage", "stage_code", "growth_stage", "timing"];
@@ -165,7 +222,7 @@ function dasFromSplit(split: Record<string, unknown>, stages: StageRow[]): { das
           (s.stage_code || "").toLowerCase() === v.toLowerCase() ||
           (s.growth_stage || "").toLowerCase() === v.toLowerCase(),
       );
-      if (stage) return { das: stage.das_min ?? null, stage };
+      if (stage) return { das: toDas(stage, stage.das_min, transplantOffset), stage };
     }
   }
   return { das: null, stage: null };
@@ -197,10 +254,19 @@ export async function generateBaseline(
   // ── Stages (phenology spine) ───────────────────────────────────────────────
   const stages = await getStages(supabase, inputs.cropCode, inputs.cropCycle, inputs.cultivationMethod);
   coverage.stages = stages.length > 0;
-  if (!stages.length) gaps.push("crop_stage_master_no_rows");
+  if (!stages.length) {
+    gaps.push(inputs.cultivationMethod ? "crop_stage_master_no_rows_for_method" : "crop_stage_master_no_rows");
+  }
 
+  // Transplant clock: stages tagged clock_reference='transplanting' are days-after-transplant.
+  const transplantOffset = computeTransplantOffset(stages, inputs.sowingDate, inputs.transplantDate);
+  const needsTransplantOffset = stages.some((s) => isTransplantClock(s));
+  if (needsTransplantOffset && transplantOffset == null) gaps.push("transplant_offset_unresolved");
+  /** Days-after-sowing for a stage boundary, or null when it cannot be placed. */
+  const das0 = (s: StageRow, d: number | null) => toDas(s, d, transplantOffset);
 
-  const durationDays = stages.reduce((max, s) => Math.max(max, s.das_max ?? 0), 0) || null;
+  const durationDays =
+    stages.reduce((max, s) => Math.max(max, das0(s, s.das_max) ?? 0), 0) || null;
 
   // ── Seed / planting task ───────────────────────────────────────────────────
   // The day-0 anchor operation is always emitted when a phenology spine exists.
@@ -221,7 +287,7 @@ export async function generateBaseline(
   }
 
   if (stages.length) {
-    const sowStage = stages.find((s) => (s.das_min ?? 0) <= 0) || stages[0] || null;
+    const sowStage = stages.find((s) => (das0(s, s.das_min) ?? 0) <= 0) || stages[0] || null;
     const sowProvenance: Provenance[] = seed
       ? [seed.provenance]
       : sowStage
@@ -278,7 +344,7 @@ export async function generateBaseline(
       let das: number | null = null;
       let stage: StageRow | null = null;
       try {
-        ({ das, stage } = dasFromSplit(split, stages));
+        ({ das, stage } = dasFromSplit(split, stages, transplantOffset));
       } catch {
         gaps.push("fertilizer_split_malformed");
         continue;
@@ -377,7 +443,7 @@ export async function generateBaseline(
     provenance.push(g.provenance);
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
-    ) || stageForDas(stages, g.dasStart);
+    ) || stageForDas(stages, g.dasStart, transplantOffset);
     const width = g.dasEnd - g.dasStart;
     const MAX_EVENTS = 200;
     let events = 0;
@@ -434,19 +500,26 @@ export async function generateBaseline(
       : rule.stage_applicable
         ? [String(rule.stage_applicable)]
         : [];
-    const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
+    // ONE task per rule. A rule whose stage token matches several stages (rice matched
+    // both the transplanted and the DSR tillering rows) was emitted once per match —
+    // the farmer saw N_TOP1 twice and would have applied double nitrogen.
+    const matched = stages
+      .filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)))
+      .map((s) => ({ stage: s, das: das0(s, s.das_min) }))
+      .filter((m) => m.das != null)
+      .sort((a, b) => (a.das as number) - (b.das as number) ||
+        String(a.stage.stage_code ?? "").localeCompare(String(b.stage.stage_code ?? "")));
     if (!matched.length) continue;
 
-    for (const stage of matched) {
-      const das = stage.das_min ?? null;
-      if (das == null) continue;
+    {
+      const { stage, das } = matched[0];
       const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
       tasks.push({
         task_name: rule.action_text || rule.category || rule.rule_id,
         task_type: taskType,
         task_description: rule.action_text || "",
-        days_from_sowing: das,
+        days_from_sowing: das as number,
         anchor_type: "STAGE",
         anchor_stage: stage.stage_code || stage.growth_stage,
         gdd_target: stage.gdd_min ?? null,
@@ -469,12 +542,20 @@ export async function generateBaseline(
 
   // ── Recurring scouting (derived from conditional OBSERVATION rules) ────────
   // OBSERVATION rules are conditional knowledge and are never materialised as dated
-  // tasks. Instead, a stage that carries at least one active OBSERVATION rule gets one
-  // weekly field-scouting task inside its DAS window.
+  // tasks. Instead, a stage that carries at least one active protection OBSERVATION rule
+  // gets one weekly field-scouting task inside its DAS window.
+  const MAX_SCOUT_RULE_IDS = 12;
+  /** Top rule ids by priority, deterministically ordered. */
+  const topRuleIds = (refs: Array<{ id: string; p: number | null }>): string[] =>
+    [...new Map(refs.map((r) => [r.id, r])).values()]
+      .sort((a, b) => (b.p ?? -1) - (a.p ?? -1) || a.id.localeCompare(b.id))
+      .slice(0, MAX_SCOUT_RULE_IDS)
+      .map((r) => r.id);
+
   const observationRules = await getObservationRules(supabase, inputs.cropCode);
   coverage.monitoring = false;
   if (observationRules.length) {
-    const byStage = new Map<string, { stage: StageRow; ruleIds: string[]; priority: number | null }>();
+    const byStage = new Map<string, { stage: StageRow; refs: Array<{ id: string; p: number | null }>; priority: number | null }>();
     for (const r of observationRules) {
       const stageList: string[] = Array.isArray(r.stage_applicable)
         ? (r.stage_applicable as string[])
@@ -483,9 +564,9 @@ export async function generateBaseline(
           : [];
       const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
       for (const stage of matched) {
-        const entry = byStage.get(stage.id) || { stage, ruleIds: [], priority: null };
-        entry.ruleIds.push(r.rule_id);
+        const entry = byStage.get(stage.id) || { stage, refs: [], priority: null };
         const p = r.priority != null ? Number(r.priority) : null;
+        entry.refs.push({ id: r.rule_id, p });
         if (p != null && (entry.priority == null || p > entry.priority)) entry.priority = p;
         byStage.set(stage.id, entry);
       }
@@ -494,10 +575,10 @@ export async function generateBaseline(
     const MAX_SCOUT_EVENTS = 40;
     // Stage DAS windows overlap in the DB, so keep at most one scouting task per DAS,
     // merging rule ids and keeping the highest priority.
-    const scoutByDas = new Map<number, { task: BaselineTask; width: number }>();
-    for (const { stage, ruleIds, priority } of byStage.values()) {
-      const start = stage.das_min;
-      const end = stage.das_max;
+    const scoutByDas = new Map<number, { task: BaselineTask; width: number; refs: Array<{ id: string; p: number | null }> }>();
+    for (const { stage, refs, priority } of byStage.values()) {
+      const start = das0(stage, stage.das_min);
+      const end = das0(stage, stage.das_max);
       if (start == null || end == null || !Number.isFinite(start) || !Number.isFinite(end) || end < start) {
         gaps.push("monitoring_stage_das_range_missing");
         continue;
@@ -522,19 +603,22 @@ export async function generateBaseline(
           nutrient: null,
           quantity: null,
           estimated_cost: null,
-          rule_ids: ruleIds,
+          rule_ids: topRuleIds(refs),
           confidence: null,
           source_refs: [{ table: "decision_rules" }],
           instructions: [],
         };
         const existing = scoutByDas.get(das);
         if (!existing) {
-          scoutByDas.set(das, { task, width });
+          scoutByDas.set(das, { task, width, refs: [...refs] });
         } else {
-          existing.task.rule_ids = [...new Set([...(existing.task.rule_ids || []), ...ruleIds])];
+          const mergedRefs = [...existing.refs, ...refs];
           if (width < existing.width) {
-            task.rule_ids = existing.task.rule_ids;
-            scoutByDas.set(das, { task, width });
+            task.rule_ids = topRuleIds(mergedRefs);
+            scoutByDas.set(das, { task, width, refs: mergedRefs });
+          } else {
+            existing.refs = mergedRefs;
+            existing.task.rule_ids = topRuleIds(mergedRefs);
           }
         }
       }
@@ -542,6 +626,7 @@ export async function generateBaseline(
     }
     for (const { task } of scoutByDas.values()) tasks.push(task);
   }
+
 
 
 
@@ -571,7 +656,14 @@ export async function generateBaseline(
 
   if (estimatedCost == null) gaps.push("input_prices_no_rows_cost_not_estimated");
 
-  tasks.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order);
+  // Total order — two identical runs must produce byte-identical task lists.
+  tasks.sort(
+    (a, b) =>
+      a.days_from_sowing - b.days_from_sowing ||
+      a.stage_order - b.stage_order ||
+      a.task_type.localeCompare(b.task_type) ||
+      a.task_name.localeCompare(b.task_name),
+  );
 
   // A task labelled with a stage that could not be resolved to a crop_stage_master
   // row is reported as a gap — the stage link is left null, never invented.

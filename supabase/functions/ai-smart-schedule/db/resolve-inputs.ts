@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-08-24 17:47 UTC — P0: resolveCultivationMethod returns "__AMBIGUOUS__" when the crop's
+//   stage graph defines >1 method and nothing resolved one, so index.ts can 422 instead of
+//   generating a schedule that merges two phenologies.
 // 2026-08-22 06:10 UTC — cropCycle fallback fix (cycle-aware). The prior fallback ('plant',
 //   added 2026-08-19) zeroed out getStages for the 23/24 crops whose crop_stage_master rows are
 //   all crop_cycle='universal' (rice, wheat, cotton, maize, …) → empty schedules. Switching the
@@ -41,6 +44,29 @@ export interface ResolvedInputs {
 }
 
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
+/** Sentinel: the crop defines several cultivation methods and none could be resolved. */
+export const AMBIGUOUS_CULTIVATION_METHOD = "__AMBIGUOUS__";
+
+/** Distinct non-null cultivation methods a crop's stage graph defines. */
+export async function getCultivationMethodOptions(
+  supabase: SupabaseClient,
+  cropCode: string,
+): Promise<string[]> {
+  const { data } = await supabase
+    .from("crop_stage_master")
+    .select("cultivation_method")
+    .eq("crop_code", cropCode)
+    .eq("is_active", true);
+  return [
+    ...new Set(
+      (data || [])
+        .map((r: Record<string, unknown>) => r.cultivation_method)
+        .filter(Boolean)
+        .map(String),
+    ),
+  ].sort();
+}
 
 /** Resolve a farmer-typed crop name (any language) to a DB crop row. */
 async function resolveCrop(supabase: SupabaseClient, cropName: string) {
@@ -155,7 +181,9 @@ async function resolveCultivationMethod(
     if (distinct.length === 1) return distinct[0];
   }
 
-  // If the crop's stage graph only defines one method, use it
+  // If the crop's stage graph only defines one method, use it. If it defines MORE than
+  // one and nothing above resolved a method, the schedule is structurally ambiguous
+  // (rice would merge transplanted + DSR phenologies) — surface it, never guess.
   if (cropCode) {
     const { data: stages } = await supabase
       .from("crop_stage_master")
@@ -164,10 +192,12 @@ async function resolveCultivationMethod(
       .eq("is_active", true);
     const distinct = [...new Set((stages || []).map((r: Record<string, unknown>) => r.cultivation_method).filter(Boolean).map(String))];
     if (distinct.length === 1) return distinct[0];
+    if (!requested && distinct.length > 1) return AMBIGUOUS_CULTIVATION_METHOD;
   }
 
   return requested ? String(requested) : null;
 }
+
 
 export async function resolveInputs(
   supabase: SupabaseClient,
