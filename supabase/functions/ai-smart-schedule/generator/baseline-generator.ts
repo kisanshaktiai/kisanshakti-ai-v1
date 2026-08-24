@@ -254,10 +254,19 @@ export async function generateBaseline(
   // ── Stages (phenology spine) ───────────────────────────────────────────────
   const stages = await getStages(supabase, inputs.cropCode, inputs.cropCycle, inputs.cultivationMethod);
   coverage.stages = stages.length > 0;
-  if (!stages.length) gaps.push("crop_stage_master_no_rows");
+  if (!stages.length) {
+    gaps.push(inputs.cultivationMethod ? "crop_stage_master_no_rows_for_method" : "crop_stage_master_no_rows");
+  }
 
+  // Transplant clock: stages tagged clock_reference='transplanting' are days-after-transplant.
+  const transplantOffset = computeTransplantOffset(stages, inputs.sowingDate, inputs.transplantDate);
+  const needsTransplantOffset = stages.some((s) => isTransplantClock(s));
+  if (needsTransplantOffset && transplantOffset == null) gaps.push("transplant_offset_unresolved");
+  /** Days-after-sowing for a stage boundary, or null when it cannot be placed. */
+  const das0 = (s: StageRow, d: number | null) => toDas(s, d, transplantOffset);
 
-  const durationDays = stages.reduce((max, s) => Math.max(max, s.das_max ?? 0), 0) || null;
+  const durationDays =
+    stages.reduce((max, s) => Math.max(max, das0(s, s.das_max) ?? 0), 0) || null;
 
   // ── Seed / planting task ───────────────────────────────────────────────────
   // The day-0 anchor operation is always emitted when a phenology spine exists.
