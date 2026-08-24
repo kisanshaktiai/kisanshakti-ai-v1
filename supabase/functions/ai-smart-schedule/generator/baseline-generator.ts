@@ -430,14 +430,7 @@ export async function generateBaseline(
       : rule.stage_applicable
         ? [String(rule.stage_applicable)]
         : [];
-    const matched = stages.filter((s) =>
-      stageList.some(
-        (sa) =>
-          sa &&
-          ((s.stage_code || "").toLowerCase() === sa.toLowerCase() ||
-            (s.growth_stage || "").toLowerCase() === sa.toLowerCase()),
-      ),
-    );
+    const matched = stages.filter((s) => stageList.some((sa) => stageMatchesToken(s, sa)));
     if (!matched.length) continue;
 
     for (const stage of matched) {
