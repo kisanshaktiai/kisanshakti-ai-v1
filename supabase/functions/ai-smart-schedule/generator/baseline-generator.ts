@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-08-24 17:05 UTC — BUG B/C: irrigation expansion de-duplicated to one task per DAS
+//   (narrowest overlapping window wins; interval<=0 → "irrigation_interval_invalid";
+//   overlaps reported once as "irrigation_windows_overlapping"), and stage_applicable tokens
+//   now match namespaced stage_codes via stageMatchesToken (suffix / exact / growth_stage).
 // 2026-08-23 07:20 UTC — Phase 2 taxonomy: emitted task_type values are canonical
 //   ("sowing"/"nutrition"), field-action rule categories are canonicalised through the
 //   DB table task_type_map (loaded once per generation, unmapped → "advisory" + gap
