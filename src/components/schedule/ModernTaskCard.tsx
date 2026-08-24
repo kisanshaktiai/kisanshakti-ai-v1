@@ -43,6 +43,7 @@ import ProductRecommendationCard from './ProductRecommendationCard';
 import StagePhaseBadge from './StagePhaseBadge';
 import RescheduledNotice from './RescheduledNotice';
 import type { StagePhase } from '@/hooks/useLandStage';
+import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 
 interface TaskCardProps {
   task: any;
@@ -98,7 +99,7 @@ export default function ModernTaskCard({
   const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
 
-  const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
+  const config = resolveTaskTypeConfig(taskTypeConfig, task.task_type);
   const TaskIcon = config.icon;
   
   const isCompleted = task.status === 'completed';

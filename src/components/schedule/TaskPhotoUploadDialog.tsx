@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveTaskTypeKey } from '@/lib/taskTypeIcons';
 
 interface TaskPhotoUploadDialogProps {
   isOpen: boolean;
@@ -95,7 +96,7 @@ export function TaskPhotoUploadDialog({
   const [preview, setPreview] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [uploadType, setUploadType] = useState<UploadType>(() => 
-    taskType ? (taskTypeToUploadType[taskType] || 'crop') : 'crop'
+    taskType ? (taskTypeToUploadType[resolveTaskTypeKey(taskTypeToUploadType, taskType) ?? ''] || 'crop') : 'crop'
   );
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [gettingLocation, setGettingLocation] = useState(false);

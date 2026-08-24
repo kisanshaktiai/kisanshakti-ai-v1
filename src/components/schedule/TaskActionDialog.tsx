@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Check, X, Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 
 interface TaskActionDialogProps {
   task: any;
@@ -36,7 +37,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
     other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted' }
   };
 
-  const config = taskTypeConfig[task?.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
+  const config = resolveTaskTypeConfig(taskTypeConfig, task?.task_type);
   const Icon = config.icon;
 
   const handleSubmit = () => {

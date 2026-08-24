@@ -8,6 +8,7 @@ import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Check, X, Clock, V
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 
 interface TaskCardProps {
   task: any;
@@ -41,7 +42,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
     other: { icon: AlertCircle, color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border' }
   };
 
-  const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
+  const config = resolveTaskTypeConfig(taskTypeConfig, task.task_type);
   const TaskIcon = config.icon;
 
   const handleAction = (action: 'completed' | 'skipped' | 'rescheduled') => {

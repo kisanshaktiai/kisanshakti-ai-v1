@@ -28,6 +28,7 @@ import { useLandStage } from '@/hooks/useLandStage';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
+import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 
 interface CropSchedule {
   id: string;
@@ -603,7 +604,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               </div>
               <div className="space-y-2">
                 {todayTasks.slice(0, 2).map((task) => {
-                  const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
+                  const config = resolveTaskTypeConfig(taskTypeConfig, task.task_type);
                   const Icon = config.icon;
                   return (
                     <div 
