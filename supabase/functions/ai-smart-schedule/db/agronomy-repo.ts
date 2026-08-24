@@ -215,6 +215,8 @@ export interface IrrigationGuideline {
   dasEnd: number | null;
   intervalDays: number | null;
   waterMm: number | null;
+  notes: string | null;
+  criticalMoisturePercent: number | null;
   provenance: Provenance;
 }
 
@@ -225,7 +227,7 @@ export async function getIrrigationGuidelines(
 ): Promise<IrrigationGuideline[]> {
   const { data } = await supabase
     .from("crop_baseline_guidelines_v2")
-    .select("id, crop_code, growth_stage, das_start, das_end, irrigation_interval_days, water_requirement_mm, variety_id, stage_master_id, source_reference")
+    .select("id, crop_code, growth_stage, das_start, das_end, irrigation_interval_days, water_requirement_mm, variety_id, stage_master_id, source_reference, notes, critical_moisture_percent")
     .ilike("crop_code", cropCode)
     .eq("is_active", true)
     .order("das_start", { ascending: true, nullsFirst: true });
@@ -245,6 +247,8 @@ export async function getIrrigationGuidelines(
       dasEnd: r.das_end != null ? Number(r.das_end) : null,
       intervalDays: r.irrigation_interval_days != null ? Number(r.irrigation_interval_days) : null,
       waterMm: r.water_requirement_mm != null ? Number(r.water_requirement_mm) : null,
+      notes: (r.notes as string) ?? null,
+      criticalMoisturePercent: r.critical_moisture_percent != null ? Number(r.critical_moisture_percent) : null,
       provenance: { table: "crop_baseline_guidelines_v2", row_id: r.id as string, source: (r.source_reference as string) ?? null },
     }));
 }
@@ -260,6 +264,9 @@ export interface FieldActionRule {
   chemical_class: string | null;
   scientific_source: string | null;
   biological_group: string | null;
+  etl_threshold: string | null;
+  dosage_per_acre: string | null;
+  contraindications: unknown;
 }
 
 /**
@@ -275,7 +282,7 @@ export async function getFieldActionRules(
   const FIELD_ACTION_RULE_LIMIT = 1000;
   const { data } = await supabase
     .from("decision_rules")
-    .select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, crop_code")
+    .select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code")
     .eq("is_active", true)
     .eq("requires_field_action", true)
     .eq("trigger_class", "CONTEXT_SCHEDULE")
@@ -292,6 +299,10 @@ export interface ObservationRuleRef {
   rule_id: string;
   stage_applicable: unknown;
   priority: number | null;
+  category: string | null;
+  condition_code: string | null;
+  etl_threshold: string | null;
+  action_text: string | null;
 }
 
 /** Categories that a field-scouting task can legitimately be derived from. */
@@ -316,7 +327,7 @@ export async function getObservationRules(
 ): Promise<ObservationRuleRef[]> {
   const { data } = await supabase
     .from("decision_rules")
-    .select("rule_id, stage_applicable, priority")
+    .select("rule_id, stage_applicable, priority, category, condition_code, etl_threshold, action_text")
     .eq("is_active", true)
     .eq("trigger_class", "OBSERVATION")
     .in("category", SCOUTING_RULE_CATEGORIES)
