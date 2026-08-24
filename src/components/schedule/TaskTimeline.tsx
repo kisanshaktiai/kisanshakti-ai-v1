@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import StagePhaseBadge from './StagePhaseBadge';
 import RescheduledNotice from './RescheduledNotice';
 import type { StagePhase } from '@/hooks/useLandStage';
+import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 
 interface Task {
   id: string;
@@ -368,7 +369,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
               {/* Tasks */}
               <div className="space-y-3">
                 {dateTasks.map((task, taskIndex) => {
-                  const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
+                  const config = resolveTaskTypeConfig(taskTypeConfig, task.task_type);
                   const TaskIcon = config.icon;
                   const isCompleted = task.status === 'completed';
                   const isOverdue = isPastDate && task.status === 'pending';
