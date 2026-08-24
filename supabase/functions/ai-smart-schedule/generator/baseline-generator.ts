@@ -287,7 +287,7 @@ export async function generateBaseline(
   }
 
   if (stages.length) {
-    const sowStage = stages.find((s) => (s.das_min ?? 0) <= 0) || stages[0] || null;
+    const sowStage = stages.find((s) => (das0(s, s.das_min) ?? 0) <= 0) || stages[0] || null;
     const sowProvenance: Provenance[] = seed
       ? [seed.provenance]
       : sowStage
@@ -344,7 +344,7 @@ export async function generateBaseline(
       let das: number | null = null;
       let stage: StageRow | null = null;
       try {
-        ({ das, stage } = dasFromSplit(split, stages));
+        ({ das, stage } = dasFromSplit(split, stages, transplantOffset));
       } catch {
         gaps.push("fertilizer_split_malformed");
         continue;
