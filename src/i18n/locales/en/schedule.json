@@ -210,7 +210,8 @@
       "approx_cost": "Approx. Cost",
       "recommended_products": "Recommended Products",
       "mark_done_label": "Mark as done when completed",
-      "mark_done": "Mark Done"
+      "mark_done": "Mark Done",
+      "no_details": "No further details recorded for this task."
     },
     "schedule_card": {
       "variety": "Variety",

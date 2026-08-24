@@ -150,7 +150,8 @@
       "approx_cost": "अंदाजे खर्च",
       "recommended_products": "सुझाए गए उत्पाद",
       "mark_done_label": "पूर्ण होने पर चिह्नित करें",
-      "mark_done": "पूर्ण चिह्नित करें"
+      "mark_done": "पूर्ण चिह्नित करें",
+      "no_details": "इस कार्य के लिए और कोई जानकारी दर्ज नहीं है।"
     },
     "schedule_card": {
       "variety": "किस्म",

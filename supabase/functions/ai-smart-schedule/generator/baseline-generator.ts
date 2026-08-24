@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-08-24 18:20 UTC — task content: scouting brief from condition_code/etl_threshold,
+//   irrigation notes + critical moisture, sowing fallback detail, rule ETL/dose/source
+//   instructions, precautions from rule contraindications. Empty content → named gap.
 // 2026-08-24 17:47 UTC — P0: transplant clock (crop_stage_master.clock_reference='transplanting'
 //   stages are days-after-transplant and are shifted onto the sowing axis via toDas /
 //   transplantOffset; unresolvable offset → gap transplant_offset_unresolved + skip);
@@ -45,7 +48,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.2.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.3.0";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -101,6 +104,8 @@ export interface BaselineTask {
   confidence: number | null;
   source_refs: Provenance[];
   instructions: string[];
+  precautions: string[];
+  resources?: Record<string, unknown>;
 }
 
 export interface BaselineResult {
@@ -288,6 +293,13 @@ export async function generateBaseline(
 
   if (stages.length) {
     const sowStage = stages.find((s) => (das0(s, s.das_min) ?? 0) <= 0) || stages[0] || null;
+    const sowDescription = seed?.rationale || "";
+    const sowInstructions: string[] = [];
+    if (!sowDescription) {
+      if (seedKg != null && areaAcres != null) sowInstructions.push(`Seed rate: ${seedKg} kg for ${areaAcres} acre`);
+      if (sowStage?.growth_stage) sowInstructions.push(`Stage: ${sowStage.growth_stage}`);
+      if (!sowInstructions.length) gaps.push("sowing_task_no_detail");
+    }
     const sowProvenance: Provenance[] = seed
       ? [seed.provenance]
       : sowStage
@@ -296,7 +308,7 @@ export async function generateBaseline(
     tasks.push({
       task_name: "Sowing / planting",
       task_type: "sowing",
-      task_description: seed?.rationale || "",
+      task_description: sowDescription,
       days_from_sowing: 0,
       anchor_type: "DAS",
       anchor_stage: sowStage?.stage_code || sowStage?.growth_stage || null,
@@ -313,7 +325,8 @@ export async function generateBaseline(
       rule_ids: [],
       confidence: seed ? 0.9 : null,
       source_refs: sowProvenance,
-      instructions: [],
+      instructions: sowInstructions,
+      precautions: [],
     });
   }
 
@@ -415,6 +428,7 @@ export async function generateBaseline(
         confidence: fert.provenance.confidence ?? null,
         source_refs: [fert.provenance],
         instructions: [],
+        precautions: [],
       });
     }
   }
@@ -441,6 +455,9 @@ export async function generateBaseline(
       continue;
     }
     provenance.push(g.provenance);
+    const irrigationInstructions: string[] = [];
+    if (g.criticalMoisturePercent != null) irrigationInstructions.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
+    if (g.provenance.source) irrigationInstructions.push(`Source: ${g.provenance.source}`);
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
     ) || stageForDas(stages, g.dasStart, transplantOffset);
@@ -451,7 +468,7 @@ export async function generateBaseline(
       const task: BaselineTask = {
         task_name: "Irrigation",
         task_type: "irrigation",
-        task_description: "",
+        task_description: g.notes ?? "",
         days_from_sowing: das,
         anchor_type: stage ? "STAGE" : "DAS",
         anchor_stage: stage?.stage_code || g.growthStage || null,
@@ -468,7 +485,8 @@ export async function generateBaseline(
         rule_ids: [],
         confidence: null,
         source_refs: [g.provenance],
-        instructions: [],
+        instructions: [...irrigationInstructions],
+        precautions: [],
       };
       const existing = irrigationByDas.get(das);
       if (!existing) {
@@ -515,6 +533,17 @@ export async function generateBaseline(
       const { stage, das } = matched[0];
       const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
+      const ruleInstructions: string[] = [];
+      if (rule.etl_threshold) ruleInstructions.push(`ETL: ${rule.etl_threshold}`);
+      if (rule.dosage_per_acre) ruleInstructions.push(`Dose/acre: ${rule.dosage_per_acre}`);
+      if (rule.phi_days != null) ruleInstructions.push(`PHI: ${rule.phi_days} days`);
+      if (rule.scientific_source) ruleInstructions.push(`Source: ${rule.scientific_source}`);
+      const rulePrecautions: string[] = Array.isArray(rule.contraindications)
+        ? (rule.contraindications as unknown[]).map((c) => String(c)).filter(Boolean)
+        : [];
+      if (!rule.action_text && !ruleInstructions.length && !rulePrecautions.length) {
+        gaps.push("rule_task_no_detail");
+      }
       tasks.push({
         task_name: rule.action_text || rule.category || rule.rule_id,
         task_type: taskType,
@@ -535,7 +564,8 @@ export async function generateBaseline(
         rule_ids: [rule.rule_id],
         confidence: null,
         source_refs: [{ table: "decision_rules", row_id: rule.rule_id, source: rule.scientific_source ?? null }],
-        instructions: rule.phi_days != null ? [`PHI: ${rule.phi_days} days`] : [],
+        instructions: ruleInstructions,
+        precautions: rulePrecautions,
       });
     }
   }
@@ -555,6 +585,28 @@ export async function generateBaseline(
   const observationRules = await getObservationRules(supabase, inputs.cropCode);
   coverage.monitoring = false;
   if (observationRules.length) {
+    const ruleById = new Map(observationRules.map((r) => [r.rule_id, r]));
+    /** Farmer-facing scouting brief built strictly from DB rule fields. */
+    const scoutBrief = (ids: string[], matchedCount: number) => {
+      const conditions: string[] = [];
+      const instructions: string[] = [];
+      for (const id of ids) {
+        const r = ruleById.get(id);
+        if (!r) continue;
+        const cc = String(r.condition_code ?? "").trim();
+        if (cc) {
+          const label = cc.replace(/_/g, " ");
+          if (!conditions.includes(label)) conditions.push(label);
+          const etl = String(r.etl_threshold ?? "").trim();
+          if (etl && instructions.length < 6) instructions.push(`${cc}: ${etl}`);
+        }
+      }
+      return {
+        description: conditions.length ? `Inspect for: ${conditions.slice(0, 8).join(", ")}` : "",
+        instructions,
+        resources: { scouting_targets: matchedCount },
+      };
+    };
     const byStage = new Map<string, { stage: StageRow; refs: Array<{ id: string; p: number | null }>; priority: number | null }>();
     for (const r of observationRules) {
       const stageList: string[] = Array.isArray(r.stage_applicable)
@@ -607,6 +659,7 @@ export async function generateBaseline(
           confidence: null,
           source_refs: [{ table: "decision_rules" }],
           instructions: [],
+          precautions: [],
         };
         const existing = scoutByDas.get(das);
         if (!existing) {
@@ -624,7 +677,14 @@ export async function generateBaseline(
       }
       coverage.monitoring = true;
     }
-    for (const { task } of scoutByDas.values()) tasks.push(task);
+    for (const entry of scoutByDas.values()) {
+      const brief = scoutBrief(entry.task.rule_ids, entry.refs.length);
+      entry.task.task_description = brief.description;
+      entry.task.instructions = brief.instructions;
+      entry.task.resources = brief.resources;
+      if (!brief.description && !brief.instructions.length) gaps.push("scouting_brief_empty");
+      tasks.push(entry.task);
+    }
   }
 
 
