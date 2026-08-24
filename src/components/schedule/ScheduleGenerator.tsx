@@ -81,6 +81,60 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
 
   const effectiveCropName = cropName === 'other' ? customCropName : cropName;
 
+  // ── Variety source (master_products keyed on crops.id) ────────────────────
+  const [varieties, setVarieties] = useState<Array<{ id: string; name: string }>>([]);
+  const [varietiesLoading, setVarietiesLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!cropName || cropName === 'other') {
+        setVarieties([]);
+        return;
+      }
+      setVarietiesLoading(true);
+      try {
+        const { data: crop } = await supabase
+          .from('crops')
+          .select('id')
+          .ilike('label', cropName)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (!crop?.id) {
+          if (!cancelled) setVarieties([]);
+          return;
+        }
+        const { data: rows } = await supabase
+          .from('master_products')
+          .select('id, name')
+          .eq('crop_id', crop.id)
+          .not('variety_code', 'is', null)
+          .order('name', { ascending: true })
+          .limit(200);
+        const list = (rows || []).map((r: any) => ({ id: String(r.id), name: String(r.name) }));
+        if (cancelled) return;
+        setVarieties(list);
+
+        // Pre-select the land's current variety, else the only available one.
+        const { data: land } = await supabase
+          .from('lands')
+          .select('current_crop_variety_id')
+          .eq('id', landId)
+          .maybeSingle();
+        const current = land?.current_crop_variety_id
+          ? list.find((v) => v.id === land.current_crop_variety_id)
+          : undefined;
+        if (cancelled) return;
+        if (current) setCropVariety(current.name);
+        else if (list.length === 1) setCropVariety(list[0].name);
+      } finally {
+        if (!cancelled) setVarietiesLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [cropName, landId]);
+
   const handleGenerate = async (forceGenerate = false, overrideFarmingType?: FarmingMode) => {
     if (!effectiveCropName || !sowingDate) {
       toast({
