@@ -46,9 +46,29 @@ export async function getStages(
     .eq("crop_code", cropCode)
     .eq("is_active", true)
     .order("das_min", { ascending: true, nullsFirst: true });
-  if (cropCycle) q = q.or(`crop_cycle.eq.${cropCycle},crop_cycle.is.null`);
+  // 'universal' stage rows apply to ANY cycle — excluding them zeroed out every crop
+  // whose stage graph is tagged universal (rice, wheat, cotton, …).
+  if (cropCycle) {
+    q = q.or(`crop_cycle.eq.${cropCycle},crop_cycle.eq.universal,crop_cycle.is.null`);
+  }
   const { data } = await q;
   let rows = (data || []) as StageRow[];
+
+  // Dedupe by stage identity, preferring the cycle-specific row over the universal one.
+  if (cropCycle) {
+    const wanted = cropCycle.toLowerCase();
+    const byKey = new Map<string, StageRow>();
+    for (const r of rows) {
+      const key = (r.stage_code || r.growth_stage || r.id).toLowerCase();
+      const prev = byKey.get(key);
+      if (!prev) { byKey.set(key, r); continue; }
+      const rSpecific = String(r.crop_cycle ?? "").toLowerCase() === wanted;
+      const prevSpecific = String(prev.crop_cycle ?? "").toLowerCase() === wanted;
+      if (rSpecific && !prevSpecific) byKey.set(key, r);
+    }
+    rows = [...byKey.values()].sort((a, b) => (a.das_min ?? 0) - (b.das_min ?? 0));
+  }
+
   if (cultivationMethod) {
     const scoped = rows.filter(
       (r) => !r.cultivation_method || r.cultivation_method.toLowerCase() === cultivationMethod.toLowerCase(),
