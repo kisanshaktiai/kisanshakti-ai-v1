@@ -294,9 +294,21 @@ export interface ObservationRuleRef {
   priority: number | null;
 }
 
+/** Categories that a field-scouting task can legitimately be derived from. */
+export const SCOUTING_RULE_CATEGORIES = [
+  "pest",
+  "disease",
+  "weed",
+  "stress",
+  "ipm",
+  "proactive_pest",
+  "proactive_monitoring",
+];
+
 /**
  * Conditional (OBSERVATION) rules for the crop. These are NOT scheduled operations —
- * they are used only to decide which stages warrant recurring scouting.
+ * they are used only to decide which stages warrant recurring scouting, so only
+ * protection categories qualify (economics/safety/management are never scoutable).
  */
 export async function getObservationRules(
   supabase: SupabaseClient,
@@ -307,10 +319,12 @@ export async function getObservationRules(
     .select("rule_id, stage_applicable, priority")
     .eq("is_active", true)
     .eq("trigger_class", "OBSERVATION")
+    .in("category", SCOUTING_RULE_CATEGORIES)
     .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
     .limit(2000);
   return (data || []) as ObservationRuleRef[];
 }
+
 
 
 export async function getBannedChemicals(supabase: SupabaseClient): Promise<Set<string>> {
