@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle, Wheat } from 'lucide-react';
@@ -56,6 +58,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
+  const [varieties, setVarieties] = useState<Array<{ id: string; name: string }>>([]);
+  const [varietiesLoading, setVarietiesLoading] = useState(false);
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
   const [nurseryDays, setNurseryDays] = useState<number>(0);
@@ -84,6 +88,47 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       daysAgo: daysDiff,
     };
   }, [sowingDate]);
+
+  // ── Variety source (master_products is the variety SSOT, keyed on crops.id) ──
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!cropId) {
+        setVarieties([]);
+        return;
+      }
+      setVarietiesLoading(true);
+      try {
+        const { data: rows } = await supabase
+          .from('master_products')
+          .select('id, name')
+          .eq('crop_id', cropId)
+          .not('variety_code', 'is', null)
+          .order('name', { ascending: true })
+          .limit(200);
+        const list = (rows || []).map((r: any) => ({ id: String(r.id), name: String(r.name) }));
+        if (cancelled) return;
+        setVarieties(list);
+
+        // Pre-select the land's current variety, else the only available one.
+        const { data: landRow } = await supabase
+          .from('lands')
+          .select('current_crop_variety_id')
+          .eq('id', land.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const current = landRow?.current_crop_variety_id
+          ? list.find((v) => v.id === landRow.current_crop_variety_id)
+          : undefined;
+        if (current) setCropVariety(current.name);
+        else if (list.length === 1) setCropVariety(list[0].name);
+      } finally {
+        if (!cancelled) setVarietiesLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [cropId, land.id]);
 
   const handleSubmit = () => {
     if (!cropName) {
@@ -196,18 +241,16 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     setSowingDate(new Date());
   };
 
-  const handleCropSelect = (id: string, name: string, localized: string, english: string) => {
+  const handleCropSelect = (id: string, name: string, localized: string, _english: string) => {
     setCropId(id);
     setCropName(name);
     setLocalizedCropName(localized || name);
-    
+
     // Reset intercrops when major crop changes
     setIntercrops([]);
-    
-    // Auto-suggest variety based on crop
-    if (english.toLowerCase().includes('rice')) setCropVariety('IR-64');
-    if (english.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
-    if (english.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
+
+    // Clear stale variety; DB-driven suggestions load via the master_products effect.
+    setCropVariety('');
   };
 
   return (
@@ -275,18 +318,42 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
           >
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-              {/* Variety Input */}
+              {/* Variety — DB-driven dropdown from master_products, free-text fallback */}
               <div className="space-y-2">
                 <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
                   {t('schedule.crop_input.variety_label')}
                 </Label>
-                <Input
-                  id="variety"
-                  placeholder={t('schedule.crop_input.variety_placeholder')}
-                  value={cropVariety}
-                  onChange={(e) => setCropVariety(e.target.value)}
-                  className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
-                />
+                {varieties.length > 0 ? (
+                  <Select value={cropVariety} onValueChange={setCropVariety}>
+                    <SelectTrigger
+                      id="variety"
+                      className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
+                    >
+                      <SelectValue
+                        placeholder={
+                          varietiesLoading
+                            ? t('schedule.crop_input.variety_loading', 'Loading varieties…')
+                            : t('schedule.crop_input.variety_placeholder')
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {varieties.map((v) => (
+                        <SelectItem key={v.id} value={v.name}>
+                          {v.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="variety"
+                    placeholder={t('schedule.crop_input.variety_placeholder')}
+                    value={cropVariety}
+                    onChange={(e) => setCropVariety(e.target.value)}
+                    className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
+                  />
+                )}
               </div>
 
               {/* Multi-Intercrop Selector - 2030 Ready UI */}
