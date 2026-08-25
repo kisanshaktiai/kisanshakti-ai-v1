@@ -87,7 +87,7 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="h-[92vh] p-0 rounded-t-3xl bg-background flex flex-col"
+        className="h-[92dvh] p-0 rounded-t-3xl bg-background flex flex-col"
       >
         {/* Drag handle */}
         <div className="pt-2 pb-1 flex justify-center shrink-0">

@@ -127,7 +127,7 @@ export function VarietySelector({
         </p>
       )}
 
-      {/* Grid of compact name chips */}
+      {/* Grid of tappable variety cards — mobile-first, big touch targets */}
       {loading ? (
         <div className="flex items-center justify-center py-6 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
@@ -139,41 +139,52 @@ export function VarietySelector({
             : t('schedule.variety.no_match', 'No varieties match your search.')}
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2.5">
           {filtered.map((v) => {
             const isSelected = v.id === value;
+            const localName = chipName(v);
+            const showEnglishSubtitle = localName !== v.name;
             return (
               <button
                 key={v.id}
                 type="button"
                 onClick={() => setPreviewId(v.id)}
                 className={cn(
-                  'group relative text-left rounded-2xl border bg-card px-3 py-2.5 transition-all active:scale-[0.98] min-h-[68px]',
+                  'group relative text-left rounded-2xl border bg-card px-3.5 py-3 transition-all active:scale-[0.97] min-h-[84px]',
                   'hover:border-primary/60 hover:shadow-sm hover:bg-primary/5',
                   isSelected
-                    ? 'border-primary bg-primary/10 ring-1 ring-primary/40 shadow-sm'
+                    ? 'border-primary bg-primary/10 ring-2 ring-primary/50 shadow-sm'
                     : 'border-border/60'
                 )}
               >
                 {v.is_featured && !isSelected && (
-                  <span className="absolute -top-1.5 -right-1 flex items-center gap-0.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold px-1.5 py-0.5 shadow">
+                  <span className="absolute -top-1.5 -right-1 flex items-center gap-0.5 rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 shadow">
                     <Sparkles className="h-2 w-2" />
                     {t('schedule.variety.featured', 'Recommended')}
                   </span>
                 )}
-                <div className="flex items-start justify-between gap-1">
-                  <span className="text-[13px] font-semibold leading-tight line-clamp-2 break-words text-foreground">
-                    {chipName(v)}
+                {isSelected && (
+                  <span className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow">
+                    <Check className="h-3 w-3" />
                   </span>
-                  {isSelected && (
-                    <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                  )}
+                )}
+                <div className="flex items-start justify-between gap-1">
+                  <div className="min-w-0">
+                    <span className="block text-sm font-semibold leading-tight line-clamp-2 break-words text-foreground">
+                      {localName}
+                    </span>
+                    {showEnglishSubtitle && (
+                      <span className="block text-[10px] text-muted-foreground leading-tight truncate mt-0.5">
+                        {v.name}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                <div className="flex flex-wrap items-center gap-1 mt-2">
                   {(v.maturity_days_min || v.maturity_days_max) && (
                     <Badge
                       variant="outline"
-                      className="h-4 text-[9px] px-1 border-border/50 text-muted-foreground"
+                      className="h-5 text-[10px] px-1.5 border-border/50 text-muted-foreground"
                     >
                       {v.maturity_days_min ?? '?'}–{v.maturity_days_max ?? '?'}{t('schedule.variety.days', 'days').charAt(0)}
                     </Badge>
@@ -181,7 +192,7 @@ export function VarietySelector({
                   {v.yield_potential_qtl_per_acre != null && (
                     <Badge
                       variant="outline"
-                      className="h-4 text-[9px] px-1 border-border/50 text-muted-foreground"
+                      className="h-5 text-[10px] px-1.5 border-border/50 text-muted-foreground"
                     >
                       ~{v.yield_potential_qtl_per_acre}q
                     </Badge>
