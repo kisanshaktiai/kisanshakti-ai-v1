@@ -318,18 +318,42 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
           >
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-              {/* Variety Input */}
+              {/* Variety — DB-driven dropdown from master_products, free-text fallback */}
               <div className="space-y-2">
                 <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
                   {t('schedule.crop_input.variety_label')}
                 </Label>
-                <Input
-                  id="variety"
-                  placeholder={t('schedule.crop_input.variety_placeholder')}
-                  value={cropVariety}
-                  onChange={(e) => setCropVariety(e.target.value)}
-                  className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
-                />
+                {varieties.length > 0 ? (
+                  <Select value={cropVariety} onValueChange={setCropVariety}>
+                    <SelectTrigger
+                      id="variety"
+                      className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
+                    >
+                      <SelectValue
+                        placeholder={
+                          varietiesLoading
+                            ? t('schedule.crop_input.variety_loading', 'Loading varieties…')
+                            : t('schedule.crop_input.variety_placeholder')
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {varieties.map((v) => (
+                        <SelectItem key={v.id} value={v.name}>
+                          {v.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="variety"
+                    placeholder={t('schedule.crop_input.variety_placeholder')}
+                    value={cropVariety}
+                    onChange={(e) => setCropVariety(e.target.value)}
+                    className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
+                  />
+                )}
               </div>
 
               {/* Multi-Intercrop Selector - 2030 Ready UI */}
