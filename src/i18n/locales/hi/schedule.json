@@ -274,6 +274,7 @@
     "crop_input": {
       "variety_label": "किस्म (वैकल्पिक)",
       "variety_placeholder": "जैसे, IR-64, HD-2967, BT कपास",
+      "variety_loading": "किस्में लोड हो रही हैं…",
       "ready_made_plant": "तैयार नर्सरी पौधे उपयोग कर रहे हैं",
       "ready_made_description": "चुनें यदि बीज बोने के बजाय पौध/रोपण लगा रहे हैं",
       "sowing_date": "बुवाई की तारीख",

@@ -49,6 +49,7 @@
     "crop_input": {
       "variety_label": "Variety (Optional)",
       "variety_placeholder": "e.g., IR-64, HD-2967, BT Cotton",
+      "variety_loading": "Loading varieties…",
       "ready_made_plant": "Using ready-made nursery plants",
       "ready_made_description": "Check if planting seedlings/transplants instead of sowing seeds",
       "sowing_date": "Sowing Date",

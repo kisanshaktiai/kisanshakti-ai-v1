@@ -274,6 +274,7 @@
     "crop_input": {
       "variety_label": "वाण (पर्यायी)",
       "variety_placeholder": "उदा., IR-64, HD-2967, BT कापूस",
+      "variety_loading": "वाण लोड होत आहेत…",
       "ready_made_plant": "तयार रोपवाटिकेची रोपे वापरत आहे",
       "ready_made_description": "बियाणे पेरण्याऐवजी रोपे लावत असल्यास निवडा",
       "sowing_date": "पेरणीची तारीख",
