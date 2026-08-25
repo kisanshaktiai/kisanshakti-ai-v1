@@ -137,7 +137,11 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
     return () => { cancelled = true; };
   }, [cropName, landId]);
 
-  const handleGenerate = async (forceGenerate = false, overrideFarmingType?: FarmingMode) => {
+  const handleGenerate = async (
+    forceGenerate = false,
+    overrideFarmingType?: FarmingMode,
+    overrideCultivationMethod?: string,
+  ) => {
     if (!effectiveCropName || !sowingDate) {
       toast({
         title: 'Missing Information',
