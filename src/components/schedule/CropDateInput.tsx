@@ -245,7 +245,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     // Reset intercrops when major crop changes
     setIntercrops([]);
 
-    // Clear stale variety; DB-driven suggestions load via the master_products effect.
+    // Clear stale variety; the VarietySelector re-loads from master_products.
+    setVarietyId(null);
     setCropVariety('');
   };
 
