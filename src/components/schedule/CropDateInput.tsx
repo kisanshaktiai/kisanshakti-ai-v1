@@ -245,14 +245,12 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     setCropId(id);
     setCropName(name);
     setLocalizedCropName(localized || name);
-    
+
     // Reset intercrops when major crop changes
     setIntercrops([]);
-    
-    // Auto-suggest variety based on crop
-    if (english.toLowerCase().includes('rice')) setCropVariety('IR-64');
-    if (english.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
-    if (english.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
+
+    // Clear stale variety; DB-driven suggestions load via the master_products effect.
+    setCropVariety('');
   };
 
   return (
