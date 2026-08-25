@@ -241,7 +241,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     setSowingDate(new Date());
   };
 
-  const handleCropSelect = (id: string, name: string, localized: string, english: string) => {
+  const handleCropSelect = (id: string, name: string, localized: string, _english: string) => {
     setCropId(id);
     setCropName(name);
     setLocalizedCropName(localized || name);
