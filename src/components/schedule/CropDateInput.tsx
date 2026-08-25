@@ -89,46 +89,42 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     };
   }, [sowingDate]);
 
-  // ── Variety source (master_products is the variety SSOT, keyed on crops.id) ──
+  // ── Variety source: master_products is the variety SSOT (shared, cached hook) ──
+  const { varieties, loading: varietiesLoading } = useCropVarieties(cropId || null);
+
+  // Pre-select the land's current variety (SSOT: lands.current_crop_variety_id).
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      if (!cropId) {
-        setVarieties([]);
-        return;
-      }
-      setVarietiesLoading(true);
-      try {
-        const { data: rows } = await supabase
-          .from('master_products')
-          .select('id, name')
-          .eq('crop_id', cropId)
-          .not('variety_code', 'is', null)
-          .order('name', { ascending: true })
-          .limit(200);
-        const list = (rows || []).map((r: any) => ({ id: String(r.id), name: String(r.name) }));
-        if (cancelled) return;
-        setVarieties(list);
-
-        // Pre-select the land's current variety, else the only available one.
-        const { data: landRow } = await supabase
-          .from('lands')
-          .select('current_crop_variety_id')
-          .eq('id', land.id)
-          .maybeSingle();
-        if (cancelled) return;
-        const current = landRow?.current_crop_variety_id
-          ? list.find((v) => v.id === landRow.current_crop_variety_id)
-          : undefined;
-        if (current) setCropVariety(current.name);
-        else if (list.length === 1) setCropVariety(list[0].name);
-      } finally {
-        if (!cancelled) setVarietiesLoading(false);
-      }
+      if (!cropId) return;
+      const { data: landRow } = await supabase
+        .from('lands')
+        .select('current_crop_variety_id')
+        .eq('id', land.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const currentId = landRow?.current_crop_variety_id ?? null;
+      if (currentId) setVarietyId(currentId);
     };
     load();
     return () => { cancelled = true; };
   }, [cropId, land.id]);
+
+  // Resolve the selected variety's name once the catalogue arrives
+  // (keeps the existing onSubmit(cropVariety) contract).
+  useEffect(() => {
+    if (!varietyId) return;
+    const match = varieties.find((v) => v.id === varietyId);
+    if (match) setCropVariety(match.name);
+  }, [varietyId, varieties]);
+
+  // Single-variety convenience pre-selection.
+  useEffect(() => {
+    if (!varietyId && !cropVariety && varieties.length === 1) {
+      setVarietyId(varieties[0].id);
+      setCropVariety(varieties[0].name);
+    }
+  }, [varieties, varietyId, cropVariety]);
 
   const handleSubmit = () => {
     if (!cropName) {
