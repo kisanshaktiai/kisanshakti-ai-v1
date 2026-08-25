@@ -199,6 +199,28 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           body = ctx && typeof ctx.json === 'function' ? await ctx.json() : null;
         } catch { /* body already consumed or not JSON */ }
 
+        if (body?.code === 'CULTIVATION_METHOD_REQUIRED') {
+          const opts: string[] = Array.isArray(body.options) ? body.options : [];
+          setCultivationOptions(opts);
+          setCultivationMethod(null);
+          toast({
+            title:
+              currentLanguage === 'hi'
+                ? 'लागवड पद्धत चुनें'
+                : currentLanguage === 'mr'
+                ? 'लागवड पद्धत निवडा'
+                : 'Choose a cultivation method',
+            description:
+              currentLanguage === 'hi'
+                ? 'इस फसल के लिए बुवाई/रोपाई पद्धत चुनकर दोबारा बनाएं'
+                : currentLanguage === 'mr'
+                ? 'या पिकासाठी पेरणी/लागवड पद्धत निवडून पुन्हा तयार करा'
+                : 'Select how this crop is established, then generate again',
+          });
+          setGenerating(false);
+          return;
+        }
+
         if (body?.code === 'LAND_NOT_AVAILABLE') {
           toast({
             title: 'Active crop on this land',
