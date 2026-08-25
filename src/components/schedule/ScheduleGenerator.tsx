@@ -521,6 +521,45 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           </div>
         </div>
 
+        {/* Cultivation method — shown when the crop supports more than one */}
+        {cultivationOptions.length > 0 && (
+          <div className="space-y-2">
+            <Label>
+              {currentLanguage === 'hi'
+                ? 'लागवड पद्धत *'
+                : currentLanguage === 'mr'
+                ? 'लागवड पद्धत *'
+                : 'Cultivation method *'}
+            </Label>
+            <Select
+              value={cultivationMethod ?? ''}
+              onValueChange={(v) => {
+                setCultivationMethod(v);
+                setIsReadyMadePlant(v === 'transplanted');
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    currentLanguage === 'mr' || currentLanguage === 'hi'
+                      ? 'निवडा'
+                      : 'Select method'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {cultivationOptions.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m.replace(/_/g, ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+
+
         {/* Sowing/Planting Date */}
         <div className="space-y-2">
           <Label>{isReadyMadePlant ? 'Planting Date *' : 'Sowing Date *'}</Label>
