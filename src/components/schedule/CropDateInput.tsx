@@ -89,6 +89,47 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     };
   }, [sowingDate]);
 
+  // ── Variety source (master_products is the variety SSOT, keyed on crops.id) ──
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!cropId) {
+        setVarieties([]);
+        return;
+      }
+      setVarietiesLoading(true);
+      try {
+        const { data: rows } = await supabase
+          .from('master_products')
+          .select('id, name')
+          .eq('crop_id', cropId)
+          .not('variety_code', 'is', null)
+          .order('name', { ascending: true })
+          .limit(200);
+        const list = (rows || []).map((r: any) => ({ id: String(r.id), name: String(r.name) }));
+        if (cancelled) return;
+        setVarieties(list);
+
+        // Pre-select the land's current variety, else the only available one.
+        const { data: landRow } = await supabase
+          .from('lands')
+          .select('current_crop_variety_id')
+          .eq('id', land.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const current = landRow?.current_crop_variety_id
+          ? list.find((v) => v.id === landRow.current_crop_variety_id)
+          : undefined;
+        if (current) setCropVariety(current.name);
+        else if (list.length === 1) setCropVariety(list[0].name);
+      } finally {
+        if (!cancelled) setVarietiesLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [cropId, land.id]);
+
   const handleSubmit = () => {
     if (!cropName) {
       toast({
