@@ -66,6 +66,8 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState<boolean>(false);
+  const [cultivationMethod, setCultivationMethod] = useState<string | null>(null);
+  const [cultivationOptions, setCultivationOptions] = useState<string[]>([]);
   const [farmingType, setFarmingType] = useState<FarmingMode>('organic_fertilizer');
   const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -135,7 +137,11 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
     return () => { cancelled = true; };
   }, [cropName, landId]);
 
-  const handleGenerate = async (forceGenerate = false, overrideFarmingType?: FarmingMode) => {
+  const handleGenerate = async (
+    forceGenerate = false,
+    overrideFarmingType?: FarmingMode,
+    overrideCultivationMethod?: string,
+  ) => {
     if (!effectiveCropName || !sowingDate) {
       toast({
         title: 'Missing Information',
@@ -167,7 +173,8 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant,
-          cultivationMethod: isReadyMadePlant ? 'transplanted' : null,
+          cultivationMethod:
+            overrideCultivationMethod ?? cultivationMethod ?? (isReadyMadePlant ? 'transplanted' : null),
           farmingType: effectiveFarmingType, // Pass farming type selection
           weather: weatherData,
           regenerate: false,
@@ -191,6 +198,28 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
         try {
           body = ctx && typeof ctx.json === 'function' ? await ctx.json() : null;
         } catch { /* body already consumed or not JSON */ }
+
+        if (body?.code === 'CULTIVATION_METHOD_REQUIRED') {
+          const opts: string[] = Array.isArray(body.options) ? body.options : [];
+          setCultivationOptions(opts);
+          setCultivationMethod(null);
+          toast({
+            title:
+              currentLanguage === 'hi'
+                ? 'लागवड पद्धत चुनें'
+                : currentLanguage === 'mr'
+                ? 'लागवड पद्धत निवडा'
+                : 'Choose a cultivation method',
+            description:
+              currentLanguage === 'hi'
+                ? 'इस फसल के लिए बुवाई/रोपाई पद्धत चुनकर दोबारा बनाएं'
+                : currentLanguage === 'mr'
+                ? 'या पिकासाठी पेरणी/लागवड पद्धत निवडून पुन्हा तयार करा'
+                : 'Select how this crop is established, then generate again',
+          });
+          setGenerating(false);
+          return;
+        }
 
         if (body?.code === 'LAND_NOT_AVAILABLE') {
           toast({
@@ -491,6 +520,45 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Cultivation method — shown when the crop supports more than one */}
+        {cultivationOptions.length > 0 && (
+          <div className="space-y-2">
+            <Label>
+              {currentLanguage === 'hi'
+                ? 'लागवड पद्धत *'
+                : currentLanguage === 'mr'
+                ? 'लागवड पद्धत *'
+                : 'Cultivation method *'}
+            </Label>
+            <Select
+              value={cultivationMethod ?? ''}
+              onValueChange={(v) => {
+                setCultivationMethod(v);
+                setIsReadyMadePlant(v === 'transplanted');
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    currentLanguage === 'mr' || currentLanguage === 'hi'
+                      ? 'निवडा'
+                      : 'Select method'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {cultivationOptions.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m.replace(/_/g, ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+
 
         {/* Sowing/Planting Date */}
         <div className="space-y-2">
