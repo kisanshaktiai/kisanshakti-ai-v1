@@ -1378,8 +1378,12 @@ async function computeLandWeatherMetrics(
       runoff_loss_mm: Math.round(runoffLoss * 10) / 10,
       water_deficit_mm: waterDeficit === null ? null : Math.round(waterDeficit * 10) / 10,
       soil_type_used: soilType,
-      irrigation_needed: indices.irrigation_need?.needs_irrigation ?? null,
-      irrigation_urgency: indices.irrigation_need?.priority ?? null,
+      // P0-3A (2026-08-25): the legacy ETc−rainfall heuristic no longer writes
+      // irrigation_needed / irrigation_urgency. The ONLY authority for those
+      // columns is the root-zone decision in derive-pipeline.ts
+      // (root_depletion_mm > raw_mm); when that computation is unavailable the
+      // columns stay NULL — never a fabricated false.
+      // (calculateIrrigationNeed remains exported for legacy weather-card UI.)
       gdd_daily: canonicalGddDaily, // FIX G: mirror of land_gdd_daily.daily_gdd
       et0_mm: et0,
       et0_method: indices.et0_method,
