@@ -12,10 +12,25 @@
  * path in code, never let the LLM improvise.
  *
  * Every call is audit-logged to rag_retrieval_logs (§30).
+ *
+ * CHANGE LOG
+ * 2026-08-24 — (a) audit.purpose → rag_retrieval_logs.retrieval_purpose, plus
+ *   document_ids[] / chunk_ids[] (columns added by migration rag_general_chat_p0,
+ *   applied to prod). (b) exported unsupportedNumbers(): deterministic numeric
+ *   fidelity gate (Latin + Devanagari digits, citation markers ignored) used by
+ *   ai-general-chat and, later, by schedule-candidate validation. (c) optional
+ *   maxEvidence for the SCHEDULE_DOCUMENT_SELECTION purpose. Public signature of
+ *   ragRetrieve() is unchanged; existing callers need no edits.
  */
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { getEmbeddingProvider } from './embeddingProvider.ts';
+
+export type RetrievalPurpose =
+  | 'GENERAL_CHAT'
+  | 'SCHEDULE_DOCUMENT_SELECTION'
+  | 'SCHEDULE_EXTRACTION'
+  | 'SCHEDULE_VALIDATION';
 
 export interface RagFilters {
   stateCodes?: string[] | null;   // states.code values, e.g. ['MH']
@@ -49,6 +64,18 @@ export interface RagResult {
   embeddingModel: string | null;
   latencyMs: number;
   traceNote: string;
+}
+
+export interface RagAudit {
+  sessionId?: string | null;
+  turnId?: string | null;
+  traceId?: string | null;
+  farmerId?: string | null;
+  tenantIdText?: string | null;
+  /** logged to rag_retrieval_logs.retrieval_purpose; defaults to GENERAL_CHAT */
+  purpose?: RetrievalPurpose;
+  /** override MAX_EVIDENCE (document selection wants more candidates) */
+  maxEvidence?: number;
 }
 
 const RRF_K = 60;
@@ -85,13 +112,15 @@ export async function ragRetrieve(
   query: string,
   language: string,
   filters: RagFilters,
-  audit: { sessionId?: string | null; turnId?: string | null; traceId?: string | null; farmerId?: string | null; tenantIdText?: string | null },
+  audit: RagAudit,
 ): Promise<RagResult> {
   const startedAt = Date.now();
   const provider = getEmbeddingProvider();
   let mode: 'fulltext' | 'hybrid' = 'fulltext';
   let embeddingModel: string | null = null;
   let traceNote = '';
+  const purpose: RetrievalPurpose = audit.purpose ?? 'GENERAL_CHAT';
+  const maxEvidence = Math.max(1, Math.min(audit.maxEvidence ?? MAX_EVIDENCE, CANDIDATES_PER_LEG));
 
   const rpcArgs = {
     p_limit: CANDIDATES_PER_LEG,
@@ -159,7 +188,7 @@ export async function ragRetrieve(
   const passing = ranked
     .filter((e) => e.rrf >= MIN_RRF_SCORE)
     .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= 2))
-    .slice(0, MAX_EVIDENCE);
+    .slice(0, maxEvidence);
   const belowThreshold = passing.length === 0;
 
   const evidence: Evidence[] = passing.map((e) => ({
@@ -191,7 +220,7 @@ export async function ragRetrieve(
       farmer_id: audit.farmerId || null,
       query_text: query,
       query_language: language,
-      filters_applied: rpcArgs,
+      filters_applied: { ...rpcArgs, purpose },
       retrieval_mode: mode,
       chunks_returned: evidence.map((ev) => ({
         chunk_id: ev.chunkId,
@@ -204,6 +233,9 @@ export async function ragRetrieve(
       below_threshold: belowThreshold,
       embedding_model: embeddingModel,
       latency_ms: latencyMs,
+      retrieval_purpose: purpose,
+      document_ids: [...new Set(evidence.map((ev) => ev.documentId))],
+      chunk_ids: evidence.map((ev) => ev.chunkId),
     });
   } catch (e) {
     console.warn('[ragRetrieval] audit log failed:', (e as Error).message);
@@ -245,4 +277,30 @@ export function buildCitationLines(evidence: Evidence[], language: string): stri
   }
   const label = language === 'hi' ? 'स्रोत' : language === 'mr' ? 'स्रोत' : 'Sources';
   return `\n\n${label}:\n` + lines.slice(0, 3).map((l) => `• ${l}`).join('\n');
+}
+
+// ── Numeric fidelity gate (deterministic; no LLM as judge) ──────────────────
+const NUM_RE = /\d+(?:[.,]\d+)?/g;
+const DEVANAGARI_DIGITS = '०१२३४५६७८९';
+
+function normaliseNumbers(s: string): string[] {
+  const latin = s.replace(/[०-९]/g, (d) => String(DEVANAGARI_DIGITS.indexOf(d)));
+  return (latin.match(NUM_RE) || []).map((n) => n.replace(',', '.').replace(/\.0+$/, ''));
+}
+
+/**
+ * Every number in `answer` must also occur in the evidence texts or in the
+ * farmer's own question. Returns the offending numbers (empty ⇒ faithful).
+ * "[3]" / "[EVIDENCE 3]" style citation markers are ignored.
+ */
+export function unsupportedNumbers(answer: string, evidence: Evidence[], question: string): string[] {
+  const allowed = new Set<string>([
+    ...normaliseNumbers(question),
+    ...evidence.flatMap((ev) => normaliseNumbers(ev.text)),
+  ]);
+  const stripped = answer
+    .replace(/\[EVIDENCE\s+\d+\]/gi, ' ')
+    .replace(/\[\d+(?:\s*,\s*\d+)*\]/g, ' ');
+  const found = normaliseNumbers(stripped);
+  return [...new Set(found.filter((n) => !allowed.has(n)))];
 }

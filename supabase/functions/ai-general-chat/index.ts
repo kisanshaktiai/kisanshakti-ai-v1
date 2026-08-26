@@ -10,6 +10,20 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-24 — P0 fixes before first deploy of the RAG path:
+ *   (1) FLAG SEMANTICS: isRagEnabled() treated empty target_tenants as "everyone"
+ *       and ignored rollout_percentage — with the live row (is_enabled=true,
+ *       rollout=0, targets=[]) that would have switched RAG ON for every farmer.
+ *       Replaced by _shared/featureFlags.ts (target_users → target_tenants →
+ *       rollout bucket). Live row now means OFF until targets/rollout are set.
+ *   (2) NUMERIC FIDELITY GATE: prompt rules alone cannot stop an invented dose.
+ *       Every number in the answer must exist in the evidence or the farmer's
+ *       question (unsupportedNumbers). Violation ⇒ one strict retry ⇒ else a
+ *       number-free answer. Deterministic; no LLM judges an LLM.
+ *   (3) PROMPT CONFLICT: the base rule "Be specific: name inputs, dosages per
+ *       acre …" is now emitted only when RAG is OFF; in RAG mode the evidence
+ *       rules govern. Flag OFF ⇒ prompt is byte-identical to the legacy version.
+ *   (4) LOGGING: retrieval purpose + document/chunk ids (migration applied).
  * 2026-08-08 — RAG GROUNDING (Stage 3, behind feature flag 'rag_general_chat'):
  *   information-class questions are grounded in retrieved authoritative
  *   evidence (rag_chunks via _shared/ragRetrieval.ts) with real citations
@@ -17,7 +31,6 @@
  *   Insufficient evidence ⇒ explicit honest-guidance mode selected in code.
  *   High-risk (pesticide/dosage/PHI) questions get the §23 informational
  *   boundary + routing note toward land-specific verified chat.
- *   Flag OFF ⇒ behavior is byte-identical to previous direct-LLM version.
  *   RAG NEVER touches ai-agriculture-chat (master prompt §2/§39/§45).
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -39,9 +52,13 @@ import {
   ragRetrieve,
   buildEvidenceBlock,
   buildCitationLines,
+  unsupportedNumbers,
   type Evidence,
   type RagResult,
 } from '../_shared/ragRetrieval.ts';
+import { isFlagEnabled } from '../_shared/featureFlags.ts';
+
+const RAG_FLAG = 'rag_general_chat';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -76,21 +93,6 @@ const SYMBOLIC_HINTS =
 const HIGH_RISK_QUERY =
   /(pesticide|insecticide|fungicide|herbicide|weedicide|spray|dose|dosage|ml per|gram per|ग्राम प्रति|मिली प्रति|छिड़काव|फवारणी|कीटनाशक|बुरशीनाशक|तणनाशक|खुराक|मात्रा|डोस|PHI|pre-?harvest interval|ETL|mix(ing)? chemical|कौन सी दवा|कोणते औषध)/i;
 
-async function isRagEnabled(supabase: any, tenantId: string): Promise<boolean> {
-  try {
-    const { data } = await supabase
-      .from('feature_flags')
-      .select('is_enabled, target_tenants')
-      .eq('flag_name', 'rag_general_chat')
-      .maybeSingle();
-    if (!data?.is_enabled) return false;
-    const targets: string[] = data.target_tenants || [];
-    return targets.length === 0 || targets.includes(tenantId);
-  } catch {
-    return false; // flag lookup failure ⇒ safe default: previous behavior
-  }
-}
-
 function buildSystemPrompt(
   language: string,
   landContext: any | null,
@@ -98,6 +100,7 @@ function buildSystemPrompt(
   rag?: {
     evidenceBlock: string | null; // null = retrieval ran but found nothing
     highRisk: boolean;
+    strict?: boolean;             // retry after the numeric gate failed
   } | null,
 ): string {
   const langName = LANG_NAMES[language] || 'English';
@@ -106,6 +109,15 @@ function buildSystemPrompt(
     : 'LAND_CONTEXT: none (farmer asked a general question without a specific land)';
 
   const addressingBlock = addressing ? `\n\n${addressing.promptDirective}\n` : '';
+
+  // Legacy specificity rule — only when RAG is OFF. In RAG mode the evidence
+  // rules below are the sole authority for any number.
+  const specificityRule = rag
+    ? ''
+    : `
+- Be specific: name inputs, dosages per acre, timings, and PHI (pre-harvest
+  interval) when relevant. Prefer organic / IPM first, then chemical only
+  when justified. Never invent regulatory approvals — if unsure, say so.`;
 
   // ── RAG grounding rules (§21). Only present when the feature flag is ON.
   let ragBlock = '';
@@ -117,15 +129,22 @@ RETRIEVED_EVIDENCE (authoritative published sources — retrieved for THIS quest
 ${rag.evidenceBlock}
 
 EVIDENCE RULES (mandatory):
-- Ground every factual agricultural claim (numbers, thresholds, timings,
-  varieties, scheme rules, eligibility, amounts) in RETRIEVED_EVIDENCE.
-- You may add general agronomic explanation, but clearly favor the evidence
-  when they differ, and never contradict it.
+- Every number you state (dose, rate, quantity, interval, days, PHI, ETL,
+  spacing, seed rate, price, percentage, date) MUST appear verbatim in
+  RETRIEVED_EVIDENCE. Never estimate, round, convert units, or recall a
+  figure from memory. If a number the farmer needs is not in the evidence,
+  say plainly (in ${langName}) that you do not have a verified figure and
+  advise confirming with the local Krishi Vigyan Kendra / agriculture office.
+- Ground every other factual claim (thresholds, timings, varieties, scheme
+  rules, eligibility) in RETRIEVED_EVIDENCE; you may add general agronomic
+  explanation but never contradict the evidence.
 - NEVER invent a source, page number, document name, or citation. Citations
   are appended by the system, not by you — do not write a "Sources" section.
-- If the evidence does not fully answer the question, answer what it supports
-  and say plainly (in ${langName}) what is not covered by verified sources.
-- Do not mention the words "RETRIEVED_EVIDENCE", "chunks" or "RAG" to the farmer.`;
+- Prefer organic / IPM guidance first when the evidence supports it.
+- Do not mention the words "RETRIEVED_EVIDENCE", "chunks" or "RAG" to the farmer.${rag.strict ? `
+- STRICT MODE: your previous draft contained numbers that are NOT in
+  RETRIEVED_EVIDENCE. Rewrite it using ONLY numbers that appear verbatim in
+  RETRIEVED_EVIDENCE or in the farmer's own message.` : ''}`;
     } else {
       ragBlock = `
 
@@ -134,8 +153,9 @@ INSUFFICIENT-EVIDENCE RULES (mandatory):
 - Say honestly (in ${langName}, one short sentence) that you do not have a
   verified official document for this, then give brief, safe, general
   guidance only.
-- Do NOT state specific numbers (doses, amounts, scheme payment figures,
-  dates, thresholds) as facts. Do NOT cite or invent any source.
+- Do NOT state ANY number: no dose, rate, quantity, interval, days, PHI,
+  ETL, spacing, seed rate, scheme amount, date or threshold. Write "the
+  recommended quantity" instead of a figure. Do NOT cite or invent any source.
 - Suggest the farmer confirm with the local Krishi Vigyan Kendra or
   agriculture office where appropriate.`;
     }
@@ -170,10 +190,7 @@ HARD RULES:
 - If LAND_CONTEXT is provided, use crop, growth stage, area, soil, district,
   season and recent weather to ground the answer. If missing, give the best
   general guidance and briefly note ONE extra detail that would sharpen the
-  answer next time.
-- Be specific: name inputs, dosages per acre, timings, and PHI (pre-harvest
-  interval) when relevant. Prefer organic / IPM first, then chemical only
-  when justified. Never invent regulatory approvals — if unsure, say so.
+  answer next time.${specificityRule}
 - NEVER ask the farmer to "classify" their question, pick an "intent",
   upload a photo, or choose from numbered options. At most ONE short
   follow-up question if it is truly required to answer well.
@@ -181,6 +198,40 @@ HARD RULES:
   where they help readability.
 ${addressingBlock}
 ${landBlock}${ragBlock}`;
+}
+
+async function callLLM(
+  chatMessages: Array<{ role: string; content: string }>,
+  temperature: number,
+  traceId: string,
+): Promise<{ answer: string; usedModel: string }> {
+  const { provider, model, apiKey } = getBestAvailableProvider();
+  const usedModel = `${provider}/${model}`;
+  const payload = buildAIRequest(provider, model, chatMessages, {
+    maxTokens: AI_CONFIG.MAX_TOKENS_CHAT,
+    temperature,
+    useJsonMode: false,
+  });
+  const endpoint = getAPIEndpoint(provider);
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), AI_CONFIG.REQUEST_TIMEOUT);
+  try {
+    const llmRes = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!llmRes.ok) {
+      const errTxt = await llmRes.text().catch(() => '');
+      console.error(`[${traceId}] LLM ${llmRes.status}:`, errTxt.slice(0, 300));
+      throw new Error(`LLM_HTTP_${llmRes.status}`);
+    }
+    const json = await llmRes.json();
+    return { answer: (json?.choices?.[0]?.message?.content || '').toString().trim(), usedModel };
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 serve(async (req: Request) => {
@@ -303,7 +354,9 @@ serve(async (req: Request) => {
     let ragResult: RagResult | null = null;
     let ragEvidence: Evidence[] = [];
     let highRisk = false;
-    const ragOn = await isRagEnabled(supabase, tenantId);
+    const flag = await isFlagEnabled(supabase, RAG_FLAG, { tenantId, farmerId });
+    const ragOn = flag.enabled;
+    console.log(`🚩 [${traceId}] ${RAG_FLAG}=${ragOn} (${flag.reason}, rollout=${flag.rolloutPercentage}%)`);
     if (ragOn) {
       highRisk = HIGH_RISK_QUERY.test(userText);
       try {
@@ -312,7 +365,7 @@ serve(async (req: Request) => {
           userText,
           language,
           { stateCodes: stateCode ? [stateCode] : null, tenantId: null /* general corpus is global; tenant docs opt-in later */ },
-          { sessionId, traceId, farmerId, tenantIdText: tenantId },
+          { sessionId, traceId, farmerId, tenantIdText: tenantId, purpose: 'GENERAL_CHAT' },
         );
         ragEvidence = ragResult.evidence;
         console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragEvidence.length} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
@@ -322,7 +375,6 @@ serve(async (req: Request) => {
       }
     }
 
-    // ── Build LLM messages (filter symbolic-leakage from history)
     // ── Load farmer profile for respectful addressing (presentation-only)
     let addressing: FarmerAddressing | null = null;
     try {
@@ -338,17 +390,12 @@ serve(async (req: Request) => {
       console.warn(`[${traceId}] addressing build failed:`, (e as Error).message);
     }
 
-    const systemPrompt = buildSystemPrompt(
-      language,
-      landContext,
-      addressing,
-      ragResult
-        ? {
-            evidenceBlock: ragEvidence.length ? buildEvidenceBlock(ragEvidence) : null,
-            highRisk,
-          }
-        : null,
-    );
+    const ragPromptCtx = ragResult
+      ? { evidenceBlock: ragEvidence.length ? buildEvidenceBlock(ragEvidence) : null, highRisk }
+      : null;
+    const systemPrompt = buildSystemPrompt(language, landContext, addressing, ragPromptCtx);
+
+    // ── Build LLM messages (filter symbolic-leakage from history)
     const history = (messages.slice(0, -1) as any[])
       .slice(-12)
       .map((m) => ({
@@ -358,46 +405,47 @@ serve(async (req: Request) => {
       .filter((m) => m.content.trim().length > 0)
       .filter((m) => !(m.role === 'assistant' && SYMBOLIC_HINTS.test(m.content)));
 
-    const chatMessages = [
-      { role: 'system', content: systemPrompt },
+    const withSystem = (sys: string) => [
+      { role: 'system', content: sys },
       ...history,
       { role: 'user', content: userText },
     ];
 
     let answer = '';
     let usedModel = 'unknown';
+    let fidelity: { attempts: number; unsupported: string[]; degraded: boolean } | null = null;
+    let noEvidenceMode = ragResult !== null && ragEvidence.length === 0;
     try {
-      const { provider, model, apiKey } = getBestAvailableProvider();
-      usedModel = `${provider}/${model}`;
+      const first = await callLLM(withSystem(systemPrompt), ragResult ? 0.3 : 0.6, traceId);
+      answer = first.answer;
+      usedModel = first.usedModel;
 
-      const payload = buildAIRequest(provider, model, chatMessages, {
-        maxTokens: AI_CONFIG.MAX_TOKENS_CHAT,
-        temperature: 0.6,
-        useJsonMode: false,
-      });
+      // ── Numeric fidelity gate (RAG mode only). Deterministic; never ships an
+      //    unsupported figure. Prompt rules are advisory; this is the enforcement.
+      if (ragResult) {
+        let bad = unsupportedNumbers(answer, ragEvidence, userText);
+        fidelity = { attempts: 1, unsupported: bad, degraded: false };
 
-      const endpoint = getAPIEndpoint(provider);
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), AI_CONFIG.REQUEST_TIMEOUT);
+        if (bad.length && ragEvidence.length) {
+          const strictPrompt = buildSystemPrompt(language, landContext, addressing, { ...ragPromptCtx!, strict: true });
+          const retry = await callLLM(withSystem(strictPrompt), 0.1, traceId);
+          const badRetry = unsupportedNumbers(retry.answer, ragEvidence, userText);
+          if (!badRetry.length) answer = retry.answer;
+          bad = badRetry;
+          fidelity = { attempts: 2, unsupported: bad, degraded: false };
+        }
 
-      const llmRes = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      clearTimeout(t);
-
-      if (!llmRes.ok) {
-        const errTxt = await llmRes.text().catch(() => '');
-        console.error(`[${traceId}] LLM ${llmRes.status}:`, errTxt.slice(0, 300));
-        throw new Error(`LLM_HTTP_${llmRes.status}`);
+        if (bad.length) {
+          // Final fallback: number-free informational answer (evidence withheld).
+          const safePrompt = buildSystemPrompt(language, landContext, addressing, { evidenceBlock: null, highRisk });
+          const safe = await callLLM(withSystem(safePrompt), 0.1, traceId);
+          const stillBad = unsupportedNumbers(safe.answer, [], userText);
+          answer = stillBad.length ? safe.answer.replace(/[\d०-९]+(?:[.,][\d०-९]+)?/g, '▢') : safe.answer;
+          noEvidenceMode = true;
+          fidelity = { attempts: 3, unsupported: stillBad, degraded: true };
+          console.warn(`⚠️ [${traceId}] fidelity gate degraded answer; unsupported=${JSON.stringify(bad)}`);
+        }
       }
-      const json = await llmRes.json();
-      answer = (json?.choices?.[0]?.message?.content || '').toString().trim();
     } catch (e) {
       console.error(`[${traceId}] LLM call failed`, (e as Error).message);
       answer = language === 'hi'
@@ -417,9 +465,31 @@ serve(async (req: Request) => {
 
     // ── Citations: appended IN CODE from retrieval metadata (§22) — the LLM
     //    is forbidden from writing them, so page numbers can never be invented.
-    if (ragEvidence.length > 0) {
+    //    Not appended when the answer was degraded to the number-free path.
+    if (ragEvidence.length > 0 && !noEvidenceMode) {
       answer += buildCitationLines(ragEvidence, language);
     }
+
+    const orchestratorType = !ragResult
+      ? 'GENERAL_LLM_DIRECT'
+      : noEvidenceMode
+      ? 'GENERAL_RAG_NO_EVIDENCE'
+      : 'GENERAL_RAG_GROUNDED';
+
+    const ragMeta = ragResult
+      ? {
+          flag_reason: flag.reason,
+          mode: ragResult.mode,
+          evidence_count: ragEvidence.length,
+          below_threshold: ragResult.belowThreshold,
+          high_risk: highRisk,
+          evidence_ids: ragEvidence.map((e) => e.chunkId),
+          document_ids: [...new Set(ragEvidence.map((e) => e.documentId))],
+          embedding_model: ragResult.embeddingModel,
+          retrieval_latency_ms: ragResult.latencyMs,
+          fidelity,
+        }
+      : null;
 
     // ── Persist assistant response
     try {
@@ -432,21 +502,11 @@ serve(async (req: Request) => {
         ai_model: usedModel,
         metadata: {
           chat_mode: ragResult ? 'general_rag_v1' : 'general_llm_v1',
-          orchestrator_type: ragResult ? 'GENERAL_RAG_GROUNDED' : 'GENERAL_LLM_DIRECT',
+          orchestrator_type: orchestratorType,
           language,
           trace_id: traceId,
           land_context_used: !!landContext,
-          rag: ragResult
-            ? {
-                mode: ragResult.mode,
-                evidence_count: ragEvidence.length,
-                below_threshold: ragResult.belowThreshold,
-                high_risk: highRisk,
-                evidence_ids: ragEvidence.map((e) => e.chunkId),
-                embedding_model: ragResult.embeddingModel,
-                retrieval_latency_ms: ragResult.latencyMs,
-              }
-            : null,
+          rag: ragMeta,
         },
       });
     } catch (e) {
@@ -460,14 +520,22 @@ serve(async (req: Request) => {
         responseTime: Date.now() - startedAt,
         metadata: {
           type: 'general_chat',
-          orchestrator_type: ragResult ? 'GENERAL_RAG_GROUNDED' : 'GENERAL_LLM_DIRECT',
+          orchestrator_type: orchestratorType,
           chat_mode: ragResult ? 'general_rag_v1' : 'general_llm_v1',
           model: usedModel,
           trace_id: traceId,
           language,
           land_context_used: !!landContext,
-          rag_grounded: ragEvidence.length > 0,
+          rag_grounded: orchestratorType === 'GENERAL_RAG_GROUNDED',
           rag_mode: ragResult?.mode || null,
+          ...(orchestratorType === 'GENERAL_RAG_GROUNDED'
+            ? {
+                citations: ragEvidence.map((e, i) => ({
+                  n: i + 1, title: e.title, publisher: e.publisher, page: e.pageNumber,
+                  section: e.sectionPath, document_id: e.documentId, chunk_id: e.chunkId,
+                })),
+              }
+            : {}),
         },
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
