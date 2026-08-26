@@ -558,9 +558,9 @@ export async function deriveLandDaily(
     ? calculateDiseaseRiskIndex(tempNow, rhMean, dewPoint, rain, lwd ?? 0)
     : null;
 
-  // ---- (j) rain_24h / infiltration cap / SWSI / N supply-demand ------------
+  // ---- (j) rain_24h / SWSI / N supply-demand -------------------------------
   // All coefficients come from sci_method_registry (SSOT); nothing hardcoded.
-  const soilKey = normalizeSoilType(land.soil_type);
+  // (soilKey + infiltrationCap are computed above, before the water bucket.)
   const swsiParams = methods.SWSI_STAGE_SENSITIVITY?.params ?? {};
   const lookbackDays = num(swsiParams.lookback_days) ?? 14;
   const yDay = istDayString(new Date(Date.now() - 86400000));
@@ -582,10 +582,6 @@ export async function deriveLandDaily(
   const hoursElapsed = clamp((Date.now() - anchor.getTime()) / 3600000, 0, 24);
   const yRain = num(yAggRes?.data?.rain_mm_total) ?? 0;
   const rain24h = r2(rain + yRain * ((24 - hoursElapsed) / 24));
-
-  // (b) infiltration_cap_mm — SOIL_INFILTRATION_CAPS@1.0
-  const infilCaps = (methods.SOIL_INFILTRATION_CAPS?.params?.max_single_application_mm ?? {}) as Record<string, number>;
-  const infiltrationCap = num(infilCaps[soilKey ?? ""] ?? infilCaps.default);
 
   // (c) SWSI — unmet demand over the lookback window, stage-weighted.
   const effRainTable = (methods.SOIL_TYPE_EFFECTIVE_RAIN?.params ?? {}) as Record<string, number>;
@@ -622,13 +618,13 @@ export async function deriveLandDaily(
   const demandTable = (nParams.season_n_demand_kg_ha ?? {}) as Record<string, number>;
   const uptakeTable = (nParams.stage_uptake_fraction ?? {}) as Record<string, number>;
   const stageFraction = num(uptakeTable[stageKey]) ?? num(uptakeTable.default);
-  const seasonDemand = num(demandTable[crop]) ?? num(demandTable.default);
+  const seasonDemand = num(demandTable[cropKey]) ?? num(demandTable.default);
   const soilN = num(soilNRes?.data?.nitrogen_kg_per_ha);
   const soilOc = num(soilNRes?.data?.organic_carbon);
   const legume = (nParams.legume_suppression ?? {}) as { crops?: string[]; after_stage_fraction?: number };
   let nSdRatio: number | null = null;
   if (
-    legume.crops?.includes(crop) &&
+    legume.crops?.includes(cropKey) &&
     stageFraction !== null && stageFraction > (num(legume.after_stage_fraction) ?? 1)
   ) {
     out.reasons.push("N_SD_SUPPRESSED_LEGUME");
