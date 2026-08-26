@@ -469,18 +469,45 @@ export async function deriveLandDaily(
     uStdTaw = Math.abs(hi.taw_mm - lo.taw_mm) / 2;
   }
 
+  // ---- P0-1D: runoff from the persisted infiltration capacity --------------
+  // runoff = max(0, rain − infiltration_cap). Null capacity → 0 + reason;
+  // the capacity is never invented. (soilKey/infiltrationCap are also reused
+  // by the SWSI / rain_24h block below.)
+  const soilKey = normalizeSoilType(land.soil_type);
+  const infilCaps = (methods.SOIL_INFILTRATION_CAPS?.params?.max_single_application_mm ?? {}) as Record<string, number>;
+  const infiltrationCap = num(infilCaps[soilKey ?? ""] ?? infilCaps.default);
+  const runoff = computeRunoffMm(rain, infiltrationCap);
+  if (runoff.reason) out.reasons.push(runoff.reason);
+
   let depletion: number | null = null;
   if (tawRaw) {
-    const prevDepletion = num(prev?.root_depletion_mm) ?? 0.5 * tawRaw.raw_mm;
-    const bucket = updateSoilWaterBucket(prevDepletion, {
-      etcMm: etc ?? 0, rainMm: rain, irrigationMm: 0, runoffMm: 0,
-    }, methods);
-    depletion = clamp(bucket.depletionMm, 0, tawRaw.taw_mm);
+    if (kc === null) {
+      // P0-2C: unresolved crop/Kc → never advance the root-water state on a
+      // fabricated ETc. Preserve the previous depletion as-is.
+      depletion = num(prev?.root_depletion_mm);
+    } else {
+      const prevDepletion = num(prev?.root_depletion_mm) ?? 0.5 * tawRaw.raw_mm;
+      // P0-1B/1D: real irrigation depth + modelled runoff (no more zeros).
+      const bucket = updateSoilWaterBucket(prevDepletion, {
+        etcMm: etc ?? 0, rainMm: rain, irrigationMm, runoffMm: runoff.runoffMm,
+      }, methods);
+      depletion = clamp(bucket.depletionMm, 0, tawRaw.taw_mm);
+    }
+  }
+
+  // ---- P0-1E: saturation / unverified-state guard --------------------------
+  // Depletion pinned at the ceiling with no irrigation evidence in 21 days
+  // means the bucket may have ratcheted without ground truth. QC/confidence
+  // signal only — the numeric depletion is still persisted, never nulled.
+  let waterConfidenceCap: number | null = null;
+  if (tawRaw && isDepletionUnverifiedCeiling(depletion, tawRaw.taw_mm, irrigationMm, hadIrrigationLast21d)) {
+    out.reasons.push(REASON_DEPLETION_UNVERIFIED_CEILING);
+    waterConfidenceCap = DEPLETION_UNVERIFIED_CONFIDENCE_CAP;
   }
 
   // ---- (f) stress degree-hours --------------------------------------------
   const hourlyTemps = interpolateHourlyTemps(tmax, tmin);
-  const heatThreshold = getHeatStressThreshold(crop, methods);
+  const heatThreshold = getHeatStressThreshold(cropKey, methods);
   const heatDh = calculateStressDegreeHours(hourlyTemps, heatThreshold, "above", isSensitiveStage);
   const coldDh = calculateStressDegreeHours(hourlyTemps, 10, "below", isSensitiveStage);
 
