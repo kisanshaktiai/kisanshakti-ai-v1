@@ -4,6 +4,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * CHANGE LOG (newest first)
+ * 2026-08-25 18:55 UTC — P0 water-state repairs:
+ *   (1) root-depletion ratchet stopped — daily IRRIGATION_APPLIED events from
+ *       crop_lifecycle_events are resolved (depth → volume → pump runtime) and
+ *       passed to the FAO-56 bucket; runoff = max(0, rain − infiltration_cap);
+ *       DEPLETION_UNVERIFIED_CEILING guard caps water confidence at 0.3.
+ *   (2) maize/generic Kc fallback removed — crop identity resolved through the
+ *       SHARED DB crop resolver (_shared/crop-resolver.ts); unresolved crops
+ *       yield null Kc/ETc and preserve previous depletion.
+ *   (3) irrigation_needed/urgency now written ONLY from the root-zone
+ *       decision (depletion > RAW); null when uncomputable.
  * 2026-08-07 11:40 UTC — Prompt 3: land daily derive (ET0 PM, LWD, Kc/ETc,
  *   TAW/RAW/depletion bucket, stress degree-hours, frost, spray, harvest
  *   window), dual-write of raw + derived values into env_observations with
@@ -40,6 +50,18 @@ import {
   type MethodsMap,
 } from "./agricultural-calculations.ts";
 import { resolveNdviQuality, type NdviCandidateRow } from "./ndvi-resolver.ts";
+import { resolveCropCanonical } from "../_shared/crop-resolver.ts";
+import {
+  computeRunoffMm,
+  cropUnresolvedReason,
+  DEPLETION_UNVERIFIED_CONFIDENCE_CAP,
+  irrigationUrgencyFromDepletion,
+  isDepletionUnverifiedCeiling,
+  kcUnresolvedReason,
+  REASON_DEPLETION_UNVERIFIED_CEILING,
+  rootZoneIrrigationDecision,
+  summarizeIrrigationEvents,
+} from "./water-events.ts";
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
@@ -201,6 +223,7 @@ interface LandRow {
   stage_uuid: string | null; crop_stage: string | null;
   current_gdd: number | string | null; elevation_meters: number | string | null;
   current_crop_variety_id: string | null;
+  area_acres: number | string | null;
 }
 
 interface DeriveOutcome {
