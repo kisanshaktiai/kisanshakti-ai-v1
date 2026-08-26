@@ -1393,6 +1393,14 @@ serve(async (req) => {
             : [{ value: 'photo_upload', observation_key: 'photo_upload', label: '📷' }];
           const _preservedSelectionType = (orchestratorResponse as any)?.metadata?.selectionType;
 
+          // FIX 3 (2026-08-26): never emit an escalation card with <2 real
+          // options — fall through to the advisory / rule path instead.
+          if (_preparedForEscalation.length < 2) {
+            console.warn(
+              `[ESCALATION_SUPPRESSED_LOW_OPTIONS] trace=${traceId} options=${_preparedForEscalation.length} ` +
+              `action=fall_through_to_advisory`,
+            );
+          } else {
           (orchestratorResponse as any).type = 'DIAGNOSTIC_ESCALATION';
           (orchestratorResponse as any).question = undefined;
           (orchestratorResponse as any).metadata = {
@@ -1402,6 +1410,8 @@ serve(async (req) => {
             selectionType: _preservedSelectionType,
             escalation_reason: _isSubsetOfAsked ? 'REPEATED_CLARIFICATION_BLOCKED' : 'CLARIFICATION_BUDGET_EXHAUSTED',
           };
+          }
+
         } else {
           _clarificationRoundCounter += 1;
         }
