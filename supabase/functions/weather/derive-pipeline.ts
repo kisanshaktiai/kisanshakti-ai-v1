@@ -259,10 +259,20 @@ export async function deriveLandDaily(
   const cell = land.cell_key;
   const lat = num(land.center_lat);
   const lon = num(land.center_lon);
-  const crop = String(land.current_crop ?? "").toLowerCase() || "generic";
+  // P0-2B: canonical crop identity through the SHARED DB crop resolver
+  // (crops SSOT + multilingual labels + crop_synonyms) — the same resolver
+  // ai-smart-schedule uses. No hardcoded translations, no "generic" crop
+  // fallback for Kc/ETc. `cropKey` below only feeds the pre-existing
+  // non-authoritative lookups (root depth, heat threshold, N demand) whose
+  // behaviour is unchanged.
+  const rawCropLabel = String(land.current_crop ?? "").trim();
+  const cropMatch = rawCropLabel ? await resolveCropCanonical(supabase, rawCropLabel) : null;
+  const crop = cropMatch?.code ?? null;
+  if (!crop) out.reasons.push(cropUnresolvedReason(rawCropLabel));
+  const cropKey = crop ?? "generic";
 
   // ---- 1. FUSED DAILY INPUTS ----------------------------------------------
-  const [aggRes, fcRes, soilRes, ndviRes, prevRes, curRes, stageRes] = await Promise.all([
+  const [aggRes, fcRes, soilRes, ndviRes, prevRes, curRes, stageRes, irrigRes] = await Promise.all([
     supabase.from("weather_aggregates").select("*")
       .eq("location_key", cell).eq("aggregate_date", day).is("land_id", null).maybeSingle(),
     supabase.from("weather_forecasts").select("*")
@@ -283,6 +293,12 @@ export async function deriveLandDaily(
       ? supabase.from("crop_stage_master").select("growth_stage, stage_code, phenology_index, gdd_min, gdd_max")
         .eq("id", land.stage_uuid).maybeSingle()
       : Promise.resolve({ data: null }),
+    // P0-1A/1E: irrigation events — today's for the water bucket, the whole
+    // previous-21-day window for the unverified-ceiling guard.
+    supabase.from("crop_lifecycle_events").select("id, payload, created_at")
+      .eq("land_id", land.id).eq("event_type", "IRRIGATION_APPLIED")
+      .gte("created_at", new Date(anchor.getTime() - 21 * 86400000).toISOString())
+      .lt("created_at", new Date(anchor.getTime() + 86400000).toISOString()),
   ]);
 
   const agg = aggRes?.data ?? null;
