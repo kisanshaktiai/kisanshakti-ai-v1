@@ -8710,6 +8710,65 @@ export class AIAgentOrchestrator {
           );
         }
 
+        // ── FIX 5 (2026-08-26) — UNIVERSAL CONTEXT_BLOCK SAFETY GATE ─────────
+        // An applicable CONTEXT_BLOCK row (crop + stage/DAS + cultivation) is
+        // evaluated BEFORE any rule sharing its condition_code / category can be
+        // emitted, in EVERY lane. The prohibition leads the response; the
+        // conflicting dose-bearing rule is dropped. Fully DB-driven.
+        try {
+          const _cbCandidates = Array.isArray(layeredRuleResult?.matched_responses)
+            ? layeredRuleResult.matched_responses : [];
+          if (_cbCandidates.length > 0) {
+            const { applyContextBlockGate } =
+              await import('../decision/context-rule-selector.ts');
+            const _cbDasRaw =
+              (canonicalState as any)?.days_since_sowing ??
+              (landContext as any)?.days_since_sowing ?? null;
+            const gate = await applyContextBlockGate(this.supabase, {
+              cropCode: (canonicalState as any)?.crop_type ?? landContext?.current_crop ?? null,
+              growthStage: (canonicalState as any)?.crop_stage ?? landContext?.growth_stage ?? null,
+              das: typeof _cbDasRaw === 'number' ? _cbDasRaw : Number(_cbDasRaw ?? NaN),
+              cultivationMethod:
+                (this as any)._sessionSSOT?.cultivation_method ??
+                (landContext as any)?.cultivation_method ?? null,
+              traceId: traceId,
+            }, _cbCandidates);
+
+            if (gate.suppressed.length > 0 || gate.blockResponses.length > 0) {
+              const nextMatched = [...gate.blockResponses, ...gate.kept];
+              layeredRuleResult = {
+                ...(layeredRuleResult ?? {}),
+                matched_responses: nextMatched,
+                primary_decision: nextMatched[0] ?? layeredRuleResult?.primary_decision ?? null,
+                rules_matched: nextMatched.length,
+                rules_applied: nextMatched.map((m: any) => m?.rule_id).filter(Boolean),
+                safety_blocks: [
+                  ...(Array.isArray(layeredRuleResult?.safety_blocks) ? layeredRuleResult.safety_blocks : []),
+                  ...gate.blocks.map((b: any) => ({
+                    rule_id: b?.rule_id,
+                    reason: 'CONTEXT_BLOCK',
+                    condition_code: b?.condition_code ?? null,
+                    message: b?.action_text ?? b?.reason_text ?? null,
+                  })),
+                ],
+              } as any;
+              agentsUsed.push('CONTEXT_BLOCK_GATE');
+              console.warn(
+                `[CONTEXT_BLOCK_APPLIED] trace=${traceId} ` +
+                `blocks=${gate.blocks.map((b: any) => b.rule_id).join(',')} ` +
+                `suppressed=${gate.suppressed.map((s: any) => s.rule_id).join(',') || 'none'} ` +
+                `primary=${nextMatched[0]?.rule_id ?? 'none'}`,
+              );
+            }
+          }
+        } catch (cbErr) {
+          console.warn(
+            `[CONTEXT_BLOCK_GATE] non-fatal failure: ` +
+            `${cbErr instanceof Error ? cbErr.message : String(cbErr)}`,
+          );
+        }
+
+
         // STEP 8 — [RULE_RESULT] trace + coverage-gap / edge-missing surfacing
         try {
           const winnerId = (layeredRuleResult?.primary_decision?.rule_id
