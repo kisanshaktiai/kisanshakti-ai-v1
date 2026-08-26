@@ -14,6 +14,8 @@
  * Every call is audit-logged to rag_retrieval_logs (§30).
  *
  * CHANGE LOG
+ * 2026-08-24b — audit.queryOriginal logged into filters_applied.query_original so a
+ *   normalised English query can be traced back to the farmer's own words.
  * 2026-08-24 — (a) audit.purpose → rag_retrieval_logs.retrieval_purpose, plus
  *   document_ids[] / chunk_ids[] (columns added by migration rag_general_chat_p0,
  *   applied to prod). (b) exported unsupportedNumbers(): deterministic numeric
@@ -76,6 +78,8 @@ export interface RagAudit {
   purpose?: RetrievalPurpose;
   /** override MAX_EVIDENCE (document selection wants more candidates) */
   maxEvidence?: number;
+  /** farmer's original text when `query` is an LLM-normalised English rewrite (logged only) */
+  queryOriginal?: string | null;
 }
 
 const RRF_K = 60;
@@ -220,7 +224,7 @@ export async function ragRetrieve(
       farmer_id: audit.farmerId || null,
       query_text: query,
       query_language: language,
-      filters_applied: { ...rpcArgs, purpose },
+      filters_applied: { ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null },
       retrieval_mode: mode,
       chunks_returned: evidence.map((ev) => ({
         chunk_id: ev.chunkId,

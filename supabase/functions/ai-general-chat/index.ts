@@ -10,6 +10,19 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-24b — LANGUAGE-AGNOSTIC RETRIEVAL + FARMER EXPLANATION:
+ *   (5) The corpus is English; a Marathi/Hindi question sent verbatim to pgroonga
+ *       returned 0 rows (verified). New _shared/queryNormalizer.ts uses the LLM as an
+ *       INTERPRETER only: farmer text → English retrieval query + crop/topic hints,
+ *       numbers preserved. Retrieval runs on the English query; if nothing is found
+ *       and the farmer's text differs, retrieval is retried on the original text.
+ *   (6) stateCode now resolves from body.stateCode → farmer profile state → states.code
+ *       (the app never sends stateCode; verified in EnhancedAIChatInterface.tsx).
+ *       cropCodes resolve from the normaliser's crop hint via crops.value.
+ *   (7) Explanation prompt: evidence is English; the answer must explain it in the
+ *       farmer's own language and simple field vocabulary, keep every evidence number
+ *       exactly (units localised as words), never translate a figure into a new unit.
+ *   (8) metadata.rag.normalization records the rewrite for audit.
  * 2026-08-24 — P0 fixes before first deploy of the RAG path:
  *   (1) FLAG SEMANTICS: isRagEnabled() treated empty target_tenants as "everyone"
  *       and ignored rollout_percentage — with the live row (is_enabled=true,
@@ -57,6 +70,7 @@ import {
   type RagResult,
 } from '../_shared/ragRetrieval.ts';
 import { isFlagEnabled } from '../_shared/featureFlags.ts';
+import { normalizeQueryForRetrieval, resolveCropCode, resolveStateCode, type NormalizedQuery } from '../_shared/queryNormalizer.ts';
 
 const RAG_FLAG = 'rag_general_chat';
 
@@ -141,7 +155,17 @@ EVIDENCE RULES (mandatory):
 - NEVER invent a source, page number, document name, or citation. Citations
   are appended by the system, not by you — do not write a "Sources" section.
 - Prefer organic / IPM guidance first when the evidence supports it.
-- Do not mention the words "RETRIEVED_EVIDENCE", "chunks" or "RAG" to the farmer.${rag.strict ? `
+- Do not mention the words "RETRIEVED_EVIDENCE", "chunks" or "RAG" to the farmer.
+
+FARMER EXPLANATION STYLE (the evidence is in English; the farmer is not):
+- Explain the MEANING of the evidence in ${langName}, in the words a village
+  extension officer would use in the field — not a word-by-word translation.
+- Keep every number exactly as it appears in the evidence. Write the unit as the
+  local spoken word (e.g. kg → किलो, acre → एकर, hectare → हेक्टर, litre → लिटर,
+  gram → ग्रॅम/ग्राम) but NEVER convert a value to a different unit.
+- Product / chemical / variety names stay as written in the evidence.
+- Structure: one line on what to do, then how much, then when, then one caution.
+  Short sentences. No English sentences.${rag.strict ? `
 - STRICT MODE: your previous draft contained numbers that are NOT in
   RETRIEVED_EVIDENCE. Rewrite it using ONLY numbers that appear verbatim in
   RETRIEVED_EVIDENCE or in the farmer's own message.` : ''}`;
@@ -350,35 +374,12 @@ serve(async (req: Request) => {
       console.warn(`[${traceId}] user persist failed`, (e as Error).message);
     }
 
-    // ── RAG retrieval (feature-flagged; failure NEVER breaks chat — §31)
-    let ragResult: RagResult | null = null;
-    let ragEvidence: Evidence[] = [];
-    let highRisk = false;
-    const flag = await isFlagEnabled(supabase, RAG_FLAG, { tenantId, farmerId });
-    const ragOn = flag.enabled;
-    console.log(`🚩 [${traceId}] ${RAG_FLAG}=${ragOn} (${flag.reason}, rollout=${flag.rolloutPercentage}%)`);
-    if (ragOn) {
-      highRisk = HIGH_RISK_QUERY.test(userText);
-      try {
-        ragResult = await ragRetrieve(
-          supabase,
-          userText,
-          language,
-          { stateCodes: stateCode ? [stateCode] : null, tenantId: null /* general corpus is global; tenant docs opt-in later */ },
-          { sessionId, traceId, farmerId, tenantIdText: tenantId, purpose: 'GENERAL_CHAT' },
-        );
-        ragEvidence = ragResult.evidence;
-        console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragEvidence.length} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
-      } catch (e) {
-        console.warn(`[${traceId}] rag retrieval failed — continuing ungated:`, (e as Error).message);
-        ragResult = null; // total failure ⇒ behave exactly like pre-RAG version
-      }
-    }
-
     // ── Load farmer profile for respectful addressing (presentation-only)
     let addressing: FarmerAddressing | null = null;
+    let profileState: string | null = null;
     try {
       const profile = await loadFarmerProfileLite(supabase, farmerId, language);
+      profileState = profile.state ?? null;
       addressing = getFarmerAddressing({
         language: profile.language || language,
         state: profile.state,
@@ -388,6 +389,46 @@ serve(async (req: Request) => {
       console.log(`👤 [${traceId}] addressing: ${addressing.primary} (${addressing.gender}/${profile.state || 'no-state'})`);
     } catch (e) {
       console.warn(`[${traceId}] addressing build failed:`, (e as Error).message);
+    }
+
+    // ── RAG retrieval (feature-flagged; failure NEVER breaks chat — §31)
+    let ragResult: RagResult | null = null;
+    let ragEvidence: Evidence[] = [];
+    let highRisk = false;
+    const flag = await isFlagEnabled(supabase, RAG_FLAG, { tenantId, farmerId });
+    const ragOn = flag.enabled;
+    console.log(`🚩 [${traceId}] ${RAG_FLAG}=${ragOn} (${flag.reason}, rollout=${flag.rolloutPercentage}%)`);
+    let normalized: NormalizedQuery | null = null;
+    let retrievalFilters: { stateCodes: string[] | null; cropCodes: string[] | null } = { stateCodes: null, cropCodes: null };
+    if (ragOn) {
+      highRisk = HIGH_RISK_QUERY.test(userText);
+      try {
+        // (5) Understand the question first: farmer language → English retrieval query.
+        normalized = await normalizeQueryForRetrieval(userText, language, traceId);
+        highRisk = highRisk || HIGH_RISK_QUERY.test(normalized.query);
+        // (6) Filters from SSOT tables: state (body → profile) and crop (normaliser hint).
+        const resolvedState = await resolveStateCode(supabase, stateCode || profileState);
+        const resolvedCrop = await resolveCropCode(supabase, normalized.cropHint);
+        retrievalFilters = { stateCodes: resolvedState ? [resolvedState] : null, cropCodes: resolvedCrop ? [resolvedCrop] : null };
+        console.log(`🔤 [${traceId}] normalized=${normalized.normalized} lang=${normalized.detectedLanguage} crop=${normalized.cropHint}→${resolvedCrop} state=${resolvedState} topic=${normalized.topic} q="${normalized.query.slice(0, 80)}"`);
+
+        const audit = { sessionId, traceId, farmerId, tenantIdText: tenantId, purpose: 'GENERAL_CHAT' as const, queryOriginal: userText };
+        const filters = { ...retrievalFilters, tenantId: null /* general corpus is global; tenant docs opt-in later */ };
+        ragResult = await ragRetrieve(supabase, normalized.query, language, filters, audit);
+        // Fallback A: crop/state filter too narrow ⇒ retry unfiltered on the English query.
+        if (ragResult.belowThreshold && (filters.stateCodes || filters.cropCodes)) {
+          ragResult = await ragRetrieve(supabase, normalized.query, language, { tenantId: null }, audit);
+        }
+        // Fallback B: the farmer's own words (covers native-language documents in the corpus).
+        if (ragResult.belowThreshold && normalized.query !== userText) {
+          ragResult = await ragRetrieve(supabase, userText, language, { tenantId: null }, { ...audit, queryOriginal: null });
+        }
+        ragEvidence = ragResult.evidence;
+        console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragEvidence.length} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
+      } catch (e) {
+        console.warn(`[${traceId}] rag retrieval failed — continuing ungated:`, (e as Error).message);
+        ragResult = null; // total failure ⇒ behave exactly like pre-RAG version
+      }
     }
 
     const ragPromptCtx = ragResult
@@ -487,6 +528,10 @@ serve(async (req: Request) => {
           document_ids: [...new Set(ragEvidence.map((e) => e.documentId))],
           embedding_model: ragResult.embeddingModel,
           retrieval_latency_ms: ragResult.latencyMs,
+          normalization: normalized
+            ? { applied: normalized.normalized, query_en: normalized.query, detected_language: normalized.detectedLanguage,
+                crop_hint: normalized.cropHint, topic: normalized.topic, latency_ms: normalized.latencyMs, filters: retrievalFilters }
+            : null,
           fidelity,
         }
       : null;
