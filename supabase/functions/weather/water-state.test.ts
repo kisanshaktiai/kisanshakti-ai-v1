@@ -114,8 +114,7 @@ Deno.test("4b. volume event without land area is skipped (no fabrication)", () =
 Deno.test("5. resolveKc never falls back to maize; canonical path resolves sugarcane", async () => {
   // Raw vernacular label is NOT a registry key: null, not the old 1.20 maize value.
   const direct = resolveKc("ऊस", "mid", null, methods);
-  assert(direct === null, "vernacular label must NOT hit any Kc fallback");
-  assert(direct !== null ? direct.kcStatic !== 1.2 : true);
+  assert(direct === null, "vernacular label must NOT hit any Kc fallback (old bug: maize 1.20)");
 
   // Pipeline-level path: canonical identity via the shared DB resolver, then Kc.
   const sb = mockSupabase({
