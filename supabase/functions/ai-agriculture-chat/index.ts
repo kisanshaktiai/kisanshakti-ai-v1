@@ -2830,8 +2830,37 @@ serve(async (req) => {
       primaryAction?.crop_code ||
       orchestratorResponse.dataAudit?.land?.current_crop ||
       null;
-    
+
+    // FIX 3 (2026-08-26) — SAFETY NET: a clarification / escalation response with
+    // fewer than 2 real options is a dead-end card. Demote it to an advisory
+    // response so the rule/advisory content is what the farmer receives.
+    {
+      const _finalType = String((orchestratorResponse as any)?.type ?? '');
+      const _finalOptions = (((orchestratorResponse as any)?.question?.options ?? []) as any[])
+        .filter((o: any) => o && (o.observation_key || o.value));
+      const _metaOptions = (((orchestratorResponse as any)?.metadata?.clarification_options ?? []) as any[]);
+      const _isCard = _finalType === 'CLARIFICATION_QUESTION' ||
+        _finalType === 'CLARIFICATION_NEEDED' ||
+        _finalType === 'DIAGNOSTIC_ESCALATION';
+      if (_isCard && _finalOptions.length < 2 && _metaOptions.length < 2) {
+        console.warn(
+          `[ZERO_OPTION_CARD_SUPPRESSED] type=${_finalType} options=${_finalOptions.length} ` +
+          `meta_options=${_metaOptions.length} action=demote_to_advisory`,
+        );
+        (orchestratorResponse as any).type = 'ADVISORY_RESPONSE';
+        (orchestratorResponse as any).question = undefined;
+        (orchestratorResponse as any).metadata = {
+          ...((orchestratorResponse as any).metadata ?? {}),
+          orchestrator_type: 'ADVISORY_RESPONSE',
+          clarification_options: [],
+          suppressed_card_type: _finalType,
+          suppression_reason: 'INSUFFICIENT_OPTIONS',
+        };
+      }
+    }
+
     // Build decision tracking state
+
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
     // FIX C (2026-08-08) — PERSISTENCE ACCEPTANCE: any turn that actually ships
     // options must persist them as pending, regardless of the type string.
