@@ -1004,7 +1004,7 @@ export async function runDailyDerive(
   landIdFilter?: string,
 ) {
   let q = supabase.from("lands")
-    .select("id, tenant_id, cell_key, center_lat, center_lon, current_crop, soil_type, stage_uuid, crop_stage, current_gdd, elevation_meters, current_crop_variety_id")
+    .select("id, tenant_id, cell_key, center_lat, center_lon, current_crop, soil_type, stage_uuid, crop_stage, current_gdd, elevation_meters, current_crop_variety_id, area_acres")
     .eq("is_active", true).not("cell_key", "is", null);
   if (landIdFilter) q = q.eq("id", landIdFilter);
   const { data: lands, error } = await q;
