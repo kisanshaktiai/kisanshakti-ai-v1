@@ -1177,6 +1177,14 @@ export interface IrrigationRecommendation {
 
 /**
  * Calculate irrigation recommendation based on ET0 and rainfall
+ *
+ * @deprecated — not the irrigation authority.
+ * Legacy presentation calculation only (ETc − rainfall heuristic for the
+ * weather-card UI). As of P0-3 it must NO LONGER write `irrigation_needed` /
+ * `irrigation_urgency` to land_weather_state; the authoritative decision is
+ * the root-zone comparison (root_depletion_mm > raw_mm) written by the daily
+ * derive pipeline. Kept exported because legacy consumers still call it.
+ *
  * @param et0Mm - Reference evapotranspiration (mm/day)
  * @param rainfallMm - Recent rainfall (mm)
  * @param cropCoefficient - Kc value for crop stage (typically 0.3-1.2)
