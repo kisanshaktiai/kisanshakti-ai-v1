@@ -10,6 +10,12 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-26b — FARMER OUTPUT QUALITY (traces 3fb34b48/abb68997): admin provenance note leaked
+ *   through registry.publisher into citations; 3 citation lines for 1 document incl. an
+ *   irrelevant page; transliterated jargon (थिनिंग/गॅप फिलिंग/germination); per-hectare only.
+ *   Fixes: trust gate (unverified sources never served/cited); citations = one line per
+ *   document with pages actually cited via [n] markers; markers stripped; all-language
+ *   labels; local-term rule in prompt; acre equivalents computed in code; default grain purpose.
  * 2026-08-26 — RANKING ROOT CAUSE (trace fbe05993): the correct 'Seed rate' and 'Spacing'
  *   chunks were not in the top-5 (raw pgroonga occurrence count favoured the contents page),
  *   so the model's correct numbers were rejected and the fallback masked digits with ▢.
@@ -72,6 +78,9 @@ import {
   buildCitationLines,
   unsupportedNumbers,
   dropUnsupportedSentences,
+  citedEvidenceIndexes,
+  stripCitationMarkers,
+  acreEquivalentsLine,
   type Evidence,
   type RagResult,
 } from '../_shared/ragRetrieval.ts';
@@ -158,8 +167,13 @@ EVIDENCE RULES (mandatory):
 - Ground every other factual claim (thresholds, timings, varieties, scheme
   rules, eligibility) in RETRIEVED_EVIDENCE; you may add general agronomic
   explanation but never contradict the evidence.
-- NEVER invent a source, page number, document name, or citation. Citations
-  are appended by the system, not by you — do not write a "Sources" section.
+- After each sentence that uses a fact from the evidence, put the evidence
+  number in square brackets, e.g. "... ३०-४५ सेंमी [2]". Cite only evidence
+  you actually used. The system turns these into a source list — do NOT write
+  a "Sources" section, page numbers, or document names yourself.
+- Answer for the purpose the farmer asked; if unstated, assume a normal grain /
+  main crop (not fodder, not seed multiplication) and do not list the other
+  purposes unless the evidence says nothing else.
 - Prefer organic / IPM guidance first when the evidence supports it.
 - Do not mention the words "RETRIEVED_EVIDENCE", "chunks" or "RAG" to the farmer.
 
@@ -171,7 +185,12 @@ FARMER EXPLANATION STYLE (the evidence is in English; the farmer is not):
   gram → ग्रॅम/ग्राम) but NEVER convert a value to a different unit.
 - Product / chemical / variety names stay as written in the evidence.
 - Structure: one line on what to do, then how much, then when, then one caution.
-  Short sentences. No English sentences.${rag.strict ? `
+  Short sentences. No English sentences.
+- NEVER transliterate English technical words into ${langName} script (no
+  "थिनिंग", "गॅप फिलिंग", "germination"). Use the word a village extension
+  officer uses (e.g. Marathi: विरळणी, नांग्या भरणे, उगवण, पेरणीची खोली; Hindi:
+  विरलीकरण, खाली जगह भरना, अंकुरण, बुवाई की गहराई). If no local word exists,
+  explain it in plain words.${rag.strict ? `
 - STRICT MODE: your previous draft contained numbers that are NOT in
   RETRIEVED_EVIDENCE. Rewrite it using ONLY numbers that appear verbatim in
   RETRIEVED_EVIDENCE or in the farmer's own message.` : ''}`;
@@ -429,8 +448,10 @@ serve(async (req: Request) => {
         if (ragResult.belowThreshold && normalized.query !== userText) {
           ragResult = await ragRetrieve(supabase, userText, language, { tenantId: null }, { ...audit, queryOriginal: null });
         }
-        ragEvidence = ragResult.evidence;
-        console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragEvidence.length} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
+        // Trust gate: unverified sources are retrieved (and logged) but never served/cited.
+        const unservable = ragResult.evidence.filter((e) => !e.servable).length;
+        ragEvidence = ragResult.evidence.filter((e) => e.servable);
+        console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragResult.evidence.length} servable=${ragEvidence.length} unservable=${unservable} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
       } catch (e) {
         console.warn(`[${traceId}] rag retrieval failed — continuing ungated:`, (e as Error).message);
         ragResult = null; // total failure ⇒ behave exactly like pre-RAG version
@@ -531,7 +552,12 @@ serve(async (req: Request) => {
     //    is forbidden from writing them, so page numbers can never be invented.
     //    Not appended when the answer was degraded to the number-free path.
     if (ragEvidence.length > 0 && !noEvidenceMode) {
-      answer += buildCitationLines(ragEvidence, language);
+      const used = citedEvidenceIndexes(answer);
+      const body = stripCitationMarkers(answer);
+      const acre = acreEquivalentsLine(body, used.length ? used.map((i) => ragEvidence[i - 1]).filter(Boolean) : ragEvidence, language);
+      answer = body + acre + buildCitationLines(ragEvidence, language, used);
+    } else {
+      answer = stripCitationMarkers(answer);
     }
 
     const orchestratorType = !ragResult
@@ -544,7 +570,9 @@ serve(async (req: Request) => {
       ? {
           flag_reason: flag.reason,
           mode: ragResult.mode,
-          evidence_count: ragEvidence.length,
+          evidence_count: ragResult.evidence.length,
+          servable_count: ragEvidence.length,
+          cited_indexes: citedEvidenceIndexes(answer),
           below_threshold: ragResult.belowThreshold,
           high_risk: highRisk,
           evidence_ids: ragEvidence.map((e) => e.chunkId),

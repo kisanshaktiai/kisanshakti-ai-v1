@@ -14,6 +14,9 @@
  * Every call is audit-logged to rag_retrieval_logs (§30).
  *
  * CHANGE LOG
+ * 2026-08-26b — trust gate (Evidence.servable: tier≠other OR trust_prior≥0.6), relative
+ *   lexical cutoff (40 % of best), citations = one line per document with pages actually
+ *   cited ([n] markers), labels for all 12 app languages, acreEquivalentsLine() computed in code.
  * 2026-08-26 — lexical re-ranker (coverage/section/length, spelling variants, front-matter
  *   penalty) replaces raw pgroonga occurrence ranking; cleanQueryForFulltext strips stopwords;
  *   dropUnsupportedSentences() for sentence-level fidelity fallback. CANDIDATES 30, MAX 6.
@@ -60,6 +63,10 @@ export interface Evidence {
   rankScore: number;
   lexicalScore: number | null;
   semanticScore: number | null;
+  /** rag_source_registry.trust_prior (0..1) or null */
+  trustPrior: number | null;
+  /** false ⇒ retrieved for logging/testing only; must NOT be shown or cited to a farmer */
+  servable: boolean;
 }
 
 export interface RagResult {
@@ -88,6 +95,10 @@ export interface RagAudit {
 const RRF_K = 60;
 const CANDIDATES_PER_LEG = 30;
 const MAX_EVIDENCE = 6;
+/** farmer-servable gate: unverified ('other') sources need an explicit trust_prior ≥ this */
+const MIN_TRUST_FOR_OTHER_TIER = 0.6;
+/** drop lexical-only hits scoring below this fraction of the best lexical hit */
+const LEXICAL_RELATIVE_CUTOFF = 0.4;
 /** minimum fused score to count as "we found something" — tune via golden set */
 const MIN_RRF_SCORE = 1 / (RRF_K + CANDIDATES_PER_LEG); // at least a mid-rank hit in one leg
 const AUTHORITY_BOOST: Record<string, number> = {
@@ -255,11 +266,30 @@ export async function ragRetrieve(
   // (re-ranked score ≥ 1.0 ≈ one third coverage or a section-title hit);
   // single-keyword noise ('tomato price' matching 'market') is dropped unless
   // the semantic leg also found it.
+  const topLex = Math.max(0, ...ranked.map((e) => e.lex ?? 0));
   const passing = ranked
     .filter((e) => e.rrf >= MIN_RRF_SCORE)
     .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= 1.0))
+    .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= topLex * LEXICAL_RELATIVE_CUTOFF))
     .slice(0, maxEvidence);
   const belowThreshold = passing.length === 0;
+
+  // Trust gate: one extra lookup for the (few) documents involved.
+  const trustByDoc = new Map<string, number | null>();
+  if (passing.length) {
+    try {
+      const { data: docs } = await supabase
+        .from('rag_documents')
+        .select('id, rag_source_registry!inner(trust_prior)')
+        .in('id', [...new Set(passing.map((e) => e.row.document_id))]);
+      for (const d of (docs || []) as Array<{ id: string; rag_source_registry: { trust_prior: number | null } | { trust_prior: number | null }[] }>) {
+        const reg = Array.isArray(d.rag_source_registry) ? d.rag_source_registry[0] : d.rag_source_registry;
+        trustByDoc.set(d.id, reg?.trust_prior == null ? null : Number(reg.trust_prior));
+      }
+    } catch (e) {
+      traceNote += `trust_lookup_err:${(e as Error).message};`;
+    }
+  }
 
   const evidence: Evidence[] = passing.map((e) => ({
     chunkId: e.row.chunk_id,
@@ -276,6 +306,8 @@ export async function ragRetrieve(
     rankScore: e.final,
     lexicalScore: e.lex,
     semanticScore: e.sem,
+    trustPrior: trustByDoc.get(e.row.document_id) ?? null,
+    servable: e.row.authority_tier !== 'other' || (trustByDoc.get(e.row.document_id) ?? 0) >= MIN_TRUST_FOR_OTHER_TIER,
   }));
 
   const latencyMs = Date.now() - startedAt;
@@ -332,21 +364,95 @@ export function buildEvidenceBlock(evidence: Evidence[]): string {
     .join('\n\n');
 }
 
-/** Human-readable citation lines appended to farmer answer. */
-export function buildCitationLines(evidence: Evidence[], language: string): string {
-  const seen = new Set<string>();
-  const lines: string[] = [];
-  for (const ev of evidence) {
-    const key = `${ev.documentId}:${ev.pageNumber ?? ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const page = ev.pageNumber != null
-      ? language === 'hi' ? `, पृष्ठ ${ev.pageNumber}` : language === 'mr' ? `, पान ${ev.pageNumber}` : `, p.${ev.pageNumber}`
-      : '';
-    lines.push(`${ev.publisher} — ${ev.title}${page}`);
+/** UI strings for citations in every supported app language (fallback: en). */
+const CITE_LABEL: Record<string, { sources: string; page: string; pages: string }> = {
+  en: { sources: 'Sources', page: 'p.', pages: 'pp.' },
+  hi: { sources: 'स्रोत', page: 'पृष्ठ', pages: 'पृष्ठ' },
+  mr: { sources: 'स्रोत', page: 'पान', pages: 'पाने' },
+  pa: { sources: 'ਸਰੋਤ', page: 'ਪੰਨਾ', pages: 'ਪੰਨੇ' },
+  gu: { sources: 'સ્રોત', page: 'પાનું', pages: 'પાનાં' },
+  ta: { sources: 'ஆதாரம்', page: 'பக்கம்', pages: 'பக்கங்கள்' },
+  te: { sources: 'మూలం', page: 'పేజీ', pages: 'పేజీలు' },
+  kn: { sources: 'ಮೂಲ', page: 'ಪುಟ', pages: 'ಪುಟಗಳು' },
+  ml: { sources: 'ഉറവിടം', page: 'പേജ്', pages: 'പേജുകൾ' },
+  bn: { sources: 'উৎস', page: 'পৃষ্ঠা', pages: 'পৃষ্ঠা' },
+  or: { sources: 'ଉତ୍ସ', page: 'ପୃଷ୍ଠା', pages: 'ପୃଷ୍ଠା' },
+  ur: { sources: 'ماخذ', page: 'صفحہ', pages: 'صفحات' },
+};
+
+/** Indexes (1-based) of evidence the model actually cited with [n] / [EVIDENCE n]. */
+export function citedEvidenceIndexes(answer: string): number[] {
+  const out = new Set<number>();
+  for (const m of answer.matchAll(/\[(?:EVIDENCE\s+)?(\d+(?:\s*,\s*\d+)*)\]/gi)) {
+    for (const n of m[1].split(',')) { const i = parseInt(n.trim(), 10); if (i > 0) out.add(i); }
   }
-  const label = language === 'hi' ? 'स्रोत' : language === 'mr' ? 'स्रोत' : 'Sources';
-  return `\n\n${label}:\n` + lines.slice(0, 3).map((l) => `• ${l}`).join('\n');
+  return [...out].sort((a, b) => a - b);
+}
+
+/** Remove [n] / [EVIDENCE n] markers and tidy spacing before showing text to the farmer. */
+export function stripCitationMarkers(answer: string): string {
+  return answer.replace(/\s*\[(?:EVIDENCE\s+)?\d+(?:\s*,\s*\d+)*\]/gi, '').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+/**
+ * Citation lines: ONE line per document, listing the pages actually cited.
+ * `used` = 1-based evidence indexes referenced in the answer; when empty, all
+ * evidence is listed (legacy behaviour). Only servable evidence is ever cited.
+ */
+export function buildCitationLines(evidence: Evidence[], language: string, used: number[] = []): string {
+  const L = CITE_LABEL[language] ?? CITE_LABEL.en;
+  const pick = used.length ? used.map((i) => evidence[i - 1]).filter(Boolean) : evidence;
+  const byDoc = new Map<string, { ev: Evidence; pages: Set<number> }>();
+  for (const ev of pick) {
+    if (!ev.servable) continue;
+    const g = byDoc.get(ev.documentId) ?? { ev, pages: new Set<number>() };
+    if (ev.pageNumber != null) g.pages.add(ev.pageNumber);
+    byDoc.set(ev.documentId, g);
+  }
+  if (!byDoc.size) return '';
+  const lines = [...byDoc.values()].slice(0, 3).map(({ ev, pages }) => {
+    const ps = [...pages].sort((a, b) => a - b);
+    const pg = ps.length ? ` (${ps.length > 1 ? L.pages : L.page} ${ps.join(', ')})` : '';
+    return `• ${ev.title} — ${ev.publisher}${pg}`;
+  });
+  return `\n\n${L.sources}:\n${lines.join('\n')}`;
+}
+
+// ── Deterministic unit helper (code, never the model) ───────────────────────
+const HA_TO_ACRE = 0.4047;
+const UNIT_WORDS: Record<string, { kg: string; q: string; acre: string; note: string }> = {
+  en: { kg: 'kg', q: 'quintal', acre: 'per acre', note: '1 hectare ≈ 2.5 acres' },
+  hi: { kg: 'किलो', q: 'क्विंटल', acre: 'प्रति एकड़', note: '१ हेक्टेयर ≈ २.५ एकड़' },
+  mr: { kg: 'किलो', q: 'क्विंटल', acre: 'एकरी', note: '१ हेक्टर ≈ २.५ एकर' },
+  gu: { kg: 'કિલો', q: 'ક્વિન્ટલ', acre: 'એકર દીઠ', note: '૧ હેક્ટર ≈ ૨.૫ એકર' },
+  pa: { kg: 'ਕਿਲੋ', q: 'ਕੁਇੰਟਲ', acre: 'ਪ੍ਰਤੀ ਏਕੜ', note: '੧ ਹੈਕਟੇਅਰ ≈ ੨.੫ ਏਕੜ' },
+};
+/**
+ * Finds "N[-M] kg|quintal per hectare" figures in the CITED evidence that also
+ * appear in the answer, and returns one localized line with acre equivalents.
+ * Pure arithmetic; returns '' when nothing applies.
+ */
+export function acreEquivalentsLine(answer: string, evidence: Evidence[], language: string): string {
+  const W = UNIT_WORDS[language] ?? UNIT_WORDS.en;
+  const ansNums = new Set(normaliseNumbers(answer));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const ev of evidence) {
+    for (const m of ev.text.matchAll(/(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?\s*(kg|kilograms?|quintals?|q)\s*(?:[a-z]+\s+)?(?:\/|per)\s*(?:ha|hectare)/gi)) {
+      const a = parseFloat(m[1]); const b = m[2] ? parseFloat(m[2]) : null;
+      if (!ansNums.has(String(a)) && !(b != null && ansNums.has(String(b)))) continue;
+      const unit = /^q/i.test(m[3]) ? W.q : W.kg;
+      const conv = (x: number) => Math.round(x * HA_TO_ACRE * 10) / 10;
+      const key = `${a}-${b}-${unit}`; if (seen.has(key)) continue; seen.add(key);
+      out.push(b != null ? `${conv(a)}–${conv(b)} ${unit} ${W.acre}` : `${conv(a)} ${unit} ${W.acre}`);
+    }
+  }
+  if (!out.length) return '';
+  const line = `\n(${W.note}: ${out.join('; ')})`;
+  // Devanagari-script languages: show the computed figures in Devanagari digits too.
+  return language === 'mr' || language === 'hi'
+    ? line.replace(/\d/g, (d) => DEVANAGARI_DIGITS[Number(d)])
+    : line;
 }
 
 // ── Numeric fidelity gate (deterministic; no LLM as judge) ──────────────────
