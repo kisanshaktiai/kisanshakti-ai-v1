@@ -651,10 +651,14 @@ export async function deriveLandDaily(
   const ageMin = cur?.observation_time
     ? (Date.now() - new Date(String(cur.observation_time)).getTime()) / 60000
     : 0;
-  const stateConfidence = computeConfidence(
+  const stateConfidenceRaw = computeConfidence(
     { agreement: 1.0, freshnessAgeMin: ageMin, ttlMin: 60, horizonDays: 0, skill: skillTemp },
     methods,
   );
+  // P0-1E: unverified-ceiling guard caps the WATER confidence component.
+  const stateConfidence = waterConfidenceCap !== null
+    ? Math.min(stateConfidenceRaw, waterConfidenceCap)
+    : stateConfidenceRaw;
 
   // ---- PERSIST land_weather_state -----------------------------------------
   const { error: upErr } = await supabase.from("land_weather_state").upsert({
@@ -666,8 +670,8 @@ export async function deriveLandDaily(
     et0_method: et0Method,
     u_std_et0: r2(pm.u_std),
     lwd_est_hours: lwd,
-    kc_static: r2(kc.kcStatic),
-    kc_ndvi_adj: ndviRel === null ? null : r2(kc.kcAdjusted),
+    kc_static: kc ? r2(kc.kcStatic) : null,
+    kc_ndvi_adj: kc && ndviRel !== null ? r2(kc.kcAdjusted) : null,
     taw_method: tawMethod,
     u_std_taw: r2(uStdTaw),
     ndvi_used: ndviPick?.mode === "OPTICAL" ? r2(ndviPick.ndvi) : null,
@@ -688,6 +692,16 @@ export async function deriveLandDaily(
     swsi: swsi,
     swsi_class: swsiClass,
     n_sd_ratio: nSdRatio,
+    // P0-1C: water-event trace (0/0 when no valid event exists).
+    irrigation_events_used: irrig.eventsUsed,
+    irrigation_mm_applied: r2(irrigationMm),
+    // P0-3B: the ONLY irrigation authority — root-zone depletion vs RAW.
+    // NULL (never false) when the computation is unavailable.
+    irrigation_needed: rootZoneIrrigationDecision(depletion, tawRaw ? tawRaw.raw_mm : null),
+    irrigation_urgency: irrigationUrgencyFromDepletion(depletion, tawRaw ? tawRaw.taw_mm : null, methods),
+    // Re-derived rows are fresh measurements again — clears the P0-6
+    // 'pre_ratchet_fix' backfill mark on rows touched after the fix.
+    source: "observed",
     confidence: r2(stateConfidence),
     // legacy columns are written by computeLandWeatherMetrics and are only
     // filled here when this derive created the row.
