@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-08-26 15:00 UTC — FIX 1: DIRECT_MODE_DIAGNOSTIC_VETO branch now carries the
+//     same directContractNoSymptoms exemption as __preemptHardBlock, so a DB DIRECT/
+//     0-round advisory intent with zero farmer-text symptoms reaches DIRECT_MODE_BYPASS.
+//     FIX 2: locked biological_state owns stage + DAS on canonicalState and in
+//     [RULE_STAGE_TRACE] (BIO_STATE_STAGE_ENFORCE), never lands/crop_schedules.
 //   2026-08-20 04:20 UTC — decision_output.secondary_decisions now populated from
 //     matched_responses (OPTION_SELECTED, main and immediate paths) so every
 //     confirmed observation that fired a rule renders its own advisory block.
@@ -4426,6 +4431,7 @@ export class AIAgentOrchestrator {
         directModeBypass = false;
       } else if (
         diagnosticIntentOwnsClarification &&
+        !(directContractNoSymptoms && (intentAdvisoryBypass || routeDirectModeBypass)) &&
         (intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass)
       ) {
         console.log(
@@ -8052,6 +8058,29 @@ export class AIAgentOrchestrator {
         // Phase 5 — GraphTruth is the sole authority for crop / stage / observations.
         projectCanonicalStateFromGraphTruth(canonicalState, (this as any)._graphTruth);
 
+        // FIX 2 (2026-08-26) — LOCKED BIOLOGICAL STATE OWNS STAGE + DAS.
+        // When landContext.biological_state is locked it is the SSOT for the turn;
+        // neither lands.crop_stage nor crop_schedules DAS may override it.
+        {
+          const _bioLock: any = (landContext as any)?.biological_state ?? null;
+          if (_bioLock?.growth_stage) {
+            const _prevStage = (canonicalState as any).crop_stage ?? (canonicalState as any).growth_stage ?? null;
+            const _prevDas = (canonicalState as any).days_since_sowing ?? null;
+            (canonicalState as any).crop_stage = _bioLock.growth_stage;
+            (canonicalState as any).growth_stage = _bioLock.growth_stage;
+            if (typeof _bioLock.das === 'number' && isFinite(_bioLock.das)) {
+              (canonicalState as any).days_since_sowing = _bioLock.das;
+              (canonicalState as any).das = _bioLock.das;
+            }
+            if (_prevStage !== _bioLock.growth_stage || _prevDas !== _bioLock.das) {
+              console.log(
+                `🔒 [BIO_STATE_STAGE_ENFORCE] stage ${_prevStage ?? 'null'}→${_bioLock.growth_stage} ` +
+                `das ${_prevDas ?? 'null'}→${_bioLock.das ?? 'null'} source=biological_state_ssot`,
+              );
+            }
+          }
+        }
+
         // Step 2 — POST-PROJECTION MUTATION BLOCK COLLAPSED (was lines 6252-6277).
         {
           const _gtForAudit = (this as any)._graphTruth as
@@ -8974,9 +9003,14 @@ export class AIAgentOrchestrator {
         // Phase G — G7: one-line end-of-rule-stage BRAIN_TRACE
         try {
           const winner = layeredRuleResult.primary_decision;
+          // FIX 2 — trace stage/DAS from the locked biological_state for the turn.
+          const _bioTrace: any = (landContext as any)?.biological_state ?? null;
+          const _traceStage = _bioTrace?.growth_stage ?? canonicalState.crop_stage ?? '?';
+          const _traceDas = (typeof _bioTrace?.das === 'number' ? _bioTrace.das : (landContext as any)?.days_since_sowing) ?? '?';
           console.log(
             `[RULE_STAGE_TRACE] intent=${activeIntentForRules} ` +
-            `crop=${canonicalState.crop_type ?? '?'} stage=${canonicalState.crop_stage ?? '?'} ` +
+            `crop=${canonicalState.crop_type ?? '?'} stage=${_traceStage} das=${_traceDas} ` +
+            `stage_authority=${_bioTrace ? 'biological_state_ssot' : 'canonical'} ` +
             `candidates_in=${rulesToEvaluate.length} after_intent=${rulesAfterIntent.length} ` +
             `evaluated=${layeredRuleResult.rules_evaluated || 0} matched=${layeredRuleResult.rules_matched || 0} ` +
             `winner=${winner?.rule_id ?? 'none'} winner_score=${(winner?.weighted_confidence ?? winner?.confidence_score ?? 0).toFixed?.(3) ?? 'n/a'} ` +
