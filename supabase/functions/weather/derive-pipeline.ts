@@ -429,9 +429,13 @@ export async function deriveLandDaily(
     // agronomist approves it. Until then: optical-unavailable, Kc stays static.
     out.reasons.push("NDVI_UNAVAILABLE_OPTICAL");
   }
-  const kc = resolveKc(crop, stageBucket, ndviRel, methods);
-  const kcUsed = ndviRel === null ? kc.kcStatic : kc.kcAdjusted;
-  const etc = et0 !== null ? kcUsed * et0 : null;
+  // P0-2A/2C: resolveKc has NO maize/generic fallback. Unresolvable canonical
+  // crop, or a crop with no approved Kc registry row, yields null — ETc is
+  // then null and the root-water state is NOT advanced on a fabricated ETc.
+  const kc = crop !== null ? resolveKc(crop, stageBucket, ndviRel, methods) : null;
+  if (crop !== null && kc === null) out.reasons.push(kcUnresolvedReason(crop));
+  const kcUsed = kc === null ? null : (ndviRel === null ? kc.kcStatic : kc.kcAdjusted);
+  const etc = et0 !== null && kcUsed !== null ? kcUsed * et0 : null;
 
   // ---- (e) soil water bucket ----------------------------------------------
   let sandFrac = num(soil?.sand_percent) !== null ? (num(soil!.sand_percent) as number) / 100 : null;
@@ -448,7 +452,7 @@ export async function deriveLandDaily(
       out.reasons.push("NO_SOIL_TEXTURE");
     }
   }
-  const rootDepth = ROOT_DEPTH_M[crop] ?? ROOT_DEPTH_DEFAULT_M;
+  const rootDepth = ROOT_DEPTH_M[cropKey] ?? ROOT_DEPTH_DEFAULT_M;
   const tawRaw = sandFrac !== null && clayFrac !== null
     ? computeTawRaw({ sandFrac, clayFrac, omPct }, rootDepth, methods)
     : null;
