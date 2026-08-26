@@ -10,6 +10,11 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-26 — RANKING ROOT CAUSE (trace fbe05993): the correct 'Seed rate' and 'Spacing'
+ *   chunks were not in the top-5 (raw pgroonga occurrence count favoured the contents page),
+ *   so the model's correct numbers were rejected and the fallback masked digits with ▢.
+ *   Fix: lexical re-ranker in ragRetrieval.ts; sentence-level fidelity fallback here
+ *   (drop only offending sentences; never mask). MAX_EVIDENCE 6.
  * 2026-08-24b — LANGUAGE-AGNOSTIC RETRIEVAL + FARMER EXPLANATION:
  *   (5) The corpus is English; a Marathi/Hindi question sent verbatim to pgroonga
  *       returned 0 rows (verified). New _shared/queryNormalizer.ts uses the LLM as an
@@ -66,6 +71,7 @@ import {
   buildEvidenceBlock,
   buildCitationLines,
   unsupportedNumbers,
+  dropUnsupportedSentences,
   type Evidence,
   type RagResult,
 } from '../_shared/ragRetrieval.ts';
@@ -454,7 +460,7 @@ serve(async (req: Request) => {
 
     let answer = '';
     let usedModel = 'unknown';
-    let fidelity: { attempts: number; unsupported: string[]; degraded: boolean } | null = null;
+    let fidelity: { attempts: number; unsupported: string[]; degraded: boolean; filtered?: boolean } | null = null;
     let noEvidenceMode = ragResult !== null && ragEvidence.length === 0;
     try {
       const first = await callLLM(withSystem(systemPrompt), ragResult ? 0.3 : 0.6, traceId);
@@ -462,28 +468,45 @@ serve(async (req: Request) => {
       usedModel = first.usedModel;
 
       // ── Numeric fidelity gate (RAG mode only). Deterministic; never ships an
-      //    unsupported figure. Prompt rules are advisory; this is the enforcement.
+      //    unsupported figure and never prints placeholder glyphs.
+      //    1) drop only the offending sentences from the draft; 2) strict retry;
+      //    3) number-free answer with any numeric sentence removed.
       if (ragResult) {
+        const MIN_KEEP_RATIO = 0.5;
         let bad = unsupportedNumbers(answer, ragEvidence, userText);
         fidelity = { attempts: 1, unsupported: bad, degraded: false };
+
+        if (bad.length) {
+          const kept = dropUnsupportedSentences(answer, ragEvidence, userText);
+          if (kept.length >= Math.max(60, answer.length * MIN_KEEP_RATIO)) {
+            answer = kept; bad = [];
+            fidelity = { attempts: 1, unsupported: [], degraded: false, filtered: true };
+          }
+        }
 
         if (bad.length && ragEvidence.length) {
           const strictPrompt = buildSystemPrompt(language, landContext, addressing, { ...ragPromptCtx!, strict: true });
           const retry = await callLLM(withSystem(strictPrompt), 0.1, traceId);
-          const badRetry = unsupportedNumbers(retry.answer, ragEvidence, userText);
-          if (!badRetry.length) answer = retry.answer;
+          let badRetry = unsupportedNumbers(retry.answer, ragEvidence, userText);
+          let candidate = retry.answer;
+          if (badRetry.length) {
+            const kept = dropUnsupportedSentences(retry.answer, ragEvidence, userText);
+            if (kept.length >= Math.max(60, retry.answer.length * MIN_KEEP_RATIO)) { candidate = kept; badRetry = []; }
+          }
+          if (!badRetry.length) answer = candidate;
           bad = badRetry;
-          fidelity = { attempts: 2, unsupported: bad, degraded: false };
+          fidelity = { attempts: 2, unsupported: bad, degraded: false, filtered: candidate !== retry.answer };
         }
 
         if (bad.length) {
-          // Final fallback: number-free informational answer (evidence withheld).
+          // Final fallback: number-free informational answer; any sentence still
+          // carrying a number is removed rather than masked.
           const safePrompt = buildSystemPrompt(language, landContext, addressing, { evidenceBlock: null, highRisk });
           const safe = await callLLM(withSystem(safePrompt), 0.1, traceId);
-          const stillBad = unsupportedNumbers(safe.answer, [], userText);
-          answer = stillBad.length ? safe.answer.replace(/[\d०-९]+(?:[.,][\d०-९]+)?/g, '▢') : safe.answer;
+          const cleaned = dropUnsupportedSentences(safe.answer, [], userText);
+          answer = cleaned || safe.answer.replace(/[^\n]*[\d०-९][^\n]*\n?/g, '').trim() || safe.answer;
           noEvidenceMode = true;
-          fidelity = { attempts: 3, unsupported: stillBad, degraded: true };
+          fidelity = { attempts: 3, unsupported: unsupportedNumbers(answer, [], userText), degraded: true, filtered: true };
           console.warn(`⚠️ [${traceId}] fidelity gate degraded answer; unsupported=${JSON.stringify(bad)}`);
         }
       }

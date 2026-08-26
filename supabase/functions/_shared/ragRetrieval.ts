@@ -14,6 +14,9 @@
  * Every call is audit-logged to rag_retrieval_logs (§30).
  *
  * CHANGE LOG
+ * 2026-08-26 — lexical re-ranker (coverage/section/length, spelling variants, front-matter
+ *   penalty) replaces raw pgroonga occurrence ranking; cleanQueryForFulltext strips stopwords;
+ *   dropUnsupportedSentences() for sentence-level fidelity fallback. CANDIDATES 30, MAX 6.
  * 2026-08-24b — audit.queryOriginal logged into filters_applied.query_original so a
  *   normalised English query can be traced back to the farmer's own words.
  * 2026-08-24 — (a) audit.purpose → rag_retrieval_logs.retrieval_purpose, plus
@@ -83,8 +86,8 @@ export interface RagAudit {
 }
 
 const RRF_K = 60;
-const CANDIDATES_PER_LEG = 20;
-const MAX_EVIDENCE = 5;
+const CANDIDATES_PER_LEG = 30;
+const MAX_EVIDENCE = 6;
 /** minimum fused score to count as "we found something" — tune via golden set */
 const MIN_RRF_SCORE = 1 / (RRF_K + CANDIDATES_PER_LEG); // at least a mid-rank hit in one leg
 const AUTHORITY_BOOST: Record<string, number> = {
@@ -109,6 +112,66 @@ interface RpcRow {
   authority_tier: string;
   doc_type: string;
   doc_version: string;
+}
+
+
+// ── Lexical re-ranker ──────────────────────────────────────────────────────
+// rag_search_fulltext ORs every query term and returns pgroonga_score = raw
+// occurrence count. Verified failure (2026-08-26, trace fbe05993): the table of
+// contents chunk (score 18) and running page headers outranked "1 Seed rate" and
+// "2 Spacing and sowing depth" for the query "soybean seed rate and spacing".
+// This re-ranker scores candidates on term COVERAGE with length normalisation,
+// section-title matches, spelling-variant tolerance (soybean/soyabean), and
+// front-matter / header penalties. Deterministic; no LLM.
+const STOPWORDS = new Set([
+  'and','or','the','for','of','in','on','to','is','are','a','an','what','how','much','many','per',
+  'with','at','by','from','my','me','i','you','your','do','does','it','this','that','be','can','should',
+  'about','when','which','will','need','needs','want','please','tell','kya','hai','ka','ki','ke','mein',
+]);
+
+export function cleanQueryForFulltext(q: string): string {
+  const terms = q.toLowerCase().split(/[^\p{L}\p{N}.%/-]+/u).filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+  return (terms.length ? terms : [q.trim()]).slice(0, 10).join(' ');
+}
+
+/** consonant skeleton: soybean→sybn, soyabean→sybn, bajra/bajri→bjr */
+function skeleton(w: string): string {
+  return w.length < 4 ? w : w[0] + w.slice(1).replace(/[aeiouy]/g, '');
+}
+function termMatches(qt: string, word: string): boolean {
+  if (qt === word) return true;
+  if (qt.length >= 5 && word.length >= 5 && (word.startsWith(qt) || qt.startsWith(word))) return true;
+  return qt.length >= 5 && skeleton(qt) === skeleton(word);
+}
+function tokenize(text: string): string[] {
+  return text.toLowerCase()
+    .replace(/\S*www\.\S*/g, ' ')                 // running headers / URLs
+    .split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 2);
+}
+
+export interface LexicalRank { row: RpcRow; lexRank: number; coverage: number; }
+
+export function rerankLexical(query: string, rows: RpcRow[]): LexicalRank[] {
+  const qTerms = [...new Set(query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 3 && !STOPWORDS.has(t)))];
+  if (!qTerms.length) return rows.map((row) => ({ row, lexRank: Number(row.score), coverage: 0 }));
+  return rows.map((row) => {
+    const words = tokenize(row.chunk_text);
+    const secWords = tokenize(row.section_path || '');
+    let matched = 0, tf = 0, secHits = 0;
+    for (const qt of qTerms) {
+      const c = words.filter((w) => termMatches(qt, w)).length;
+      if (c > 0) { matched++; tf += Math.min(c, 3); }
+      if (secWords.some((w) => termMatches(qt, w))) secHits++;
+    }
+    const coverage = matched / qTerms.length;
+    const lengthNorm = 1 + words.length / 300;
+    let score = coverage * 3 + (tf / lengthNorm) * 0.5 + secHits * 1.0;
+    const sec = row.section_path || '';
+    if (!sec) score *= 0.4;                                        // front matter / no heading
+    else if ((sec.replace(/[^0-9.]/g, '').length / sec.length) > 0.5) score *= 0.5; // table-row heading
+    if ((row.page_number ?? 99) <= 1) score *= 0.5;                // cover / contents page
+    return { row, lexRank: score, coverage };
+  }).sort((a, b) => b.lexRank - a.lexRank);
 }
 
 export async function ragRetrieve(
@@ -138,11 +201,14 @@ export async function ragRetrieve(
   let lexical: RpcRow[] = [];
   try {
     const { data, error } = await supabase.rpc('rag_search_fulltext', {
-      p_query: query,
+      p_query: cleanQueryForFulltext(query),
       ...rpcArgs,
     });
     if (error) throw error;
-    lexical = (data || []) as RpcRow[];
+    // Re-rank by coverage/section/length instead of raw occurrence count; drop zero-coverage noise.
+    lexical = rerankLexical(query, (data || []) as RpcRow[])
+      .filter((r) => r.coverage > 0)
+      .map((r) => ({ ...r.row, score: Number(r.lexRank.toFixed(4)) }));
   } catch (e) {
     traceNote += `fulltext_err:${(e as Error).message};`;
   }
@@ -185,13 +251,13 @@ export async function ragRetrieve(
     .map((e) => ({ ...e, final: e.rrf * (AUTHORITY_BOOST[e.row.authority_tier] ?? 1.0) }))
     .sort((a, b) => b.final - a.final);
 
-  // Validation fix: a lexical-only hit matching a single keyword (pgroonga
-  // score < 2) is noise, not evidence — e.g. 'tomato price' matching a soybean
-  // chunk on the word 'market'. Require ≥2 keyword hits unless the semantic
-  // leg also found it.
+  // A lexical-only hit must cover a meaningful share of the query terms
+  // (re-ranked score ≥ 1.0 ≈ one third coverage or a section-title hit);
+  // single-keyword noise ('tomato price' matching 'market') is dropped unless
+  // the semantic leg also found it.
   const passing = ranked
     .filter((e) => e.rrf >= MIN_RRF_SCORE)
-    .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= 2))
+    .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= 1.0))
     .slice(0, maxEvidence);
   const belowThreshold = passing.length === 0;
 
@@ -297,6 +363,16 @@ function normaliseNumbers(s: string): string[] {
  * farmer's own question. Returns the offending numbers (empty ⇒ faithful).
  * "[3]" / "[EVIDENCE 3]" style citation markers are ignored.
  */
+/**
+ * Remove only the sentences/bullets that contain unsupported numbers; keep the rest.
+ * Returns '' when nothing safe remains. Never substitutes placeholder glyphs.
+ */
+export function dropUnsupportedSentences(answer: string, evidence: Evidence[], question: string): string {
+  const parts = answer.split(/(?<=[.!?।])\s+|\n+/);
+  const kept = parts.filter((p) => p.trim() && unsupportedNumbers(p, evidence, question).length === 0);
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function unsupportedNumbers(answer: string, evidence: Evidence[], question: string): string[] {
   const allowed = new Set<string>([
     ...normaliseNumbers(question),
