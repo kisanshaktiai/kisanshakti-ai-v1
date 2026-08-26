@@ -3,6 +3,13 @@
  * Lane B — CONTEXT rule selector (zero-observation advisory)
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+ *   2026-08-26 14:40 UTC — Fix 5 (agronomic safety): added
+ *     `selectContextBlocks()` + `applyContextBlockGate()`. CONTEXT_BLOCK rows
+ *     applicable to the current crop/stage/DAS/cultivation now suppress ANY
+ *     emitted rule that carries the same condition_code or category, in every
+ *     lane (not only Lane B). The block row itself becomes the primary
+ *     response so the farmer receives the prohibition, never the dose.
+ *     NO agronomy is hardcoded: applicability and identity come from the DB row.
  *   2026-08-20 10:10 UTC — Initial. Selects decision_rules rows whose
  *     trigger_class is CONTEXT_SCHEDULE / CONTEXT_BLOCK by crop + stage + DAS +
  *     cultivation method, with NO observation / condition_code filter. Lane A
@@ -12,6 +19,7 @@
  *     NO agronomy is encoded here: every value comes from the DB row.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+
 
 export type ContextTriggerClass = 'CONTEXT_SCHEDULE' | 'CONTEXT_BLOCK';
 
