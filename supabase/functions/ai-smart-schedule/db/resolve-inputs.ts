@@ -18,7 +18,11 @@
 // 2026-08-17 13:55 UTC — Phase 1: created server-side input resolver. Resolves farmer free-text
 //   crop/variety/cultivation inputs to database IDs. ZERO hardcoded agronomy.
 
+// 2026-08-25 18:55 UTC — P0-2B: resolveCrop now delegates to the SHARED DB-backed
+//   canonical crop resolver (_shared/crop-resolver.ts) so the weather derive pipeline
+//   and the schedule resolver use ONE lookup algorithm (crops SSOT + crop_synonyms).
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
+import { resolveCropCanonical } from "../../_shared/crop-resolver.ts";
 
 export interface ResolvedInputs {
   cropCode: string | null;
@@ -68,44 +72,14 @@ export async function getCultivationMethodOptions(
   ].sort();
 }
 
-/** Resolve a farmer-typed crop name (any language) to a DB crop row. */
+/**
+ * Resolve a farmer-typed crop name (any language) to a DB crop row.
+ * Delegates to the shared canonical resolver — do NOT re-add a local copy of
+ * the lookup algorithm here (single resolver invariant, P0-2B).
+ */
 async function resolveCrop(supabase: SupabaseClient, cropName: string) {
-  const q = norm(cropName);
-  if (!q) return null;
-
-  // 1. Exact match on any label column in the crops SSOT
-  const { data: crops } = await supabase
-    .from("crops")
-    .select("id, value, label, local_name, label_hi, label_mr, label_pa, label_ta, label_te, label_bn, label_gu, label_kn, label_ml, label_or, label_as, label_ur, label_sa")
-    .eq("is_active", true);
-
-  const rows = crops || [];
-  const exact = rows.find((c: Record<string, unknown>) =>
-    Object.entries(c).some(([k, v]) => k !== "id" && norm(v) === q)
-  );
-  if (exact) return { row: exact, matchedVia: "crops.label_exact" };
-
-  // 2. Synonym table (multilingual aliases)
-  const { data: syn } = await supabase
-    .from("crop_synonyms")
-    .select("*")
-    .limit(2000);
-  const synHit = (syn || []).find((s: Record<string, unknown>) =>
-    Object.values(s).some((v) => typeof v === "string" && norm(v) === q)
-  );
-  if (synHit) {
-    const code = norm((synHit as Record<string, unknown>).crop_code ?? "");
-    const byCode = rows.find((c: Record<string, unknown>) => norm(c.value) === code);
-    if (byCode) return { row: byCode, matchedVia: "crop_synonyms" };
-  }
-
-  // 3. Contains match (last resort, still DB-sourced)
-  const partial = rows.find((c: Record<string, unknown>) =>
-    Object.entries(c).some(([k, v]) => k !== "id" && typeof v === "string" && norm(v).includes(q))
-  );
-  if (partial) return { row: partial, matchedVia: "crops.label_partial" };
-
-  return null;
+  const match = await resolveCropCanonical(supabase, cropName);
+  return match ? { row: match.row, matchedVia: match.matchedVia } : null;
 }
 
 /** Resolve a variety name to master_products (the variety SSOT). */

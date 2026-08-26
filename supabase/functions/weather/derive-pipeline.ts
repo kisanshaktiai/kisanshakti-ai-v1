@@ -4,6 +4,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * CHANGE LOG (newest first)
+ * 2026-08-25 18:55 UTC — P0 water-state repairs:
+ *   (1) root-depletion ratchet stopped — daily IRRIGATION_APPLIED events from
+ *       crop_lifecycle_events are resolved (depth → volume → pump runtime) and
+ *       passed to the FAO-56 bucket; runoff = max(0, rain − infiltration_cap);
+ *       DEPLETION_UNVERIFIED_CEILING guard caps water confidence at 0.3.
+ *   (2) maize/generic Kc fallback removed — crop identity resolved through the
+ *       SHARED DB crop resolver (_shared/crop-resolver.ts); unresolved crops
+ *       yield null Kc/ETc and preserve previous depletion.
+ *   (3) irrigation_needed/urgency now written ONLY from the root-zone
+ *       decision (depletion > RAW); null when uncomputable.
  * 2026-08-07 11:40 UTC — Prompt 3: land daily derive (ET0 PM, LWD, Kc/ETc,
  *   TAW/RAW/depletion bucket, stress degree-hours, frost, spray, harvest
  *   window), dual-write of raw + derived values into env_observations with
@@ -40,6 +50,18 @@ import {
   type MethodsMap,
 } from "./agricultural-calculations.ts";
 import { resolveNdviQuality, type NdviCandidateRow } from "./ndvi-resolver.ts";
+import { resolveCropCanonical } from "../_shared/crop-resolver.ts";
+import {
+  computeRunoffMm,
+  cropUnresolvedReason,
+  DEPLETION_UNVERIFIED_CONFIDENCE_CAP,
+  irrigationUrgencyFromDepletion,
+  isDepletionUnverifiedCeiling,
+  kcUnresolvedReason,
+  REASON_DEPLETION_UNVERIFIED_CEILING,
+  rootZoneIrrigationDecision,
+  summarizeIrrigationEvents,
+} from "./water-events.ts";
 
 // deno-lint-ignore no-explicit-any
 type Sb = any;
@@ -201,6 +223,7 @@ interface LandRow {
   stage_uuid: string | null; crop_stage: string | null;
   current_gdd: number | string | null; elevation_meters: number | string | null;
   current_crop_variety_id: string | null;
+  area_acres: number | string | null;
 }
 
 interface DeriveOutcome {
@@ -236,10 +259,20 @@ export async function deriveLandDaily(
   const cell = land.cell_key;
   const lat = num(land.center_lat);
   const lon = num(land.center_lon);
-  const crop = String(land.current_crop ?? "").toLowerCase() || "generic";
+  // P0-2B: canonical crop identity through the SHARED DB crop resolver
+  // (crops SSOT + multilingual labels + crop_synonyms) — the same resolver
+  // ai-smart-schedule uses. No hardcoded translations, no "generic" crop
+  // fallback for Kc/ETc. `cropKey` below only feeds the pre-existing
+  // non-authoritative lookups (root depth, heat threshold, N demand) whose
+  // behaviour is unchanged.
+  const rawCropLabel = String(land.current_crop ?? "").trim();
+  const cropMatch = rawCropLabel ? await resolveCropCanonical(supabase, rawCropLabel) : null;
+  const crop = cropMatch?.code ?? null;
+  if (!crop) out.reasons.push(cropUnresolvedReason(rawCropLabel));
+  const cropKey = crop ?? "generic";
 
   // ---- 1. FUSED DAILY INPUTS ----------------------------------------------
-  const [aggRes, fcRes, soilRes, ndviRes, prevRes, curRes, stageRes] = await Promise.all([
+  const [aggRes, fcRes, soilRes, ndviRes, prevRes, curRes, stageRes, irrigRes] = await Promise.all([
     supabase.from("weather_aggregates").select("*")
       .eq("location_key", cell).eq("aggregate_date", day).is("land_id", null).maybeSingle(),
     supabase.from("weather_forecasts").select("*")
@@ -260,6 +293,12 @@ export async function deriveLandDaily(
       ? supabase.from("crop_stage_master").select("growth_stage, stage_code, phenology_index, gdd_min, gdd_max")
         .eq("id", land.stage_uuid).maybeSingle()
       : Promise.resolve({ data: null }),
+    // P0-1A/1E: irrigation events — today's for the water bucket, the whole
+    // previous-21-day window for the unverified-ceiling guard.
+    supabase.from("crop_lifecycle_events").select("id, payload, created_at")
+      .eq("land_id", land.id).eq("event_type", "IRRIGATION_APPLIED")
+      .gte("created_at", new Date(anchor.getTime() - 21 * 86400000).toISOString())
+      .lt("created_at", new Date(anchor.getTime() + 86400000).toISOString()),
   ]);
 
   const agg = aggRes?.data ?? null;
@@ -269,6 +308,20 @@ export async function deriveLandDaily(
   const prev = prevRes?.data ?? null;
   const cur = curRes?.data ?? null;
   const stage = stageRes?.data ?? null;
+
+  // ---- P0-1B: resolve today's irrigation events to an applied depth -------
+  // Priority per event: applied_depth_mm → volume_litres ÷ area → pump
+  // runtime × discharge ÷ area. Events with missing area/discharge are
+  // SKIPPED with an explicit reason — never estimated.
+  const irrEvents = (irrigRes?.data ?? []) as Array<{ id: string; payload: unknown; created_at: string }>;
+  const todayIrrigPayloads = irrEvents
+    .filter((e) => new Date(String(e.created_at)).getTime() >= anchor.getTime())
+    .map((e) => e.payload);
+  const hadIrrigationLast21d = irrEvents.length > 0;
+  const areaAcres = num(land.area_acres);
+  const irrig = summarizeIrrigationEvents(todayIrrigPayloads, areaAcres);
+  out.reasons.push(...irrig.reasons);
+  const irrigationMm = irrig.irrigationMm;
 
   // Newest issue per forecast slot (weather_forecasts is append-only).
   const bySlot = new Map<string, Record<string, unknown>>();
@@ -376,9 +429,13 @@ export async function deriveLandDaily(
     // agronomist approves it. Until then: optical-unavailable, Kc stays static.
     out.reasons.push("NDVI_UNAVAILABLE_OPTICAL");
   }
-  const kc = resolveKc(crop, stageBucket, ndviRel, methods);
-  const kcUsed = ndviRel === null ? kc.kcStatic : kc.kcAdjusted;
-  const etc = et0 !== null ? kcUsed * et0 : null;
+  // P0-2A/2C: resolveKc has NO maize/generic fallback. Unresolvable canonical
+  // crop, or a crop with no approved Kc registry row, yields null — ETc is
+  // then null and the root-water state is NOT advanced on a fabricated ETc.
+  const kc = crop !== null ? resolveKc(crop, stageBucket, ndviRel, methods) : null;
+  if (crop !== null && kc === null) out.reasons.push(kcUnresolvedReason(crop));
+  const kcUsed = kc === null ? null : (ndviRel === null ? kc.kcStatic : kc.kcAdjusted);
+  const etc = et0 !== null && kcUsed !== null ? kcUsed * et0 : null;
 
   // ---- (e) soil water bucket ----------------------------------------------
   let sandFrac = num(soil?.sand_percent) !== null ? (num(soil!.sand_percent) as number) / 100 : null;
@@ -395,7 +452,7 @@ export async function deriveLandDaily(
       out.reasons.push("NO_SOIL_TEXTURE");
     }
   }
-  const rootDepth = ROOT_DEPTH_M[crop] ?? ROOT_DEPTH_DEFAULT_M;
+  const rootDepth = ROOT_DEPTH_M[cropKey] ?? ROOT_DEPTH_DEFAULT_M;
   const tawRaw = sandFrac !== null && clayFrac !== null
     ? computeTawRaw({ sandFrac, clayFrac, omPct }, rootDepth, methods)
     : null;
@@ -412,18 +469,45 @@ export async function deriveLandDaily(
     uStdTaw = Math.abs(hi.taw_mm - lo.taw_mm) / 2;
   }
 
+  // ---- P0-1D: runoff from the persisted infiltration capacity --------------
+  // runoff = max(0, rain − infiltration_cap). Null capacity → 0 + reason;
+  // the capacity is never invented. (soilKey/infiltrationCap are also reused
+  // by the SWSI / rain_24h block below.)
+  const soilKey = normalizeSoilType(land.soil_type);
+  const infilCaps = (methods.SOIL_INFILTRATION_CAPS?.params?.max_single_application_mm ?? {}) as Record<string, number>;
+  const infiltrationCap = num(infilCaps[soilKey ?? ""] ?? infilCaps.default);
+  const runoff = computeRunoffMm(rain, infiltrationCap);
+  if (runoff.reason) out.reasons.push(runoff.reason);
+
   let depletion: number | null = null;
   if (tawRaw) {
-    const prevDepletion = num(prev?.root_depletion_mm) ?? 0.5 * tawRaw.raw_mm;
-    const bucket = updateSoilWaterBucket(prevDepletion, {
-      etcMm: etc ?? 0, rainMm: rain, irrigationMm: 0, runoffMm: 0,
-    }, methods);
-    depletion = clamp(bucket.depletionMm, 0, tawRaw.taw_mm);
+    if (kc === null) {
+      // P0-2C: unresolved crop/Kc → never advance the root-water state on a
+      // fabricated ETc. Preserve the previous depletion as-is.
+      depletion = num(prev?.root_depletion_mm);
+    } else {
+      const prevDepletion = num(prev?.root_depletion_mm) ?? 0.5 * tawRaw.raw_mm;
+      // P0-1B/1D: real irrigation depth + modelled runoff (no more zeros).
+      const bucket = updateSoilWaterBucket(prevDepletion, {
+        etcMm: etc ?? 0, rainMm: rain, irrigationMm, runoffMm: runoff.runoffMm,
+      }, methods);
+      depletion = clamp(bucket.depletionMm, 0, tawRaw.taw_mm);
+    }
+  }
+
+  // ---- P0-1E: saturation / unverified-state guard --------------------------
+  // Depletion pinned at the ceiling with no irrigation evidence in 21 days
+  // means the bucket may have ratcheted without ground truth. QC/confidence
+  // signal only — the numeric depletion is still persisted, never nulled.
+  let waterConfidenceCap: number | null = null;
+  if (tawRaw && isDepletionUnverifiedCeiling(depletion, tawRaw.taw_mm, irrigationMm, hadIrrigationLast21d)) {
+    out.reasons.push(REASON_DEPLETION_UNVERIFIED_CEILING);
+    waterConfidenceCap = DEPLETION_UNVERIFIED_CONFIDENCE_CAP;
   }
 
   // ---- (f) stress degree-hours --------------------------------------------
   const hourlyTemps = interpolateHourlyTemps(tmax, tmin);
-  const heatThreshold = getHeatStressThreshold(crop, methods);
+  const heatThreshold = getHeatStressThreshold(cropKey, methods);
   const heatDh = calculateStressDegreeHours(hourlyTemps, heatThreshold, "above", isSensitiveStage);
   const coldDh = calculateStressDegreeHours(hourlyTemps, 10, "below", isSensitiveStage);
 
@@ -474,9 +558,9 @@ export async function deriveLandDaily(
     ? calculateDiseaseRiskIndex(tempNow, rhMean, dewPoint, rain, lwd ?? 0)
     : null;
 
-  // ---- (j) rain_24h / infiltration cap / SWSI / N supply-demand ------------
+  // ---- (j) rain_24h / SWSI / N supply-demand -------------------------------
   // All coefficients come from sci_method_registry (SSOT); nothing hardcoded.
-  const soilKey = normalizeSoilType(land.soil_type);
+  // (soilKey + infiltrationCap are computed above, before the water bucket.)
   const swsiParams = methods.SWSI_STAGE_SENSITIVITY?.params ?? {};
   const lookbackDays = num(swsiParams.lookback_days) ?? 14;
   const yDay = istDayString(new Date(Date.now() - 86400000));
@@ -498,10 +582,6 @@ export async function deriveLandDaily(
   const hoursElapsed = clamp((Date.now() - anchor.getTime()) / 3600000, 0, 24);
   const yRain = num(yAggRes?.data?.rain_mm_total) ?? 0;
   const rain24h = r2(rain + yRain * ((24 - hoursElapsed) / 24));
-
-  // (b) infiltration_cap_mm — SOIL_INFILTRATION_CAPS@1.0
-  const infilCaps = (methods.SOIL_INFILTRATION_CAPS?.params?.max_single_application_mm ?? {}) as Record<string, number>;
-  const infiltrationCap = num(infilCaps[soilKey ?? ""] ?? infilCaps.default);
 
   // (c) SWSI — unmet demand over the lookback window, stage-weighted.
   const effRainTable = (methods.SOIL_TYPE_EFFECTIVE_RAIN?.params ?? {}) as Record<string, number>;
@@ -538,13 +618,13 @@ export async function deriveLandDaily(
   const demandTable = (nParams.season_n_demand_kg_ha ?? {}) as Record<string, number>;
   const uptakeTable = (nParams.stage_uptake_fraction ?? {}) as Record<string, number>;
   const stageFraction = num(uptakeTable[stageKey]) ?? num(uptakeTable.default);
-  const seasonDemand = num(demandTable[crop]) ?? num(demandTable.default);
+  const seasonDemand = num(demandTable[cropKey]) ?? num(demandTable.default);
   const soilN = num(soilNRes?.data?.nitrogen_kg_per_ha);
   const soilOc = num(soilNRes?.data?.organic_carbon);
   const legume = (nParams.legume_suppression ?? {}) as { crops?: string[]; after_stage_fraction?: number };
   let nSdRatio: number | null = null;
   if (
-    legume.crops?.includes(crop) &&
+    legume.crops?.includes(cropKey) &&
     stageFraction !== null && stageFraction > (num(legume.after_stage_fraction) ?? 1)
   ) {
     out.reasons.push("N_SD_SUPPRESSED_LEGUME");
@@ -571,10 +651,14 @@ export async function deriveLandDaily(
   const ageMin = cur?.observation_time
     ? (Date.now() - new Date(String(cur.observation_time)).getTime()) / 60000
     : 0;
-  const stateConfidence = computeConfidence(
+  const stateConfidenceRaw = computeConfidence(
     { agreement: 1.0, freshnessAgeMin: ageMin, ttlMin: 60, horizonDays: 0, skill: skillTemp },
     methods,
   );
+  // P0-1E: unverified-ceiling guard caps the WATER confidence component.
+  const stateConfidence = waterConfidenceCap !== null
+    ? Math.min(stateConfidenceRaw, waterConfidenceCap)
+    : stateConfidenceRaw;
 
   // ---- PERSIST land_weather_state -----------------------------------------
   const { error: upErr } = await supabase.from("land_weather_state").upsert({
@@ -586,8 +670,8 @@ export async function deriveLandDaily(
     et0_method: et0Method,
     u_std_et0: r2(pm.u_std),
     lwd_est_hours: lwd,
-    kc_static: r2(kc.kcStatic),
-    kc_ndvi_adj: ndviRel === null ? null : r2(kc.kcAdjusted),
+    kc_static: kc ? r2(kc.kcStatic) : null,
+    kc_ndvi_adj: kc && ndviRel !== null ? r2(kc.kcAdjusted) : null,
     taw_method: tawMethod,
     u_std_taw: r2(uStdTaw),
     ndvi_used: ndviPick?.mode === "OPTICAL" ? r2(ndviPick.ndvi) : null,
@@ -608,6 +692,16 @@ export async function deriveLandDaily(
     swsi: swsi,
     swsi_class: swsiClass,
     n_sd_ratio: nSdRatio,
+    // P0-1C: water-event trace (0/0 when no valid event exists).
+    irrigation_events_used: irrig.eventsUsed,
+    irrigation_mm_applied: r2(irrigationMm),
+    // P0-3B: the ONLY irrigation authority — root-zone depletion vs RAW.
+    // NULL (never false) when the computation is unavailable.
+    irrigation_needed: rootZoneIrrigationDecision(depletion, tawRaw ? tawRaw.raw_mm : null),
+    irrigation_urgency: irrigationUrgencyFromDepletion(depletion, tawRaw ? tawRaw.taw_mm : null, methods),
+    // Re-derived rows are fresh measurements again — clears the P0-6
+    // 'pre_ratchet_fix' backfill mark on rows touched after the fix.
+    source: "observed",
     confidence: r2(stateConfidence),
     // legacy columns are written by computeLandWeatherMetrics and are only
     // filled here when this derive created the row.
@@ -910,7 +1004,7 @@ export async function runDailyDerive(
   landIdFilter?: string,
 ) {
   let q = supabase.from("lands")
-    .select("id, tenant_id, cell_key, center_lat, center_lon, current_crop, soil_type, stage_uuid, crop_stage, current_gdd, elevation_meters, current_crop_variety_id")
+    .select("id, tenant_id, cell_key, center_lat, center_lon, current_crop, soil_type, stage_uuid, crop_stage, current_gdd, elevation_meters, current_crop_variety_id, area_acres")
     .eq("is_active", true).not("cell_key", "is", null);
   if (landIdFilter) q = q.eq("id", landIdFilter);
   const { data: lands, error } = await q;
