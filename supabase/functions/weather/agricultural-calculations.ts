@@ -822,15 +822,22 @@ export interface KcResult {
  * Methods: KC_FAO56_TABLE12@1.0 (FAO-56 Table 12 stage Kc) and
  * KC_NDVI_ADJUST@1.0 (Kc_adj = clamp(Kc_stage·(a + b·NDVIrel), Kc_ini, Kc_mid)).
  * @param ndviRel caller-normalised relative NDVI 0..1, or null to skip (D8 fix)
+ *
+ * P0-2 CONTRACT: NO fallback. The crop must already be the CANONICAL crop code
+ * (resolved through the shared DB crop resolver). When the registry table has
+ * no row for the crop this returns null — never maize, never a generic value,
+ * never a hardcoded crop-independent default. Callers must treat null as
+ * "ETc cannot be computed" and must not fabricate one.
  */
 export function resolveKc(
   crop: string,
   stageBucket: 'ini' | 'mid' | 'end',
   ndviRel: number | null,
   methods?: MethodsMap,
-): KcResult {
+): KcResult | null {
   const table = methodParams(methods, "KC_FAO56_TABLE12");
-  const row = table[String(crop ?? "").toLowerCase()] ?? table["maize"] ?? { ini: 0.3, mid: 1.2, end: 0.6 };
+  const row = table[String(crop ?? "").toLowerCase()];
+  if (!row || !Number.isFinite(Number(row[stageBucket] ?? row.mid))) return null;
   const kcStatic = Number(row[stageBucket] ?? row.mid);
 
   let kcAdjusted = kcStatic;
