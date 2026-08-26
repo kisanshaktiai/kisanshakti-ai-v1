@@ -4426,6 +4426,7 @@ export class AIAgentOrchestrator {
         directModeBypass = false;
       } else if (
         diagnosticIntentOwnsClarification &&
+        !(directContractNoSymptoms && (intentAdvisoryBypass || routeDirectModeBypass)) &&
         (intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass)
       ) {
         console.log(
