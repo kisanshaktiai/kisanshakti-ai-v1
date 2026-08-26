@@ -2429,9 +2429,16 @@ export class AIAgentOrchestrator {
           if (options.sessionState) {
             options.sessionState.pendingClarificationOptions = undefined;
             options.sessionState.pendingClarificationScope = undefined;
+            // FIX 3 (2026-08-26): stale pending observation keys (e.g. PHOTO_PROVIDED
+            // from an earlier turn) must not leak into this turn's evidence.
+            (options.sessionState as any).pendingClarificationObservationKeys = [];
+            (options.sessionState as any).pendingClarificationOptionsStructured = [];
+            (options.sessionState as any).pending_clarification_observation_keys = [];
             // Also clear decision state to allow fresh processing
-            options.sessionState.decision_state = 'idle';
+            options.sessionState.decision_state = 'no_action_needed';
+            (options.sessionState as any).decisionState = 'no_action_needed';
           }
+
           // Fall through to regular NLU pipeline
         }
       }
