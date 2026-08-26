@@ -23797,6 +23797,7 @@ export type Database = {
           section_path: string | null
           tenant_id: string | null
           token_count: number | null
+          topic_codes: string[] | null
         }
         Insert: {
           chemical_names?: string[] | null
@@ -23816,6 +23817,7 @@ export type Database = {
           section_path?: string | null
           tenant_id?: string | null
           token_count?: number | null
+          topic_codes?: string[] | null
         }
         Update: {
           chemical_names?: string[] | null
@@ -23835,6 +23837,7 @@ export type Database = {
           section_path?: string | null
           tenant_id?: string | null
           token_count?: number | null
+          topic_codes?: string[] | null
         }
         Relationships: [
           {
@@ -23874,6 +23877,7 @@ export type Database = {
           superseded_by: string | null
           tenant_id: string | null
           title: string
+          topic_codes: string[] | null
           updated_at: string | null
           valid_from: string | null
           valid_until: string | null
@@ -23898,6 +23902,7 @@ export type Database = {
           superseded_by?: string | null
           tenant_id?: string | null
           title: string
+          topic_codes?: string[] | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
@@ -23922,6 +23927,7 @@ export type Database = {
           superseded_by?: string | null
           tenant_id?: string | null
           title?: string
+          topic_codes?: string[] | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
@@ -24460,6 +24466,45 @@ export type Database = {
           trust_prior?: number | null
           updated_at?: string | null
           usage_rights?: string | null
+        }
+        Relationships: []
+      }
+      rag_topics: {
+        Row: {
+          aliases: string[]
+          code: string
+          created_at: string
+          description: string | null
+          is_active: boolean
+          label: string
+          sort_order: number
+          storage_dir: string
+          topic_group: string
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          code: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          label: string
+          sort_order?: number
+          storage_dir: string
+          topic_group: string
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          label?: string
+          sort_order?: number
+          storage_dir?: string
+          topic_group?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -39756,6 +39801,7 @@ export type Database = {
           p_query: string
           p_states?: string[]
           p_tenant?: string
+          p_topics?: string[]
         }
         Returns: {
           authority_tier: string
@@ -39770,6 +39816,7 @@ export type Database = {
           score: number
           section_path: string
           title: string
+          topic_codes: string[]
         }[]
       }
       rag_search_vector: {
@@ -39780,6 +39827,7 @@ export type Database = {
           p_limit?: number
           p_states?: string[]
           p_tenant?: string
+          p_topics?: string[]
         }
         Returns: {
           authority_tier: string
@@ -39794,6 +39842,7 @@ export type Database = {
           score: number
           section_path: string
           title: string
+          topic_codes: string[]
         }[]
       }
       reactivate_tenant: { Args: { p_tenant_id: string }; Returns: Json }
