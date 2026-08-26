@@ -309,6 +309,20 @@ export async function deriveLandDaily(
   const cur = curRes?.data ?? null;
   const stage = stageRes?.data ?? null;
 
+  // ---- P0-1B: resolve today's irrigation events to an applied depth -------
+  // Priority per event: applied_depth_mm → volume_litres ÷ area → pump
+  // runtime × discharge ÷ area. Events with missing area/discharge are
+  // SKIPPED with an explicit reason — never estimated.
+  const irrEvents = (irrigRes?.data ?? []) as Array<{ id: string; payload: unknown; created_at: string }>;
+  const todayIrrigPayloads = irrEvents
+    .filter((e) => new Date(String(e.created_at)).getTime() >= anchor.getTime())
+    .map((e) => e.payload);
+  const hadIrrigationLast21d = irrEvents.length > 0;
+  const areaAcres = num(land.area_acres);
+  const irrig = summarizeIrrigationEvents(todayIrrigPayloads, areaAcres);
+  out.reasons.push(...irrig.reasons);
+  const irrigationMm = irrig.irrigationMm;
+
   // Newest issue per forecast slot (weather_forecasts is append-only).
   const bySlot = new Map<string, Record<string, unknown>>();
   for (const f of forecasts) {
