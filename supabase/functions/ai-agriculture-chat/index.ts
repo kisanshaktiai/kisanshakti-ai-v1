@@ -2134,16 +2134,25 @@ serve(async (req) => {
             );
             
             // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend,
-            if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+            // FIX 3 (2026-08-26): only when the card actually carries >=2 options.
+            const _escOptionCount =
+              (((orchestratorResponse as any)?.question?.options ?? []) as any[])
+                .filter((o: any) => o && (o.observation_key || o.value)).length;
+            if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION' && _escOptionCount >= 2) {
               orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
               orchestratorResponse.metadata = {
                 ...orchestratorResponse.metadata,
                 diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
                 orchestrator_type: 'DIAGNOSTIC_ESCALATION'
               };
+            } else if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+              console.warn(
+                `[ESCALATION_SUPPRESSED_LOW_OPTIONS] site=unified_gate options=${_escOptionCount} action=fall_through_to_advisory`,
+              );
             } else {
               console.log('   ⏭️ Skipping DIAGNOSTIC_ESCALATION mark — observation-contract already promoted CLARIFICATION_QUESTION');
             }
+
           } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // Young crop - use monitoring response with authority-reconciled values
             responseContent = generateYoungCropMonitoringResponse(
