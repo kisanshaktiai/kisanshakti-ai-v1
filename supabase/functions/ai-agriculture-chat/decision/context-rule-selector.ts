@@ -178,3 +178,109 @@ export function toMatchedResponse(row: any): any {
     lane: 'CONTEXT',
   };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Fix 5 (2026-08-26) — UNIVERSAL CONTEXT_BLOCK SAFETY GATE
+ * A CONTEXT_BLOCK row applicable to the current crop/stage/DAS/cultivation
+ * prohibits every rule that carries the same condition_code or category,
+ * in ANY lane. Purely DB-driven — no crop or nutrient is named here.
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+export interface ContextBlockGateResult {
+  kept: any[];
+  suppressed: any[];
+  blocks: any[];
+  /** Block rows projected as matched_responses (lead the kept list). */
+  blockResponses: any[];
+}
+
+/** Fetch CONTEXT_BLOCK rows applicable to the current canonical context. */
+export async function selectContextBlocks(
+  supabase: any,
+  q: ContextRuleQuery,
+): Promise<any[]> {
+  const crop = norm(q.cropCode);
+  const stage = norm(q.growthStage);
+  const das = typeof q.das === 'number' && isFinite(q.das) ? Math.floor(q.das) : null;
+  const method = norm(q.cultivationMethod);
+  const trace = q.traceId ?? 'n/a';
+  if (!crop) return [];
+
+  try {
+    const cropVariants = Array.from(new Set([
+      crop, crop.toUpperCase(),
+      ...UNIVERSAL, ...UNIVERSAL.map((u) => u.toUpperCase()),
+    ]));
+    const { data, error } = await supabase
+      .from('decision_rules')
+      .select('*')
+      .eq('is_active', true)
+      .eq('trigger_class', 'CONTEXT_BLOCK')
+      .in('crop_code', cropVariants)
+      .order('priority', { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    const rows = Array.isArray(data) ? data : [];
+    return rows.filter((r) =>
+      (stageMatches(r, stage) || dasMatches(r, das)) && cultivationMatches(r, method)
+    );
+  } catch (e) {
+    console.warn(`[CONTEXT_BLOCK_GATE] trace=${trace} query failed: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+function ruleIdentityTokens(row: any): string[] {
+  return [
+    norm(row?.condition_code),
+    norm(row?.observation_code),
+    norm(row?.category),
+    norm(row?.cause),
+  ].filter(Boolean);
+}
+
+/**
+ * Suppress every candidate rule whose condition_code / category is owned by an
+ * applicable CONTEXT_BLOCK. Never throws — a failure returns the input intact.
+ */
+export async function applyContextBlockGate(
+  supabase: any,
+  q: ContextRuleQuery,
+  candidates: any[],
+): Promise<ContextBlockGateResult> {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const trace = q.traceId ?? 'n/a';
+  const blocks = await selectContextBlocks(supabase, q);
+  if (blocks.length === 0) {
+    return { kept: list, suppressed: [], blocks: [], blockResponses: [] };
+  }
+
+  const blockedTokens = new Set<string>();
+  const blockIds = new Set<string>();
+  for (const b of blocks) {
+    blockIds.add(String(b?.rule_id ?? ''));
+    for (const t of ruleIdentityTokens(b)) blockedTokens.add(t);
+  }
+
+  const kept: any[] = [];
+  const suppressed: any[] = [];
+  for (const c of list) {
+    const cid = String((c as any)?.rule_id ?? '');
+    if (blockIds.has(cid)) { kept.push(c); continue; } // the block itself
+    const hit = ruleIdentityTokens(c).some((t) => blockedTokens.has(t));
+    if (hit) suppressed.push(c);
+    else kept.push(c);
+  }
+
+  const blockResponses = blocks
+    .filter((b) => !list.some((c: any) => String(c?.rule_id ?? '') === String(b?.rule_id ?? '')))
+    .map((b) => toMatchedResponse(b));
+
+  console.log(
+    `[CONTEXT_BLOCK_GATE] trace=${trace} blocks=${[...blockIds].join(',') || 'none'} ` +
+    `candidates=${list.length} kept=${kept.length} ` +
+    `suppressed=${suppressed.map((s: any) => s.rule_id).join(',') || 'none'}`,
+  );
+
+  return { kept, suppressed, blocks, blockResponses };
+}
