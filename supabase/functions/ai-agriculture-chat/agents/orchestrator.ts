@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-08-26 15:00 UTC — FIX 1: DIRECT_MODE_DIAGNOSTIC_VETO branch now carries the
+//     same directContractNoSymptoms exemption as __preemptHardBlock, so a DB DIRECT/
+//     0-round advisory intent with zero farmer-text symptoms reaches DIRECT_MODE_BYPASS.
+//     FIX 2: locked biological_state owns stage + DAS on canonicalState and in
+//     [RULE_STAGE_TRACE] (BIO_STATE_STAGE_ENFORCE), never lands/crop_schedules.
 //   2026-08-20 04:20 UTC — decision_output.secondary_decisions now populated from
 //     matched_responses (OPTION_SELECTED, main and immediate paths) so every
 //     confirmed observation that fired a rule renders its own advisory block.
