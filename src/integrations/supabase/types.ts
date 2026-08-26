@@ -15786,6 +15786,8 @@ export type Database = {
           humidity_percent: number | null
           id: string
           infiltration_cap_mm: number | null
+          irrigation_events_used: number | null
+          irrigation_mm_applied: number | null
           irrigation_needed: boolean | null
           irrigation_urgency: string | null
           is_finalized: boolean
@@ -15842,6 +15844,8 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           infiltration_cap_mm?: number | null
+          irrigation_events_used?: number | null
+          irrigation_mm_applied?: number | null
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           is_finalized?: boolean
@@ -15898,6 +15902,8 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           infiltration_cap_mm?: number | null
+          irrigation_events_used?: number | null
+          irrigation_mm_applied?: number | null
           irrigation_needed?: boolean | null
           irrigation_urgency?: string | null
           is_finalized?: boolean
