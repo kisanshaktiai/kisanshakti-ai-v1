@@ -23953,8 +23953,10 @@ export type Database = {
       rag_retrieval_logs: {
         Row: {
           below_threshold: boolean | null
+          chunk_ids: string[] | null
           chunks_returned: Json | null
           created_at: string
+          document_ids: string[] | null
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -23963,6 +23965,7 @@ export type Database = {
           query_language: string | null
           query_text: string
           retrieval_mode: string | null
+          retrieval_purpose: string | null
           session_id: string | null
           tenant_id: string | null
           top_score: number | null
@@ -23971,8 +23974,10 @@ export type Database = {
         }
         Insert: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -23981,6 +23986,7 @@ export type Database = {
           query_language?: string | null
           query_text: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -23989,8 +23995,10 @@ export type Database = {
         }
         Update: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -23999,6 +24007,7 @@ export type Database = {
           query_language?: string | null
           query_text?: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24010,8 +24019,10 @@ export type Database = {
       rag_retrieval_logs_202608: {
         Row: {
           below_threshold: boolean | null
+          chunk_ids: string[] | null
           chunks_returned: Json | null
           created_at: string
+          document_ids: string[] | null
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -24020,6 +24031,7 @@ export type Database = {
           query_language: string | null
           query_text: string
           retrieval_mode: string | null
+          retrieval_purpose: string | null
           session_id: string | null
           tenant_id: string | null
           top_score: number | null
@@ -24028,8 +24040,10 @@ export type Database = {
         }
         Insert: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24038,6 +24052,7 @@ export type Database = {
           query_language?: string | null
           query_text: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24046,8 +24061,10 @@ export type Database = {
         }
         Update: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24056,6 +24073,7 @@ export type Database = {
           query_language?: string | null
           query_text?: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24067,8 +24085,10 @@ export type Database = {
       rag_retrieval_logs_202609: {
         Row: {
           below_threshold: boolean | null
+          chunk_ids: string[] | null
           chunks_returned: Json | null
           created_at: string
+          document_ids: string[] | null
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -24077,6 +24097,7 @@ export type Database = {
           query_language: string | null
           query_text: string
           retrieval_mode: string | null
+          retrieval_purpose: string | null
           session_id: string | null
           tenant_id: string | null
           top_score: number | null
@@ -24085,8 +24106,10 @@ export type Database = {
         }
         Insert: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24095,6 +24118,7 @@ export type Database = {
           query_language?: string | null
           query_text: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24103,8 +24127,10 @@ export type Database = {
         }
         Update: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24113,6 +24139,7 @@ export type Database = {
           query_language?: string | null
           query_text?: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24124,8 +24151,10 @@ export type Database = {
       rag_retrieval_logs_202610: {
         Row: {
           below_threshold: boolean | null
+          chunk_ids: string[] | null
           chunks_returned: Json | null
           created_at: string
+          document_ids: string[] | null
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -24134,6 +24163,7 @@ export type Database = {
           query_language: string | null
           query_text: string
           retrieval_mode: string | null
+          retrieval_purpose: string | null
           session_id: string | null
           tenant_id: string | null
           top_score: number | null
@@ -24142,8 +24172,10 @@ export type Database = {
         }
         Insert: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24152,6 +24184,7 @@ export type Database = {
           query_language?: string | null
           query_text: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24160,8 +24193,10 @@ export type Database = {
         }
         Update: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24170,6 +24205,7 @@ export type Database = {
           query_language?: string | null
           query_text?: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24181,8 +24217,10 @@ export type Database = {
       rag_retrieval_logs_202611: {
         Row: {
           below_threshold: boolean | null
+          chunk_ids: string[] | null
           chunks_returned: Json | null
           created_at: string
+          document_ids: string[] | null
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -24191,6 +24229,7 @@ export type Database = {
           query_language: string | null
           query_text: string
           retrieval_mode: string | null
+          retrieval_purpose: string | null
           session_id: string | null
           tenant_id: string | null
           top_score: number | null
@@ -24199,8 +24238,10 @@ export type Database = {
         }
         Insert: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24209,6 +24250,7 @@ export type Database = {
           query_language?: string | null
           query_text: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24217,8 +24259,10 @@ export type Database = {
         }
         Update: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24227,6 +24271,7 @@ export type Database = {
           query_language?: string | null
           query_text?: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24238,8 +24283,10 @@ export type Database = {
       rag_retrieval_logs_202612: {
         Row: {
           below_threshold: boolean | null
+          chunk_ids: string[] | null
           chunks_returned: Json | null
           created_at: string
+          document_ids: string[] | null
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -24248,6 +24295,7 @@ export type Database = {
           query_language: string | null
           query_text: string
           retrieval_mode: string | null
+          retrieval_purpose: string | null
           session_id: string | null
           tenant_id: string | null
           top_score: number | null
@@ -24256,8 +24304,10 @@ export type Database = {
         }
         Insert: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24266,6 +24316,7 @@ export type Database = {
           query_language?: string | null
           query_text: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24274,8 +24325,10 @@ export type Database = {
         }
         Update: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24284,6 +24337,7 @@ export type Database = {
           query_language?: string | null
           query_text?: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24295,8 +24349,10 @@ export type Database = {
       rag_retrieval_logs_202701: {
         Row: {
           below_threshold: boolean | null
+          chunk_ids: string[] | null
           chunks_returned: Json | null
           created_at: string
+          document_ids: string[] | null
           embedding_model: string | null
           farmer_id: string | null
           filters_applied: Json | null
@@ -24305,6 +24361,7 @@ export type Database = {
           query_language: string | null
           query_text: string
           retrieval_mode: string | null
+          retrieval_purpose: string | null
           session_id: string | null
           tenant_id: string | null
           top_score: number | null
@@ -24313,8 +24370,10 @@ export type Database = {
         }
         Insert: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24323,6 +24382,7 @@ export type Database = {
           query_language?: string | null
           query_text: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
@@ -24331,8 +24391,10 @@ export type Database = {
         }
         Update: {
           below_threshold?: boolean | null
+          chunk_ids?: string[] | null
           chunks_returned?: Json | null
           created_at?: string
+          document_ids?: string[] | null
           embedding_model?: string | null
           farmer_id?: string | null
           filters_applied?: Json | null
@@ -24341,6 +24403,7 @@ export type Database = {
           query_language?: string | null
           query_text?: string
           retrieval_mode?: string | null
+          retrieval_purpose?: string | null
           session_id?: string | null
           tenant_id?: string | null
           top_score?: number | null
