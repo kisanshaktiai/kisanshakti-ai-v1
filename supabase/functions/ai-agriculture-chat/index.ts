@@ -1393,6 +1393,14 @@ serve(async (req) => {
             : [{ value: 'photo_upload', observation_key: 'photo_upload', label: '📷' }];
           const _preservedSelectionType = (orchestratorResponse as any)?.metadata?.selectionType;
 
+          // FIX 3 (2026-08-26): never emit an escalation card with <2 real
+          // options — fall through to the advisory / rule path instead.
+          if (_preparedForEscalation.length < 2) {
+            console.warn(
+              `[ESCALATION_SUPPRESSED_LOW_OPTIONS] trace=${traceId} options=${_preparedForEscalation.length} ` +
+              `action=fall_through_to_advisory`,
+            );
+          } else {
           (orchestratorResponse as any).type = 'DIAGNOSTIC_ESCALATION';
           (orchestratorResponse as any).question = undefined;
           (orchestratorResponse as any).metadata = {
@@ -1402,6 +1410,8 @@ serve(async (req) => {
             selectionType: _preservedSelectionType,
             escalation_reason: _isSubsetOfAsked ? 'REPEATED_CLARIFICATION_BLOCKED' : 'CLARIFICATION_BUDGET_EXHAUSTED',
           };
+          }
+
         } else {
           _clarificationRoundCounter += 1;
         }
@@ -2124,16 +2134,25 @@ serve(async (req) => {
             );
             
             // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend,
-            if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+            // FIX 3 (2026-08-26): only when the card actually carries >=2 options.
+            const _escOptionCount =
+              (((orchestratorResponse as any)?.question?.options ?? []) as any[])
+                .filter((o: any) => o && (o.observation_key || o.value)).length;
+            if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION' && _escOptionCount >= 2) {
               orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
               orchestratorResponse.metadata = {
                 ...orchestratorResponse.metadata,
                 diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
                 orchestrator_type: 'DIAGNOSTIC_ESCALATION'
               };
+            } else if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+              console.warn(
+                `[ESCALATION_SUPPRESSED_LOW_OPTIONS] site=unified_gate options=${_escOptionCount} action=fall_through_to_advisory`,
+              );
             } else {
               console.log('   ⏭️ Skipping DIAGNOSTIC_ESCALATION mark — observation-contract already promoted CLARIFICATION_QUESTION');
             }
+
           } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // Young crop - use monitoring response with authority-reconciled values
             responseContent = generateYoungCropMonitoringResponse(
@@ -2811,8 +2830,37 @@ serve(async (req) => {
       primaryAction?.crop_code ||
       orchestratorResponse.dataAudit?.land?.current_crop ||
       null;
-    
+
+    // FIX 3 (2026-08-26) — SAFETY NET: a clarification / escalation response with
+    // fewer than 2 real options is a dead-end card. Demote it to an advisory
+    // response so the rule/advisory content is what the farmer receives.
+    {
+      const _finalType = String((orchestratorResponse as any)?.type ?? '');
+      const _finalOptions = (((orchestratorResponse as any)?.question?.options ?? []) as any[])
+        .filter((o: any) => o && (o.observation_key || o.value));
+      const _metaOptions = (((orchestratorResponse as any)?.metadata?.clarification_options ?? []) as any[]);
+      const _isCard = _finalType === 'CLARIFICATION_QUESTION' ||
+        _finalType === 'CLARIFICATION_NEEDED' ||
+        _finalType === 'DIAGNOSTIC_ESCALATION';
+      if (_isCard && _finalOptions.length < 2 && _metaOptions.length < 2) {
+        console.warn(
+          `[ZERO_OPTION_CARD_SUPPRESSED] type=${_finalType} options=${_finalOptions.length} ` +
+          `meta_options=${_metaOptions.length} action=demote_to_advisory`,
+        );
+        (orchestratorResponse as any).type = 'ADVISORY_RESPONSE';
+        (orchestratorResponse as any).question = undefined;
+        (orchestratorResponse as any).metadata = {
+          ...((orchestratorResponse as any).metadata ?? {}),
+          orchestrator_type: 'ADVISORY_RESPONSE',
+          clarification_options: [],
+          suppressed_card_type: _finalType,
+          suppression_reason: 'INSUFFICIENT_OPTIONS',
+        };
+      }
+    }
+
     // Build decision tracking state
+
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
     // FIX C (2026-08-08) — PERSISTENCE ACCEPTANCE: any turn that actually ships
     // options must persist them as pending, regardless of the type string.

@@ -2429,9 +2429,16 @@ export class AIAgentOrchestrator {
           if (options.sessionState) {
             options.sessionState.pendingClarificationOptions = undefined;
             options.sessionState.pendingClarificationScope = undefined;
+            // FIX 3 (2026-08-26): stale pending observation keys (e.g. PHOTO_PROVIDED
+            // from an earlier turn) must not leak into this turn's evidence.
+            (options.sessionState as any).pendingClarificationObservationKeys = [];
+            (options.sessionState as any).pendingClarificationOptionsStructured = [];
+            (options.sessionState as any).pending_clarification_observation_keys = [];
             // Also clear decision state to allow fresh processing
-            options.sessionState.decision_state = 'idle';
+            options.sessionState.decision_state = 'no_action_needed';
+            (options.sessionState as any).decisionState = 'no_action_needed';
           }
+
           // Fall through to regular NLU pipeline
         }
       }
@@ -5532,8 +5539,18 @@ export class AIAgentOrchestrator {
 
 
       // Phase H — Fix 1: Direct-mode VETO on symptom signal.
+      // 2026-08-26 — VETO input is EVIDENCE only (CONFIRMED/EXTRACTED authority).
+      // CANDIDATE/INFERRED codes are candidate space (questions to ask), never
+      // symptom signal: counting them vetoed DIRECT/0 advisory intents.
       {
-        const informativeNow = [...allObservationsForPreAuth].filter((c: string) => isInformativeObs(c));
+        const informativeNow = authoredObservations
+          .getConfirmedAndExtractedCodes()
+          .filter((c: string) => isInformativeObs(c));
+        const candidateSpaceCount = [...allObservationsForPreAuth]
+          .filter((c: string) => isInformativeObs(c)).length;
+        console.log(
+          `   🔎 [DIRECT_VETO_INPUT] intent=${intentCode} informative_evidence=${informativeNow.length} candidate_space=${candidateSpaceCount}`,
+        );
         if (directModeBypass && informativeNow.length > 0 && !directHardBypass) {
           console.log(`   🛑 [DIRECT_MODE_VETO] Symptom signal detected (${informativeNow.length} informative obs) — overriding directModeBypass for intent=${intentCode}`);
           directModeBypass = false;
@@ -5543,7 +5560,13 @@ export class AIAgentOrchestrator {
           console.log(`   🛑 [DIRECT_HARD_BYPASS_VETO] Symptom signal (${informativeNow.length} informative obs) overrides intent contract for intent=${intentCode}`);
           directModeBypass = false;
           bypassClarification = false;
+        } else if (directHardBypass && informativeNow.length === 0) {
+          // FIX 2 — contract held: candidate space must not break the DIRECT contract.
+          console.log(
+            `   ✅ [DIRECT_CONTRACT_HELD] intent=${intentCode} candidates_ignored=${candidateSpaceCount}`,
+          );
         }
+
 
         // Fix F: For DIRECT-hard intents (e.g. GENERAL_CROP_INFO), seed the rule
         // EDIT 1 (2026-08-20) — IOM rows for DIRECT/0 intents are rule-candidate
