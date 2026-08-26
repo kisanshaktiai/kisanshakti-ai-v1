@@ -8998,9 +8998,14 @@ export class AIAgentOrchestrator {
         // Phase G — G7: one-line end-of-rule-stage BRAIN_TRACE
         try {
           const winner = layeredRuleResult.primary_decision;
+          // FIX 2 — trace stage/DAS from the locked biological_state for the turn.
+          const _bioTrace: any = (landContext as any)?.biological_state ?? null;
+          const _traceStage = _bioTrace?.growth_stage ?? canonicalState.crop_stage ?? '?';
+          const _traceDas = (typeof _bioTrace?.das === 'number' ? _bioTrace.das : (landContext as any)?.days_since_sowing) ?? '?';
           console.log(
             `[RULE_STAGE_TRACE] intent=${activeIntentForRules} ` +
-            `crop=${canonicalState.crop_type ?? '?'} stage=${canonicalState.crop_stage ?? '?'} ` +
+            `crop=${canonicalState.crop_type ?? '?'} stage=${_traceStage} das=${_traceDas} ` +
+            `stage_authority=${_bioTrace ? 'biological_state_ssot' : 'canonical'} ` +
             `candidates_in=${rulesToEvaluate.length} after_intent=${rulesAfterIntent.length} ` +
             `evaluated=${layeredRuleResult.rules_evaluated || 0} matched=${layeredRuleResult.rules_matched || 0} ` +
             `winner=${winner?.rule_id ?? 'none'} winner_score=${(winner?.weighted_confidence ?? winner?.confidence_score ?? 0).toFixed?.(3) ?? 'n/a'} ` +
