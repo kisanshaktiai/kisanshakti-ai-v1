@@ -14,6 +14,12 @@
  * Every call is audit-logged to rag_retrieval_logs (§30).
  *
  * CHANGE LOG
+ * 2026-08-27 — CORPUS-GAP GATE FIXED (verified on 11 logged queries): MIN_RRF_SCORE
+ *   (=1/90) could never reject a top-30 hit, and `e.sem !== null` let every semantic
+ *   neighbour bypass the lexical gates, so "how to prune a fig tree" (best cosine 0.34)
+ *   was served with below_threshold=false. Gates now use the COSINE; floors are read
+ *   from system_config.config_key='rag_retrieval' (no hardcoded thresholds); top_score
+ *   logs the best cosine (was the RRF rank ≈0.037 on every query).
  * 2026-08-26b — trust gate (Evidence.servable: tier≠other OR trust_prior≥0.6), relative
  *   lexical cutoff (40 % of best), citations = one line per document with pages actually
  *   cited ([n] markers), labels for all 12 app languages, acreEquivalentsLine() computed in code.
@@ -73,6 +79,8 @@ export interface RagResult {
   evidence: Evidence[];
   mode: 'fulltext' | 'hybrid';
   belowThreshold: boolean;
+  /** best cosine similarity seen in the semantic leg (null when fulltext-only) */
+  bestSemanticScore: number | null;
   embeddingModel: string | null;
   latencyMs: number;
   traceNote: string;
@@ -99,8 +107,6 @@ const MAX_EVIDENCE = 6;
 const MIN_TRUST_FOR_OTHER_TIER = 0.6;
 /** drop lexical-only hits scoring below this fraction of the best lexical hit */
 const LEXICAL_RELATIVE_CUTOFF = 0.4;
-/** minimum fused score to count as "we found something" — tune via golden set */
-const MIN_RRF_SCORE = 1 / (RRF_K + CANDIDATES_PER_LEG); // at least a mid-rank hit in one leg
 const AUTHORITY_BOOST: Record<string, number> = {
   central_govt: 1.15,
   icar: 1.15,
@@ -109,6 +115,41 @@ const AUTHORITY_BOOST: Record<string, number> = {
   kvk: 1.05,
   other: 1.0,
 };
+
+// ── Retrieval tunables (system_config.rag_retrieval) ────────────────────────
+// Cosine floors for Cohere embed-multilingual-v3.0. Observed 2026-08-27 on the
+// live corpus: relevant soybean questions 0.64–0.80; "wheat seed rate" (no wheat
+// in corpus) 0.53; "how to prune a fig tree" 0.34. The values below are only the
+// bootstrap defaults used when the system_config row is missing.
+interface RetrievalTunables {
+  /** a semantic candidate must reach this cosine to be considered at all */
+  min_semantic_score: number;
+  /** if the BEST cosine across candidates is below this ⇒ corpus gap */
+  gap_semantic_score: number;
+}
+const DEFAULT_TUNABLES: RetrievalTunables = { min_semantic_score: 0.45, gap_semantic_score: 0.55 };
+let tunablesCache: { at: number; v: RetrievalTunables } | null = null;
+
+async function loadTunables(supabase: SupabaseClient): Promise<RetrievalTunables> {
+  if (tunablesCache && Date.now() - tunablesCache.at < 60_000) return tunablesCache.v;
+  let v = DEFAULT_TUNABLES;
+  try {
+    const { data } = await supabase
+      .from('system_config')
+      .select('config_value')
+      .eq('config_key', 'rag_retrieval')
+      .maybeSingle();
+    const cfg = (data?.config_value ?? {}) as Partial<RetrievalTunables>;
+    v = {
+      min_semantic_score: Number(cfg.min_semantic_score ?? DEFAULT_TUNABLES.min_semantic_score),
+      gap_semantic_score: Number(cfg.gap_semantic_score ?? DEFAULT_TUNABLES.gap_semantic_score),
+    };
+  } catch {
+    /* keep defaults */
+  }
+  tunablesCache = { at: Date.now(), v };
+  return v;
+}
 
 interface RpcRow {
   chunk_id: string;
@@ -194,6 +235,7 @@ export async function ragRetrieve(
 ): Promise<RagResult> {
   const startedAt = Date.now();
   const provider = getEmbeddingProvider();
+  const tun = await loadTunables(supabase);
   let mode: 'fulltext' | 'hybrid' = 'fulltext';
   let embeddingModel: string | null = null;
   let traceNote = '';
@@ -254,7 +296,7 @@ export async function ragRetrieve(
   semantic.forEach((row, i) => {
     const e = fused.get(row.chunk_id) || { row, rrf: 0, lex: null, sem: null };
     e.rrf += 1 / (RRF_K + i + 1);
-    e.sem = row.score;
+    e.sem = Number(row.score);
     fused.set(row.chunk_id, e);
   });
 
@@ -262,17 +304,24 @@ export async function ragRetrieve(
     .map((e) => ({ ...e, final: e.rrf * (AUTHORITY_BOOST[e.row.authority_tier] ?? 1.0) }))
     .sort((a, b) => b.final - a.final);
 
-  // A lexical-only hit must cover a meaningful share of the query terms
-  // (re-ranked score ≥ 1.0 ≈ one third coverage or a section-title hit);
-  // single-keyword noise ('tomato price' matching 'market') is dropped unless
-  // the semantic leg also found it.
   const topLex = Math.max(0, ...ranked.map((e) => e.lex ?? 0));
+  const bestSem = semantic.length ? Math.max(...semantic.map((r) => Number(r.score))) : null;
+
+  // Candidate gates:
+  //  • a semantic hit counts only if cosine ≥ min_semantic_score (pgvector always
+  //    returns the 30 nearest rows — being in that list proves nothing);
+  //  • a lexical-only hit must cover a meaningful share of the query terms
+  //    (re-ranked score ≥ 1.0) and reach 40 % of the best lexical score.
+  const semOk = (e: { sem: number | null }) => e.sem !== null && e.sem >= tun.min_semantic_score;
   const passing = ranked
-    .filter((e) => e.rrf >= MIN_RRF_SCORE)
-    .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= 1.0))
-    .filter((e) => e.sem !== null || (e.lex !== null && e.lex >= topLex * LEXICAL_RELATIVE_CUTOFF))
+    .filter((e) => semOk(e) || (e.lex !== null && e.lex >= 1.0))
+    .filter((e) => semOk(e) || (e.lex !== null && e.lex >= topLex * LEXICAL_RELATIVE_CUTOFF))
     .slice(0, maxEvidence);
-  const belowThreshold = passing.length === 0;
+
+  // Corpus gap: nothing passed, OR (hybrid) the best cosine is below the gap floor —
+  // lexical noise ("seed", "rate") must not mask a topic the corpus does not cover.
+  const belowThreshold =
+    passing.length === 0 || (mode === 'hybrid' && bestSem !== null && bestSem < tun.gap_semantic_score);
 
   // Trust gate: one extra lookup for the (few) documents involved.
   const trustByDoc = new Map<string, number | null>();
@@ -313,6 +362,7 @@ export async function ragRetrieve(
   const latencyMs = Date.now() - startedAt;
 
   // ── Audit log (§30). Best-effort; never break retrieval on log failure.
+  // The candidates are logged even on a gap so the decision can be reviewed.
   try {
     await supabase.from('rag_retrieval_logs').insert({
       session_id: audit.sessionId || null,
@@ -322,7 +372,10 @@ export async function ragRetrieve(
       farmer_id: audit.farmerId || null,
       query_text: query,
       query_language: language,
-      filters_applied: { ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null },
+      filters_applied: {
+        ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null,
+        gates: { min_semantic_score: tun.min_semantic_score, gap_semantic_score: tun.gap_semantic_score },
+      },
       retrieval_mode: mode,
       chunks_returned: evidence.map((ev) => ({
         chunk_id: ev.chunkId,
@@ -331,7 +384,8 @@ export async function ragRetrieve(
         lex: ev.lexicalScore,
         sem: ev.semanticScore,
       })),
-      top_score: evidence[0]?.rankScore ?? null,
+      // top_score = best COSINE (comparable across queries). Was the RRF rank (≈0.037 always).
+      top_score: bestSem ?? evidence[0]?.rankScore ?? null,
       below_threshold: belowThreshold,
       embedding_model: embeddingModel,
       latency_ms: latencyMs,
@@ -343,7 +397,16 @@ export async function ragRetrieve(
     console.warn('[ragRetrieval] audit log failed:', (e as Error).message);
   }
 
-  return { evidence, mode, belowThreshold, embeddingModel, latencyMs, traceNote };
+  // Contract (§31): on a corpus gap the caller receives NO evidence.
+  return {
+    evidence: belowThreshold ? [] : evidence,
+    mode,
+    belowThreshold,
+    bestSemanticScore: bestSem,
+    embeddingModel,
+    latencyMs,
+    traceNote,
+  };
 }
 
 /** Render evidence for the LLM context — citation data comes ONLY from here (§22). */
@@ -465,11 +528,6 @@ function normaliseNumbers(s: string): string[] {
 }
 
 /**
- * Every number in `answer` must also occur in the evidence texts or in the
- * farmer's own question. Returns the offending numbers (empty ⇒ faithful).
- * "[3]" / "[EVIDENCE 3]" style citation markers are ignored.
- */
-/**
  * Remove only the sentences/bullets that contain unsupported numbers; keep the rest.
  * Returns '' when nothing safe remains. Never substitutes placeholder glyphs.
  */
@@ -479,6 +537,11 @@ export function dropUnsupportedSentences(answer: string, evidence: Evidence[], q
   return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/**
+ * Every number in `answer` must also occur in the evidence texts or in the
+ * farmer's own question. Returns the offending numbers (empty ⇒ faithful).
+ * "[3]" / "[EVIDENCE 3]" style citation markers are ignored.
+ */
 export function unsupportedNumbers(answer: string, evidence: Evidence[], question: string): string[] {
   const allowed = new Set<string>([
     ...normaliseNumbers(question),
