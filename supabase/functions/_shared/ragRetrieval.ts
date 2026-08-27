@@ -320,8 +320,9 @@ export async function ragRetrieve(
 
   // Corpus gap: nothing passed, OR (hybrid) the best cosine is below the gap floor —
   // lexical noise ("seed", "rate") must not mask a topic the corpus does not cover.
+  // A fulltext-only run (bestSem === null) is never a gap purely on the cosine floor.
   const belowThreshold =
-    passing.length === 0 || (mode === 'hybrid' && bestSem !== null && bestSem < tun.gap_semantic_score);
+    passing.length === 0 || (mode === 'hybrid' && (bestSem === null || bestSem < tun.gap_semantic_score));
 
   // Trust gate: one extra lookup for the (few) documents involved.
   const trustByDoc = new Map<string, number | null>();
@@ -385,7 +386,7 @@ export async function ragRetrieve(
         sem: ev.semanticScore,
       })),
       // top_score = best COSINE (comparable across queries). Was the RRF rank (≈0.037 always).
-      top_score: bestSem ?? evidence[0]?.rankScore ?? null,
+      top_score: bestSem,
       below_threshold: belowThreshold,
       embedding_model: embeddingModel,
       latency_ms: latencyMs,

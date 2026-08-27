@@ -440,17 +440,29 @@ serve(async (req: Request) => {
         const audit = { sessionId, traceId, farmerId, tenantIdText: tenantId, purpose: 'GENERAL_CHAT' as const, queryOriginal: userText };
         const filters = { ...retrievalFilters, tenantId: null /* general corpus is global; tenant docs opt-in later */ };
         ragResult = await ragRetrieve(supabase, normalized.query, language, filters, audit);
-        // Fallback A: crop/state filter too narrow ⇒ retry unfiltered on the English query.
-        if (ragResult.belowThreshold && (filters.stateCodes || filters.cropCodes)) {
-          ragResult = await ragRetrieve(supabase, normalized.query, language, { tenantId: null }, audit);
+        // Fallback A: STATE filter too narrow ⇒ retry without the state filter, keeping crop scope
+        // (a crop-scoped gap is a real gap — do not widen it away).
+        if (ragResult.belowThreshold && filters.stateCodes) {
+          ragResult = await ragRetrieve(supabase, normalized.query, language, { tenantId: null, cropCodes: filters.cropCodes }, audit);
         }
         // Fallback B: the farmer's own words (covers native-language documents in the corpus).
         if (ragResult.belowThreshold && normalized.query !== userText) {
-          ragResult = await ragRetrieve(supabase, userText, language, { tenantId: null }, { ...audit, queryOriginal: null });
+          ragResult = await ragRetrieve(supabase, userText, language, { tenantId: null, cropCodes: filters.cropCodes }, { ...audit, queryOriginal: null });
         }
         // Trust gate: unverified sources are retrieved (and logged) but never served/cited.
         const unservable = ragResult.evidence.filter((e) => !e.servable).length;
         ragEvidence = ragResult.evidence.filter((e) => e.servable);
+        // Crop-consistency gate: drop evidence from documents whose crop_codes do not
+        // overlap the query crop. A state-relaxed retry can surface docs for a different
+        // crop (e.g. a wheat doc on a soybean query); those are not the farmer's answer.
+        if (retrievalFilters.cropCodes?.length && ragEvidence.length) {
+          const docIds = [...new Set(ragEvidence.map((e) => e.documentId))];
+          const { data: docCrops } = await supabase.from('rag_documents').select('id, crop_codes').in('id', docIds);
+          const ok = new Set((docCrops || []).filter((d) => (d.crop_codes || []).some((c: string) => retrievalFilters.cropCodes!.includes(c))).map((d) => d.id));
+          const dropped = ragEvidence.length - ragEvidence.filter((e) => ok.has(e.documentId)).length;
+          ragEvidence = ragEvidence.filter((e) => ok.has(e.documentId));
+          if (dropped) console.warn(`[${traceId}] crop-consistency gate dropped ${dropped} evidence (query crop ${retrievalFilters.cropCodes.join(',')})`);
+        }
         console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragResult.evidence.length} servable=${ragEvidence.length} unservable=${unservable} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
       } catch (e) {
         console.warn(`[${traceId}] rag retrieval failed — continuing ungated:`, (e as Error).message);
@@ -551,7 +563,7 @@ serve(async (req: Request) => {
     // ── Citations: appended IN CODE from retrieval metadata (§22) — the LLM
     //    is forbidden from writing them, so page numbers can never be invented.
     //    Not appended when the answer was degraded to the number-free path.
-    if (ragEvidence.length > 0 && !noEvidenceMode) {
+    if (ragEvidence.length > 0 && !noEvidenceMode && citedEvidenceIndexes(answer).length > 0) {
       const used = citedEvidenceIndexes(answer);
       const body = stripCitationMarkers(answer);
       const acre = acreEquivalentsLine(body, used.length ? used.map((i) => ragEvidence[i - 1]).filter(Boolean) : ragEvidence, language);
