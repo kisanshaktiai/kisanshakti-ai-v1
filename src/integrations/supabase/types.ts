@@ -14554,6 +14554,54 @@ export type Database = {
         }
         Relationships: []
       }
+      intent_observation_mapping_bak_20260827: {
+        Row: {
+          assertion_strength: string | null
+          confidence_rank: number | null
+          created_at: string | null
+          crop_code: string | null
+          cultivation_method: string | null
+          das_max: number | null
+          das_min: number | null
+          growth_stage: string | null
+          id: string | null
+          intent_code: string | null
+          is_active: boolean | null
+          observation_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          assertion_strength?: string | null
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code?: string | null
+          cultivation_method?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          assertion_strength?: string | null
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code?: string | null
+          cultivation_method?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       intent_semantic_class_allowlist: {
         Row: {
           allowed_classes: string[]
@@ -14592,6 +14640,30 @@ export type Database = {
             referencedColumns: ["intent_code"]
           },
         ]
+      }
+      intent_translation_review_queue: {
+        Row: {
+          created_at: string
+          intent_code: string
+          language_code: string
+          source_text_en: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          intent_code: string
+          language_code: string
+          source_text_en?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          intent_code?: string
+          language_code?: string
+          source_text_en?: string | null
+          status?: string
+        }
+        Relationships: []
       }
       intent_translations: {
         Row: {
@@ -25307,6 +25379,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rice_agronomy_research_queue: {
+        Row: {
+          blocked_reason: string | null
+          created_at: string
+          domain: string
+          id: number
+          preferred_source: string
+          status: string
+          target_key: string | null
+          target_table: string
+          what_is_needed: string
+        }
+        Insert: {
+          blocked_reason?: string | null
+          created_at?: string
+          domain: string
+          id?: number
+          preferred_source: string
+          status?: string
+          target_key?: string | null
+          target_table: string
+          what_is_needed: string
+        }
+        Update: {
+          blocked_reason?: string | null
+          created_at?: string
+          domain?: string
+          id?: number
+          preferred_source?: string
+          status?: string
+          target_key?: string | null
+          target_table?: string
+          what_is_needed?: string
+        }
+        Relationships: []
       }
       rice_weed_sourcing_queue: {
         Row: {
