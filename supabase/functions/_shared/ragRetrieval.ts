@@ -14,6 +14,9 @@
  * Every call is audit-logged to rag_retrieval_logs (§30).
  *
  * CHANGE LOG
+ * 2026-08-27b — belowThreshold no longer forces a gap on a hybrid run whose semantic
+ *   leg degraded to fulltext (bestSem===null); top_score logs bestSem only (was RRF rank
+ *   fallback when no cosine).
  * 2026-08-27 — CORPUS-GAP GATE FIXED (verified on 11 logged queries): MIN_RRF_SCORE
  *   (=1/90) could never reject a top-30 hit, and `e.sem !== null` let every semantic
  *   neighbour bypass the lexical gates, so "how to prune a fig tree" (best cosine 0.34)
@@ -320,8 +323,9 @@ export async function ragRetrieve(
 
   // Corpus gap: nothing passed, OR (hybrid) the best cosine is below the gap floor —
   // lexical noise ("seed", "rate") must not mask a topic the corpus does not cover.
+  // A fulltext-only run (bestSem === null) is never a gap purely on the cosine floor.
   const belowThreshold =
-    passing.length === 0 || (mode === 'hybrid' && bestSem !== null && bestSem < tun.gap_semantic_score);
+    passing.length === 0 || (mode === 'hybrid' && (bestSem === null || bestSem < tun.gap_semantic_score));
 
   // Trust gate: one extra lookup for the (few) documents involved.
   const trustByDoc = new Map<string, number | null>();
@@ -385,7 +389,7 @@ export async function ragRetrieve(
         sem: ev.semanticScore,
       })),
       // top_score = best COSINE (comparable across queries). Was the RRF rank (≈0.037 always).
-      top_score: bestSem ?? evidence[0]?.rankScore ?? null,
+      top_score: bestSem,
       below_threshold: belowThreshold,
       embedding_model: embeddingModel,
       latency_ms: latencyMs,
