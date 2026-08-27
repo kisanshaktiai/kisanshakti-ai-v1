@@ -10,6 +10,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-08-27 — CROP-SCOPED GATES: Fallback A relaxes STATE only (keeps cropCodes — a
+ *   crop-scoped gap is a real gap, not a filter artefact); Fallback B carries cropCodes
+ *   too. New crop-consistency gate drops evidence from documents whose crop_codes do not
+ *   overlap the query crop (state-relaxed retries can surface off-crop docs). Citations
+ *   block now requires ≥1 cited [n] marker — an answer that cited nothing gets no source list.
+ *   ragRetrieval belowThreshold: hybrid+fulltext-fallback (bestSem===null) is no longer a
+ *   forced gap; top_score logs bestSem only (was RRF rank fallback).
  * 2026-08-26b — FARMER OUTPUT QUALITY (traces 3fb34b48/abb68997): admin provenance note leaked
  *   through registry.publisher into citations; 3 citation lines for 1 document incl. an
  *   irrelevant page; transliterated jargon (थिनिंग/गॅप फिलिंग/germination); per-hectare only.
