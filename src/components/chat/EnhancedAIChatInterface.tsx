@@ -571,8 +571,13 @@ export function EnhancedAIChatInterface() {
       if (cachedMessages && cachedMessages.length > 0) {
         console.log(`⚡ [Cache-First] INSTANT load: ${cachedMessages.length} messages for ${sessionKey}`);
         
-        const sortedMessages = cachedMessages
-          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        const sortedMessages = [...cachedMessages]
+          .sort((a, b) => {
+            const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            if (dt !== 0) return dt;
+            // Same-millisecond turn: question before answer
+            return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
+          })
           .map(mapMessageFromDB);
         
         // Get session ID from cache if available - CRITICAL: Pass farmer ID for isolation
