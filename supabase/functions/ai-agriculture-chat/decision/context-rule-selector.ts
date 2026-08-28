@@ -150,9 +150,23 @@ export async function selectContextRules(
     return empty;
   }
 
-  const applicableRaw = rows.filter((r) =>
-    (stageMatches(r, stage) || dasMatches(r, das)) && cultivationMatches(r, method)
-  );
+  // AUDIT FIX (2026-08-28, live-DB verified): applicability semantics follow the
+  // AUTHORING of each row, generically. All 52 active CONTEXT rows author
+  // stage_applicable; 6 (all N-schedule rows incl. RICE_NUTR_N_TOP1/TOP2/BASAL,
+  // LCC, ORGANIC, LATE_N_BLOCK) ALSO author crop_age_days_min/max; 0 author DAS
+  // alone. The previous OR let a calendar-DAS window override a biological-stage
+  // mismatch (stage SSOT), e.g. a tillering-only top-dress offered at DAS 50
+  // while the field is at panicle_initiation. Rule: every authored dimension
+  // must pass — stage when authored, DAS window when authored; a dimension the
+  // author left empty does not constrain.
+  const applicableRaw = rows.filter((r) => {
+    const hasStage = !!norm(r?.growth_stage) || arr(r?.stage_applicable).length > 0;
+    const hasDas = r?.crop_age_days_min != null || r?.crop_age_days_max != null;
+    if (!hasStage && !hasDas) return false; // unauthored applicability never matches
+    if (hasStage && !stageMatches(r, stage)) return false;
+    if (hasDas && !dasMatches(r, das)) return false;
+    return cultivationMatches(r, method);
+  });
 
   // FIX 7 (2026-08-28): Lane B is DISCOVERY ONLY. This selector no longer
   // suppresses by condition_code and no longer leads with blocks — there is
@@ -327,7 +341,18 @@ export async function selectContextBlocks(
     if (error) throw new Error(error.message);
     const rows = Array.isArray(data) ? data : [];
     return rows.filter((r) =>
-      (stageMatches(r, stage) || dasMatches(r, das)) && cultivationMatches(r, method)
+      // AUDIT FIX (2026-08-28): same authored-dimension conjunction as Lane B
+      // discovery. A CONTEXT_BLOCK (e.g. RICE_NUTR_LATE_N_BLOCK_001, which
+      // authors BOTH stages and DAS 75-130) must not become applicable from a
+      // calendar-DAS window when the biological stage disagrees with the SSOT.
+      ((): boolean => {
+        const hasStage = !!norm(r?.growth_stage) || arr(r?.stage_applicable).length > 0;
+        const hasDas = r?.crop_age_days_min != null || r?.crop_age_days_max != null;
+        if (!hasStage && !hasDas) return false;
+        if (hasStage && !stageMatches(r, stage)) return false;
+        if (hasDas && !dasMatches(r, das)) return false;
+        return cultivationMatches(r, method);
+      })()
     );
   } catch (e) {
     console.warn(`[CONTEXT_BLOCK_GATE] trace=${trace} query failed: ${(e as Error).message}`);

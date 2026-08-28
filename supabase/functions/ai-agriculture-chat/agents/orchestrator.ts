@@ -200,23 +200,17 @@ import {
 } from '../utils/db-ssot/observation-index.ts';
 import { preloadSystemConfig as _preloadSystemConfig, getConfigRaw } from '../utils/db-ssot/system-config-cache.ts';
 
-const _LEGACY_DIAGNOSTIC_INTENTS: readonly string[] = [
-  'EMERGENCE_FAILURE',
-  'GERMINATION_FAILURE',
-  'PEST',
-  'PEST_PRESENCE_VISIBLE',
-  'DISEASE',
-  'DISEASE_LIKE_PATTERN',
-  'NUTRIENT_STRESS',
-  'NUTRIENT_DEFICIENCY',
-  'CROP_DAMAGE',
-  'WILTING',
-  'YELLOWING',
-  'REPORT_SYMPTOM',
-];
-
+// 2026-08-27 — DB INTENT AUTHORITY. The in-code diagnostic intent list is REMOVED.
+// observation_intent_master.routing_target='SYMBOLIC_BRAIN' (phase1 cache) is the
+// only authority. Cold cache ⇒ FAIL-CLOSED (treated as diagnostic ⇒ observation
+// authority required); a DB DIRECT/0-round intent contract still bypasses via
+// intentMetaFromDB in the DIRECT_MODE gate below.
 export function requiresAgronomicReasoningIntent(intent: unknown): boolean {
-  return _isDiagnosticIntentDb(intent, _LEGACY_DIAGNOSTIC_INTENTS);
+  if (!_phase1CacheReady()) {
+    console.warn('[INTENT_AUTHORITY] phase1 cache cold — requiresAgronomicReasoningIntent fail-closed (true)');
+    return true;
+  }
+  return _isDiagnosticIntentDb(intent);
 }
 
 function assertDecisionGraphOrder(owner: any, traceId: string, stage: DecisionGraphStage): void {
@@ -277,42 +271,14 @@ import {
 
 // SYMBOLIC ROUTING CONTRACT (Fix 2 + Fix 7 + Fix 8)
 // P6 (2026-07-24): DIRECT-mode intents are DB-authoritative via
-const _LEGACY_ADVISORY_DIRECT_INTENTS: readonly string[] = [
-  'FERTILIZER_SCHEDULE',
-  'IRRIGATION_QUERY',
-  'IRRIGATION_METHOD_SELECTION',
-  'IRRIGATION_SCHEDULING_QUERY',
-  'SPRAY_TIMING_QUERY',
-  'CROP_HEALTH_DASHBOARD',
-  'GENERAL_CROP_INFO',
-  'HARVEST_TIMING',
-  'BEST_PRACTICE_GENERAL',
-  'ORGANIC_FARMING_QUERY',
-  'INTERCROPPING_QUERY',
-  'IPM_STRATEGY_QUERY',
-  'PHI_SAFETY_QUERY',
-  'DOSAGE_CALCULATION_QUERY',
-  'RESISTANCE_MANAGEMENT_QUERY',
-  'SOIL_HEALTH_RESTORATION',
-  'SOIL_TESTING_QUERY',
-  'SOIL_TYPE_MANAGEMENT',
-  'PROACTIVE_SCHEDULE_QUERY',
-  'COST_ESTIMATION_QUERY',
-  'YIELD_FORECAST_QUERY',
-  'TREATMENT_ROI_QUERY',
-  'LABOR_PLANNING_QUERY',
-  'POST_HARVEST_HANDLING',
-  'CROP_ROTATION_QUERY',
-  'PLANTING_METHOD_QUERY',
-  'SEED_SELECTION',
-  'VARIETY_SELECTION_QUERY',
-  'SEASONAL_TRANSITION_ALERT',
-  'WEATHER_ADVISORY',
-];
-
+// 2026-08-27 — DB INTENT AUTHORITY. In-code advisory/DIRECT intent list REMOVED.
+// observation_intent_master.clarification_mode='DIRECT' (phase1 cache) only.
+// Live DB check 2026-08-27: 28/30 former list entries are DIRECT in DB; the
+// remaining 2 (WEATHER_ADVISORY, CROP_HEALTH_DASHBOARD) are clarification_mode=NONE,
+// max_clarification_rounds=0 and are governed by their DB contract.
 export function isAdvisoryRoute(intentCode: string | null | undefined): boolean {
   if (!intentCode) return false;
-  return _isAdvisoryDirectIntentDb(intentCode, _LEGACY_ADVISORY_DIRECT_INTENTS);
+  return _isAdvisoryDirectIntentDb(intentCode);
 }
 
 // OBSERVATION CONTRACT GUARD (Fix 2)
@@ -1736,6 +1702,7 @@ export class AIAgentOrchestrator {
     (this as any)._graphSnapshot = null;
     // RC-1 FIX: orchestrator is a module-level singleton (see bottom of file);
     (this as any)._graphTruth = null;
+    (this as any)._trustedEvidence = null; // P0: per-turn reset — stale evidence never carries over
     console.log(`[RC1_BUILD_MARKER] v=rc1-2026-07-25T11:42 trace=${traceId} _graphTruth cleared per turn`);
     (this as any)._bioContradictionByLand = new Map<string, BiologicalStateContradictionAudit>();
     // LATENCY: launch independent request context reads immediately. Crop-specific
@@ -6059,17 +6026,22 @@ export class AIAgentOrchestrator {
           const knownSet = new Set(_identity.known.map((c) => String(c).toLowerCase()));
           const bridged = preBridged.filter((b) => knownSet.has(String(b.canonical_code).toLowerCase()));
           const bridgedCanonical: string[] = bridged.map((b) => b.canonical_code);
-          console.log(`[OBSERVATION_BRIDGE_FIRST] raw=${real_codes.length} bridged=${preBridgedCanonical.length} known=${_identity.known.length} final=${bridgedCanonical.length}`);
 
-          // TURN_EVIDENCE_LOCK — ledger: INFERRED entries for any DB-bridged code
-          for (const b of bridged) {
-            if (b.source === 'observation_aliases' && b.canonical_code !== b.raw_code) {
-              authoredObservations.add(
-                b.canonical_code,
-                ObservationAuthority.INFERRED,
-                'OBSERVATION_ALIASES_BRIDGE',
-              );
-            }
+          // P0 EVIDENCE GATE (2026-08-27, rev 2): the trusted-evidence contract lives in
+          // decision/symbolic-reasoner.ts::deriveTrustedEvidence — CONFIRMED (any source)
+          // + EXTRACTED from deterministic farmer-text extractors only. INFERRED /
+          // SYNTHETIC / CANDIDATE (IOM space) / LLM-sourced EXTRACTED never enter.
+          try {
+            const { deriveTrustedEvidence } = await import('../decision/symbolic-reasoner.ts');
+            const te = deriveTrustedEvidence(authoredObservations, bridged, knownSet);
+            (this as any)._trustedEvidence = { confirmed: te.confirmed, perceived: te.perceived };
+            console.log(
+              `[TRUSTED_EVIDENCE] trace=${traceId} confirmed=[${te.confirmed.join(',')}] perceived=[${te.perceived.join(',')}] ` +
+              `rejected=${te.rejected.length}${te.rejected.length ? ' [' + te.rejected.slice(0, 6).map((r) => `${r.code}:${r.authority}/${r.source}`).join(',') + ']' : ''}`,
+            );
+          } catch (teErr) {
+            (this as any)._trustedEvidence = { confirmed: [], perceived: [] };
+            console.warn(`[TRUSTED_EVIDENCE] failed (fail-closed, evidence=0): ${(teErr as Error).message}`);
           }
 
           // CROP CANONICAL RESOLVE — intent_observation_mapping LITERAL peers
@@ -8385,7 +8357,30 @@ export class AIAgentOrchestrator {
         // Use unified crop code normalizer for consistent rule filtering
         const cropForRules = canonicalContext?.crop_code || lockedCropContext?.crop_name || '';
         const cropCodeForFilter = unifiedNormalizeCropCode(cropForRules).toLowerCase();
-        const allRulesWithBundled = await getAllRulesWithBundled(cropCodeForFilter || undefined);
+        // GRAPH AUTHORITY / LATENCY GATE (2026-08-28, forensic trace_mtcqvkbf):
+        // the full RuleRepo snapshot (~2k rules + 11k aliases) cost 12.1s in-request
+        // and was loaded even when the hypothesis engine produced ZERO rule edges
+        // (HYP_TO_RULE candidate_rules=[]) and the layered lane then evaluated 0
+        // rules. Load the corpus ONLY when some authority can consume it: a
+        // hypothesis rule scope, an engine request for full scope, graph edges,
+        // or confirmed observation evidence for the biotic pre-filter lane.
+        const _graphEdgeCount = Array.isArray((this as any)._graphHypothesisRuleIds)
+          ? ((this as any)._graphHypothesisRuleIds as unknown[]).length : 0;
+        const _confirmedCount = Array.isArray(confirmedObsCodes) ? confirmedObsCodes.length : 0;
+        const _hypPath = String(hypothesisResult?.decision_path ?? 'NONE');
+        const _corpusNeeded =
+          (Array.isArray(hypothesisRuleScope) && hypothesisRuleScope.length > 0) ||
+          _hypPath === 'FULL_RULE_SCOPE' || _hypPath === 'ORPHAN_HYPOTHESIS_FALLBACK' ||
+          _graphEdgeCount > 0 || _confirmedCount > 0;
+        console.log('[GRAPH_AUTHORITY] trace=' + traceId + ' graph_rule_edges=' + _graphEdgeCount +
+          ' hyp_path=' + _hypPath + ' hyp_scope=' + (Array.isArray(hypothesisRuleScope) ? hypothesisRuleScope.length : 'n/a') +
+          ' confirmed_obs=' + _confirmedCount + ' corpus_load=' + _corpusNeeded);
+        const allRulesWithBundled = _corpusNeeded
+          ? await getAllRulesWithBundled(cropCodeForFilter || undefined)
+          : [];
+        if (!_corpusNeeded) {
+          console.warn('[LAYERED_CORPUS_SKIPPED] trace=' + traceId + ' reason=NO_AUTHORITATIVE_SCOPE - full snapshot load skipped, layered lane short-circuits');
+        }
         console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (crop=${cropCodeForFilter || 'ALL'})`);
         
         // DIAGNOSTIC PRE-FILTER (PART 7): When pest evidence is present,
@@ -9444,7 +9439,20 @@ export class AIAgentOrchestrator {
             );
             
             // Execute symbolic rules
-            const symbolicResult = await symbolicReasoner.executeRules(symbolicFacts, authoritativeLandState);
+            // P0 GRAPH AUTHORITY (2026-08-27): only surviving hypothesis→rule edges may fire.
+            const symbolicResult = await symbolicReasoner.executeRules(symbolicFacts, authoritativeLandState, {
+              allowFuzzyMatch: false,
+              urgencyOverride: false,
+              graph_authorization: {
+                surviving_hypothesis_ids: ((this as any)._graphHypothesisIds ?? []) as string[],
+                rule_edges: ((this as any)._graphHypothesisResult?.rule_edges ?? null),
+                authorized_rule_ids: ((this as any)._graphHypothesisRuleIds ?? []) as string[],
+              },
+              evidence: (this as any)._trustedEvidence ?? { confirmed: [], perceived: [] },
+              // Intent-derived candidate space (never evidence). The reasoner keeps only codes
+              // whose observation_master row is is_farmer_observable=false (context tokens).
+              context_tokens: authoredObservations.getCodesByAuthority(ObservationAuthority.CANDIDATE).map((c) => canonicalObsCode(c)),
+            });
             
             if (symbolicResult.rules_fired > 0) {
               console.log(`   ✅ Symbolic Reasoner fired ${symbolicResult.rules_fired} rules`);

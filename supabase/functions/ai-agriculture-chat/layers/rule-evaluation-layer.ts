@@ -197,9 +197,8 @@ export async function evaluateRules(input: RuleEvaluationInput): Promise<RuleEva
     // understanding?.confidence ?? 0) < 0.7)`.
     allowFuzzyMatch: input.options?.allowFuzzyMatch ?? false,
     minFuzzyScore: input.options?.minFuzzyScore ?? 0.5,
-    urgencyOverride: input.options?.urgencyOverride ?? 
-                     (input.understanding?.urgency === 'EMERGENCY' ||
-                      input.understanding?.urgency === 'HIGH')
+    // P0 (2026-08-27): urgency NEVER enables fuzzy matching.
+    urgencyOverride: false
   };
   
   console.log(`   🔧 Fuzzy matching: ${fuzzyOptions.allowFuzzyMatch}, urgency override: ${fuzzyOptions.urgencyOverride}`);

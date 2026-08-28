@@ -2,38 +2,127 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * SYMBOLIC REASONER - FACT-TO-RULE EVALUATION ENGINE
  * ═══════════════════════════════════════════════════════════════════════════
- * 
- * CRITICAL COMPONENT: This module implements the core symbolic reasoning engine
- * that maps CanonicalState + AuthoritativeLandState to SymbolicFact objects
- * and evaluates conditions_json from the decision_rules table.
- * 
+ *
+ * CRITICAL COMPONENT: This module evaluates `decision_rules.conditions_json`
+ * against SymbolicFact objects and returns the rules that legitimately fire.
+ *
  * PHILOSOPHY:
  * - Rules are SUPREME, AI only explains
- * - All decisions come from deterministic rule evaluation
+ * - The hypothesis→rule graph is the ONLY diagnostic/rule authority
+ * - All decisions come from deterministic, exact condition evaluation
  * - LLM is strictly prohibited from inventing treatments
- * 
+ *
  * CHANGE LOG (newest first)
+ *   2026-08-27 — P0 FINAL PRODUCTION FIX: graph-authorized execution only.
+ *     (1) AUTHORITY: `executeRules()` no longer loads/evaluates the full crop
+ *         `decision_rules` corpus. It evaluates ONLY rule_ids explicitly
+ *         authorized by the surviving hypothesis→rule graph passed in
+ *         `options.graph_authorization` (hypothesis_rule_mapping edges of
+ *         surviving hypotheses). No graph edge ⇒ rule cannot fire. Stage,
+ *         DAS, NDVI, weather, soil, IOM candidate space and similarity never
+ *         authorize a rule. `loadRulesForContext`, the tiered
+ *         `applyObservationLayerFilter` widening (tier 0→5, "never collapse to
+ *         zero"), observation-metadata DiagBoost and the 5-min crop rule
+ *         cache are REMOVED.
+ *     (2) EVIDENCE GATE: `facts.all_observations` is rebuilt from
+ *         `options.evidence` = CONFIRMED ∪ trusted PERCEIVED codes only.
+ *         IOM/CANDIDATE/INFERRED/SYNTHETIC codes, `primary_symptom` and
+ *         `user_query` are never evidence. Evidence count 0 ⇒ no rule, no
+ *         diagnosis, `clarification_only=true`.
+ *     (3) FUZZY DISABLED: `allowFuzzyMatch` is forced false for final rule
+ *         execution; `urgencyOverride` never enables fuzzy matching.
+ *         `evaluatePartialMatch` is REMOVED.
+ *     (4) CONDITION SEMANTICS: `all` = every condition passes; `any` = at
+ *         least one; observation = exact canonical evidence match (no token /
+ *         substring / query matching); numeric threshold = exact operator;
+ *         unknown / non-evaluable condition = FAIL; empty or non-symbolic
+ *         conditions = NO MATCH. The `metConditions/totalConditions >= 0.6`
+ *         scoring is REMOVED. Soft-pass contextual keys (`no_*`, `normal_*`,
+ *         `context`, `stress`, `irrigation_system`, ...) no longer pass
+ *         silently.
+ *         A rule additionally FIRES ONLY IF at least one satisfied condition is
+ *         an exact evidence match (`evidence_anchored`); context-only rules
+ *         (stage/DAS/NDVI/weather/soil) never fire even when graph-authorized.
+ *     (5) `mapToSymbolicFact` no longer derives NDVI bands, soil sufficiency
+ *         thresholds, soil moisture from rainfall, or critical stage from a
+ *         hardcoded stage list; it reads `landState.derived.*` SSOT values or
+ *         returns UNKNOWN.
+ *     (9) 2.4.0 — EVIDENCE CLASS FROM observation_master ONTOLOGY (live-DB verified
+ *         2026-08-27: 2,576 rows; is_farmer_observable=false on 332 rows such as
+ *         fertilizer_schedule / irrigation_planning / crop_management which are
+ *         intent-mapped context tokens; is_diagnostic is a confidence flag, NOT an
+ *         evidence flag — e.g. stem_rot_present is is_diagnostic=false yet
+ *         is_farmer_observable=true).
+ *         • Every observation code referenced by a rule condition is resolved
+ *           against observation_master (utils/db-ssot/observation-index cache):
+ *             is_farmer_observable=false  ⇒ CONTEXT_TOKEN  — can never be farmer
+ *               evidence; satisfied ONLY by the turn's intent-derived context
+ *               tokens (`options.context_tokens`, CANDIDATE authority, filtered
+ *               to observable=false here).
+ *             is_farmer_observable=true|null, or code unknown / index cold
+ *                                         ⇒ FARMER_EVIDENCE — satisfied ONLY by
+ *               trusted evidence (CONFIRMED / PERCEIVED). Fail-closed.
+ *           `can_generate_question` is never consulted for execution.
+ *         • `classifyRuleEvidenceRequirement()` now returns `evidence_class`
+ *           (FARMER_EVIDENCE | CONTEXT_TOKEN | NONE). A rule whose observation
+ *           conditions reference only context tokens is not skipped when
+ *           trusted evidence=0; it fires iff the token is present for the turn
+ *           and all other exact conditions pass, under graph authorization.
+ *         • Result reports `observation_index` (ACTIVE|UNAVAILABLE) and
+ *           `context_token_count`.
+ *     (8) 2.3.0 — OBSERVATION IS OPTIONAL (route by DB rule contract):
+ *         • The unconditional `evidence=0 ⇒ no decision` gate and the
+ *           unconditional `!evidence_anchored ⇒ refuse` gate are REMOVED.
+ *         • `classifyRuleEvidenceRequirement(rule)` (exported, generic,
+ *           data-driven — no crop/category/intent strings):
+ *             a) required_observation_category non-empty  ⇒ OBSERVATION_REQUIRED
+ *             b) conditions_json has an explicit observation key
+ *                (observations/observation/symptom/primary_symptom/
+ *                required_symptoms) or a boolean/string observation
+ *                assertion                                    ⇒ OBSERVATION_REQUIRED
+ *             c) otherwise                                   ⇒ CONTEXT_SUFFICIENT
+ *         • OBSERVATION_REQUIRED rules fire only with an exact trusted-evidence
+ *           anchor; with evidence=0 they are SKIPPED (counted in
+ *           `observation_required_skipped`) and `clarification_only` stays true
+ *           when nothing else fired. CONTEXT_SUFFICIENT rules fire on exact
+ *           context conditions alone, still ONLY under graph authorization.
+ *         • New exact context conditions (schema field mapping, not agronomy):
+ *           `cultivation_method` (string|array, vs landState.crop
+ *           .cultivation_method), `das_range {min,max}`, `das_min`, `das_max`,
+ *           `weather {temp_min,temp_max,humidity_min,humidity_max}`. Any other
+ *           sub-key ⇒ FAIL. `context` joins `trigger` as authoring metadata
+ *           (live DB: 64/168 rice rules carry free-text `context`).
+ *     (7) 2.2.0 — post-review hardening:
+ *         • `deriveTrustedEvidence()` is now the single exported contract for
+ *           what may become rule evidence: CONFIRMED (any source) + EXTRACTED
+ *           ONLY when its provenance is a deterministic farmer-text extractor
+ *           (allowlist DB-overridable via system_config
+ *           `trusted_perceived_sources`). LLM-sourced EXTRACTED, INFERRED,
+ *           SYNTHETIC and CANDIDATE never enter evidence.
+ *         • FiredRule carries `hypothesis_ids[]` (all surviving hypotheses
+ *           that map to the rule), not just the first edge seen.
+ *         • Result reports `taxonomy_guard` = ACTIVE | UNAVAILABLE so a cold
+ *           DB-taxonomy cache is visible instead of silently degrading.
+ *         • Confidence aggregation / tie-break numbers are declared as
+ *           ENGINE policy (not agronomy) and are DB-overridable via
+ *           system_config `symbolic_reasoner_engine_policy`.
+ *     (6) ZERO AGRONOMIC CONSTANTS IN CODE (2.1.0): removed the in-code
+ *         humidity/temperature/soil-moisture flag thresholds, the hardcoded
+ *         CATEGORY_PRIORITY authority ordering (now decision_rules
+ *         .data_authority_rank DESC, priority DESC), the NDVIGuard intent
+ *         list, the 'nutrition' category exclusion and the nutrition
+ *         arbitration gates (in-code marker sets). Boolean weather/soil flag
+ *         keys are NON-EVALUABLE ⇒ FAIL; rules express thresholds numerically
+ *         in conditions_json (e.g. `humidity: ">80"`, `rainfall_24h_mm: ">5"`).
+ *         The only remaining restriction gate is the DB-taxonomy BioticGuard.
  *   2026-07-29 10:55 UTC — PHASE 0′ STEP 4: removed hardcoded BIOTIC_OBS_KEYS
  *     and the inline abiotic-category list from the BioticGuard. Rule class now
  *     resolves via utils/db-driven-taxonomies.ts (decision_rules
  *     .biological_group) and observation class via observation_master
  *     .semantic_class after alias canonicalization (exact match, no substring).
  *     Guard degrades to NO FILTER when the taxonomy cache is unloaded.
- *   2026-07-27 23:45 UTC — SINGLE OBSERVATION STREAM (read-path only).
- *     (a) Ontology join corrected: observation_master.canonical_group IS the
- *         engine group, so engine_groups is seeded from it directly and
- *         canonical_group_mapping is enrichment-only. [ONTOLOGY_JOIN_ZERO]
- *         (false-alarm warning) → [ONTOLOGY_ENRICHMENT_EMPTY] (info).
- *         Fixes `EngineGroups: []` in ObsFilter.
- *     (b) Alias re-bridge in applyObservationLayerFilter now applies ONLY to
- *         codes absent from observation_master; already-canonical graph codes
- *         are never rewritten (was: STUNTED_GROWTH → obs_rice_patchy_emergence).
- *   2026-07-27 00:00 UTC — FIX F1: corrected inverted canonical_group_mapping
- *     join (engine_group, not biological_group) + [ONTOLOGY_JOIN_ZERO] drift
- *     probe. FIX F4-A: normalize observation codes via canonicalObsCode before
- *     the observation_master .in() lookup.
  *
- * VERSION: 1.0.0 - Initial Production Release
+ * VERSION: 2.0.0 - Graph-Authorized Execution
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
@@ -45,17 +134,72 @@ import {
   isAbioticRule,
   hasBioticEvidence as taxonomyHasBioticEvidence,
 } from '../utils/db-driven-taxonomies.ts';
-
-
-// NUTRITION CONFLICT ARBITRATION
+import { getConfigJson } from '../utils/db-ssot/system-config-cache.ts';
 import {
-  passesZincSpecificityGate,
-  passesMicronutrientSpecificityGate,
-  checkWaterStressDominance,
-  checkMacronutrientDominance,
-  auditNutritionRuleSpecificity,
-  type DominanceBlockResult,
-} from './nutrition-conflict-arbitrator.ts';
+  getObservationMaster as _getObservationMasterDb,
+  observationIndexReady as _observationIndexReady,
+  resolveAliasCanonical as _resolveAliasCanonicalDb,
+  type ObservationMasterRow,
+} from '../utils/db-ssot/observation-index.ts';
+import { ObservationAuthority, type AuthoredObservationSet } from '../utils/observation-authority.ts';
+
+export const SYMBOLIC_REASONER_VERSION = '2.4.0';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENGINE POLICY (NOT agronomic knowledge). These govern how the engine
+// aggregates DB-owned rule confidence_score values and breaks ties. They are
+// DB-overridable via system_config key `symbolic_reasoner_engine_policy`
+// (JSON object with the same keys). Nothing here can authorize a rule.
+// ─────────────────────────────────────────────────────────────────────────────
+export interface EnginePolicy {
+  /** Base confidence once ≥1 rule fired. */
+  base_confidence: number;
+  /** Per-fired-rule increment and its cap. */
+  per_rule_boost: number;
+  per_rule_boost_cap: number;
+  /** Weight of data_completeness (0..1 of this value). */
+  completeness_weight: number;
+  /** Hard ceiling on final confidence. */
+  confidence_ceiling: number;
+  /** Default rule confidence when decision_rules.confidence_score is null. */
+  default_rule_confidence: number;
+  /** Additional-evidence boost applied when a 2nd rule supports the same hypothesis. */
+  hypothesis_support_boost: number;
+  hypothesis_confidence_ceiling: number;
+  /** Confidence delta below which hypotheses are tie-broken by rule count. */
+  hypothesis_tie_delta: number;
+  /** Provenance sources allowed to promote EXTRACTED observations to PERCEIVED evidence. */
+  trusted_perceived_sources: string[];
+}
+
+const ENGINE_POLICY_DEFAULTS: Readonly<EnginePolicy> = Object.freeze({
+  base_confidence: 0.5,
+  per_rule_boost: 0.05,
+  per_rule_boost_cap: 0.3,
+  completeness_weight: 0.1,
+  confidence_ceiling: 0.95,
+  default_rule_confidence: 0.7,
+  hypothesis_support_boost: 0.2,
+  hypothesis_confidence_ceiling: 0.98,
+  hypothesis_tie_delta: 0.1,
+  // Deterministic farmer-text extractors only (see orchestrator authority tags).
+  // LLM_SEMANTIC_EXTRACTOR / EVIDENCE_LOSS_RECOVERY / IOM_* are intentionally absent.
+  trusted_perceived_sources: ['OBSERVATION_KEYS_INDUCTION', 'LANGUAGE_INDUCTION'],
+});
+
+export function getEnginePolicy(): EnginePolicy {
+  const override = getConfigJson<Partial<EnginePolicy>>('symbolic_reasoner_engine_policy', {});
+  const sources = Array.isArray(override.trusted_perceived_sources)
+    ? override.trusted_perceived_sources.map(String)
+    : getConfigJson<{ sources?: string[] }>('trusted_perceived_sources', {}).sources;
+  return {
+    ...ENGINE_POLICY_DEFAULTS,
+    ...Object.fromEntries(
+      Object.entries(override).filter(([k, v]) => k in ENGINE_POLICY_DEFAULTS && typeof v === 'number' && Number.isFinite(v)),
+    ),
+    trusted_perceived_sources: Array.isArray(sources) && sources.length > 0 ? sources : [...ENGINE_POLICY_DEFAULTS.trusted_perceived_sources],
+  };
+}
 
 // TYPE DEFINITIONS
 
@@ -66,37 +210,45 @@ export interface SymbolicFact {
   dos: number;
   growth_stage: string;
   land_area_acres: number;
-  
-  // Symptom facts (from observations)
+  /** crop_schedules.cultivation_method via landState.crop.cultivation_method, canonical lower-snake, or null. */
+  cultivation_method?: string | null;
+
+  // Symptom facts (from observations) — CONTEXT ONLY, never rule evidence
   primary_symptom: string;
   affected_part: string;
   distribution: string;
   severity: string;
   progression: string;
-  
-  // Bug 2 Fix: All observations array for multi-observation matching
+
+  // EVIDENCE: exact canonical CONFIRMED ∪ trusted PERCEIVED observation codes.
+  // This is the ONLY observation evidence the rule evaluator reads.
   all_observations: string[];
-  // Improvement 1: Pest evidence flag for category exclusion
+  // Pest evidence flag for category exclusion (derived from all_observations)
   has_pest_evidence: boolean;
-  
+  /** Set by the reasoner only: intent-derived context tokens (observable=false) for this turn. */
+  context_tokens?: string[];
+
   // Environmental facts
   ndvi: number | null;
   ndvi_trend: string;
-  ndvi_status: string;
+  ndvi_status: string;                 // SSOT (landState.derived) or 'UNKNOWN'
   temperature: number | null;
   humidity: number | null;
+  /** Measured 24h rainfall (mm) or null. Rules threshold this in conditions_json. */
+  rainfall_24h_mm?: number | null;
+  /** true iff a measured 24h rainfall value > 0 exists (no mm threshold in code). */
   recent_rain: boolean;
-  soil_moisture_estimated: string;
-  
+  soil_moisture_estimated: string;     // validated measurement/model or 'UNKNOWN'
+
   // Soil facts — macronutrients
   soil_n: number | null;
-  soil_n_status: string;
+  soil_n_status: string;               // SSOT (landState.derived) or 'UNKNOWN'
   soil_p: number | null;
   soil_p_status: string;
   soil_k: number | null;
   soil_k_status: string;
   soil_ph: number | null;
-  
+
   // Soil facts — micronutrients (populated when soil test data available)
   soil_zn_ppm: number | null;
   soil_fe_ppm: number | null;
@@ -104,13 +256,16 @@ export interface SymbolicFact {
   soil_mg_cmol: number | null;
   soil_s_ppm: number | null;
   soil_b_ppm: number | null;
-  
+
   // Derived facts
-  stress_level: string;
+  stress_level: string;                // SSOT water_stress_level or 'UNKNOWN'
   critical_stage: boolean;
+  /** true ONLY when critical_stage came from authoritative stage metadata.
+   *  When false/undefined a `critical_stage` condition is NON-EVALUABLE → FAIL. */
+  critical_stage_known?: boolean;
   data_completeness: number;
-  risk_level: string;
-  
+  risk_level: string;                  // SSOT derived.risk_level or 'UNKNOWN'
+
   // Farmer action facts
   user_query: string;
   recent_treatments: string[];
@@ -141,16 +296,20 @@ export interface FiredRule {
   category: string;
   confidence: number;
   priority: number;
+  /** decision_rules.data_authority_rank — DB-owned ordering authority. */
+  data_authority_rank?: number | null;
   cause: string;
+  /** First surviving hypothesis that authorized this rule (stable primary attribution). */
+  hypothesis_id?: string | null;
+  /** ALL surviving hypotheses with an edge to this rule (explainability). */
+  hypothesis_ids?: string[];
   actions: {
     action_type: string;
-    // SSOT response fields (language-independent)
     action_text?: string;
     reason_text?: string;
     knowledge_text?: string;
     i18n_key?: string;
     decision_trace_template?: string;
-    // Product metadata (symbolic, not language)
     product_reference?: string;
     phi_days?: number;
     bee_toxicity?: string;
@@ -170,6 +329,171 @@ export interface Hypothesis {
   supporting_rules: string[];
 }
 
+/**
+ * Graph authorization contract. Produced by the hypothesis→rule graph
+ * (hypothesis-graph-evaluator + orchestrator snapshot). The reasoner NEVER
+ * derives authorization from anything else.
+ */
+export interface GraphRuleAuthorization {
+  /** Surviving (non-eliminated) hypothesis ids for this turn. */
+  surviving_hypothesis_ids: ReadonlyArray<string>;
+  /** hypothesis_id → rule_id[] from hypothesis_rule_mapping (graph `rule_edges`). */
+  rule_edges?: Map<string, string[]> | Record<string, string[]> | null;
+  /** Flat authorized rule_id list from the graph (graphOut candidate_rule_ids /
+   *  merged snapshot). Used ONLY when `rule_edges` is not supplied. */
+  authorized_rule_ids?: ReadonlyArray<string> | null;
+}
+
+/** Evidence contract. Only these two classes may become rule facts. */
+export interface EvidenceInput {
+  /** Farmer-CONFIRMED codes (clarification tap, direct statement, photo). */
+  confirmed: ReadonlyArray<string>;
+  /** Trusted PERCEIVED codes (pattern-extracted from the farmer's own words). */
+  perceived?: ReadonlyArray<string>;
+}
+
+export type ExecuteRulesOptions = {
+  /** Ignored for final execution — always false. Kept for call-site compatibility. */
+  allowFuzzyMatch?: boolean;
+  minFuzzyScore?: number;
+  /** Never enables fuzzy matching. */
+  urgencyOverride?: boolean;
+  graph_authorization?: GraphRuleAuthorization | null;
+  evidence?: EvidenceInput | null;
+  /** Intent-derived observation codes for this turn (CANDIDATE authority). Only codes whose
+   *  observation_master row says is_farmer_observable=false are retained as context tokens. */
+  context_tokens?: ReadonlyArray<string> | null;
+  /** Test injection only. */
+  observation_lookup?: ObservationLookup;
+};
+
+export type AuthorizationOutcome =
+  | 'AUTHORIZED'
+  | 'NO_GRAPH_AUTHORIZATION'
+  | 'NO_SURVIVING_HYPOTHESES'
+  | 'NO_AUTHORIZED_RULES';
+
+export type RuleEvidenceRequirement = 'OBSERVATION_REQUIRED' | 'CONTEXT_SUFFICIENT';
+/** What can satisfy the rule's observation conditions (from observation_master.is_farmer_observable). */
+export type RuleEvidenceClass = 'FARMER_EVIDENCE' | 'CONTEXT_TOKEN' | 'NONE';
+export type ObservationCodeClass = 'FARMER_EVIDENCE' | 'CONTEXT_TOKEN' | 'UNKNOWN';
+
+/** Injectable observation_master lookup (tests). Default = DB-SSOT observation-index cache. */
+export interface ObservationLookup {
+  ready(): boolean;
+  get(code: string): Pick<ObservationMasterRow, 'observation_code' | 'is_farmer_observable' | 'is_diagnostic' | 'is_active'> | null;
+}
+const DB_OBSERVATION_LOOKUP: ObservationLookup = {
+  ready: () => _observationIndexReady(),
+  get: (code) => {
+    const k = canonicalObsCode(code);
+    if (!k) return null;
+    const direct = _getObservationMasterDb(k);
+    if (direct) return direct;
+    const alias = _resolveAliasCanonicalDb(k);
+    return alias ? _getObservationMasterDb(alias) : null;
+  },
+};
+
+/**
+ * Evidence class of ONE observation code, from observation_master ONLY.
+ *   is_farmer_observable === false ⇒ CONTEXT_TOKEN (intent/context marker, never farmer evidence)
+ *   true / null                    ⇒ FARMER_EVIDENCE
+ *   index cold or code unknown     ⇒ UNKNOWN (callers treat as FARMER_EVIDENCE — fail-closed)
+ */
+export function resolveObservationCodeClass(code: unknown, lookup: ObservationLookup = DB_OBSERVATION_LOOKUP): ObservationCodeClass {
+  if (!lookup.ready()) return 'UNKNOWN';
+  const row = lookup.get(String(code ?? ''));
+  if (!row || row.is_active === false) return 'UNKNOWN';
+  return row.is_farmer_observable === false ? 'CONTEXT_TOKEN' : 'FARMER_EVIDENCE';
+}
+
+/** Explicit observation keys in conditions_json (schema vocabulary, not agronomy). */
+const OBSERVATION_CONDITION_KEYS: ReadonlySet<string> = new Set([
+  'observations', 'observation', 'symptom', 'primary_symptom', 'required_symptoms',
+]);
+/** Rule METADATA keys — describe the rule, never conditions (verified against live decision_rules key inventory). */
+const METADATA_KEYS: ReadonlySet<string> = new Set([
+  'trigger', 'context', 'recommendation', 'action', 'diagnosis', 'trigger_keywords',
+  'roi_basis', 'roi_modifier', 'roi_by_region', 'roi_estimate', 'cost_benefit', 'economic_note',
+  'crop_code', 'crop_type', // crop scope is graph authority (hypothesis crop_group + rule scope)
+]);
+/** Stage / context keys the evaluator understands (schema field names). */
+const STAGE_KEYS: ReadonlySet<string> = new Set(['crop_stage', 'stage', 'growth_stage']);
+const CONTEXT_STRUCT_KEYS: ReadonlySet<string> = new Set(['cultivation_method', 'das_range', 'das_min', 'das_max', 'weather']);
+const DIRECT_BOOLEAN_KEYS: ReadonlySet<string> = new Set(['recent_rain', 'critical_stage']);
+const STATUS_KEYS: ReadonlySet<string> = new Set([
+  'ndvi_level', 'ndvi_status', 'ndvi_trend', 'severity', 'soil_moisture', 'stress_level', 'water_stress',
+  'soil_nitrogen', 'soil_n_status', 'soil_phosphorus', 'soil_p_status', 'soil_potassium', 'soil_k_status', 'risk_level',
+]);
+const NUMERIC_THRESHOLD_RE = /^([<>]=?|==?)\s*(-?\d+\.?\d*)$/;
+
+/**
+ * Generic, data-driven evidence classifier. Reads ONLY the rule row's
+ * `required_observation_category` and the STRUCTURE of `conditions_json`.
+ * Never inspects crop, category, intent or action strings.
+ */
+export function classifyRuleEvidenceRequirement(
+  rule: any,
+  lookup: ObservationLookup = DB_OBSERVATION_LOOKUP,
+): { requirement: RuleEvidenceRequirement; evidence_class: RuleEvidenceClass; reason: string; referenced_codes: string[] } {
+  const roc = rule?.required_observation_category;
+  const rocNonEmpty = Array.isArray(roc) && roc.filter((x: unknown) => typeof x === 'string' && x.trim().length > 0).length > 0;
+  const found = findObservationConditions(rule?.conditions_json);
+  const codes = Array.from(new Set(found.flatMap((f) => f.codes)));
+
+  // Evidence class from observation_master: any FARMER_EVIDENCE / UNKNOWN code ⇒ farmer evidence
+  // is mandatory (fail-closed). Only when EVERY referenced code is a context token is the
+  // rule satisfiable by intent-derived context.
+  let evidenceClass: RuleEvidenceClass = 'NONE';
+  const classes = codes.map((c) => ({ c, k: resolveObservationCodeClass(c, lookup) }));
+  if (classes.length > 0) {
+    evidenceClass = classes.every((x) => x.k === 'CONTEXT_TOKEN') ? 'CONTEXT_TOKEN' : 'FARMER_EVIDENCE';
+  }
+
+  if (rocNonEmpty) {
+    // spec (a): required_observation_category set ⇒ observation REQUIRED. If it references
+    // no code at all, the requirement cannot be satisfied by context ⇒ farmer evidence.
+    if (evidenceClass === 'NONE') evidenceClass = 'FARMER_EVIDENCE';
+    return { requirement: 'OBSERVATION_REQUIRED', evidence_class: evidenceClass, referenced_codes: codes,
+      reason: `required_observation_category=[${roc.join(',')}]; codes=[${classes.map((x) => `${x.c}:${x.k}`).join(',')}]` };
+  }
+  if (found.length > 0) {
+    return { requirement: 'OBSERVATION_REQUIRED', evidence_class: evidenceClass, referenced_codes: codes,
+      reason: `conditions_json observation condition: ${found.slice(0, 4).map((f) => f.label).join(', ')}; codes=[${classes.map((x) => `${x.c}:${x.k}`).join(',')}]` };
+  }
+  return { requirement: 'CONTEXT_SUFFICIENT', evidence_class: 'NONE', referenced_codes: [],
+    reason: 'no required_observation_category and no observation condition in conditions_json' };
+}
+
+/** Walk conditions_json (flat or all/any/leaf) and list observation-bearing conditions with their codes. */
+function findObservationConditions(c: any, out: Array<{ label: string; codes: string[] }> = []): Array<{ label: string; codes: string[] }> {
+  if (!c || typeof c !== 'object') return out;
+  if (Array.isArray(c)) { for (const x of c) findObservationConditions(x, out); return out; }
+  if (Array.isArray(c.all)) findObservationConditions(c.all, out);
+  if (Array.isArray(c.any)) findObservationConditions(c.any, out);
+  const toCodes = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).map((x) => canonicalObsCode(x)).filter(Boolean);
+  if (typeof c.fact === 'string') {
+    const f = c.fact.toLowerCase().replace(/[_-]/g, '');
+    if (['symptom', 'primarysymptom', 'visualsymptom', 'observation', 'observations', 'allobservations'].includes(f)) {
+      out.push({ label: `fact:${c.fact}`, codes: toCodes(c.value) });
+    }
+    return out;
+  }
+  for (const key of Object.keys(c)) {
+    if (key === 'all' || key === 'any') continue;
+    if (OBSERVATION_CONDITION_KEYS.has(key)) { out.push({ label: key, codes: toCodes(c[key]) }); continue; }
+    if (METADATA_KEYS.has(key) || key.startsWith('_')) continue;
+    if (STAGE_KEYS.has(key) || CONTEXT_STRUCT_KEYS.has(key) || DIRECT_BOOLEAN_KEYS.has(key) || STATUS_KEYS.has(key)) continue;
+    const v = c[key];
+    // boolean observation assertion {dead_heart:true} or negative assertion {etl_exceeded:false}
+    if (v === true || v === 'true' || v === false || v === 'false') { out.push({ label: `${key}=${v}`, codes: [canonicalObsCode(key)] }); continue; }
+    // string evidence value {pest:"termite"} — unless it is a numeric threshold
+    if (typeof v === 'string' && !NUMERIC_THRESHOLD_RE.test(v)) { out.push({ label: `${key}=${v}`, codes: [canonicalObsCode(v)] }); continue; }
+  }
+  return out;
+}
+
 // InferenceResult - LANGUAGE-INDEPENDENT symbolic output
 export interface InferenceResult {
   diagnosis: Hypothesis | null;
@@ -179,7 +503,6 @@ export interface InferenceResult {
   reasoning: string[];
   rules_fired: number;
   rules_evaluated: number;
-  // SSOT: matched_responses now use action_text + i18n_key (NO response_mr/hi/en)
   matched_responses: {
     rule_id: string;
     cause: string;
@@ -191,9 +514,24 @@ export interface InferenceResult {
     i18n_key?: string;
     decision_trace_template?: string;
   }[];
+  /** P0 audit fields */
+  authorization: AuthorizationOutcome;
+  authorized_rule_ids: string[];
+  evidence_count: number;
+  /** true ⇒ nothing fired; downstream may ask a clarification question. */
+  clarification_only: boolean;
+  /** Graph-authorized OBSERVATION_REQUIRED rules skipped because trusted evidence was empty
+   *  (the diagnostic route that still needs farmer confirmation). */
+  observation_required_skipped: string[];
+  /** DB-taxonomy BioticGuard availability this turn. UNAVAILABLE ⇒ guard did not run. */
+  taxonomy_guard: 'ACTIVE' | 'UNAVAILABLE';
+  /** observation_master index availability. UNAVAILABLE ⇒ every referenced code is treated as FARMER_EVIDENCE. */
+  observation_index: 'ACTIVE' | 'UNAVAILABLE';
+  /** Intent-derived context tokens accepted this turn (observable=false only). */
+  context_token_count: number;
 }
 
-// RULE CACHE - In-memory per crop_code with 5-minute TTL
+// AUTHORIZED RULE CACHE — keyed by the exact authorized rule_id set
 
 interface CachedRules {
   rules: any[];
@@ -214,14 +552,11 @@ function getCachedRules(cacheKey: string): any[] | null {
 }
 
 function setCachedRules(cacheKey: string, rules: any[]): void {
-  // Cap cache size to prevent unbounded memory growth
   if (ruleCache.size > 50) {
-    // Evict oldest entries
     const now = Date.now();
     for (const [key, val] of ruleCache) {
       if (now > val.expiresAt) ruleCache.delete(key);
     }
-    // If still too large, evict first entry
     if (ruleCache.size > 50) {
       const firstKey = ruleCache.keys().next().value;
       if (firstKey) ruleCache.delete(firstKey);
@@ -230,1249 +565,807 @@ function setCachedRules(cacheKey: string, rules: any[]): void {
   ruleCache.set(cacheKey, { rules, expiresAt: Date.now() + RULE_CACHE_TTL_MS });
 }
 
-// OBSERVATION METADATA CACHE - For ontology bridge + pre-filtering
-
-interface ObservationMetadata {
-  observation_code: string;
-  observation_category: string | null;
-  affected_plant_part: string | null;
-  canonical_group: string | null;
-  is_diagnostic: boolean;
-  observation_type: string | null;       // PRIMARY, SECONDARY, GENERIC
-  symptom_type: string | null;           // e.g., VISUAL, GROWTH, DAMAGE
-  symptom_pattern: string | null;        // e.g., UNIFORM, PATCHY, RING
-  severity_level: string | null;         // e.g., MILD, MODERATE, SEVERE
-  discriminator_score: number;           // 0-100, how uniquely diagnostic
-  frequency_score: number;               // 0-100, how common in field
-  clarity_score: number;                 // 0-100, how easy to observe
-  engine_groups: { engine_group: string; confidence: number }[];
+function emptyResult(
+  authorization: AuthorizationOutcome,
+  authorizedRuleIds: string[],
+  evidenceCount: number,
+  rulesEvaluated: number,
+  reason: string,
+): InferenceResult {
+  return {
+    diagnosis: null,
+    alternative_diagnoses: [],
+    recommendations: [],
+    confidence: 0,
+    reasoning: [reason],
+    rules_fired: 0,
+    rules_evaluated: rulesEvaluated,
+    matched_responses: [],
+    authorization,
+    authorized_rule_ids: authorizedRuleIds,
+    evidence_count: evidenceCount,
+    clarification_only: true,
+    observation_required_skipped: [],
+    taxonomy_guard: isTaxonomyLoaded() ? 'ACTIVE' : 'UNAVAILABLE',
+    observation_index: _observationIndexReady() ? 'ACTIVE' : 'UNAVAILABLE',
+    context_token_count: 0,
+  };
 }
 
-interface CachedObsMetadata {
-  data: Map<string, ObservationMetadata>;
-  expiresAt: number;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// TRUSTED EVIDENCE CONTRACT — the ONLY way observations become rule evidence.
+// Pure function; the orchestrator calls it after the observation bridge.
+//   confirmed : CONFIRMED authority, any source (tap / photo / direct statement)
+//   perceived : EXTRACTED authority whose `source` is in the trusted allowlist
+//   never     : INFERRED, SYNTHETIC, CANDIDATE, or EXTRACTED from an LLM source
+// Codes are returned post-bridge canonical and restricted to observation_master
+// (`knownCanonical`) when that set is supplied.
+// ─────────────────────────────────────────────────────────────────────────────
+export function deriveTrustedEvidence(
+  authored: Pick<AuthoredObservationSet, 'get' | 'getAllCodes'>,
+  bridged: ReadonlyArray<{ raw_code: string; canonical_code: string }>,
+  knownCanonical?: ReadonlySet<string> | null,
+  policy: EnginePolicy = getEnginePolicy(),
+): { confirmed: string[]; perceived: string[]; rejected: Array<{ code: string; authority: string; source: string }> } {
+  const trustedSources = new Set(policy.trusted_perceived_sources.map((x) => String(x).toUpperCase()));
+  const confirmed = new Set<string>();
+  const perceived = new Set<string>();
+  const rejected: Array<{ code: string; authority: string; source: string }> = [];
 
-const obsMetadataCache = new Map<string, CachedObsMetadata>();
-
-function getCachedObsMetadata(cacheKey: string): Map<string, ObservationMetadata> | null {
-  const entry = obsMetadataCache.get(cacheKey);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    obsMetadataCache.delete(cacheKey);
+  const classify = (code: string): 'CONFIRMED' | 'PERCEIVED' | null => {
+    const a = authored.get(code) ?? authored.get(canonicalObsCode(code));
+    if (!a) return null;
+    if (a.authority === ObservationAuthority.CONFIRMED) return 'CONFIRMED';
+    if (a.authority === ObservationAuthority.EXTRACTED && trustedSources.has(String(a.source).toUpperCase())) return 'PERCEIVED';
+    if (!rejected.some((r) => r.code === a.code)) rejected.push({ code: a.code, authority: a.authority, source: a.source });
     return null;
-  }
-  return entry.data;
-}
+  };
 
-function setCachedObsMetadata(cacheKey: string, data: Map<string, ObservationMetadata>): void {
-  if (obsMetadataCache.size > 30) {
-    const now = Date.now();
-    for (const [key, val] of obsMetadataCache) {
-      if (now > val.expiresAt) obsMetadataCache.delete(key);
-    }
+  const known = (c: string) => !knownCanonical || knownCanonical.has(c) || knownCanonical.has(c.toLowerCase());
+  const bridgedRaw = new Set<string>();
+
+  for (const b of bridged) {
+    const raw = canonicalObsCode(b.raw_code);
+    const can = canonicalObsCode(b.canonical_code);
+    if (!raw || !can) continue;
+    bridgedRaw.add(raw);
+    const k = classify(b.raw_code) ?? classify(raw);
+    if (!k || !known(can)) continue;
+    if (k === 'CONFIRMED') { confirmed.add(can); perceived.delete(can); }
+    else if (!confirmed.has(can)) perceived.add(can);
   }
-  obsMetadataCache.set(cacheKey, { data, expiresAt: Date.now() + RULE_CACHE_TTL_MS });
+  // Authored codes that never went through the bridge (already canonical)
+  for (const code of authored.getAllCodes()) {
+    const can = canonicalObsCode(code);
+    if (!can || bridgedRaw.has(can)) continue;
+    const k = classify(code);
+    if (!k || !known(can)) continue;
+    if (k === 'CONFIRMED') { confirmed.add(can); perceived.delete(can); }
+    else if (!confirmed.has(can)) perceived.add(can);
+  }
+  return { confirmed: [...confirmed], perceived: [...perceived], rejected };
 }
 
 // SYMBOLIC REASONER CLASS
 
 export class SymbolicReasoner {
   private supabase: any;
-  
-  // GAP #1 FIX: Accept external Supabase client to prevent connection exhaustion.
+
   constructor(supabaseClient?: any) {
     this.supabase = supabaseClient || createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
   }
-  
-  // CRITICAL: Execute symbolic rules against facts
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTHORIZATION — hypothesis→rule graph is the ONLY authority
+  // ─────────────────────────────────────────────────────────────────────────
+  private resolveAuthorization(
+    auth: GraphRuleAuthorization | null | undefined,
+  ): { outcome: AuthorizationOutcome; ruleIds: string[]; ruleToHypothesis: Map<string, string[]> } {
+    const ruleToHypothesis = new Map<string, string[]>();
+    if (!auth) return { outcome: 'NO_GRAPH_AUTHORIZATION', ruleIds: [], ruleToHypothesis };
+
+    const surviving = new Set(
+      (auth.surviving_hypothesis_ids ?? []).map((h) => String(h ?? '').trim()).filter(Boolean),
+    );
+    if (surviving.size === 0) return { outcome: 'NO_SURVIVING_HYPOTHESES', ruleIds: [], ruleToHypothesis };
+
+    const edges = auth.rule_edges;
+    if (edges) {
+      const entries: Array<[string, string[]]> = edges instanceof Map
+        ? Array.from(edges.entries())
+        : Object.entries(edges as Record<string, string[]>);
+      for (const [hid, rids] of entries) {
+        const h = String(hid ?? '').trim();
+        if (!surviving.has(h)) continue; // eliminated hypothesis ⇒ its edges are dead
+        for (const rid of (rids ?? [])) {
+          const r = String(rid ?? '').trim();
+          if (!r) continue;
+          const list = ruleToHypothesis.get(r) ?? [];
+          if (!list.includes(h)) list.push(h);
+          ruleToHypothesis.set(r, list);
+        }
+      }
+    } else {
+      // Flat list from the same graph — provenance is the surviving set as a whole.
+      for (const rid of (auth.authorized_rule_ids ?? [])) {
+        const r = String(rid ?? '').trim();
+        if (r && !ruleToHypothesis.has(r)) ruleToHypothesis.set(r, [...surviving]);
+      }
+    }
+
+    const ruleIds = Array.from(ruleToHypothesis.keys());
+    if (ruleIds.length === 0) return { outcome: 'NO_AUTHORIZED_RULES', ruleIds: [], ruleToHypothesis };
+    return { outcome: 'AUTHORIZED', ruleIds, ruleToHypothesis };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EVIDENCE GATE — CONFIRMED ∪ trusted PERCEIVED only
+  // ─────────────────────────────────────────────────────────────────────────
+  private gateEvidence(evidence: EvidenceInput | null | undefined): string[] {
+    if (!evidence) return [];
+    const out = new Set<string>();
+    for (const c of (evidence.confirmed ?? [])) {
+      const k = canonicalObsCode(c);
+      if (k) out.add(k);
+    }
+    for (const c of (evidence.perceived ?? [])) {
+      const k = canonicalObsCode(c);
+      if (k) out.add(k);
+    }
+    return Array.from(out);
+  }
+
+  // CRITICAL: Execute symbolic rules against facts — GRAPH-AUTHORIZED ONLY
   async executeRules(
     facts: SymbolicFact,
     landState: AuthoritativeLandState | null,
-    options?: {
-      allowFuzzyMatch?: boolean;
-      minFuzzyScore?: number;
-      urgencyOverride?: boolean;
-    }
+    options?: ExecuteRulesOptions,
   ): Promise<InferenceResult> {
-    console.log('🔬 [SymbolicReasoner] Starting rule execution...');
+    console.log(`🔬 [SymbolicReasoner v${SYMBOLIC_REASONER_VERSION}] Starting graph-authorized rule execution...`);
     console.log(`   Crop: ${facts.crop}, Stage: ${facts.growth_stage}, DOS: ${facts.dos}`);
-    console.log(`   Symptom: ${facts.primary_symptom}, Severity: ${facts.severity}`);
-    console.log(`   Options: fuzzy=${options?.allowFuzzyMatch}, minScore=${options?.minFuzzyScore}, urgent=${options?.urgencyOverride}`);
-    
+
+    // (3) FUZZY DISABLED — never for final execution, never via urgency.
+    if (options?.allowFuzzyMatch || options?.urgencyOverride) {
+      console.log(
+        `   🚫 [FuzzyDisabled] allowFuzzyMatch=${!!options?.allowFuzzyMatch} urgencyOverride=${!!options?.urgencyOverride} ` +
+        `— ignored; fuzzy/semantic matching is retrieval-only and never authorizes a rule`,
+      );
+    }
+
     const startTime = Date.now();
+    const policy = getEnginePolicy();
+    const taxonomyGuard: 'ACTIVE' | 'UNAVAILABLE' = isTaxonomyLoaded() ? 'ACTIVE' : 'UNAVAILABLE';
+    if (taxonomyGuard === 'UNAVAILABLE') {
+      console.warn('   ⚠️ [BioticGuard] DB taxonomy cache not loaded — biotic/abiotic exclusion NOT applied this turn (restriction only; authorization unaffected)');
+    }
+
+    // (2) EVIDENCE GATE
+    const gatedObservations = this.gateEvidence(options?.evidence);
+    const evidenceCount = gatedObservations.length;
+    const lookup = options?.observation_lookup ?? DB_OBSERVATION_LOOKUP;
+    const observationIndex: 'ACTIVE' | 'UNAVAILABLE' = lookup.ready() ? 'ACTIVE' : 'UNAVAILABLE';
+    // CONTEXT TOKENS — intent-derived codes accepted ONLY when observation_master says the
+    // code is not farmer-observable (i.e. it is a route/context marker, never evidence).
+    const contextTokens = new Set<string>();
+    for (const c of (options?.context_tokens ?? [])) {
+      const k = canonicalObsCode(c);
+      if (k && resolveObservationCodeClass(k, lookup) === 'CONTEXT_TOKEN') contextTokens.add(k);
+    }
+    if (observationIndex === 'UNAVAILABLE') {
+      console.warn('   ⚠️ [ObservationIndex] observation_master cache cold — all referenced codes treated as FARMER_EVIDENCE; context tokens disabled');
+    }
+
+    // (1) AUTHORIZATION
+    const auth = this.resolveAuthorization(options?.graph_authorization);
+    console.log(
+      `   🧭 [GraphAuthorization] outcome=${auth.outcome} authorized_rules=${auth.ruleIds.length} ` +
+      `evidence=${evidenceCount} [${gatedObservations.slice(0, 8).join(',')}] context_tokens=${contextTokens.size} [${[...contextTokens].slice(0, 6).join(',')}]`,
+    );
+
+    if (auth.outcome !== 'AUTHORIZED') {
+      return emptyResult(auth.outcome, [], evidenceCount, 0,
+        `${auth.outcome} — no rule may fire without a surviving hypothesis→rule edge`);
+    }
+
+    // Rule facts: the caller's facts with the evidence set REPLACED by the
+    // gated set. Nothing IOM/CANDIDATE/INFERRED/SYNTHETIC survives this line.
+    const ruleFacts: SymbolicFact = {
+      ...facts,
+      all_observations: gatedObservations,
+      context_tokens: [...contextTokens],
+      // has_pest_evidence must be a function of gated evidence only
+      has_pest_evidence: facts.has_pest_evidence === true &&
+        (facts.all_observations || []).some((o) => gatedObservations.includes(canonicalObsCode(o))),
+    };
+
     const firedRules: FiredRule[] = [];
     const hypotheses = new Map<string, Hypothesis>();
     const matchedResponses: InferenceResult['matched_responses'] = [];
+    const observationRequiredSkipped: string[] = [];
     let rulesEvaluated = 0;
-    
-    // PHASE-17: Default to fuzzy matching if urgency override is set
-    const allowFuzzy = options?.allowFuzzyMatch ?? options?.urgencyOverride ?? false;
-    const minFuzzyScore = options?.minFuzzyScore ?? 0.5;
-    
+
     try {
-      // 1. Load relevant rules from decision_rules table
-      const rules = await this.loadRulesForContext(facts);
-      console.log(`   📦 Loaded ${rules.length} candidate rules`);
-      
-      // 2. Evaluate each rule against facts - PURELY SYMBOLIC (NO keyword/language matching)
-      for (const rule of rules) {
+      const rules = await this.loadAuthorizedRules(auth.ruleIds);
+      console.log(`   📦 Loaded ${rules.length}/${auth.ruleIds.length} authorized rules (active, non-deprecated)`);
+
+      // Stage applicability is a RESTRICTION (can only remove), never authorization.
+      const stageRules = this.filterByStage(rules, ruleFacts.growth_stage?.toLowerCase() || '');
+      if (stageRules.length !== rules.length) {
+        console.log(`   🎯 [StageRestriction] ${rules.length} → ${stageRules.length} rules applicable at stage=${ruleFacts.growth_stage}`);
+      }
+
+      const _taxReady = isTaxonomyLoaded();
+      const hasBioticObs = _taxReady && taxonomyHasBioticEvidence(ruleFacts.all_observations);
+
+      for (const rule of stageRules) {
+        // (8)/(9) DB rule contract + observation_master ontology decide what may satisfy the rule.
+        const evidenceReq = classifyRuleEvidenceRequirement(rule, lookup);
+        const needsFarmerEvidence = evidenceReq.evidence_class === 'FARMER_EVIDENCE';
+        const needsContextToken = evidenceReq.evidence_class === 'CONTEXT_TOKEN';
+        if (needsFarmerEvidence && evidenceCount === 0) {
+          observationRequiredSkipped.push(String(rule.rule_id));
+          console.log(`   ⏸ [EvidenceRequired] ${rule.rule_id} skipped — FARMER_EVIDENCE required (${evidenceReq.reason}) but trusted evidence=0`);
+          continue;
+        }
         rulesEvaluated++;
-        
-        // FIX 1: NDVI/ABIOTIC STRESS RULE GUARD  (Phase 0′ 2026-07-29: DB-SSOT)
-        const ruleCategory = rule.category?.toLowerCase() || '';
-        const _taxReady = isTaxonomyLoaded();
         const ruleIsAbiotic = _taxReady && isAbioticRule(rule);
 
-        if (ruleIsAbiotic && facts.has_pest_evidence) {
-          console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} (category=${ruleCategory}) - pest evidence present`);
+        // BioticGuard (restriction, DB taxonomy: decision_rules.biological_group ×
+        // observation_master.semantic_class). No filter when taxonomy unloaded.
+        if (ruleIsAbiotic && (ruleFacts.has_pest_evidence || hasBioticObs)) {
+          console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} - biotic evidence present`);
           continue;
         }
 
-        // Exact canonical-code match against DB biotic semantic classes
-        const hasBioticObs = _taxReady && taxonomyHasBioticEvidence(facts.all_observations || []);
+        // (4) EXACT condition evaluation — no fuzzy, no partial, no scoring
+        const match = this.evaluateConditionsJson(rule.conditions_json || {}, ruleFacts);
+        if (!match.matches) {
+          console.log(`   ✖ Rule ${rule.rule_id} did not match: ${match.reason}`);
+          continue;
+        }
+        // FARMER_EVIDENCE rules must be anchored to an exact trusted-evidence match;
+        // CONTEXT_TOKEN rules must be anchored to an intent-derived context token;
+        // CONTEXT_SUFFICIENT rules fire on exact context conditions alone.
+        if (needsFarmerEvidence && !match.evidence_anchored) {
+          console.log(`   🚫 [EvidenceAnchor] Rule ${rule.rule_id} requires FARMER_EVIDENCE but matched without one (${match.matched_conditions.join(', ')}) — refusing to fire`);
+          continue;
+        }
+        if (needsContextToken && !match.context_anchored) {
+          console.log(`   🚫 [ContextAnchor] Rule ${rule.rule_id} requires an intent CONTEXT_TOKEN but none matched (${match.matched_conditions.join(', ')}) — refusing to fire`);
+          continue;
+        }
+        console.log(`   ▶ ${rule.rule_id} route=${evidenceReq.requirement}/${evidenceReq.evidence_class}`);
 
-        if (ruleIsAbiotic && hasBioticObs) {
-          console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} - biotic observations detected in all_observations`);
-          continue;
-        }
-        
-        // Block NDVI-only rules unless intent explicitly indicates stress/irrigation
-        const conditionsStr = JSON.stringify(rule.conditions_json || {}).toLowerCase();
-        const isNdviOnlyRule = (conditionsStr.includes('ndvi_level') || conditionsStr.includes('ndvi_trend')) && 
-                               !conditionsStr.includes('primary_symptom') && !conditionsStr.includes('observation');
-        const stressIntents = ['WATER_STRESS_SIGNAL', 'IRRIGATION_QUERY', 'IRRIGATION_SCHEDULING'];
-        const currentIntent = facts.user_query?.match(/\[INTENT:([^\]]+)\]/)?.[1] || '';
-        
-        if (isNdviOnlyRule && !stressIntents.includes(currentIntent)) {
-          console.log(`   🚫 [NDVIGuard] Skipping NDVI-only rule ${rule.rule_id} - intent ${currentIntent || 'NONE'} is not stress/irrigation`);
-          continue;
-        }
-        
-        // Bug 1 Fix: Category-based exclusion - skip nutrition rules when pest evidence exists
-        if (facts.has_pest_evidence && ruleCategory === 'nutrition') {
-          console.log(`   🚫 [PestExclusion] Skipping nutrition rule ${rule.rule_id} - pest evidence present`);
-          continue;
-        }
-        
-        // NUTRITION CONFLICT ARBITRATION: Water stress & macro dominance gates
-        const isNutritionRule = ruleCategory.includes('nutrition') || ruleCategory.includes('deficiency');
-        
-        if (isNutritionRule) {
-          // Water stress dominance: blocks ALL urgent nutrient treatments
-          const waterBlock = checkWaterStressDominance(
-            facts.all_observations || [],
-            rule.action_type || '',
-            rule.category || ''
-          );
-          if (waterBlock.blocked) {
-            console.log(`   🚫 [WaterStressDominance] ${rule.rule_id} blocked: ${waterBlock.reason}`);
-            continue;
-          }
-          
-          // Macronutrient dominance: N confirmed blocks micro urgent without soil evidence
-          const macroBlock = checkMacronutrientDominance(
-            facts.all_observations || [],
-            rule.rule_id,
-            rule.cause || '',
-            { soil_zn_deficient: facts.soil_n_status === 'DEFICIENT' ? undefined : undefined }
-          );
-          if (macroBlock.blocked) {
-            console.log(`   🚫 [MacroDominance] ${rule.rule_id} blocked: ${macroBlock.reason}`);
-            continue;
-          }
-          
-          // Zinc specificity gate: requires zinc-specific marker or soil evidence
-          const zincGate = passesZincSpecificityGate(
-            rule.rule_id,
-            [],
-            { all_observations: facts.all_observations }
-          );
-          if (!zincGate.passes) {
-            console.log(`   🚫 [ZincGate] ${rule.rule_id} blocked: ${zincGate.reason}`);
-            continue;
-          }
-          
-          // Micronutrient specificity gate: blocks Fe/Mn/S rules without specific evidence
-          const microGate = passesMicronutrientSpecificityGate(
-            rule.rule_id,
-            [],
-            { all_observations: facts.all_observations }
-          );
-          if (!microGate.passes) {
-            console.log(`   🚫 [MicronutrientGate] ${rule.rule_id} blocked: ${microGate.reason}`);
-            continue;
-          }
-        }
-        
-        // SSOT: Evaluate conditions_json ONLY - no keyword fallback
-        // trigger_keywords column was DROPPED per SSOT architecture
-        const conditionsJson = rule.conditions_json || {};
-        const match = this.evaluateConditionsJson(conditionsJson, facts);
-        
-        // PHASE-17 FIX: Try fuzzy matching if exact match fails
-        let partialMatch: { matches: boolean; confidence: number; missing: string[] } | null = null;
-        if (!match.matches && allowFuzzy) {
-          partialMatch = this.evaluatePartialMatch(conditionsJson, facts, minFuzzyScore);
-        }
-        
-        // SSOT: Only conditions_json or partial matching - NO keyword matching
-        const matches = match.matches || (partialMatch?.matches ?? false);
-        let matchConfidence = Math.max(
-          match.confidence, 
-          partialMatch?.confidence ?? 0
-        );
-        
-        // DIAGNOSTIC CONFIDENCE BOOST (graduated by discriminator_score)
-        if (matches) {
-          const obsMeta = (this as any)._currentObsMetadata as Map<string, ObservationMetadata> | undefined;
-          if (obsMeta && obsMeta.size > 0) {
-            let maxBoost = 1.0;
-            for (const obs of (facts.all_observations || [])) {
-              const meta = obsMeta.get(obs);
-              if (!meta) continue;
-              const disc = meta.discriminator_score ?? 50;
-              // Graduated boost: disc=100 → 1.5x, disc=75 → 1.4x, disc=50 → 1.25x, disc=25 → 1.1x
-              let boost = 1.0 + (disc / 200); // Maps 0-100 → 1.0-1.5
-              // PRIMARY observations get extra 0.05 boost
-              if (meta.observation_type === 'PRIMARY') boost += 0.05;
-              // is_diagnostic legacy flag also boosts
-              if (meta.is_diagnostic) boost = Math.max(boost, 1.4);
-              maxBoost = Math.max(maxBoost, boost);
+        const hypothesisIds = auth.ruleToHypothesis.get(String(rule.rule_id)) ?? [];
+        const hypothesisId = hypothesisIds[0] ?? null;
+        console.log(`   ✅ Rule fired: ${rule.rule_id} (hypotheses=[${hypothesisIds.join(',')}], conf: ${(match.confidence * 100).toFixed(0)}%)`);
+
+        const firedRule: FiredRule = {
+          rule_id: rule.rule_id,
+          rule_name: rule.cause || rule.rule_id,
+          category: rule.category,
+          confidence: (() => {
+            const cs = rule.confidence_score;
+            if (cs != null && cs > 1) {
+              console.error(`[symbolic-reasoner] confidence_score out of range: ${cs} for rule ${rule.rule_id}. Expected 0–1 float.`);
             }
-            if (maxBoost > 1.0) {
-              matchConfidence = Math.min(1.0, matchConfidence * maxBoost);
-              console.log(`   🔬 [DiagBoost] discriminator_score boost ${maxBoost.toFixed(2)}x → confidence ${(matchConfidence * 100).toFixed(0)}%`);
-            }
-          }
-        }
-        
-        if (matches) {
-          const matchType = match.matches ? 'EXACT' : 'PARTIAL';
-          console.log(`   ✅ Rule fired: ${rule.rule_id} (conf: ${(matchConfidence * 100).toFixed(0)}%, type: ${matchType})`);
-          
-          // SSOT: FiredRule uses language-independent fields ONLY
-          // response_mr/hi/en columns were DROPPED per SSOT architecture
-          const firedRule: FiredRule = {
+            return cs || match.confidence;
+          })(),
+          priority: rule.priority || 50,
+          data_authority_rank: typeof rule.data_authority_rank === 'number' ? rule.data_authority_rank : null,
+          cause: rule.cause || 'UNKNOWN',
+          hypothesis_id: hypothesisId,
+          hypothesis_ids: [...hypothesisIds],
+          actions: {
+            action_type: rule.action_type || 'advisory',
+            action_text: rule.action_text,
+            reason_text: rule.reason_text,
+            knowledge_text: rule.knowledge_text,
+            i18n_key: rule.i18n_key,
+            decision_trace_template: rule.decision_trace_template,
+            product_reference: rule.rule_id,
+            phi_days: rule.phi_days,
+            bee_toxicity: rule.bee_toxicity,
+            ipm_level: rule.ipm_level,
+            active_ingredient: rule.active_ingredient,
+            organic_alternative: rule.organic_alternative,
+          },
+          reasoning: this.generateRuleExplanation(rule, ruleFacts, match, hypothesisId),
+          conditions_matched: match.matched_conditions,
+        };
+        firedRules.push(firedRule);
+
+        if (rule.action_type || rule.action_text || rule.i18n_key) {
+          matchedResponses.push({
             rule_id: rule.rule_id,
-            rule_name: rule.cause || rule.rule_id,
-            category: rule.category,
-            confidence: (() => {
-              const cs = rule.confidence_score;
-              if (cs != null && cs > 1) {
-                console.error(`[symbolic-reasoner] confidence_score out of range: ${cs} for rule ${rule.rule_id}. Expected 0–1 float. DB migration may not have run.`);
-              }
-              return cs || matchConfidence;
-            })(),
-            priority: rule.priority || 50,
             cause: rule.cause || 'UNKNOWN',
-            actions: {
-              action_type: rule.action_type || 'advisory',
-              // SSOT: Language-independent response fields
-              action_text: rule.action_text,
-              reason_text: rule.reason_text,
-              knowledge_text: rule.knowledge_text,
-              i18n_key: rule.i18n_key,
-              decision_trace_template: rule.decision_trace_template,
-              // Product metadata
-              product_reference: rule.rule_id,
-              phi_days: rule.phi_days,
-              bee_toxicity: rule.bee_toxicity,
-              ipm_level: rule.ipm_level,
-              active_ingredient: rule.active_ingredient,
-              organic_alternative: rule.organic_alternative
-            },
-            reasoning: this.generateRuleExplanation(rule, facts, match),
-            conditions_matched: match.matched_conditions || ['conditions_json_match']
-          };
-          
-          firedRules.push(firedRule);
-          
-          // SSOT: Collect responses using action_text + i18n_key (NOT response_mr/hi/en)
-          if (rule.action_type || rule.action_text || rule.i18n_key) {
-            matchedResponses.push({
-              rule_id: rule.rule_id,
-              cause: rule.cause || 'UNKNOWN',
-              action_type: rule.action_type || 'advisory',
-              priority: rule.priority,
-              action_text: rule.action_text,
-              reason_text: rule.reason_text,
-              knowledge_text: rule.knowledge_text,
-              i18n_key: rule.i18n_key,
-              decision_trace_template: rule.decision_trace_template
-            });
-          }
-          
-          // Update hypotheses
-          this.updateHypotheses(hypotheses, rule, matchConfidence);
+            action_type: rule.action_type || 'advisory',
+            priority: rule.priority,
+            action_text: rule.action_text,
+            reason_text: rule.reason_text,
+            knowledge_text: rule.knowledge_text,
+            i18n_key: rule.i18n_key,
+            decision_trace_template: rule.decision_trace_template,
+          });
         }
+
+        this.updateHypotheses(hypotheses, rule, match.confidence, hypothesisIds, policy);
       }
-      
+
       console.log(`   🎯 Total rules fired: ${firedRules.length}/${rulesEvaluated}`);
-      
-      // 3. Rank hypotheses
-      const rankedHypotheses = this.rankHypotheses(hypotheses, facts);
-      
-    // 4. Sort by AUTHORITY HIERARCHY: SAFETY > BIOTIC > ABIOTIC > WEATHER > NDVI
-      const CATEGORY_PRIORITY: Record<string, number> = {
-        safety: 0, pest: 1, disease: 2, ipm: 2, nutrition: 4, deficiency: 4,
-        water_stress: 5, stress: 5, irrigation: 5, weather: 6, ndvi: 7, general: 8
-      };
+
+      const rankedHypotheses = this.rankHypotheses(hypotheses, policy);
+
+      // Ordering authority is DB-owned: data_authority_rank DESC, then priority DESC.
       firedRules.sort((a, b) => {
-        const catA = CATEGORY_PRIORITY[a.category?.toLowerCase()] || 3;
-        const catB = CATEGORY_PRIORITY[b.category?.toLowerCase()] || 3;
-        if (catA !== catB) return catA - catB; // Lower = higher priority
-        // P2-1: data_authority_rank DESC (higher rank = higher authority)
-        const rankA = (a as any).data_authority_rank ?? 50;
-        const rankB = (b as any).data_authority_rank ?? 50;
+        const rankA = a.data_authority_rank ?? 0;
+        const rankB = b.data_authority_rank ?? 0;
         if (rankA !== rankB) return rankB - rankA;
         return b.priority - a.priority;
       });
-      
-      // 5. Calculate final confidence
-      const finalConfidence = this.calculateFinalConfidence(rankedHypotheses, firedRules, facts);
-      
-      const processingTime = Date.now() - startTime;
-      console.log(`   ✅ Inference complete in ${processingTime}ms`);
-      
+
+      const finalConfidence = this.calculateFinalConfidence(rankedHypotheses, firedRules, ruleFacts, policy);
+      console.log(`   ✅ Inference complete in ${Date.now() - startTime}ms`);
+
       return {
         diagnosis: rankedHypotheses[0] || null,
         alternative_diagnoses: rankedHypotheses.slice(1, 3),
         recommendations: firedRules,
-        confidence: finalConfidence,
-        reasoning: firedRules.map(r => r.reasoning),
+        confidence: firedRules.length > 0 ? finalConfidence : 0,
+        reasoning: firedRules.map((r) => r.reasoning),
         rules_fired: firedRules.length,
         rules_evaluated: rulesEvaluated,
-        matched_responses: matchedResponses
+        matched_responses: matchedResponses,
+        authorization: 'AUTHORIZED',
+        authorized_rule_ids: auth.ruleIds,
+        evidence_count: evidenceCount,
+        clarification_only: firedRules.length === 0,
+        observation_required_skipped: observationRequiredSkipped,
+        taxonomy_guard: taxonomyGuard,
+        observation_index: observationIndex,
+        context_token_count: contextTokens.size,
       };
-      
     } catch (error) {
       console.error('❌ [SymbolicReasoner] Execution error:', error);
-      return {
-        diagnosis: null,
-        alternative_diagnoses: [],
-        recommendations: [],
-        confidence: 0,
-        reasoning: [`Error: ${error.message}`],
-        rules_fired: 0,
-        rules_evaluated: rulesEvaluated,
-        matched_responses: []
-      };
+      return emptyResult('AUTHORIZED', auth.ruleIds, evidenceCount, rulesEvaluated, `Error: ${(error as Error).message}`);
     }
   }
-  
-  // PHASE-17 FIX (Issue #4): Evaluate partial/fuzzy match
-  private evaluatePartialMatch(
-    conditions: RuleCondition,
-    facts: SymbolicFact,
-    minScore: number
-  ): { matches: boolean; confidence: number; missing: string[] } {
-    // Handle empty conditions
-    if (!conditions || Object.keys(conditions).length === 0) {
-      return { matches: false, confidence: 0, missing: [] };
-    }
-    
-    // Handle 'all' compound conditions - count how many match
-    if (conditions.all && Array.isArray(conditions.all)) {
-      let totalConditions = conditions.all.length;
-      let metConditions = 0;
-      const missing: string[] = [];
-      
-      for (const c of conditions.all) {
-        const result = this.evaluateConditionsJson(c, facts);
-        if (result.matches) {
-          metConditions++;
-        } else if (c.fact) {
-          // FIX-B4b (P1, 2026-08-09): distinguish ABSENT evidence (fact not
-          // available — UNKNOWN) from CONTRADICTED evidence (fact present but
-          // value mismatched). Reuses this.getFactValue — the same resolver the
-          // strict leaf evaluator uses at the `conditions.fact` branch above.
-          const _factVal = this.getFactValue(facts, c.fact);
-          if (_factVal === undefined || _factVal === null) {
-            missing.push(c.fact); // UNKNOWN — must block firing, may drive clarification
-          }
-          // contradicted facts stay out of `missing`: they lower partialScore
-          // (existing fuzzy tolerance) but are not "missing evidence".
-        }
-      }
-      
-      const partialScore = totalConditions > 0 ? metConditions / totalConditions : 0;
-      
-      return {
-        // FIX-B4b: a fuzzy match may tolerate near-miss VALUES up to minScore,
-        // but may NEVER fire while required evidence is ABSENT (unknown ≠ false;
-        // missing evidence routes to clarification, not to a recommendation).
-        matches: partialScore >= minScore && missing.length === 0,
-        confidence: partialScore,
-        missing
-      };
-    }
-    
-    // Handle 'any' compound conditions - at least one match is enough
-    if (conditions.any && Array.isArray(conditions.any)) {
-      for (const c of conditions.any) {
-        const result = this.evaluateConditionsJson(c, facts);
-        if (result.matches) {
-          return { matches: true, confidence: result.confidence, missing: [] };
-        }
-      }
-      return { matches: false, confidence: 0, missing: [] };
-    }
-    
-    return { matches: false, confidence: 0, missing: [] };
-  }
-  
-  // Load rules matching the context from database.
- private async loadRulesForContext(facts: SymbolicFact): Promise<any[]> {
-    const cropCode = facts.crop_code?.toLowerCase() || '';
-    const stage = facts.growth_stage?.toLowerCase() || '';
-    
-    // UNIFIED: Use crop-code-normalizer instead of inline CROP_TO_DB map
-    const { normalizeCropCode: normCrop, getCropCodeVariants: getVariants } = await import('../utils/crop-code-normalizer.ts');
-    const dbCode = normCrop(cropCode);
-    const variants = new Set(getVariants(cropCode));
-    const cacheKey = `rules_${dbCode}`;
-    
-    // Check cache first
+
+  // Load ONLY the authorized rule ids (active, non-deprecated). No crop corpus.
+  private async loadAuthorizedRules(ruleIds: string[]): Promise<any[]> {
+    if (ruleIds.length === 0) return [];
+    const cacheKey = `auth_rules_${[...ruleIds].sort().join('|')}`;
     const cached = getCachedRules(cacheKey);
     if (cached) {
-      console.log(`   ♻️ [Cache HIT] ${cached.length} rules for crop=${dbCode}`);
-      const stageFiltered = this.filterByStage(cached, stage);
-      // Apply observation layer filtering
-      return await this.applyObservationLayerFilter(stageFiltered, facts);
-    }
-    
-    console.log(`   🔄 [Cache MISS] Loading rules for crop=${dbCode} (variants: ${[...variants].join(',')}) from DB`);
-    const variantArr = [...variants];
-    const orFilter = variantArr.map(v => `crop_code.eq.${v}`).join(',');
-    // P2-4: Filter deprecated rules + order by authority rank then priority
-    const { data, error } = await this.supabase
-      .from('decision_rules')
-      .select('*')
-      .eq('is_active', true)
-      .or('scope.eq.global,scope.is.null') // FIX-7 (P1-8): this direct query bypasses rule-repository's scopeToTenant()
-      .or(orFilter)
-      .is('deprecated_at', null)
-      .order('data_authority_rank', { ascending: false })
-      .order('priority', { ascending: false })
-      .limit(500);
-    
-    if (error) {
-      console.error('❌ Failed to load rules:', error);
-      // FIX-4 (P1-6): DB failure must not silently become "no rules for crop".
-      const { KnowledgeLoadError } = await import('../data/rule-repository.ts');
-      throw new KnowledgeLoadError(`decision_rules load failed (crop=${dbCode}): ${error.message}`);
-    }
-    
-    const allRules = data || [];
-    // Cache the full crop rule set (before stage filtering)
-    setCachedRules(cacheKey, allRules);
-    console.log(`   💾 [Cache SET] ${allRules.length} rules cached for crop=${dbCode} (TTL=5min)`);
-    
-    const stageFiltered = this.filterByStage(allRules, stage);
-    // Apply observation layer filtering
-    return await this.applyObservationLayerFilter(stageFiltered, facts);
-  }
-  
-  // OBSERVATION LAYER: Load observation metadata from observation_master + canonical_group_mapping
-  private async loadObservationMetadata(observationCodes: string[]): Promise<Map<string, ObservationMetadata>> {
-    if (!observationCodes || observationCodes.length === 0) {
-      return new Map();
-    }
-    
-    // FIX F4-A (2026-07-26): observation_master.observation_code is 100%
-    const normalizedCodes = Array.from(
-      new Set(
-        (observationCodes || [])
-          .map((c) => canonicalObsCode(c))
-          .filter((c): c is string => !!c && c.length > 0),
-      ),
-    );
-    if (normalizedCodes.length === 0) return new Map();
-    
-    const cacheKey = `obs_meta_${normalizedCodes.sort().join(',')}`;
-    const cached = getCachedObsMetadata(cacheKey);
-    if (cached) {
-      console.log(`   ♻️ [ObsMeta Cache HIT] ${cached.size} observations`);
+      console.log(`   ♻️ [Cache HIT] ${cached.length} authorized rules`);
       return cached;
     }
-    
-    try {
-      // Query observation_master for metadata
-      const { data: obsData, error: obsError } = await this.supabase
-        .from('observation_master')
-        .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
-        .in('observation_code', normalizedCodes);
-      
-      if (obsError) {
-        console.error('❌ [ObsMeta] Failed to load observation metadata:', obsError.message);
-        return new Map();
+
+    const loaded: any[] = [];
+    const CHUNK = 100;
+    for (let i = 0; i < ruleIds.length; i += CHUNK) {
+      const chunk = ruleIds.slice(i, i + CHUNK);
+      const { data, error } = await this.supabase
+        .from('decision_rules')
+        .select('*')
+        .in('rule_id', chunk)
+        .eq('is_active', true)
+        .is('deprecated_at', null);
+      if (error) {
+        console.error('❌ Failed to load authorized rules:', error);
+        const { KnowledgeLoadError } = await import('../data/rule-repository.ts');
+        throw new KnowledgeLoadError(`decision_rules load failed (authorized ids=${chunk.length}): ${error.message}`);
       }
-      
-      // Query canonical_group_mapping for ontology ENRICHMENT (not identity).
-      const bioGroups = [...new Set((obsData || []).map((o: any) => o.canonical_group).filter(Boolean))];
-      let mappingData: any[] = [];
-      
-      if (bioGroups.length > 0) {
-        // 2026-07-27 — DB-VERIFIED CORRECTION of FIX F1 (2026-07-26).
-        const { data: mapData, error: mapError } = await this.supabase
-          .from('canonical_group_mapping')
-          .select('biological_group, engine_group, confidence')
-          .in('engine_group', bioGroups);
-        
-        if (mapError) {
-          console.warn(`[ObsMeta] canonical_group_mapping fetch error: ${mapError.message}`);
-        } else if (mapData) {
-          mappingData = mapData;
-          if (mapData.length === 0) {
-            console.log(
-              `[ONTOLOGY_ENRICHMENT_EMPTY] no canonical_group_mapping rows for engine_groups=[${bioGroups.join(',')}] ` +
-              `— engine groups still resolved from observation_master.canonical_group (identity). Non-blocking.`,
-            );
-          }
-        }
-      }
-      
-      // Build metadata map
-      const result = new Map<string, ObservationMetadata>();
-      for (const obs of (obsData || [])) {
-        // Identity edge (always non-empty when canonical_group is set). The
-        const engineGroups: Array<{ engine_group: string; confidence: number }> = [];
-        if (obs.canonical_group) {
-          engineGroups.push({ engine_group: obs.canonical_group, confidence: 1 });
-        }
-
-
-
-        
-        result.set(obs.observation_code, {
-          observation_code: obs.observation_code,
-          observation_category: obs.observation_category,
-          affected_plant_part: obs.affected_plant_part,
-          canonical_group: obs.canonical_group,
-          is_diagnostic: obs.is_diagnostic === true,
-          observation_type: obs.observation_type || 'GENERIC',
-          symptom_type: obs.symptom_type || null,
-          symptom_pattern: obs.symptom_pattern || null,
-          severity_level: obs.severity_level || null,
-          discriminator_score: obs.discriminator_score ?? 50,
-          frequency_score: obs.frequency_score ?? 50,
-          clarity_score: obs.clarity_score ?? 50,
-          engine_groups: engineGroups
-        });
-      }
-      
-      console.log(`   📋 [ObsMeta] Loaded ${result.size} observation metadata entries, ${mappingData.length} ontology mappings`);
-      setCachedObsMetadata(cacheKey, result);
-      return result;
-      
-    } catch (e) {
-      console.error('❌ [ObsMeta] Exception:', e);
-      return new Map();
-    }
-  }
-  
-  // OBSERVATION LAYER: Apply category + plant-part pre-filtering to candidate rules
-  private async applyObservationLayerFilter(rules: any[], facts: SymbolicFact): Promise<any[]> {
-    const rawObservations = facts.all_observations || [];
-    if (rawObservations.length === 0) {
-      console.log(`   ⏭️ [ObsFilter] No observations - skipping pre-filter`);
-      return rules;
+      loaded.push(...(data || []));
     }
 
-    // ─── OBSERVATION BRIDGE ───────────────────────────────────────────────
-    const cropForBridge = String(facts.crop_code || facts.crop || '').toLowerCase().trim();
-    let observations: string[] = [...rawObservations];
-    try {
-      const { bridgeCodes } = await import('./concept-bridge.ts');
-      const bridged = bridgeCodes(cropForBridge, rawObservations as string[]);
-      if (bridged && bridged.length > 0) observations = bridged;
-
-      const canonCodes = Array.from(
-        new Set(observations.map((o) => canonicalObsCode(o)).filter(Boolean)),
-      );
-
-      // Which of these already exist in observation_master? Those are frozen.
-      const { data: masterRows } = await this.supabase
-        .from('observation_master')
-        .select('observation_code')
-        .in('observation_code', canonCodes);
-      const inMaster = new Set(
-        (Array.isArray(masterRows) ? masterRows : []).map((r: any) =>
-          canonicalObsCode(r?.observation_code),
-        ),
-      );
-
-      const unresolved = canonCodes.filter((c) => !inMaster.has(c));
-      if (unresolved.length > 0) {
-        const { data: aliasRows } = await this.supabase
-          .from('observation_aliases')
-          .select('alias_code, canonical_code')
-          .in('alias_code', unresolved);
-        if (Array.isArray(aliasRows) && aliasRows.length > 0) {
-          const aliasMap = new Map<string, string>();
-          for (const row of aliasRows as any[]) {
-            if (row?.alias_code && row?.canonical_code) {
-              aliasMap.set(canonicalObsCode(row.alias_code), String(row.canonical_code));
-            }
-          }
-          observations = observations.map((o) => {
-            const c = canonicalObsCode(o);
-            if (inMaster.has(c)) return o; // already canonical — never rewrite
-            return aliasMap.get(c) ?? o;
-          });
-        }
-      }
-
-      const changed =
-        observations.length !== rawObservations.length ||
-        observations.some((v, i) => v !== rawObservations[i]);
-      if (changed) {
-        console.log(
-          `   🧩 [OBSERVATION_BRIDGE] crop=${cropForBridge} raw=[${rawObservations.join(',')}] → bridged=[${observations.join(',')}] ` +
-            `(master_frozen=${inMaster.size} alias_resolved=${unresolved.length})`,
-        );
-      }
-    } catch (e) {
-      console.warn(`   ⚠️ [OBSERVATION_BRIDGE] Bridge failed, using raw codes: ${(e as Error).message}`);
-    }
-
-
-    const obsMeta = await this.loadObservationMetadata(observations);
-    if (obsMeta.size === 0) {
-      console.log(`   ⏭️ [ObsFilter] No observation metadata found for [${observations.join(',')}] - skipping pre-filter`);
-      return rules;
-    }
-    
-    // Store metadata for later use in confidence boosting
-    (this as any)._currentObsMetadata = obsMeta;
-    
-    // Collect observation categories and plant parts
-    const obsCategories = new Set<string>();
-    const obsPlantParts = new Set<string>();
-    const obsEngineGroups = new Set<string>();
-    
-    for (const [, meta] of obsMeta) {
-      if (meta.observation_category) obsCategories.add(meta.observation_category);
-      if (meta.affected_plant_part) obsPlantParts.add(meta.affected_plant_part);
-      for (const eg of meta.engine_groups) {
-        obsEngineGroups.add(eg.engine_group);
-      }
-    }
-    
-    console.log(`   🔬 [ObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}], EngineGroups: [${[...obsEngineGroups].join(',')}]`);
-    
-    // P3: TIERED RULE-FILTER WIDENING — never collapse candidates to zero.
-    const obsCanonicalGroups = new Set<string>();
-    for (const [, meta] of obsMeta) {
-      const cg = (meta as any)?.canonical_group;
-      if (cg) obsCanonicalGroups.add(String(cg).toUpperCase());
-    }
-
-    const matchCat = (rule: any): boolean => {
-      const reqCat = rule.required_observation_category;
-      if (!reqCat || !Array.isArray(reqCat) || reqCat.length === 0) return true;
-      return reqCat.some((cat: string) => obsCategories.has(cat));
-    };
-    const matchPart = (rule: any): boolean => {
-      const reqPart = rule.required_plant_part;
-      if (!reqPart || !Array.isArray(reqPart) || reqPart.length === 0) return true;
-      return (
-        obsPlantParts.has('WHOLE') ||
-        reqPart.includes('WHOLE') ||
-        reqPart.some((part: string) => obsPlantParts.has(part))
-      );
-    };
-    const matchGroup = (rule: any): boolean => {
-      const cg = rule.canonical_group;
-      if (!cg) return true;
-      if (obsCanonicalGroups.size === 0) return true;
-      return obsCanonicalGroups.has(String(cg).toUpperCase());
-    };
-
-    const beforeCount = rules.length;
-    const tiers: Array<{ tier: number; label: string; fn: (r: any) => boolean }> = [
-      { tier: 0, label: 'CATEGORY+PART', fn: (r) => matchCat(r) && matchPart(r) },
-      { tier: 1, label: 'CATEGORY_ONLY', fn: (r) => matchCat(r) },
-      { tier: 2, label: 'PART_ONLY', fn: (r) => matchPart(r) },
-      { tier: 3, label: 'CANONICAL_GROUP', fn: (r) => matchGroup(r) },
-      { tier: 4, label: 'CROP_SCOPE', fn: () => true },
-    ];
-
-    let filtered: any[] = [];
-    let appliedTier = 0;
-    for (const t of tiers) {
-      filtered = rules.filter(t.fn);
-      appliedTier = t.tier;
-      if (filtered.length > 0) {
-        if (t.tier > 0) {
-          console.warn(
-            `   🔓 [RULE_FILTER_WIDEN] tier=${t.tier} label=${t.label} pre=${beforeCount} post=${filtered.length}`,
-          );
-        }
-        break;
-      }
-      if (beforeCount > 0) {
-        console.warn(`   🔓 [RULE_FILTER_WIDEN] tier=${t.tier} label=${t.label} pre=${beforeCount} post=0 → widening`);
-      } else {
-        break;
-      }
-    }
-    // Tier 5: universal scope — never return empty when candidates existed.
-    if (filtered.length === 0 && beforeCount > 0) {
-      filtered = rules;
-      appliedTier = 5;
-      console.warn(`   🔓 [RULE_FILTER_WIDEN] tier=5 label=UNIVERSAL pre=${beforeCount} post=${filtered.length}`);
-    }
-
-    const removedCount = beforeCount - filtered.length;
-    if (removedCount > 0) {
-      console.log(
-        `   🎯 [ObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${filtered.length}) tier=${appliedTier}`,
-      );
-    }
-    
-    // Candidate explosion warning
-    if (filtered.length > 25) {
-      console.warn(`   ⚠️ [RULE_EXPLOSION] ${filtered.length} candidate rules for ${observations.length} observations - consider tighter required_observation_category/required_plant_part constraints`);
-    }
-    
-    return filtered;
+    // Defensive: never evaluate a row the graph did not authorize, even if the
+    // client returned extras.
+    const allowed = new Set(ruleIds.map(String));
+    const rules = loaded.filter((r) => allowed.has(String(r?.rule_id)));
+    setCachedRules(cacheKey, rules);
+    return rules;
   }
 
-  
-  // Filter rules by growth stage
+  // Filter rules by growth stage (restriction only)
   private filterByStage(rules: any[], stage: string): any[] {
-    return rules.filter(rule => {
+    return rules.filter((rule) => {
       const stageApplicable = rule.stage_applicable || [];
       if (stageApplicable.length === 0) return true;
-      return stageApplicable.some((s: string) => 
+      return stageApplicable.some((s: string) =>
         s.toLowerCase() === stage || s === '*' || s === 'all'
       );
     });
   }
-  
-  // CRITICAL: Evaluate conditions_json against facts.
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // (4) CONDITION SEMANTICS — exact, fail-closed
+  // ─────────────────────────────────────────────────────────────────────────
   evaluateConditionsJson(
     conditions: RuleCondition,
-    facts: SymbolicFact
-  ): { matches: boolean; confidence: number; reason: string; matched_conditions: string[] } {
+    facts: SymbolicFact,
+  ): { matches: boolean; confidence: number; reason: string; matched_conditions: string[]; evidence_anchored: boolean; context_anchored: boolean } {
     const matchedConditions: string[] = [];
-    
-    // FIX-B7 (P2, 2026-08-09): a rule with NO conditions must not auto-match.
-    // Live DB verified 2026-08-09: 0 of 1,857 active rules have empty
-    // conditions_json, so this is a latent-defect guard with zero behaviour
-    // change today. Paired DB constraint in fixes.sql pins it permanently.
-    if (!conditions || Object.keys(conditions).length === 0) {
-      return { matches: false, confidence: 0, reason: 'NO_CONDITIONS — rule data error, refusing default match', matched_conditions: [] };
+    // evidence_anchored: at least one satisfied condition was an EXACT match against
+    // gated evidence (all_observations). Context-only matches (stage / DAS / NDVI /
+    // weather / soil) never anchor a rule — spec P0 §1.
+    let evidenceAnchored = false;
+    // context_anchored: a satisfied observation condition was met by an intent-derived
+    // CONTEXT_TOKEN (observation_master.is_farmer_observable=false). Never farmer evidence.
+    let contextAnchored = false;
+    const FAIL = (reason: string) => ({ matches: false, confidence: 0, reason, matched_conditions: [] as string[], evidence_anchored: false, context_anchored: false });
+
+    if (!conditions || typeof conditions !== 'object' || Array.isArray(conditions) || Object.keys(conditions).length === 0) {
+      return FAIL('NO_CONDITIONS — empty/non-symbolic conditions never match');
     }
-    
-    // PATH A: Recursive all/any/fact/operator format (future-proof)
-    if (conditions.all && Array.isArray(conditions.all)) {
-      const results = conditions.all.map(c => this.evaluateConditionsJson(c, facts));
-      const allMatch = results.every(r => r.matches);
-      const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
-      results.forEach(r => matchedConditions.push(...r.matched_conditions));
-      return {
-        matches: allMatch,
-        confidence: allMatch ? avgConfidence : 0,
-        reason: allMatch ? 'All conditions met' : 'Some conditions failed',
-        matched_conditions: matchedConditions
-      };
+
+    // PATH A: Recursive all/any/fact/operator format
+    if (conditions.all !== undefined) {
+      if (!Array.isArray(conditions.all) || conditions.all.length === 0) return FAIL('all: empty — never matches');
+      const results = conditions.all.map((c) => this.evaluateConditionsJson(c, facts));
+      const allMatch = results.every((r) => r.matches);
+      if (!allMatch) return FAIL(`all: failed [${results.filter((r) => !r.matches).map((r) => r.reason).join('; ')}]`);
+      results.forEach((r) => matchedConditions.push(...r.matched_conditions));
+      const avg = results.reduce((s, r) => s + r.confidence, 0) / results.length;
+      return { matches: true, confidence: avg, reason: 'All conditions met', matched_conditions: matchedConditions,
+        evidence_anchored: results.some((r) => r.evidence_anchored), context_anchored: results.some((r) => r.context_anchored) };
     }
-    
-    if (conditions.any && Array.isArray(conditions.any)) {
-      const results = conditions.any.map(c => this.evaluateConditionsJson(c, facts));
-      const anyMatch = results.some(r => r.matches);
-      const maxConfidence = Math.max(...results.map(r => r.confidence), 0);
-      results.filter(r => r.matches).forEach(r => matchedConditions.push(...r.matched_conditions));
-      return {
-        matches: anyMatch,
-        confidence: anyMatch ? maxConfidence : 0,
-        reason: anyMatch ? 'At least one condition met' : 'No conditions met',
-        matched_conditions: matchedConditions
-      };
+
+    if (conditions.any !== undefined) {
+      if (!Array.isArray(conditions.any) || conditions.any.length === 0) return FAIL('any: empty — never matches');
+      const results = conditions.any.map((c) => this.evaluateConditionsJson(c, facts));
+      const hits = results.filter((r) => r.matches);
+      if (hits.length === 0) return FAIL('any: no condition met');
+      hits.forEach((r) => matchedConditions.push(...r.matched_conditions));
+      return { matches: true, confidence: Math.max(...hits.map((r) => r.confidence)), reason: 'At least one condition met', matched_conditions: matchedConditions,
+        evidence_anchored: hits.some((r) => r.evidence_anchored), context_anchored: hits.some((r) => r.context_anchored) };
     }
-    
-    if (conditions.fact && conditions.operator) {
+
+    if (conditions.fact !== undefined || conditions.operator !== undefined) {
+      if (!conditions.fact || !conditions.operator) return FAIL('fact/operator: incomplete leaf — non-evaluable');
       const factValue = this.getFactValue(facts, conditions.fact);
-      if (factValue === undefined || factValue === null) {
-        return { matches: false, confidence: 0, reason: `Fact '${conditions.fact}' not available`, matched_conditions: [] };
+      if (factValue === undefined || factValue === null || factValue === 'UNKNOWN' || factValue === 'unknown') {
+        return FAIL(`Fact '${conditions.fact}' not available`);
       }
-      const matches = this.evaluateOperator(factValue, conditions.operator, conditions.value);
-      if (matches) matchedConditions.push(`${conditions.fact} ${conditions.operator} ${conditions.value}`);
-      return {
-        matches,
-        confidence: matches ? 1.0 : 0,
-        reason: matches ? `${conditions.fact} ${conditions.operator} ${conditions.value}` : `${conditions.fact} condition failed`,
-        matched_conditions: matchedConditions
-      };
+      const ok = this.evaluateOperator(factValue, conditions.operator, conditions.value, facts);
+      if (!ok) return FAIL(`${conditions.fact} ${conditions.operator} ${JSON.stringify(conditions.value)} failed`);
+      const label = `${conditions.fact} ${conditions.operator} ${JSON.stringify(conditions.value)}`;
+      const leafAnchored = Array.isArray(factValue) &&
+        ['equal', 'equals', 'contains', 'in'].includes(String(conditions.operator).toLowerCase());
+      return { matches: true, confidence: 1.0, reason: label, matched_conditions: [label], evidence_anchored: leafAnchored, context_anchored: false };
     }
-    
-    // PATH B: Flat DB format (actual production format)
-    const cond = conditions as any;
-    let totalConditions = 0;
-    let metConditions = 0;
-    
-    // Build a combined symptom/observation set for matching.
-    const factSymptom = canonicalObsCode(facts.primary_symptom);
-    const factQuery = canonicalObsCode(facts.user_query);
+
+    // PATH B: Flat DB format — EVERY evaluable key must pass; non-evaluable = FAIL
+    const cond = conditions as Record<string, any>;
     const factStageCanon = canonicalStageKey(facts.growth_stage);
-    const allObsCanon = (facts.all_observations || []).map(o => canonicalObsCode(o)).filter(Boolean);
-
-    
-    // STAGE KEYS: crop_stage, stage, growth_stage (aliases)
-    const stageValue = cond.crop_stage || cond.stage || cond.growth_stage;
-    if (stageValue) {
-      totalConditions++;
-      const stages = Array.isArray(stageValue) ? stageValue : [stageValue];
-      const stageMatch = stages.some((s: string) => {
-        const canon = canonicalStageKey(s);
-        return canon === factStageCanon || canon === '*' || canon === 'all';
-      });
-      if (stageMatch) {
-        metConditions++;
-        matchedConditions.push('crop_stage');
-      }
-    }
-    
-    // OBSERVATION KEYS: observations, symptom, primary_symptom (aliases)
-    // P0-9: accept singular 'observation' (65 active rules) and 'required_symptoms'
-    // (16 active rules). Both carry real observation evidence; loader.ts already
-    // recognises required_symptoms, this evaluator did not.
-    const obsValue = cond.observations || cond.observation
-                  || cond.symptom || cond.primary_symptom
-                  || cond.required_symptoms;
-    if (obsValue) {
-      totalConditions++;
-      const obsList = Array.isArray(obsValue) ? obsValue : [obsValue];
-      if (obsList.length > 0) {
-        // P1-3 Fix: Exact token match instead of substring containment
-        const obsMatch = obsList.some((obs: string) => {
-          const canonObs = canonicalObsCode(obs);
-          // Exact match OR token-boundary match (not substring containment)
-          const exactMatch = (s: string) => !!s && s === canonObs;
-          const tokenMatch = (s: string) => {
-            // P3 Fix: Require ALL tokens of the shorter code to match
-            // Prevents yellowing_older_leaves matching yellowing_young_leaves
-            const obsTokens = canonObs.split('_').filter(t => t.length > 1);
-            const sTokens = s.split('_').filter(t => t.length > 1);
-            if (obsTokens.length === 0 || sTokens.length === 0) return s === canonObs;
-            const shorter = obsTokens.length <= sTokens.length ? obsTokens : sTokens;
-            const longer = obsTokens.length <= sTokens.length ? sTokens : obsTokens;
-            const allShorterMatch = shorter.every(t => longer.includes(t));
-            return allShorterMatch && shorter.length >= 2;
-          };
-          return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
-                 exactMatch(factQuery) || tokenMatch(factQuery) ||
-                 allObsCanon.some(ao => exactMatch(ao) || tokenMatch(ao));
-        });
-
-        if (obsMatch) {
-          metConditions++;
-          matchedConditions.push('observations');
-        }
-      }
-    }
-    
-    // NDVI KEYS
-    if (cond.ndvi_level) {
-      totalConditions++;
-      if (facts.ndvi_status && cond.ndvi_level.toUpperCase() === facts.ndvi_status.toUpperCase()) {
-        metConditions++;
-        matchedConditions.push('ndvi_level');
-      }
-    }
-    if (cond.ndvi_trend && typeof cond.ndvi_trend === 'string') {
-      totalConditions++;
-      if (facts.ndvi_trend && cond.ndvi_trend.toUpperCase() === facts.ndvi_trend.toUpperCase()) {
-        metConditions++;
-        matchedConditions.push('ndvi_trend');
-      }
-    }
-    
-    // SEVERITY
-    if (cond.severity && typeof cond.severity === 'string') {
-      totalConditions++;
-      if (facts.severity && cond.severity.toUpperCase() === facts.severity.toUpperCase()) {
-        metConditions++;
-        matchedConditions.push('severity');
-      }
-    }
-    
-    // KNOWN BOOLEAN/THRESHOLD FLAGS (mapped to SymbolicFact)
-    const BOOLEAN_FLAG_MAP: Record<string, (f: SymbolicFact) => boolean> = {
-      'soil_moisture_low': (f) => f.soil_moisture_estimated === 'DRY',
-      'soil_moisture_high': (f) => f.soil_moisture_estimated === 'WET',
-      'recent_rain': (f) => f.recent_rain === true,
-      'critical_stage': (f) => f.critical_stage === true,
-      'high_humidity': (f) => (f.humidity ?? 0) > 80,
-      'high_temperature': (f) => (f.temperature ?? 0) > 38,
-      'low_temperature': (f) => (f.temperature ?? 0) < 15,
+    const evidence = new Set((facts.all_observations || []).map((o) => canonicalObsCode(o)).filter(Boolean));
+    const tokens = new Set((facts.context_tokens || []).map((o) => canonicalObsCode(o)).filter(Boolean));
+    const hasEvidence = (code: unknown): boolean => {
+      const k = canonicalObsCode(code);
+      return !!k && evidence.has(k);
     };
-    
-    for (const [flagKey, evaluator] of Object.entries(BOOLEAN_FLAG_MAP)) {
-      if (cond[flagKey] !== undefined) {
-        totalConditions++;
-        const expected = cond[flagKey] === true || cond[flagKey] === 'true';
-        const actual = evaluator(facts);
-        if (expected === actual) {
-          metConditions++;
-          matchedConditions.push(flagKey);
-        }
-      }
-    }
-    
-    // BOOLEAN OBSERVATION FLAGS: keys like black_whip_like_structure, dead_heart,
-    const SKIP_KEYS = new Set([
-      'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
-      // P0-9: observation aliases — consumed by the obsValue matcher above,
-      // must not be re-counted in the generic loop below.
-      'observation', 'required_symptoms',
-      // P0-9: rule METADATA, not field conditions. These describe the rule's own
-      // trigger/output and were inflating the denominator, capping 890+ rules at
-      // score 0.5 against the 0.6 threshold — i.e. permanently unfireable.
-      'trigger', 'recommendation', 'action', 'diagnosis',
-      'ndvi_level', 'ndvi_trend', 'severity', 'trigger_keywords',
-      'all', 'any', 'fact', 'operator', 'value',
-      'crop_code', 'crop_type', // Already filtered at query level
-      ...Object.keys(BOOLEAN_FLAG_MAP),
-      // P1 Fix: ROI metadata keys — NOT matching conditions, just metadata
-      'roi_basis', 'roi_modifier', 'roi_by_region',
-      'roi_estimate', 'cost_benefit', 'economic_note',
-    ]);
-    
-    // Extended keys that need special handling (not just skip)
-    const CONTEXTUAL_KEYS = new Set([
-      'soil_test', 'context', 'stress', 'duration_days', 'irrigation_system',
-      'weather', 'temperature_c', 'roi_basis', 'roi_modifier', 'roi_by_region',
-      'lodging_risk', 'leaf_n_status', 'no_visible_deficiency',
-      'ndvi_improving', 'symptoms_mild', 'no_pest_visible',
-      'uneven_growth', 'high_water_bills', 'water_deficit_visible',
-      'normal_growth', 'salesman_recommendation',
-    ]);
-    
+    // Context tokens were already filtered to observable=false by executeRules.
+    const hasToken = (code: unknown): boolean => {
+      const k = canonicalObsCode(code);
+      return !!k && tokens.has(k);
+    };
+    // Observation condition satisfied by trusted evidence (anchors evidence) or by a
+    // context token (anchors context). Returns null when neither.
+    const satisfy = (code: unknown): 'evidence' | 'token' | null =>
+      hasEvidence(code) ? 'evidence' : hasToken(code) ? 'token' : null;
+
+    // Boolean facts that are directly measured/authoritative (no threshold in code).
+    // Every other boolean weather/soil flag key (high_humidity, low_temperature,
+    // soil_moisture_low, …) is NON-EVALUABLE ⇒ FAIL; express it numerically.
+    const DIRECT_BOOLEAN_FACTS: Record<string, (f: SymbolicFact) => boolean | null> = {
+      'recent_rain':    (f) => typeof f.recent_rain === 'boolean' && f.rainfall_24h_mm !== null && f.rainfall_24h_mm !== undefined ? f.recent_rain : null,
+      'critical_stage': (f) => f.critical_stage_known === true ? f.critical_stage === true : null,
+    };
+    // Status-label facts (SSOT strings). Condition value = exact label; UNKNOWN ⇒ FAIL.
+    const STATUS_FACTS: Record<string, (f: SymbolicFact) => string> = {
+      'ndvi_level': (f) => f.ndvi_status, 'ndvi_status': (f) => f.ndvi_status,
+      'ndvi_trend': (f) => f.ndvi_trend,
+      'severity': (f) => f.severity,
+      'soil_moisture': (f) => f.soil_moisture_estimated,
+      'stress_level': (f) => f.stress_level, 'water_stress': (f) => f.stress_level,
+      'soil_nitrogen': (f) => f.soil_n_status, 'soil_n_status': (f) => f.soil_n_status,
+      'soil_phosphorus': (f) => f.soil_p_status, 'soil_p_status': (f) => f.soil_p_status,
+      'soil_potassium': (f) => f.soil_k_status, 'soil_k_status': (f) => f.soil_k_status,
+      'risk_level': (f) => f.risk_level,
+    };
+
+    let evaluated = 0;
+
     for (const key of Object.keys(cond)) {
-      if (SKIP_KEYS.has(key)) continue;
-      // P0-9: '_'-prefixed keys are authoring metadata (_status, _deprecation_note,
-      // _legacy_id_prefix). They are never field conditions.
-      if (key.startsWith('_')) continue;
-      
-      // Handle contextual/expanded keys with soft evaluation
-      if (CONTEXTUAL_KEYS.has(key)) {
-        const ctxVal = cond[key];
-        // Boolean contextual flags (no_pest_visible, symptoms_mild, normal_growth, etc.)
-        if (ctxVal === true || ctxVal === 'true') {
-          // Negative assertions (no_*, normal_*) - soft pass, can't disprove without data
-          if (key.startsWith('no_') || key.startsWith('normal_')) {
-            continue; // Don't penalize
-          }
-          // Positive assertions - check against observations
-          totalConditions++;
-          const keySymbol = canonicalObsCode(key);
-          if (factSymptom === keySymbol || allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol))) {
-            metConditions++;
-            matchedConditions.push(key);
-          }
-          continue;
-        }
-        // String contextual values (context, stress, irrigation_system)
-        if (typeof ctxVal === 'string') {
-          // Soft constraints - match against query if possible
-          if (['roi_basis', 'roi_modifier', 'context', 'stress', 'irrigation_system'].includes(key)) {
-            continue; // Soft - don't penalize without context data
-          }
-          totalConditions++;
-          const valUpper = canonicalObsCode(ctxVal);
-          if (factQuery.includes(valUpper) || allObsCanon.some(ao => ao.includes(valUpper))) {
-            metConditions++;
-            matchedConditions.push(key);
-          }
-          continue;
-        }
-        // Objects/numbers in contextual keys - count in denominator
-        totalConditions++;
-        continue;
-      }
-      
+      if (METADATA_KEYS.has(key)) continue;
+      if (key.startsWith('_')) continue; // authoring metadata
       const val = cond[key];
-      
-      // FAIL-CLOSED: Object/array conditions count as required but unmet
-      // Cannot evaluate without structured data → drags down score
-      if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-        totalConditions++;
+
+      // STAGE KEYS — exact canonical stage match ('*'/'all' wildcard)
+      if (STAGE_KEYS.has(key)) {
+        evaluated++;
+        if (!factStageCanon || factStageCanon === 'unknown') return FAIL(`${key}: stage unknown`);
+        const stages = Array.isArray(val) ? val : [val];
+        const ok = stages.some((s: unknown) => {
+          const c = canonicalStageKey(s);
+          return c === factStageCanon || c === '*' || c === 'all';
+        });
+        if (!ok) return FAIL(`${key}: ${factStageCanon} ∉ [${stages.join(',')}]`);
+        matchedConditions.push('crop_stage');
         continue;
       }
-      if (Array.isArray(val)) {
-        totalConditions++;
+
+      // OBSERVATION KEYS — exact canonical evidence match, any-of listed codes
+      if (OBSERVATION_CONDITION_KEYS.has(key)) {
+        evaluated++;
+        const list = (Array.isArray(val) ? val : [val]).filter((x) => x !== null && x !== undefined && String(x).length > 0);
+        if (list.length === 0) return FAIL(`${key}: empty`);
+        const hitE = list.find((o: unknown) => hasEvidence(o));
+        const hit = hitE !== undefined ? hitE : list.find((o: unknown) => hasToken(o));
+        if (hit === undefined) return FAIL(`${key}: none of [${list.join(',')}] in evidence or context tokens`);
+        matchedConditions.push(`observations:${canonicalObsCode(hit)}`);
+        if (hitE !== undefined) evidenceAnchored = true; else contextAnchored = true;
         continue;
       }
-      
-      // Boolean flags: {dead_heart: true, black_whip_like_structure: true}
-      // Match if the key (as uppercase symbol) matches the primary symptom OR any observation
-      if (val === true || val === 'true') {
-        totalConditions++;
-        const keySymbol = canonicalObsCode(key);
-        if (factSymptom === keySymbol || factSymptom.includes(keySymbol) || 
-            keySymbol.includes(factSymptom) || factQuery.includes(keySymbol) ||
-            allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol) || keySymbol.includes(ao))) {
-          metConditions++;
-          matchedConditions.push(key);
+
+      // STATUS-LABEL KEYS — exact label equality; UNKNOWN fact ⇒ FAIL
+      if (STATUS_FACTS[key]) {
+        evaluated++;
+        const factVal = STATUS_FACTS[key](facts);
+        if (typeof val !== 'string' || !factVal || String(factVal).toUpperCase() === 'UNKNOWN') return FAIL(`${key}: fact unknown`);
+        if (val.trim().toUpperCase() !== String(factVal).toUpperCase()) return FAIL(`${key}: ${factVal} ≠ ${val}`);
+        matchedConditions.push(key);
+        continue;
+      }
+
+      // DIRECT BOOLEAN FACTS
+      if (DIRECT_BOOLEAN_FACTS[key]) {
+        evaluated++;
+        const expected = val === true || val === 'true' ? true : (val === false || val === 'false' ? false : null);
+        if (expected === null) return FAIL(`${key}: non-boolean value`);
+        const actual = DIRECT_BOOLEAN_FACTS[key](facts);
+        if (actual === null) return FAIL(`${key}: fact unknown`);
+        if (actual !== expected) return FAIL(`${key}: expected ${expected}, got ${actual}`);
+        matchedConditions.push(key);
+        continue;
+      }
+
+      // CONTEXT STRUCTURE KEYS — exact evaluation against authoritative land context
+      if (key === 'cultivation_method') {
+        evaluated++;
+        const fact = canonicalObsCode(facts.cultivation_method ?? '');
+        if (!fact || fact === 'unknown') return FAIL('cultivation_method: fact unknown');
+        const allowed = (Array.isArray(val) ? val : [val]).map((x: unknown) => canonicalObsCode(x)).filter(Boolean);
+        if (allowed.length === 0) return FAIL('cultivation_method: empty');
+        if (!allowed.includes(fact)) return FAIL(`cultivation_method: ${fact} ∉ [${allowed.join(',')}]`);
+        matchedConditions.push(`cultivation_method=${fact}`);
+        continue;
+      }
+      if (key === 'das_range' || key === 'das_min' || key === 'das_max') {
+        evaluated++;
+        const dos = typeof facts.dos === 'number' && Number.isFinite(facts.dos) && facts.dos > 0 ? facts.dos : null;
+        if (dos === null) return FAIL(`${key}: DAS unknown`);
+        const min = key === 'das_min' ? val : key === 'das_range' ? val?.min : undefined;
+        const max = key === 'das_max' ? val : key === 'das_range' ? val?.max : undefined;
+        if (key === 'das_range' && (val === null || typeof val !== 'object' || Array.isArray(val))) return FAIL('das_range: non-object');
+        if (min !== undefined && (typeof min !== 'number' || !Number.isFinite(min))) return FAIL(`${key}: min non-numeric`);
+        if (max !== undefined && (typeof max !== 'number' || !Number.isFinite(max))) return FAIL(`${key}: max non-numeric`);
+        if (min === undefined && max === undefined) return FAIL(`${key}: no bounds`);
+        if (min !== undefined && dos < min) return FAIL(`${key}: DAS ${dos} < ${min}`);
+        if (max !== undefined && dos > max) return FAIL(`${key}: DAS ${dos} > ${max}`);
+        matchedConditions.push(`${key}:${dos}`);
+        continue;
+      }
+      if (key === 'weather') {
+        evaluated++;
+        if (val === null || typeof val !== 'object' || Array.isArray(val)) return FAIL('weather: non-object (free-text weather is non-evaluable)');
+        const sub = Object.keys(val);
+        if (sub.length === 0) return FAIL('weather: empty');
+        const WEATHER_FIELDS: Record<string, (f: SymbolicFact, n: number) => boolean | null> = {
+          temp_min:     (f, n) => f.temperature === null || f.temperature === undefined ? null : f.temperature >= n,
+          temp_max:     (f, n) => f.temperature === null || f.temperature === undefined ? null : f.temperature <= n,
+          humidity_min: (f, n) => f.humidity === null || f.humidity === undefined ? null : f.humidity >= n,
+          humidity_max: (f, n) => f.humidity === null || f.humidity === undefined ? null : f.humidity <= n,
+        };
+        for (const wk of sub) {
+          const fn = WEATHER_FIELDS[wk];
+          const n = val[wk];
+          if (!fn) return FAIL(`weather.${wk}: non-evaluable field`);
+          if (typeof n !== 'number' || !Number.isFinite(n)) return FAIL(`weather.${wk}: non-numeric`);
+          const r = fn(facts, n);
+          if (r === null) return FAIL(`weather.${wk}: fact unknown`);
+          if (!r) return FAIL(`weather.${wk}: ${n} not satisfied`);
         }
+        matchedConditions.push(`weather:${sub.join('+')}`);
         continue;
       }
-      
-      // String value conditions: {pest: "termite", disease: "smut"}
-      // Bug 3 Fix: Check if string looks like a numeric threshold first
+
+      // Objects / arrays under arbitrary keys — non-evaluable ⇒ FAIL
+      if (val !== null && typeof val === 'object') {
+        return FAIL(`${key}: structured value is non-evaluable`);
+      }
+
+      // Boolean observation assertion: {dead_heart: true} ⇒ exact canonical evidence match
+      if (val === true || val === 'true') {
+        evaluated++;
+        const how = satisfy(key);
+        if (!how) return FAIL(`${key}: not in evidence or context tokens`);
+        matchedConditions.push(key);
+        if (how === 'evidence') evidenceAnchored = true; else contextAnchored = true;
+        continue;
+      }
+
+      // Negative assertion: {etl_exceeded: false} ⇒ passes iff NOT in evidence
+      if (val === false || val === 'false') {
+        evaluated++;
+        if (hasEvidence(key) || hasToken(key)) return FAIL(`${key}: contradicted by evidence/context`);
+        matchedConditions.push(`!${key}`);
+        continue;
+      }
+
       if (typeof val === 'string') {
-        const thresholdMatch = val.match(/^([<>]=?|==?)\s*(-?\d+\.?\d*)$/);
+        // Numeric threshold string: "<0.6", ">=3"
+        const thresholdMatch = val.match(NUMERIC_THRESHOLD_RE);
         if (thresholdMatch) {
-          // This is a numeric threshold like "<0.6", ">5.0", ">=3"
-          totalConditions++;
-          const operator = thresholdMatch[1];
-          const threshold = parseFloat(thresholdMatch[2]);
+          evaluated++;
           const factVal = this.getNumericFactForConditionKey(key, facts);
-          if (factVal !== null) {
-            const passes = this.evaluateThreshold(factVal, operator, threshold);
-            if (passes) {
-              metConditions++;
-              matchedConditions.push(`${key}${val}`);
-            }
+          if (factVal === null) return FAIL(`${key}: numeric fact unknown`);
+          if (!this.evaluateThreshold(factVal, thresholdMatch[1], parseFloat(thresholdMatch[2]))) {
+            return FAIL(`${key}: ${factVal} !${val}`);
           }
-          // If factVal is null, we don't have the data - condition not met but counted
+          matchedConditions.push(`${key}${val}`);
           continue;
         }
-        
-        // Regular string matching
-        totalConditions++;
-        const valUpper = canonicalObsCode(val);
-        if (factSymptom.includes(valUpper) || valUpper.includes(factSymptom) ||
-            factQuery.includes(valUpper) ||
-            allObsCanon.some(ao => ao.includes(valUpper) || valUpper.includes(ao))) {
-          metConditions++;
-          matchedConditions.push(key);
-        }
+        // String value: {pest: "termite"} ⇒ exact canonical evidence match of the value
+        evaluated++;
+        const howS = satisfy(val);
+        if (!howS) return FAIL(`${key}=${val}: not in evidence or context tokens`);
+        matchedConditions.push(`${key}=${val}`);
+        if (howS === 'evidence') evidenceAnchored = true; else contextAnchored = true;
         continue;
       }
-      
-      // false boolean: {etl_exceeded: false, no_match: false}
-      if (val === false || val === 'false') {
-        // Negative assertion: count and verify not contradicted
-        totalConditions++;
-        const keySymbol = canonicalObsCode(key);
-        const contradicted = allObsCanon.some(ao => ao === keySymbol || ao.includes(keySymbol));
-        if (!contradicted) metConditions++;
-        continue;
-      }
-      
-      // Bug 3 Fix: Evaluate numeric conditions against fact values
+
       if (typeof val === 'number') {
-        totalConditions++;
+        evaluated++;
         const factVal = this.getNumericFactForConditionKey(key, facts);
-        if (factVal !== null) {
-          // For plain numeric values, check equality (within tolerance)
-          if (Math.abs(factVal - val) < 0.01) {
-            metConditions++;
-            matchedConditions.push(`${key}=${val}`);
-          }
-        }
+        if (factVal === null) return FAIL(`${key}: numeric fact unknown`);
+        if (Math.abs(factVal - val) >= 0.01) return FAIL(`${key}: ${factVal} ≠ ${val}`);
+        matchedConditions.push(`${key}=${val}`);
         continue;
       }
+
+      // null / undefined / anything else — non-evaluable ⇒ FAIL
+      return FAIL(`${key}: non-evaluable value`);
     }
-    
-    // SCORING
-    if (totalConditions === 0) {
-      const keys = Object.keys(cond).filter(k => k !== 'trigger_keywords' && !SKIP_KEYS.has(k));
-      if (keys.length === 0) {
-        return { matches: true, confidence: 0.5, reason: 'No symbolic conditions', matched_conditions: [] };
-      }
-      // Bug 1 Fix: If conditions existed but were ALL skipped (numeric/object), 
-      // do NOT match with 0.4 confidence - this causes false positives
-      return { matches: false, confidence: 0, reason: 'All conditions were non-evaluable (numeric/object) - no match', matched_conditions: [] };
+
+    if (evaluated === 0) {
+      return FAIL('No symbolic conditions — metadata-only conditions never match');
     }
-    
-    const score = metConditions / totalConditions;
-    const matches = score >= 0.6; // P3 Fix: Raised from 0.5 — at least 60% conditions must match
-    
+
     return {
-      matches,
-      confidence: matches ? 0.6 + (score * 0.35) : 0,
-      reason: matches
-        ? `Flat conditions matched: ${metConditions}/${totalConditions} (${matchedConditions.join(', ')})`
-        : `Flat conditions failed: ${metConditions}/${totalConditions}`,
-      matched_conditions: matchedConditions
+      matches: true,
+      confidence: 1.0,
+      reason: `All ${evaluated} conditions matched: ${matchedConditions.join(', ')}`,
+      matched_conditions: matchedConditions,
+      evidence_anchored: evidenceAnchored,
+      context_anchored: contextAnchored,
     };
   }
-  
+
   // Get fact value from facts object with normalization
   private getFactValue(facts: SymbolicFact, factName: string): any {
-    // Normalize fact name to handle different formats
     const normalizedName = factName.toLowerCase().replace(/[_-]/g, '');
-    
-    // Direct mapping
     const mapping: Record<string, keyof SymbolicFact> = {
-      'crop': 'crop',
-      'cropcode': 'crop_code',
-      'crop_code': 'crop_code',
-      'croptype': 'crop',
-      'crop_type': 'crop',
-      'stage': 'growth_stage',
-      'growthstage': 'growth_stage',
-      'growth_stage': 'growth_stage',
-      'cropstage': 'growth_stage',
-      'crop_stage': 'growth_stage',
-      'dos': 'dos',
-      'dayssinceowing': 'dos',
-      'days_since_sowing': 'dos',
-      'symptom': 'primary_symptom',
-      'primarysymptom': 'primary_symptom',
-      'primary_symptom': 'primary_symptom',
-      'visualsymptom': 'primary_symptom',
-      'visual_symptom': 'primary_symptom',
-      'affectedpart': 'affected_part',
-      'affected_part': 'affected_part',
-      'severity': 'severity',
-      'distribution': 'distribution',
-      'ndvi': 'ndvi',
-      'ndvivalue': 'ndvi',
-      'ndvi_value': 'ndvi',
-      'ndvilevel': 'ndvi_status',
-      'ndvi_level': 'ndvi_status',
-      'ndvitrend': 'ndvi_trend',
-      'ndvi_trend': 'ndvi_trend',
-      'soilnitrogen': 'soil_n_status',
-      'soil_nitrogen': 'soil_n_status',
-      'soilphosphorus': 'soil_p_status',
-      'soil_phosphorus': 'soil_p_status',
-      'soilpotassium': 'soil_k_status',
-      'soil_potassium': 'soil_k_status',
-      'waterstress': 'stress_level',
-      'water_stress': 'stress_level',
-      'stresslevel': 'stress_level',
-      'stress_level': 'stress_level',
-      'userquery': 'user_query',
-      'user_query': 'user_query'
+      'crop': 'crop', 'cropcode': 'crop_code', 'crop_code': 'crop_code',
+      'croptype': 'crop', 'crop_type': 'crop',
+      'stage': 'growth_stage', 'growthstage': 'growth_stage', 'growth_stage': 'growth_stage',
+      'cropstage': 'growth_stage', 'crop_stage': 'growth_stage',
+      'dos': 'dos', 'dayssincesowing': 'dos', 'days_since_sowing': 'dos',
+      'daysaftersowing': 'dos', 'days_after_sowing': 'dos', 'das': 'dos',
+      // observation-class facts resolve to the gated evidence array
+      'symptom': 'all_observations', 'primarysymptom': 'all_observations', 'primary_symptom': 'all_observations',
+      'visualsymptom': 'all_observations', 'visual_symptom': 'all_observations',
+      'observation': 'all_observations', 'observations': 'all_observations',
+      'allobservations': 'all_observations', 'all_observations': 'all_observations',
+      'affectedpart': 'affected_part', 'affected_part': 'affected_part',
+      'severity': 'severity', 'distribution': 'distribution',
+      'ndvi': 'ndvi', 'ndvivalue': 'ndvi', 'ndvi_value': 'ndvi',
+      'ndvilevel': 'ndvi_status', 'ndvi_level': 'ndvi_status', 'ndvistatus': 'ndvi_status',
+      'ndvitrend': 'ndvi_trend', 'ndvi_trend': 'ndvi_trend',
+      'soilnitrogen': 'soil_n_status', 'soil_nitrogen': 'soil_n_status',
+      'soilphosphorus': 'soil_p_status', 'soil_phosphorus': 'soil_p_status',
+      'soilpotassium': 'soil_k_status', 'soil_potassium': 'soil_k_status',
+      'soilph': 'soil_ph', 'soil_ph': 'soil_ph',
+      'soilmoisture': 'soil_moisture_estimated', 'soil_moisture': 'soil_moisture_estimated',
+      'temperature': 'temperature', 'humidity': 'humidity',
+      'rainfall': 'rainfall_24h_mm', 'rainfall24hmm': 'rainfall_24h_mm', 'rainfall_24h_mm': 'rainfall_24h_mm', 'rainfalllast24h': 'rainfall_24h_mm',
+      'risklevel': 'risk_level', 'risk_level': 'risk_level',
+      'waterstress': 'stress_level', 'water_stress': 'stress_level',
+      'stresslevel': 'stress_level', 'stress_level': 'stress_level',
     };
-    
     const key = mapping[factName.toLowerCase()] || mapping[normalizedName];
-    if (key && key in facts) {
-      return (facts as any)[key];
-    }
-    
-    // Try direct access
+    if (key && key in facts) return (facts as any)[key];
     if (factName in facts) {
+      // user_query and primary_symptom are context, not rule facts
+      if (factName === 'user_query') return undefined;
       return (facts as any)[factName];
     }
-    
     return undefined;
   }
-  
-  // Evaluate comparison operator
-  private evaluateOperator(factValue: any, operator: string, conditionValue: any): boolean {
-    const op = operator.toLowerCase();
-    
+
+  // Evaluate comparison operator — exact semantics; unknown operator ⇒ false
+  private evaluateOperator(factValue: any, operator: string, conditionValue: any, _facts?: SymbolicFact): boolean {
+    const op = String(operator).toLowerCase();
+    const isList = Array.isArray(factValue);
+    const eq = (a: unknown, b: unknown) => canonicalObsCode(a) === canonicalObsCode(b);
+
     switch (op) {
       case 'equal':
       case 'equals':
-        return String(factValue).toLowerCase() === String(conditionValue).toLowerCase();
-      
+        return isList ? factValue.some((v: unknown) => eq(v, conditionValue)) : eq(factValue, conditionValue);
       case 'notequal':
       case 'not_equal':
-        return String(factValue).toLowerCase() !== String(conditionValue).toLowerCase();
-      
+        return isList ? !factValue.some((v: unknown) => eq(v, conditionValue)) : !eq(factValue, conditionValue);
       case 'contains':
-        if (Array.isArray(factValue)) {
-          return factValue.some(v => 
-            String(v).toLowerCase().includes(String(conditionValue).toLowerCase())
-          );
-        }
-        return String(factValue).toLowerCase().includes(String(conditionValue).toLowerCase());
-      
+        // exact element membership (no substring)
+        return isList ? factValue.some((v: unknown) => eq(v, conditionValue)) : eq(factValue, conditionValue);
       case 'in':
-        if (Array.isArray(conditionValue)) {
-          return conditionValue.some(cv => 
-            String(cv).toLowerCase() === String(factValue).toLowerCase()
-          );
-        }
-        return false;
-      
-      case 'between':
-        if (Array.isArray(conditionValue) && conditionValue.length === 2) {
-          const numValue = Number(factValue);
-          return numValue >= conditionValue[0] && numValue <= conditionValue[1];
-        }
-        return false;
-      
+        if (!Array.isArray(conditionValue)) return false;
+        return isList
+          ? factValue.some((v: unknown) => conditionValue.some((cv: unknown) => eq(cv, v)))
+          : conditionValue.some((cv: unknown) => eq(cv, factValue));
+      case 'between': {
+        if (isList || !Array.isArray(conditionValue) || conditionValue.length !== 2) return false;
+        const n = Number(factValue);
+        if (!Number.isFinite(n)) return false;
+        return n >= Number(conditionValue[0]) && n <= Number(conditionValue[1]);
+      }
       case 'lessthan':
-      case 'less_than':
-        return Number(factValue) < Number(conditionValue);
-      
+      case 'less_than': {
+        const n = Number(factValue); const t = Number(conditionValue);
+        return !isList && Number.isFinite(n) && Number.isFinite(t) && n < t;
+      }
       case 'greaterthan':
-      case 'greater_than':
-        return Number(factValue) > Number(conditionValue);
-      
+      case 'greater_than': {
+        const n = Number(factValue); const t = Number(conditionValue);
+        return !isList && Number.isFinite(n) && Number.isFinite(t) && n > t;
+      }
       case 'matches':
-        try {
-          const regex = new RegExp(conditionValue, 'i');
-          return regex.test(String(factValue));
-        } catch {
-          return false;
-        }
-      
+        // regex is similarity, not evidence — never authorizes
+        return false;
       default:
         console.warn(`Unknown operator: ${operator}`);
         return false;
     }
   }
-  
-  // @deprecated REMOVED per SSOT architecture.
-  private checkKeywordMatch(
-    _keywords: string[],
-    _userQuery: string
-  ): { matches: boolean; confidence: number; matched_keyword: string | null } {
-    console.warn('⚠️ [SymbolicReasoner] checkKeywordMatch is DEPRECATED - use conditions_json only');
-    return { matches: false, confidence: 0, matched_keyword: null };
-  }
-  
-  // Bug 3 Fix: Map condition keys to numeric fact values
+
+  // Map condition keys to numeric fact values
   private getNumericFactForConditionKey(key: string, facts: SymbolicFact): number | null {
     const CONDITION_TO_FACT: Record<string, () => number | null> = {
-      // Macronutrients
       'soil_ph': () => facts.soil_ph,
-      'soil_n': () => facts.soil_n,
-      'soil_p': () => facts.soil_p,
-      'soil_k': () => facts.soil_k,
-      // P2 Fix: Micronutrient soil data mappings (populated when available)
-      'soil_zn_ppm': () => facts.soil_zn_ppm,
-      'soil_zn': () => facts.soil_zn_ppm,
-      'soil_fe_ppm': () => facts.soil_fe_ppm,
-      'soil_fe': () => facts.soil_fe_ppm,
-      'soil_mn_ppm': () => facts.soil_mn_ppm,
-      'soil_mn': () => facts.soil_mn_ppm,
-      'soil_mg_cmol': () => facts.soil_mg_cmol,
-      'soil_mg': () => facts.soil_mg_cmol,
-      'soil_s_ppm': () => facts.soil_s_ppm,
-      'soil_s': () => facts.soil_s_ppm,
-      'soil_b_ppm': () => facts.soil_b_ppm,
-      'soil_b': () => facts.soil_b_ppm,
-      'boron_application_kg_ha': () => facts.soil_b_ppm, // Approximate mapping
-      // Environmental
-      'ndvi': () => facts.ndvi,
-      'ndvi_value': () => facts.ndvi,
-      'temperature': () => facts.temperature,
+      'soil_n': () => facts.soil_n, 'soil_p': () => facts.soil_p, 'soil_k': () => facts.soil_k,
+      'soil_zn_ppm': () => facts.soil_zn_ppm, 'soil_zn': () => facts.soil_zn_ppm,
+      'soil_fe_ppm': () => facts.soil_fe_ppm, 'soil_fe': () => facts.soil_fe_ppm,
+      'soil_mn_ppm': () => facts.soil_mn_ppm, 'soil_mn': () => facts.soil_mn_ppm,
+      'soil_mg_cmol': () => facts.soil_mg_cmol, 'soil_mg': () => facts.soil_mg_cmol,
+      'soil_s_ppm': () => facts.soil_s_ppm, 'soil_s': () => facts.soil_s_ppm,
+      'soil_b_ppm': () => facts.soil_b_ppm, 'soil_b': () => facts.soil_b_ppm,
+      'ndvi': () => facts.ndvi, 'ndvi_value': () => facts.ndvi,
+      'temperature': () => facts.temperature, 'temperature_c': () => facts.temperature,
       'humidity': () => facts.humidity,
-      'dos': () => facts.dos,
-      'days_after_sowing': () => facts.dos,
+      'rainfall_24h_mm': () => facts.rainfall_24h_mm ?? null, 'rainfall_last_24h': () => facts.rainfall_24h_mm ?? null, 'rainfall': () => facts.rainfall_24h_mm ?? null,
+      'dos': () => facts.dos, 'das': () => facts.dos, 'days_after_sowing': () => facts.dos, 'days_since_sowing': () => facts.dos,
       'land_area_acres': () => facts.land_area_acres,
     };
     const getter = CONDITION_TO_FACT[key.toLowerCase()];
-    return getter ? getter() : null;
+    if (!getter) return null;
+    const v = getter();
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
   }
-  
-  // Bug 3 Fix: Evaluate numeric threshold comparison
+
   private evaluateThreshold(factValue: number, operator: string, threshold: number): boolean {
     switch (operator) {
       case '<': return factValue < threshold;
@@ -1483,213 +1376,134 @@ export class SymbolicReasoner {
       default: return false;
     }
   }
-  
-  // Generate human-readable explanation for rule firing
-  private generateRuleExplanation(rule: any, facts: SymbolicFact, match: any): string {
-    const parts: string[] = [];
-    
-    parts.push(`Rule ${rule.rule_id} matched`);
-    
+
+  private generateRuleExplanation(rule: any, _facts: SymbolicFact, match: any, hypothesisId: string | null): string {
+    const parts: string[] = [`Rule ${rule.rule_id} matched`];
+    if (hypothesisId) parts.push(`via hypothesis ${hypothesisId}`);
     if (match.matched_conditions && match.matched_conditions.length > 0) {
       parts.push(`because: ${match.matched_conditions.slice(0, 3).join(', ')}`);
     }
-    
-    if (rule.scientific_basis) {
-      parts.push(`(${rule.scientific_basis})`);
-    }
-    
+    if (rule.scientific_basis) parts.push(`(${rule.scientific_basis})`);
     return parts.join(' ');
   }
-  
-  // Update hypotheses map with new rule match
+
   private updateHypotheses(
     hypotheses: Map<string, Hypothesis>,
     rule: any,
-    confidence: number
+    confidence: number,
+    hypothesisIds: string[],
+    policy: EnginePolicy,
   ): void {
-    const causeId = rule.cause || rule.rule_id;
-    
-    if (hypotheses.has(causeId)) {
-      const existing = hypotheses.get(causeId)!;
-      // Boost confidence with additional evidence
-      existing.confidence = Math.min(0.98, existing.confidence + (confidence * 0.2));
-      existing.supporting_rules.push(rule.rule_id);
-    } else {
-      hypotheses.set(causeId, {
-        cause_id: causeId,
-        cause_name: rule.cause || rule.rule_id,
-        confidence: (() => {
-          const cs = rule.confidence_score || 0.7;
-          if (cs > 1) {
-            console.error(`[symbolic-reasoner] confidence_score out of range: ${cs} for rule ${rule.rule_id}. Expected 0–1 float. DB migration may not have run.`);
-          }
-          return confidence * cs;
-        })(),
-        evidence: [rule.scientific_basis || 'rule match'],
-        supporting_rules: [rule.rule_id]
-      });
+    const targets = hypothesisIds.length > 0 ? hypothesisIds : [rule.cause || rule.rule_id];
+    const cs = typeof rule.confidence_score === 'number' ? rule.confidence_score : policy.default_rule_confidence;
+    if (cs > 1) console.error(`[symbolic-reasoner] confidence_score out of range: ${cs} for rule ${rule.rule_id}.`);
+    for (const causeId of targets) {
+      const existing = hypotheses.get(causeId);
+      if (existing) {
+        existing.confidence = Math.min(policy.hypothesis_confidence_ceiling, existing.confidence + (confidence * policy.hypothesis_support_boost));
+        if (!existing.supporting_rules.includes(rule.rule_id)) existing.supporting_rules.push(rule.rule_id);
+      } else {
+        hypotheses.set(causeId, {
+          cause_id: causeId,
+          cause_name: rule.cause || rule.rule_id,
+          confidence: confidence * cs,
+          evidence: [rule.scientific_basis || 'rule match'],
+          supporting_rules: [rule.rule_id],
+        });
+      }
     }
   }
-  
-  // Rank hypotheses by confidence and supporting evidence
-  private rankHypotheses(
-    hypotheses: Map<string, Hypothesis>,
-    facts: SymbolicFact
-  ): Hypothesis[] {
+
+  private rankHypotheses(hypotheses: Map<string, Hypothesis>, policy: EnginePolicy): Hypothesis[] {
     const ranked = Array.from(hypotheses.values());
-    
-    // Sort by confidence, then by number of supporting rules
     ranked.sort((a, b) => {
-      if (Math.abs(a.confidence - b.confidence) > 0.1) {
-        return b.confidence - a.confidence;
-      }
+      if (Math.abs(a.confidence - b.confidence) > policy.hypothesis_tie_delta) return b.confidence - a.confidence;
       return b.supporting_rules.length - a.supporting_rules.length;
     });
-    
     return ranked;
   }
-  
-  // Calculate final confidence based on all factors
-  private calculateFinalConfidence(
-    hypotheses: Hypothesis[],
-    firedRules: FiredRule[],
-    facts: SymbolicFact
-  ): number {
-    if (hypotheses.length === 0 && firedRules.length === 0) {
-      return 0.3; // Low confidence when nothing matched
-    }
-    
-    let confidence = 0.5; // Base confidence
-    
-    // Boost from matching rules
-    if (firedRules.length > 0) {
-      confidence += Math.min(0.3, firedRules.length * 0.05);
-    }
-    
-    // Boost from top hypothesis
-    if (hypotheses.length > 0) {
-      confidence = Math.max(confidence, hypotheses[0].confidence);
-    }
-    
-    // Data completeness boost
-    confidence += (facts.data_completeness / 100) * 0.1;
-    
-    // Cap at 95%
-    return Math.min(0.95, confidence);
+
+  private calculateFinalConfidence(hypotheses: Hypothesis[], firedRules: FiredRule[], facts: SymbolicFact, policy: EnginePolicy): number {
+    if (hypotheses.length === 0 && firedRules.length === 0) return 0;
+    let confidence = policy.base_confidence;
+    if (firedRules.length > 0) confidence += Math.min(policy.per_rule_boost_cap, firedRules.length * policy.per_rule_boost);
+    if (hypotheses.length > 0) confidence = Math.max(confidence, hypotheses[0].confidence);
+    confidence += (facts.data_completeness / 100) * policy.completeness_weight;
+    return Math.min(policy.confidence_ceiling, confidence);
   }
-  
-  // Map observations and authoritative state to SymbolicFact
+
+  // Map canonical + authoritative state to SymbolicFact (no evidence, no
+  // hardcoded bands — SSOT derived values or UNKNOWN)
   static mapToSymbolicFact(
     canonicalState: CanonicalState,
     landState: AuthoritativeLandState | null,
-    userQuery: string
+    userQuery: string,
   ): SymbolicFact {
-    // Calculate data completeness
     let dataPoints = 0;
-    let availablePoints = 0;
-    
-    if (landState?.crop.current_crop) { dataPoints++; availablePoints++; } else { availablePoints++; }
-    if (landState?.ndvi.latest_value !== null) { dataPoints++; availablePoints++; } else { availablePoints++; }
-    if (landState?.soil.nitrogen_kg_per_ha !== null) { dataPoints++; availablePoints++; } else { availablePoints++; }
-    if (landState?.weather.temperature !== null) { dataPoints++; availablePoints++; } else { availablePoints++; }
-    
-    const dataCompleteness = availablePoints > 0 ? (dataPoints / availablePoints) * 100 : 0;
-    
-    // Calculate NDVI status
-    const ndviValue = landState?.ndvi.latest_value;
-    let ndviStatus = 'UNKNOWN';
-    if (ndviValue !== null && ndviValue !== undefined) {
-      if (ndviValue >= 0.6) ndviStatus = 'HEALTHY';
-      else if (ndviValue >= 0.4) ndviStatus = 'MODERATE';
-      else if (ndviValue >= 0.25) ndviStatus = 'LOW';
-      else ndviStatus = 'CRITICAL';
-    }
-    
-    // Calculate soil nutrient status
-    const getNutrientStatus = (value: number | null, lowThreshold: number, highThreshold: number): string => {
-      if (value === null) return 'UNKNOWN';
-      if (value < lowThreshold) return 'LOW';
-      if (value > highThreshold) return 'HIGH';
-      return 'ADEQUATE';
-    };
-    
-    // Calculate stress level
-    let stressLevel = 'UNKNOWN';
-    if (ndviValue !== null && ndviValue !== undefined) {
-      if (ndviValue < 0.3) stressLevel = 'SEVERE';
-      else if (ndviValue < 0.4) stressLevel = 'MODERATE';
-      else if (ndviValue < 0.5) stressLevel = 'MILD';
-      else stressLevel = 'NONE';
-    }
-    
-    // Determine if critical stage
-    const dos = landState?.crop.days_since_sowing || 0;
-    const stage = landState?.crop.growth_stage?.toUpperCase() || canonicalState.crop_stage || '';
-    const criticalStage = ['GERMINATION', 'FLOWERING', 'GRAIN_FILLING'].includes(stage);
-    
-    // Calculate risk level
-    let riskLevel = 'MEDIUM';
-    if (stressLevel === 'SEVERE' || canonicalState.severity === 'CRITICAL') {
-      riskLevel = 'HIGH';
-    } else if (stressLevel === 'NONE' && canonicalState.severity === 'MILD') {
-      riskLevel = 'LOW';
-    }
-    
+    const availablePoints = 4;
+    if (landState?.crop?.current_crop) dataPoints++;
+    if (landState?.ndvi?.latest_value !== null && landState?.ndvi?.latest_value !== undefined) dataPoints++;
+    if (landState?.soil?.nitrogen_kg_per_ha !== null && landState?.soil?.nitrogen_kg_per_ha !== undefined) dataPoints++;
+    if (landState?.weather?.temperature !== null && landState?.weather?.temperature !== undefined) dataPoints++;
+    const dataCompleteness = (dataPoints / availablePoints) * 100;
+
+    const derived: any = landState?.derived ?? {};
+    const ssot = (v: unknown): string => (typeof v === 'string' && v.length > 0 ? v.toUpperCase() : 'UNKNOWN');
+    const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const dos = landState?.crop?.days_since_sowing || 0;
+    const stage = landState?.crop?.growth_stage?.toUpperCase() || canonicalState.crop_stage || '';
+    const rainfall = num(landState?.weather?.rainfall_last_24h);
+    const criticalMeta = (landState?.crop as any)?.is_critical_stage;
+
     return {
-      // Core context
-      crop: landState?.crop.current_crop || canonicalState.crop_type || 'UNKNOWN',
-      crop_code: landState?.crop.crop_code || canonicalState.crop_type?.toLowerCase() || '',
-      dos: dos,
+      crop: landState?.crop?.current_crop || canonicalState.crop_type || 'UNKNOWN',
+      crop_code: landState?.crop?.crop_code || canonicalState.crop_type?.toLowerCase() || '',
+      dos,
       growth_stage: stage,
       land_area_acres: landState?.area_acres || 0,
-      
-      // Symptom facts
+      cultivation_method: landState?.crop?.cultivation_method ? canonicalObsCode(landState.crop.cultivation_method) : null,
+
       primary_symptom: canonicalState.visual_symptom || 'UNKNOWN',
-      affected_part: canonicalState.affected_part || 'unknown',
-      distribution: canonicalState.distribution || 'unknown',
+      affected_part: (canonicalState as any).affected_part || 'unknown',
+      distribution: (canonicalState as any).distribution || 'unknown',
       severity: canonicalState.severity || 'unknown',
       progression: 'unknown',
-      
-      // Bug 2 Fix: Initialize empty - will be populated by FactExtractor
+
       all_observations: [],
       has_pest_evidence: false,
-      
-      // Environmental facts
-      ndvi: ndviValue,
-      ndvi_trend: landState?.ndvi.trend?.toUpperCase() || 'UNKNOWN',
-      ndvi_status: ndviStatus,
-      temperature: landState?.weather.temperature,
-      humidity: landState?.weather.humidity,
-      recent_rain: (landState?.weather.rainfall_last_24h || 0) > 5,
-      soil_moisture_estimated: (landState?.weather.rainfall_last_24h || 0) > 10 ? 'WET' : 
-                               (landState?.weather.rainfall_last_24h || 0) > 0 ? 'MOIST' : 'DRY',
-      
-      // Soil facts
-      soil_n: landState?.soil.nitrogen_kg_per_ha,
-      soil_n_status: getNutrientStatus(landState?.soil.nitrogen_kg_per_ha || null, 200, 400),
-      soil_p: landState?.soil.phosphorus_kg_per_ha,
-      soil_p_status: getNutrientStatus(landState?.soil.phosphorus_kg_per_ha || null, 10, 25),
-      soil_k: landState?.soil.potassium_kg_per_ha,
-      soil_k_status: getNutrientStatus(landState?.soil.potassium_kg_per_ha || null, 120, 280),
-      soil_ph: landState?.soil.ph,
-      
-      // Micronutrient soil facts (null until soil test data schema is extended)
+
+      ndvi: num(landState?.ndvi?.latest_value),
+      ndvi_trend: ssot(landState?.ndvi?.trend),
+      ndvi_status: ssot(derived.ndvi_status),
+      temperature: num(landState?.weather?.temperature),
+      humidity: num(landState?.weather?.humidity),
+      rainfall_24h_mm: rainfall,
+      recent_rain: rainfall !== null && rainfall > 0,
+      soil_moisture_estimated: ssot((landState?.soil as any)?.moisture_status),
+
+      soil_n: landState?.soil?.nitrogen_kg_per_ha ?? null,
+      soil_n_status: ssot(derived.nitrogen_level),
+      soil_p: landState?.soil?.phosphorus_kg_per_ha ?? null,
+      soil_p_status: ssot(derived.phosphorus_level),
+      soil_k: landState?.soil?.potassium_kg_per_ha ?? null,
+      soil_k_status: ssot(derived.potassium_level),
+      soil_ph: landState?.soil?.ph ?? null,
+
       soil_zn_ppm: (landState?.soil as any)?.zinc_ppm ?? null,
       soil_fe_ppm: (landState?.soil as any)?.iron_ppm ?? null,
       soil_mn_ppm: (landState?.soil as any)?.manganese_ppm ?? null,
       soil_mg_cmol: (landState?.soil as any)?.magnesium_cmol ?? null,
       soil_s_ppm: (landState?.soil as any)?.sulphur_ppm ?? null,
       soil_b_ppm: (landState?.soil as any)?.boron_ppm ?? null,
-      
-      // Derived facts
-      stress_level: stressLevel,
-      critical_stage: criticalStage,
+
+      stress_level: ssot(derived.water_stress_level),
+      critical_stage: criticalMeta === true,
+      critical_stage_known: typeof criticalMeta === 'boolean',
       data_completeness: dataCompleteness,
-      risk_level: riskLevel,
-      
-      // Farmer action facts
+      risk_level: ssot(derived.risk_level),
+
       user_query: userQuery,
-      recent_treatments: []
+      recent_treatments: [],
     };
   }
 }
@@ -1698,29 +1512,22 @@ export class SymbolicReasoner {
 
 let reasonerInstance: SymbolicReasoner | null = null;
 
-// GAP #1 FIX: Accept optional Supabase client for connection reuse.
 export function getSymbolicReasoner(supabaseClient?: any): SymbolicReasoner {
-  // P3 Fix: Always pass fresh client per request to prevent stale connections
-  // in edge functions where the Supabase client changes per request
   if (!reasonerInstance) {
     reasonerInstance = new SymbolicReasoner(supabaseClient);
   } else if (supabaseClient) {
-    // Update the client on existing instance to prevent stale connections
     (reasonerInstance as any).supabase = supabaseClient;
   }
   return reasonerInstance;
 }
 
-// Export convenience function with urgency support
+// Convenience function — callers MUST supply graph_authorization + evidence
+// or the result is clarification-only by construction.
 export async function executeSymbolicReasoning(
   canonicalState: CanonicalState,
   landState: AuthoritativeLandState | null,
   userQuery: string,
-  options?: {
-    allowFuzzyMatch?: boolean;
-    minFuzzyScore?: number;
-    urgencyOverride?: boolean;
-  }
+  options?: ExecuteRulesOptions,
 ): Promise<InferenceResult> {
   const facts = SymbolicReasoner.mapToSymbolicFact(canonicalState, landState, userQuery);
   const reasoner = getSymbolicReasoner();

@@ -341,12 +341,17 @@ export class RuleEngineExecutor {
         []
       );
       
-      for (const match of keywordMatches) {
-        const result = convertToRuleResult(match);
-        if (result) {
-          const bucketKey = this.getPriorityBucket(result.priority);
-          decisions[bucketKey].push(result);
-        }
+      // HARD AUTHORITY BOUNDARY (2026-08-28, forensic trace_mtcqvkbf): keyword
+      // similarity is retrieval, never agronomic authority. On the live trace
+      // this lane matched 50 cross-crop rules (incl. sugarcane rotation rules)
+      // for a rice irrigation query AFTER the decision graph returned zero
+      // authoritative edges. Keyword matches are TELEMETRY ONLY - never merged
+      // into decision buckets. Only graph-authorized rules, Lane B context
+      // rules and DB safety gates may decide.
+      if (keywordMatches.length > 0) {
+        const ids = keywordMatches.slice(0, 10).map((m: any) => String(m?.rule_id ?? m?.id ?? '?'));
+        console.warn('[LEGACY_RULE_SUPPRESSION] suppressed_keyword_matches=' + keywordMatches.length +
+          ' sample=[' + ids.join(',') + '] reason=KEYWORD_MATCH_IS_NOT_AUTHORITY');
       }
     } catch (error) {
       console.warn('Keyword matching error:', error);

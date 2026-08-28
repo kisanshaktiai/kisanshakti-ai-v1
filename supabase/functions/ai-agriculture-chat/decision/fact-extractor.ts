@@ -1,33 +1,53 @@
 // FACT EXTRACTOR - OBSERVATION TO SYMBOLIC FACT CONVERSION
+//
+// CHANGE LOG (newest first)
+//   2026-08-27 — P0 FINAL PRODUCTION FIX (fact-extractor lane of the
+//     graph-authority fix). ZERO agronomic constants in this file.
+//     (a) critical_stage: hardcoded stage-name list REMOVED. Read only from
+//         authoritative stage metadata (`landState.crop.is_critical_stage`,
+//         boolean, supplied by the state loader / phenology SSOT). Absent ⇒
+//         critical_stage=false, critical_stage_known=false ⇒ NON-EVALUABLE.
+//     (b) soil_moisture_estimated: rainfall-derived WET/MOIST/DRY REMOVED.
+//         Read `landState.soil.moisture_status` (validated measurement/model)
+//         or UNKNOWN.
+//     (c) soil_*_status / ndvi_status / stress_level: local N-P-K and NDVI
+//         bands REMOVED. Read `landState.derived.*` — the SSOT interpretation
+//         computed by authoritative-state-loader from `system_config` rows —
+//         or UNKNOWN.
+//     (d) recent_rain: no mm threshold. true iff a measured 24h rainfall
+//         value > 0 exists. The raw value is exposed as `rainfall_24h_mm` so
+//         rules threshold it in `conditions_json` (data in DB, not code).
+//     (e) has_pest_evidence: legacy in-code pest code list REMOVED. DB-SSOT
+//         `isPestIndicator` (observation_master) only; false when unloaded.
+//     (f) risk_level: in-code stress/severity heuristic REMOVED. Read
+//         `landState.derived.risk_level` or UNKNOWN.
+//     (h) 4.2.0: exposes `cultivation_method` (landState.crop.cultivation_method,
+//         canonical) so CONTEXT_SUFFICIENT rules can evaluate it exactly.
+//     (g) EVIDENCE LEAK CLOSED: primary_symptom is no longer pushed into
+//         all_observations. all_observations = caller-supplied codes only;
+//         the SymbolicReasoner re-gates them to CONFIRMED ∪ PERCEIVED.
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
+import { canonicalObsCode } from '../utils/canonical-code.ts';
+import { isPestIndicator, phase1CacheReady } from '../utils/db-ssot/phase1-caches.ts';
 
-export const FACT_EXTRACTOR_VERSION = '3.0.0';
+export const FACT_EXTRACTOR_VERSION = '4.2.0';
 
-// PEST INDICATORS - Phase 1 DB-SSOT
-import { isPestIndicator as _isPestIndicatorDb, phase1CacheReady as _phase1CacheReady } from '../utils/db-ssot/phase1-caches.ts';
+// Uppercase SSOT label or 'UNKNOWN'. Never derives a band from a raw number.
+function ssotStatus(v: unknown): string {
+  return typeof v === 'string' && v.trim().length > 0 ? v.trim().toUpperCase() : 'UNKNOWN';
+}
 
-const _LEGACY_PEST_INDICATORS: ReadonlySet<string> = new Set([
-  'DEAD_HEART_PRESENT', 'DEAD_HEART', 'STEM_BORING_MARKS', 'BORE_HOLES_AT_BASE',
-  'BORE_HOLES_VISIBLE', 'FRASS_VISIBLE', 'FRASS_IN_TUNNEL', 'LARVAE_PRESENT',
-  'INSECTS_VISIBLE', 'HONEYDEW_PRESENT', 'SMALL_INSECTS_VISIBLE',
-  'SHOOT_BORER', 'STEM_BORER', 'BOLLWORM', 'APHID_INFESTATION',
-  'WHITEFLY_INFESTATION', 'MEALYBUG_INFESTATION', 'THRIPS_DAMAGE',
-  'LEAF_MINER_TRAILS', 'WEBBING_VISIBLE', 'CATERPILLAR_PRESENT',
-]);
-
-function isPestIndicator(code: string): boolean {
-  const key = code.toUpperCase().replace(/[\s-]/g, '_');
-  if (_phase1CacheReady()) return _isPestIndicatorDb(key);
-  return _LEGACY_PEST_INDICATORS.has(key);
+function numOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
 // FACT EXTRACTOR CLASS
 
 export class FactExtractor {
-  
+
   // Extract structured facts from observations and authoritative state
   extractFacts(
     observation: any,
@@ -37,35 +57,39 @@ export class FactExtractor {
     allObservations?: string[]
   ): SymbolicFact {
     console.log(`📊 [FactExtractor v${FACT_EXTRACTOR_VERSION}] Extracting symbolic facts...`);
-    
+
     // 1. Core context facts (from authoritative sources)
     const coreFacts = this.extractCoreFacts(canonicalState, landState);
-    
-    // 2. Symptom facts (from canonical state - already extracted by Language Induction Layer)
+
+    // 2. Symptom facts — CONTEXT ONLY (never evidence)
     const symptomFacts = this.extractSymptomFacts(observation, canonicalState);
-    
-    // 3. Environmental facts
+
+    // 3. Environmental facts (SSOT or UNKNOWN)
     const envFacts = this.extractEnvironmentalFacts(landState);
-    
-    // 4. Soil facts
+
+    // 4. Soil facts (SSOT or UNKNOWN)
     const soilFacts = this.extractSoilFacts(landState);
-    
-    // 5. Derived facts
-    const derivedFacts = this.calculateDerivedFacts(coreFacts, symptomFacts, envFacts, soilFacts);
-    
-    // 6. Bug 2 Fix: Build all_observations array and detect pest evidence
-    const obsArray = allObservations || [];
-    // Also include primary_symptom if not already present
-    if (symptomFacts.primary_symptom && symptomFacts.primary_symptom !== 'UNKNOWN' && !obsArray.includes(symptomFacts.primary_symptom)) {
-      obsArray.push(symptomFacts.primary_symptom);
-    }
-    const hasPestEvidence = obsArray.some(obs => isPestIndicator(obs));
-    
+
+    // 5. Derived facts (authoritative metadata or UNKNOWN)
+    const derivedFacts = this.extractDerivedFacts(coreFacts, envFacts, soilFacts, landState);
+
+    // 6. Observation array — caller-supplied codes ONLY, canonical, deduped.
+    const obsArray = Array.from(
+      new Set((allObservations || []).map((o) => canonicalObsCode(o)).filter((c) => c.length > 0)),
+    );
+    // DB-SSOT only (observation_master). When the cache is cold the flag is
+    // reported as unknown-false and logged; the reasoner surfaces `taxonomy_guard`.
+    const pestCacheReady = phase1CacheReady();
+    if (!pestCacheReady) console.warn('   ⚠️ [FactExtractor] phase1 DB cache cold — has_pest_evidence cannot be determined (false, unverified)');
+    const hasPestEvidence = pestCacheReady && obsArray.some((obs) => isPestIndicator(obs));
+
     console.log(`   Core: crop=${coreFacts.crop}, stage=${coreFacts.growth_stage}, DOS=${coreFacts.dos}`);
-    console.log(`   Symptom: ${symptomFacts.primary_symptom}, severity=${symptomFacts.severity}`);
-    console.log(`   Derived: stress=${derivedFacts.stress_level}, risk=${derivedFacts.risk_level}`);
-    console.log(`   Observations: ${obsArray.length} total, pest_evidence=${hasPestEvidence}`);
-    
+    console.log(`   Symptom(context): ${symptomFacts.primary_symptom}, severity=${symptomFacts.severity}`);
+    console.log(`   Derived: stress=${derivedFacts.stress_level}, critical_stage=${derivedFacts.critical_stage}(known=${derivedFacts.critical_stage_known})`);
+    console.log(`   Observations: ${obsArray.length} caller-supplied, pest_evidence=${hasPestEvidence}`);
+
+    const morph = observation?.morphology_evidence || (landState as any)?.morphology_evidence;
+
     return {
       ...coreFacts,
       ...symptomFacts,
@@ -76,170 +100,131 @@ export class FactExtractor {
       has_pest_evidence: hasPestEvidence,
       user_query: userQuery,
       recent_treatments: observation?.recent_actions || [],
-      // PHASE C — pass-through morphology evidence when orchestrator attaches it
-      morphology_evidence: (observation?.morphology_evidence || (landState as any)?.morphology_evidence)
+      morphology_evidence: morph
         ? {
-            overall_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).overall_status,
-            stage_shift_hint: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).stage_shift_hint ?? null,
-            confidence_delta: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).confidence_delta ?? 0,
-            ndvi_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).ndvi?.status ?? 'UNKNOWN',
-            height_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).height_cm?.status ?? 'UNKNOWN',
-            leaf_status: (observation?.morphology_evidence || (landState as any)?.morphology_evidence).leaf_count?.status ?? 'UNKNOWN',
+            overall_status: morph.overall_status,
+            stage_shift_hint: morph.stage_shift_hint ?? null,
+            confidence_delta: morph.confidence_delta ?? 0,
+            ndvi_status: morph.ndvi?.status ?? 'UNKNOWN',
+            height_status: morph.height_cm?.status ?? 'UNKNOWN',
+            leaf_status: morph.leaf_count?.status ?? 'UNKNOWN',
           }
         : null
     };
   }
-  
+
   // Extract core context facts from authoritative sources
   private extractCoreFacts(
     canonicalState: CanonicalState,
     landState: AuthoritativeLandState | null
-  ): Pick<SymbolicFact, 'crop' | 'crop_code' | 'dos' | 'growth_stage' | 'land_area_acres'> {
-    // CRITICAL FIX: Safe nested property access with null checks
+  ): Pick<SymbolicFact, 'crop' | 'crop_code' | 'dos' | 'growth_stage' | 'land_area_acres' | 'cultivation_method'> {
     const rawCrop = landState?.crop?.current_crop || canonicalState.crop_type || 'UNKNOWN';
     const rawStage = landState?.crop?.growth_stage || canonicalState.crop_stage || 'UNKNOWN';
-    
+
     // CANONICAL-TO-RULE NORMALIZATION
     const normalizedCropCode = rawCrop === 'UNKNOWN' ? '' : rawCrop.toLowerCase().replace(/-/g, '_');
     const normalizedStage = rawStage === 'UNKNOWN' ? 'unknown' : rawStage.toLowerCase().replace(/-/g, '_');
-    
+
     console.log(`   📐 [FactExtractor] Normalization: crop=${rawCrop}→${normalizedCropCode}, stage=${rawStage}→${normalizedStage}`);
-    
+
     return {
-      crop: rawCrop,  // Keep original for display
-      crop_code: normalizedCropCode,  // Normalized for rule matching
+      crop: rawCrop,
+      crop_code: normalizedCropCode,
       dos: landState?.crop?.days_since_sowing || canonicalState.days_after_sowing_exact || 0,
-      growth_stage: normalizedStage,  // Normalized for rule matching
-      land_area_acres: landState?.area_acres || 0
+      growth_stage: normalizedStage,
+      land_area_acres: landState?.area_acres || 0,
+      // crop_schedules.cultivation_method lane (F1) — exact context condition for rules
+      cultivation_method: landState?.crop?.cultivation_method ? canonicalObsCode(landState.crop.cultivation_method) : null,
     };
   }
-  
-  // Extract symptom facts from canonical state (already extracted by Language Induction Layer)
+
+  // Extract symptom facts from canonical state — context only
   private extractSymptomFacts(
     observation: any,
     canonicalState: CanonicalState
   ): Pick<SymbolicFact, 'primary_symptom' | 'affected_part' | 'distribution' | 'severity' | 'progression'> {
-    // Get canonical symptom from canonical state (already extracted by Language Induction Layer)
-    const primarySymptom = canonicalState.visual_symptom || observation?.primary_symptom || 'UNKNOWN';
-    
+    const cs = canonicalState as any;
     return {
-      primary_symptom: primarySymptom,
-      affected_part: observation?.affected_part || canonicalState.affected_part || 'unknown',
-      distribution: observation?.distribution || canonicalState.distribution || 'unknown',
-      severity: observation?.severity || canonicalState.severity || 'unknown',
+      primary_symptom: cs.visual_symptom || observation?.primary_symptom || 'UNKNOWN',
+      affected_part: observation?.affected_part || cs.affected_part || 'unknown',
+      distribution: observation?.distribution || cs.distribution || 'unknown',
+      severity: observation?.severity || cs.severity || 'unknown',
       progression: observation?.timing || 'unknown'
     };
   }
-  
-  // Extract environmental facts from authoritative state
+
+  // Extract environmental facts — SSOT interpretations only
   private extractEnvironmentalFacts(
     landState: AuthoritativeLandState | null
-  ): Pick<SymbolicFact, 'ndvi' | 'ndvi_trend' | 'ndvi_status' | 'temperature' | 'humidity' | 'recent_rain' | 'soil_moisture_estimated'> {
-    // CRITICAL FIX: Safe nested property access with null checks
-    const ndviValue = landState?.ndvi?.latest_value ?? null;
-    
-    // Calculate NDVI status
-    let ndviStatus = 'UNKNOWN';
-    if (ndviValue !== null) {
-      if (ndviValue >= 0.6) ndviStatus = 'HEALTHY';
-      else if (ndviValue >= 0.4) ndviStatus = 'MODERATE';
-      else if (ndviValue >= 0.25) ndviStatus = 'LOW';
-      else ndviStatus = 'CRITICAL';
-    }
-    
-    // Estimate soil moisture from rainfall - with safe access
-    const rainfall = landState?.weather?.rainfall_last_24h || 0;
-    let soilMoisture = 'UNKNOWN';
-    if (landState?.weather) {
-      if (rainfall > 20) soilMoisture = 'WET';
-      else if (rainfall > 5) soilMoisture = 'MOIST';
-      else soilMoisture = 'DRY';
-    }
-    
+  ): Pick<SymbolicFact, 'ndvi' | 'ndvi_trend' | 'ndvi_status' | 'temperature' | 'humidity' | 'rainfall_24h_mm' | 'recent_rain' | 'soil_moisture_estimated'> {
+    const derived: any = landState?.derived ?? {};
+    const rainfall = numOrNull(landState?.weather?.rainfall_last_24h);
+
     return {
-      ndvi: ndviValue,
-      ndvi_trend: landState?.ndvi?.trend?.toUpperCase() || 'UNKNOWN',
-      ndvi_status: ndviStatus,
-      temperature: landState?.weather?.temperature ?? null,
-      humidity: landState?.weather?.humidity ?? null,
-      recent_rain: rainfall > 5,
-      soil_moisture_estimated: soilMoisture
+      ndvi: numOrNull(landState?.ndvi?.latest_value),
+      ndvi_trend: ssotStatus(landState?.ndvi?.trend),
+      ndvi_status: ssotStatus(derived.ndvi_status),
+      temperature: numOrNull(landState?.weather?.temperature),
+      humidity: numOrNull(landState?.weather?.humidity),
+      rainfall_24h_mm: rainfall,
+      recent_rain: rainfall !== null && rainfall > 0,
+      soil_moisture_estimated: ssotStatus((landState?.soil as any)?.moisture_status)
     };
   }
-  
-  // Extract soil facts from authoritative state
+
+  // Extract soil facts — raw values pass through; status labels come from SSOT
   private extractSoilFacts(
     landState: AuthoritativeLandState | null
-  ): Pick<SymbolicFact, 'soil_n' | 'soil_n_status' | 'soil_p' | 'soil_p_status' | 'soil_k' | 'soil_k_status' | 'soil_ph'> {
-    const getNutrientStatus = (value: number | null, low: number, high: number): string => {
-      if (value === null) return 'UNKNOWN';
-      if (value < low) return 'LOW';
-      if (value > high) return 'HIGH';
-      return 'ADEQUATE';
-    };
-    
-    // CRITICAL FIX: Safe nested property access with null checks
+  ): Pick<SymbolicFact, 'soil_n' | 'soil_n_status' | 'soil_p' | 'soil_p_status' | 'soil_k' | 'soil_k_status' | 'soil_ph'
+    | 'soil_zn_ppm' | 'soil_fe_ppm' | 'soil_mn_ppm' | 'soil_mg_cmol' | 'soil_s_ppm' | 'soil_b_ppm'> {
+    const derived: any = landState?.derived ?? {};
+    const soil: any = landState?.soil ?? {};
     return {
-      soil_n: landState?.soil?.nitrogen_kg_per_ha ?? null,
-      soil_n_status: getNutrientStatus(landState?.soil?.nitrogen_kg_per_ha ?? null, 200, 400),
-      soil_p: landState?.soil?.phosphorus_kg_per_ha ?? null,
-      soil_p_status: getNutrientStatus(landState?.soil?.phosphorus_kg_per_ha ?? null, 10, 25),
-      soil_k: landState?.soil?.potassium_kg_per_ha ?? null,
-      soil_k_status: getNutrientStatus(landState?.soil?.potassium_kg_per_ha ?? null, 120, 280),
-      soil_ph: landState?.soil?.ph ?? null
+      soil_n: numOrNull(soil.nitrogen_kg_per_ha),
+      soil_n_status: ssotStatus(derived.nitrogen_level),
+      soil_p: numOrNull(soil.phosphorus_kg_per_ha),
+      soil_p_status: ssotStatus(derived.phosphorus_level),
+      soil_k: numOrNull(soil.potassium_kg_per_ha),
+      soil_k_status: ssotStatus(derived.potassium_level),
+      soil_ph: numOrNull(soil.ph),
+      soil_zn_ppm: numOrNull(soil.zinc_ppm),
+      soil_fe_ppm: numOrNull(soil.iron_ppm),
+      soil_mn_ppm: numOrNull(soil.manganese_ppm),
+      soil_mg_cmol: numOrNull(soil.magnesium_cmol),
+      soil_s_ppm: numOrNull(soil.sulphur_ppm),
+      soil_b_ppm: numOrNull(soil.boron_ppm),
     };
   }
-  
-  // Calculate derived facts from primary facts
-  private calculateDerivedFacts(
+
+  // Derived facts — authoritative metadata only, no local heuristics
+  private extractDerivedFacts(
     coreFacts: any,
-    symptomFacts: any,
     envFacts: any,
-    soilFacts: any
-  ): Pick<SymbolicFact, 'stress_level' | 'critical_stage' | 'data_completeness' | 'risk_level'> {
-    // Calculate stress level from NDVI
-    let stressLevel = 'UNKNOWN';
-    if (envFacts.ndvi !== null) {
-      if (envFacts.ndvi < 0.3) stressLevel = 'SEVERE';
-      else if (envFacts.ndvi < 0.4) stressLevel = 'MODERATE';
-      else if (envFacts.ndvi < 0.5) stressLevel = 'MILD';
-      else stressLevel = 'NONE';
-    }
-    
-    // Determine if critical stage
-    const criticalStages = ['GERMINATION', 'FLOWERING', 'GRAIN_FILLING', 'TILLERING'];
-    const criticalStage = criticalStages.includes(coreFacts.growth_stage?.toUpperCase() || '');
-    
-    // Calculate data completeness
-    let dataPoints = 0;
-    let totalPoints = 0;
-    
-    if (coreFacts.crop !== 'UNKNOWN') dataPoints++;
-    totalPoints++;
-    if (coreFacts.dos > 0) dataPoints++;
-    totalPoints++;
-    if (envFacts.ndvi !== null) dataPoints++;
-    totalPoints++;
-    if (soilFacts.soil_n !== null) dataPoints++;
-    totalPoints++;
-    if (envFacts.temperature !== null) dataPoints++;
-    totalPoints++;
-    
-    const dataCompleteness = totalPoints > 0 ? (dataPoints / totalPoints) * 100 : 0;
-    
-    // Calculate risk level
-    let riskLevel = 'MEDIUM';
-    if (stressLevel === 'SEVERE' || symptomFacts.severity === 'CRITICAL') {
-      riskLevel = 'HIGH';
-    } else if (stressLevel === 'NONE' && symptomFacts.severity === 'MILD') {
-      riskLevel = 'LOW';
-    }
-    
+    soilFacts: any,
+    landState: AuthoritativeLandState | null
+  ): Pick<SymbolicFact, 'stress_level' | 'critical_stage' | 'critical_stage_known' | 'data_completeness' | 'risk_level'> {
+    const derived: any = landState?.derived ?? {};
+
+    // Critical stage: authoritative stage metadata ONLY (boolean on crop context)
+    const criticalMeta = (landState?.crop as any)?.is_critical_stage;
+    const criticalStageKnown = typeof criticalMeta === 'boolean';
+
+    // Data completeness — a count of available authoritative inputs
+    const present = [
+      coreFacts.crop !== 'UNKNOWN',
+      coreFacts.dos > 0,
+      envFacts.ndvi !== null,
+      soilFacts.soil_n !== null,
+      envFacts.temperature !== null,
+    ];
+    const dataCompleteness = (present.filter(Boolean).length / present.length) * 100;
+
     return {
-      stress_level: stressLevel,
-      critical_stage: criticalStage,
+      stress_level: ssotStatus(derived.water_stress_level),
+      critical_stage: criticalMeta === true,
+      critical_stage_known: criticalStageKnown,
       data_completeness: dataCompleteness,
-      risk_level: riskLevel
+      risk_level: ssotStatus(derived.risk_level)
     };
   }
 }

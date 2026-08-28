@@ -54,20 +54,29 @@ export enum NDVITrend {
 
 // INTERPRETATION THRESHOLDS - SINGLE SOURCE OF TRUTH
 
-// Cold-boot legacy fallbacks. Values are byte-identical to seeded DB rows.
-// Do NOT tune here — edit system_config rows instead.
-const _LEGACY_NDVI_THRESHOLDS = {
-  EXCELLENT: 0.7,
-  GOOD: 0.55,
-  MODERATE: 0.4,
-  POOR: 0.25,
-} as const;
-
-const _LEGACY_SOIL_THRESHOLDS = {
-  NITROGEN:   { HIGH: 350, ADEQUATE: 250, LOW: 150 },
-  PHOSPHORUS: { HIGH: 25,  ADEQUATE: 15,  LOW: 8  },
-  POTASSIUM:  { HIGH: 200, ADEQUATE: 130, LOW: 80 },
-} as const;
+// 2026-08-27 — NO agronomic constants in code. Thresholds come ONLY from
+// public.system_config rows (`ndvi_status_thresholds`, `soil_nutrient_thresholds`,
+// `water_stress_thresholds`). When a row is missing or the cache is cold the
+// interpretation is UNKNOWN (fail-closed) — never a value from this file.
+interface NdviThresholds { EXCELLENT: number; GOOD: number; MODERATE: number; POOR: number }
+interface NutrientBand { HIGH: number; ADEQUATE: number; LOW: number }
+interface SoilThresholds { NITROGEN: NutrientBand; PHOSPHORUS: NutrientBand; POTASSIUM: NutrientBand }
+interface WaterStressThresholds {
+  SEVERE:   { ndvi_below: number; rain_below_mm: number };
+  MODERATE: { ndvi_below: number; rain_below_mm: number };
+  MILD:     { ndvi_below: number };
+}
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+function validNdvi(t: any): t is NdviThresholds {
+  return !!t && isNum(t.EXCELLENT) && isNum(t.GOOD) && isNum(t.MODERATE) && isNum(t.POOR);
+}
+function validBand(b: any): b is NutrientBand {
+  return !!b && isNum(b.HIGH) && isNum(b.ADEQUATE) && isNum(b.LOW);
+}
+function validWaterStress(t: any): t is WaterStressThresholds {
+  return !!t && isNum(t?.SEVERE?.ndvi_below) && isNum(t?.SEVERE?.rain_below_mm)
+    && isNum(t?.MODERATE?.ndvi_below) && isNum(t?.MODERATE?.rain_below_mm) && isNum(t?.MILD?.ndvi_below);
+}
 
 // F5 (2026-07-29): NOT externalized to system_config by design.
 // weather_current / weather_observations / weather_aggregates are the ONLY
@@ -84,11 +93,17 @@ export function scheduleFreshnessDays(): number {
   return FRESHNESS_THRESHOLDS.SCHEDULE_DAYS;
 }
 
-function ndviThresholds() {
-  return getConfigJson('ndvi_status_thresholds', _LEGACY_NDVI_THRESHOLDS);
+function ndviThresholds(): NdviThresholds | null {
+  const t = getConfigJson<Record<string, unknown>>('ndvi_status_thresholds', {});
+  return validNdvi(t) ? t : null;
 }
-function soilThresholds() {
-  return getConfigJson('soil_nutrient_thresholds', _LEGACY_SOIL_THRESHOLDS);
+function soilThresholds(): SoilThresholds | null {
+  const t = getConfigJson<Record<string, any>>('soil_nutrient_thresholds', {});
+  return validBand(t?.NITROGEN) && validBand(t?.PHOSPHORUS) && validBand(t?.POTASSIUM) ? (t as SoilThresholds) : null;
+}
+function waterStressThresholds(): WaterStressThresholds | null {
+  const t = getConfigJson<Record<string, unknown>>('water_stress_thresholds', {});
+  return validWaterStress(t) ? t : null;
 }
 function soilFreshnessDays() {
   return getConfigNumber('soil_data_freshness_days', 90);
@@ -106,7 +121,8 @@ export function interpretNDVI(value: number | null | undefined): NDVIStatus {
   if (value === null || value === undefined || isNaN(value)) {
     return NDVIStatus.UNKNOWN;
   }
-  const t = ndviThresholds() as typeof _LEGACY_NDVI_THRESHOLDS;
+  const t = ndviThresholds();
+  if (!t) return NDVIStatus.UNKNOWN;
   if (value >= t.EXCELLENT) return NDVIStatus.EXCELLENT;
   if (value >= t.GOOD) return NDVIStatus.GOOD;
   if (value >= t.MODERATE) return NDVIStatus.MODERATE;
@@ -119,7 +135,8 @@ export function interpretNitrogen(value: number | null | undefined): SoilNutrien
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
   }
-  const t = (soilThresholds() as typeof _LEGACY_SOIL_THRESHOLDS).NITROGEN;
+  const t = soilThresholds()?.NITROGEN;
+  if (!t) return SoilNutrientLevel.UNKNOWN;
   if (value >= t.HIGH) return SoilNutrientLevel.HIGH;
   if (value >= t.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
   if (value >= t.LOW) return SoilNutrientLevel.LOW;
@@ -131,7 +148,8 @@ export function interpretPhosphorus(value: number | null | undefined): SoilNutri
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
   }
-  const t = (soilThresholds() as typeof _LEGACY_SOIL_THRESHOLDS).PHOSPHORUS;
+  const t = soilThresholds()?.PHOSPHORUS;
+  if (!t) return SoilNutrientLevel.UNKNOWN;
   if (value >= t.HIGH) return SoilNutrientLevel.HIGH;
   if (value >= t.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
   if (value >= t.LOW) return SoilNutrientLevel.LOW;
@@ -143,27 +161,29 @@ export function interpretPotassium(value: number | null | undefined): SoilNutrie
   if (value === null || value === undefined || isNaN(value)) {
     return SoilNutrientLevel.UNKNOWN;
   }
-  const t = (soilThresholds() as typeof _LEGACY_SOIL_THRESHOLDS).POTASSIUM;
+  const t = soilThresholds()?.POTASSIUM;
+  if (!t) return SoilNutrientLevel.UNKNOWN;
   if (value >= t.HIGH) return SoilNutrientLevel.HIGH;
   if (value >= t.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
   if (value >= t.LOW) return SoilNutrientLevel.LOW;
   return SoilNutrientLevel.CRITICAL;
 }
 
-// Calculate water stress level from NDVI and rainfall
+// Calculate water stress level from NDVI and rainfall — thresholds from
+// system_config `water_stress_thresholds` only; UNKNOWN when not configured.
 export function calculateWaterStress(
   ndviValue: number | null | undefined,
   recentRainfall: number | null | undefined
 ): WaterStressLevel {
-  if (ndviValue === null || ndviValue === undefined) {
+  if (ndviValue === null || ndviValue === undefined || !Number.isFinite(ndviValue)) {
     return WaterStressLevel.UNKNOWN;
   }
-  
-  const rainfall = recentRainfall ?? 0;
-  
-  if (ndviValue < 0.3 && rainfall < 5) return WaterStressLevel.SEVERE;
-  if (ndviValue < 0.4 && rainfall < 10) return WaterStressLevel.MODERATE;
-  if (ndviValue < 0.5) return WaterStressLevel.MILD;
+  const t = waterStressThresholds();
+  if (!t) return WaterStressLevel.UNKNOWN;
+  const rainfall = typeof recentRainfall === 'number' && Number.isFinite(recentRainfall) ? recentRainfall : null;
+  if (rainfall !== null && ndviValue < t.SEVERE.ndvi_below && rainfall < t.SEVERE.rain_below_mm) return WaterStressLevel.SEVERE;
+  if (rainfall !== null && ndviValue < t.MODERATE.ndvi_below && rainfall < t.MODERATE.rain_below_mm) return WaterStressLevel.MODERATE;
+  if (ndviValue < t.MILD.ndvi_below) return WaterStressLevel.MILD;
   return WaterStressLevel.NONE;
 }
 
