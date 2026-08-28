@@ -24,9 +24,12 @@ export function isFaithful(source: string, translated: string): boolean {
 }
 
 const CHUNK_SIZE = 20;
+/** Max simultaneous LLM calls — keeps peak worker memory bounded (546 guard). */
+const MAX_CONCURRENCY = 3;
 /** Hard wall-clock budget for the whole narration stage. The platform kills the
  *  request at 150s; a single mega-prompt with 100+ tasks routinely blew past it. */
 const NARRATION_BUDGET_MS = 45_000;
+
 
 async function narrateChunk(
   chunk: NarratableTask[],
