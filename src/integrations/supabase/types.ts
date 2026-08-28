@@ -763,6 +763,13 @@ export type Database = {
             foreignKeyName: "advisory_audit_log_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "advisory_audit_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -2258,6 +2265,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -4891,6 +4905,13 @@ export type Database = {
             foreignKeyName: "copernicus_api_calls_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "copernicus_api_calls_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -5543,6 +5564,13 @@ export type Database = {
             foreignKeyName: "crop_growth_alerts_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -5699,6 +5727,13 @@ export type Database = {
             foreignKeyName: "crop_growth_analysis_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -5799,6 +5834,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -5928,6 +5970,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -6075,6 +6124,13 @@ export type Database = {
             foreignKeyName: "crop_health_assessments_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_health_assessments_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -6180,6 +6236,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -6321,6 +6384,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -6738,6 +6808,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -8579,6 +8656,13 @@ export type Database = {
             foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_block_safety_flag_mismatch"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_blocking_rule_semantic_conflict"
             referencedColumns: ["rule_id"]
           },
@@ -8601,6 +8685,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_chemical_variety_safety_violation"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_block_contract_violation"
             referencedColumns: ["rule_id"]
           },
           {
@@ -8643,6 +8734,27 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_rules_missing_evidence"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rules_ungoverned_servable"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_safety_block_review_queue"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_stage_vocab_drift"
             referencedColumns: ["rule_id"]
           },
           {
@@ -9380,6 +9492,30 @@ export type Database = {
           new_values?: Json | null
           old_values?: Json | null
           rule_id?: string
+        }
+        Relationships: []
+      }
+      decision_rules_sb_flag_bak_20260828: {
+        Row: {
+          action_type: string | null
+          category: string | null
+          crop_code: string | null
+          is_safety_block: boolean | null
+          rule_id: string | null
+        }
+        Insert: {
+          action_type?: string | null
+          category?: string | null
+          crop_code?: string | null
+          is_safety_block?: boolean | null
+          rule_id?: string | null
+        }
+        Update: {
+          action_type?: string | null
+          category?: string | null
+          crop_code?: string | null
+          is_safety_block?: boolean | null
+          rule_id?: string | null
         }
         Relationships: []
       }
@@ -13523,6 +13659,13 @@ export type Database = {
             foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -13987,6 +14130,13 @@ export type Database = {
             foreignKeyName: "fk_hrm_rule_id"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_block_safety_flag_mismatch"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_blocking_rule_semantic_conflict"
             referencedColumns: ["rule_id"]
           },
@@ -14009,6 +14159,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_chemical_variety_safety_violation"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_block_contract_violation"
             referencedColumns: ["rule_id"]
           },
           {
@@ -14051,6 +14208,27 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_rules_missing_evidence"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rules_ungoverned_servable"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_safety_block_review_queue"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_stage_vocab_drift"
             referencedColumns: ["rule_id"]
           },
           {
@@ -15283,6 +15461,13 @@ export type Database = {
             foreignKeyName: "land_activities_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_activities_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -15464,6 +15649,13 @@ export type Database = {
             foreignKeyName: "land_crops_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -15608,6 +15800,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_gdd_daily_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -15810,6 +16009,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: true
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_tile_mapping_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: true
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -16051,6 +16257,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_weather_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -17821,6 +18034,13 @@ export type Database = {
             foreignKeyName: "marketplace_products_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "marketplace_products_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -19320,6 +19540,13 @@ export type Database = {
             foreignKeyName: "ndvi_data_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -19453,6 +19680,13 @@ export type Database = {
             foreignKeyName: "ndvi_micro_tiles_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_micro_tiles_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -19552,6 +19786,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_processing_logs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -22627,6 +22868,13 @@ export type Database = {
             foreignKeyName: "prescription_maps_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "prescription_maps_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -22862,6 +23110,13 @@ export type Database = {
             foreignKeyName: "proactive_alerts_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "proactive_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -23071,6 +23326,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "proactive_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -25834,6 +26096,13 @@ export type Database = {
             foreignKeyName: "rule_product_mapping_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_block_safety_flag_mismatch"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_blocking_rule_semantic_conflict"
             referencedColumns: ["rule_id"]
           },
@@ -25856,6 +26125,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_chemical_variety_safety_violation"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_block_contract_violation"
             referencedColumns: ["rule_id"]
           },
           {
@@ -25898,6 +26174,27 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_rules_missing_evidence"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rules_ungoverned_servable"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_safety_block_review_queue"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_stage_vocab_drift"
             referencedColumns: ["rule_id"]
           },
           {
@@ -26008,6 +26305,13 @@ export type Database = {
             foreignKeyName: "rule_source_evidence_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_block_safety_flag_mismatch"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_blocking_rule_semantic_conflict"
             referencedColumns: ["rule_id"]
           },
@@ -26030,6 +26334,13 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_chemical_variety_safety_violation"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_context_block_contract_violation"
             referencedColumns: ["rule_id"]
           },
           {
@@ -26072,6 +26383,27 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_rules_missing_evidence"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rules_ungoverned_servable"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_safety_block_review_queue"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_stage_vocab_drift"
             referencedColumns: ["rule_id"]
           },
           {
@@ -26815,6 +27147,13 @@ export type Database = {
             foreignKeyName: "satellite_alerts_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -26973,6 +27312,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_imagery_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -28553,6 +28899,13 @@ export type Database = {
             foreignKeyName: "soil_health_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -28959,6 +29312,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "stage_transition_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -32120,6 +32480,13 @@ export type Database = {
             foreignKeyName: "treatment_outcomes_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -34128,6 +34495,13 @@ export type Database = {
             foreignKeyName: "weather_aggregates_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_aggregates_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -34469,6 +34843,13 @@ export type Database = {
             foreignKeyName: "weather_current_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -34667,6 +35048,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -34874,6 +35262,13 @@ export type Database = {
             foreignKeyName: "fk_weather_land"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -34931,6 +35326,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -35811,6 +36213,13 @@ export type Database = {
             foreignKeyName: "ndvi_data_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
           },
@@ -36092,6 +36501,83 @@ export type Database = {
           },
         ]
       }
+      v_block_safety_flag_mismatch: {
+        Row: {
+          action_text: string | null
+          action_type: string | null
+          blocked_ingredient_ref: string | null
+          category: string | null
+          crop_code: string | null
+          input_class: string | null
+          is_safety_block: boolean | null
+          mismatch: string | null
+          n_blocks_edges: number | null
+          n_contra_edges: number | null
+          rule_id: string | null
+          rule_intent: string | null
+          trigger_class: string | null
+        }
+        Insert: {
+          action_text?: never
+          action_type?: string | null
+          blocked_ingredient_ref?: string | null
+          category?: string | null
+          crop_code?: string | null
+          input_class?: string | null
+          is_safety_block?: boolean | null
+          mismatch?: never
+          n_blocks_edges?: never
+          n_contra_edges?: never
+          rule_id?: string | null
+          rule_intent?: string | null
+          trigger_class?: string | null
+        }
+        Update: {
+          action_text?: never
+          action_type?: string | null
+          blocked_ingredient_ref?: string | null
+          category?: string | null
+          crop_code?: string | null
+          input_class?: string | null
+          is_safety_block?: boolean | null
+          mismatch?: never
+          n_blocks_edges?: never
+          n_contra_edges?: never
+          rule_id?: string | null
+          rule_intent?: string | null
+          trigger_class?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       v_blocking_rule_semantic_conflict: {
         Row: {
           action_type: string | null
@@ -36331,6 +36817,33 @@ export type Database = {
             referencedColumns: ["scope_code"]
           },
         ]
+      }
+      v_context_block_contract_violation: {
+        Row: {
+          cultivation_unspecified: boolean | null
+          missing_conflict_edge: boolean | null
+          missing_hypothesis_edge: boolean | null
+          missing_predicate: boolean | null
+          missing_safety_classification: boolean | null
+          rule_id: string | null
+        }
+        Insert: {
+          cultivation_unspecified?: never
+          missing_conflict_edge?: never
+          missing_hypothesis_edge?: never
+          missing_predicate?: never
+          missing_safety_classification?: never
+          rule_id?: string | null
+        }
+        Update: {
+          cultivation_unspecified?: never
+          missing_conflict_edge?: never
+          missing_hypothesis_edge?: never
+          missing_predicate?: never
+          missing_safety_classification?: never
+          rule_id?: string | null
+        }
+        Relationships: []
       }
       v_contradiction_unresolvable: {
         Row: {
@@ -37026,6 +37539,32 @@ export type Database = {
           },
         ]
       }
+      v_land_region: {
+        Row: {
+          farmer_id: string | null
+          land_id: string | null
+          region_code: string | null
+          state_code: string | null
+          state_name: string | null
+          tenant_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lands_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+        ]
+      }
       v_learning_loop_health: {
         Row: {
           decisions_total: number | null
@@ -37122,6 +37661,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
@@ -37505,6 +38051,121 @@ export type Database = {
           },
         ]
       }
+      v_rules_ungoverned_servable: {
+        Row: {
+          category: string | null
+          crop_code: string | null
+          has_evidence_row: boolean | null
+          has_freetext_source: boolean | null
+          rule_id: string | null
+          verification_status: string | null
+        }
+        Insert: {
+          category?: string | null
+          crop_code?: string | null
+          has_evidence_row?: never
+          has_freetext_source?: never
+          rule_id?: string | null
+          verification_status?: string | null
+        }
+        Update: {
+          category?: string | null
+          crop_code?: string | null
+          has_evidence_row?: never
+          has_freetext_source?: never
+          rule_id?: string | null
+          verification_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      v_safety_block_review_queue: {
+        Row: {
+          action_type: string | null
+          blocked_ingredient_ref: string | null
+          category: string | null
+          crop_code: string | null
+          issue: string | null
+          rule_id: string | null
+          uncertainty_handling_mode: string | null
+        }
+        Insert: {
+          action_type?: string | null
+          blocked_ingredient_ref?: string | null
+          category?: string | null
+          crop_code?: string | null
+          issue?: never
+          rule_id?: string | null
+          uncertainty_handling_mode?: string | null
+        }
+        Update: {
+          action_type?: string | null
+          blocked_ingredient_ref?: string | null
+          category?: string | null
+          crop_code?: string | null
+          issue?: never
+          rule_id?: string | null
+          uncertainty_handling_mode?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       v_scraper_performance: {
         Row: {
           avg_duration: number | null
@@ -37630,6 +38291,29 @@ export type Database = {
           trigger_type: string | null
         }
         Relationships: []
+      }
+      v_stage_vocab_drift: {
+        Row: {
+          crop_code: string | null
+          rule_id: string | null
+          stage_token: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "decision_rules_crop_code_registry_fk"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+        ]
       }
       v_translation_transliteration_smell: {
         Row: {
@@ -38153,6 +38837,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
             referencedColumns: ["land_id"]
           },
           {
