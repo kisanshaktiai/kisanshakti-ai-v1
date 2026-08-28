@@ -4,6 +4,10 @@
 // 2026-08-18 15:20 UTC — 504 fix: narration now chunks tasks (20/call) and runs chunks in
 //   parallel under a 45s wall-clock budget; partial/failed chunks fall back to source text
 //   instead of hanging the request until the 150s idle timeout.
+// 2026-08-28 18:12 UTC — 546 WORKER_RESOURCE_LIMIT fix: narration chunks now run through a
+//   bounded pool (MAX_CONCURRENCY = 3) instead of firing every chunk at once, capping peak
+//   worker memory/CPU on large schedules.
+
 
 export interface NarratableTask {
   task_name: string;
