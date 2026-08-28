@@ -618,7 +618,7 @@ serve(async (req: Request) => {
           mode: ragResult.mode,
           evidence_count: ragResult.evidence.length,
           servable_count: ragEvidence.length,
-          cited_indexes: citedEvidenceIndexes(answer),
+          cited_indexes: citedIdx,
           below_threshold: ragResult.belowThreshold,
           high_risk: highRisk,
           evidence_ids: ragEvidence.map((e) => e.chunkId),
