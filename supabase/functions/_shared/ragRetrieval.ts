@@ -309,6 +309,7 @@ export async function ragRetrieve(
 
   const topLex = Math.max(0, ...ranked.map((e) => e.lex ?? 0));
   const bestSem = semantic.length ? Math.max(...semantic.map((r) => Number(r.score))) : null;
+  if (mode === 'hybrid' && bestSem === null) traceNote += 'semantic_leg_empty:coverage_degraded;';
 
   // Candidate gates:
   //  • a semantic hit counts only if cosine ≥ min_semantic_score (pgvector always
@@ -324,8 +325,16 @@ export async function ragRetrieve(
   // Corpus gap: nothing passed, OR (hybrid) the best cosine is below the gap floor —
   // lexical noise ("seed", "rate") must not mask a topic the corpus does not cover.
   // A fulltext-only run (bestSem === null) is never a gap purely on the cosine floor.
+  // FIXED 2026-08-28: bestSem === null in hybrid mode means the vector leg
+  // had NO coverage (rag_search_vector filters `embedding IS NOT NULL`, so
+  // chunks awaiting embedding backfill return zero semantic rows even when
+  // fulltext finds them). That is DEGRADED COVERAGE, not evidence of a corpus
+  // gap — the fulltext thresholds already vetted `passing`. The cosine-floor
+  // gap check applies only when the vector leg actually scored something.
+  // This restores the behaviour the change log above already claims.
   const belowThreshold =
-    passing.length === 0 || (mode === 'hybrid' && (bestSem === null || bestSem < tun.gap_semantic_score));
+    passing.length === 0 ||
+    (mode === 'hybrid' && bestSem !== null && bestSem < tun.gap_semantic_score);
 
   // Trust gate: one extra lookup for the (few) documents involved.
   const trustByDoc = new Map<string, number | null>();

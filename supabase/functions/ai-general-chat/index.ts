@@ -459,16 +459,39 @@ serve(async (req: Request) => {
         // Trust gate: unverified sources are retrieved (and logged) but never served/cited.
         const unservable = ragResult.evidence.filter((e) => !e.servable).length;
         ragEvidence = ragResult.evidence.filter((e) => e.servable);
-        // Crop-consistency gate: drop evidence from documents whose crop_codes do not
-        // overlap the query crop. A state-relaxed retry can surface docs for a different
-        // crop (e.g. a wheat doc on a soybean query); those are not the farmer's answer.
+        // Crop-consistency gate (FIXED 2026-08-28): drop only evidence that
+        // POSITIVELY contradicts the query crop. The previous version kept
+        // evidence only on a document-level crop_codes overlap, but the
+        // retrieval SQL (rag_search_vector / rag_search_fulltext) legitimately
+        // matches three classes: chunk-tag overlap, doc-tag overlap, or
+        // untagged at both levels (general agronomy). This gate now mirrors
+        // those exact semantics — an untagged doc or a chunk tagged with the
+        // query crop is KEPT; a doc/chunk tagged only with a DIFFERENT crop
+        // (e.g. a wheat doc surfacing on a soybean query) is dropped.
         if (retrievalFilters.cropCodes?.length && ragEvidence.length) {
+          const want = retrievalFilters.cropCodes;
           const docIds = [...new Set(ragEvidence.map((e) => e.documentId))];
-          const { data: docCrops } = await supabase.from('rag_documents').select('id, crop_codes').in('id', docIds);
-          const ok = new Set((docCrops || []).filter((d) => (d.crop_codes || []).some((c: string) => retrievalFilters.cropCodes!.includes(c))).map((d) => d.id));
-          const dropped = ragEvidence.length - ragEvidence.filter((e) => ok.has(e.documentId)).length;
-          ragEvidence = ragEvidence.filter((e) => ok.has(e.documentId));
-          if (dropped) console.warn(`[${traceId}] crop-consistency gate dropped ${dropped} evidence (query crop ${retrievalFilters.cropCodes.join(',')})`);
+          const chunkIds = [...new Set(ragEvidence.map((e) => e.chunkId).filter(Boolean))];
+          const [{ data: docCrops }, { data: chunkCrops }] = await Promise.all([
+            supabase.from('rag_documents').select('id, crop_codes').in('id', docIds),
+            chunkIds.length
+              ? supabase.from('rag_chunks').select('id, crop_codes').in('id', chunkIds)
+              : Promise.resolve({ data: [] as any[] }),
+          ]);
+          const docTags = new Map((docCrops || []).map((d: any) => [d.id, (d.crop_codes || []) as string[]]));
+          const chunkTags = new Map((chunkCrops || []).map((c: any) => [c.id, (c.crop_codes || []) as string[]]));
+          const overlaps = (tags: string[]) => tags.some((c) => want.includes(c));
+          const keep = (e: { documentId: string; chunkId?: string | null }) => {
+            const dTags = docTags.get(e.documentId) ?? [];
+            const cTags = (e.chunkId && chunkTags.get(e.chunkId)) || [];
+            // Mirror of the SQL clause: c.crop_codes && p_crops OR
+            // d.crop_codes && p_crops OR (both NULL/empty).
+            return overlaps(cTags) || overlaps(dTags) || (cTags.length === 0 && dTags.length === 0);
+          };
+          const before = ragEvidence.length;
+          ragEvidence = ragEvidence.filter(keep);
+          const dropped = before - ragEvidence.length;
+          if (dropped) console.warn(`[${traceId}] crop-consistency gate dropped ${dropped} contradicting evidence (query crop ${want.join(',')})`);
         }
         console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragResult.evidence.length} servable=${ragEvidence.length} unservable=${unservable} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
       } catch (e) {
