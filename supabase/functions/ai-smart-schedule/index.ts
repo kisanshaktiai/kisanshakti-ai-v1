@@ -1,4 +1,21 @@
 // CHANGE LOG
+// 2026-08-28 — P0 counter-audit fixes: (1) the isReadyMadePlant → 'transplanted' literal is
+//   removed — the flag is forwarded to resolveInputs and resolved through
+//   cultivation_method_master.requires_nursery ∩ the crop's stage-graph methods (DB metadata,
+//   crop-agnostic). (2) New 422 CROP_CYCLE_REQUIRED with DB-derived cycle options when the
+//   crop's stage graph defines multiple real cycles and none was chosen (sugarcane
+//   plant vs ratoon) — mirrors the cultivation-method pattern; the old resolver guessed 'plant'.
+// 2026-08-28 — P0-A: (1) hard visible failure when the stage graph is empty — 422
+//   STAGE_COVERAGE_MISSING with DB-derived method options; a stage-free schedule is never
+//   persisted (the live rice direct_seeded_dry stages=false schedule is the proven case).
+//   (2) crop_schedules.cultivation_method now persists the CANONICAL stage-clock method
+//   (inputs.stageClockMethod) because resolve_crop_phenology & the nightly phenology cron
+//   exact-match the stored value as SSOT; the farmer's selected child method is preserved
+//   verbatim inside generation_params.resolved_inputs.cultivationMethod.
+// 2026-08-28 — P1 (audit Phase 2): flag-gated (`rag_schedule_evidence`) RAG evidence
+//   attachment via db/rag-evidence.ts, AFTER deterministic baseline generation and
+//   BEFORE narration. Non-blocking: corpus gaps become explicit NO_EVIDENCE tags and
+//   a `rag_evidence` coverage entry — never invented content, never an abort.
 // 2026-08-24 17:47 UTC — P0: accept isReadyMadePlant as the transplanted cultivation method and
 //   422 CULTIVATION_METHOD_REQUIRED (with DB-derived options) when the crop defines several.
 // 2026-08-20 01:35 UTC — Return LAND_NOT_AVAILABLE as a typed domain result over HTTP 200;
@@ -21,10 +38,14 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import {
   resolveInputs,
   AMBIGUOUS_CULTIVATION_METHOD,
+  AMBIGUOUS_CROP_CYCLE,
   getCultivationMethodOptions,
+  getCropCycleOptions,
 } from "./db/resolve-inputs.ts";
 import { generateBaseline, GENERATOR_VERSION } from "./generator/baseline-generator.ts";
 import { narrateTasks } from "./generator/narrate.ts";
+import { attachRagEvidence, type RagEvidenceSummary } from "./db/rag-evidence.ts";
+import { isFlagEnabled } from "../_shared/featureFlags.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,9 +81,10 @@ serve(async (req) => {
     landId = body?.landId ?? null;
     cropName = body?.cropName ?? null;
     const cropVariety = body?.cropVariety ?? null;
-    let cultivationMethod = body?.cultivationMethod ?? null;
-    // The wizard's "ready-made plant" answer IS the transplanted method.
-    if (!cultivationMethod && body?.isReadyMadePlant === true) cultivationMethod = "transplanted";
+    const cultivationMethod = body?.cultivationMethod ?? null;
+    // "Ready-made plant" is resolved inside resolveInputs from cultivation_method_master
+    // metadata (requires_nursery ∩ the crop's stage-graph methods) — never a literal here.
+    const isReadyMadePlant = body?.isReadyMadePlant === true;
     const cropCycle = body?.cropCycle ?? null;
     const sowingDate = body?.sowingDate ?? null;
     const transplantDate = body?.transplantDate ?? null;
@@ -113,6 +135,7 @@ serve(async (req) => {
       cropName,
       cropVariety,
       cultivationMethod,
+      isReadyMadePlant,
       cropCycle,
       sowingDate,
       transplantDate,
@@ -146,6 +169,20 @@ serve(async (req) => {
         422,
       );
     }
+    // Same philosophy for the crop cycle: sugarcane plant vs ratoon are distinct
+    // phenologies (different stage graphs) — ask with DB-derived options, never guess.
+    if (inputs.cropCycle === AMBIGUOUS_CROP_CYCLE) {
+      return json(
+        {
+          error: "Crop cycle is required for this crop",
+          code: "CROP_CYCLE_REQUIRED",
+          cropCode: inputs.cropCode,
+          options: await getCropCycleOptions(supabase, inputs.cropCode),
+          gaps: inputs.gaps,
+        },
+        422,
+      );
+    }
 
 
     // ── PHASE 2: day-0 baseline, database rows only ─────────────────────────
@@ -161,6 +198,55 @@ serve(async (req) => {
         },
         422,
       );
+    }
+
+    // ── P0-A: never persist a stage-free schedule ───────────────────────────
+    // coverage.stages=false means the resolved stage-clock method has no active
+    // crop_stage_master graph (and fn_effective_method found no declared ancestor
+    // with one). The pre-fix generator continued and shipped 54 stage-less tasks
+    // for rice/direct_seeded_dry — this makes that state a hard, explainable 422.
+    if (!baseline.coverage.stages) {
+      return json(
+        {
+          error: "No growth-stage graph is available for this crop and cultivation method",
+          code: "STAGE_COVERAGE_MISSING",
+          cropCode: inputs.cropCode,
+          cultivationMethod: inputs.cultivationMethod,
+          stageClockMethod: inputs.stageClockMethod,
+          options: await getCultivationMethodOptions(supabase, inputs.cropCode),
+          gaps: baseline.gaps,
+          coverage: baseline.coverage,
+        },
+        422,
+      );
+    }
+
+    // ── PHASE 2 / P1: verified RAG evidence attachment (flag-gated) ─────────
+    // Runs AFTER the deterministic baseline so RAG can only annotate, never
+    // generate. belowThreshold / unservable ⇒ explicit NO_EVIDENCE on the task.
+    let ragEvidence: RagEvidenceSummary | null = null;
+    try {
+      const ragFlag = await isFlagEnabled(supabase, "rag_schedule_evidence", { tenantId, farmerId });
+      if (ragFlag.enabled) {
+        ragEvidence = await attachRagEvidence(supabase, baseline.tasks, {
+          cropCode: inputs.cropCode,
+          cropLabel: inputs.cropLabel || cropName,
+          regionCode: inputs.regionCode,
+          tenantId,
+          farmerId,
+        });
+        baseline.coverage.rag_evidence =
+          ragEvidence.tasks_evidenced > 0 &&
+          ragEvidence.tasks_no_evidence === 0 &&
+          ragEvidence.tasks_not_evaluated === 0;
+        if (ragEvidence.tasks_no_evidence > 0) {
+          baseline.gaps.push(
+            `rag_evidence: ${ragEvidence.tasks_no_evidence} task(s) have no corpus evidence (explicit NO_EVIDENCE)`,
+          );
+        }
+      }
+    } catch (e) {
+      console.error("rag-evidence attachment failed (non-fatal):", e);
     }
 
     // ── Narration (translation only) ────────────────────────────────────────
@@ -186,7 +272,9 @@ serve(async (req) => {
         crop_name: inputs.cropLabel || cropName,
         crop_variety: inputs.varietyName,
         variety_id: inputs.varietyId,
-        cultivation_method: inputs.cultivationMethod,
+        // P0-A: canonical stage-clock method — the DB phenology resolvers exact-match
+        // this stored value against crop_stage_master (schedule is SSOT for method).
+        cultivation_method: inputs.stageClockMethod ?? inputs.cultivationMethod,
         crop_cycle: inputs.cropCycle,
         sowing_date: inputs.sowingDate,
         transplant_date: inputs.transplantDate,
@@ -219,6 +307,7 @@ serve(async (req) => {
           missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k),
           gaps: baseline.gaps,
           provenance: baseline.provenance,
+          rag_evidence: ragEvidence,
         },
       })
       .select()

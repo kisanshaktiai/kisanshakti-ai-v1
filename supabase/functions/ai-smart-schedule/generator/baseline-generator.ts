@@ -1,4 +1,15 @@
 // CHANGE LOG
+// 2026-08-28 — P0 counter-audit fixes: (1) NUTRIENT_PRODUCT (N→UREA, P→SSP, K→MOP) removed —
+//   an application-level agronomic mapping. Nutrient-task cost is now computed ONLY when the
+//   DB itself supplies the product identity; until it does, cost stays null with an explicit
+//   gap. (2) getSeedRate now receives the stage-clock method for declared-hierarchy VCA
+//   fallback. (3) Fertilizer split parsing is strict: an explicit percent/pct key in (0,100]
+//   divides by 100; a fraction key must already be in (0,1]; a bare 'share' or an
+//   out-of-range value is AMBIGUOUS ⇒ null quantity + named gap, never a /100 heuristic.
+// 2026-08-28 — P0-A: stage lookup now uses ResolvedInputs.stageClockMethod (canonical clock
+//   from fn_effective_method's declared parent-walk) so child methods like rice
+//   direct_seeded_dry clock against their declared canonical graph. Seed/fertilizer/VCA
+//   lookups still use the farmer's selected method — this change touches phenology only.
 // 2026-08-24 18:20 UTC — task content: scouting brief from condition_code/etl_threshold,
 //   irrigation notes + critical moisture, sowing fallback detail, rule ETL/dose/source
 //   instructions, precautions from rule contraindications. Empty content → named gap.
@@ -43,7 +54,6 @@ import {
   getObservationRules,
   getBannedChemicals,
   getLaborRate,
-  getInputPrice,
   type Provenance,
   type StageRow,
 } from "../db/agronomy-repo.ts";
@@ -257,7 +267,15 @@ export async function generateBaseline(
   const areaHa = inputs.landAreaHa;
 
   // ── Stages (phenology spine) ───────────────────────────────────────────────
-  const stages = await getStages(supabase, inputs.cropCode, inputs.cropCycle, inputs.cultivationMethod);
+  // P0-A: clock stages by the DB-resolved canonical method (declared-hierarchy walk).
+  // Falls back to the farmer's method string only when resolution itself was skipped;
+  // an unresolvable clock still hard-fails to zero stage rows — no phenology mixing.
+  const stages = await getStages(
+    supabase,
+    inputs.cropCode,
+    inputs.cropCycle,
+    inputs.stageClockMethod ?? inputs.cultivationMethod,
+  );
   coverage.stages = stages.length > 0;
   if (!stages.length) {
     gaps.push(inputs.cultivationMethod ? "crop_stage_master_no_rows_for_method" : "crop_stage_master_no_rows");
@@ -277,7 +295,7 @@ export async function generateBaseline(
   // The day-0 anchor operation is always emitted when a phenology spine exists.
   // A missing seed rate degrades the quantity to null (with a named gap) — it never
   // removes the operation itself.
-  const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod);
+  const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod, inputs.stageClockMethod);
   coverage.seed = !!seed;
   let seedKg: number | null = null;
   if (!seed) {
@@ -366,13 +384,19 @@ export async function generateBaseline(
         gaps.push("fertilizer_split_without_timing_skipped");
         continue;
       }
-      const fractionRaw = split.fraction ?? split.share ?? split.percent ?? split.pct;
-      const fraction =
-        fractionRaw != null && !isNaN(Number(fractionRaw))
-          ? Number(fractionRaw) > 1
-            ? Number(fractionRaw) / 100
-            : Number(fractionRaw)
-          : null;
+      // Strict split semantics — agronomic quantities never come from a heuristic.
+      // percent/pct in (0,100] ⇒ /100; fraction in (0,1] used as-is; anything else
+      // (a bare 'share', an out-of-range number) is ambiguous ⇒ null + named gap.
+      let fraction: number | null = null;
+      const pctRaw = split.percent ?? split.pct;
+      const fracRaw = split.fraction;
+      if (pctRaw != null && !isNaN(Number(pctRaw)) && Number(pctRaw) > 0 && Number(pctRaw) <= 100) {
+        fraction = Number(pctRaw) / 100;
+      } else if (fracRaw != null && !isNaN(Number(fracRaw)) && Number(fracRaw) > 0 && Number(fracRaw) <= 1) {
+        fraction = Number(fracRaw);
+      } else if (pctRaw != null || fracRaw != null || split.share != null) {
+        gaps.push("fertilizer_split_semantics_ambiguous");
+      }
       const nutrientSource = split.nutrient ?? split.name ?? null;
       if (nutrientSource == null || String(nutrientSource).trim() === "") {
         // No nutrient named by the DB row — never assume a compound blend.
@@ -694,27 +718,14 @@ export async function generateBaseline(
   const labor = await getLaborRate(supabase, inputs.state, null);
   coverage.labor_rate = !!labor;
   if (!labor) gaps.push("labor_rates_no_row");
-  let estimatedCost: number | null = null;
-  // Product mapping is keyed on the structured nutrient field only — never on any
-  // display string (task_name / task_description / stage_name).
-  const NUTRIENT_PRODUCT: Record<string, string> = { N: "UREA", P: "SSP", K: "MOP" };
-  for (const t of tasks) {
-    if (t.quantity && t.task_type === "nutrition") {
-      const product = t.nutrient ? NUTRIENT_PRODUCT[t.nutrient] : undefined;
-      if (!product) {
-        gaps.push("input_price_product_unmapped");
-        continue;
-      }
-      const price = await getInputPrice(supabase, product, inputs.state);
-      if (price) {
-        t.estimated_cost = Number((price.price * t.quantity.value).toFixed(2));
-        t.source_refs.push(price.provenance);
-        estimatedCost = (estimatedCost ?? 0) + t.estimated_cost;
-      }
-    }
+  const estimatedCost: number | null = null;
+  // Nutrient→product mapping is NOT an application decision (N→UREA etc. was a hardcoded
+  // agronomic assumption). Cost is computed only when the DB explicitly supplies the input
+  // product identity for the recommendation; no such authoritative mapping exists in the
+  // live data yet (input_prices is also empty), so cost stays null with an explicit gap.
+  if (tasks.some((t) => t.quantity && t.task_type === "nutrition")) {
+    gaps.push("input_price_not_authoritatively_mappable");
   }
-
-  if (estimatedCost == null) gaps.push("input_prices_no_rows_cost_not_estimated");
 
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(

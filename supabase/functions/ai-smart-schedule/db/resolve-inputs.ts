@@ -1,4 +1,23 @@
 // CHANGE LOG
+// 2026-08-28 — P0 counter-audit fixes (verified live 2026-08-28):
+//   (1) REGION: district_zone_mapping scan removed — the live table is (id, district_id,
+//       zone_id) with ZERO rows and no name/zone_code columns, so the scan resolved nothing.
+//       Real root cause: wrong table family. fertilizer_recommendation_master.region_code
+//       holds state-region codes ('IN-MH'), i.e. the established v_land_region derivation
+//       (lands.state_id → states.code → 'IN-'||code). Region now reads v_land_region by land_id.
+//   (2) CROP CYCLE: the 'plant' guess is gone. Multiple real cycles with no explicit choice
+//       now return AMBIGUOUS_CROP_CYCLE (sugarcane: sett_planted plant vs ratoon are distinct
+//       phenologies) — surfaced as 422 CROP_CYCLE_REQUIRED with DB-derived options, exactly
+//       like the cultivation-method pattern.
+//   (3) READY-MADE PLANT: the literal 'transplanted' mapping moved out of index.ts; the flag
+//       now resolves through cultivation_method_master.requires_nursery ∩ the crop's own
+//       stage-graph methods — DB metadata, unique match only, else the ambiguity path.
+// 2026-08-28 — P0-A: DB-driven stage-clock resolution. New ResolvedInputs.stageClockMethod
+//   resolved via the EXISTING public.fn_effective_method(crop, method) — a recursive walk of
+//   cultivation_method_master.parent_method_code that returns the nearest ancestor (or self)
+//   with an active crop_stage_master graph. Declared hierarchy only: no string matching, no
+//   cross-family fallback (transplanted and direct_seeded have separate roots), NULL when no
+//   declared ancestor has stages (surfaced as a gap, never guessed).
 // 2026-08-24 17:47 UTC — P0: resolveCultivationMethod returns "__AMBIGUOUS__" when the crop's
 //   stage graph defines >1 method and nothing resolved one, so index.ts can 422 instead of
 //   generating a schedule that merges two phenologies.
@@ -33,6 +52,11 @@ export interface ResolvedInputs {
   varietyName: string | null;
   varietyNameLocal: string | null;
   cultivationMethod: string | null;
+  /** Canonical method whose crop_stage_master graph clocks this schedule (fn_effective_method).
+   *  Equals cultivationMethod when that method has its own stage graph; NULL when no declared
+   *  ancestor has one. Persist THIS on crop_schedules.cultivation_method — the DB phenology
+   *  resolvers (resolve_crop_phenology & co.) exact-match the stored method as SSOT. */
+  stageClockMethod: string | null;
   cropCycle: string | null;
   landAreaAcres: number | null;
   landAreaHa: number | null;
@@ -51,6 +75,28 @@ const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
 
 /** Sentinel: the crop defines several cultivation methods and none could be resolved. */
 export const AMBIGUOUS_CULTIVATION_METHOD = "__AMBIGUOUS__";
+
+/** Sentinel: the crop's stage graph defines several real cycles and none could be resolved. */
+export const AMBIGUOUS_CROP_CYCLE = "__AMBIGUOUS_CYCLE__";
+
+/** Distinct non-universal crop cycles the crop's active stage graph defines (DB-derived options). */
+export async function getCropCycleOptions(
+  supabase: SupabaseClient,
+  cropCode: string,
+): Promise<string[]> {
+  const { data } = await supabase
+    .from("crop_stage_master")
+    .select("crop_cycle")
+    .eq("crop_code", cropCode)
+    .eq("is_active", true);
+  return [
+    ...new Set(
+      (data || [])
+        .map((r: Record<string, unknown>) => String(r.crop_cycle ?? "").trim())
+        .filter((c) => c && c.toLowerCase() !== "universal"),
+    ),
+  ];
+}
 
 /** Distinct non-null cultivation methods a crop's stage graph defines. */
 export async function getCultivationMethodOptions(
@@ -125,6 +171,7 @@ async function resolveCultivationMethod(
   cropCode: string | null,
   requested: string | null,
   varietyId: string | null,
+  isReadyMadePlant: boolean,
 ): Promise<string | null> {
   const q = norm(requested);
 
@@ -141,6 +188,32 @@ async function resolveCultivationMethod(
       const code = (hit as Record<string, unknown>).method_code ?? (hit as Record<string, unknown>).code ?? (hit as Record<string, unknown>).value;
       if (code) return String(code);
     }
+  }
+
+  // "Ready-made plant" resolves through DB metadata, never a literal method code:
+  // the candidate set is the crop's OWN active stage-graph methods, filtered to
+  // cultivation_method_master rows declaring requires_nursery = true. A unique
+  // survivor wins (rice: {direct_seeded, transplanted} ∩ nursery ⇒ transplanted).
+  // Zero or several survivors fall through to the ambiguity logic below, which
+  // surfaces the DB-derived options instead of guessing.
+  if (!q && isReadyMadePlant && cropCode && methods) {
+    const { data: graphRows } = await supabase
+      .from("crop_stage_master")
+      .select("cultivation_method")
+      .eq("crop_code", cropCode)
+      .eq("is_active", true);
+    const graphMethods = new Set(
+      (graphRows || [])
+        .map((r: Record<string, unknown>) => norm(r.cultivation_method))
+        .filter(Boolean),
+    );
+    const nursery = methods.filter(
+      (m: Record<string, unknown>) =>
+        m.is_active !== false &&
+        m.requires_nursery === true &&
+        graphMethods.has(norm(m.method_code)),
+    );
+    if (nursery.length === 1) return String((nursery[0] as Record<string, unknown>).method_code);
   }
 
   // If the variety only supports one method, use it (DB-derived, not assumed)
@@ -180,6 +253,7 @@ export async function resolveInputs(
     cropName: string;
     cropVariety?: string | null;
     cultivationMethod?: string | null;
+    isReadyMadePlant?: boolean;
     cropCycle?: string | null;
     sowingDate?: string | null;
     transplantDate?: string | null;
@@ -221,8 +295,37 @@ export async function resolveInputs(
     cropCode,
     params.cultivationMethod || null,
     variety?.id || null,
+    params.isReadyMadePlant === true,
   );
   if (!cultivationMethod) gaps.push("cultivation_method_unresolved");
+
+  // ── P0-A: stage-clock method via the DB's own hierarchy (fn_effective_method) ──
+  // Verified live: rice/direct_seeded_dry → direct_seeded; unknown method → null.
+  // The walk follows ONLY parent_method_code links declared in cultivation_method_master,
+  // so incompatible phenologies (transplanted vs direct-seeded families) can never merge.
+  let stageClockMethod: string | null = null;
+  if (cropCode && cultivationMethod && cultivationMethod !== AMBIGUOUS_CULTIVATION_METHOD) {
+    const { data: eff, error: effErr } = await supabase.rpc("fn_effective_method", {
+      p_crop_code: cropCode,
+      p_method_code: cultivationMethod,
+    });
+    if (effErr) {
+      gaps.push(`stage_clock_lookup_failed:${effErr.message}`);
+    } else if (typeof eff === "string" && eff) {
+      stageClockMethod = eff;
+      if (stageClockMethod !== cultivationMethod) {
+        provenance.stage_clock = {
+          table: "cultivation_method_master",
+          note: `stage clock inherited from declared parent: ${cultivationMethod} -> ${stageClockMethod}`,
+        };
+      }
+    } else {
+      // No ancestor in the declared hierarchy has an active stage graph. Surface it;
+      // downstream this becomes an explicit STAGE_COVERAGE_MISSING error, never a
+      // silent stage-free schedule.
+      gaps.push(`stage_clock_unresolved_for_method:${cultivationMethod}`);
+    }
+  }
 
   // Crop cycle resolution. Priority: explicit param → land record → inferred from the
   // crop's stage graph → cycle-aware fallback. getStages filters
@@ -267,7 +370,8 @@ export async function resolveInputs(
     // A crop with exactly one real cycle infers it directly.
     if (distinctNonUniversal.length === 1) cropCycle = distinctNonUniversal[0];
     else if (hasUniversal) cropCycle = "universal";
-    else cropCycle = distinctNonUniversal.find((c) => c.toLowerCase() === "plant") || distinctNonUniversal[0] || "universal";
+    else if (distinctNonUniversal.length > 1) cropCycle = AMBIGUOUS_CROP_CYCLE;
+    else cropCycle = distinctNonUniversal[0] || "universal";
   }
 
   // Soil fertility class from the latest soil test (never assumed)
@@ -287,19 +391,22 @@ export async function resolveInputs(
     gaps.push("soil_fertility_class_missing");
   }
 
-  // Region code from the district → agro-climatic zone mapping
+  // Region code: the established state-region derivation, via the v_land_region view
+  // (lands.state_id → states.code → 'IN-'||code). This is the SAME code family that
+  // fertilizer_recommendation_master.region_code stores (live value: 'IN-MH'), so the
+  // fertilizer resolver's region dimension can actually match. district_zone_mapping is
+  // NOT used: the live table is (id, district_id, zone_id) with zero rows — a different,
+  // unpopulated concept.
   let regionCode: string | null = null;
-  if (land?.district) {
-    const { data: dz } = await supabase
-      .from("district_zone_mapping")
-      .select("*")
-      .limit(1000);
-    const hit = (dz || []).find((d: Record<string, unknown>) =>
-      Object.values(d).some((v) => typeof v === "string" && norm(v) === norm(land.district))
-    );
-    if (hit) {
-      const z = (hit as Record<string, unknown>).zone_code ?? (hit as Record<string, unknown>).zone_id;
-      regionCode = z ? String(z) : null;
+  {
+    const { data: reg } = await supabase
+      .from("v_land_region")
+      .select("region_code, state_code")
+      .eq("land_id", params.landId)
+      .maybeSingle();
+    if (reg?.region_code) {
+      regionCode = String(reg.region_code);
+      provenance.region = { table: "v_land_region", source: `state_code:${reg.state_code ?? ""}` };
     }
   }
   if (!regionCode) gaps.push("region_code_unresolved");
@@ -313,6 +420,7 @@ export async function resolveInputs(
     varietyName: variety?.name || null,
     varietyNameLocal: variety?.localName || null,
     cultivationMethod,
+    stageClockMethod,
     cropCycle,
     landAreaAcres,
     landAreaHa: landAreaAcres != null ? landAreaAcres * 0.404686 : null,

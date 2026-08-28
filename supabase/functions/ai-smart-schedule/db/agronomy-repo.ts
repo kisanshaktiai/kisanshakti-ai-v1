@@ -1,4 +1,14 @@
 // CHANGE LOG
+// 2026-08-28 — P0 counter-audit fix: getSeedRate no longer accepts fn_calculate_seed_rate
+//   output built on the RPC's internal defaults. Verified in the live function body: missing
+//   TGW defaults to 20 g with tgw_source='default_20g_UNVERIFIED', and missing
+//   variety_cultivation_agronomy.target_plants_per_m2 silently defaults to 120/m² with NO
+//   flag in the output. The gate therefore (a) verifies target_plants_per_m2 exists in VCA
+//   BEFORE calling the RPC — trying the farmer's method, then the declared-hierarchy
+//   stage-clock method, since VCA keys only canonical methods — and (b) rejects any RPC
+//   result whose tgw_source is the UNVERIFIED default. band_estimate TGW (curated
+//   grain_type_tgw_band table) is accepted as DB evidence and carried in provenance.
+//   No authoritative parameters ⇒ null ⇒ explicit seed_rate gap. Never a defaulted number.
 // 2026-08-24 17:47 UTC — P0: getStages is now HARD-scoped by cultivation_method (no
 //   fallback to the unscoped set — that merged transplanted + DSR rice phenologies),
 //   selects clock_reference, and applies a deterministic final sort (das_min, stage_code).
@@ -100,42 +110,76 @@ export interface SeedRateResult {
   provenance: Provenance;
 }
 
+const RPC_TGW_UNVERIFIED = "default_20g_UNVERIFIED"; // self-reported by fn_calculate_seed_rate
+
 export async function getSeedRate(
   supabase: SupabaseClient,
   varietyId: string | null,
   cultivationMethod: string | null,
+  stageClockMethod: string | null = null,
 ): Promise<SeedRateResult | null> {
   if (!varietyId || !cultivationMethod) return null;
 
-  // Preferred: the DB's own seed-rate function (TGW / plant-population based)
-  const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", {
-    p_variety_id: varietyId,
-    p_cultivation_method: cultivationMethod,
-  });
-  const r = Array.isArray(rpc) ? rpc[0] : rpc;
-  if (r?.seed_rate_kg_per_acre != null) {
-    return {
-      kgPerAcre: Number(r.seed_rate_kg_per_acre),
-      rationale: r.rationale ?? null,
-      provenance: { table: "fn_calculate_seed_rate", source: r.tgw_source ?? null },
-    };
+  // VCA keys only canonical methods, so a child method (rice direct_seeded_dry) must
+  // fall back along the DECLARED hierarchy — the stage-clock method — never a guess.
+  const candidateMethods = [...new Set([cultivationMethod, stageClockMethod].filter(Boolean))] as string[];
+
+  let vca: Record<string, unknown> | null = null;
+  let vcaMethod: string | null = null;
+  for (const method of candidateMethods) {
+    const { data } = await supabase
+      .from("variety_cultivation_agronomy")
+      .select(
+        "id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier",
+      )
+      .eq("variety_id", varietyId)
+      .eq("cultivation_method", method)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (data) {
+      vca = data as Record<string, unknown>;
+      vcaMethod = method;
+      break;
+    }
   }
 
-  // Fallback (still DB): curated agronomy table
-  const { data: vca } = await supabase
-    .from("variety_cultivation_agronomy")
-    .select("id, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier")
-    .eq("variety_id", varietyId)
-    .eq("cultivation_method", cultivationMethod)
-    .eq("is_active", true)
-    .maybeSingle();
+  // The RPC is only authoritative when ITS inputs are: target_plants_per_m2 must exist in
+  // VCA (the RPC silently defaults it to 120/m² with no output flag), and the returned
+  // tgw_source must not be the RPC's own unverified 20 g default.
+  if (vca && vca.target_plants_per_m2 != null && vcaMethod) {
+    const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", {
+      p_variety_id: varietyId,
+      p_cultivation_method: vcaMethod,
+    });
+    const r = Array.isArray(rpc) ? rpc[0] : rpc;
+    if (
+      r?.seed_rate_kg_per_acre != null &&
+      typeof r.tgw_source === "string" &&
+      r.tgw_source !== RPC_TGW_UNVERIFIED
+    ) {
+      return {
+        kgPerAcre: Number(r.seed_rate_kg_per_acre),
+        rationale: r.rationale ?? null,
+        provenance: {
+          table: "fn_calculate_seed_rate",
+          source: `tgw:${r.tgw_source}; method:${vcaMethod}`,
+        },
+      };
+    }
+  }
+
+  // Fallback (still DB): the curated per-acre range from the same VCA row.
   const min = vca?.seed_rate_kg_per_acre_min != null ? Number(vca.seed_rate_kg_per_acre_min) : null;
   const max = vca?.seed_rate_kg_per_acre_max != null ? Number(vca.seed_rate_kg_per_acre_max) : null;
   if (min == null && max == null) return null;
   return {
     kgPerAcre: min != null && max != null ? (min + max) / 2 : (min ?? max) as number,
-    rationale: vca?.seed_rate_rationale ?? null,
-    provenance: { table: "variety_cultivation_agronomy", row_id: vca?.id, source: vca?.source ?? null },
+    rationale: (vca?.seed_rate_rationale as string) ?? null,
+    provenance: {
+      table: "variety_cultivation_agronomy",
+      row_id: (vca?.id as string) ?? null,
+      source: `${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}`,
+    },
   };
 }
 
