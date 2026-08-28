@@ -33880,26 +33880,38 @@ export type Database = {
       }
       villages: {
         Row: {
+          boundary: unknown
+          center_lat: number | null
+          center_lon: number | null
           created_at: string | null
           id: string
           is_active: boolean | null
           name: string
+          pincode: string | null
           taluka_id: string
           updated_at: string | null
         }
         Insert: {
+          boundary?: unknown
+          center_lat?: number | null
+          center_lon?: number | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null
           name: string
+          pincode?: string | null
           taluka_id: string
           updated_at?: string | null
         }
         Update: {
+          boundary?: unknown
+          center_lat?: number | null
+          center_lon?: number | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null
           name?: string
+          pincode?: string | null
           taluka_id?: string
           updated_at?: string | null
         }
