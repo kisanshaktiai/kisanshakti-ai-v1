@@ -1020,8 +1020,12 @@ export function EnhancedAIChatInterface() {
       try {
         const localMessages = await localDB.getChatMessages(landId);
         if (localMessages && localMessages.length > 0) {
-          const cachedMessages = localMessages
-            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          const cachedMessages = [...localMessages]
+            .sort((a, b) => {
+              const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+              if (dt !== 0) return dt;
+              return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
+            })
             .map(mapMessageFromDB);
           if (import.meta.env.DEV) console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
           return { sessionId: null, messages: cachedMessages, fromCache: true };
