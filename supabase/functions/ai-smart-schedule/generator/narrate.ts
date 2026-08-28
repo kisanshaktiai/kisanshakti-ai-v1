@@ -87,10 +87,18 @@ export async function narrateTasks(
   const failures: string[] = [];
 
   try {
-    // Chunks run in parallel, so total latency ≈ one chunk instead of one huge call.
-    const results = await Promise.allSettled(
-      chunks.map((c) => narrateChunk(c.items, c.offset, language, apiKey, controller.signal)),
-    );
+    // Bounded concurrency: unbounded Promise.all over every chunk held all
+    // request/response bodies in memory at once and tripped WORKER_RESOURCE_LIMIT (546).
+    const results: PromiseSettledResult<Array<{ i: number; name?: string; desc?: string }>>[] = [];
+    for (let i = 0; i < chunks.length; i += MAX_CONCURRENCY) {
+      if (controller.signal.aborted) break;
+      const window = chunks.slice(i, i + MAX_CONCURRENCY);
+      const settled = await Promise.allSettled(
+        window.map((c) => narrateChunk(c.items, c.offset, language, apiKey, controller.signal)),
+      );
+      results.push(...settled);
+    }
+
 
     for (const r of results) {
       if (r.status !== "fulfilled") {
