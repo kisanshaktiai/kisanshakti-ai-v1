@@ -4,6 +4,10 @@
 // 2026-08-18 15:20 UTC — 504 fix: narration now chunks tasks (20/call) and runs chunks in
 //   parallel under a 45s wall-clock budget; partial/failed chunks fall back to source text
 //   instead of hanging the request until the 150s idle timeout.
+// 2026-08-28 18:12 UTC — 546 WORKER_RESOURCE_LIMIT fix: narration chunks now run through a
+//   bounded pool (MAX_CONCURRENCY = 3) instead of firing every chunk at once, capping peak
+//   worker memory/CPU on large schedules.
+
 
 export interface NarratableTask {
   task_name: string;
@@ -24,9 +28,12 @@ export function isFaithful(source: string, translated: string): boolean {
 }
 
 const CHUNK_SIZE = 20;
+/** Max simultaneous LLM calls — keeps peak worker memory bounded (546 guard). */
+const MAX_CONCURRENCY = 3;
 /** Hard wall-clock budget for the whole narration stage. The platform kills the
  *  request at 150s; a single mega-prompt with 100+ tasks routinely blew past it. */
 const NARRATION_BUDGET_MS = 45_000;
+
 
 async function narrateChunk(
   chunk: NarratableTask[],
@@ -87,10 +94,18 @@ export async function narrateTasks(
   const failures: string[] = [];
 
   try {
-    // Chunks run in parallel, so total latency ≈ one chunk instead of one huge call.
-    const results = await Promise.allSettled(
-      chunks.map((c) => narrateChunk(c.items, c.offset, language, apiKey, controller.signal)),
-    );
+    // Bounded concurrency: unbounded Promise.all over every chunk held all
+    // request/response bodies in memory at once and tripped WORKER_RESOURCE_LIMIT (546).
+    const results: PromiseSettledResult<Array<{ i: number; name?: string; desc?: string }>>[] = [];
+    for (let i = 0; i < chunks.length; i += MAX_CONCURRENCY) {
+      if (controller.signal.aborted) break;
+      const window = chunks.slice(i, i + MAX_CONCURRENCY);
+      const settled = await Promise.allSettled(
+        window.map((c) => narrateChunk(c.items, c.offset, language, apiKey, controller.signal)),
+      );
+      results.push(...settled);
+    }
+
 
     for (const r of results) {
       if (r.status !== "fulfilled") {
