@@ -605,9 +605,11 @@ export function EnhancedAIChatInterface() {
                 
                 return {
                   ...prev,
-                  [sessionKey]: [...existing, ...uniqueNew].sort(
-                    (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
-                  )
+                  [sessionKey]: [...existing, ...uniqueNew].sort((a, b) => {
+                    const dt = a.timestamp.getTime() - b.timestamp.getTime();
+                    if (dt !== 0) return dt;
+                    return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
+                  })
                 };
               });
             }
