@@ -571,8 +571,13 @@ export function EnhancedAIChatInterface() {
       if (cachedMessages && cachedMessages.length > 0) {
         console.log(`⚡ [Cache-First] INSTANT load: ${cachedMessages.length} messages for ${sessionKey}`);
         
-        const sortedMessages = cachedMessages
-          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        const sortedMessages = [...cachedMessages]
+          .sort((a, b) => {
+            const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            if (dt !== 0) return dt;
+            // Same-millisecond turn: question before answer
+            return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
+          })
           .map(mapMessageFromDB);
         
         // Get session ID from cache if available - CRITICAL: Pass farmer ID for isolation
@@ -600,9 +605,11 @@ export function EnhancedAIChatInterface() {
                 
                 return {
                   ...prev,
-                  [sessionKey]: [...existing, ...uniqueNew].sort(
-                    (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
-                  )
+                  [sessionKey]: [...existing, ...uniqueNew].sort((a, b) => {
+                    const dt = a.timestamp.getTime() - b.timestamp.getTime();
+                    if (dt !== 0) return dt;
+                    return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
+                  })
                 };
               });
             }
@@ -693,7 +700,12 @@ export function EnhancedAIChatInterface() {
               });
             };
             
-            const filteredMessages = filterDisplayableMessages(allMessages);
+            // CRITICAL FIX (2026-08-28): rows arrive newest-first from the query.
+            // Reverse to chronological BEFORE sorting so that JS stable sort keeps
+            // the correct order for rows sharing an identical created_at timestamp
+            // (user question + assistant answer are frequently written in the same ms,
+            // which previously rendered the answer above the question).
+            const filteredMessages = filterDisplayableMessages([...allMessages].reverse());
             
             // Dedupe by id (in case of duplicates across sessions)
             const seenIds = new Set<string>();
@@ -703,8 +715,16 @@ export function EnhancedAIChatInterface() {
               return true;
             });
             
-            // Sort by created_at ascending
-            uniqueMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            // Sort by created_at ascending, with a deterministic tie-break:
+            // on equal timestamps the user turn must precede the assistant turn.
+            const roleRank = (r: string) => (r === 'user' ? 0 : 1);
+            uniqueMessages.sort((a, b) => {
+              const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+              if (dt !== 0) return dt;
+              const dr = roleRank(a.role) - roleRank(b.role);
+              if (dr !== 0) return dr;
+              return 0;
+            });
             
             if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${uniqueMessages.length} displayable messages`);
             
@@ -1002,8 +1022,12 @@ export function EnhancedAIChatInterface() {
       try {
         const localMessages = await localDB.getChatMessages(landId);
         if (localMessages && localMessages.length > 0) {
-          const cachedMessages = localMessages
-            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          const cachedMessages = [...localMessages]
+            .sort((a, b) => {
+              const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+              if (dt !== 0) return dt;
+              return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
+            })
             .map(mapMessageFromDB);
           if (import.meta.env.DEV) console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
           return { sessionId: null, messages: cachedMessages, fromCache: true };
