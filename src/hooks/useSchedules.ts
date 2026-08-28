@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
+import { schedulesApi } from '@/services/schedulesApi';
 import { localDB } from '@/services/localDB';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
@@ -282,15 +283,16 @@ export function useSchedules(landId?: string) {
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 3000), // Exponential backoff
   });
 
-  // Mutation for deleting a schedule
+  // Mutation for deleting a schedule.
+  // 2026-08-28: the previous direct supabase.from('crop_schedules').delete() physically
+  // removed the row, bypassing the soft-delete lifecycle entirely — no ownership check in
+  // the edge function, no is_active UPDATE, so trg_release_land_on_schedule_deactivate
+  // never fired and the land was never released. Deletion now routes through the single
+  // canonical path: schedulesApi.deleteSchedule() → schedules-api ownership validation →
+  // is_active=false → land-release trigger.
   const deleteMutation = useMutation({
     mutationFn: async (scheduleId: string) => {
-      const { error } = await supabase
-        .from('crop_schedules')
-        .delete()
-        .eq('id', scheduleId);
-      
-      if (error) throw error;
+      await schedulesApi.deleteSchedule(scheduleId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });

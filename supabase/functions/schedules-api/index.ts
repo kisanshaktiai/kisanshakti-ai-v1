@@ -325,7 +325,14 @@ serve(async (req) => {
 
         console.log('🗑️ [SchedulesAPI] Deleting schedule:', scheduleId);
         
-        // Verify ownership, then remove tasks and soft-delete the schedule
+        // Verify ownership, then SOFT-delete the schedule (is_active=false).
+        // schedule_tasks are deliberately PRESERVED: the AFTER UPDATE trigger
+        // trg_release_land_on_schedule_deactivate → fn_release_land_on_schedule_deactivate
+        // computes had_started from lifecycle_status='GROWING' OR the existence of
+        // completed schedule_tasks (verified live definition, 2026-08-28). Deleting the
+        // tasks before this UPDATE destroyed that evidence, so had_started was wrong for
+        // every task-progressed schedule. Task rows stay as the historical record; the
+        // schedule row's is_active=false is what hides them from the app.
         const { data: owned, error: ownErr } = await supabase
           .from('crop_schedules')
           .select('id, land_id')
@@ -336,8 +343,6 @@ serve(async (req) => {
 
         if (ownErr) return json({ error: 'Schedule lookup failed' }, 503);
         if (!owned) return json({ error: 'Schedule not found for this farmer' }, 403);
-
-        await supabase.from('schedule_tasks').delete().eq('schedule_id', scheduleId);
 
         const { error } = await supabase
           .from('crop_schedules')
