@@ -593,8 +593,12 @@ serve(async (req: Request) => {
     // ── Citations: appended IN CODE from retrieval metadata (§22) — the LLM
     //    is forbidden from writing them, so page numbers can never be invented.
     //    Not appended when the answer was degraded to the number-free path.
-    if (ragEvidence.length > 0 && !noEvidenceMode && citedEvidenceIndexes(answer).length > 0) {
-      const used = citedEvidenceIndexes(answer);
+    const citedIdx = citedEvidenceIndexes(answer);
+    // markers only SELECT which pages are listed; their absence must not suppress
+    // sources on a grounded answer — gap answers already arrive here with
+    // ragEvidence=[] so fabricated citations remain impossible.
+    if (ragEvidence.length > 0 && !noEvidenceMode) {
+      const used = citedIdx;
       const body = stripCitationMarkers(answer);
       const acre = acreEquivalentsLine(body, used.length ? used.map((i) => ragEvidence[i - 1]).filter(Boolean) : ragEvidence, language);
       answer = body + acre + buildCitationLines(ragEvidence, language, used);
@@ -614,7 +618,7 @@ serve(async (req: Request) => {
           mode: ragResult.mode,
           evidence_count: ragResult.evidence.length,
           servable_count: ragEvidence.length,
-          cited_indexes: citedEvidenceIndexes(answer),
+          cited_indexes: citedIdx,
           below_threshold: ragResult.belowThreshold,
           high_risk: highRisk,
           evidence_ids: ragEvidence.map((e) => e.chunkId),
