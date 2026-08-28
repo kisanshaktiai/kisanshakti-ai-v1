@@ -8709,26 +8709,38 @@ export class AIAgentOrchestrator {
             });
 
             if (ctxSel.applicable.length > 0) {
-              const matched = ctxSel.applicable.map((r: any) => toMatchedResponse(r));
+              // FIX 7 (2026-08-28): Lane B is ADDITIVE. Context rules never
+              // replace the canonical candidate stream and never overwrite
+              // primary_decision, prescriptions, diagnoses or observations.
+              // They lead only when the canonical stream is EMPTY (the
+              // zero-observation advisory turn Lane B exists for).
+              const existing = Array.isArray(layeredRuleResult?.matched_responses)
+                ? layeredRuleResult.matched_responses : [];
+              const existingIds = new Set(existing.map((m: any) => String(m?.rule_id ?? '')));
+              const matched = ctxSel.applicable
+                .map((r: any) => toMatchedResponse(r))
+                .filter((m: any) => !existingIds.has(String(m?.rule_id ?? '')));
+              const merged = [...existing, ...matched];
+              const streamWasEmpty = existing.length === 0;
               layeredRuleResult = {
                 ...(layeredRuleResult ?? {}),
-                matched_responses: matched,
-                primary_decision: matched[0],
+                matched_responses: merged,
+                primary_decision: streamWasEmpty
+                  ? (merged[0] ?? null)
+                  : (layeredRuleResult?.primary_decision ?? existing[0] ?? null),
                 rules_evaluated: (layeredRuleResult?.rules_evaluated ?? 0) + ctxSel.applicable.length,
-                rules_matched: matched.length,
-                rules_applied: matched.map((m: any) => m.rule_id),
-                prescription_allowed: true,
+                rules_matched: merged.length,
+                rules_applied: merged.map((m: any) => m.rule_id),
+                prescription_allowed: streamWasEmpty ? true : (layeredRuleResult?.prescription_allowed ?? true),
                 safety_blocks: Array.isArray(layeredRuleResult?.safety_blocks)
                   ? layeredRuleResult.safety_blocks : [],
-                observations: [],
-                diagnoses: [],
-                lane: 'CONTEXT',
+                lane: streamWasEmpty ? 'CONTEXT' : (layeredRuleResult as any)?.lane,
               } as any;
               agentsUsed.push('CONTEXT_RULE_SELECTOR');
               console.log(
-                `[LANE_B_APPLIED] trace=${traceId} winner=${matched[0]?.rule_id} ` +
-                `rules=${matched.map((m: any) => m.rule_id).join(',')} ` +
-                `blocked_doses=${ctxSel.suppressed.map((s: any) => s.rule_id).join(',') || 'none'}`,
+                `[LANE_B_APPLIED] trace=${traceId} mode=${streamWasEmpty ? 'LEAD' : 'APPEND'} ` +
+                `primary=${(layeredRuleResult as any)?.primary_decision?.rule_id ?? 'none'} ` +
+                `appended=${matched.map((m: any) => m.rule_id).join(',') || 'none'}`,
               );
             }
           }
@@ -8739,11 +8751,15 @@ export class AIAgentOrchestrator {
           );
         }
 
-        // ── FIX 5 (2026-08-26) — UNIVERSAL CONTEXT_BLOCK SAFETY GATE ─────────
-        // An applicable CONTEXT_BLOCK row (crop + stage/DAS + cultivation) is
-        // evaluated BEFORE any rule sharing its condition_code / category can be
-        // emitted, in EVERY lane. The prohibition leads the response; the
-        // conflicting dose-bearing rule is dropped. Fully DB-driven.
+        // ── FIX 6 (2026-08-27) — CONTEXT_BLOCK GATE (graph-authoritative) ────
+        // Replaces FIX 5. A CONTEXT_BLOCK row is admitted only when it is
+        // (G1) context-eligible AND (G2) semantically relevant to this turn
+        // (hypothesis edge / intent→observation mapping / observation / same
+        // condition_code as a candidate). It suppresses a candidate only via an
+        // EXPLICIT graph edge (G3). It may lead the response and enter
+        // safety_blocks only when is_safety_block=true (G4); otherwise it is an
+        // advisory appended AFTER the kept candidates. primary_decision is
+        // always taken from the kept candidate lane unless a hard block exists.
         try {
           const _cbCandidates = Array.isArray(layeredRuleResult?.matched_responses)
             ? layeredRuleResult.matched_responses : [];
@@ -8753,6 +8769,9 @@ export class AIAgentOrchestrator {
             const _cbDasRaw =
               (canonicalState as any)?.days_since_sowing ??
               (landContext as any)?.days_since_sowing ?? null;
+            const _cbHypIds: string[] = (((this as any)._graphHypothesisResult?.candidates) ?? [])
+              .map((c: any) => String(c?.hypothesis_id ?? '')).filter(Boolean);
+            const _cbObsCodes: string[] = Array.isArray(confirmedObsCodes) ? confirmedObsCodes : [];
             const gate = await applyContextBlockGate(this.supabase, {
               cropCode: (canonicalState as any)?.crop_type ?? landContext?.current_crop ?? null,
               growthStage: (canonicalState as any)?.crop_stage ?? landContext?.growth_stage ?? null,
@@ -8761,32 +8780,65 @@ export class AIAgentOrchestrator {
                 (this as any)._sessionSSOT?.cultivation_method ??
                 (landContext as any)?.cultivation_method ?? null,
               traceId: traceId,
-            }, _cbCandidates);
+            }, _cbCandidates, {
+              intentCode: (this as any)._intentLock?.locked_intent ?? null,
+              hypothesisIds: _cbHypIds,
+              observationCodes: _cbObsCodes,
+            });
 
-            if (gate.suppressed.length > 0 || gate.blockResponses.length > 0) {
-              const nextMatched = [...gate.blockResponses, ...gate.kept];
+            const _cbChanged =
+              gate.suppressed.length > 0 ||
+              gate.hardBlockResponses.length > 0 ||
+              gate.overlayResponses.length > 0 ||
+              gate.advisoryResponses.length > 0;
+            if (_cbChanged) {
+              // Lane contract (FIX 7): a hard block leads ONLY when it
+              // established an explicit conflict or no candidate survives;
+              // safety overlays and advisories trail and never own primary.
+              const nextMatched = [...gate.hardBlockResponses, ...gate.kept, ...gate.overlayResponses, ...gate.advisoryResponses];
+              const primaryBefore = layeredRuleResult?.primary_decision?.rule_id ?? null;
+              const nextPrimary =
+                gate.hardBlockResponses[0] ??
+                gate.kept[0] ??
+                layeredRuleResult?.primary_decision ??
+                null;
               layeredRuleResult = {
                 ...(layeredRuleResult ?? {}),
                 matched_responses: nextMatched,
-                primary_decision: nextMatched[0] ?? layeredRuleResult?.primary_decision ?? null,
+                primary_decision: nextPrimary,
+                context_advisories: gate.advisoryResponses,
                 rules_matched: nextMatched.length,
                 rules_applied: nextMatched.map((m: any) => m?.rule_id).filter(Boolean),
+                rules_suppressed_by_context_block: gate.suppressed.map((s: any) => s?.rule_id).filter(Boolean),
                 safety_blocks: [
                   ...(Array.isArray(layeredRuleResult?.safety_blocks) ? layeredRuleResult.safety_blocks : []),
-                  ...gate.blocks.map((b: any) => ({
+                  ...[...gate.hardBlocks, ...gate.overlays].map((b: any) => ({
                     rule_id: b?.rule_id,
                     reason: 'CONTEXT_BLOCK',
                     condition_code: b?.condition_code ?? null,
                     message: b?.action_text ?? b?.reason_text ?? null,
                   })),
                 ],
+                context_block_gate: {
+                  evaluations: gate.evaluations,
+                  anomalies: gate.anomalies,
+                  primary_before: primaryBefore,
+                  primary_after: nextPrimary?.rule_id ?? null,
+                },
               } as any;
               agentsUsed.push('CONTEXT_BLOCK_GATE');
               console.warn(
                 `[CONTEXT_BLOCK_APPLIED] trace=${traceId} ` +
-                `blocks=${gate.blocks.map((b: any) => b.rule_id).join(',')} ` +
+                `hard=${gate.hardBlocks.map((b: any) => b.rule_id).join(',') || 'none'} ` +
+                `overlay=${gate.overlays.map((b: any) => b.rule_id).join(',') || 'none'} ` +
+                `advisory=${gate.advisories.map((b: any) => b.rule_id).join(',') || 'none'} ` +
                 `suppressed=${gate.suppressed.map((s: any) => s.rule_id).join(',') || 'none'} ` +
-                `primary=${nextMatched[0]?.rule_id ?? 'none'}`,
+                `primary_before=${primaryBefore ?? 'none'} primary_after=${nextPrimary?.rule_id ?? 'none'}`,
+              );
+            } else if (gate.dropped.length > 0) {
+              console.log(
+                `[CONTEXT_BLOCK_IGNORED] trace=${traceId} ` +
+                `not_relevant=${gate.dropped.map((b: any) => b.rule_id).join(',')}`,
               );
             }
           }

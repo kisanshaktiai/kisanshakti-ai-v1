@@ -3,6 +3,33 @@
  * Lane B — CONTEXT rule selector (zero-observation advisory)
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+ *   2026-08-28 — FIX 7 (single context authority + strict override):
+ *     (a) selectContextRules() is DISCOVERY ONLY — no condition_code
+ *         suppression, no blocks-first ordering, CONTEXT_BLOCK rows never
+ *         enter the candidate stream from Lane B. applyContextBlockGate() is
+ *         the one context-decision authority.
+ *     (b) condition_code_dose_fallback is SHADOW MODE — telemetry only
+ *         (would_have_suppressed), never suppresses. No explicit graph edge
+ *         → no suppression, without exception.
+ *     (c) A hard safety block may LEAD only when it established an explicit
+ *         graph conflict with a candidate, or when no candidate survives.
+ *         A merely-relevant safety block becomes a CONTEXT_SAFETY_OVERLAY —
+ *         farmer-visible, never primary.
+ *   2026-08-27 — FIX 6 (P1 decision-correctness): CONTEXT_BLOCK GATE REWRITE.
+ *     Root cause of "pest question answered with an unrelated late-N warning":
+ *     applyContextBlockGate() treated *context eligibility* (crop/stage/DAS)
+ *     as *decision authority* — any applicable block was prepended to
+ *     matched_responses and became primary_decision, and candidates were
+ *     suppressed on loose identity tokens (category / cause). The gate now
+ *     enforces the decision-brain invariant:
+ *       A rule may override or suppress another rule ONLY when the graph
+ *       explicitly establishes the relationship AND the block is
+ *       semantically relevant to this turn AND (for primary override) the
+ *       row is an authorised hard safety block (is_safety_block = true).
+ *     Gates G1 context / G2 relevance / G3 explicit conflict / G4 authority —
+ *     see the FIX 6 section at the bottom of this file. category / cause /
+ *     observation_code are never conflict keys any more.
+ *     cultivationMatches() is now fail-CLOSED for an unknown method.
  *   2026-08-26 14:40 UTC — Fix 5 (agronomic safety): added
  *     `selectContextBlocks()` + `applyContextBlockGate()`. CONTEXT_BLOCK rows
  *     applicable to the current crop/stage/DAS/cultivation now suppress ANY
@@ -76,7 +103,9 @@ function cultivationMatches(row: any, method: string): boolean {
   const list = arr(row?.cultivation_method_applicable);
   if (list.length === 0) return true; // universal
   if (list.some((m) => UNIVERSAL.includes(m))) return true;
-  if (!method) return true; // unknown lane → do not exclude
+  // FIX 6: fail-CLOSED. A row that names specific methods is NOT applicable
+  // when the farmer's method is unknown; only rows the DB marks universal pass.
+  if (!method) return false;
   return list.includes(method);
 }
 
@@ -125,26 +154,17 @@ export async function selectContextRules(
     (stageMatches(r, stage) || dasMatches(r, das)) && cultivationMatches(r, method)
   );
 
+  // FIX 7 (2026-08-28): Lane B is DISCOVERY ONLY. This selector no longer
+  // suppresses by condition_code and no longer leads with blocks — there is
+  // exactly ONE context-decision authority (applyContextBlockGate). Only
+  // CONTEXT_SCHEDULE rows enter the candidate stream; CONTEXT_BLOCK rows are
+  // returned in `blocks` for telemetry and are injected (or not) by the gate
+  // under its G1–G4 contract.
   const blocks = applicableRaw.filter((r) => norm(r?.trigger_class) === 'context_block');
-  const blockedCodes = new Set(blocks.map((b) => norm(b?.condition_code)).filter(Boolean));
-
   const suppressed: any[] = [];
-  const kept: any[] = [];
-  for (const r of applicableRaw) {
-    const isBlock = norm(r?.trigger_class) === 'context_block';
-    if (!isBlock && blockedCodes.has(norm(r?.condition_code))) {
-      suppressed.push(r);
-      continue;
-    }
-    kept.push(r);
-  }
-
-  kept.sort((a, b) => {
-    const ab = norm(a?.trigger_class) === 'context_block' ? 1 : 0;
-    const bb = norm(b?.trigger_class) === 'context_block' ? 1 : 0;
-    if (ab !== bb) return bb - ab; // blocks lead
-    return Number(b?.priority ?? 0) - Number(a?.priority ?? 0);
-  });
+  const kept = applicableRaw
+    .filter((r) => norm(r?.trigger_class) !== 'context_block')
+    .sort((a, b) => Number(b?.priority ?? 0) - Number(a?.priority ?? 0));
 
   console.log(
     `[LANE_B_CONTEXT_RULES] trace=${trace} crop=${crop} stage=${stage || 'null'} das=${das ?? 'null'} ` +
@@ -180,21 +200,106 @@ export function toMatchedResponse(row: any): any {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Fix 5 (2026-08-26) — UNIVERSAL CONTEXT_BLOCK SAFETY GATE
- * A CONTEXT_BLOCK row applicable to the current crop/stage/DAS/cultivation
- * prohibits every rule that carries the same condition_code or category,
- * in ANY lane. Purely DB-driven — no crop or nutrient is named here.
+ * FIX 6 (2026-08-27) — CONTEXT_BLOCK GATE (graph-authoritative rewrite)
+ *
+ * Invariant enforced here:
+ *   A rule may override or suppress another rule only when the decision graph
+ *   explicitly establishes the relationship and the overriding rule is
+ *   semantically relevant to the farmer's turn. Everything else is advisory.
+ *
+ * Nothing agronomic is encoded: crops, nutrients, stages, hypotheses, intents
+ * and every edge come from decision_rules / hypothesis_rule_mapping /
+ * intent_observation_mapping / rule_conflict_matrix rows.
  * ═════════════════════════════════════════════════════════════════════════ */
 
-export interface ContextBlockGateResult {
-  kept: any[];
-  suppressed: any[];
-  blocks: any[];
-  /** Block rows projected as matched_responses (lead the kept list). */
-  blockResponses: any[];
+/** Turn-level semantic context the gate needs to prove relevance. */
+export interface ContextBlockTurnContext {
+  /** Locked intent code for this turn (e.g. from IntentLock.locked_intent). */
+  intentCode?: string | null;
+  /** Hypothesis IDs the graph produced for this turn (candidates). */
+  hypothesisIds?: string[] | null;
+  /** Confirmed + extracted observation codes for this turn. */
+  observationCodes?: string[] | null;
 }
 
-/** Fetch CONTEXT_BLOCK rows applicable to the current canonical context. */
+export type ConflictSource =
+  | 'blocks_rule_ids'
+  | 'contraindications'
+  | 'mutually_exclusive_with'
+  | 'rule_conflict_matrix'
+  | 'condition_code_dose_fallback';
+
+export interface ContextBlockEvaluation {
+  rule_id: string;
+  context_match: boolean;
+  intent_match: boolean;
+  hypothesis_match: boolean;
+  observation_match: boolean;
+  candidate_condition_match: boolean;
+  relevant: boolean;
+  safety_authority: boolean;
+  suppressed_rule_ids: string[];
+  /** Shadow-mode fallback hits (missing graph edge) — telemetry, no suppression. */
+  would_have_suppressed: string[];
+  conflict_sources: ConflictSource[];
+  has_authored_edges: boolean;
+}
+
+export interface ContextBlockGateResult {
+  /** Candidates that survive suppression — primary_decision MUST come from here. */
+  kept: any[];
+  /** Candidates removed by an explicit graph conflict. */
+  suppressed: any[];
+  /** Hard blocks that ESTABLISHED an explicit conflict (or stand alone) — may lead. */
+  hardBlocks: any[];
+  /** Relevant hard safety blocks WITHOUT an established conflict — safety overlays. */
+  overlays: any[];
+  /** Relevant blocks WITHOUT safety authority (appended after kept, never primary). */
+  advisories: any[];
+  /** Applicable-but-irrelevant blocks that were dropped (telemetry only). */
+  dropped: any[];
+  /** Leading hard blocks projected as matched_responses. */
+  hardBlockResponses: any[];
+  /** Safety overlays projected as matched_responses (after kept, before advisories). */
+  overlayResponses: any[];
+  /** Advisory blocks projected as matched_responses (lane=CONTEXT_ADVISORY). */
+  advisoryResponses: any[];
+  evaluations: ContextBlockEvaluation[];
+  /** Anomaly counters — should trend to zero after DB remediation. */
+  anomalies: Record<string, number>;
+  /** @deprecated kept for older call sites: hardBlockResponses */
+  blockResponses: any[];
+  /** @deprecated kept for older call sites: hardBlocks ∪ advisories */
+  blocks: any[];
+}
+
+function strArr(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x ?? '').trim()).filter(Boolean);
+  if (typeof v === 'string' && v.trim()) return [v.trim()];
+  return [];
+}
+
+function upperSet(v: unknown): Set<string> {
+  return new Set(strArr(v).map((x) => x.toUpperCase()));
+}
+
+/** Observation codes a CONTEXT_BLOCK row declares in conditions_json. */
+function blockPredicateObservations(row: any): string[] {
+  const cj = row?.conditions_json;
+  const obs = cj && typeof cj === 'object' ? (cj as any).observations : null;
+  return strArr(obs).map((o) => o.toLowerCase());
+}
+
+/** True when a candidate carries an input dose (the thing a block prohibits). */
+function candidateCarriesDose(c: any): boolean {
+  const ic = norm(c?.input_class);
+  if (ic && ic !== 'none') return true;
+  if (norm(c?.dosage_per_acre)) return true;
+  if (norm(c?.active_ingredient)) return true;
+  return false;
+}
+
+/** G1 — context eligibility. Fetch CONTEXT_BLOCK rows for crop/stage/DAS/method. */
 export async function selectContextBlocks(
   supabase: any,
   q: ContextRuleQuery,
@@ -230,57 +335,299 @@ export async function selectContextBlocks(
   }
 }
 
-function ruleIdentityTokens(row: any): string[] {
-  return [
-    norm(row?.condition_code),
-    norm(row?.observation_code),
-    norm(row?.category),
-    norm(row?.cause),
-  ].filter(Boolean);
+/** Load the full decision_rules rows for candidate rule_ids (graph edges live there). */
+async function loadCandidateRows(supabase: any, ids: string[]): Promise<Map<string, any>> {
+  const out = new Map<string, any>();
+  if (ids.length === 0) return out;
+  try {
+    const { data, error } = await supabase
+      .from('decision_rules')
+      .select('id,rule_id,condition_code,category,input_class,dosage_per_acre,active_ingredient,blocks_rule_ids,contraindications,mutually_exclusive_with,is_safety_block')
+      .in('rule_id', ids)
+      .limit(500);
+    if (error) throw new Error(error.message);
+    for (const r of (Array.isArray(data) ? data : [])) out.set(String(r.rule_id), r);
+  } catch (e) {
+    console.warn(`[CONTEXT_BLOCK_GATE] candidate row load failed: ${(e as Error).message}`);
+  }
+  return out;
+}
+
+/** Hypothesis edges for block rule_ids → Map<rule_id, Set<hypothesis_id>>. */
+async function loadHypothesisEdges(supabase: any, blockIds: string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (blockIds.length === 0) return out;
+  try {
+    const { data, error } = await supabase
+      .from('hypothesis_rule_mapping')
+      .select('rule_id,hypothesis_id')
+      .in('rule_id', blockIds)
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    for (const r of (Array.isArray(data) ? data : [])) {
+      const k = String(r.rule_id);
+      if (!out.has(k)) out.set(k, new Set());
+      out.get(k)!.add(String(r.hypothesis_id).toUpperCase());
+    }
+  } catch (e) {
+    console.warn(`[CONTEXT_BLOCK_GATE] hypothesis edge load failed: ${(e as Error).message}`);
+  }
+  return out;
+}
+
+/** Observation codes the turn intent maps to (intent_observation_mapping), lower-cased. */
+async function loadIntentObservationCodes(
+  supabase: any, intentCode: string | null | undefined, cropCode: string,
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  const intent = String(intentCode ?? '').trim().toUpperCase();
+  if (!intent) return out;
+  try {
+    const cropVariants = Array.from(new Set([
+      cropCode, cropCode.toUpperCase(),
+      ...UNIVERSAL, ...UNIVERSAL.map((u) => u.toUpperCase()),
+    ]));
+    const { data, error } = await supabase
+      .from('intent_observation_mapping')
+      .select('observation_code,crop_code')
+      .eq('is_active', true)
+      .eq('intent_code', intent)
+      .in('crop_code', cropVariants)
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    for (const r of (Array.isArray(data) ? data : [])) out.add(norm(r.observation_code));
+  } catch (e) {
+    console.warn(`[CONTEXT_BLOCK_GATE] intent→observation load failed: ${(e as Error).message}`);
+  }
+  return out;
 }
 
 /**
- * Suppress every candidate rule whose condition_code / category is owned by an
- * applicable CONTEXT_BLOCK. Never throws — a failure returns the input intact.
+ * Explicit conflict pairs from rule_conflict_matrix. The table keys on
+ * decision_rules.id (UUID), so callers pass a uuid→rule_id lookup covering the
+ * blocks and candidates; the result maps text rule_ids on both sides.
+ */
+async function loadConflictMatrix(
+  supabase: any,
+  uuidToRuleId: Map<string, string>,
+  blockUuids: string[],
+): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (blockUuids.length === 0) return out;
+  try {
+    const list = `(${blockUuids.join(',')})`;
+    const { data, error } = await supabase
+      .from('rule_conflict_matrix')
+      .select('rule_a_id,rule_b_id,resolved')
+      .or(`rule_a_id.in.${list},rule_b_id.in.${list}`)
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    for (const r of (Array.isArray(data) ? data : [])) {
+      if (r.resolved === true) continue;
+      const a = uuidToRuleId.get(String(r.rule_a_id)) ?? String(r.rule_a_id);
+      const b = uuidToRuleId.get(String(r.rule_b_id)) ?? String(r.rule_b_id);
+      if (!out.has(a)) out.set(a, new Set());
+      if (!out.has(b)) out.set(b, new Set());
+      out.get(a)!.add(b);
+      out.get(b)!.add(a);
+    }
+  } catch {
+    /* table may be empty or absent — explicit edges elsewhere still apply */
+  }
+  return out;
+}
+
+/**
+ * Four-gate CONTEXT_BLOCK evaluation. Never throws — a failure returns the
+ * input intact with no blocks admitted.
  */
 export async function applyContextBlockGate(
   supabase: any,
   q: ContextRuleQuery,
   candidates: any[],
+  turn: ContextBlockTurnContext = {},
 ): Promise<ContextBlockGateResult> {
   const list = Array.isArray(candidates) ? candidates : [];
   const trace = q.traceId ?? 'n/a';
-  const blocks = await selectContextBlocks(supabase, q);
-  if (blocks.length === 0) {
-    return { kept: list, suppressed: [], blocks: [], blockResponses: [] };
+  const anomalies: Record<string, number> = {
+    context_block_not_relevant_dropped: 0,
+    context_block_without_conflict_edge: 0,
+    context_block_without_intent_match: 0,
+    context_block_advisory_only: 0,
+    context_block_promoted_to_primary: 0,
+    candidate_suppressed_by_condition_code_fallback: 0,
+  };
+  const passthrough = (): ContextBlockGateResult => ({
+    kept: list, suppressed: [], hardBlocks: [], overlays: [], advisories: [], dropped: [],
+    hardBlockResponses: [], overlayResponses: [], advisoryResponses: [], evaluations: [], anomalies,
+    blockResponses: [], blocks: [],
+  });
+
+  // G1 — context eligibility
+  const eligible = await selectContextBlocks(supabase, q);
+  if (eligible.length === 0) return passthrough();
+
+  const crop = norm(q.cropCode);
+  const blockIds = eligible.map((b) => String(b?.rule_id ?? '')).filter(Boolean);
+  const candidateIds = Array.from(new Set(list.map((c) => String(c?.rule_id ?? '')).filter(Boolean)));
+
+  const [candRows, hypEdges, intentObs] = await Promise.all([
+    loadCandidateRows(supabase, candidateIds.filter((id) => !blockIds.includes(id))),
+    loadHypothesisEdges(supabase, blockIds),
+    loadIntentObservationCodes(supabase, turn.intentCode, crop),
+  ]);
+  // rule_conflict_matrix keys on decision_rules.id (UUID) — build the lookup
+  // from the block rows (select *) and the candidate rows just loaded.
+  const uuidToRuleId = new Map<string, string>();
+  const blockUuids: string[] = [];
+  for (const b of eligible) {
+    const u = String((b as any)?.id ?? '');
+    if (u) { uuidToRuleId.set(u, String(b?.rule_id ?? u)); blockUuids.push(u); }
+  }
+  for (const [rid, row] of candRows) {
+    const u = String((row as any)?.id ?? '');
+    if (u) uuidToRuleId.set(u, rid);
+  }
+  const conflictMatrix = await loadConflictMatrix(supabase, uuidToRuleId, blockUuids);
+
+  const turnHyps = upperSet(turn.hypothesisIds);
+  const turnObs = new Set(strArr(turn.observationCodes).map((o) => o.toLowerCase()));
+  const candidateConditionCodes = new Set<string>();
+  for (const id of candidateIds) {
+    const row = candRows.get(id);
+    const cc = norm(row?.condition_code ?? list.find((c) => String(c?.rule_id) === id)?.condition_code);
+    if (cc) candidateConditionCodes.add(cc);
   }
 
-  const blockedTokens = new Set<string>();
-  const blockIds = new Set<string>();
-  for (const b of blocks) {
-    blockIds.add(String(b?.rule_id ?? ''));
-    for (const t of ruleIdentityTokens(b)) blockedTokens.add(t);
+  const evaluations: ContextBlockEvaluation[] = [];
+  const hardBlocks: any[] = [];
+  const overlays: any[] = [];
+  const advisories: any[] = [];
+  const dropped: any[] = [];
+  const suppressedIds = new Map<string, { by: string; source: ConflictSource }>();
+
+  for (const b of eligible) {
+    const bid = String(b?.rule_id ?? '');
+    const bCond = norm(b?.condition_code);
+    const bObs = blockPredicateObservations(b);
+    const semanticKeys = new Set<string>([bCond, ...bObs].filter(Boolean));
+
+    // G2 — semantic relevance (any one proof suffices; all are DB-derived)
+    const hypothesis_match = [...(hypEdges.get(bid) ?? [])].some((h) => turnHyps.has(h));
+    const intent_match = [...semanticKeys].some((k) => intentObs.has(k));
+    const observation_match = [...semanticKeys].some((k) => turnObs.has(k));
+    const candidate_condition_match = Boolean(bCond) && candidateConditionCodes.has(bCond);
+    const relevant = hypothesis_match || intent_match || observation_match || candidate_condition_match;
+    if (!intent_match) anomalies.context_block_without_intent_match++;
+
+    const safety_authority = b?.is_safety_block === true;
+    const bBlocks = upperSet(b?.blocks_rule_ids);
+    const hasAuthoredEdges = bBlocks.size > 0 || (conflictMatrix.get(bid)?.size ?? 0) > 0;
+
+    const ev: ContextBlockEvaluation = {
+      rule_id: bid, context_match: true, intent_match, hypothesis_match, observation_match,
+      candidate_condition_match, relevant, safety_authority, suppressed_rule_ids: [],
+      would_have_suppressed: [], conflict_sources: [], has_authored_edges: hasAuthoredEdges,
+    };
+
+    if (!relevant) {
+      anomalies.context_block_not_relevant_dropped++;
+      dropped.push(b);
+      evaluations.push(ev);
+      continue;
+    }
+
+    // G3 — explicit conflict resolution against each candidate
+    for (const c of list) {
+      const cid = String(c?.rule_id ?? '');
+      if (!cid || cid === bid || suppressedIds.has(cid)) continue;
+      const row = candRows.get(cid) ?? c;
+      let source: ConflictSource | null = null;
+      if (bBlocks.has(cid.toUpperCase())) source = 'blocks_rule_ids';
+      else if (upperSet(row?.contraindications).has(bid.toUpperCase())) source = 'contraindications';
+      else if (upperSet(row?.mutually_exclusive_with).has(bid.toUpperCase())) source = 'mutually_exclusive_with';
+      else if (conflictMatrix.get(bid)?.has(cid)) source = 'rule_conflict_matrix';
+      else if (!hasAuthoredEdges && bCond && norm(row?.condition_code) === bCond && candidateCarriesDose(row)) {
+        // FIX 7: SHADOW MODE ONLY. A shared condition_code is an inferred
+        // relationship, not a graph edge — it never suppresses in production.
+        // It is logged as telemetry so DB curation authors the missing edge.
+        ev.would_have_suppressed.push(cid);
+        anomalies.candidate_suppressed_by_condition_code_fallback++;
+        console.warn(
+          `[CONTEXT_BLOCK_SHADOW] trace=${trace} block=${bid} candidate=${cid} ` +
+          `would_have_suppressed=true reason=missing_graph_edge condition=${bCond}`,
+        );
+      }
+      if (source) {
+        suppressedIds.set(cid, { by: bid, source });
+        ev.suppressed_rule_ids.push(cid);
+        if (!ev.conflict_sources.includes(source)) ev.conflict_sources.push(source);
+      }
+    }
+    if (!hasAuthoredEdges) anomalies.context_block_without_conflict_edge++;
+
+    // G4 — authority. A hard block may LEAD only when it established an
+    // explicit conflict with a candidate (it invalidated the requested
+    // decision) — relevance alone never demotes an unrelated answer. Hard
+    // blocks without an established conflict become SAFETY OVERLAYS; the
+    // no-candidate case is resolved after the kept list is known.
+    if (safety_authority) {
+      if (ev.suppressed_rule_ids.length > 0) {
+        hardBlocks.push(b);
+        anomalies.context_block_promoted_to_primary++;
+      } else {
+        overlays.push(b);
+      }
+    } else {
+      advisories.push(b);
+      anomalies.context_block_advisory_only++;
+    }
+    evaluations.push(ev);
   }
 
   const kept: any[] = [];
   const suppressed: any[] = [];
   for (const c of list) {
-    const cid = String((c as any)?.rule_id ?? '');
-    if (blockIds.has(cid)) { kept.push(c); continue; } // the block itself
-    const hit = ruleIdentityTokens(c).some((t) => blockedTokens.has(t));
-    if (hit) suppressed.push(c);
-    else kept.push(c);
+    const cid = String(c?.rule_id ?? '');
+    if (suppressedIds.has(cid)) suppressed.push(c); else kept.push(c);
   }
 
-  const blockResponses = blocks
-    .filter((b) => !list.some((c: any) => String(c?.rule_id ?? '') === String(b?.rule_id ?? '')))
-    .map((b) => toMatchedResponse(b));
+  // No surviving candidate → a relevant hard safety block IS the answer.
+  if (kept.length === 0 && overlays.length > 0) {
+    hardBlocks.push(...overlays.splice(0, overlays.length));
+  }
+
+  const notAlreadyCandidate = (b: any) =>
+    !list.some((c: any) => String(c?.rule_id ?? '') === String(b?.rule_id ?? ''));
+  const hardBlockResponses = hardBlocks.filter(notAlreadyCandidate).map((b) => ({
+    ...toMatchedResponse(b), lane: 'CONTEXT_HARD_BLOCK', is_safety_block: true,
+  }));
+  const overlayResponses = overlays.filter(notAlreadyCandidate).map((b) => ({
+    ...toMatchedResponse(b), lane: 'CONTEXT_SAFETY_OVERLAY', is_safety_block: true, advisory: true,
+  }));
+  const advisoryResponses = advisories.filter(notAlreadyCandidate).map((b) => ({
+    ...toMatchedResponse(b), lane: 'CONTEXT_ADVISORY', is_safety_block: false, advisory: true,
+  }));
 
   console.log(
-    `[CONTEXT_BLOCK_GATE] trace=${trace} blocks=${[...blockIds].join(',') || 'none'} ` +
-    `candidates=${list.length} kept=${kept.length} ` +
-    `suppressed=${suppressed.map((s: any) => s.rule_id).join(',') || 'none'}`,
+    `[CONTEXT_BLOCK_GATE] trace=${trace} intent=${turn.intentCode ?? 'null'} ` +
+    `eligible=${blockIds.join(',') || 'none'} ` +
+    `hard=${hardBlocks.map((b) => b.rule_id).join(',') || 'none'} ` +
+    `overlay=${overlays.map((b) => b.rule_id).join(',') || 'none'} ` +
+    `advisory=${advisories.map((b) => b.rule_id).join(',') || 'none'} ` +
+    `dropped=${dropped.map((b) => b.rule_id).join(',') || 'none'} ` +
+    `suppressed=${[...suppressedIds].map(([id, m]) => `${id}<${m.source}:${m.by}`).join(',') || 'none'} ` +
+    `candidates=${list.length} kept=${kept.length}`,
   );
+  for (const ev of evaluations) {
+    console.log(`[CONTEXT_BLOCK_EVAL] trace=${trace} ${JSON.stringify(ev)}`);
+  }
 
-  return { kept, suppressed, blocks, blockResponses };
+  return {
+    kept, suppressed, hardBlocks, overlays, advisories, dropped,
+    hardBlockResponses, overlayResponses, advisoryResponses,
+    evaluations, anomalies,
+    blockResponses: hardBlockResponses,
+    blocks: [...hardBlocks, ...overlays, ...advisories],
+  };
 }
