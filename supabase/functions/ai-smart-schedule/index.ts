@@ -1,4 +1,14 @@
 // CHANGE LOG
+// 2026-08-28 — P0-1/P2 (forensic implementation prompt): (1) crop-identity SSOT gate after
+//   input resolution — generation fails closed as typed CROP_IDENTITY_CONFLICT (HTTP 200,
+//   same convention as LAND_NOT_AVAILABLE) when another ACTIVE schedule on the land carries
+//   a different crop, or when lands.current_crop_id (FK → crops, owned by the land workflow,
+//   never written here) resolves to a different crop than requested. Nothing is overwritten;
+//   the caller must establish land crop identity first. Verified live trigger case: land
+//   8897e53d holds active Rice AND Sugarcane schedules with current_crop_id = sugarcane.
+//   (2) pre-persistence validation gate: baseline.validation violations (stage-graph
+//   membership, provenance, DAS bounds) block persistence with 422
+//   SCHEDULE_VALIDATION_FAILED — a structurally invalid schedule can never become ACTIVE.
 // 2026-08-28 — P0 counter-audit fixes: (1) the isReadyMadePlant → 'transplanted' literal is
 //   removed — the flag is forwarded to resolveInputs and resolved through
 //   cultivation_method_master.requires_nursery ∩ the crop's stage-graph methods (DB metadata,
@@ -101,7 +111,7 @@ serve(async (req) => {
     // Ownership: the land must belong to this farmer + tenant
     const { data: ownedLand } = await supabase
       .from("lands")
-      .select("id, farmer_id, tenant_id, lifecycle_status, active_schedule_id, current_crop")
+      .select("id, farmer_id, tenant_id, lifecycle_status, active_schedule_id, current_crop, current_crop_id")
       .eq("id", landId)
       .maybeSingle();
     if (!ownedLand) return json({ error: "Land not found" }, 404);
@@ -143,6 +153,45 @@ serve(async (req) => {
     });
 
     resolvedCropCode = inputs.cropCode || null;
+
+    // ── P0-1: crop-identity SSOT gate (fail closed, overwrite nothing) ──────
+    // (a) Another ACTIVE schedule on this land for a DIFFERENT crop.
+    const { data: otherActive } = await supabase
+      .from("crop_schedules")
+      .select("id, crop_name, status")
+      .eq("land_id", landId)
+      .or("status.eq.active,is_active.eq.true");
+    const normName = (s: unknown) => String(s ?? "").trim().toLowerCase();
+    const requestedNames = new Set(
+      [inputs.cropLabel, cropName, inputs.cropCode].filter(Boolean).map(normName),
+    );
+    const conflictingSchedules = (otherActive || []).filter(
+      (s: Record<string, unknown>) => !requestedNames.has(normName(s.crop_name)),
+    );
+    // (b) The land's own crop FK (crops.id), when set, must match the requested crop.
+    let landCropConflict: string | null = null;
+    if (ownedLand.current_crop_id && inputs.cropId && String(ownedLand.current_crop_id) !== String(inputs.cropId)) {
+      landCropConflict = String(ownedLand.current_crop_id);
+    }
+    if (conflictingSchedules.length || landCropConflict) {
+      return json(
+        {
+          success: false,
+          error:
+            "Land crop identity conflicts with the requested schedule. Establish the land's crop first — nothing was generated or overwritten.",
+          code: "CROP_IDENTITY_CONFLICT",
+          landId,
+          requestedCropId: inputs.cropId,
+          requestedCrop: inputs.cropLabel || cropName,
+          landCurrentCropId: ownedLand.current_crop_id ?? null,
+          conflictingActiveSchedules: conflictingSchedules.map((s: Record<string, unknown>) => ({
+            id: s.id,
+            crop_name: s.crop_name,
+          })),
+        },
+        200,
+      );
+    }
 
 
     if (!inputs.cropCode) {
@@ -219,6 +268,23 @@ serve(async (req) => {
         },
         422,
       );
+    }
+
+    // ── P2: pre-persistence validation gate (invariant 15) ──────────────────
+    if (baseline.validation && baseline.validation.violations.length) {
+      return json(
+        {
+          error: "Generated schedule failed structural validation and was not persisted",
+          code: "SCHEDULE_VALIDATION_FAILED",
+          violations: baseline.validation.violations,
+          warnings: baseline.validation.warnings,
+          gaps: baseline.gaps,
+        },
+        422,
+      );
+    }
+    if (baseline.validation && baseline.validation.warnings.length) {
+      for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
     }
 
     // ── PHASE 2 / P1: verified RAG evidence attachment (flag-gated) ─────────

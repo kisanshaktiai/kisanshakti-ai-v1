@@ -1,4 +1,14 @@
 // CHANGE LOG
+// 2026-08-28 — P2: the generated baseline is now self-validated (generator/validate-schedule.ts)
+//   and the result carries `validation` — index.ts refuses to persist on any violation.
+// 2026-08-28 — P0 forensic fixes (schedule 5673e87a audit): (1) field-action and scouting
+//   rules are now applicability-gated by the land's region and the schedule's cultivation
+//   methods (see agronomy-repo). (2) Irrigation guidelines are scoped to the SELECTED stage
+//   graph by stage_master_id FK — no more nursery/transplanting expansion into DSR. (3)
+//   Schedule duration/harvest now come from the variety's own VCA maturity window when
+//   stated (PB1509 direct_seeded: 115–125 d) instead of the generic stage-graph das_max
+//   (rice: 190 d); the graph overrun is a named gap. Version → 1.4.0 so schedules are
+//   self-identifying.
 // 2026-08-28 — P0 counter-audit fixes: (1) NUTRIENT_PRODUCT (N→UREA, P→SSP, K→MOP) removed —
 //   an application-level agronomic mapping. Nutrient-task cost is now computed ONLY when the
 //   DB itself supplies the product identity; until it does, cost stays null with an explicit
@@ -45,6 +55,7 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
+import { validateBaseline } from "./validate-schedule.ts";
 import {
   getStages,
   getSeedRate,
@@ -52,13 +63,14 @@ import {
   getIrrigationGuidelines,
   getFieldActionRules,
   getObservationRules,
+  getVarietyDuration,
   getBannedChemicals,
   getLaborRate,
   type Provenance,
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.3.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.4.0";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -288,8 +300,27 @@ export async function generateBaseline(
   /** Days-after-sowing for a stage boundary, or null when it cannot be placed. */
   const das0 = (s: StageRow, d: number | null) => toDas(s, d, transplantOffset);
 
-  const durationDays =
+  const graphDurationDays =
     stages.reduce((max, s) => Math.max(max, das0(s, s.das_max) ?? 0), 0) || null;
+
+  // Applicability context reused by every rule/guideline lookup below: the farmer's
+  // method plus the declared stage-clock method (both DB-resolved, never guessed).
+  const applicMethods = [
+    ...new Set([inputs.cultivationMethod, inputs.stageClockMethod].filter(Boolean)),
+  ] as string[];
+
+  // Schedule duration: the variety's own stated maturity window (VCA, per method) beats
+  // the generic stage-graph span — a 115–125 d basmati must not inherit rice's 190 d
+  // graph tail as its harvest date. The overrun is recorded, never silently dropped.
+  const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods);
+  let durationDays = graphDurationDays;
+  if (varietyDuration && varietyDuration.maxDays != null) {
+    durationDays = varietyDuration.maxDays;
+    provenance.push(varietyDuration.provenance);
+    if (graphDurationDays != null && graphDurationDays > varietyDuration.maxDays) {
+      gaps.push("stage_graph_exceeds_variety_duration");
+    }
+  }
 
   // ── Seed / planting task ───────────────────────────────────────────────────
   // The day-0 anchor operation is always emitted when a phenology spine exists.
@@ -460,7 +491,7 @@ export async function generateBaseline(
   // ── Irrigation tasks (stage-wise, DB intervals only) ───────────────────────
   // Guideline windows overlap in the DB (rice: 12 windows), so expansion is de-duplicated:
   // at most ONE irrigation task per DAS, keeping the narrowest (most specific) window.
-  const irrigation = await getIrrigationGuidelines(supabase, inputs.cropCode, inputs.varietyId);
+  const irrigation = await getIrrigationGuidelines(supabase, inputs.cropCode, inputs.varietyId, stages.map((s) => s.id));
   coverage.irrigation = irrigation.length > 0;
   if (!irrigation.length) gaps.push("crop_baseline_guidelines_v2_no_irrigation_rows");
   let waterMm = 0;
@@ -525,7 +556,7 @@ export async function generateBaseline(
   for (const { task } of irrigationByDas.values()) tasks.push(task);
 
   // ── Field-action rules (scouting, protection, operations) ──────────────────
-  const rules = await getFieldActionRules(supabase, inputs.cropCode);
+  const rules = await getFieldActionRules(supabase, inputs.cropCode, inputs.regionCode, applicMethods);
   const banned = await getBannedChemicals(supabase);
   const taskTypeMap = await loadTaskTypeMap(supabase);
   coverage.field_actions = rules.length > 0;
@@ -606,7 +637,7 @@ export async function generateBaseline(
       .slice(0, MAX_SCOUT_RULE_IDS)
       .map((r) => r.id);
 
-  const observationRules = await getObservationRules(supabase, inputs.cropCode);
+  const observationRules = await getObservationRules(supabase, inputs.cropCode, inputs.regionCode, applicMethods);
   coverage.monitoring = false;
   if (observationRules.length) {
     const ruleById = new Map(observationRules.map((r) => [r.rule_id, r]));
@@ -740,8 +771,15 @@ export async function generateBaseline(
   // row is reported as a gap — the stage link is left null, never invented.
   if (tasks.some((t) => t.stage_key && !t.stage_uuid)) gaps.push("task_stage_unmappable");
 
+  const validation = validateBaseline(
+    tasks,
+    stages.map((s) => ({ id: s.id, das_max: s.das_max })),
+    varietyDuration?.maxDays ?? null,
+  );
+
   return {
     tasks,
+    validation,
     gaps: [...new Set(gaps)],
     coverage,
     totals: {

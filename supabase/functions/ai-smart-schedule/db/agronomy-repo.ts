@@ -1,4 +1,18 @@
 // CHANGE LOG
+// 2026-08-28 — P0 forensic fixes (schedule 5673e87a audit, all verified live):
+//   (1) APPLICABILITY GATE: getFieldActionRules / getObservationRules now filter by
+//       decision_rules.region_code (NULL = universal, else must equal the land's region) and
+//       cultivation_method_applicable (text[]; NULL or overlap with {'any', farmer method,
+//       stage-clock method}). Verified live: 51 candidate rice CONTEXT_SCHEDULE rules → 5
+//       for IN-MH + direct-seeded — this is what put Assam/Kerala/TN/Jammu/Punjab/MP tasks
+//       into a Kolhapur schedule. A NULL land region passes ONLY region-NULL rules (fail-closed).
+//   (2) IRRIGATION GRAPH SCOPING: getIrrigationGuidelines now accepts the selected stage
+//       graph's ids and keeps only rows whose stage_master_id is IN that graph (all 12 live
+//       rice rows carry the FK). Nursery/transplanting guideline rows can no longer expand
+//       into a direct-seeded schedule; rows without the FK are excluded when a graph is given
+//       (fail-closed) rather than string-matched in.
+//   (3) getVarietyDuration: variety × method maturity from variety_cultivation_agronomy
+//       (duration_days_min/max), walking the declared hierarchy like getSeedRate.
 // 2026-08-28 — P0 counter-audit fix: getSeedRate no longer accepts fn_calculate_seed_rate
 //   output built on the RPC's internal defaults. Verified in the live function body: missing
 //   TGW defaults to 20 g with tgw_source='default_20g_UNVERIFIED', and missing
@@ -268,6 +282,7 @@ export async function getIrrigationGuidelines(
   supabase: SupabaseClient,
   cropCode: string,
   varietyId: string | null,
+  stageGraphIds: string[] | null = null,
 ): Promise<IrrigationGuideline[]> {
   const { data } = await supabase
     .from("crop_baseline_guidelines_v2")
@@ -280,6 +295,15 @@ export async function getIrrigationGuidelines(
   if (varietyId) {
     const scoped = rows.filter((r: Record<string, unknown>) => !r.variety_id || r.variety_id === varietyId);
     if (scoped.length) rows = scoped;
+  }
+
+  // Graph scoping: only guideline rows whose stage_master_id belongs to the SELECTED
+  // stage graph apply — a nursery/transplanting row (transplanted-graph FK) can never
+  // expand into a direct-seeded schedule. Rows without the FK are excluded when a graph
+  // is supplied: unverifiable applicability fails closed, it is never string-matched in.
+  if (stageGraphIds && stageGraphIds.length) {
+    const ids = new Set(stageGraphIds);
+    rows = rows.filter((r: Record<string, unknown>) => r.stage_master_id != null && ids.has(String(r.stage_master_id)));
   }
 
   return rows
@@ -319,9 +343,24 @@ export interface FieldActionRule {
  * (`trigger_class = 'CONTEXT_SCHEDULE'`) become calendar tasks. OBSERVATION rules are
  * conditional alert-layer knowledge and must never be materialised as dated tasks.
  */
+/** OR-group for region applicability: universal (NULL) rules always pass; region-scoped
+ *  rules pass only for their own region. With no resolved land region, ONLY universal
+ *  rules pass — an unknown location must never receive another state's package. */
+const regionFilter = (regionCode: string | null): string =>
+  regionCode ? `region_code.is.null,region_code.eq.${regionCode}` : `region_code.is.null`;
+
+/** OR-group for cultivation-method applicability (text[] column): NULL or overlap with
+ *  {'any', farmer's method, declared stage-clock method}. */
+const methodFilter = (methods: string[]): string => {
+  const ov = [...new Set(["any", ...methods.filter(Boolean)])].join(",");
+  return `cultivation_method_applicable.is.null,cultivation_method_applicable.ov.{${ov}}`;
+};
+
 export async function getFieldActionRules(
   supabase: SupabaseClient,
   cropCode: string,
+  regionCode: string | null,
+  methods: string[],
 ): Promise<FieldActionRule[]> {
   const FIELD_ACTION_RULE_LIMIT = 1000;
   const { data } = await supabase
@@ -331,6 +370,8 @@ export async function getFieldActionRules(
     .eq("requires_field_action", true)
     .eq("trigger_class", "CONTEXT_SCHEDULE")
     .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
+    .or(regionFilter(regionCode))
+    .or(methodFilter(methods))
     .limit(FIELD_ACTION_RULE_LIMIT);
   const rows = (data || []) as FieldActionRule[];
   if (rows.length === FIELD_ACTION_RULE_LIMIT) {
@@ -368,6 +409,8 @@ export const SCOUTING_RULE_CATEGORIES = [
 export async function getObservationRules(
   supabase: SupabaseClient,
   cropCode: string,
+  regionCode: string | null,
+  methods: string[],
 ): Promise<ObservationRuleRef[]> {
   const { data } = await supabase
     .from("decision_rules")
@@ -376,6 +419,8 @@ export async function getObservationRules(
     .eq("trigger_class", "OBSERVATION")
     .in("category", SCOUTING_RULE_CATEGORIES)
     .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
+    .or(regionFilter(regionCode))
+    .or(methodFilter(methods))
     .limit(2000);
   return (data || []) as ObservationRuleRef[];
 }
@@ -443,4 +488,42 @@ export async function getInputPrice(
     unit: String(hit.unit),
     provenance: { table: "input_prices", row_id: hit.id, source: hit.source },
   };
+}
+
+export interface VarietyDuration {
+  minDays: number | null;
+  maxDays: number | null;
+  provenance: Provenance;
+}
+
+/** Variety × method maturity window from variety_cultivation_agronomy (duration_days_min/max).
+ *  Tries the farmer's method, then the declared stage-clock method (VCA keys canonical
+ *  methods only — same hierarchy rule as getSeedRate). Null when no row states a duration. */
+export async function getVarietyDuration(
+  supabase: SupabaseClient,
+  varietyId: string | null,
+  methods: string[],
+): Promise<VarietyDuration | null> {
+  if (!varietyId) return null;
+  for (const method of [...new Set(methods.filter(Boolean))]) {
+    const { data } = await supabase
+      .from("variety_cultivation_agronomy")
+      .select("id, duration_days_min, duration_days_max, duration_reference, source")
+      .eq("variety_id", varietyId)
+      .eq("cultivation_method", method)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (data && (data.duration_days_min != null || data.duration_days_max != null)) {
+      return {
+        minDays: data.duration_days_min != null ? Number(data.duration_days_min) : null,
+        maxDays: data.duration_days_max != null ? Number(data.duration_days_max) : null,
+        provenance: {
+          table: "variety_cultivation_agronomy",
+          row_id: data.id as string,
+          source: `duration:${data.duration_reference ?? data.source ?? ""}; method:${method}`,
+        },
+      };
+    }
+  }
+  return null;
 }
