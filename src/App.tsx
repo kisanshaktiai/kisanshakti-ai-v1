@@ -49,6 +49,7 @@ const EnvDiagnostics = lazy(() => import("./pages/EnvDiagnostics"));
 const AIChat = lazy(() => import("./pages/AIChat"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const AICommunityPage = lazy(() => import("./pages/CommunityPage"));
+const VarietyProbe = lazy(() => import("./pages/VarietyProbe"));
 const CropSelectionTest = lazy(() => import("./pages/CropSelectionTest"));
 const Schedule = lazy(() => import("./pages/Schedule"));
 const MobileAuth = lazy(() => import("./pages/MobileAuth"));
@@ -307,6 +308,11 @@ const router = createBrowserRouter([
   {
     path: "/",
     element: <Suspense fallback={<PageLoader />}><SplashScreen /></Suspense>,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/variety-probe",
+    element: <Suspense fallback={<PageLoader />}><VarietyProbe /></Suspense>,
     errorElement: <RouteErrorBoundary />,
   },
   {
