@@ -13087,6 +13087,24 @@ export type Database = {
           },
         ]
       }
+      geo_stage_chunks: {
+        Row: {
+          body: string
+          fname: string
+          idx: number
+        }
+        Insert: {
+          body: string
+          fname: string
+          idx: number
+        }
+        Update: {
+          body?: string
+          fname?: string
+          idx?: number
+        }
+        Relationships: []
+      }
       germination_gate_params: {
         Row: {
           allow_irrigation_signal: boolean
