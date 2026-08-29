@@ -9495,30 +9495,6 @@ export type Database = {
         }
         Relationships: []
       }
-      decision_rules_sb_flag_bak_20260828: {
-        Row: {
-          action_type: string | null
-          category: string | null
-          crop_code: string | null
-          is_safety_block: boolean | null
-          rule_id: string | null
-        }
-        Insert: {
-          action_type?: string | null
-          category?: string | null
-          crop_code?: string | null
-          is_safety_block?: boolean | null
-          rule_id?: string | null
-        }
-        Update: {
-          action_type?: string | null
-          category?: string | null
-          crop_code?: string | null
-          is_safety_block?: boolean | null
-          rule_id?: string | null
-        }
-        Relationships: []
-      }
       direct_advisory_routes: {
         Row: {
           created_at: string
@@ -9716,38 +9692,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crop_codes"
             referencedColumns: ["code"]
-          },
-        ]
-      }
-      district_zone_mapping: {
-        Row: {
-          created_at: string | null
-          district_id: string
-          id: string
-          is_active: boolean | null
-          zone_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          district_id: string
-          id?: string
-          is_active?: boolean | null
-          zone_id: string
-        }
-        Update: {
-          created_at?: string | null
-          district_id?: string
-          id?: string
-          is_active?: boolean | null
-          zone_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "district_zone_mapping_zone_id_fkey"
-            columns: ["zone_id"]
-            isOneToOne: false
-            referencedRelation: "agro_climatic_zones"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -14747,54 +14691,6 @@ export type Database = {
           performed_by?: string | null
           reason?: string
           sql_batch_id?: string | null
-        }
-        Relationships: []
-      }
-      intent_observation_mapping_bak_20260827: {
-        Row: {
-          assertion_strength: string | null
-          confidence_rank: number | null
-          created_at: string | null
-          crop_code: string | null
-          cultivation_method: string | null
-          das_max: number | null
-          das_min: number | null
-          growth_stage: string | null
-          id: string | null
-          intent_code: string | null
-          is_active: boolean | null
-          observation_code: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          assertion_strength?: string | null
-          confidence_rank?: number | null
-          created_at?: string | null
-          crop_code?: string | null
-          cultivation_method?: string | null
-          das_max?: number | null
-          das_min?: number | null
-          growth_stage?: string | null
-          id?: string | null
-          intent_code?: string | null
-          is_active?: boolean | null
-          observation_code?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          assertion_strength?: string | null
-          confidence_rank?: number | null
-          created_at?: string | null
-          crop_code?: string | null
-          cultivation_method?: string | null
-          das_max?: number | null
-          das_min?: number | null
-          growth_stage?: string | null
-          id?: string | null
-          intent_code?: string | null
-          is_active?: boolean | null
-          observation_code?: string | null
-          updated_at?: string | null
         }
         Relationships: []
       }

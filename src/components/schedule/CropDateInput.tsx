@@ -389,18 +389,28 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       />
                     ) : (
                       <>
-                        <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
+                        <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                          <Sprout className="h-3.5 w-3.5 text-primary" />
                           {t('schedule.crop_input.variety_label')}
                         </Label>
-                        <Input
-                          id="variety"
-                          placeholder={t('schedule.crop_input.variety_placeholder')}
-                          value={cropVariety}
-                          onChange={(e) => setCropVariety(e.target.value)}
-                          className="h-12 bg-card border-border focus:border-primary/50 transition-all rounded-xl"
-                        />
+                        <div className="rounded-xl border border-dashed border-border bg-muted/30 p-3 space-y-2">
+                          <p className="text-[11px] leading-snug text-muted-foreground">
+                            {t(
+                              'schedule.variety.none_for_crop',
+                              'No seed varieties are listed for this crop yet. You can type the variety name you sowed.'
+                            )}
+                          </p>
+                          <Input
+                            id="variety"
+                            placeholder={t('schedule.crop_input.variety_placeholder')}
+                            value={cropVariety}
+                            onChange={(e) => setCropVariety(e.target.value)}
+                            className="h-12 bg-card border-border focus:border-primary/50 transition-all rounded-xl"
+                          />
+                        </div>
                       </>
                     )}
+
                   </div>
 
                   {/* Date Selection */}
