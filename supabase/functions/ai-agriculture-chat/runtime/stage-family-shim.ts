@@ -44,6 +44,11 @@ export function normalizeStageKey(s: unknown): string {
 }
 
 interface StageKnowledgeCacheRef {
+  getStageRow?: (
+    crop: string,
+    stage: string,
+    cultivationMethod?: string | null,
+  ) => unknown | null;
   getStageFamilyFromDB?: (
     crop: string,
     stage: string,
@@ -88,6 +93,25 @@ export function stageFamily(
     logMissOnce(`nocache:${cropKey}:${k}`, `[STAGE_GRAPH_MISS] source=cache_unavailable crop=${cropKey} stage=${k} action=singleton_fallback`);
   }
   return [k];
+}
+
+// FIX 2 (2026-08-29) — "is this (crop, stage) curated in crop_stage_master?"
+// The StageGate used `stageFamily().length > 1` as its "ontology known" test,
+// which conflated "has equivalence edges" with "exists". Now that ordering
+// edges no longer widen families, most stages have singleton families and
+// that test would fail-open on every rule. This is the correct predicate.
+// Returns null when the cache is unavailable (caller decides the policy).
+export function isKnownStage(
+  stage?: string | null,
+  crop?: string | null,
+  cultivationMethod?: string | null,
+): boolean | null {
+  const k = normalizeStageKey(stage);
+  const cropKey = normalizeStageKey(crop);
+  if (!k || !cropKey) return null;
+  const ref = getCacheRef();
+  if (!ref?.getStageRow) return null;
+  return ref.getStageRow(cropKey, k, cultivationMethod) != null;
 }
 
 // Symmetric biological-equivalence check.

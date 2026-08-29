@@ -114,6 +114,12 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         crop_group: row.crop_group?.toLowerCase() || 'universal',
         canonical_group: normalizeCanonicalGroup(row.canonical_group),
         stage_applicable: normalizeStages(row.stage_applicable),
+        // FIX 4 (2026-08-29): region scope was selected (`*`) but never mapped,
+        // so the evaluator could not gate on it. Null = global rule.
+        region_code: row.region_code ? String(row.region_code).trim().toUpperCase() : null,
+        cultivation_method_applicable: Array.isArray(row.cultivation_method_applicable)
+          ? row.cultivation_method_applicable.map((m: unknown) => String(m).toLowerCase())
+          : null,
         conditionCode: row.condition_code || '() => true',
         conditions_json: conditionsJson,
         cause: row.cause,

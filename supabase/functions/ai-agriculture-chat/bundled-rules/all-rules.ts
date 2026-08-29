@@ -9,6 +9,10 @@ export interface BundledRule {
   crop_group?: string;
   canonical_group?: string;
   stage_applicable: string[];
+  // FIX 4 (2026-08-29): decision_rules.region_code (e.g. 'IN-MH'); null = global.
+  region_code?: string | null;
+  // decision_rules.cultivation_method_applicable, lower-cased; null = unrestricted.
+  cultivation_method_applicable?: string[] | null;
   conditionCode: string;
   conditions_json?: Record<string, unknown>;
   cause: string;

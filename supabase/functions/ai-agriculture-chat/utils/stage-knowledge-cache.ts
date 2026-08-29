@@ -1,5 +1,9 @@
 /**
  * CHANGE LOG
+ * 2026-08-29 — FIX 2 (StageGate): stageAdjacency is built from equivalence
+ *   edges only (CONCURRENT_WITH). STAGE_PRECEDES/TRIGGERS/ENABLES no longer
+ *   make neighbouring stages equivalent, so a rule whose stage_applicable
+ *   names the previous stage cannot pass the gate on the current one.
  * 2026-08-08 00:00 UTC — FIX 4: deterministic stage resolution. crop_stage_master
  *   is now loaded with is_active=true and a stable server-side ORDER BY, and
  *   2026-08-07 17:50 UTC — GAP C: rank axis 5 now tests stage_node_type
@@ -91,6 +95,11 @@ const TTL_MS = 10 * 60 * 1000;
 function k(crop: string, stage: string) {
   return `${(crop || '').toLowerCase()}|${(stage || '').toLowerCase()}`;
 }
+
+// FIX 2 (2026-08-29) — the ONLY crop_stage_graph edge types that assert two
+// stages are biologically interchangeable for rule `stage_applicable`
+// gating. Everything else in the table is ordering/causation, not identity.
+const STAGE_EQUIVALENCE_EDGE_TYPES: ReadonlySet<string> = new Set(['CONCURRENT_WITH']);
 
 /** Adjacency key — cultivation_method is part of the identity so that
  *  direct-seeded and transplanted timelines never merge into one path. */
@@ -250,12 +259,26 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
       console.warn('[STAGE_KNOWLEDGE] crop_stage_graph select error:', edgeErr.message);
     } else if (Array.isArray(edges)) {
       let edgeCount = 0;
+      let orderingEdgesSkipped = 0;
       for (const e of edges) {
         const crop = String(e.crop_code || '').toLowerCase();
         const from = idToStage.get(String(e.from_stage_id))?.stage;
         const to   = idToStage.get(String(e.to_stage_id))?.stage;
         if (!crop || !from || !to) continue;
-        // Symmetric adjacency — all curated edge types (STAGE_PRECEDES,
+        // FIX 2 (2026-08-29) — STAGE_GATE: `stageAdjacency` feeds
+        // getStageFamilyFromDB / stagesEquivalentFromDB, which the rule
+        // StageGate treats as *biological equivalence*. Previously EVERY edge
+        // type was folded in, so an ordering edge (STAGE_PRECEDES:
+        // panicle_initiation → booting) made booting ≡ panicle_initiation and
+        // a rule scoped to [tillering, panicle_initiation] fired on a booting
+        // crop (trace_mte7pl6m_krkiyr, RICE_NUTR_N_DEFICIT_001). Only
+        // equivalence-class edges may widen a family now. Ordering/causal
+        // edges (STAGE_PRECEDES, TRIGGERS, ENABLES) are still curated in the
+        // DB for sequencing consumers; they simply no longer relax the gate.
+        if (!STAGE_EQUIVALENCE_EDGE_TYPES.has(String(e.edge_type || '').toUpperCase())) {
+          orderingEdgesSkipped++;
+          continue;
+        }
         const edgeMethod = e.cultivation_method
           ? String(e.cultivation_method).toLowerCase()
           : 'any';
@@ -267,7 +290,10 @@ export async function loadStageKnowledge(supabase: any): Promise<void> {
         stageAdjacency.get(keyT)!.add(from);
         edgeCount++;
       }
-      console.log(`[STAGE_KNOWLEDGE] crop_stage_graph edges=${edgeCount} adjacency_keys=${stageAdjacency.size}`);
+      console.log(
+        `[STAGE_KNOWLEDGE] crop_stage_graph equivalence_edges=${edgeCount} ` +
+        `ordering_edges_skipped=${orderingEdgesSkipped} adjacency_keys=${stageAdjacency.size}`,
+      );
     }
   } catch (e) {
     console.warn('[STAGE_KNOWLEDGE] crop_stage_graph load failed', e);

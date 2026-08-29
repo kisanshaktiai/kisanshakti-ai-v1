@@ -2382,7 +2382,14 @@ export class AIAgentOrchestrator {
         
         // STEP 2: Check for explicit option selection indicators
         const isNumericOnly = /^[१२३४1-4]$/.test(safeFarmerMessage.trim());
-        const hasEmbeddedObsKeys = /\[obs_keys:[^\]]+\]/.test(safeFarmerMessage);
+        // FIX 1b (2026-08-29): FIX A strips the markers from safeFarmerMessage
+        // before this point, so the regex alone can no longer see a tapped
+        // selection; consult the harvested set too, otherwise a multi-select
+        // reply that the label matcher misses is mis-read as a NEW query and
+        // the pending clarification is discarded (fail-open).
+        const hasEmbeddedObsKeys =
+          /\[obs_keys:[^\]]+\]/.test(safeFarmerMessage) ||
+          ((((this as any).__embeddedConfirmedObs || []) as string[]).length > 0);
         
         // STEP 3: FAIL-OPEN LOGIC
         const isLikelyNewQuery = !isNumericOnly && 
@@ -2427,9 +2434,17 @@ export class AIAgentOrchestrator {
         // PATCH 2: NULL-SAFE option matching
         const matchResult = matchFarmerResponseToOption(safeFarmerMessage, pendingOptions);
         
-        // CRITICAL FIX: Extract observation_key from frontend message if embedded
-        const obsKeysMatch = safeFarmerMessage.match(/\[obs_keys:([^\]]+)\]/);
-        const embeddedObservationKeys = obsKeysMatch ? obsKeysMatch[1].split(',').filter(k => k.trim()) : [];
+        // FIX 1 (2026-08-29) — MULTI-OBSERVATION COLLAPSE. FIX A (above) already
+        // harvested EVERY `[obs_keys:…]` marker with matchAll() into
+        // __embeddedConfirmedObs and then STRIPPED the markers from
+        // safeFarmerMessage, so the previous `safeFarmerMessage.match()` here
+        // always returned null and the branch silently fell back to the single
+        // persisted option at match_index. Read the harvested set instead.
+        // (trace_mte7pl6m_krkiyr: farmer selected n_deficiency_rice AND
+        // k_deficiency_rice; only one reached hypothesis/rule evaluation.)
+        const embeddedObservationKeys: string[] = (
+          ((this as any).__embeddedConfirmedObs || []) as string[]
+        ).map((k) => String(k || '').trim()).filter(Boolean);
         
         // FIX #1: Extract cause and rule_id from confirmed diagnosis selection
         const causeMatch = safeFarmerMessage.match(/\[cause:([^\]]+)\]/);
@@ -2467,7 +2482,7 @@ export class AIAgentOrchestrator {
             : null;
           if (embeddedObservationKeys.length > 0) {
             mappedObservationKey = embeddedObservationKeys[0];
-            console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
+            console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}" (embedded_total=${embeddedObservationKeys.length})`);
           } else if (
             matchResult.option_index != null &&
             (selectedStructuredOption?.observation_code || selectedStructuredOption?.observation_key)
@@ -2723,6 +2738,39 @@ export class AIAgentOrchestrator {
               allObservations.push(_canonKey);
               console.log(`   ✅ [ObservationAuthority] ${_canonKey} tagged as CONFIRMED (clarification selection)`);
             }
+          }
+          // FIX 1 (2026-08-29): a MULTI_SELECT clarification carries one
+          // `[obs_keys:…]` marker per tapped option. Every tapped code is
+          // farmer-CONFIRMED evidence and must reach the graph as a separate
+          // observation — never collapsed to the first one. Also confirm each
+          // on the ObservationLedger so the ledger and the evidence set agree.
+          for (const _extraKey of embeddedObservationKeys) {
+            const _extraCanon = canonicalizeObservationKey(_extraKey);
+            if (!_extraCanon || allObservations.includes(_extraCanon)) continue;
+            allObservations.push(_extraCanon);
+            console.log(`   ✅ [ObservationAuthority] ${_extraCanon} tagged as CONFIRMED (multi-select clarification)`);
+            try {
+              const _extraCode = canonicalObsCode(_extraCanon);
+              if (_extraCode && /^[a-z0-9_]+$/.test(_extraCode)) {
+                if (!graph.observation_ledger.latestByCode().has(_extraCode)) {
+                  graph.observation_ledger.append({
+                    observation_code: _extraCode,
+                    source: 'CLARIFICATION',
+                    confidence: 0.95,
+                    actor: 'orchestrator:OPTION_SELECTED',
+                  });
+                }
+                graph.observation_ledger.confirm(_extraCode, 'orchestrator:OPTION_SELECTED');
+              }
+            } catch (e) {
+              console.warn(`⚠️ [OPTION_SELECTED_LEDGER] multi-select confirm non-fatal: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }
+          if (embeddedObservationKeys.length > 1) {
+            console.log(
+              `[MULTI_OBS_PRESERVED][${traceId}] embedded=${embeddedObservationKeys.length} ` +
+              `confirmed_set=[${allObservations.join(',')}]`,
+            );
           }
           if (visualSymptom && visualSymptom !== 'UNKNOWN' && visualSymptom !== mappedObservationKey) {
             allObservations.push(visualSymptom);
@@ -3150,6 +3198,62 @@ export class AIAgentOrchestrator {
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
           console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}, Responses: ${ruleResult.matched_responses?.length || 0}`);
+
+          // FIX 3 (2026-08-29) — DECISION TRACE ON THE OPTION_SELECTED BRANCH.
+          // This branch returns DECISION_PROVIDED without ever touching the
+          // RuntimeTraceCollector; the only setRules/setDecision/setHypotheses
+          // calls live in the main pipeline (never reached here) and
+          // setObservations() had no caller anywhere. index.ts's SafetyNet then
+          // persisted ai_decision_log with observations=[], all snapshots null
+          // and decision_type='unknown' while a treatment was returned
+          // (trace_mte7pl6m_krkiyr). Mirror the main-pipeline block so the
+          // persisted row reflects the authoritative path actually taken.
+          try {
+            const rtOpt = getRuntimeTraceCollector();
+            if (rtOpt) {
+              rtOpt.setObservations({
+                confirmed: allObservations,
+                real: optionEvidence.real_codes,
+                ignored_context_symbols: optionEvidence.ignored_codes ?? [],
+                embedded_from_ui: embeddedObservationKeys,
+                source: 'OPTION_SELECTED',
+              });
+              rtOpt.setHypotheses({
+                decision_path: 'OPTION_SELECTED:resolveHypothesesFromObservations',
+                winner: optionGraphResolution.hypotheses[0] ?? null,
+                candidates: optionGraphResolution.hypotheses,
+                rejected: optionGraphResolution.nearest_hypotheses ?? null,
+                seed_expansion_tier: optionGraphResolution.seed_expansion_tier,
+                structured_gap_reason: optionGraphResolution.structured_gap_reason ?? null,
+              });
+              rtOpt.setRules({
+                candidates: optionGraphRuleIds,
+                candidate_count: optionGraphRuleIds.length,
+                matched_count: ruleResult.rules_matched ?? 0,
+                applied: ruleResult.rules_applied ?? [],
+                blocked: (ruleResult as any).blocked_actions ?? [],
+                winner: ruleResult.primary_decision?.rule_id ? {
+                  rule_id: ruleResult.primary_decision.rule_id,
+                  action_type: ruleResult.primary_decision.action_type ?? null,
+                  confidence: ruleResult.confidence_in_result ?? null,
+                } : null,
+                rejected: (ruleResult as any).top_5_rejected_rules ?? null,
+              });
+              rtOpt.setDecision({
+                decision_id: null,
+                decision_type: ruleResult.primary_decision?.action_type ?? null,
+                primary_decision: ruleResult.primary_decision ?? null,
+                secondary_actions: (ruleResult.matched_responses ?? []).slice(0, 3),
+                confidence: ruleResult.confidence_in_result ?? null,
+                status: ruleResult.prescriptions.length > 0 ? 'DIAGNOSIS_COMPLETE'
+                  : (ruleResult.rules_matched > 0 ? 'OBSERVATION_PROVIDED' : 'NO_RULE_MATCH'),
+                reasoning: ruleResult.primary_decision?.reason_text ?? null,
+                path: 'OPTION_SELECTED',
+              });
+            }
+          } catch (rtErr) {
+            console.warn(`[OPTION_SELECTED_TRACE] non-fatal: ${rtErr instanceof Error ? rtErr.message : String(rtErr)}`);
+          }
           
           // CRITICAL FIX: Check for matched_responses even when prescriptions are empty
           const hasMatchedResponses = ruleResult.matched_responses && ruleResult.matched_responses.length > 0;
@@ -11113,7 +11217,7 @@ export class AIAgentOrchestrator {
       // CRITICAL SECURITY FIX: Validate farmer ownership FIRST before fetching data
       
       // PARALLEL FETCHING: Fetch all data simultaneously for speed
-      const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult] = await Promise.all([
+      const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult, landRegionResult] = await Promise.all([
         // Fetch land details - CRITICAL: Must validate farmer_id ownership
         this.supabase
           .from('lands')
@@ -11131,23 +11235,24 @@ export class AIAgentOrchestrator {
           .limit(1)
           .maybeSingle(),
         
-        // Fetch latest NDVI data - CRITICAL FIX: Use 'date' column not 'captured_at'
+        // Latest NDVI - v2.2 (audit F-4): decision-grade view only (optical,
+        // quality >= 0.55, ndvi_value never NULL). Raw ndvi_data ordered by
+        // date returns Sentinel-1 rows with NULL NDVI on top.
         this.supabase
-          .from('ndvi_data')
+          .from('v_ndvi_decision_grade')
           .select('*')
           .eq('land_id', landId)
-          .order('date', { ascending: false })
+          .order('acquisition_date', { ascending: false })
           .limit(1)
           .maybeSingle(),
         
-        // CRITICAL FIX: Fetch NDVI HISTORY (last 30 days for trend analysis)
-        // Use 'date' column - 'captured_at' does not exist in schema
+        // NDVI HISTORY (last 30 days, optical acquisitions only) for trend
         this.supabase
-          .from('ndvi_data')
-          .select('ndvi_value, mean_ndvi, date, quality_score, metadata')
+          .from('v_ndvi_decision_grade')
+          .select('ndvi_value, acquisition_date, quality_score, confidence_level')
           .eq('land_id', landId)
-          .gte('date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-          .order('date', { ascending: false })
+          .gte('acquisition_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
+          .order('acquisition_date', { ascending: false })
           .limit(10),
         
         // Fetch active crop schedule
@@ -11158,10 +11263,31 @@ export class AIAgentOrchestrator {
           .eq('is_active', true)
           .order('sowing_date', { ascending: false })
           .limit(1)
+          .maybeSingle(),
+
+        // FIX 4 (2026-08-29): land region for decision_rules.region_code gating.
+        // Same SSOT derivation ai-smart-schedule already uses
+        // (lands.state_id → states.code → 'IN-'||code, exposed by v_land_region).
+        this.supabase
+          .from('v_land_region')
+          .select('region_code, state_code')
+          .eq('land_id', landId)
           .maybeSingle()
       ]);
       
       const { data: land, error: landError } = landResult;
+      const landRegionCode: string | null = (() => {
+        const rc = (landRegionResult as any)?.data?.region_code;
+        if ((landRegionResult as any)?.error) {
+          console.warn(`⚠️ [LAND_REGION] v_land_region lookup failed for ${landId}: ${(landRegionResult as any).error.message} → region UNRESOLVED (region-scoped rules fail-closed)`);
+          return null;
+        }
+        if (!rc) {
+          console.warn(`⚠️ [LAND_REGION] no v_land_region row for ${landId} (lands.state_id missing?) → region UNRESOLVED (region-scoped rules fail-closed)`);
+          return null;
+        }
+        return String(rc).trim().toUpperCase();
+      })();
       const { data: soilHealth } = soilResult;
       const { data: ndviData } = ndviLatestResult;
       const { data: ndviHistory } = ndviHistoryResult;
@@ -11461,6 +11587,7 @@ export class AIAgentOrchestrator {
         land_id: landId,
         land_name: land.name,
         area_acres: land.area_acres,
+        region_code: landRegionCode, // FIX 4: 'IN-MH' etc. from v_land_region; null = unresolved
         soil_type: land.soil_type,
         irrigation_type: land.irrigation_type,
         water_source: land.water_source,
@@ -11529,17 +11656,28 @@ export class AIAgentOrchestrator {
           trend_description: ndviTrend.description,
           quality_score: ndviData.quality_score,
           confidence_level: ndviData.confidence_level,
-          captured_at: ndviData.date,  // Schema uses 'date' column
-          date: ndviData.date
+          // v2.2: true acquisition date. Cast matches the existing
+          // `(ndviData as any)` convention above — the row is untyped.
+          captured_at: (ndviData as any).acquisition_date ?? (ndviData as any).date,
+          date: (ndviData as any).acquisition_date ?? (ndviData as any).date,
+          age_days: (ndviData as any).age_days ?? null,
+          is_fresh: (ndviData as any).is_fresh ?? null
         } : null,
         
         // NDVI HISTORY for multi-signal intelligence
         // CRITICAL FIX: Use 'date' column, health_status is computed
+        // v2.2 (audit F-4) FOLLOW-UP: the history query now reads
+        // v_ndvi_decision_grade, which exposes `acquisition_date` and has no
+        // `date` / `mean_ndvi` column — the old mapper produced
+        // captured_at=undefined on every history row. Prefer the view column,
+        // keep the legacy fallbacks so a raw ndvi_data row still maps.
         ndvi_history: (ndviHistory || []).map((h: any) => ({
-          value: h.ndvi_value || h.mean_ndvi,
-          captured_at: h.date,  // Schema uses 'date' not 'captured_at'
-          date: h.date,
-          health_status: this.getNDVIHealthStatus(h.ndvi_value || h.mean_ndvi)  // Computed
+          value: h.ndvi_value ?? h.mean_ndvi ?? null,
+          captured_at: h.acquisition_date ?? h.date ?? null,
+          date: h.acquisition_date ?? h.date ?? null,
+          quality_score: h.quality_score ?? null,
+          confidence_level: h.confidence_level ?? null,
+          health_status: this.getNDVIHealthStatus(h.ndvi_value ?? h.mean_ndvi)  // Computed
         })),
         
         // Crop schedule data
@@ -11972,20 +12110,25 @@ export class AIAgentOrchestrator {
         
         // CRITICAL FIX: Use 'date' column not 'captured_at', and no 'health_status' column
         // Schema columns: ndvi_value, date, mean_ndvi
+        // v2.2 (audit F-4): decision-grade view; acquisition_date is the
+        // true satellite date, never the pipeline run date.
         const { data: ndviRecord } = await this.supabase
-          .from('ndvi_data')
-          .select('ndvi_value, date, mean_ndvi')
+          .from('v_ndvi_decision_grade')
+          .select('ndvi_value, acquisition_date, quality_score, confidence_level')
           .eq('land_id', landId)
-          .order('date', { ascending: false })
+          .order('acquisition_date', { ascending: false })
           .limit(1)
           .maybeSingle();
         
-        if (ndviRecord) {
+        const _ndviRow = ndviRecord as any;
+        if (_ndviRow && _ndviRow.ndvi_value !== null && _ndviRow.ndvi_value !== undefined) {
           result.ndvi_data = {
-            value: ndviRecord.ndvi_value || ndviRecord.mean_ndvi,
-            captured_at: ndviRecord.date,
-            date: ndviRecord.date,
-            health_status: this.getNDVIHealthStatus(ndviRecord.ndvi_value || ndviRecord.mean_ndvi)
+            value: Number(_ndviRow.ndvi_value),
+            captured_at: _ndviRow.acquisition_date,
+            date: _ndviRow.acquisition_date,
+            quality_score: _ndviRow.quality_score,
+            confidence_level: _ndviRow.confidence_level,
+            health_status: this.getNDVIHealthStatus(Number(_ndviRow.ndvi_value))
           };
         }
         

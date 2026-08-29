@@ -386,6 +386,8 @@ export interface CanonicalState {
   // Timestamps
   state_built_at: string;
   land_id?: string;
+  // FIX 4 (2026-08-29): land region ('IN-MH') for decision_rules.region_code gating; null = unresolved.
+  region_code?: string | null;
   farmer_id?: string;
 }
 
@@ -614,6 +616,7 @@ export interface BuildCanonicalStateInput {
     sowing_date?: string;
     area_acres?: number;
     land_id?: string;
+    region_code?: string | null; // FIX 4
     farmer_id?: string;
     district?: string;
     state?: string;
@@ -1074,6 +1077,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     // Meta
     state_built_at: now.toISOString(),
     land_id: landId,
+    region_code: input.landContext?.region_code ?? null, // FIX 4
     farmer_id: farmerId
   };
 }

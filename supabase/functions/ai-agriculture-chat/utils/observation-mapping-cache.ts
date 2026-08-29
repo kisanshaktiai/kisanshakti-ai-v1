@@ -147,6 +147,36 @@ function resolveLaneChain(cultivationMethod?: string | null): Set<string> {
   return out;
 }
 
+/**
+ * FIX 5 (2026-08-29) — shared cultivation-method eligibility test.
+ * Semantics mirror decision/context-rule-selector.ts `cultivationMatches`
+ * (FIX 6 fail-closed convention) and reuse the DB-SSOT lane hierarchy loaded
+ * from cultivation_method_master, so sri → transplanted and
+ * direct_seeded_dry → direct_seeded resolve without anything hardcoded.
+ *
+ *   empty / null list          → PASS (rule is universal)
+ *   list has universal token   → PASS
+ *   list has a DB wildcard     → PASS
+ *   method unresolved          → BLOCK (fail-closed; the rule names methods)
+ *   otherwise                  → PASS iff laneChain(method) intersects list
+ */
+const CULTIVATION_UNIVERSAL = ['universal', 'all', 'any', '*'];
+
+export function cultivationLaneMatches(
+  applicable: unknown,
+  cultivationMethod?: string | null,
+): boolean {
+  const list = Array.isArray(applicable)
+    ? applicable.map((m) => String(m ?? '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (list.length === 0) return true;
+  if (list.some((m) => CULTIVATION_UNIVERSAL.includes(m) || laneWildcards.has(m))) return true;
+  const method = cultivationMethod ? String(cultivationMethod).trim().toLowerCase() : '';
+  if (!method) return false;
+  const chain = resolveLaneChain(method);
+  return list.some((m) => chain.has(m));
+}
+
 export async function loadObservationMapping(supabase: any): Promise<void> {
   const now = Date.now();
   // Lane master is cheap and independently TTL-gated; keep it warm even when

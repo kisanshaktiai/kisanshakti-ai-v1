@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-08-29 — FIX 6: explicit RULE_ACTION_DECISION_TYPE map so rule action
+//     types resolve to real ai_decision_log decision_type values instead of
+//     falling through to 'unknown'/blanket 'prescription'.
+//   2026-08-29 — FIX 3: input_data.observations falls back to the collector's
+//     observation snapshot when the caller supplies none.
 //   2026-08-07 17:50 UTC — GAP D: ai_decision_log rows now carry a real
 //     decision_type (turn terminal outcome) and input_data.crop /
 //     growth_stage / days_since_sowing from the frozen canonical context.
@@ -67,12 +72,38 @@ const AI_DECISION_LOG_TYPES = new Set([
   'unknown',
 ]);
 
+// FIX 6 (2026-08-29) — explicit rule-action → decision_type map.
+// `decision_rules` action types (RECOMMEND / MONITOR / BLOCK /
+// NO_ACTION_REQUIRED / URGENT_ACTION) are NOT members of
+// AI_DECISION_LOG_TYPES. Previously they fell through the regex ladder to
+// 'unknown' and were then coerced to 'prescription' by the terminal-type
+// guard below — correct for RECOMMEND, but it mislabelled
+// NO_ACTION_REQUIRED as a prescription. Every value below is a member of
+// the ai_decision_log decision_type CHECK constraint.
+const RULE_ACTION_DECISION_TYPE: Readonly<Record<string, string>> = {
+  RECOMMEND:          'prescription',
+  URGENT_ACTION:      'prescription',
+  PRESCRIBE:          'prescription',
+  MONITOR:            'monitoring',
+  OBSERVE:            'monitoring',
+  BLOCK:              'safety_block',
+  WARN:               'safety_block',
+  NO_ACTION_REQUIRED: 'observation_response',
+  ALLOW:              'advisory',
+  INFORM:             'advisory',
+  DELAY:              'advisory',
+  REQUIRE:            'prescription',
+};
+
 function normalizeDecisionType(raw: any): string {
   const value = String(raw || '').trim();
   const lower = value.toLowerCase();
   if (AI_DECISION_LOG_TYPES.has(lower)) return lower;
 
   const upper = value.toUpperCase();
+  // FIX 6: explicit rule-action mapping wins over the regex ladder.
+  const mapped = RULE_ACTION_DECISION_TYPE[upper];
+  if (mapped && AI_DECISION_LOG_TYPES.has(mapped)) return mapped;
   if (/CLARIF|QUESTION|ASK/.test(upper)) return 'clarification';
   if (/SAFETY|BLOCK/.test(upper)) return 'safety_block';
   if (/MONITOR|OBSERV/.test(upper)) return 'monitoring';
@@ -84,6 +115,11 @@ function normalizeDecisionType(raw: any): string {
   if (/SCHEDULE/.test(upper)) return 'schedule_generation';
   if (/ALERT|PROACTIVE/.test(upper)) return 'alert_generation';
   return 'unknown';
+}
+
+/** FIX 6 — test seam for the decision-type map (harness only; no runtime use). */
+export function __testNormalizeDecisionType(raw: any): string {
+  return normalizeDecisionType(raw);
 }
 
 function normalizeLegacyDecisionType(raw: any): string {
@@ -354,7 +390,13 @@ export class RuntimeTraceCollector {
       let terminalType: string | null = null;
       if (_matchedRules > 0 || this.decision?.primary_decision) {
         terminalType = normalizeDecisionType(_winnerAction ?? 'prescription');
-        if (terminalType === 'unknown') terminalType = 'prescription';
+        // FIX 6: keep the last-resort coercion (decision_type must never be
+        // 'unknown' when a decision was returned) but log it — with the
+        // explicit map above, reaching here means a NEW unmapped action type.
+        if (terminalType === 'unknown') {
+          console.warn(`⚠️ [RuntimeTrace] unmapped rule action_type="${_winnerAction}" → coerced to 'prescription'; add it to RULE_ACTION_DECISION_TYPE`);
+          terminalType = 'prescription';
+        }
       } else if (this.clarification) {
         terminalType = 'clarification';
       } else if (this.decision?.failed || this.decision?.error) {
@@ -403,7 +445,13 @@ export class RuntimeTraceCollector {
         model_version:   this.header.runtime_version,
         input_data:      {
           farmer_message: extra.farmer_message ?? null,
-          observations:   extra.observations ?? [],
+          // FIX 3 (2026-08-29): callers that never ran NLU (OPTION_SELECTED
+          // branch via index.ts SafetyNet) pass no observations; fall back to
+          // the collector's own observation snapshot instead of persisting [].
+          observations:   extra.observations
+                            ?? this.observations?.confirmed
+                            ?? this.observations?.real
+                            ?? [],
           // GAP D — locked canonical context (GRAPH_FREEZE). NEVER fabricated:
           // when the canonical context is unavailable these stay null.
           crop:              _canon.crop,

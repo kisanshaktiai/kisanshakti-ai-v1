@@ -1,5 +1,10 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-08-29 — FIX 2: StageGate "ontology known" now uses isKnownStage()
+ *   (crop_stage_master presence) instead of family size. FIX 4: new RegionGate
+ *   on decision_rules.region_code vs state.region_code (fail-closed). FIX 5:
+ *   new CultivationGate on decision_rules.cultivation_method_applicable
+ *   (DB-SSOT lane chain, fail-closed) — the field was loaded but unenforced.
  * 2026-08-17 23:30 UTC — FIX 2: converted rules now carry `condition_code` (top
  *   level + action_details) so the orchestrator can recover rules by
  *   confirmed-observation → condition_code match when intent_code is absent.
@@ -15,7 +20,9 @@
 // FILE:      supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts
 
 // PR-7 F5: DB-derived stage-equivalence (shared with contradiction-engine
-import { stagesEquivalent, stageFamily } from '../runtime/stage-family-shim.ts';
+import { stagesEquivalent, stageFamily, isKnownStage } from '../runtime/stage-family-shim.ts';
+import { cultivationLaneMatches } from '../utils/observation-mapping-cache.ts';
+import { currentLane } from '../utils/stage-knowledge-cache.ts';
 import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
 
 
@@ -1298,7 +1305,14 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
                 (bundled as any).crop_code || (state as any).crop_type || ''
               ).toLowerCase();
               const family = stageFamily(currentStage, stageCropCtx) as string[];
-              const familyKnown = family.length > 1; // singleton = unknown stage
+              // FIX 2 (2026-08-29): "ontology known" = the (crop, stage) row
+              // exists in crop_stage_master — NOT "has ≥2 family members".
+              // The old test fail-opened the gate for every stage without an
+              // equivalence edge. When the cache is unavailable (null) we
+              // keep the legacy family-size heuristic so behaviour is
+              // unchanged in that degraded mode.
+              const _known = isKnownStage(currentStage, stageCropCtx);
+              const familyKnown = _known === null ? family.length > 1 : _known;
               const exactMatch = normalizedApplicableStages.includes(currentStage);
               const familyMatch = normalizedApplicableStages.some((s: string) =>
                 stagesEquivalent(currentStage, s, stageCropCtx)
@@ -1323,6 +1337,48 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             }
           }
           
+          // FIX 4 (2026-08-29) — REGION GATE. decision_rules.region_code was
+          // never read by this evaluator, so state-package rules (IN-KL,
+          // IN-TN, …) reached a Maharashtra land as secondary decisions
+          // (trace_mte7pl6m_krkiyr). Policy: region-scoped rules serve ONLY
+          // when the land region is resolved AND equal (FAIL-CLOSED when the
+          // land region is unknown). Global rules (region_code null) are
+          // unaffected. Codes are compared case-insensitively after trim.
+          const _ruleRegion = String((bundled as any).region_code ?? '').trim().toUpperCase();
+          if (_ruleRegion) {
+            const _landRegion = String((state as any).region_code ?? '').trim().toUpperCase();
+            if (!_landRegion || _landRegion !== _ruleRegion) {
+              if (bundled.priority && bundled.priority > 70) {
+                console.log(`🚫 [RegionGate] Rule ${bundled.rule_id} blocked: rule_region=${_ruleRegion} land_region=${_landRegion || 'UNRESOLVED'}`);
+              }
+              return false;
+            }
+          }
+
+          // FIX 5 (2026-08-29) — CULTIVATION METHOD GATE.
+          // decision_rules.cultivation_method_applicable was loaded but no
+          // eligibility gate consumed it, so a transplanted-only rule (39 such
+          // rules live) could serve a direct_seeded land. Lane resolution
+          // order: explicit state field → request-scoped lane bound by the
+          // orchestrator (runWithCultivationLane). Universal rules ({any}, the
+          // 1878-rule majority) are unaffected; fail-closed when a rule names
+          // methods and the land's method is unresolved, matching the FIX 6
+          // convention in decision/context-rule-selector.ts.
+          const _ruleMethods = (bundled as any).cultivation_method_applicable;
+          if (Array.isArray(_ruleMethods) && _ruleMethods.length > 0) {
+            const _landMethod =
+              (state as any).cultivation_method
+              ?? (state as any).cultivation_method_code
+              ?? currentLane()
+              ?? null;
+            if (!cultivationLaneMatches(_ruleMethods, _landMethod)) {
+              if (bundled.priority && bundled.priority > 70) {
+                console.log(`🚫 [CultivationGate] Rule ${bundled.rule_id} blocked: rule_methods=[${_ruleMethods.join(',')}] land_method=${_landMethod || 'UNRESOLVED'}`);
+              }
+              return false;
+            }
+          }
+
           // CRITICAL FIX: ENFORCE crop_code matching with proper normalization
           // cropCodeAliases — REMOVED. Crop-code equivalences (short-code
           const cropCodeAliases: Record<string, string[]> = {};

@@ -373,13 +373,19 @@ async function persistRuntimeTraceSafetyNet(params: {
         farmer_message: params.farmerMessage,
         detected_language: _safeLang,
         intent_label: _rtc.context?.intent?.code ?? params.responseType ?? null,
-        observations: [],
+        // FIX 3 (2026-08-29): was hardcoded [] — read the collector snapshot.
+        observations: Array.isArray((_rtc as any).observations?.confirmed)
+          ? (_rtc as any).observations.confirmed
+          : [],
         nlu_confidence: normalizeTraceConfidence(_rtc.context?.intent?.confidence),
         locked_intent: _rtc.context?.intent?.code ?? null,
         allowed_scopes: [],
         forbidden_actions: [],
         symbolic_decision_id: _persistedId,
-        rules_fired: [],
+        // FIX 3 (2026-08-29): was hardcoded [] — read the collector snapshot.
+        rules_fired: Array.isArray((_rtc as any).rules?.applied)
+          ? (_rtc as any).rules.applied.map((r: any) => (typeof r === 'string' ? r : (r?.rule_id ?? String(r)))).filter(Boolean)
+          : [],
         actions_returned: [],
         actions_filtered_out: [],
         validation_passed: true,
