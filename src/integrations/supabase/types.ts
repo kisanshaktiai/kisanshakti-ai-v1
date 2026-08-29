@@ -9697,11 +9697,13 @@ export type Database = {
       }
       districts: {
         Row: {
+          census2011_district_code: string | null
           created_at: string | null
           id: string
           imd_district_obj_id: string | null
           imd_mapped_at: string | null
           is_active: boolean | null
+          lgd_district_code: number | null
           name: string
           name_as: string | null
           name_bn: string | null
@@ -9720,11 +9722,13 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          census2011_district_code?: string | null
           created_at?: string | null
           id?: string
           imd_district_obj_id?: string | null
           imd_mapped_at?: string | null
           is_active?: boolean | null
+          lgd_district_code?: number | null
           name: string
           name_as?: string | null
           name_bn?: string | null
@@ -9743,11 +9747,13 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          census2011_district_code?: string | null
           created_at?: string | null
           id?: string
           imd_district_obj_id?: string | null
           imd_mapped_at?: string | null
           is_active?: boolean | null
+          lgd_district_code?: number | null
           name?: string
           name_as?: string | null
           name_bn?: string | null
@@ -13030,24 +13036,6 @@ export type Database = {
             referencedColumns: ["farmer_id"]
           },
         ]
-      }
-      geo_stage_chunks: {
-        Row: {
-          body: string
-          fname: string
-          idx: number
-        }
-        Insert: {
-          body: string
-          fname: string
-          idx: number
-        }
-        Update: {
-          body?: string
-          fname?: string
-          idx?: number
-        }
-        Relationships: []
       }
       germination_gate_params: {
         Row: {
@@ -29384,32 +29372,38 @@ export type Database = {
       }
       states: {
         Row: {
+          census2011_state_code: string | null
           code: string | null
           country_id: string
           created_at: string | null
           geometry: unknown
           id: string
           is_active: boolean | null
+          lgd_state_code: number | null
           name: string
           updated_at: string | null
         }
         Insert: {
+          census2011_state_code?: string | null
           code?: string | null
           country_id: string
           created_at?: string | null
           geometry?: unknown
           id?: string
           is_active?: boolean | null
+          lgd_state_code?: number | null
           name: string
           updated_at?: string | null
         }
         Update: {
+          census2011_state_code?: string | null
           code?: string | null
           country_id?: string
           created_at?: string | null
           geometry?: unknown
           id?: string
           is_active?: boolean | null
+          lgd_state_code?: number | null
           name?: string
           updated_at?: string | null
         }
@@ -30524,26 +30518,41 @@ export type Database = {
       }
       talukas: {
         Row: {
+          boundary: unknown
+          census2011_subdistrict_code: string | null
+          center_lat: number | null
+          center_lon: number | null
           created_at: string | null
           district_id: string
           id: string
           is_active: boolean | null
+          lgd_subdistrict_code: number | null
           name: string
           updated_at: string | null
         }
         Insert: {
+          boundary?: unknown
+          census2011_subdistrict_code?: string | null
+          center_lat?: number | null
+          center_lon?: number | null
           created_at?: string | null
           district_id: string
           id?: string
           is_active?: boolean | null
+          lgd_subdistrict_code?: number | null
           name: string
           updated_at?: string | null
         }
         Update: {
+          boundary?: unknown
+          census2011_subdistrict_code?: string | null
+          center_lat?: number | null
+          center_lon?: number | null
           created_at?: string | null
           district_id?: string
           id?: string
           is_active?: boolean | null
+          lgd_subdistrict_code?: number | null
           name?: string
           updated_at?: string | null
         }
@@ -33795,11 +33804,13 @@ export type Database = {
       villages: {
         Row: {
           boundary: unknown
+          census2011_village_code: string | null
           center_lat: number | null
           center_lon: number | null
           created_at: string | null
           id: string
           is_active: boolean | null
+          lgd_village_code: number | null
           name: string
           pincode: string | null
           taluka_id: string
@@ -33807,11 +33818,13 @@ export type Database = {
         }
         Insert: {
           boundary?: unknown
+          census2011_village_code?: string | null
           center_lat?: number | null
           center_lon?: number | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          lgd_village_code?: number | null
           name: string
           pincode?: string | null
           taluka_id: string
@@ -33819,11 +33832,13 @@ export type Database = {
         }
         Update: {
           boundary?: unknown
+          census2011_village_code?: string | null
           center_lat?: number | null
           center_lon?: number | null
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          lgd_village_code?: number | null
           name?: string
           pincode?: string | null
           taluka_id?: string
