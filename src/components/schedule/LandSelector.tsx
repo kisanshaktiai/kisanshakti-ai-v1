@@ -88,6 +88,20 @@ const getWaterIcon = (waterSource?: string) => {
   return Droplets;
 };
 
+/**
+ * Localize a raw DB enum value (e.g. lands.soil_type = 'black', 'Well') through the
+ * EXISTING land-wizard value keys. Fails open: unknown values render raw, never blank.
+ */
+const localizeLandValue = (
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  group: 'soil_types' | 'water_sources' | 'irrigation_types',
+  raw?: string | null,
+): string => {
+  if (!raw) return '';
+  const slug = String(raw).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return t(`lands.wizard.${group}.${slug}`, { defaultValue: raw });
+};
+
 const getCropIcon = (crop?: string) => {
   if (!crop) return Sprout;
   const cropName = crop.toLowerCase();
@@ -100,8 +114,10 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
+  // crop_name (lowercased) -> localized crop label for the active language.
+  const [cropLabels, setCropLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<string | null>(null);
@@ -149,10 +165,40 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       });
 
       setScheduleStatuses(statuses);
+
+      // Non-blocking enhancement: resolve localized crop names (crops table).
+      void loadCropLabels(client, statuses.map(s => s.cropName).filter(Boolean) as string[]);
     } catch (error) {
       console.error('Error fetching schedule statuses:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCropLabels = async (
+    client: ReturnType<typeof supabaseWithAuth>,
+    cropNames: string[],
+  ) => {
+    const lang = i18n.language?.split('-')[0];
+    if (!lang || lang === 'en' || cropNames.length === 0) return;
+    try {
+      const { data } = await client
+        .from('crops')
+        .select('value, label, label_hi, label_mr, local_name');
+      if (!data) return;
+      const langColumn = lang === 'hi' ? 'label_hi' : lang === 'mr' ? 'label_mr' : null;
+      const map: Record<string, string> = {};
+      for (const crop of data as Array<Record<string, string | null>>) {
+        const localized =
+          (langColumn ? crop[langColumn] : null) || crop.local_name || null;
+        if (!localized) continue;
+        for (const key of [crop.value, crop.label]) {
+          if (key) map[String(key).trim().toLowerCase()] = localized;
+        }
+      }
+      setCropLabels(map);
+    } catch (error) {
+      console.warn('Crop label localization skipped:', error);
     }
   };
 
@@ -324,7 +370,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         {hasSchedule && status?.cropName && (
                           <Badge variant="secondary" className="text-xs px-2 py-0.5">
                             <Wheat className="h-2.5 w-2.5 mr-1" />
-                            {status.cropName}
+                            {cropLabels[status.cropName.trim().toLowerCase()] || status.cropName}
                           </Badge>
                         )}
                       </div>
@@ -407,7 +453,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
                         <SoilIcon className="h-3.5 w-3.5 text-secondary" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.soil_type}
+                          {localizeLandValue(t, 'soil_types', land.soil_type)}
                         </span>
                       </div>
                     )}
@@ -416,7 +462,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20">
                         <WaterIcon className="h-3.5 w-3.5 text-info" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.water_source}
+                          {localizeLandValue(t, 'water_sources', land.water_source)}
                         </span>
                       </div>
                     )}
@@ -425,7 +471,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
                         <Droplets className="h-3.5 w-3.5 text-accent" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.irrigation_type}
+                          {localizeLandValue(t, 'irrigation_types', land.irrigation_type)}
                         </span>
                       </div>
                     )}
