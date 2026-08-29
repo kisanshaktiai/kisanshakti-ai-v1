@@ -419,5 +419,8 @@
       "पीक वेळापत्रक तयार करा",
       "प्रलंबित कामे दाखवा"
     ]
+  },
+  "variety": {
+    "none_for_crop": "No seed varieties are listed for this crop yet. You can type the variety name you sowed."
   }
 }
