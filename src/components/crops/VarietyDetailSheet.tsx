@@ -297,17 +297,12 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
                               <span className="text-[13px] font-semibold leading-tight truncate">
                                 {o.company_name}
                               </span>
-                              {status && (
+                              {status && KNOWN_AVAILABILITY_STATUSES.includes(status) && (
                                 <Badge
                                   variant="outline"
                                   className={cn('h-5 text-[10px] px-1.5 shrink-0', availabilityStyle(status))}
                                 >
-                                  {t(`schedule.variety.offerings.status.${status}`, {
-                                    defaultValue: undefined,
-                                    fallbackLng: false,
-                                  }) === `schedule.variety.offerings.status.${status}`
-                                    ? status.replace(/_/g, ' ')
-                                    : t(`schedule.variety.offerings.status.${status}`)}
+                                  {t(`schedule.variety.offerings.status.${status}`)}
                                 </Badge>
                               )}
                             </div>
