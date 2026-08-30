@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
     const domain = url.searchParams.get('domain') || req.headers.get('host') || '';
     
     // Rate limiting: 100 requests per minute per domain
-    const rateLimit = checkRateLimit(domain, { maxRequests: 100, windowMs: 60000 });
+    const rateLimit = await checkRateLimit(domain, 'generate-manifest', { maxRequests: 100, windowMs: 60000 });
     if (!rateLimit.allowed) {
       return new Response(
         JSON.stringify({ error: 'Rate limit exceeded' }),

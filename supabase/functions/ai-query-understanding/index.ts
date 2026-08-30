@@ -10,8 +10,6 @@
  * Fallback: OpenAI API (OPENAI_API_KEY)
  */
 
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from '../_shared/cors.ts';
 
 // Canonical intent types that map to Decision Brain
@@ -141,7 +139,7 @@ const SYMPTOM_LOCAL_PATTERNS: Record<CanonicalSymptom, string[]> = {
   'FUNGAL_GROWTH': ['बुरशी', 'फफूंद', 'काळी बुरशी', 'पांढरी बुरशी'],
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

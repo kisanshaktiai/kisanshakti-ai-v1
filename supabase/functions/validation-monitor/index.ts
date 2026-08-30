@@ -11,7 +11,6 @@
  * Version: 1.0.0
  */
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -43,7 +42,7 @@ interface ValidationResult {
   recommendations: string[];
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -74,14 +73,18 @@ serve(async (req) => {
     }
 
     // Store validation result
-    await supabase.from("validation_results").insert({
-      check_type: result.check_type,
-      passed: result.passed,
-      metrics: result.metrics,
-      alerts: result.alerts,
-      recommendations: result.recommendations,
-      created_at: result.timestamp,
-    }).catch(() => {});
+    try {
+      await supabase.from("validation_results").insert({
+        check_type: result.check_type,
+        passed: result.passed,
+        metrics: result.metrics,
+        alerts: result.alerts,
+        recommendations: result.recommendations,
+        created_at: result.timestamp,
+      });
+    } catch {
+      // fail-open: validation result storage is best-effort
+    }
 
     // If validation failed, send alerts
     if (!result.passed && result.alerts.length > 0) {
@@ -95,7 +98,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Validation monitor error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }

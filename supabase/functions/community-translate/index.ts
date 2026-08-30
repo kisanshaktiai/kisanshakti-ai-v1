@@ -1,6 +1,6 @@
 // Auto-translate community post content with DB caching.
 // Cache table: post_translations(post_id, language_code, content, tenant_id)
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
