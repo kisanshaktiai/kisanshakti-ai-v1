@@ -229,3 +229,20 @@ export function useVarietyTranslation(varietyId?: string | null, lang: string = 
   }, [varietyId, lang]);
   return { translation, loading };
 }
+
+export function useVarietyOfferings(varietyId?: string | null) {
+  const [offerings, setOfferings] = useState<VarietyOffering[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!varietyId) { setOfferings([]); return; }
+    setLoading(true);
+    fetchOfferings(varietyId).then((rows) => {
+      if (!alive) return;
+      setOfferings(rows);
+      setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [varietyId]);
+  return { offerings, loading };
+}
