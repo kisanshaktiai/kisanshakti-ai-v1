@@ -81,6 +81,7 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
   const lang = (i18n.language || 'en').split('-')[0];
   const { rows: resistance, loading: resLoading } = useVarietyResistance(variety?.id);
   const { translation, loading: trLoading } = useVarietyTranslation(variety?.id, lang);
+  const { offerings, loading: offLoading } = useVarietyOfferings(variety?.id);
 
   if (!variety) return null;
 
