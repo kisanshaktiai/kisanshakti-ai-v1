@@ -521,72 +521,98 @@ export async function generateBaseline(
     }
   }
 
-  // ── Irrigation tasks (stage-wise, DB intervals only) ───────────────────────
-  // Guideline windows overlap in the DB (rice: 12 windows), so expansion is de-duplicated:
-  // at most ONE irrigation task per DAS, keeping the narrowest (most specific) window.
+  // ── Irrigation plan (ONE recurring task per stage window) ──────────────────
+  // v1.5.0: a guideline row is a RULE ("every 3 days through tillering, 60 mm for the
+  // stage"), not a calendar. Expanding it into one dated task per interval produced the
+  // "same task every day" defect (rice germination interval=1 → 10 identical daily rows)
+  // and stamped the whole-stage water total on every one of them. The baseline now emits
+  // one recurring task per window; the nightly reconciler turns it into real events from
+  // weather / soil water state.
   const irrigation = await getIrrigationGuidelines(supabase, inputs.cropCode, inputs.varietyId, stages.map((s) => s.id));
   coverage.irrigation = irrigation.length > 0;
   if (!irrigation.length) gaps.push("crop_baseline_guidelines_v2_no_irrigation_rows");
   let waterMm = 0;
-  const irrigationByDas = new Map<number, { task: BaselineTask; width: number }>();
+  /** One irrigation task per window start; overlapping rows keep the narrowest window. */
+  const irrigationByStart = new Map<number, { task: BaselineTask; width: number }>();
   let irrigationOverlap = false;
   for (const g of irrigation) {
     if (g.waterMm != null) waterMm += g.waterMm;
-    if (g.intervalDays == null || g.dasStart == null || g.dasEnd == null) continue;
-    const step = Number(g.intervalDays);
-    if (!Number.isFinite(step) || step < 1) {
-      gaps.push("irrigation_interval_invalid");
-      continue;
-    }
+    if (g.dasStart == null || g.dasEnd == null) continue;
     if (!Number.isFinite(g.dasStart) || !Number.isFinite(g.dasEnd) || g.dasEnd < g.dasStart) {
       gaps.push("irrigation_das_range_invalid_row_skipped");
       continue;
     }
+    const rawStep = g.intervalDays == null ? null : Number(g.intervalDays);
+    const step = rawStep != null && Number.isFinite(rawStep) ? rawStep : null;
+    if (step == null) continue;
     provenance.push(g.provenance);
-    const irrigationInstructions: string[] = [];
-    if (g.criticalMoisturePercent != null) irrigationInstructions.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
-    if (g.provenance.source) irrigationInstructions.push(`Source: ${g.provenance.source}`);
+
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
     ) || stageForDas(stages, g.dasStart, transplantOffset);
+    const label = stageLabel(stage) || String(g.growthStage ?? "").replace(/_/g, " ");
     const width = g.dasEnd - g.dasStart;
-    const MAX_EVENTS = 200;
-    let events = 0;
-    for (let das = g.dasStart; das <= g.dasEnd && events < MAX_EVENTS; das += step, events++) {
-      const task: BaselineTask = {
-        task_name: "Irrigation",
-        task_type: "irrigation",
-        task_description: g.notes ?? "",
-        days_from_sowing: das,
-        anchor_type: stage ? "STAGE" : "DAS",
-        anchor_stage: stage?.stage_code || g.growthStage || null,
-        gdd_target: stage?.gdd_min ?? null,
-        stage_key: stage?.stage_code || null,
-        stage_uuid: stage?.id || null,
-        stage_name: stage?.growth_stage || g.growthStage || null,
-        stage_order: stageOrderOf(stages, stage?.stage_code || null),
-        priority: stage?.is_moisture_critical ? "critical" : "high",
-        weather_dependent: true,
-        nutrient: null,
-        quantity: g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
-        estimated_cost: null,
-        rule_ids: [],
-        confidence: null,
-        source_refs: [g.provenance],
-        instructions: [...irrigationInstructions],
-        precautions: [],
-      };
-      const existing = irrigationByDas.get(das);
-      if (!existing) {
-        irrigationByDas.set(das, { task, width });
-      } else {
-        irrigationOverlap = true;
-        if (width < existing.width) irrigationByDas.set(das, { task, width });
-      }
+
+    const irrigationInstructions: string[] = [];
+    if (g.criticalMoisturePercent != null) irrigationInstructions.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
+    if (g.provenance.source) irrigationInstructions.push(`Source: ${g.provenance.source}`);
+
+    // interval 0 is NOT an invalid row: the DB says "no irrigation in this window"
+    // (rice maturity/harvest = drain the field). Emit the withdrawal advisory instead
+    // of dropping late-season water management entirely.
+    const isWithdrawal = step < 1;
+    if (isWithdrawal) {
+      irrigationInstructions.unshift("No irrigation in this window — let the field drain.");
+    } else {
+      irrigationInstructions.unshift(
+        `Irrigate about every ${step} day${step === 1 ? "" : "s"} from DAS ${g.dasStart} to ${g.dasEnd}.`,
+      );
+      if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm`);
+    }
+
+    const expectedEvents = isWithdrawal ? 0 : Math.floor(width / step) + 1;
+    const task: BaselineTask = {
+      task_name: isWithdrawal
+        ? shortName(label ? `Stop irrigation — ${label}` : "Stop irrigation")
+        : shortName(label ? `Irrigation — ${label}` : "Irrigation"),
+      task_type: isWithdrawal ? "advisory" : "irrigation",
+      task_description: g.notes ?? "",
+      days_from_sowing: g.dasStart,
+      anchor_type: stage ? "STAGE" : "DAS",
+      anchor_stage: stage?.stage_code || g.growthStage || null,
+      gdd_target: stage?.gdd_min ?? null,
+      stage_key: stage?.stage_code || null,
+      stage_uuid: stage?.id || null,
+      stage_name: stage?.growth_stage || g.growthStage || null,
+      stage_order: stageOrderOf(stages, stage?.stage_code || null),
+      priority: stage?.is_moisture_critical ? "critical" : "high",
+      weather_dependent: true,
+      nutrient: null,
+      // The DB value is the STAGE total, so it belongs on the stage-level task —
+      // never repeated per event.
+      quantity: !isWithdrawal && g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
+      estimated_cost: null,
+      rule_ids: [],
+      confidence: null,
+      source_refs: [g.provenance],
+      instructions: [...irrigationInstructions],
+      precautions: [],
+      recurrence: isWithdrawal
+        ? null
+        : { interval_days: step, window_start: g.dasStart, window_end: g.dasEnd, expected_events: expectedEvents },
+    };
+
+    const existing = irrigationByStart.get(g.dasStart);
+    if (!existing) {
+      irrigationByStart.set(g.dasStart, { task, width });
+    } else {
+      irrigationOverlap = true;
+      if (width < existing.width) irrigationByStart.set(g.dasStart, { task, width });
     }
   }
   if (irrigationOverlap) gaps.push("irrigation_windows_overlapping");
-  for (const { task } of irrigationByDas.values()) tasks.push(task);
+  for (const { task } of irrigationByStart.values()) tasks.push(task);
+
 
   // ── Field-action rules (scouting, protection, operations) ──────────────────
   const rules = await getFieldActionRules(supabase, inputs.cropCode, inputs.regionCode, applicMethods);
