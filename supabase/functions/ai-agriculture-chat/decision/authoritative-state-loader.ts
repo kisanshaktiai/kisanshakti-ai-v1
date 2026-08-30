@@ -410,12 +410,17 @@ export async function loadAuthoritativeLandState(
         .limit(1)
         .maybeSingle(),
       
-      // 4. NDVI data — FIXED: ndvi_readings → ndvi_data, observation_date → date
+      // 4. NDVI — v2.2 (audit F-4): read the DECISION-GRADE view, never raw
+      //    ndvi_data ordered by `date`. Raw ndvi_data interleaves Sentinel-1
+      //    rows (ndvi_value NULL) with optical rows; ordering by date made the
+      //    newest radar row hide a valid optical value and turned it into 0 in
+      //    the trend. v_ndvi_decision_grade = observed, optical, quality >= 0.55,
+      //    with acquisition_date / age_days / is_fresh precomputed.
       supabase
-        .from('ndvi_data')
-        .select('ndvi_value, mean_ndvi, date, min_ndvi, max_ndvi, quality_score')
+        .from('v_ndvi_decision_grade')
+        .select('ndvi_value, acquisition_date, quality_score, confidence_level, ndre_value, ndmi_value, uniformity_cv, age_days, is_fresh, effective_pixel_count, coverage_weighted_purity, ndvi_spatial_se, evidence_confidence, measurement_status, spatial_stat_method')
         .eq('land_id', landId)
-        .order('date', { ascending: false })
+        .order('acquisition_date', { ascending: false })
         .limit(10),
       
       // 5. Weather data — Try weather_observations first, fallback to weather_current
@@ -500,25 +505,64 @@ export async function loadAuthoritativeLandState(
     // PROCESS NDVI DATA WITH SSOT INTERPRETATION
     const ndviReadings = ndviResult.data || [];
     let ndviLatest: number | null = null;
+    let ndviEvidence: Record<string, unknown> | null = null;
+    let ndviDecisionGrade = false;
     let ndviLatestDate: string | null = null;
     let ndviAgeDays: number | null = null;
     let ndviDataFresh = false;
     
-    if (ndviReadings.length > 0) {
-      ndviLatest = ndviReadings[0].ndvi_value ?? ndviReadings[0].mean_ndvi ?? null;
-      ndviLatestDate = ndviReadings[0].date; // FIXED: observation_date → date
+    // v2.2: the view guarantees ndvi_value IS NOT NULL and optical source;
+    // keep a defensive null filter so a schema regression can never feed
+    // NULL/0 into the trend again (audit F-4).
+    const ndviOptical = ndviReadings.filter(
+      (r: any) => r.ndvi_value !== null && r.ndvi_value !== undefined && r.acquisition_date
+    );
+    if (ndviOptical.length > 0) {
+      ndviLatest = Number(ndviOptical[0].ndvi_value);
+      ndviLatestDate = ndviOptical[0].acquisition_date;   // TRUE acquisition date
       
       if (ndviLatestDate) {
         const latestDate = new Date(ndviLatestDate);
         ndviAgeDays = Math.floor((now.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24));
         ndviDataFresh = ndviAgeDays <= ndviFreshnessDays();
       }
+
+      // v3 SPATIAL SUPPORT. On a 10-guntha field a Sentinel-2 statistic may
+      // rest on only a few effective pixels; EPC says how many. A number
+      // with EPC 2.4 is not the same evidence as the same number with EPC
+      // 9.6, and a prescriptive alert must not treat them alike.
+      // EPC >= 8 is the published anchor (Sitokonstantinou et al. 2020);
+      // the lower bands are the pipeline's engineering rules, carried here
+      // verbatim rather than re-invented.
+      const top: any = ndviOptical[0];
+      ndviEvidence = {
+        effectivePixelCount: top.effective_pixel_count ?? null,
+        purity: top.coverage_weighted_purity ?? null,
+        spatialSE: top.ndvi_spatial_se ?? null,
+        confidence: top.evidence_confidence ?? 'unrated',
+        status: top.measurement_status ?? 'PRE_V3_NO_EPC',
+        method: top.spatial_stat_method ?? 'pixel_mask_legacy',
+      };
+      // Weak or unrated spatial support can inform, but must never be the
+      // sole basis of a prescriptive agronomic action.
+      ndviDecisionGrade = (top.evidence_confidence === 'high' ||
+                           top.evidence_confidence === 'medium');
     }
     
-    // Calculate NDVI trend using SSOT function — FIXED: use .date
-    const ndviHistory = ndviReadings.slice(0, 5).map(r => ({
-      value: r.ndvi_value ?? r.mean_ndvi ?? 0,
-      date: r.date
+    // NDVI trend over REAL optical acquisitions only (no zero-filled rows).
+    // Trend across mixed extraction methods is not comparable: a v2.2
+    // unweighted mean and a v3 coverage-weighted mean measure different
+    // things on a small field. Prefer a single-method series.
+    const dominantMethod = ndviOptical[0]?.spatial_stat_method ?? null;
+    const sameMethod = ndviOptical.filter(
+      (r: any) => (r.spatial_stat_method ?? null) === dominantMethod
+    );
+    const trendSource = sameMethod.length >= 3 ? sameMethod : ndviOptical;
+    const ndviMethodMixed = sameMethod.length < ndviOptical.length;
+
+    const ndviHistory = trendSource.slice(0, 6).map((r: any) => ({
+      value: Number(r.ndvi_value),
+      date: r.acquisition_date
     }));
     const ndviTrend = calculateNDVITrend(ndviHistory);
     
@@ -740,7 +784,15 @@ export async function loadAuthoritativeLandState(
         trend: ndviTrend,
         age_days: ndviAgeDays,
         history: ndviHistory,
-        data_fresh: ndviDataFresh
+        data_fresh: ndviDataFresh,
+        // v3 evidence layer. MEASUREMENT (latest_value) and EVIDENCE
+        // (below) are deliberately separate: rules may read the number
+        // freely, but must check decision_grade before prescribing an
+        // action on it. trend_method_mixed=true means the history spans
+        // two extraction methods and the slope is not comparable.
+        evidence: ndviEvidence,
+        decision_grade: ndviDecisionGrade,
+        trend_method_mixed: ndviMethodMixed
       },
       
       weather: {
