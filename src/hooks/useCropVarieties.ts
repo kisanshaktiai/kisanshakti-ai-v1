@@ -61,6 +61,8 @@ const resistanceCache = new Map<string, VarietyResistanceRow[]>();
 const inflightResistance = new Map<string, Promise<VarietyResistanceRow[]>>();
 const translationCache = new Map<string, VarietyTranslation | null>(); // key: varietyId|lang
 const inflightTranslation = new Map<string, Promise<VarietyTranslation | null>>();
+const offeringsCache = new Map<string, VarietyOffering[]>();
+const inflightOfferings = new Map<string, Promise<VarietyOffering[]>>();
 
 async function fetchVarieties(cropId: string): Promise<CropVariety[]> {
   if (varietyCache.has(cropId)) return varietyCache.get(cropId)!;
