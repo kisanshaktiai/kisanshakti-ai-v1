@@ -4,6 +4,7 @@
  * No demo table fallback, no curated hardcoded videos, no API key required.
  */
 import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface YouTubeChannelVideo {
   id: string;
