@@ -132,6 +132,7 @@ export interface BaselineTask {
 
 export interface BaselineResult {
   tasks: BaselineTask[];
+  validation?: { violations: string[]; warnings: string[] };
   gaps: string[];
   coverage: Record<string, boolean>;
   totals: {
