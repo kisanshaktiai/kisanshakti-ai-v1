@@ -128,7 +128,39 @@ export interface BaselineTask {
   instructions: string[];
   precautions: string[];
   resources?: Record<string, unknown>;
+  /**
+   * A repeating instruction (irrigation every N days inside a stage window, weekly
+   * scouting). ONE task carries the recurrence; the calendar is never expanded into
+   * one clone per occurrence — the daily reconciler decides the real events from
+   * weather / soil state.
+   */
+  recurrence?: {
+    interval_days: number;
+    window_start: number;
+    window_end: number;
+    expected_events: number;
+  } | null;
 }
+
+/** Task names are labels, never prose. Long DB action_text belongs in the description. */
+const MAX_TASK_NAME = 60;
+function shortName(...candidates: Array<string | null | undefined>): string {
+  for (const c of candidates) {
+    const raw = String(c ?? "").trim().replace(/\s+/g, " ");
+    if (!raw) continue;
+    if (raw.length <= MAX_TASK_NAME) return raw;
+    // Cut at the first sentence/clause boundary that fits, else hard-truncate.
+    const cut = raw.slice(0, MAX_TASK_NAME);
+    const boundary = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf(": "), cut.lastIndexOf(" — "), cut.lastIndexOf(", "));
+    return (boundary > 20 ? cut.slice(0, boundary) : cut.trimEnd()) + "…";
+  }
+  return "";
+}
+
+/** Human label for a stage row ("tillering" → "tillering"), DB values only. */
+const stageLabel = (s: { growth_stage?: string | null; stage_code?: string | null } | null): string =>
+  String(s?.growth_stage ?? s?.stage_code ?? "").replace(/_/g, " ").trim();
+
 
 export interface BaselineResult {
   tasks: BaselineTask[];
