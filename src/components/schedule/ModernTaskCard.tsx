@@ -118,6 +118,12 @@ export default function ModernTaskCard({
   const climateRisk = task.climate_risk || resources.climate_risk;
   const quantity = task.quantity || resources.quantity;
   const productDetails = task.product_details || resources.product_details;
+  // A recurring task (irrigation window / weekly scouting) is stored ONCE with its
+  // cadence — the calendar is never cloned per occurrence.
+  const recurrence = resources.recurrence && Number(resources.recurrence.interval_days) > 0
+    ? resources.recurrence
+    : null;
+
 
   const getDateLabel = () => {
     if (isToday(taskDate)) return { text: t('schedule.task_card.today'), color: 'text-primary', badge: 'bg-primary/10 border-primary/30 text-primary' };
