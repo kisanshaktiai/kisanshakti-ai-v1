@@ -374,6 +374,17 @@
       "selected_chip": "Selected variety",
       "tap_to_view": "Tap any variety to see full details",
       "featured": "Recommended",
+      "offerings": {
+        "title": "Available from",
+        "loading": "Loading sellers…",
+        "status": {
+          "available": "Available",
+          "limited": "Limited stock",
+          "out_of_stock": "Out of stock",
+          "seasonal": "Seasonal",
+          "discontinued": "Discontinued"
+        }
+      },
       "submit": {
         "title": "Add your variety",
         "desc": "Tell us about the variety you sowed. Our team will verify and add it to the catalogue.",
