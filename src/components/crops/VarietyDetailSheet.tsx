@@ -33,6 +33,8 @@ const levelStyle = (level: string) => {
   return 'bg-muted text-muted-foreground border-border';
 };
 
+const KNOWN_AVAILABILITY_STATUSES = ['available', 'limited', 'out_of_stock', 'seasonal', 'discontinued'];
+
 const availabilityStyle = (status: string | null) => {
   switch ((status || '').toLowerCase()) {
     case 'available':
