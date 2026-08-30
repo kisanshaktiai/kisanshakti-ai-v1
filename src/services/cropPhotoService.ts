@@ -255,7 +255,7 @@ export async function uploadCropPhoto(
       file_type: 'image',
       upload_type: uploadType,
       notes: notes || null,
-      capture_location: location ?? null,
+      capture_location: (location ?? null) as unknown as never,
       location_validated: locationValidation?.isValid ?? false,
       distance_from_land_meters: locationValidation?.distanceMeters ?? null,
       is_processed: false,
