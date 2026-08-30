@@ -40,6 +40,21 @@ export interface VarietyTranslation {
   local_synonyms: string[] | null;
 }
 
+export interface VarietyOffering {
+  offering_id: string | null;
+  company_id: string | null;
+  company_name: string | null;
+  company_logo_url: string | null;
+  brand_name: string | null;
+  company_sku: string | null;
+  price: number | null;
+  currency: string | null;
+  pack_size: number | null;
+  pack_unit: string | null;
+  availability_status: string | null;
+  regions: string[] | null;
+}
+
 const varietyCache = new Map<string, CropVariety[]>();
 const inflightVarieties = new Map<string, Promise<CropVariety[]>>();
 const resistanceCache = new Map<string, VarietyResistanceRow[]>();
