@@ -158,6 +158,8 @@ serve(async (req) => {
       const startedAt = new Date().toISOString();
       const adjustments: Array<Record<string, unknown>> = [];
       let examined = 0, changed = 0, skipped = 0, floorSkipped = 0;
+      let irrigationDeferred = 0;
+
       const failedTaskIds: string[] = [];
 
       // 0. SSOT context: land identity + stored biological stage
