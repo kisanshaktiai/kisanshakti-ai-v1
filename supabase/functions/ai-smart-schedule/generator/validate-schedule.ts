@@ -2,6 +2,11 @@
 // PATH: supabase/functions/ai-smart-schedule/generator/validate-schedule.ts
 //
 // CHANGE LOG
+// 2026-08-30 01:35 UTC — degrade-don't-discard: das_max is now received already
+//   normalised onto the sowing axis (transplant-clocked stages no longer trip the
+//   bounds check); a task with NO stage link is a warning (W2), not a violation;
+//   a DAS beyond the graph/variety bound is a warning (W3). Only structurally
+//   impossible output still blocks persistence.
 // 2026-08-28 — P2 (forensic implementation prompt): pre-activation validation gate. A
 //   generated baseline is checked against structural invariants BEFORE anything is
 //   persisted; any violation blocks the schedule (422 SCHEDULE_VALIDATION_FAILED in
@@ -9,15 +14,15 @@
 //   every check is against the SELECTED stage graph and the tasks themselves.
 //
 //   Hard invariants enforced here (violations — block persistence):
-//     V1 every task's stage_uuid belongs to the selected stage graph
-//        (⇒ a task can never carry another crop's / another method's stage — this is
-//         the structural form of invariants 3, 4, 6 and 7: cross-method content cannot
-//         attach because the other method's stage ids are not in the graph);
+//     V1 a task whose stage_uuid belongs to a DIFFERENT stage graph;
 //     V2 every task carries non-empty source provenance (source_refs);
-//     V3 every task's days_from_sowing lies within [0, stage-graph max DAS];
+//     V3 days_from_sowing is null or negative;
 //     V4 every task has a task_name and a task_type.
 //   Soft checks (warnings — recorded, never block):
-//     W1 a harvest-type task dated after the variety's stated maturity window.
+//     W1 a harvest-type task dated after the variety's stated maturity window;
+//     W2 a task with no resolvable stage link;
+//     W3 a task dated beyond the stage-graph / variety bound.
+
 
 import type { BaselineTask } from "./baseline-generator.ts";
 
@@ -49,20 +54,27 @@ export function validateBaseline(
     else if (list.length === 10) list.push("… further identical-class findings truncated");
   };
 
+  const upperBound = Math.max(graphMaxDas, varietyMaxDays ?? 0);
+
   for (const t of tasks) {
     const ref = `${t.task_type}@das${t.days_from_sowing}`;
-    if (!t.stage_uuid || !stageIds.has(String(t.stage_uuid))) {
-      cap(violations, `V1 stage_not_in_selected_graph: ${ref}`);
+    if (t.stage_uuid) {
+      // A stage id that belongs to ANOTHER graph is a hard violation.
+      if (!stageIds.has(String(t.stage_uuid))) {
+        cap(violations, `V1 stage_not_in_selected_graph: ${ref}`);
+      }
+    } else {
+      // An unmappable stage is a known, degraded-but-usable outcome
+      // (gap "task_stage_unmappable") — never a reason to discard the plan.
+      cap(warnings, `W2 task_without_stage_link: ${ref}`);
     }
     if (!t.source_refs || t.source_refs.length === 0) {
       cap(violations, `V2 missing_provenance: ${ref}`);
     }
-    if (
-      t.days_from_sowing == null ||
-      t.days_from_sowing < 0 ||
-      (graphMaxDas > 0 && t.days_from_sowing > graphMaxDas)
-    ) {
-      cap(violations, `V3 das_out_of_graph_bounds: ${ref} (graph max ${graphMaxDas})`);
+    if (t.days_from_sowing == null || t.days_from_sowing < 0) {
+      cap(violations, `V3 das_out_of_graph_bounds: ${ref}`);
+    } else if (upperBound > 0 && t.days_from_sowing > upperBound) {
+      cap(warnings, `W3 das_beyond_graph_bounds: ${ref} (bound ${upperBound})`);
     }
     if (!t.task_name || !t.task_type) {
       cap(violations, `V4 incomplete_task: ${ref}`);
@@ -76,6 +88,7 @@ export function validateBaseline(
       cap(warnings, `W1 harvest_task_after_variety_maturity: ${ref} (variety max ${varietyMaxDays}d)`);
     }
   }
+
 
   return { violations, warnings };
 }

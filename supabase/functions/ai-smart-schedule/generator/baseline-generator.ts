@@ -132,6 +132,7 @@ export interface BaselineTask {
 
 export interface BaselineResult {
   tasks: BaselineTask[];
+  validation?: { violations: string[]; warnings: string[] };
   gaps: string[];
   coverage: Record<string, boolean>;
   totals: {
@@ -773,7 +774,10 @@ export async function generateBaseline(
 
   const validation = validateBaseline(
     tasks,
-    stages.map((s) => ({ id: s.id, das_max: s.das_max })),
+    // das_max must be normalised onto the SOWING axis (same axis as task
+    // days_from_sowing) — raw das_max on transplant-clocked stages is on the
+    // transplanting axis and would falsely trip the bounds check.
+    stages.map((s) => ({ id: s.id, das_max: das0(s, s.das_max) })),
     varietyDuration?.maxDays ?? null,
   );
 
