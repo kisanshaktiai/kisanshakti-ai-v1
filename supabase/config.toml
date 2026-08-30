@@ -3,9 +3,6 @@ project_id = "qfklkkzxemsbeniyugiz"
 [functions.app-version]
 verify_jwt = false
 
-[functions.generate-manifest]
-verify_jwt = false
-
 [functions.tenant-config]
 verify_jwt = false
 
@@ -66,12 +63,6 @@ verify_jwt = false
 [functions.market-price-intelligence]
 verify_jwt = false
 
-[functions.ai-query-understanding]
-verify_jwt = false
-
-[functions.validation-monitor]
-verify_jwt = false
-
 [functions.seed-decision-rules]
 verify_jwt = false
 
@@ -79,9 +70,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.proactive-question-seed]
-verify_jwt = false
-
-[functions.community-translate]
 verify_jwt = false
 
 [functions.community-caption-suggest]
