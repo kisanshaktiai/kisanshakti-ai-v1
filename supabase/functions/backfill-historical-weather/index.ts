@@ -19,7 +19,6 @@
 //   • Idempotent: a second run upserts identical values (0 effective changes).
 // ============================================================================
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from "../_shared/cors.ts";
 
@@ -51,7 +50,7 @@ async function fetchArchive(lat: number, lon: number, from: string, to: string) 
   throw new Error(`open-meteo archive failed (${lat},${lon}): ${lastErr}`);
 }
 
-serve(async (req: Request): Promise<Response> => {
+Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const supabase = createClient(
