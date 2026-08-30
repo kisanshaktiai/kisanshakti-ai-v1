@@ -33,6 +33,29 @@ const levelStyle = (level: string) => {
   return 'bg-muted text-muted-foreground border-border';
 };
 
+const availabilityStyle = (status: string | null) => {
+  switch ((status || '').toLowerCase()) {
+    case 'available':
+      return 'bg-success/10 text-success border-success/30';
+    case 'limited':
+    case 'seasonal':
+      return 'bg-warning/10 text-warning border-warning/30';
+    case 'out_of_stock':
+    case 'discontinued':
+      return 'bg-destructive/10 text-destructive border-destructive/30';
+    default:
+      return 'bg-muted text-muted-foreground border-border';
+  }
+};
+
+const formatPrice = (o: VarietyOffering) => {
+  if (o.price == null) return null;
+  const currency = o.currency === 'INR' ? '₹' : (o.currency || '');
+  const pack =
+    o.pack_size != null ? ` / ${o.pack_size} ${o.pack_unit ?? ''}`.trimEnd() : '';
+  return `${currency}${o.price}${pack}`;
+};
+
 const Metric: React.FC<{
   icon: React.ElementType;
   label: string;
