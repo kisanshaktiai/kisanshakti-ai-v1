@@ -1,5 +1,16 @@
 // CHANGE LOG
+// 2026-08-29 — v1.5.0 "same task every day" fix: (1) irrigation guideline rows are RULES,
+//   not calendars — one recurring task per stage window carrying `recurrence`
+//   {interval_days, window_start, window_end, expected_events} instead of one dated clone
+//   per interval (rice germination interval=1 emitted 10 identical daily rows, each
+//   stamped with the whole-stage water total). interval 0 now emits a "stop irrigation"
+//   withdrawal advisory instead of being dropped as invalid. (2) Scouting collapses the
+//   same way — one weekly-recurring task per stage window (was 26 clones). (3) task_name
+//   is a short LABEL (rule.action_text paragraphs moved to task_description only).
+//   (4) Lifecycle operations (land prep, seed treatment, nursery, harvest, post-harvest)
+//   are emitted from the stage graph — schedules previously just stopped at grain filling.
 // 2026-08-28 — P2: the generated baseline is now self-validated (generator/validate-schedule.ts)
+
 //   and the result carries `validation` — index.ts refuses to persist on any violation.
 // 2026-08-28 — P0 forensic fixes (schedule 5673e87a audit): (1) field-action and scouting
 //   rules are now applicability-gated by the land's region and the schedule's cultivation
