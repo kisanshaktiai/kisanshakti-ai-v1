@@ -158,7 +158,10 @@
       "tomorrow": "कल",
       "weather": "मौसम",
       "weather_dependent": "मौसम पर निर्भर",
-      "yield_impact": "उपज पर असर"
+      "yield_impact": "उपज पर असर",
+      "repeats": "हर {{days}} दिन में दोहराएँ",
+      "repeats_window": "दिन {{start}} से दिन {{end}} तक",
+      "recurring": "दोहराया जाने वाला"
     },
     "schedule_card": {
       "variety": "किस्म",

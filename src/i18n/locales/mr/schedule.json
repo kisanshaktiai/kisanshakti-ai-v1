@@ -158,7 +158,10 @@
       "tomorrow": "उद्या",
       "weather": "हवामान",
       "weather_dependent": "हवामानावर अवलंबून",
-      "yield_impact": "उत्पादनावर परिणाम"
+      "yield_impact": "उत्पादनावर परिणाम",
+      "repeats": "दर {{days}} दिवसांनी पुन्हा",
+      "repeats_window": "दिवस {{start}} ते दिवस {{end}}",
+      "recurring": "पुनरावृत्ती"
     },
     "schedule_card": {
       "variety": "विविधता",
