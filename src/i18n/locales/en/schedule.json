@@ -230,7 +230,10 @@
       "tomorrow": "Tomorrow",
       "weather": "Weather",
       "weather_dependent": "Weather Dependent",
-      "yield_impact": "Yield Impact"
+      "yield_impact": "Yield Impact",
+      "repeats": "Repeats every {{days}} days",
+      "repeats_window": "From day {{start}} to day {{end}}",
+      "recurring": "Recurring"
     },
     "schedule_card": {
       "variety": "Variety",

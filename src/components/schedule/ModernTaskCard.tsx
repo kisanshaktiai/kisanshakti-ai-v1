@@ -118,6 +118,12 @@ export default function ModernTaskCard({
   const climateRisk = task.climate_risk || resources.climate_risk;
   const quantity = task.quantity || resources.quantity;
   const productDetails = task.product_details || resources.product_details;
+  // A recurring task (irrigation window / weekly scouting) is stored ONCE with its
+  // cadence — the calendar is never cloned per occurrence.
+  const recurrence = resources.recurrence && Number(resources.recurrence.interval_days) > 0
+    ? resources.recurrence
+    : null;
+
 
   const getDateLabel = () => {
     if (isToday(taskDate)) return { text: t('schedule.task_card.today'), color: 'text-primary', badge: 'bg-primary/10 border-primary/30 text-primary' };
@@ -185,12 +191,26 @@ export default function ModernTaskCard({
                         🔥 {t('schedule.task_card.high_priority')}
                       </Badge>
                     )}
+                    {recurrence && (
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-semibold border-primary/30 text-primary bg-primary/5">
+                        🔁 {t('schedule.task_card.repeats', { days: recurrence.interval_days })}
+                      </Badge>
+                    )}
                   </div>
+                  {recurrence && (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {t('schedule.task_card.repeats_window', {
+                        start: recurrence.window_start,
+                        end: recurrence.window_end,
+                      })}
+                    </p>
+                  )}
                   <RescheduledNotice
                     variant="full"
                     className="mt-2"
                     autoRescheduled={task.auto_rescheduled}
                     originalDate={task.original_date}
+
                     taskDate={task.task_date}
                     adjustmentReason={task.adjustment_reason ?? task.reschedule_reason}
                   />

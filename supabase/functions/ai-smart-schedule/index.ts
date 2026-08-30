@@ -425,7 +425,14 @@ serve(async (req) => {
       sequence_order: idx + 1,
       instructions: t.instructions,
       precautions: t.precautions ?? [],
-      resources: { ...(t.resources ?? {}), ...(t.quantity ? { quantity: t.quantity } : {}) },
+      // v1.5.0: recurring tasks (irrigation window, weekly scouting) carry their cadence
+      // in resources.recurrence instead of being expanded into one dated row per event.
+      resources: {
+        ...(t.resources ?? {}),
+        ...(t.quantity ? { quantity: t.quantity } : {}),
+        ...(t.recurrence ? { recurrence: t.recurrence } : {}),
+      },
+
       estimated_cost: t.estimated_cost,
       currency: "INR",
       rule_ids: t.rule_ids,

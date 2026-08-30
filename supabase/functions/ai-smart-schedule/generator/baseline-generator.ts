@@ -1,5 +1,16 @@
 // CHANGE LOG
+// 2026-08-29 — v1.5.0 "same task every day" fix: (1) irrigation guideline rows are RULES,
+//   not calendars — one recurring task per stage window carrying `recurrence`
+//   {interval_days, window_start, window_end, expected_events} instead of one dated clone
+//   per interval (rice germination interval=1 emitted 10 identical daily rows, each
+//   stamped with the whole-stage water total). interval 0 now emits a "stop irrigation"
+//   withdrawal advisory instead of being dropped as invalid. (2) Scouting collapses the
+//   same way — one weekly-recurring task per stage window (was 26 clones). (3) task_name
+//   is a short LABEL (rule.action_text paragraphs moved to task_description only).
+//   (4) Lifecycle operations (land prep, seed treatment, nursery, harvest, post-harvest)
+//   are emitted from the stage graph — schedules previously just stopped at grain filling.
 // 2026-08-28 — P2: the generated baseline is now self-validated (generator/validate-schedule.ts)
+
 //   and the result carries `validation` — index.ts refuses to persist on any violation.
 // 2026-08-28 — P0 forensic fixes (schedule 5673e87a audit): (1) field-action and scouting
 //   rules are now applicability-gated by the land's region and the schedule's cultivation
@@ -70,7 +81,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.4.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.5.0";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -128,7 +139,39 @@ export interface BaselineTask {
   instructions: string[];
   precautions: string[];
   resources?: Record<string, unknown>;
+  /**
+   * A repeating instruction (irrigation every N days inside a stage window, weekly
+   * scouting). ONE task carries the recurrence; the calendar is never expanded into
+   * one clone per occurrence — the daily reconciler decides the real events from
+   * weather / soil state.
+   */
+  recurrence?: {
+    interval_days: number;
+    window_start: number;
+    window_end: number;
+    expected_events: number;
+  } | null;
 }
+
+/** Task names are labels, never prose. Long DB action_text belongs in the description. */
+const MAX_TASK_NAME = 60;
+function shortName(...candidates: Array<string | null | undefined>): string {
+  for (const c of candidates) {
+    const raw = String(c ?? "").trim().replace(/\s+/g, " ");
+    if (!raw) continue;
+    if (raw.length <= MAX_TASK_NAME) return raw;
+    // Cut at the first sentence/clause boundary that fits, else hard-truncate.
+    const cut = raw.slice(0, MAX_TASK_NAME);
+    const boundary = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf(": "), cut.lastIndexOf(" — "), cut.lastIndexOf(", "));
+    return (boundary > 20 ? cut.slice(0, boundary) : cut.trimEnd()) + "…";
+  }
+  return "";
+}
+
+/** Human label for a stage row ("tillering" → "tillering"), DB values only. */
+const stageLabel = (s: { growth_stage?: string | null; stage_code?: string | null } | null): string =>
+  String(s?.growth_stage ?? s?.stage_code ?? "").replace(/_/g, " ").trim();
+
 
 export interface BaselineResult {
   tasks: BaselineTask[];
@@ -489,72 +532,98 @@ export async function generateBaseline(
     }
   }
 
-  // ── Irrigation tasks (stage-wise, DB intervals only) ───────────────────────
-  // Guideline windows overlap in the DB (rice: 12 windows), so expansion is de-duplicated:
-  // at most ONE irrigation task per DAS, keeping the narrowest (most specific) window.
+  // ── Irrigation plan (ONE recurring task per stage window) ──────────────────
+  // v1.5.0: a guideline row is a RULE ("every 3 days through tillering, 60 mm for the
+  // stage"), not a calendar. Expanding it into one dated task per interval produced the
+  // "same task every day" defect (rice germination interval=1 → 10 identical daily rows)
+  // and stamped the whole-stage water total on every one of them. The baseline now emits
+  // one recurring task per window; the nightly reconciler turns it into real events from
+  // weather / soil water state.
   const irrigation = await getIrrigationGuidelines(supabase, inputs.cropCode, inputs.varietyId, stages.map((s) => s.id));
   coverage.irrigation = irrigation.length > 0;
   if (!irrigation.length) gaps.push("crop_baseline_guidelines_v2_no_irrigation_rows");
   let waterMm = 0;
-  const irrigationByDas = new Map<number, { task: BaselineTask; width: number }>();
+  /** One irrigation task per window start; overlapping rows keep the narrowest window. */
+  const irrigationByStart = new Map<number, { task: BaselineTask; width: number }>();
   let irrigationOverlap = false;
   for (const g of irrigation) {
     if (g.waterMm != null) waterMm += g.waterMm;
-    if (g.intervalDays == null || g.dasStart == null || g.dasEnd == null) continue;
-    const step = Number(g.intervalDays);
-    if (!Number.isFinite(step) || step < 1) {
-      gaps.push("irrigation_interval_invalid");
-      continue;
-    }
+    if (g.dasStart == null || g.dasEnd == null) continue;
     if (!Number.isFinite(g.dasStart) || !Number.isFinite(g.dasEnd) || g.dasEnd < g.dasStart) {
       gaps.push("irrigation_das_range_invalid_row_skipped");
       continue;
     }
+    const rawStep = g.intervalDays == null ? null : Number(g.intervalDays);
+    const step = rawStep != null && Number.isFinite(rawStep) ? rawStep : null;
+    if (step == null) continue;
     provenance.push(g.provenance);
-    const irrigationInstructions: string[] = [];
-    if (g.criticalMoisturePercent != null) irrigationInstructions.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
-    if (g.provenance.source) irrigationInstructions.push(`Source: ${g.provenance.source}`);
+
     const stage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
     ) || stageForDas(stages, g.dasStart, transplantOffset);
+    const label = stageLabel(stage) || String(g.growthStage ?? "").replace(/_/g, " ");
     const width = g.dasEnd - g.dasStart;
-    const MAX_EVENTS = 200;
-    let events = 0;
-    for (let das = g.dasStart; das <= g.dasEnd && events < MAX_EVENTS; das += step, events++) {
-      const task: BaselineTask = {
-        task_name: "Irrigation",
-        task_type: "irrigation",
-        task_description: g.notes ?? "",
-        days_from_sowing: das,
-        anchor_type: stage ? "STAGE" : "DAS",
-        anchor_stage: stage?.stage_code || g.growthStage || null,
-        gdd_target: stage?.gdd_min ?? null,
-        stage_key: stage?.stage_code || null,
-        stage_uuid: stage?.id || null,
-        stage_name: stage?.growth_stage || g.growthStage || null,
-        stage_order: stageOrderOf(stages, stage?.stage_code || null),
-        priority: stage?.is_moisture_critical ? "critical" : "high",
-        weather_dependent: true,
-        nutrient: null,
-        quantity: g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
-        estimated_cost: null,
-        rule_ids: [],
-        confidence: null,
-        source_refs: [g.provenance],
-        instructions: [...irrigationInstructions],
-        precautions: [],
-      };
-      const existing = irrigationByDas.get(das);
-      if (!existing) {
-        irrigationByDas.set(das, { task, width });
-      } else {
-        irrigationOverlap = true;
-        if (width < existing.width) irrigationByDas.set(das, { task, width });
-      }
+
+    const irrigationInstructions: string[] = [];
+    if (g.criticalMoisturePercent != null) irrigationInstructions.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
+    if (g.provenance.source) irrigationInstructions.push(`Source: ${g.provenance.source}`);
+
+    // interval 0 is NOT an invalid row: the DB says "no irrigation in this window"
+    // (rice maturity/harvest = drain the field). Emit the withdrawal advisory instead
+    // of dropping late-season water management entirely.
+    const isWithdrawal = step < 1;
+    if (isWithdrawal) {
+      irrigationInstructions.unshift("No irrigation in this window — let the field drain.");
+    } else {
+      irrigationInstructions.unshift(
+        `Irrigate about every ${step} day${step === 1 ? "" : "s"} from DAS ${g.dasStart} to ${g.dasEnd}.`,
+      );
+      if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm`);
+    }
+
+    const expectedEvents = isWithdrawal ? 0 : Math.floor(width / step) + 1;
+    const task: BaselineTask = {
+      task_name: isWithdrawal
+        ? shortName(label ? `Stop irrigation — ${label}` : "Stop irrigation")
+        : shortName(label ? `Irrigation — ${label}` : "Irrigation"),
+      task_type: isWithdrawal ? "advisory" : "irrigation",
+      task_description: g.notes ?? "",
+      days_from_sowing: g.dasStart,
+      anchor_type: stage ? "STAGE" : "DAS",
+      anchor_stage: stage?.stage_code || g.growthStage || null,
+      gdd_target: stage?.gdd_min ?? null,
+      stage_key: stage?.stage_code || null,
+      stage_uuid: stage?.id || null,
+      stage_name: stage?.growth_stage || g.growthStage || null,
+      stage_order: stageOrderOf(stages, stage?.stage_code || null),
+      priority: stage?.is_moisture_critical ? "critical" : "high",
+      weather_dependent: true,
+      nutrient: null,
+      // The DB value is the STAGE total, so it belongs on the stage-level task —
+      // never repeated per event.
+      quantity: !isWithdrawal && g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
+      estimated_cost: null,
+      rule_ids: [],
+      confidence: null,
+      source_refs: [g.provenance],
+      instructions: [...irrigationInstructions],
+      precautions: [],
+      recurrence: isWithdrawal
+        ? null
+        : { interval_days: step, window_start: g.dasStart, window_end: g.dasEnd, expected_events: expectedEvents },
+    };
+
+    const existing = irrigationByStart.get(g.dasStart);
+    if (!existing) {
+      irrigationByStart.set(g.dasStart, { task, width });
+    } else {
+      irrigationOverlap = true;
+      if (width < existing.width) irrigationByStart.set(g.dasStart, { task, width });
     }
   }
   if (irrigationOverlap) gaps.push("irrigation_windows_overlapping");
-  for (const { task } of irrigationByDas.values()) tasks.push(task);
+  for (const { task } of irrigationByStart.values()) tasks.push(task);
+
 
   // ── Field-action rules (scouting, protection, operations) ──────────────────
   const rules = await getFieldActionRules(supabase, inputs.cropCode, inputs.regionCode, applicMethods);
@@ -600,8 +669,18 @@ export async function generateBaseline(
       if (!rule.action_text && !ruleInstructions.length && !rulePrecautions.length) {
         gaps.push("rule_task_no_detail");
       }
+      // v1.5.0: the name is a LABEL. Previously rule.action_text (a full advisory
+      // paragraph) became the task_name, so cards showed prose as a title.
+      const ruleLabel = String(rule.category ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();
+      const stageTag = stageLabel(stage);
       tasks.push({
-        task_name: rule.action_text || rule.category || rule.rule_id,
+        task_name:
+          shortName(
+            ruleLabel && stageTag ? `${ruleLabel} — ${stageTag}` : ruleLabel || stageTag,
+            rule.action_text,
+            rule.rule_id,
+          ) || rule.rule_id,
+
         task_type: taskType,
         task_description: rule.action_text || "",
         days_from_sowing: das as number,
@@ -680,10 +759,10 @@ export async function generateBaseline(
       }
     }
     const WEEK = 7;
-    const MAX_SCOUT_EVENTS = 40;
-    // Stage DAS windows overlap in the DB, so keep at most one scouting task per DAS,
-    // merging rule ids and keeping the highest priority.
-    const scoutByDas = new Map<number, { task: BaselineTask; width: number; refs: Array<{ id: string; p: number | null }> }>();
+    // v1.5.0: ONE recurring scouting task per stage window (was one clone per week —
+    // 26 identical "Field scouting" cards on a single rice schedule). Overlapping
+    // stage windows merge on the window start, keeping the narrowest window.
+    const scoutByStart = new Map<number, { task: BaselineTask; width: number; refs: Array<{ id: string; p: number | null }> }>();
     for (const { stage, refs, priority } of byStage.values()) {
       const start = das0(stage, stage.das_min);
       const end = das0(stage, stage.das_max);
@@ -692,56 +771,113 @@ export async function generateBaseline(
         continue;
       }
       const width = end - start;
-      let events = 0;
-      for (let das = start; das <= end && events < MAX_SCOUT_EVENTS; das += WEEK, events++) {
-        const task: BaselineTask = {
-          task_name: "Field scouting",
-          task_type: "monitoring",
-          task_description: "",
-          days_from_sowing: das,
-          anchor_type: "STAGE",
-          anchor_stage: stage.stage_code || stage.growth_stage,
-          gdd_target: stage.gdd_min ?? null,
-          stage_key: stage.stage_code,
-          stage_uuid: stage.id || null,
-          stage_name: stage.growth_stage,
-          stage_order: stageOrderOf(stages, stage.stage_code),
-          priority: priorityFromRule(priority),
-          weather_dependent: false,
-          nutrient: null,
-          quantity: null,
-          estimated_cost: null,
-          rule_ids: topRuleIds(refs),
-          confidence: null,
-          source_refs: [{ table: "decision_rules" }],
-          instructions: [],
-          precautions: [],
-        };
-        const existing = scoutByDas.get(das);
-        if (!existing) {
-          scoutByDas.set(das, { task, width, refs: [...refs] });
+      const label = stageLabel(stage);
+      const task: BaselineTask = {
+        task_name: shortName(label ? `Scouting — ${label}` : "Field scouting"),
+        task_type: "monitoring",
+        task_description: "",
+        days_from_sowing: start,
+        anchor_type: "STAGE",
+        anchor_stage: stage.stage_code || stage.growth_stage,
+        gdd_target: stage.gdd_min ?? null,
+        stage_key: stage.stage_code,
+        stage_uuid: stage.id || null,
+        stage_name: stage.growth_stage,
+        stage_order: stageOrderOf(stages, stage.stage_code),
+        priority: priorityFromRule(priority),
+        weather_dependent: false,
+        nutrient: null,
+        quantity: null,
+        estimated_cost: null,
+        rule_ids: topRuleIds(refs),
+        confidence: null,
+        source_refs: [{ table: "decision_rules" }],
+        instructions: [`Walk the field once a week from DAS ${start} to ${end}.`],
+        precautions: [],
+        recurrence: {
+          interval_days: WEEK,
+          window_start: start,
+          window_end: end,
+          expected_events: Math.floor(width / WEEK) + 1,
+        },
+      };
+      const existing = scoutByStart.get(start);
+      if (!existing) {
+        scoutByStart.set(start, { task, width, refs: [...refs] });
+      } else {
+        const mergedRefs = [...existing.refs, ...refs];
+        if (width < existing.width) {
+          task.rule_ids = topRuleIds(mergedRefs);
+          scoutByStart.set(start, { task, width, refs: mergedRefs });
         } else {
-          const mergedRefs = [...existing.refs, ...refs];
-          if (width < existing.width) {
-            task.rule_ids = topRuleIds(mergedRefs);
-            scoutByDas.set(das, { task, width, refs: mergedRefs });
-          } else {
-            existing.refs = mergedRefs;
-            existing.task.rule_ids = topRuleIds(mergedRefs);
-          }
+          existing.refs = mergedRefs;
+          existing.task.rule_ids = topRuleIds(mergedRefs);
         }
       }
       coverage.monitoring = true;
     }
-    for (const entry of scoutByDas.values()) {
+    for (const entry of scoutByStart.values()) {
       const brief = scoutBrief(entry.task.rule_ids, entry.refs.length);
       entry.task.task_description = brief.description;
-      entry.task.instructions = brief.instructions;
+      entry.task.instructions = [...entry.task.instructions, ...brief.instructions];
       entry.task.resources = brief.resources;
       if (!brief.description && !brief.instructions.length) gaps.push("scouting_brief_empty");
       tasks.push(entry.task);
     }
   }
+
+  // ── Lifecycle anchor operations (land prep, seed treatment, harvest, post-harvest) ──
+  // v1.5.0: the stage graph carries these phases (rice: RICE_HARVEST 140–160,
+  // RICE_POST_HARVEST 160–190) but the baseline never emitted an operation for them,
+  // so a farmer's plan simply ended after grain filling. One task per lifecycle stage
+  // present in the graph — the stage row itself is the only source.
+  const LIFECYCLE_STAGES: Array<{ match: RegExp; taskType: string; label: string; priority: string }> = [
+    { match: /land[_ ]?prep/i, taskType: "land_preparation", label: "Land preparation", priority: "high" },
+    { match: /seed[_ ]?treat/i, taskType: "seed_treatment", label: "Seed treatment", priority: "high" },
+    { match: /^nursery$/i, taskType: "nursery", label: "Nursery management", priority: "high" },
+    { match: /^harvest$/i, taskType: "harvest", label: "Harvest", priority: "critical" },
+    { match: /post[_ ]?harvest/i, taskType: "post_harvest", label: "Post-harvest handling", priority: "medium" },
+  ];
+  const emittedLifecycle = new Set<string>();
+  for (const stage of stages) {
+    const key = `${stage.growth_stage ?? ""}|${stage.stage_code ?? ""}`;
+    const spec = LIFECYCLE_STAGES.find((l) => l.match.test(String(stage.growth_stage ?? "")) || l.match.test(String(stage.stage_code ?? "")));
+    if (!spec || emittedLifecycle.has(spec.taskType)) continue;
+    const das = das0(stage, stage.das_min);
+    if (das == null || !Number.isFinite(das)) continue;
+    // Never plan an operation past the variety's own maturity window.
+    if (durationDays != null && das > durationDays + 30) continue;
+    emittedLifecycle.add(spec.taskType);
+    void key;
+    const end = das0(stage, stage.das_max);
+    tasks.push({
+      task_name: spec.label,
+      task_type: spec.taskType,
+      task_description: "",
+      days_from_sowing: das,
+      anchor_type: "STAGE",
+      anchor_stage: stage.stage_code || stage.growth_stage,
+      gdd_target: stage.gdd_min ?? null,
+      stage_key: stage.stage_code,
+      stage_uuid: stage.id || null,
+      stage_name: stage.growth_stage,
+      stage_order: stageOrderOf(stages, stage.stage_code),
+      priority: spec.priority,
+      weather_dependent: true,
+      nutrient: null,
+      quantity: null,
+      estimated_cost: null,
+      rule_ids: [],
+      confidence: null,
+      source_refs: [{ table: "crop_stage_master", row_id: stage.id }],
+      instructions:
+        end != null && Number.isFinite(end)
+          ? [`Window: DAS ${das} to ${end} (${stageLabel(stage)}).`]
+          : [],
+      precautions: [],
+    });
+  }
+
 
 
 
