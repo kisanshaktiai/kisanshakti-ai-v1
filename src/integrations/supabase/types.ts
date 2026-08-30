@@ -19175,6 +19175,7 @@ export type Database = {
         Row: {
           acquisition_date: string | null
           acquisition_time: string | null
+          boundary_contamination_fraction: number | null
           buffer_applied: boolean | null
           cloud_cover: number | null
           cloud_coverage: number | null
@@ -19184,10 +19185,13 @@ export type Database = {
           confidence_score: number | null
           coverage: number | null
           coverage_percentage: number | null
+          coverage_weighted_purity: number | null
           created_at: string
           cross_ratio_db: number | null
           date: string
+          effective_pixel_count: number | null
           evi_value: number | null
+          evidence_confidence: string | null
           field_area_m2: number | null
           geometry_confidence: string | null
           id: string
@@ -19197,6 +19201,7 @@ export type Database = {
           max_ndvi: number | null
           mcari_value: number | null
           mean_ndvi: number | null
+          measurement_status: string | null
           median_ndvi: number | null
           metadata: Json | null
           min_ndvi: number | null
@@ -19211,6 +19216,7 @@ export type Database = {
           ndvi_spatial_max: number | null
           ndvi_spatial_median: number | null
           ndvi_spatial_min: number | null
+          ndvi_spatial_se: number | null
           ndvi_spatial_std: number | null
           ndvi_std: number | null
           ndvi_value: number | null
@@ -19235,6 +19241,7 @@ export type Database = {
           soil_moisture: number | null
           source_scene_count: number
           spatial_resolution: number | null
+          spatial_stat_method: string | null
           tenant_id: string
           tile_id: string | null
           total_pixels: number | null
@@ -19247,6 +19254,7 @@ export type Database = {
         Insert: {
           acquisition_date?: string | null
           acquisition_time?: string | null
+          boundary_contamination_fraction?: number | null
           buffer_applied?: boolean | null
           cloud_cover?: number | null
           cloud_coverage?: number | null
@@ -19256,10 +19264,13 @@ export type Database = {
           confidence_score?: number | null
           coverage?: number | null
           coverage_percentage?: number | null
+          coverage_weighted_purity?: number | null
           created_at?: string
           cross_ratio_db?: number | null
           date: string
+          effective_pixel_count?: number | null
           evi_value?: number | null
+          evidence_confidence?: string | null
           field_area_m2?: number | null
           geometry_confidence?: string | null
           id?: string
@@ -19269,6 +19280,7 @@ export type Database = {
           max_ndvi?: number | null
           mcari_value?: number | null
           mean_ndvi?: number | null
+          measurement_status?: string | null
           median_ndvi?: number | null
           metadata?: Json | null
           min_ndvi?: number | null
@@ -19283,6 +19295,7 @@ export type Database = {
           ndvi_spatial_max?: number | null
           ndvi_spatial_median?: number | null
           ndvi_spatial_min?: number | null
+          ndvi_spatial_se?: number | null
           ndvi_spatial_std?: number | null
           ndvi_std?: number | null
           ndvi_value?: number | null
@@ -19307,6 +19320,7 @@ export type Database = {
           soil_moisture?: number | null
           source_scene_count?: number
           spatial_resolution?: number | null
+          spatial_stat_method?: string | null
           tenant_id: string
           tile_id?: string | null
           total_pixels?: number | null
@@ -19319,6 +19333,7 @@ export type Database = {
         Update: {
           acquisition_date?: string | null
           acquisition_time?: string | null
+          boundary_contamination_fraction?: number | null
           buffer_applied?: boolean | null
           cloud_cover?: number | null
           cloud_coverage?: number | null
@@ -19328,10 +19343,13 @@ export type Database = {
           confidence_score?: number | null
           coverage?: number | null
           coverage_percentage?: number | null
+          coverage_weighted_purity?: number | null
           created_at?: string
           cross_ratio_db?: number | null
           date?: string
+          effective_pixel_count?: number | null
           evi_value?: number | null
+          evidence_confidence?: string | null
           field_area_m2?: number | null
           geometry_confidence?: string | null
           id?: string
@@ -19341,6 +19359,7 @@ export type Database = {
           max_ndvi?: number | null
           mcari_value?: number | null
           mean_ndvi?: number | null
+          measurement_status?: string | null
           median_ndvi?: number | null
           metadata?: Json | null
           min_ndvi?: number | null
@@ -19355,6 +19374,7 @@ export type Database = {
           ndvi_spatial_max?: number | null
           ndvi_spatial_median?: number | null
           ndvi_spatial_min?: number | null
+          ndvi_spatial_se?: number | null
           ndvi_spatial_std?: number | null
           ndvi_std?: number | null
           ndvi_value?: number | null
@@ -19379,6 +19399,7 @@ export type Database = {
           soil_moisture?: number | null
           source_scene_count?: number
           spatial_resolution?: number | null
+          spatial_stat_method?: string | null
           tenant_id?: string
           tile_id?: string | null
           total_pixels?: number | null
@@ -37537,13 +37558,19 @@ export type Database = {
           acquisition_date: string | null
           acquisition_time: string | null
           age_days: number | null
+          boundary_contamination_fraction: number | null
           cloud_cover: number | null
           confidence_level: string | null
+          coverage_weighted_purity: number | null
+          effective_pixel_count: number | null
+          evidence_confidence: string | null
           is_fresh: boolean | null
           land_id: string | null
           mcari_value: number | null
+          measurement_status: string | null
           ndmi_value: number | null
           ndre_value: number | null
+          ndvi_spatial_se: number | null
           ndvi_spatial_std: number | null
           ndvi_value: number | null
           observation_source: string | null
@@ -37551,6 +37578,7 @@ export type Database = {
           recency_rank: number | null
           savi_value: number | null
           scene_id: string | null
+          spatial_stat_method: string | null
           tenant_id: string | null
           uniformity_cv: number | null
         }
