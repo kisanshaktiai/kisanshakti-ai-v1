@@ -49,20 +49,27 @@ export function validateBaseline(
     else if (list.length === 10) list.push("… further identical-class findings truncated");
   };
 
+  const upperBound = Math.max(graphMaxDas, varietyMaxDays ?? 0);
+
   for (const t of tasks) {
     const ref = `${t.task_type}@das${t.days_from_sowing}`;
-    if (!t.stage_uuid || !stageIds.has(String(t.stage_uuid))) {
-      cap(violations, `V1 stage_not_in_selected_graph: ${ref}`);
+    if (t.stage_uuid) {
+      // A stage id that belongs to ANOTHER graph is a hard violation.
+      if (!stageIds.has(String(t.stage_uuid))) {
+        cap(violations, `V1 stage_not_in_selected_graph: ${ref}`);
+      }
+    } else {
+      // An unmappable stage is a known, degraded-but-usable outcome
+      // (gap "task_stage_unmappable") — never a reason to discard the plan.
+      cap(warnings, `W2 task_without_stage_link: ${ref}`);
     }
     if (!t.source_refs || t.source_refs.length === 0) {
       cap(violations, `V2 missing_provenance: ${ref}`);
     }
-    if (
-      t.days_from_sowing == null ||
-      t.days_from_sowing < 0 ||
-      (graphMaxDas > 0 && t.days_from_sowing > graphMaxDas)
-    ) {
-      cap(violations, `V3 das_out_of_graph_bounds: ${ref} (graph max ${graphMaxDas})`);
+    if (t.days_from_sowing == null || t.days_from_sowing < 0) {
+      cap(violations, `V3 das_out_of_graph_bounds: ${ref}`);
+    } else if (upperBound > 0 && t.days_from_sowing > upperBound) {
+      cap(warnings, `W3 das_beyond_graph_bounds: ${ref} (bound ${upperBound})`);
     }
     if (!t.task_name || !t.task_type) {
       cap(violations, `V4 incomplete_task: ${ref}`);
@@ -76,6 +83,7 @@ export function validateBaseline(
       cap(warnings, `W1 harvest_task_after_variety_maturity: ${ref} (variety max ${varietyMaxDays}d)`);
     }
   }
+
 
   return { violations, warnings };
 }
