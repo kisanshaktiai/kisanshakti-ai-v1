@@ -3,13 +3,15 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Droplets, Calendar, MapPin, Shield, Sprout, Award, TrendingUp, BookOpen, Check, Info } from 'lucide-react';
+import { Droplets, Calendar, MapPin, Shield, Sprout, Award, TrendingUp, BookOpen, Check, Info, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import {
   useVarietyResistance,
   useVarietyTranslation,
+  useVarietyOfferings,
   type CropVariety,
+  type VarietyOffering,
 } from '@/hooks/useCropVarieties';
 
 interface VarietyDetailSheetProps {
@@ -29,6 +31,31 @@ const levelStyle = (level: string) => {
   if (l === 'S' || l === 'MS' || l === 'SUSCEPTIBLE')
     return 'bg-destructive/10 text-destructive border-destructive/30';
   return 'bg-muted text-muted-foreground border-border';
+};
+
+const KNOWN_AVAILABILITY_STATUSES = ['available', 'limited', 'out_of_stock', 'seasonal', 'discontinued'];
+
+const availabilityStyle = (status: string | null) => {
+  switch ((status || '').toLowerCase()) {
+    case 'available':
+      return 'bg-success/10 text-success border-success/30';
+    case 'limited':
+    case 'seasonal':
+      return 'bg-warning/10 text-warning border-warning/30';
+    case 'out_of_stock':
+    case 'discontinued':
+      return 'bg-destructive/10 text-destructive border-destructive/30';
+    default:
+      return 'bg-muted text-muted-foreground border-border';
+  }
+};
+
+const formatPrice = (o: VarietyOffering) => {
+  if (o.price == null) return null;
+  const currency = o.currency === 'INR' ? '₹' : (o.currency || '');
+  const pack =
+    o.pack_size != null ? ` / ${o.pack_size} ${o.pack_unit ?? ''}`.trimEnd() : '';
+  return `${currency}${o.price}${pack}`;
 };
 
 const Metric: React.FC<{
@@ -56,6 +83,7 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
   const lang = (i18n.language || 'en').split('-')[0];
   const { rows: resistance, loading: resLoading } = useVarietyResistance(variety?.id);
   const { translation, loading: trLoading } = useVarietyTranslation(variety?.id, lang);
+  const { offerings, loading: offLoading } = useVarietyOfferings(variety?.id);
 
   if (!variety) return null;
 
@@ -232,6 +260,79 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
                 </div>
               )}
             </section>
+
+            {/* Available from (sellers) — hidden entirely when no offerings */}
+            {(offLoading || offerings.length > 0) && (
+              <section className="rounded-2xl bg-card border border-border/60 p-3 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold">
+                  <Store className="h-3.5 w-3.5 text-primary" />
+                  {t('schedule.variety.offerings.title')}
+                </div>
+                {offLoading ? (
+                  <p className="text-[11px] text-muted-foreground italic">
+                    {t('schedule.variety.offerings.loading')}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {offerings.map((o) => {
+                      const price = formatPrice(o);
+                      const status = (o.availability_status || '').toLowerCase();
+                      return (
+                        <div
+                          key={o.offering_id ?? `${o.company_id}-${o.company_sku ?? o.brand_name ?? ''}`}
+                          className="flex items-start gap-2.5 rounded-xl bg-muted/30 border border-border/50 p-2.5"
+                        >
+                          {o.company_logo_url ? (
+                            <img
+                              src={o.company_logo_url}
+                              alt={o.company_name ?? ''}
+                              className="h-9 w-9 rounded-lg object-contain bg-background border border-border/50 shrink-0"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="h-9 w-9 rounded-lg bg-background border border-border/50 flex items-center justify-center shrink-0">
+                              <Store className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[13px] font-semibold leading-tight truncate">
+                                {o.company_name}
+                              </span>
+                              {status && KNOWN_AVAILABILITY_STATUSES.includes(status) && (
+                                <Badge
+                                  variant="outline"
+                                  className={cn('h-5 text-[10px] px-1.5 shrink-0', availabilityStyle(status))}
+                                >
+                                  {t(`schedule.variety.offerings.status.${status}`)}
+                                </Badge>
+                              )}
+                            </div>
+                            {o.brand_name && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                                {o.brand_name}
+                              </p>
+                            )}
+                            {price && (
+                              <p className="text-[13px] font-medium mt-0.5">{price}</p>
+                            )}
+                            {Array.isArray(o.regions) && o.regions.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {o.regions.map((r) => (
+                                  <Badge key={r} variant="outline" className="h-5 text-[10px] px-1.5">
+                                    {r}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         </ScrollArea>
 

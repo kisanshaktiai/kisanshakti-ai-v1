@@ -33092,6 +33092,99 @@ export type Database = {
           },
         ]
       }
+      variety_company_offerings: {
+        Row: {
+          availability_status: string
+          brand_name: string | null
+          company_id: string
+          company_sku: string | null
+          created_at: string
+          currency: string
+          id: string
+          is_active: boolean
+          metadata: Json
+          notes: string | null
+          pack_size: number | null
+          pack_unit: string | null
+          price: number | null
+          regions: string[]
+          updated_at: string
+          variety_id: string
+        }
+        Insert: {
+          availability_status?: string
+          brand_name?: string | null
+          company_id: string
+          company_sku?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          notes?: string | null
+          pack_size?: number | null
+          pack_unit?: string | null
+          price?: number | null
+          regions?: string[]
+          updated_at?: string
+          variety_id: string
+        }
+        Update: {
+          availability_status?: string
+          brand_name?: string | null
+          company_id?: string
+          company_sku?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          notes?: string | null
+          pack_size?: number | null
+          pack_unit?: string | null
+          price?: number | null
+          regions?: string[]
+          updated_at?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_company_offerings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "master_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
       variety_cultivation_agronomy: {
         Row: {
           created_at: string
@@ -38422,6 +38515,82 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "cultivation_method_master"
             referencedColumns: ["method_code"]
+          },
+        ]
+      }
+      v_variety_offerings: {
+        Row: {
+          availability_status: string | null
+          brand_name: string | null
+          company_id: string | null
+          company_logo_url: string | null
+          company_name: string | null
+          company_sku: string | null
+          created_at: string | null
+          crop_code: string | null
+          crop_id: string | null
+          crop_label: string | null
+          currency: string | null
+          is_active: boolean | null
+          offering_id: string | null
+          pack_size: number | null
+          pack_unit: string | null
+          price: number | null
+          regions: string[] | null
+          updated_at: string | null
+          variety_code: string | null
+          variety_id: string | null
+          variety_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "master_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "master_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_company_offerings_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
         ]
       }

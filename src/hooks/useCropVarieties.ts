@@ -40,12 +40,29 @@ export interface VarietyTranslation {
   local_synonyms: string[] | null;
 }
 
+export interface VarietyOffering {
+  offering_id: string | null;
+  company_id: string | null;
+  company_name: string | null;
+  company_logo_url: string | null;
+  brand_name: string | null;
+  company_sku: string | null;
+  price: number | null;
+  currency: string | null;
+  pack_size: number | null;
+  pack_unit: string | null;
+  availability_status: string | null;
+  regions: string[] | null;
+}
+
 const varietyCache = new Map<string, CropVariety[]>();
 const inflightVarieties = new Map<string, Promise<CropVariety[]>>();
 const resistanceCache = new Map<string, VarietyResistanceRow[]>();
 const inflightResistance = new Map<string, Promise<VarietyResistanceRow[]>>();
 const translationCache = new Map<string, VarietyTranslation | null>(); // key: varietyId|lang
 const inflightTranslation = new Map<string, Promise<VarietyTranslation | null>>();
+const offeringsCache = new Map<string, VarietyOffering[]>();
+const inflightOfferings = new Map<string, Promise<VarietyOffering[]>>();
 
 async function fetchVarieties(cropId: string): Promise<CropVariety[]> {
   if (varietyCache.has(cropId)) return varietyCache.get(cropId)!;
@@ -132,6 +149,33 @@ async function fetchTranslation(varietyId: string, lang: string): Promise<Variet
   return p;
 }
 
+// Read-only: RLS on v_variety_offerings already limits rows to active offerings
+// and allows public SELECT — no auth logic here.
+async function fetchOfferings(varietyId: string): Promise<VarietyOffering[]> {
+  if (offeringsCache.has(varietyId)) return offeringsCache.get(varietyId)!;
+  if (inflightOfferings.has(varietyId)) return inflightOfferings.get(varietyId)!;
+  const p = (async () => {
+    const { data, error } = await supabase
+      .from('v_variety_offerings')
+      .select(
+        'offering_id,company_id,company_name,company_logo_url,brand_name,company_sku,price,currency,pack_size,pack_unit,availability_status,regions'
+      )
+      .eq('variety_id', varietyId)
+      .order('company_name', { ascending: true });
+    if (error) {
+      console.error('[useCropVarieties] offerings error', error);
+      inflightOfferings.delete(varietyId);
+      return [];
+    }
+    const rows = (data ?? []) as VarietyOffering[];
+    offeringsCache.set(varietyId, rows);
+    inflightOfferings.delete(varietyId);
+    return rows;
+  })();
+  inflightOfferings.set(varietyId, p);
+  return p;
+}
+
 export function useCropVarieties(cropId?: string | null) {
   const [varieties, setVarieties] = useState<CropVariety[]>([]);
   const [loading, setLoading] = useState(false);
@@ -184,4 +228,21 @@ export function useVarietyTranslation(varietyId?: string | null, lang: string = 
     return () => { alive = false; };
   }, [varietyId, lang]);
   return { translation, loading };
+}
+
+export function useVarietyOfferings(varietyId?: string | null) {
+  const [offerings, setOfferings] = useState<VarietyOffering[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!varietyId) { setOfferings([]); return; }
+    setLoading(true);
+    fetchOfferings(varietyId).then((rows) => {
+      if (!alive) return;
+      setOfferings(rows);
+      setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [varietyId]);
+  return { offerings, loading };
 }
