@@ -90,7 +90,10 @@ export class RuleEngineExecutor {
         disease_severity: input.pest_disease_state.severity === 'CRITICAL' ? 80 :
                           input.pest_disease_state.severity === 'HIGH' ? 60 :
                           input.pest_disease_state.severity === 'MODERATE' ? 40 : 20,
-        infestation_level: input.pest_disease_state.infestation_level_percent || 0,
+        // 2026-08-30: was `|| 0`, which asserted a measured 0% infestation when
+        // the value was simply unknown. RuleEvaluationContext.infestation_level
+        // is already optional (rule-module-types.ts:236).
+        infestation_level: input.pest_disease_state.infestation_level_percent ?? undefined,
         soil_type: input.field_conditions?.soil_type,
         soil_ph: input.field_conditions?.soil_ph,
         soil_nitrogen_state: input.field_conditions?.soil_nitrogen_state,
@@ -206,7 +209,17 @@ export class RuleEngineExecutor {
       
       // Calculate economics
       let economicAssessment = null;
-      if (resolvedDecision.primary_decision) {
+      // 2026-08-30: economic-calculator.ts divides affected_area_percent by 100.
+      // With that field now genuinely optional, computing on `undefined` would
+      // yield NaN for every rupee figure shown to the farmer. Fall through to
+      // the existing `|| this.createDefaultEconomicAssessment(input)` at the
+      // formatting step rather than reporting money derived from a missing
+      // input. calculateEconomicViability's signature is intentionally
+      // unchanged so compareEconomicOptions() is unaffected.
+      if (
+        resolvedDecision.primary_decision &&
+        input.pest_disease_state.affected_area_percent !== undefined
+      ) {
         const recommendation = this.extractRecommendation(resolvedDecision.primary_decision);
         economicAssessment = calculateEconomicViability(recommendation, input);
       }

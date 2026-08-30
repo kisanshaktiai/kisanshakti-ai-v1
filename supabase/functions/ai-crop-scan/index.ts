@@ -91,6 +91,22 @@ interface ThreeCategoryRecommendation {
   };
 }
 
+/**
+ * Normalise an image reference into a form the vision APIs accept.
+ *
+ * 2026-08-30: callers may send a data URL, a raw base64 string, or a storage
+ * URL. TaskPhotoUploadDialog sends a signed crop-growth-media URL, and the
+ * previous expression wrapped anything not starting with `data:` in a base64
+ * template — producing `data:image/jpeg;base64,https://...`, a corrupt data
+ * URI that failed every crop-schedule photo analysis.
+ */
+function toImagePayloadUrl(img: string): string {
+  const v = (img ?? '').trim();
+  if (v.startsWith('data:')) return v;
+  if (v.startsWith('http://') || v.startsWith('https://')) return v;
+  return `data:image/jpeg;base64,${v}`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -332,7 +348,7 @@ Return JSON:
       const imageContents = allImages.slice(0, 4).map(img => ({
         type: "image_url" as const,
         image_url: {
-          url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
+          url: toImagePayloadUrl(img),
           detail: "high" as const
         }
       }));
@@ -763,7 +779,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
     const imageContents = allImages.slice(0, 4).map(img => ({
       type: "image_url" as const,
       image_url: {
-        url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
+        url: toImagePayloadUrl(img),
         detail: "high" as const
       }
     }));

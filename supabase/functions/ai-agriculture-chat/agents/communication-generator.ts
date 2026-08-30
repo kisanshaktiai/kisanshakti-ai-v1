@@ -934,11 +934,20 @@ export class CommunicationGenerator {
           hi: `आपकी फसल पर पाया गया: ${causeHi}`,
           en: `Detected on your crop: ${causeEn}`
         },
-        threshold_info: cause.severity === 'HIGH' || cause.severity === 'CRITICAL' ? {
-          mr: `⚠️ गंभीर स्थिती (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तात्काळ कृती आवश्यक`,
-          hi: `⚠️ गंभीर स्थिति (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तुरंत कार्रवाई आवश्यक`,
-          en: `⚠️ Serious condition (${Math.round(cause.affected_area_percent)}% area affected) - Immediate action required`
-        } : {
+        // 2026-08-30: only state a coverage figure when one was actually
+        // measured. Math.round(undefined) rendered "NaN% क्षेत्र प्रभावित", and
+        // before that the number was a hardcoded 20 injected by orchestrator.ts.
+        threshold_info: (cause.severity === 'HIGH' || cause.severity === 'CRITICAL')
+          ? (Number.isFinite(cause.affected_area_percent) ? {
+              mr: `⚠️ गंभीर स्थिती (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तात्काळ कृती आवश्यक`,
+              hi: `⚠️ गंभीर स्थिति (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तुरंत कार्रवाई आवश्यक`,
+              en: `⚠️ Serious condition (${Math.round(cause.affected_area_percent)}% area affected) - Immediate action required`
+            } : {
+              mr: '⚠️ गंभीर स्थिती - तात्काळ कृती आवश्यक',
+              hi: '⚠️ गंभीर स्थिति - तुरंत कार्रवाई आवश्यक',
+              en: '⚠️ Serious condition - Immediate action required'
+            })
+          : {
           mr: 'आर्थिक थ्रेशोल्ड ओलांडली - कृती फायदेशीर',
           hi: 'आर्थिक सीमा पार हो गई - कार्रवाई लाभदायक',
           en: 'Economic threshold exceeded - Action beneficial'

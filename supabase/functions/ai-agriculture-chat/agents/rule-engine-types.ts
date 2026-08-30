@@ -104,11 +104,23 @@ export interface PestDiseaseState {
   disease_code?: string;
   disease_name_local?: string;
   infestation_density?: number;
-  affected_area_percent: number;
+  /**
+   * 2026-08-30: now optional. `undefined` means the affected area is genuinely
+   * unknown, which is what triggers Q_AFFECTED_AREA in rule-module-resolver.
+   * Callers must not substitute a default.
+   */
+  affected_area_percent?: number;
   severity: SeverityLevel;
   damage_symptoms?: string[];
   first_observed_days_ago?: number;
   spread_rate?: 'SLOW' | 'MODERATE' | 'RAPID';
+  /**
+   * 2026-08-30: declared to match the existing runtime contract — written at
+   * orchestrator.ts and read at rule-engine-executor.ts. It was previously an
+   * undeclared excess property that only survived because the bundler strips
+   * types without checking them.
+   */
+  infestation_level_percent?: number;
 }
 
 export interface FarmerConstraints {

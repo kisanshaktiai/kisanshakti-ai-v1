@@ -216,7 +216,12 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     }
   }, [landId, farmerId, tenantId, refetchUploads]);
 
-  // Analyze uploaded media using existing ai-crop-scan function
+  // Analyze uploaded media — R2-P1 (2026-08-30): the server (ai-crop-scan growth_tracking)
+  // derives crop, cycle, expected stage, NDVI and geofence itself from the upload + land rows.
+  // The client sends identifiers only. The former client-side stage calendar (germination/
+  // seedling/vegetative/flowering/maturity by day count) and the reads of non-existent columns
+  // (lands.sowing_date, lands.crop_name, ndvi_data.recorded_at) are removed: they produced
+  // an 'unknown' expected stage and a hardcoded calendar that primed the vision model.
   const analyzeUpload = useCallback(async (upload: CropGrowthUpload): Promise<any> => {
     if (!landId || !farmerId || !tenantId) {
       toast.error('Missing required context');
@@ -226,75 +231,37 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     setIsAnalyzing(true);
 
     try {
-      // Fetch land details for context
-      const { data: landData } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('id', landId)
-        .single();
-
-      // Fetch NDVI data
-      const { data: ndviData } = await supabase
-        .from('ndvi_data')
-        .select('ndvi_value, ndwi_value, recorded_at')
-        .eq('land_id', landId)
-        .order('recorded_at', { ascending: false })
-        .limit(3);
-
-      // Fetch soil data - use direct query
-      const { data: soilData } = await supabase
-        .from('soil_health_reports' as any)
-        .select('*')
-        .eq('land_id', landId)
-        .order('tested_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      // Calculate expected growth stage
-      const calculateExpectedStage = (sowingDate: string | null, cropName: string | null): string => {
-        if (!sowingDate) return 'unknown';
-        const days = Math.floor((Date.now() - new Date(sowingDate).getTime()) / (1000 * 60 * 60 * 24));
-        if (days < 15) return 'germination';
-        if (days < 30) return 'seedling';
-        if (days < 60) return 'vegetative';
-        if (days < 90) return 'flowering';
-        return 'maturity';
-      };
-
-      const sowingDate = (landData as any)?.sowing_date;
-      const cropName = (landData as any)?.crop_name;
-      const areaGuntha = (landData as any)?.area_guntha;
-      const expectedStage = calculateExpectedStage(sowingDate, cropName);
-
-      // Use existing ai-crop-scan function with growth_tracking mode
       const { data, error } = await supabase.functions.invoke('ai-crop-scan', {
         body: {
           images: [upload.file_url],
           mode: 'growth_tracking',
           uploadId: upload.id,
-          landId: landId,
-          farmerId: farmerId,
-          tenantId: tenantId,
-          landCrop: cropName,
-          sowingDate: sowingDate,
-          expectedStage: expectedStage,
-          ndviData: ndviData,
-          soilData: soilData,
-          landArea: areaGuntha ? { guntha: areaGuntha, acres: areaGuntha * 0.025, sqft: areaGuntha * 1089 } : undefined,
-          language: i18n.language
-        }
+          landId,
+          farmerId,
+          tenantId,
+          language: i18n.language,
+        },
       });
 
       if (error) throw error;
 
-      if (!data.success) {
-        throw new Error(data.error || 'Analysis failed');
+      if (!data?.success) {
+        // Server returns machine-readable codes: CROP_IDENTITY_UNRESOLVED, STAGE_ONTOLOGY_MISSING,
+        // UPLOAD_LAND_MISMATCH, LAND_OWNERSHIP_MISMATCH — surfaced verbatim, never masked.
+        throw new Error(data?.code ? `${data.code}: ${data.error ?? ''}` : (data?.error || 'Analysis failed'));
       }
 
       await refetchAnalysis();
       await refetchAlerts();
-      
-      toast.success('Analysis complete');
+
+      const ev = data.analysis?.evidence;
+      if (ev && ev.evidence_grade === false) {
+        // The photo was narrated but does NOT count as stage evidence (off-farm, unverified
+        // location, crop mismatch, unusable image or undetermined stage).
+        toast.warning(`Photo analysed, but not usable as stage evidence: ${(ev.conflicts || []).join(', ') || 'see details'}`);
+      } else {
+        toast.success('Analysis complete');
+      }
       return data.analysis;
     } catch (error) {
       console.error('Analysis error:', error);

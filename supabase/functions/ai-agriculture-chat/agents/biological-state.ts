@@ -1,5 +1,13 @@
 /**
  * CHANGE LOG
+ * 2026-08-30 — v8 (2nd forensic audit R2, P1): gdd_accumulated now also reads the
+ *   resolver's `current_gdd` (was always null from resolver rows). Additive evidence-contract fields —
+ *   `authority` (evidence tier, policy vocabulary), `confirmation`
+ *   (ESTIMATED | OBSERVED | CONFIRMED | UNKNOWN), `evidence_conflicts` (tier
+ *   disagreements recorded by the phenology reconciler) and `evidence_sources`
+ *   (resolver v10 tags). Sourced from the reconciled row or parsed from the
+ *   resolver's `authority:` / `confirmation:` evidence tags; never inferred here.
+ *   A stage is exposed as CONFIRMED only when the ledger/photo contract says so.
  * 2026-07-28 04:45 UTC — FIX C1: removed setActiveCultivationMethod() call and
  *   its import; module-scope stage lane state was deleted upstream.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -90,6 +98,17 @@ export interface BiologicalState {
   // PATCH v4-P1 — Biological CONSTRAINTS (not stages).
   readonly biological_constraints: ReadonlyArray<BiologicalConstraint>;
 
+  // v8 (2026-08-30) — evidence contract. `authority` ranks the SOURCE CLASS behind the
+  // stage (morphology > farmer_observation > sensor > thermal_model > calendar);
+  // `confidence` above stays the source's OWN value. `confirmation` is the field-truth
+  // status: only validated photos / farmer events can make a stage OBSERVED, and only the
+  // ledger's photo contract can make it CONFIRMED. Consumers narrating the stage MUST
+  // hedge anything that is not CONFIRMED.
+  readonly authority: string;
+  readonly confirmation: 'ESTIMATED' | 'OBSERVED' | 'CONFIRMED' | 'UNKNOWN';
+  readonly evidence_conflicts: ReadonlyArray<Readonly<Record<string, unknown>>>;
+  readonly evidence_sources: ReadonlyArray<string>;
+
   readonly raw: Readonly<Record<string, unknown>>;
 }
 
@@ -126,10 +145,17 @@ export interface RawPhenologyRow {
   current_das?: number | null;
   current_dat?: number | null;
   gdd_accumulated?: number | null;
+  /** v8 — resolve_crop_phenology column name for accumulated GDD (numeric; PostgREST may send a string). */
+  current_gdd?: number | string | null;
   sowing_date?: string | null;
   confidence?: number | null;
   source?: string | null;
   resolver_version?: string | null;
+  /** v8 — set by the phenology reconciler (v12) or parsed from resolver v10 tags. */
+  authority?: string | null;
+  confirmation?: string | null;
+  evidence_conflicts?: ReadonlyArray<Record<string, unknown>> | null;
+  evidence_sources?: ReadonlyArray<string> | null;
   [k: string]: unknown;
 }
 
@@ -162,6 +188,26 @@ export function buildBiologicalState(
 
   // FIX C1 (2026-07-28): removed setActiveCultivationMethod call —
 
+  // v8 — evidence contract (reconciler value first, resolver v10 tags second, never a guess)
+  const evidenceSources: ReadonlyArray<string> = Object.freeze(
+    Array.isArray(phenology.evidence_sources)
+      ? phenology.evidence_sources.map((t) => String(t))
+      : [],
+  );
+  const tagValue = (prefix: string): string | null => {
+    const hit = evidenceSources.find((t) => t.startsWith(prefix));
+    return hit ? hit.slice(prefix.length) : null;
+  };
+  const authority = String(phenology.authority ?? tagValue('authority:') ?? 'unknown').toLowerCase();
+  const confirmationRaw = String(phenology.confirmation ?? tagValue('confirmation:') ?? 'UNKNOWN').toUpperCase();
+  const confirmation = (confirmationRaw === 'ESTIMATED' || confirmationRaw === 'OBSERVED' || confirmationRaw === 'CONFIRMED'
+    ? confirmationRaw
+    : 'UNKNOWN') as 'ESTIMATED' | 'OBSERVED' | 'CONFIRMED' | 'UNKNOWN';
+  const evidenceConflicts: ReadonlyArray<Readonly<Record<string, unknown>>> = Object.freeze(
+    (Array.isArray(phenology.evidence_conflicts) ? phenology.evidence_conflicts : []).map((c) =>
+      Object.freeze({ ...(c ?? {}) })),
+  );
+
   const state: BiologicalState = {
     is_locked: true,
     version: 'v1',
@@ -180,8 +226,14 @@ export function buildBiologicalState(
 
     das: typeof phenology.current_das === 'number' ? phenology.current_das : null,
     dat: typeof phenology.current_dat === 'number' ? phenology.current_dat : null,
+    // v8 wiring fix: the resolver row exposes GDD as `current_gdd`; `gdd_accumulated` only
+    // exists on reconciler-shaped rows. Accept both so the locked state stops reporting null
+    // GDD for every land that has one (orchestrator reads state.gdd_accumulated for GDD).
     gdd_accumulated:
-      typeof phenology.gdd_accumulated === 'number' ? phenology.gdd_accumulated : null,
+      typeof phenology.gdd_accumulated === 'number' ? phenology.gdd_accumulated
+      : (typeof phenology.current_gdd === 'number' ? phenology.current_gdd
+      : (phenology.current_gdd !== null && phenology.current_gdd !== undefined && Number.isFinite(Number(phenology.current_gdd))
+          ? Number(phenology.current_gdd) : null)),
     sowing_date: phenology.sowing_date ?? null,
 
     confidence: baseConfidence,
@@ -190,6 +242,11 @@ export function buildBiologicalState(
 
     predicted_stage_confidence: decayConfidence(baseConfidence, constraints),
     biological_constraints: constraints,
+
+    authority,
+    confirmation,
+    evidence_conflicts: evidenceConflicts,
+    evidence_sources: evidenceSources,
 
     raw: Object.freeze({ ...phenology }),
   };
@@ -214,6 +271,9 @@ export function buildBiologicalState(
           resolver_version: state.resolver_version,
           confidence: state.confidence,
           predicted_stage_confidence: state.predicted_stage_confidence,
+          authority: state.authority,
+          confirmation: state.confirmation,
+          evidence_conflicts: state.evidence_conflicts.length,
           constraints: constraints.map((c) => `${c.code}(${c.severity})`),
         }),
     );

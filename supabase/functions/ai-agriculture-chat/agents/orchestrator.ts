@@ -227,7 +227,6 @@ function assertDecisionGraphOrder(owner: any, traceId: string, stage: DecisionGr
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
-import { processVisualAgent } from './visual-agent.ts';
 import { processContextManager, createNewSession } from './context-manager.ts';
 import { DiagnosticFlowController } from './diagnostic-flow-controller.ts';
 import { MultiModalFusionEngine } from './multimodal-fusion.ts';
@@ -318,7 +317,6 @@ import { classifyQuestion, type QuestionClassification } from './question-classi
 
 // Import types
 import type { NLUOutput } from './types.ts';
-import type { VisualAnalysisOutput } from './visual-agent-types.ts';
 import type { ContextState } from './context-manager-types.ts';
 import type { DiagnosticState } from './hypothesis-types.ts';
 import type { FusedIntelligence } from './multimodal-fusion-types.ts';
@@ -2009,6 +2007,8 @@ export class AIAgentOrchestrator {
       
       // PHASE-19: PHOTO ANALYSIS EARLY PATH
       let photoAnalysisResult: PhotoAnalysisOutput | null = null;
+      // 2026-08-30: never let a previous turn's photo leak into this one.
+      (this as any)._photoAnalysisResult = null;
       if (options.photoUrl) {
         console.log('\n📸 [PHASE-19] Photo Analysis Path...');
         const photoAnalysisStart = Date.now();
@@ -2026,6 +2026,10 @@ export class AIAgentOrchestrator {
           });
           
           agentsUsed.push('PHOTO_ANALYZER');
+          // 2026-08-30: the entity builders run in separate methods, so expose
+          // the analysed photo the same way this file already exposes
+          // cross-crop symptoms via `(this as any)._crossCropSymptoms`.
+          (this as any)._photoAnalysisResult = photoAnalysisResult;
           const photoTime = Date.now() - photoAnalysisStart;
           
           console.log(`   ✅ Photo analyzed (${photoTime}ms)`);
@@ -7912,24 +7916,14 @@ export class AIAgentOrchestrator {
       
       console.log('   📋 Using RULE ENGINE path for this question');
       
-      // Agent 1B: Analyze photo (if provided) - with error boundary
-      let visualOutput: VisualAnalysisOutput | null = null;
-      if (options.photoUrl) {
-        try {
-          visualOutput = await this.processVisual(options.photoUrl, farmerMessage);
-          agentsUsed.push('Visual');
-          console.log('   ✅ Photo analyzed:', visualOutput?.detections?.pests?.length || 0, 'detections');
-        } catch (visualError) {
-          console.error('   ❌ Visual Agent failed, continuing without image analysis:', visualError);
-          agentsUsed.push('Visual_FALLBACK');
-          // Continue without visual - not critical
-        }
-      }
-      
+      // 2026-08-30: the legacy Agent-1B Visual block was removed. It called
+      // processVisualAgent() with `{ image_url, text_context }` while
+      // VisualAgentInput requires image_data / text_context / crop_context /
+      // diagnostic_goals, so it threw on every invocation and its only
+      // observable output was a misleading 'Visual_FALLBACK' trace entry.
+      // Photo evidence reaches the Decision Brain through the PHASE-19 path
+      // above (analyzePhoto -> mapPhotoToObservationKeys -> observationKeys).
       console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
-      if (visualOutput) {
-        console.log('   ✅ Photo analyzed:', visualOutput.detections?.pests?.length || 0, 'detections');
-      }
       
       // PHASE 1B: CONTEXT LOADING (with NLU output) - with error boundary
       let contextState: ContextState | null = null;
@@ -7983,25 +7977,12 @@ export class AIAgentOrchestrator {
             ambiguities: nluOutput!.clarification_strategy?.questions_to_ask?.map((q: any) => q.question_text_en) || []
           },
           
-          // VISUAL ANALYSIS with land context for comparison
-          visual_analysis: visualOutput ? {
-            image_id: options.photoUrl || '',
-            quality_score: visualOutput.quality_assessment?.overall_quality || 0.7,
-            detections: {
-              pests: visualOutput.detections?.pests,
-              diseases: visualOutput.detections?.diseases,
-              symptoms: visualOutput.detections?.symptoms,
-              beneficial_insects: visualOutput.detections?.beneficial_insects,
-              // CONTEXT CONTRACT: Include crop detected vs land context for validation
-              crop_identified: visualOutput.detections?.crop_identified || 
-                (resolvedCropCode ? { code: resolvedCropCode, confidence: 0.9 } : undefined)
-            },
-            severity_quantification: {
-              pest_density: visualOutput.severity_quantification?.pest_density,
-              disease_severity_index: visualOutput.severity_quantification?.disease_severity_index,
-              affected_area_percent: visualOutput.severity_quantification?.affected_area_percent
-            }
-          } : undefined,
+          // VISUAL ANALYSIS — 2026-08-30: the legacy Visual Agent that fed this
+          // never returned a value (see the removal note above), so this was
+          // always `undefined` in practice. Left explicitly undefined rather
+          // than removed, because MultiModalFusionInput declares the field and
+          // the fusion engine already handles its absence.
+          visual_analysis: undefined,
           
           // SENSOR DATA from soil health (Context Contract)
           sensor_data: landContext?.soil_health ? {
@@ -11127,22 +11108,6 @@ export class AIAgentOrchestrator {
     return unifiedNormalizeCropCode(cropName);
   }
   
-  // Process Visual Analysis
-  private async processVisual(
-    photoUrl: string,
-    textContext: string
-  ): Promise<VisualAnalysisOutput | null> {
-    try {
-      return await processVisualAgent({
-        image_url: photoUrl,
-        text_context: textContext
-      });
-    } catch (error) {
-      console.error('Visual analysis failed:', error);
-      return null;
-    }
-  }
-  
   // Load conversation context with comprehensive land data
   private async loadContext(
     sessionId: string,
@@ -12392,10 +12357,15 @@ export class AIAgentOrchestrator {
       pest_disease_state: {
         pest_code: pestCode !== 'UNKNOWN' ? pestCode : undefined,
         disease_code: diseaseCode !== 'UNKNOWN' ? diseaseCode : undefined,
-        affected_area_percent: nluEntities.affected_area_percent ||
-                               fused.unified_context?.problem?.affected_area_percent || 20,
+        // 2026-08-30: see the note in buildNLUOutputWithRuleMapping.
+        // economic-calculator.ts turns this into yield-at-risk, so a default of
+        // 20 fabricated every rupee figure the farmer was shown.
+        affected_area_percent:
+          nluEntities.affected_area_percent ??
+          fused.unified_context?.problem?.affected_area_percent ??
+          undefined,
         severity: severity as any,
-        infestation_level_percent: nluEntities.affected_area_percent || 20
+        infestation_level_percent: nluEntities.affected_area_percent ?? undefined
       },
       
       farmer_constraints: {
@@ -12603,7 +12573,15 @@ export class AIAgentOrchestrator {
                   fused.unified_context?.crop?.stage as any,
       pest_code: nluOutput.entities_extracted?.pest_mentioned?.canonical,
       disease_code: nluOutput.entities_extracted?.disease_mentioned?.canonical,
-      affected_area_percent: fused.visual_analysis?.severity_quantification?.affected_area_percent || 20,
+      // 2026-08-30: was `|| 20`. A fabricated severity suppressed
+      // Q_AFFECTED_AREA / Q_PEST_DENSITY (rule-module-resolver.ts:293,335),
+      // earned an unearned +0.1 confidence (:428), and reached the farmer as a
+      // stated measurement. Authority order: measured photo severity → fused
+      // visual → genuinely absent.
+      affected_area_percent:
+        (this as any)._photoAnalysisResult?.severity_assessment?.affected_area_percent ??
+        fused.visual_analysis?.severity_quantification?.affected_area_percent ??
+        undefined,
       product_mentioned: nluOutput.entities_extracted?.product_mentioned?.raw_text,
       symptom_codes: nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
       region_code: fused.historical_data?.region_code,

@@ -46,7 +46,14 @@ export interface DetectedIssue {
 
 export interface SeverityAssessment {
   overall_severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  affected_area_percent: number;
+  /**
+   * 2026-08-30: `null` means the model reported no figure. Previously an absent
+   * value was coerced to 0, which is a positive claim ("no area affected")
+   * rather than an absence, and 0 is not nullish so it defeated `??` guards
+   * downstream. Verified: no consumer in this function reads this field, so
+   * widening the type has no ripple.
+   */
+  affected_area_percent: number | null;
   urgency: 'LOW' | 'MEDIUM' | 'HIGH' | 'EMERGENCY';
   recommended_action: string;
 }
@@ -218,7 +225,7 @@ export async function analyzePhoto(input: PhotoAnalysisInput): Promise<PhotoAnal
       detected_issues: [],
       severity_assessment: {
         overall_severity: 'LOW',
-        affected_area_percent: 0,
+        affected_area_percent: null,
         urgency: 'LOW',
         recommended_action: 'Unable to analyze photo. Please try again with a clearer image.'
       },
@@ -277,7 +284,7 @@ function normalizeAnalysisResult(result: any): PhotoAnalysisOutput {
       detected_issues: [],
       severity_assessment: {
         overall_severity: 'LOW',
-        affected_area_percent: 0,
+        affected_area_percent: null,
         urgency: 'LOW',
         recommended_action: 'Could not parse analysis result'
       },
@@ -310,9 +317,13 @@ function normalizeAnalysisResult(result: any): PhotoAnalysisOutput {
   }));
   
   // Normalize severity assessment
+  // 2026-08-30: absent stays absent — see the SeverityAssessment doc comment.
+  const rawAffectedArea = Number(result.severity_assessment?.affected_area_percent);
   const severity_assessment: SeverityAssessment = {
     overall_severity: validateSeverity(result.severity_assessment?.overall_severity),
-    affected_area_percent: Math.min(100, Math.max(0, Number(result.severity_assessment?.affected_area_percent) || 0)),
+    affected_area_percent: Number.isFinite(rawAffectedArea)
+      ? Math.min(100, Math.max(0, rawAffectedArea))
+      : null,
     urgency: validateUrgency(result.severity_assessment?.urgency),
     recommended_action: String(result.severity_assessment?.recommended_action || 'Monitor and take photo again if symptoms persist')
   };
