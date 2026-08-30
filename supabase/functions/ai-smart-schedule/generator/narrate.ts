@@ -1,4 +1,14 @@
 // CHANGE LOG
+// 2026-08-30 — farmer-register narration (language-agnostic): the prompt was literal
+//   translation only, so technical English rendered into formal, jargon-heavy text that
+//   smallholders could not follow (long compound sentences, loan-words like top-dress/LCC
+//   carried through). The prompt now sets a REGISTER — short spoken sentences, action-first,
+//   plain local words with the technical term once in brackets — while the fact guardrails
+//   are unchanged and slightly hardened (numbers/units/dates/products byte-exact; the
+//   isFaithful number-gate still rejects any drift). No language or crop is hardcoded:
+//   register rules only, applied to whatever language code the caller passes. Unit
+//   localisation (e.g. bags/पोतं) is deliberately NOT done here — converting units changes
+//   numbers; that belongs in deterministic display formatting, never in the LLM.
 // 2026-08-17 14:06 UTC — Phase 2: LLM narration layer. Translation ONLY. The model may never
 //   invent, add, remove or alter any number, unit, product or date.
 // 2026-08-18 15:20 UTC — 504 fix: narration now chunks tasks (20/call) and runs chunks in
@@ -44,12 +54,22 @@ async function narrateChunk(
 ): Promise<Array<{ i: number; name?: string; desc?: string }>> {
   const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description }));
   const prompt = [
-    `You are a TRANSLATOR ONLY for farm task labels into language code "${language}".`,
-    `HARD RULES:`,
-    `1. Translate the text of "name" and "desc" only.`,
-    `2. NEVER change, add or remove any number, unit, date, chemical or product name.`,
-    `3. NEVER add advice, dosage, timing or explanation of your own.`,
-    `4. Return STRICT JSON: [{"i":0,"name":"...","desc":"..."}]`,
+    `You render farm task labels into language code "${language}" in the SIMPLE SPOKEN`,
+    `style a smallholder farmer uses in that language — short sentences a 12-year-old`,
+    `could read aloud. You simplify the wording, never the facts.`,
+    `HARD RULES (facts — violating any of these makes the output unusable):`,
+    `1. Copy every number, unit, date, chemical and product name EXACTLY as given —`,
+    `   same values, same count. Never add a new number. Never convert units.`,
+    `2. NEVER add advice, dosage, timing or explanation that is not in the source.`,
+    `STYLE RULES (register — this is why you exist):`,
+    `3. "name": a short action label, at most 5-6 words, starting with the action verb.`,
+    `4. "desc": rewrite as short spoken sentences, each under ~12 words, one action per`,
+    `   sentence, in this order when the source contains them: what to do, how much,`,
+    `   when, why (one line), one caution. Active voice; address the farmer directly.`,
+    `5. Replace technical terms with the everyday word a farmer of that language uses`,
+    `   for it; you may keep the technical term once in brackets after the plain word.`,
+    `   Avoid loan-words when a common local word exists.`,
+    `6. Return STRICT JSON: [{"i":0,"name":"...","desc":"..."}]`,
     ``,
     JSON.stringify(payload),
   ].join("\n");
