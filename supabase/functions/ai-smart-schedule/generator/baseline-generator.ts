@@ -748,10 +748,10 @@ export async function generateBaseline(
       }
     }
     const WEEK = 7;
-    const MAX_SCOUT_EVENTS = 40;
-    // Stage DAS windows overlap in the DB, so keep at most one scouting task per DAS,
-    // merging rule ids and keeping the highest priority.
-    const scoutByDas = new Map<number, { task: BaselineTask; width: number; refs: Array<{ id: string; p: number | null }> }>();
+    // v1.5.0: ONE recurring scouting task per stage window (was one clone per week —
+    // 26 identical "Field scouting" cards on a single rice schedule). Overlapping
+    // stage windows merge on the window start, keeping the narrowest window.
+    const scoutByStart = new Map<number, { task: BaselineTask; width: number; refs: Array<{ id: string; p: number | null }> }>();
     for (const { stage, refs, priority } of byStage.values()) {
       const start = das0(stage, stage.das_min);
       const end = das0(stage, stage.das_max);
@@ -760,56 +760,113 @@ export async function generateBaseline(
         continue;
       }
       const width = end - start;
-      let events = 0;
-      for (let das = start; das <= end && events < MAX_SCOUT_EVENTS; das += WEEK, events++) {
-        const task: BaselineTask = {
-          task_name: "Field scouting",
-          task_type: "monitoring",
-          task_description: "",
-          days_from_sowing: das,
-          anchor_type: "STAGE",
-          anchor_stage: stage.stage_code || stage.growth_stage,
-          gdd_target: stage.gdd_min ?? null,
-          stage_key: stage.stage_code,
-          stage_uuid: stage.id || null,
-          stage_name: stage.growth_stage,
-          stage_order: stageOrderOf(stages, stage.stage_code),
-          priority: priorityFromRule(priority),
-          weather_dependent: false,
-          nutrient: null,
-          quantity: null,
-          estimated_cost: null,
-          rule_ids: topRuleIds(refs),
-          confidence: null,
-          source_refs: [{ table: "decision_rules" }],
-          instructions: [],
-          precautions: [],
-        };
-        const existing = scoutByDas.get(das);
-        if (!existing) {
-          scoutByDas.set(das, { task, width, refs: [...refs] });
+      const label = stageLabel(stage);
+      const task: BaselineTask = {
+        task_name: shortName(label ? `Scouting — ${label}` : "Field scouting"),
+        task_type: "monitoring",
+        task_description: "",
+        days_from_sowing: start,
+        anchor_type: "STAGE",
+        anchor_stage: stage.stage_code || stage.growth_stage,
+        gdd_target: stage.gdd_min ?? null,
+        stage_key: stage.stage_code,
+        stage_uuid: stage.id || null,
+        stage_name: stage.growth_stage,
+        stage_order: stageOrderOf(stages, stage.stage_code),
+        priority: priorityFromRule(priority),
+        weather_dependent: false,
+        nutrient: null,
+        quantity: null,
+        estimated_cost: null,
+        rule_ids: topRuleIds(refs),
+        confidence: null,
+        source_refs: [{ table: "decision_rules" }],
+        instructions: [`Walk the field once a week from DAS ${start} to ${end}.`],
+        precautions: [],
+        recurrence: {
+          interval_days: WEEK,
+          window_start: start,
+          window_end: end,
+          expected_events: Math.floor(width / WEEK) + 1,
+        },
+      };
+      const existing = scoutByStart.get(start);
+      if (!existing) {
+        scoutByStart.set(start, { task, width, refs: [...refs] });
+      } else {
+        const mergedRefs = [...existing.refs, ...refs];
+        if (width < existing.width) {
+          task.rule_ids = topRuleIds(mergedRefs);
+          scoutByStart.set(start, { task, width, refs: mergedRefs });
         } else {
-          const mergedRefs = [...existing.refs, ...refs];
-          if (width < existing.width) {
-            task.rule_ids = topRuleIds(mergedRefs);
-            scoutByDas.set(das, { task, width, refs: mergedRefs });
-          } else {
-            existing.refs = mergedRefs;
-            existing.task.rule_ids = topRuleIds(mergedRefs);
-          }
+          existing.refs = mergedRefs;
+          existing.task.rule_ids = topRuleIds(mergedRefs);
         }
       }
       coverage.monitoring = true;
     }
-    for (const entry of scoutByDas.values()) {
+    for (const entry of scoutByStart.values()) {
       const brief = scoutBrief(entry.task.rule_ids, entry.refs.length);
       entry.task.task_description = brief.description;
-      entry.task.instructions = brief.instructions;
+      entry.task.instructions = [...entry.task.instructions, ...brief.instructions];
       entry.task.resources = brief.resources;
       if (!brief.description && !brief.instructions.length) gaps.push("scouting_brief_empty");
       tasks.push(entry.task);
     }
   }
+
+  // ── Lifecycle anchor operations (land prep, seed treatment, harvest, post-harvest) ──
+  // v1.5.0: the stage graph carries these phases (rice: RICE_HARVEST 140–160,
+  // RICE_POST_HARVEST 160–190) but the baseline never emitted an operation for them,
+  // so a farmer's plan simply ended after grain filling. One task per lifecycle stage
+  // present in the graph — the stage row itself is the only source.
+  const LIFECYCLE_STAGES: Array<{ match: RegExp; taskType: string; label: string; priority: string }> = [
+    { match: /land[_ ]?prep/i, taskType: "land_preparation", label: "Land preparation", priority: "high" },
+    { match: /seed[_ ]?treat/i, taskType: "seed_treatment", label: "Seed treatment", priority: "high" },
+    { match: /^nursery$/i, taskType: "nursery", label: "Nursery management", priority: "high" },
+    { match: /^harvest$/i, taskType: "harvest", label: "Harvest", priority: "critical" },
+    { match: /post[_ ]?harvest/i, taskType: "post_harvest", label: "Post-harvest handling", priority: "medium" },
+  ];
+  const emittedLifecycle = new Set<string>();
+  for (const stage of stages) {
+    const key = `${stage.growth_stage ?? ""}|${stage.stage_code ?? ""}`;
+    const spec = LIFECYCLE_STAGES.find((l) => l.match.test(String(stage.growth_stage ?? "")) || l.match.test(String(stage.stage_code ?? "")));
+    if (!spec || emittedLifecycle.has(spec.taskType)) continue;
+    const das = das0(stage, stage.das_min);
+    if (das == null || !Number.isFinite(das)) continue;
+    // Never plan an operation past the variety's own maturity window.
+    if (durationDays != null && das > durationDays + 30) continue;
+    emittedLifecycle.add(spec.taskType);
+    void key;
+    const end = das0(stage, stage.das_max);
+    tasks.push({
+      task_name: spec.label,
+      task_type: spec.taskType,
+      task_description: "",
+      days_from_sowing: das,
+      anchor_type: "STAGE",
+      anchor_stage: stage.stage_code || stage.growth_stage,
+      gdd_target: stage.gdd_min ?? null,
+      stage_key: stage.stage_code,
+      stage_uuid: stage.id || null,
+      stage_name: stage.growth_stage,
+      stage_order: stageOrderOf(stages, stage.stage_code),
+      priority: spec.priority,
+      weather_dependent: true,
+      nutrient: null,
+      quantity: null,
+      estimated_cost: null,
+      rule_ids: [],
+      confidence: null,
+      source_refs: [{ table: "crop_stage_master", row_id: stage.id }],
+      instructions:
+        end != null && Number.isFinite(end)
+          ? [`Window: DAS ${das} to ${end} (${stageLabel(stage)}).`]
+          : [],
+      precautions: [],
+    });
+  }
+
 
 
 
