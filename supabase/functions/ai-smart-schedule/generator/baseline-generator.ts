@@ -658,8 +658,18 @@ export async function generateBaseline(
       if (!rule.action_text && !ruleInstructions.length && !rulePrecautions.length) {
         gaps.push("rule_task_no_detail");
       }
+      // v1.5.0: the name is a LABEL. Previously rule.action_text (a full advisory
+      // paragraph) became the task_name, so cards showed prose as a title.
+      const ruleLabel = String(rule.category ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();
+      const stageTag = stageLabel(stage);
       tasks.push({
-        task_name: rule.action_text || rule.category || rule.rule_id,
+        task_name:
+          shortName(
+            ruleLabel && stageTag ? `${ruleLabel} — ${stageTag}` : ruleLabel || stageTag,
+            rule.action_text,
+            rule.rule_id,
+          ) || rule.rule_id,
+
         task_type: taskType,
         task_description: rule.action_text || "",
         days_from_sowing: das as number,
