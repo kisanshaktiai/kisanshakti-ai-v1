@@ -129,7 +129,22 @@ async function fetchViaProxies(): Promise<string> {
   throw lastErr instanceof Error ? lastErr : new Error('all proxies failed');
 }
 
+async function fetchViaEdgeFunction(): Promise<YouTubeChannelVideo[]> {
+  const { data, error } = await supabase.functions.invoke('youtube-channel-feed');
+  if (error) throw error;
+  const videos = (data as { videos?: YouTubeChannelVideo[] } | null)?.videos ?? [];
+  return videos;
+}
+
 async function fetchOfficialShorts(): Promise<YouTubeChannelVideo[]> {
+  // 1) Server-side proxy (cached, no third-party CORS proxy dependency).
+  try {
+    const viaEdge = await fetchViaEdgeFunction();
+    if (viaEdge.length > 0) return viaEdge;
+  } catch {
+    // fall through to client-side sources
+  }
+
   try {
     const res = await fetch(JINA_SHORTS_URL, { method: 'GET', headers: { Accept: 'text/markdown, text/plain, */*' } });
     if (res.ok) {
@@ -144,6 +159,7 @@ async function fetchOfficialShorts(): Promise<YouTubeChannelVideo[]> {
   const xml = await fetchViaProxies();
   return parseFeed(xml);
 }
+
 
 export function useYouTubeChannelReels(limit = 8) {
   return useQuery({
