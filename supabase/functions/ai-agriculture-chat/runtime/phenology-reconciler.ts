@@ -13,6 +13,13 @@
  *   5. crop_stage_master DAS window   → 0.70
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
+ *   2026-08-30 — v11 (2nd forensic audit, P0 Fix 2/6/7): (a) removed the transitioned_at
+ *     column from the stage_transition_log select — it does not exist, so PostgREST
+ *     failed the query and the catch silently disabled the completed-transition tier;
+ *     now selects/decays on evaluated_at. (b) transition-tier failures log a warning
+ *     instead of vanishing (core evidence, not optional). (c) morphology confidence is
+ *     the detector's own value, no longer Math.max(0.95, .) which promoted every
+ *     reading to 0.95. autonomous_init cap (v10) and GDD/DAS tiers unchanged.
  *   2026-08-19 12:45 UTC — v10: stage_transition_log authority hardening.
  *     trigger_type='autonomous_init' capped at its own stored confidence (never
  *     inflated to 0.90), age decay of 0.05 per 7 days (floor 0.30), and a
@@ -205,7 +212,7 @@ export async function reconcilePhenology(
   try {
     const { data: transitions } = await supabase
       .from('stage_transition_log')
-      .select('to_stage_uuid, trigger_type, confidence, evaluated_at, transitioned_at')
+      .select('to_stage_uuid, trigger_type, confidence, evaluated_at')
       .eq('land_id', landId)
       .not('to_stage_uuid', 'is', null)
       .order('evaluated_at', { ascending: false })
@@ -235,7 +242,9 @@ export async function reconcilePhenology(
         }
 
         // Age decay from the freshest available timestamp.
-        const ts = t.transitioned_at ?? t.evaluated_at ?? null;
+        // P0-2026-08-30 (Fix 2): stage_transition_log has no transitioned_at column;
+        // evaluated_at is the real event timestamp.
+        const ts = t.evaluated_at ?? null;
         const tsMs = ts ? new Date(ts as string).getTime() : NaN;
         if (Number.isFinite(tsMs)) {
           transitionAgeDays = Math.max(0, Math.floor((Date.now() - tsMs) / 86400000));
@@ -257,8 +266,12 @@ export async function reconcilePhenology(
         );
       }
     }
-  } catch (_e) {
-    // Optional signal.
+  } catch (e) {
+    // P0-2026-08-30 (Fix 2/7): the transition tier feeds the biological ledger, so a
+    // schema/query failure here is CORE drift, not optional telemetry. A stale
+    // transitioned_at select silently disabled this whole tier; surface it now so drift
+    // can never hide again. Still best-effort: reconciliation continues on other tiers.
+    console.warn(`[PHENOLOGY_RECON] transition tier unavailable land=${landId} err=${(e as Error)?.message ?? String(e)}`);
   }
 
 
@@ -315,7 +328,11 @@ export async function reconcilePhenology(
           stage_code: morphHit.stage_code ?? null,
           stage_uuid: morphHit.id ?? null,
           source: 'morphological_evidence',
-          confidence: Math.max(0.95, normalized ?? 0.95),
+          // P0-2026-08-30 (Fix 6/11): preserve the detector's own confidence rather than
+          // flooring every reading at 0.95. A photo scored 0.52 must enter as 0.52, not
+          // 0.95; authority is carried by source='morphological_evidence', not by an
+          // inflated magnitude. A null score (detector gave none) keeps the prior 0.95.
+          confidence: normalized ?? 0.95,
         });
 
       }

@@ -161,6 +161,7 @@ import { buildConversationState, type ConversationState } from '../runtime/conve
 import { computeCoverage, isInformative as isInformativeObs } from '../runtime/evidence-coverage.ts';
 import { emitBrainTrace } from '../runtime/brain-trace.ts';
 import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
+import { isFlagEnabled } from '../../_shared/featureFlags.ts';
 import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
 import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
@@ -11417,44 +11418,63 @@ export class AIAgentOrchestrator {
         // runs evaluate_stage_validation and appends to stage_transition_log.
         // Persisted, non-calendar transitions become the ledger tier on the next
         // resolve_crop_phenology call, so the brain stops re-deriving stage from DAS.
-        try {
-          const { data: applyRes, error: applyErr } = await this.supabase
-            .rpc('apply_stage_transitions', { p_land_id: landId });
+        // 2026-08-30 — P0-RC9 (crop biological stage engine audit): a chat turn is READ-ONLY
+        // on stage authority unless feature flag `chat_stage_persist` is enabled for this
+        // tenant/farmer. Live 2026-08-29 17:28: this write persisted an NDVI plateau
+        // transition mid-conversation and, through trg_notify_schedule_reconcile, moved the
+        // farmer's harvest task 24 days earlier without notice. phenology-daily (01:30) is
+        // the single writer; the resolver's on-the-fly preview [B] already lets this turn
+        // reason on evidence-driven stage without persisting it.
+        const stagePersistFlag = await isFlagEnabled(
+          this.supabase as any,
+          'chat_stage_persist',
+          { tenantId: (land as any)?.tenant_id ?? null, farmerId },
+        );
+        if (!stagePersistFlag.enabled) {
+          console.log(
+            `[STAGE_PERSIST] skipped land=${landId} reason=flag_off:${stagePersistFlag.reason} ` +
+              `(chat turns are read-only on stage authority; phenology-daily is the single writer)`,
+          );
+        } else {
+          try {
+            const { data: applyRes, error: applyErr } = await this.supabase
+              .rpc('apply_stage_transitions', { p_land_id: landId });
 
-          if (applyErr) {
-            console.warn(
-              `[STAGE_PERSIST] skipped land=${landId} error=${applyErr.message}`,
-            );
-          } else {
-            const res: any = applyRes ?? {};
-            console.log(
-              `[STAGE_PERSIST] land=${landId} applied=${res.applied === true} ` +
-                `reason=${res.reason ?? 'matched'} ` +
-                `from=${res.from_stage ?? 'null'} to=${res.to_stage ?? 'null'} ` +
-                `blocked=${res.validation?.blocked === true}`,
-            );
+            if (applyErr) {
+              console.warn(
+                `[STAGE_PERSIST] skipped land=${landId} error=${applyErr.message}`,
+              );
+            } else {
+              const res: any = applyRes ?? {};
+              console.log(
+                `[STAGE_PERSIST] land=${landId} applied=${res.applied === true} ` +
+                  `reason=${res.reason ?? 'matched'} ` +
+                  `from=${res.from_stage ?? 'null'} to=${res.to_stage ?? 'null'} ` +
+                  `blocked=${res.validation?.blocked === true}`,
+              );
 
-            if (res.applied === true) {
-              // Re-resolve so this turn reasons on the persisted stage (ledger tier).
-              const reRpc = await this.supabase
-                .rpc('resolve_crop_phenology_for_land', { p_land_id: landId });
-              const reRows = reRpc.data;
-              if (!reRpc.error && Array.isArray(reRows) && reRows.length > 0) {
-                const before = phenology.growth_stage;
-                phenology = reRows[0];
-                console.log(
-                  `[STAGE_PERSIST_REREAD] land=${landId} ${before} → ${phenology.growth_stage} ` +
-                    `(${phenology.stage_code}) src=${phenology.source} conf=${phenology.confidence}`,
-                );
-              } else if (reRpc.error) {
-                console.warn(
-                  `[STAGE_PERSIST_REREAD] failed land=${landId} err=${reRpc.error.message}`,
-                );
+              if (res.applied === true) {
+                // Re-resolve so this turn reasons on the persisted stage (ledger tier).
+                const reRpc = await this.supabase
+                  .rpc('resolve_crop_phenology_for_land', { p_land_id: landId });
+                const reRows = reRpc.data;
+                if (!reRpc.error && Array.isArray(reRows) && reRows.length > 0) {
+                  const before = phenology.growth_stage;
+                  phenology = reRows[0];
+                  console.log(
+                    `[STAGE_PERSIST_REREAD] land=${landId} ${before} → ${phenology.growth_stage} ` +
+                      `(${phenology.stage_code}) src=${phenology.source} conf=${phenology.confidence}`,
+                  );
+                } else if (reRpc.error) {
+                  console.warn(
+                    `[STAGE_PERSIST_REREAD] failed land=${landId} err=${reRpc.error.message}`,
+                  );
+                }
               }
             }
+          } catch (e) {
+            console.warn(`[STAGE_PERSIST] threw land=${landId} err=${(e as Error).message}`);
           }
-        } catch (e) {
-          console.warn(`[STAGE_PERSIST] threw land=${landId} err=${(e as Error).message}`);
         }
       }
       // v5-P8 — Biological Constraint Graph

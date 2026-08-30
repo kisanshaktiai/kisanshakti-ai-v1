@@ -1,4 +1,11 @@
 // CHANGE LOG
+// 2026-08-30 — P0-RC5 (crop biological stage engine audit): a new cycle re-anchors the
+//   THERMAL clock too. lands.gdd_anchor_date is sticky in accumulate_gdd_for_land
+//   ("respect an existing anchor; only derive when NULL"), so writing planting_date
+//   without the anchor left the GDD sum running from the previous cycle (live: 8897e53d
+//   anchored 2026-05-25 vs planting_date 2026-06-15 → +21 phantom days, premature GDD
+//   stage transitions). The anchor follows the accumulator's own precedence
+//   (transplant → planting); cumulative GDD is rebuilt from it by the 6-hourly cron.
 // 2026-08-28 — P0-1/P2 (forensic implementation prompt): (1) crop-identity SSOT gate after
 //   input resolution — generation fails closed as typed CROP_IDENTITY_CONFLICT (HTTP 200,
 //   same convention as LAND_NOT_AVAILABLE) when another ACTIVE schedule on the land carries
@@ -439,6 +446,13 @@ serve(async (req) => {
         current_crop_variety_id: inputs.varietyId,
         planting_date: inputs.sowingDate,
         transplant_date: inputs.transplantDate,
+        // P0-RC5: DAS clock and GDD clock start on the same day (accumulator precedence:
+        // transplant → planting). current_gdd is cleared so a stale sum from the previous
+        // cycle can never feed the stage engine before the rebuild.
+        gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting",
+        gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate,
+        current_gdd: null,
+        gdd_last_computed_at: null,
         expected_harvest_date: harvestDateStr,
         active_schedule_id: savedSchedule.id,
         crop_cycle: inputs.cropCycle,

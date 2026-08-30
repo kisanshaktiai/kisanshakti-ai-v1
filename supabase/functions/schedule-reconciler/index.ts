@@ -1,4 +1,16 @@
 // CHANGE LOG
+// 2026-08-30 — v1.2.1 (crop biological stage engine audit, P0-RC6):
+//   (1) SOURCE GATE — the resolver's stage is only allowed to move tasks when it rests on
+//       evidence: sources das_provisional / das_ledger_provisional /
+//       gate_constrained_calendar (calendar-only, incl. 'autonomous_init' ledger rows) are
+//       skipped as provisional_stage_source. Unknown biology never moves a schedule.
+//   (2) ANCHOR-CORRECT DAY — for transplant-anchored stages (crop_stage_master.das_reference
+//       = 'transplanting') drift is measured on current_dat, not current_das.
+//   (3) SOWING FLOOR — a shifted date can never land before crop_schedules.sowing_date
+//       (live defect: a germination task was moved to 22-May for a crop sown 08-Jun).
+//   Semantics now match the DB-side reconcile_schedule_for_land@1.2.1 exactly, so the
+//   nightly sweep and the synchronous ledger-trigger path can never disagree.
+//   NOTE: this function was NOT deployed on 2026-08-30 (cron POST → 404); deploy it.
 // 2026-08-28 — v1.2.0 (forensic implementation prompt P0-1/P0-2/P1-13/P1-14):
 //   SSOT GATES — before any task of a schedule may move, the reconciler verifies:
 //     (1) CROP IDENTITY: lands.current_crop_id (FK → crops), when set, must resolve to the
@@ -50,7 +62,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ENGINE_VERSION = "schedule-reconciler@1.2.0";
+const ENGINE_VERSION = "schedule-reconciler@1.2.1";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -77,6 +89,9 @@ export function computeStageDrift(
 }
 
 const norm = (s: unknown) => String(s ?? "").trim().toLowerCase();
+
+/** Resolver sources that carry NO biological evidence (resolve_crop_phenology v9). */
+export const PROVISIONAL_SOURCES = new Set(["das_provisional", "das_ledger_provisional", "gate_constrained_calendar"]);
 
 export interface SsotContext {
   scheduleCropNames: string[];
@@ -142,7 +157,7 @@ serve(async (req) => {
     for (const sched of schedules || []) {
       const startedAt = new Date().toISOString();
       const adjustments: Array<Record<string, unknown>> = [];
-      let examined = 0, changed = 0, skipped = 0;
+      let examined = 0, changed = 0, skipped = 0, floorSkipped = 0;
       const failedTaskIds: string[] = [];
 
       // 0. SSOT context: land identity + stored biological stage
@@ -181,7 +196,7 @@ serve(async (req) => {
       // 2. Stage window from the stage master
       const { data: stageRow } = await supabase
         .from("crop_stage_master")
-        .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days")
+        .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days, das_reference")
         .eq("id", stage.stage_uuid)
         .maybeSingle();
 
@@ -226,7 +241,28 @@ serve(async (req) => {
         continue;
       }
 
-      const observedDas: number | null = stage.current_das ?? null;
+      // v1.2.1 SOURCE GATE — calendar-only stages carry no biological evidence and must not
+      // move a farmer's tasks (the DB resolver labels them provisional).
+      if (PROVISIONAL_SOURCES.has(String(stage.source ?? ""))) {
+        results.push({
+          schedule_id: sched.id,
+          success: true,
+          skipped: "provisional_stage_source",
+          stage: stage.stage_code,
+          stage_source: stage.source ?? null,
+          tasks_examined: 0,
+          tasks_changed: 0,
+          started_at: startedAt,
+          completed_at: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      // v1.2.1 ANCHOR-CORRECT DAY — DAT for transplant-anchored stage windows.
+      const observedDas: number | null =
+        String(stageRow?.das_reference ?? "sowing").toLowerCase() === "transplanting"
+          ? (stage.current_dat ?? null)
+          : (stage.current_das ?? null);
 
       // 3. Drift = how far biology is from the calendar assumption. Position within the
       //    observed stage's window is NOT drift (see computeStageDrift).
@@ -267,6 +303,8 @@ serve(async (req) => {
         const shifted = new Date(new Date(baselineDate).getTime() + drift * 86400000);
         const newDate = iso(shifted);
         if (newDate === oldDate) { skipped += 1; continue; }
+        // v1.2.1 SOWING FLOOR — never schedule a task before the crop existed.
+        if (sched.sowing_date && newDate < String(sched.sowing_date)) { skipped += 1; floorSkipped += 1; continue; }
 
         const { error: updErr } = await supabase
           .from("schedule_tasks")
@@ -317,6 +355,7 @@ serve(async (req) => {
         tasks_examined: examined,
         tasks_changed: changed,
         tasks_skipped: skipped,
+        tasks_skipped_before_sowing: floorSkipped,
         tasks_failed: failedTaskIds.length,
         failed_task_ids: failedTaskIds,
         started_at: startedAt,
