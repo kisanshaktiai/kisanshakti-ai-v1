@@ -191,11 +191,21 @@ export default function ModernTaskCard({
                         🔥 {t('schedule.task_card.high_priority')}
                       </Badge>
                     )}
+                    {recurrence && (
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-semibold border-primary/30 text-primary bg-primary/5">
+                        🔁 {t('schedule.task_card.repeats', { days: recurrence.interval_days })}
+                      </Badge>
+                    )}
                   </div>
-                  <RescheduledNotice
-                    variant="full"
-                    className="mt-2"
-                    autoRescheduled={task.auto_rescheduled}
+                  {recurrence && (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {t('schedule.task_card.repeats_window', {
+                        start: recurrence.window_start,
+                        end: recurrence.window_end,
+                      })}
+                    </p>
+                  )}
+
                     originalDate={task.original_date}
                     taskDate={task.task_date}
                     adjustmentReason={task.adjustment_reason ?? task.reschedule_reason}
