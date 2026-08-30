@@ -149,6 +149,33 @@ async function fetchTranslation(varietyId: string, lang: string): Promise<Variet
   return p;
 }
 
+// Read-only: RLS on v_variety_offerings already limits rows to active offerings
+// and allows public SELECT — no auth logic here.
+async function fetchOfferings(varietyId: string): Promise<VarietyOffering[]> {
+  if (offeringsCache.has(varietyId)) return offeringsCache.get(varietyId)!;
+  if (inflightOfferings.has(varietyId)) return inflightOfferings.get(varietyId)!;
+  const p = (async () => {
+    const { data, error } = await supabase
+      .from('v_variety_offerings')
+      .select(
+        'offering_id,company_id,company_name,company_logo_url,brand_name,company_sku,price,currency,pack_size,pack_unit,availability_status,regions'
+      )
+      .eq('variety_id', varietyId)
+      .order('company_name', { ascending: true });
+    if (error) {
+      console.error('[useCropVarieties] offerings error', error);
+      inflightOfferings.delete(varietyId);
+      return [];
+    }
+    const rows = (data ?? []) as VarietyOffering[];
+    offeringsCache.set(varietyId, rows);
+    inflightOfferings.delete(varietyId);
+    return rows;
+  })();
+  inflightOfferings.set(varietyId, p);
+  return p;
+}
+
 export function useCropVarieties(cropId?: string | null) {
   const [varieties, setVarieties] = useState<CropVariety[]>([]);
   const [loading, setLoading] = useState(false);
