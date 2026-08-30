@@ -1,4 +1,11 @@
 // CHANGE LOG
+// 2026-08-29 — v1.3.0 WEATHER ADAPTATION: the baseline now emits ONE recurring irrigation
+//   task per stage window (generator v1.5.0) instead of a dated clone per interval. This
+//   function is the layer that turns that cadence into real events: when today's
+//   land_weather_state says irrigation is not needed (rain covered the deficit), a task due
+//   today/tomorrow is deferred by its own DB-declared interval and logged as a DEFER
+//   adjustment with the water-balance evidence. Tasks with no declared cadence are never
+//   moved — no guessed intervals.
 // 2026-08-30 — v1.2.1 (crop biological stage engine audit, P0-RC6):
 //   (1) SOURCE GATE — the resolver's stage is only allowed to move tasks when it rests on
 //       evidence: sources das_provisional / das_ledger_provisional /
@@ -62,7 +69,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ENGINE_VERSION = "schedule-reconciler@1.2.1";
+const ENGINE_VERSION = "schedule-reconciler@1.3.0";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -287,7 +294,7 @@ serve(async (req) => {
         const horizon = iso(new Date(Date.now() + 86400000));
         const { data: dueIrrigation } = await supabase
           .from("schedule_tasks")
-          .select("id, task_date, resources, is_pinned")
+          .select("id, task_date, resources, is_pinned, original_date")
           .eq("schedule_id", sched.id)
           .eq("status", "pending")
           .eq("task_type", "irrigation")
@@ -439,6 +446,7 @@ serve(async (req) => {
         tasks_changed: changed,
         tasks_skipped: skipped,
         tasks_skipped_before_sowing: floorSkipped,
+        irrigation_deferred: irrigationDeferred,
         tasks_failed: failedTaskIds.length,
         failed_task_ids: failedTaskIds,
         started_at: startedAt,
