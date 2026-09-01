@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-09-01 — v1.5.1 farmer-semantic projection fix: irrigation guideline.notes is a
+// generic stage note and is NOT safe to project into an irrigation card. Only
+// irrigation-specific DB fields are farmer-facing; the raw note remains unprojected.
 // 2026-08-29 — v1.5.0 "same task every day" fix: (1) irrigation guideline rows are RULES,
 //   not calendars — one recurring task per stage window carrying `recurrence`
 //   {interval_days, window_start, window_end, expected_events} instead of one dated clone
@@ -81,7 +84,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.5.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.5.1";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -528,6 +531,7 @@ export async function generateBaseline(
         source_refs: [fert.provenance],
         instructions: [],
         precautions: [],
+        resources: { requirement_semantics: "BASELINE" },
       });
     }
   }
@@ -587,7 +591,10 @@ export async function generateBaseline(
         ? shortName(label ? `Stop irrigation — ${label}` : "Stop irrigation")
         : shortName(label ? `Irrigation — ${label}` : "Irrigation"),
       task_type: isWithdrawal ? "advisory" : "irrigation",
-      task_description: g.notes ?? "",
+      // Generic guideline notes can contain nutrition, nursery, seed-treatment or
+      // other stage guidance. They are not an irrigation-specific field and must not
+      // be shown under an irrigation action.
+      task_description: "",
       days_from_sowing: g.dasStart,
       anchor_type: stage ? "STAGE" : "DAS",
       anchor_stage: stage?.stage_code || g.growthStage || null,
@@ -611,6 +618,10 @@ export async function generateBaseline(
       recurrence: isWithdrawal
         ? null
         : { interval_days: step, window_start: g.dasStart, window_end: g.dasEnd, expected_events: expectedEvents },
+      resources: {
+        requirement_semantics: isWithdrawal ? "BASELINE_WITHDRAWAL" : "BASELINE",
+        ...(g.notes ? { source_note_unprojected: true } : {}),
+      },
     };
 
     const existing = irrigationByStart.get(g.dasStart);
