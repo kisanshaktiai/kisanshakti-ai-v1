@@ -79,6 +79,21 @@
       "expired_tap_renew": "Tap to renew"
     },
     "undo": "Undo",
-    "try_again": "Try again"
+    "try_again": "Try again",
+    "acres": "acres",
+    "addLand": "Add Land",
+    "clear": "Clear",
+    "copied": "Copied",
+    "daysShort": "d",
+    "featureInDevelopment": "This feature is currently in development",
+    "goBack": "Go Back",
+    "goHome": "Go to Home",
+    "goodMorning": "Good Morning",
+    "goodAfternoon": "Good Afternoon",
+    "goodEvening": "Good Evening",
+    "info": "Info",
+    "listen": "Listen",
+    "loadingFeatures": "Loading features...",
+    "rateLimitError": "Too many requests. Please wait a moment and try again."
   }
 }

@@ -33,7 +33,11 @@
     "sync_data": "डेटा सिंक करा",
     "never_synced": "कधीही सिंक नाही",
     "just_now": "आत्ताच",
-    "pending": "प्रलंबित"
+    "pending": "प्रलंबित",
+    "all_up_to_date": "सर्व काही अद्ययावत आहे",
+    "some_data_failed": "काही माहिती सिंक होऊ शकली नाही",
+    "refresh_suggestion": "रिफ्रेश करण्यासाठी खाली ओढा आणि पुन्हा प्रयत्न करा",
+    "clearing_and_reloading": "डेटा काढून पुन्हा लोड होत आहे..."
   },
   "__qa": {
     "voice_examples_en": [

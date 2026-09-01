@@ -32,7 +32,11 @@
     "sync_data": "Sync data",
     "never_synced": "Never synced",
     "just_now": "Just now",
-    "pending": "Pending"
+    "pending": "Pending",
+    "all_up_to_date": "Everything is up to date",
+    "some_data_failed": "Some data could not be synced",
+    "refresh_suggestion": "Pull down to refresh and try again",
+    "clearing_and_reloading": "Clearing data and reloading..."
   },
   "__qa": {
     "voice_examples_en": [

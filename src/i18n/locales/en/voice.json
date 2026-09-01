@@ -38,6 +38,8 @@
     "voiceDownloaded": "Voice downloaded successfully",
     "voiceDownloadFailed": "Voice download failed",
     "offlineVoice": "Offline Voice",
-    "onlineVoice": "Online Voice"
+    "onlineVoice": "Online Voice",
+    "speaking": "Speaking...",
+    "tryCommands": "Try saying:"
   }
 }

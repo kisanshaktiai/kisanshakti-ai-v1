@@ -100,7 +100,10 @@
       },
       "buttons": {
         "start_mapping": "मैपिंग शुरू करें",
-        "skip_instructions": "निर्देश छोड़ें और अभी शुरू करें"
+        "skip_instructions": "निर्देश छोड़ें और अभी शुरू करें",
+        "previous": "पिछला",
+        "next": "अगला",
+        "voice_guide": "आवाज़ गाइड"
       }
     },
     "map": {
@@ -167,7 +170,10 @@
         "cultivation_date": "खेती की तारीख",
         "last_harvest_date": "अंतिम फसल की तारीख",
         "select": "{{field}} चुनें",
-        "required": "आवश्यक"
+        "required": "आवश्यक",
+        "basic_information": "बुनियादी जानकारी",
+        "select_state": "राज्य चुनें",
+        "select_district": "ज़िला चुनें"
       },
       "soil_types": {
         "alluvial": "जलोढ़",
@@ -206,7 +212,9 @@
         "next": "अगला",
         "cancel": "रद्द करें",
         "save_land": "भूमि सहेजें",
-        "saving": "सहेजा जा रहा है..."
+        "saving": "सहेजा जा रहा है...",
+        "start_mapping": "मैपिंग शुरू करें",
+        "skip_instructions": "निर्देश छोड़कर अभी शुरू करें"
       },
       "toast": {
         "success_title": "सफलता",
@@ -476,7 +484,12 @@
         "district": "ज़िला चुनना ज़रूरी है",
         "crop": "अभी की फसल चुनना ज़रूरी है",
         "sowing": "बुवाई की तारीख ज़रूरी है"
-      }
+      },
+      "exactDate": "सटीक तारीख (वैकल्पिक)",
+      "holdToTalk": "बोलने के लिए दबाए रखें",
+      "listening": "सुन रहे हैं…",
+      "stageEstimated": "कैलेंडर से अनुमानित",
+      "voiceUnsupported": "आवाज़ सुविधा उपलब्ध नहीं"
     },
     "location": {
       "title": "जगह",
@@ -503,7 +516,10 @@
       "villageTypeName": "गाँव का नाम लिखें",
       "useTypedAbove": "जो लिखा है उसी का उपयोग करें",
       "openParent": "खोलें"
-    }
+    },
+    "quota_title": "ज़मीन की सीमा पूरी",
+    "quota_body": "आपने {{plan}} प्लान में {{used}}/{{limit}} ज़मीन इस्तेमाल की हैं। और जोड़ने के लिए प्लान बढ़ाएँ।",
+    "quota_body_short": "आपने {{used}}/{{limit}} ज़मीन इस्तेमाल की हैं। और जोड़ने के लिए प्लान बढ़ाएँ।"
   },
   "__qa": {
     "voice_examples_en": [

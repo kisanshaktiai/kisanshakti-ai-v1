@@ -24,7 +24,18 @@
     "small_marginal": "Small and marginal farmers",
     "free": "Free",
     "variable": "Variable",
-    "per_year": "/year"
+    "per_year": "/year",
+    "amount_label": "Benefit",
+    "eligibility_label": "Eligibility",
+    "pm_kisan_title": "PM-KISAN",
+    "pm_kisan_description": "Direct income support paid to eligible farmer families in three instalments a year.",
+    "pm_kisan_amount": "₹6,000 per year",
+    "crop_insurance_title": "Pradhan Mantri Fasal Bima Yojana",
+    "crop_insurance_description": "Crop insurance cover against natural calamities, pests and disease.",
+    "crop_insurance_amount": "Up to the full sum insured",
+    "soil_health_title": "Soil Health Card",
+    "soil_health_description": "Free soil testing with nutrient recommendations for your field.",
+    "soil_health_amount": "Free"
   },
   "__qa": {
     "voice_examples_en": [

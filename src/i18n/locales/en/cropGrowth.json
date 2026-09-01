@@ -72,6 +72,10 @@
       "nearby": "Nearby",
       "far": "Far from land",
       "unknown": "Location unknown"
-    }
+    },
+    "assumptions": "Assumptions",
+    "basedOn": "Based on",
+    "confident": "confident",
+    "yieldEstimate": "Expected Yield"
   }
 }

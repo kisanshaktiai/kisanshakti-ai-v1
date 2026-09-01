@@ -87,6 +87,11 @@
         "startDownload": "अभी डाउनलोड करें",
         "useHindi": "हिंदी उपयोग करें",
         "continueUsingApp": "आप डाउनलोड करते समय ऐप का उपयोग जारी रख सकते हैं"
+      },
+      "feedback_section": {
+        "feedback_yes": "Yes",
+        "feedback_no": "No",
+        "feedback_thanks": "Thank you for your feedback!"
       }
     },
     "schedule": {
@@ -158,6 +163,57 @@
       "send_selected": "भेजें ({{count}} चयनित)",
       "diagnostic_title": "कारण पहचानने में मदद करें",
       "diagnostic_hint": "अपने खेत में जो दिखता है उसे चुनें"
+    },
+    "harvest": "कटाई",
+    "sown": "बुवाई",
+    "moisture": "नमी",
+    "noData": "कोई जानकारी नहीं",
+    "landNotFound": "ज़मीन नहीं मिली",
+    "loadingHistory": "आपकी बातचीत लोड हो रही है...",
+    "noLands": "अभी कोई ज़मीन नहीं जोड़ी गई",
+    "openingGeneralChat": "सामान्य चैट खोली जा रही है।",
+    "searchMessages": "खोजें...",
+    "thinking": "आपका सवाल समझा जा रहा है...",
+    "quota": {
+      "exceeded_title": "आज की चैट समाप्त हो गई",
+      "exceeded_body_short": "नई चैट आधी रात को अपने आप शुरू हो जाएँगी।",
+      "tenant_disabled_title": "एआई चैट उपलब्ध नहीं",
+      "tenant_disabled_body": "आपकी संस्था के लिए एआई चैट चालू नहीं है।"
+    },
+    "tts": {
+      "play": "सुनें",
+      "pause": "रोकें",
+      "resume": "जारी रखें",
+      "stop": "बंद करें",
+      "settings": "सेटिंग्स",
+      "settingsDescription": "अपनी भाषा के लिए आवाज़ सेटिंग बदलें",
+      "notSupported": "आवाज़ सुविधा इस डिवाइस पर उपलब्ध नहीं है",
+      "speed": "बोलने की गति",
+      "slow": "धीमा",
+      "normal": "सामान्य",
+      "fast": "तेज़",
+      "voiceSelection": "आवाज़",
+      "options": "विकल्प",
+      "autoRead": "नए संदेश अपने आप पढ़ें",
+      "autoReadDesc": "नए एआई जवाब अपने आप सुनाएँ",
+      "highlightFull": "पूरा संदेश हाइलाइट करें",
+      "highlightFullDesc": "वाक्य-दर-वाक्य के बजाय",
+      "settingsSaved": "आवाज़ सेटिंग सहेजी गई",
+      "settingsReset": "सेटिंग्स डिफ़ॉल्ट पर लौटाई गईं",
+      "confirmReset": "क्या सभी सेटिंग्स डिफ़ॉल्ट पर लौटानी हैं?",
+      "downloadingVoice": "आवाज़ डाउनलोड हो रही है",
+      "downloadingDesc": "{{language}} आवाज़ डाउनलोड हो रही है ({{progress}}%)",
+      "downloadComplete": "आवाज़ तैयार है!",
+      "downloadError": "डाउनलोड में गड़बड़ी",
+      "downloadFailed": "डाउनलोड नहीं हुआ। कृपया इंटरनेट कनेक्शन जाँचें।",
+      "estimatedTime": "अनुमानित समय: ~{{seconds}} सेकंड",
+      "insufficientStorage": "जगह कम है। लगभग 80MB खाली चाहिए। अभी खाली: {{space}}MB",
+      "usingFallback": "फ़िलहाल हिंदी आवाज़ चल रही है। {{language}} आवाज़ बाद में सेटिंग्स से डाउनलोड कर सकते हैं।",
+      "startDownload": "अभी डाउनलोड करें",
+      "useHindi": "हिंदी इस्तेमाल करें",
+      "continueUsingApp": "डाउनलोड के दौरान ऐप चलाते रह सकते हैं",
+      "voiceReady": "{{language}} आवाज़ तैयार है!",
+      "voiceReadyDesc": "{{language}} आवाज़ अब उपलब्ध है"
     }
   },
   "__qa": {

@@ -79,6 +79,21 @@
       "expired_tap_renew": "नवीनीकरण करें"
     },
     "undo": "वापस लें",
-    "try_again": "फिर से प्रयास करें"
+    "try_again": "फिर से प्रयास करें",
+    "acres": "एकड़",
+    "addLand": "ज़मीन जोड़ें",
+    "clear": "हटाएँ",
+    "copied": "कॉपी हो गया",
+    "daysShort": "दि",
+    "featureInDevelopment": "यह सुविधा अभी बन रही है",
+    "goBack": "वापस जाएँ",
+    "goHome": "होम पर जाएँ",
+    "goodMorning": "सुप्रभात",
+    "goodAfternoon": "नमस्कार",
+    "goodEvening": "शुभ संध्या",
+    "info": "जानकारी",
+    "listen": "सुनें",
+    "loadingFeatures": "सुविधाएँ लोड हो रही हैं...",
+    "rateLimitError": "बहुत ज़्यादा अनुरोध। कृपया थोड़ी देर बाद प्रयास करें।"
   }
 }

@@ -22,7 +22,15 @@
       "warning": "चेतावनी",
       "success": "सफलता",
       "urgent": "तत्काल"
-    }
+    },
+    "irrigation_title": "सिंचाई सलाह",
+    "pest_alert_title": "कीट चेतावनी",
+    "pest_alert_content": "आज खेत में कीट नुकसान की जाँच करें और फसल का निरीक्षण करें।",
+    "market_update_title": "बाज़ार अपडेट",
+    "market_update_content": "उपज बेचने से पहले आज के मंडी भाव देखें।",
+    "time_2h_ago": "2 घंटे पहले",
+    "time_5h_ago": "5 घंटे पहले",
+    "time_1d_ago": "1 दिन पहले"
   },
   "__qa": {
     "voice_examples_en": [

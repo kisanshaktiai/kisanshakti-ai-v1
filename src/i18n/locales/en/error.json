@@ -8,7 +8,8 @@
   "error": {
     "notFound": {
       "title": "Oops! Page not found",
-      "message": "The page you're looking for doesn't exist"
+      "message": "The page you're looking for doesn't exist",
+      "description": "The page you are looking for might have been removed or is temporarily unavailable."
     },
     "boundary": {
       "something_went_wrong": "Oops! Something went wrong",
@@ -31,7 +32,11 @@
       "save_failed": "Failed to save data",
       "delete_failed": "Failed to delete",
       "try_again": "Please try again"
-    }
+    },
+    "title": "Something went wrong",
+    "accessDenied": "Access denied",
+    "pageNotFound": "Page not found",
+    "serverError": "Server error"
   },
   "__qa": {
     "voice_examples_en": [

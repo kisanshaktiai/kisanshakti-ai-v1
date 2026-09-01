@@ -63,6 +63,22 @@
       "available": "उपलब्ध",
       "not_available": "उपलब्ध नाही",
       "storage": "स्टोरेज"
+    },
+    "tts": {
+      "title": "आवाज सेटिंग",
+      "description": "मजकूर-वाचन सेटिंग करा",
+      "enable": "आवाजात वाचन",
+      "toggle": "आवाजात वाचन सुरू/बंद",
+      "language": "आवाजाची भाषा",
+      "speed": "वेग",
+      "volume": "आवाजाची पातळी",
+      "test": "आवाज तपासा",
+      "loading": "लोड होत आहे...",
+      "reset": "पूर्ववत करा",
+      "autoRead": "आपोआप वाचन",
+      "autoReadChat": "एआय चॅट उत्तरे",
+      "autoReadAlerts": "हवामान व सूचना",
+      "autoReadSchedule": "दैनंदिन कामे"
     }
   },
   "__qa": {

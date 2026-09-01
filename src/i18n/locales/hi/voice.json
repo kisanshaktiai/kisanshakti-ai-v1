@@ -38,6 +38,8 @@
     "voiceDownloaded": "आवाज सफलतापूर्वक डाउनलोड हुई",
     "voiceDownloadFailed": "आवाज डाउनलोड विफल",
     "offlineVoice": "ऑफलाइन आवाज",
-    "onlineVoice": "ऑनलाइन आवाज"
+    "onlineVoice": "ऑनलाइन आवाज",
+    "speaking": "बोल रहे हैं...",
+    "tryCommands": "ऐसा बोलकर देखें:"
   }
 }
