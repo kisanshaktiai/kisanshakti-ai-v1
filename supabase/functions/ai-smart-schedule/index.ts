@@ -242,7 +242,7 @@ serve(async (req) => {
 
 
     // ── PHASE 2: day-0 baseline, database rows only ─────────────────────────
-    const baseline = await generateBaseline(supabase, inputs);
+    const baseline = await generateBaseline(supabase, inputs, { tenantId });
 
     if (!baseline.tasks.length) {
       return json(

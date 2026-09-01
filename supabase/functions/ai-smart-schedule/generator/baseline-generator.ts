@@ -81,7 +81,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.5.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.6.0";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -302,6 +302,7 @@ function dasFromSplit(
 export async function generateBaseline(
   supabase: SupabaseClient,
   inputs: ResolvedInputs,
+  context: { tenantId?: string | null } = {},
 ): Promise<BaselineResult> {
   const gaps: string[] = [...inputs.gaps];
   const coverage: Record<string, boolean> = {};
@@ -626,7 +627,13 @@ export async function generateBaseline(
 
 
   // ── Field-action rules (scouting, protection, operations) ──────────────────
-  const rules = await getFieldActionRules(supabase, inputs.cropCode, inputs.regionCode, applicMethods);
+  const rules = await getFieldActionRules(
+    supabase,
+    inputs.cropCode,
+    inputs.regionCode,
+    applicMethods,
+    context.tenantId ?? null,
+  );
   const banned = await getBannedChemicals(supabase);
   const taskTypeMap = await loadTaskTypeMap(supabase);
   coverage.field_actions = rules.length > 0;
@@ -652,10 +659,28 @@ export async function generateBaseline(
       .filter((m) => m.das != null)
       .sort((a, b) => (a.das as number) - (b.das as number) ||
         String(a.stage.stage_code ?? "").localeCompare(String(b.stage.stage_code ?? "")));
-    if (!matched.length) continue;
+    if (!matched.length) {
+      // Do not silently discard a rule whose DB stage token is not present in the
+      // selected biological graph. The rule remains unapplied and the gap is explicit.
+      const unresolvedTokens = stageList.length ? stageList : ["<empty>"];
+      for (const token of unresolvedTokens) {
+        gaps.push(`rule_stage_token_unmatched:${rule.rule_id}:${token}`);
+      }
+      continue;
+    }
 
     {
+      // One logical task per authoritative rule. Multi-stage applicability is a
+      // stage window, not evidence that the operation should be repeated at every
+      // stage. Anchor at the earliest selected-graph stage and retain the complete
+      // matched stage identity in resources for reconciliation/audit.
       const { stage, das } = matched[0];
+      const applicableStages = matched.map((m) => ({
+        stage_uuid: m.stage.id,
+        stage_key: m.stage.stage_code,
+        stage_name: m.stage.growth_stage,
+        days_from_sowing: m.das,
+      }));
       const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
       const ruleInstructions: string[] = [];
@@ -701,6 +726,9 @@ export async function generateBaseline(
         source_refs: [{ table: "decision_rules", row_id: rule.rule_id, source: rule.scientific_source ?? null }],
         instructions: ruleInstructions,
         precautions: rulePrecautions,
+        resources: applicableStages.length > 1
+          ? { applicable_stage_window: applicableStages }
+          : undefined,
       });
     }
   }
@@ -717,7 +745,13 @@ export async function generateBaseline(
       .slice(0, MAX_SCOUT_RULE_IDS)
       .map((r) => r.id);
 
-  const observationRules = await getObservationRules(supabase, inputs.cropCode, inputs.regionCode, applicMethods);
+  const observationRules = await getObservationRules(
+    supabase,
+    inputs.cropCode,
+    inputs.regionCode,
+    applicMethods,
+    context.tenantId ?? null,
+  );
   coverage.monitoring = false;
   if (observationRules.length) {
     const ruleById = new Map(observationRules.map((r) => [r.rule_id, r]));
@@ -822,6 +856,10 @@ export async function generateBaseline(
       entry.task.instructions = [...entry.task.instructions, ...brief.instructions];
       entry.task.resources = brief.resources;
       if (!brief.description && !brief.instructions.length) gaps.push("scouting_brief_empty");
+      entry.task.source_refs = entry.task.rule_ids.map((ruleId) => ({
+        table: "decision_rules",
+        row_id: ruleId,
+      }));
       tasks.push(entry.task);
     }
   }
