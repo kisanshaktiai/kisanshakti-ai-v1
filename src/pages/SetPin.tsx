@@ -35,16 +35,7 @@ export default function SetPin() {
     if (!mobile || !tenantId) {
       navigate('/auth');
     }
-    // For existing farmers, we need farmerId
-    if (!isNewRegistration && !farmerId) {
-      navigate('/auth');
-    }
-  }, [mobile, farmerId, tenantId, isNewRegistration, navigate]);
-
-  const hashPin = (pin: string): string => {
-    const SALT = 'kisan_shakti_2024';
-    return CryptoJS.SHA256(pin + SALT).toString();
-  };
+  }, [mobile, tenantId, isNewRegistration, navigate]);
 
   const handlePinComplete = async () => {
     if (step === 'set') {
@@ -106,13 +97,14 @@ export default function SetPin() {
         language: farmer.language_preference || 'hi',
         tenantId: farmer.tenant_id,
         farmerCode: farmer.farmer_code,
-        sessionToken: session.token,
+        sessionToken: result.session.token,
         lastLoginAt: new Date().toISOString()
       });
       
       // Clear temp storage
       localStorage.removeItem('authMobile');
       localStorage.removeItem('farmerId');
+      localStorage.removeItem('requiresCurrentPin');
       localStorage.removeItem('isNewRegistration');
       localStorage.removeItem('registerMobile');
       
