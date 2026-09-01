@@ -39,6 +39,10 @@ export default function SetPin() {
 
   const handlePinComplete = async () => {
     if (step === 'set') {
+      if (requiresCurrentPin && currentPin.length !== 4) {
+        setError(t('auth.enterCurrentPin') || 'Enter your current PIN to continue');
+        return;
+      }
       if (pin.length !== 4) {
         setError(t('auth.pinMustBe4Digits') || 'PIN must be 4 digits');
         return;
@@ -169,6 +173,25 @@ export default function SetPin() {
         )}
 
         <div className="space-y-6">
+          {/* Current PIN — required to replace an existing PIN */}
+          {requiresCurrentPin && step === 'set' && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                {t('auth.currentPin') || 'Current PIN'}
+              </label>
+              <div className="flex justify-center">
+                <InputOTP maxLength={4} value={currentPin} onChange={setCurrentPin} disabled={isLoading}>
+                  <InputOTPGroup className="gap-2">
+                    <InputOTPSlot index={0} mask className="w-14 h-14 text-lg" />
+                    <InputOTPSlot index={1} mask className="w-14 h-14 text-lg" />
+                    <InputOTPSlot index={2} mask className="w-14 h-14 text-lg" />
+                    <InputOTPSlot index={3} mask className="w-14 h-14 text-lg" />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
+            </div>
+          )}
+
           {/* PIN Input */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
