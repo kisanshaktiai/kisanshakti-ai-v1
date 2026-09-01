@@ -4,13 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
 import { Loader2, Phone, ArrowLeft, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { localDB } from '@/services/localDB';
 import { offlineAuthService } from '@/services/offlineAuthService';
+import { farmerAuthService } from '@/services/farmerAuthService';
 
 export default function MobileAuth() {
   const { t } = useTranslation();
@@ -81,54 +81,35 @@ export default function MobileAuth() {
         return;
       }
       
-      // ONLINE: Check Supabase with retry for flaky networks
-      console.log('🌐 [MobileAuth] Online mode - checking Supabase');
+      // ONLINE: server-side existence probe. Returns no identifiers, so a
+      // caller cannot enumerate farmer/tenant UUIDs from this endpoint.
+      console.log('🌐 [MobileAuth] Online mode - checking account via farmer-auth');
       const maxRetries = 2;
+      let lookup: { exists: boolean; requiresPinSetup: boolean } | null = null;
       let lastNetworkError: any = null;
-      
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          let query = supabase
-            .from('farmers')
-            .select('id, mobile_number, farmer_code, tenant_id')
-            .eq('mobile_number', mobile);
-          
-          // Only add tenant filter if tenant exists
-          if (tenant?.id) {
-            query = query.eq('tenant_id', tenant.id);
-          }
-          
-          const { data: farmerRows, error: fetchError } = await query.limit(2);
-
-          if (fetchError) {
-            console.error('Error fetching farmer:', fetchError);
-            throw fetchError;
-          }
-          
-          farmer = farmerRows?.[0] ?? null;
+          lookup = await farmerAuthService.lookup(mobile, tenant?.id);
           lastNetworkError = null;
-          break; // Success, exit retry loop
+          break;
         } catch (networkError: any) {
           lastNetworkError = networkError;
-          const isNetworkErr = networkError.message?.includes('Failed to fetch') || 
+          const isNetworkErr = networkError.message?.includes('Failed to fetch') ||
                                networkError.message === 'Load failed' ||
                                networkError.name === 'TypeError';
-          
           console.warn(`⚠️ [MobileAuth] Attempt ${attempt}/${maxRetries} failed:`, networkError.message);
-          
           if (!isNetworkErr || attempt >= maxRetries) break;
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
-      
-      // If all online attempts failed, fallback to offline
-      if (lastNetworkError) {
+
+      if (lastNetworkError || !lookup) {
         console.log('⚠️ [MobileAuth] All online attempts failed, checking offline cache');
         if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
-          farmer = cachedAuth.farmerData;
           localStorage.setItem('authMobile', mobile);
-          localStorage.setItem('farmerId', farmer.id);
-          localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+          localStorage.setItem('farmerId', cachedAuth.farmerId);
+          localStorage.setItem('tenantId', cachedAuth.tenantId || tenant?.id || '');
           navigate('/pin-auth');
           return;
         }
@@ -137,70 +118,25 @@ export default function MobileAuth() {
         return;
       }
 
-      if (farmer) {
-        console.log('Farmer found:', farmer.id);
-        // Farmer exists, navigate to PIN entry
-        localStorage.setItem('authMobile', mobile);
-        localStorage.setItem('farmerId', farmer.id);
-        localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+      localStorage.setItem('authMobile', mobile);
+      localStorage.setItem('tenantId', tenant?.id || '');
+      localStorage.removeItem('farmerId');
+
+      if (lookup.exists && !lookup.requiresPinSetup) {
+        localStorage.removeItem('isNewRegistration');
+        localStorage.removeItem('requiresCurrentPin');
         navigate('/pin-auth');
+      } else if (lookup.exists) {
+        // Account exists but has never had a PIN — first-time PIN setup.
+        localStorage.removeItem('isNewRegistration');
+        localStorage.removeItem('requiresCurrentPin');
+        navigate('/set-pin');
       } else {
-        console.log('Creating new farmer with tenant_id:', tenant?.id);
-        // New farmer, create entry
-        const farmerData: any = {
-          mobile_number: mobile,
-          language_preference: localStorage.getItem('i18nextLng') || 'hi',
-          is_active: true,
-          app_install_date: new Date().toISOString(),
-          total_app_opens: 0,
-          login_attempts: 0,
-          failed_login_attempts: 0
-        };
-        
-        // Only add tenant_id if it exists
-        if (tenant?.id) {
-          farmerData.tenant_id = tenant.id;
-        }
-        
-        const { data: newFarmerRows, error: insertError } = await supabase
-          .from('farmers')
-          .insert(farmerData)
-          .select()
-          .limit(1);
-
-        if (insertError) {
-          console.error('Error creating farmer:', insertError);
-          throw insertError;
-        }
-
-        const newFarmer = newFarmerRows?.[0];
-        if (!newFarmer) {
-          throw new Error('Farmer account could not be created. Please try again.');
-        }
-
-        console.log('New farmer created:', newFarmer.id);
-        
-        // Create user profile
-        const profileData: any = {
-          id: newFarmer.id,
-          farmer_id: newFarmer.id,
-          mobile_number: mobile,
-          preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
-          is_profile_complete: false
-        };
-        
-        // Only add tenant_id if it exists
-        if (tenant?.id) {
-          profileData.tenant_id = tenant.id;
-        }
-        
-        await supabase
-          .from('user_profiles')
-          .insert(profileData);
-
-        localStorage.setItem('authMobile', mobile);
-        localStorage.setItem('farmerId', newFarmer.id);
-        localStorage.setItem('tenantId', newFarmer.tenant_id || tenant?.id || '');
+        // New account: the farmer row is created server-side together with the
+        // PIN, so nothing is written until /set-pin completes.
+        localStorage.setItem('isNewRegistration', 'true');
+        localStorage.setItem('registerMobile', mobile);
+        localStorage.removeItem('requiresCurrentPin');
         navigate('/set-pin');
       }
     } catch (err: any) {

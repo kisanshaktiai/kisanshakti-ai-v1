@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase, updateSupabaseHeaders } from '@/integrations/supabase/client';
+import { farmerAuthService } from '@/services/farmerAuthService';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -79,43 +80,36 @@ export default function AuthScreen() {
         tenant_name: tenant.name
       });
 
-      // Set tenant header for RLS policy before pre-auth query
+      // Server-side existence probe (no identifiers returned).
       updateSupabaseHeaders(undefined, tenant.id);
-      
-      // MULTI-TENANT QUERY: Always filter by tenant_id + mobile_number
-      // Mobile numbers are stored as strings without country code
-      const { data: farmer, error: fetchError } = await supabase
-        .from('farmers')
-        .select('id, mobile_number, pin_hash, tenant_id, farmer_code')
-        .eq('mobile_number', cleanMobile)
-        .eq('tenant_id', tenant.id)
-        .maybeSingle();
 
-      console.log('Farmer search result:', { farmer, error: fetchError });
+      const lookup = await farmerAuthService.lookup(cleanMobile, tenant.id);
 
-      if (fetchError) {
-        console.error('Error fetching farmer:', fetchError);
-        throw fetchError;
-      }
-
-      if (farmer) {
-        // Farmer exists, create session and navigate to PIN entry
-        createSession(farmer.id, tenant.id, cleanMobile);
-        localStorage.setItem('authMobile', cleanMobile); // Store cleaned mobile
-        localStorage.setItem('farmerId', farmer.id);
+      if (lookup.exists && !lookup.requiresPinSetup) {
+        localStorage.setItem('authMobile', cleanMobile);
         localStorage.setItem('tenantId', tenant.id);
+        localStorage.removeItem('farmerId');
+        localStorage.removeItem('isNewRegistration');
+        localStorage.removeItem('requiresCurrentPin');
         setStep('pin');
         navigate('/pin');
+      } else if (lookup.exists) {
+        // Account exists without a PIN — first-time PIN setup.
+        localStorage.setItem('authMobile', cleanMobile);
+        localStorage.setItem('tenantId', tenant.id);
+        localStorage.removeItem('isNewRegistration');
+        localStorage.removeItem('requiresCurrentPin');
+        setStep('setpin');
+        navigate('/set-pin');
       } else if (mode === 'register') {
-        // Store registration data and navigate to PIN setup
-        // Don't create farmer record yet - wait until PIN is set
+        // The farmer row is created server-side together with the PIN.
         localStorage.setItem('registerMobile', cleanMobile);
         localStorage.setItem('tenantId', tenant.id);
         localStorage.setItem('isNewRegistration', 'true');
+        localStorage.removeItem('requiresCurrentPin');
         setStep('setpin');
         navigate('/set-pin');
       } else {
-        // User not found, switch to register mode
         setMode('register');
         setError(t('auth.accountNotFound') || 'No account found with this number. Click Continue to register.');
       }

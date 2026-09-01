@@ -4,6 +4,7 @@ import { resolveTenantFromRequest } from '../_shared/tenantMiddleware.ts';
 import { withTenantBlocker } from '../_shared/tenantBlocker.ts';
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { handleFarmerAuth, isFarmerAuthAction } from '../_shared/farmer-auth-core.ts';
 
 /**
  * Tenant Config API - Centralized Multi-Tenant Configuration Endpoint
@@ -331,6 +332,17 @@ serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Farmer authentication transport.
+  // The auth handler lives in ../_shared/farmer-auth-core.ts and is also served
+  // by the `farmer-auth` function; it is mounted here as well so the client has
+  // a always-reachable endpoint for login/registration.
+  if (req.method === 'POST') {
+    const body = await req.json().catch(() => ({}));
+    if (isFarmerAuthAction(body)) {
+      return await handleFarmerAuth(req, body);
+    }
   }
 
   // Only allow GET requests

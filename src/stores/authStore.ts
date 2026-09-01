@@ -197,9 +197,17 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         console.log('🚪 [Auth] Logging out - clearing auth data');
-        
+
+        // Revoke the server-side session (best effort) before clearing state.
+        const token = get().session?.token ?? get().user?.sessionToken ?? null;
+        import('@/services/farmerAuthService')
+          .then(({ farmerAuthService }) => farmerAuthService.logout(token))
+          .catch(() => { /* offline logout — local state is still cleared */ });
+
         // Reset headers state IMMEDIATELY
         clearGlobalAuthData();
+        
+
         
         // Clear all auth data
         set({ 

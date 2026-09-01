@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, KeyRound, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
+import { farmerAuthService } from '@/services/farmerAuthService';
 import { offlineAuthService } from '@/services/offlineAuthService';
 
 /**
@@ -53,17 +54,12 @@ export default function ForgotPin() {
 
     setIsLoading(true);
     try {
-      const { data: farmer, error: fetchError } = await supabase
-        .from('farmers')
-        .select('id, mobile_number, tenant_id, farmer_code')
-        .eq('mobile_number', cleaned)
-        .eq('tenant_id', tenant.id)
-        .eq('is_active', true)
-        .maybeSingle();
+      // SECURITY: there is no unauthenticated PIN reset. Resetting a PIN
+      // requires proving the current PIN (handled on /set-pin) — a mobile
+      // number alone is not proof of ownership.
+      const { exists } = await farmerAuthService.lookup(cleaned, tenant.id);
 
-      if (fetchError) throw fetchError;
-
-      if (!farmer) {
+      if (!exists) {
         setError(t('auth.accountNotFound') || 'No account found for this mobile number.');
         return;
       }
@@ -71,10 +67,10 @@ export default function ForgotPin() {
       // Clear cached offline auth so the previous PIN is invalidated locally.
       await offlineAuthService.clearCachedAuth();
 
-      // Hand off to SetPin in existing-farmer (reset) mode.
       localStorage.setItem('authMobile', cleaned);
-      localStorage.setItem('farmerId', farmer.id);
-      localStorage.setItem('tenantId', farmer.tenant_id);
+      localStorage.setItem('tenantId', tenant.id);
+      localStorage.setItem('requiresCurrentPin', 'true');
+      localStorage.removeItem('farmerId');
       localStorage.removeItem('isNewRegistration');
       localStorage.removeItem('registerMobile');
 

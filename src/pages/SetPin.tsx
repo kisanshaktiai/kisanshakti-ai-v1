@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { Loader2, Shield, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import CryptoJS from 'crypto-js';
+import { farmerAuthService } from '@/services/farmerAuthService';
 
 export default function SetPin() {
   const { t } = useTranslation();
@@ -17,6 +17,9 @@ export default function SetPin() {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [step, setStep] = useState<'set' | 'confirm'>('set');
+  // Required when an existing farmer changes an already-set PIN.
+  const [currentPin, setCurrentPin] = useState('');
+  const requiresCurrentPin = localStorage.getItem('requiresCurrentPin') === 'true';
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -32,19 +35,14 @@ export default function SetPin() {
     if (!mobile || !tenantId) {
       navigate('/auth');
     }
-    // For existing farmers, we need farmerId
-    if (!isNewRegistration && !farmerId) {
-      navigate('/auth');
-    }
-  }, [mobile, farmerId, tenantId, isNewRegistration, navigate]);
-
-  const hashPin = (pin: string): string => {
-    const SALT = 'kisan_shakti_2024';
-    return CryptoJS.SHA256(pin + SALT).toString();
-  };
+  }, [mobile, tenantId, isNewRegistration, navigate]);
 
   const handlePinComplete = async () => {
     if (step === 'set') {
+      if (requiresCurrentPin && currentPin.length !== 4) {
+        setError(t('auth.enterCurrentPin') || 'Enter your current PIN to continue');
+        return;
+      }
       if (pin.length !== 4) {
         setError(t('auth.pinMustBe4Digits') || 'PIN must be 4 digits');
         return;
@@ -65,128 +63,25 @@ export default function SetPin() {
     setError(null);
 
     try {
-      let farmer;
-      
+      // Credential writes happen server-side only (farmer-auth edge function).
+      // The client no longer inserts farmers or writes pin_hash directly.
+      const language = localStorage.getItem('i18nextLng') || 'hi';
+      let result;
+
       if (isNewRegistration) {
-        // Get the last farmer code for sequential generation
-        const { data: lastFarmerRows } = await supabase
-          .from('farmers')
-          .select('farmer_code')
-          .eq('tenant_id', tenantId!)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        const lastFarmer = lastFarmerRows?.[0] ?? null;
-
-        // Generate sequential farmer code
-        let farmerCode: string;
-        const tenantPrefix = localStorage.getItem('tenantPrefix') || 'KIS';
-        
-        if (lastFarmer?.farmer_code) {
-          // Extract number from last code and increment
-          const match = lastFarmer.farmer_code.match(/(\D+)(\d+)/);
-          if (match) {
-            const prefix = match[1];
-            const number = parseInt(match[2], 10) + 1;
-            farmerCode = `${prefix}${number.toString().padStart(6, '0')}`;
-          } else {
-            farmerCode = `${tenantPrefix}000001`;
-          }
-        } else {
-          // First farmer for this tenant
-          farmerCode = `${tenantPrefix}000001`;
-        }
-
-        // Hash the PIN for secure storage
-        const pinHash = hashPin(pin);
-        
-        const farmerData = {
-          mobile_number: mobile!,
-          pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
-          tenant_id: tenantId!,
-          farmer_code: farmerCode,
-          language_preference: localStorage.getItem('i18nextLng') || 'hi',
-          is_active: true,
-          app_install_date: new Date().toISOString(),
-          total_app_opens: 1,
-          login_attempts: 0,
-          failed_login_attempts: 0,
-          last_login_at: new Date().toISOString(),
-          pin_updated_at: new Date().toISOString()
-        };
-        
-        const { data: newFarmerRows, error: insertError } = await supabase
-          .from('farmers')
-          .insert(farmerData)
-          .select()
-          .limit(1);
-        
-        if (insertError) {
-          // Handle duplicate mobile number
-          if (insertError.code === '23505' || insertError.message?.includes('duplicate')) {
-            setError(t('auth.mobileAlreadyRegistered') || 'This mobile number is already registered');
-            setTimeout(() => navigate('/auth'), 2000);
-            return;
-          }
-          throw insertError;
-        }
-        
-        farmer = newFarmerRows?.[0];
-        if (!farmer) {
-          throw new Error('Farmer account could not be created. Please try again.');
-        }
-        
-        // Create user profile with mobile and farmer_code
-        await supabase
-          .from('user_profiles')
-          .insert({
-            id: farmer.id,
-            farmer_id: farmer.id,
-            tenant_id: farmer.tenant_id,
-            mobile_number: farmer.mobile_number,
-            farmer_code: farmerCode,
-            preferred_language: farmer.language_preference as any,
-            is_profile_complete: false
-          });
-        
-        // Store farmer ID for session
-        localStorage.setItem('farmerId', farmer.id);
-        
+        result = await farmerAuthService.register(mobile!, tenantId!, pin, language);
       } else {
-        // EXISTING FARMER: Update PIN with hash
-        const pinHash = hashPin(pin);
-        
-        const { data: updatedFarmerRows, error: updateError } = await supabase
-          .from('farmers')
-          .update({
-            pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
-            pin_updated_at: new Date().toISOString(),
-            last_login_at: new Date().toISOString(),
-            total_app_opens: 1
-          })
-          .eq('id', farmerId)
-          .eq('tenant_id', tenantId)
-          .select()
-          .limit(1);
-
-        if (updateError) {
-          throw updateError;
-        }
-        
-        farmer = updatedFarmerRows?.[0];
-        if (!farmer) {
-          throw new Error('Account not found for this tenant. Please re-register or try offline.');
-        }
-        
-        // Update user profile with mobile and farmer_code if needed
-        await supabase
-          .from('user_profiles')
-          .update({
-            mobile_number: farmer.mobile_number,
-            farmer_code: farmer.farmer_code
-          })
-          .eq('farmer_id', farmer.id);
+        // Existing farmer: server requires the current PIN or a live session.
+        result = await farmerAuthService.changePin(
+          mobile!,
+          tenantId!,
+          pin,
+          currentPin || undefined
+        );
       }
+
+      const farmer = result.farmer;
+      localStorage.setItem('farmerId', farmer.id);
 
       // Create authenticated session
       const session = createSession(farmer.id, farmer.tenant_id, farmer.mobile_number);
@@ -206,13 +101,14 @@ export default function SetPin() {
         language: farmer.language_preference || 'hi',
         tenantId: farmer.tenant_id,
         farmerCode: farmer.farmer_code,
-        sessionToken: session.token,
+        sessionToken: result.session.token,
         lastLoginAt: new Date().toISOString()
       });
       
       // Clear temp storage
       localStorage.removeItem('authMobile');
       localStorage.removeItem('farmerId');
+      localStorage.removeItem('requiresCurrentPin');
       localStorage.removeItem('isNewRegistration');
       localStorage.removeItem('registerMobile');
       
@@ -277,6 +173,25 @@ export default function SetPin() {
         )}
 
         <div className="space-y-6">
+          {/* Current PIN — required to replace an existing PIN */}
+          {requiresCurrentPin && step === 'set' && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                {t('auth.currentPin') || 'Current PIN'}
+              </label>
+              <div className="flex justify-center">
+                <InputOTP maxLength={4} value={currentPin} onChange={setCurrentPin} disabled={isLoading}>
+                  <InputOTPGroup className="gap-2">
+                    <InputOTPSlot index={0} mask className="w-14 h-14 text-lg" />
+                    <InputOTPSlot index={1} mask className="w-14 h-14 text-lg" />
+                    <InputOTPSlot index={2} mask className="w-14 h-14 text-lg" />
+                    <InputOTPSlot index={3} mask className="w-14 h-14 text-lg" />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
+            </div>
+          )}
+
           {/* PIN Input */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">

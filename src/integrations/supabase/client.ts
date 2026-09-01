@@ -27,8 +27,37 @@ let headerPromise: Promise<void> | null = null;
 // Store auth data globally to avoid circular imports
 let globalAuthData: { userId: string; tenantId: string } | null = null;
 
+// Server-verified session token (see supabase/functions/farmer-auth).
+// This is the authoritative identity signal: the database resolves
+// farmer_id / tenant_id from it and ignores the legacy headers when present.
+const SESSION_TOKEN_STORAGE_KEY = 'ks_session_token';
+let globalSessionToken: string | null =
+  typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) : null;
+
+export function getSessionToken(): string | null {
+  return globalSessionToken;
+}
+
+export function setSessionToken(token: string | null) {
+  globalSessionToken = token || null;
+  try {
+    if (token) localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  } catch {
+    /* storage unavailable (private mode) — in-memory token still works */
+  }
+  // Re-apply on the shared client and drop cached clients built without it.
+  (supabase as any).rest.headers = {
+    ...(supabase as any).rest.headers,
+    ...(token ? { 'x-session-token': token } : {}),
+  };
+  if (!token) delete (supabase as any).rest.headers['x-session-token'];
+  clientCache.clear();
+}
+
 // Client cache to prevent creating multiple GoTrueClient instances
 const clientCache = new Map<string, ReturnType<typeof createClient<Database>>>();
+
 
 /**
  * Set global auth data (called by auth store)
@@ -44,6 +73,7 @@ export function setGlobalAuthData(userId: string, tenantId: string) {
  */
 export function clearGlobalAuthData() {
   globalAuthData = null;
+  setSessionToken(null);
   headersReady = false;
   headerPromise = null;
   // Clear client cache to prevent memory leaks
@@ -102,6 +132,10 @@ export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
   if (tenantId) {
     headers['x-tenant-id'] = tenantId;
   }
+
+  if (globalSessionToken) {
+    headers['x-session-token'] = globalSessionToken;
+  }
   
   // Update the global headers on the supabase client
   (supabase as any).rest.headers = {
@@ -133,8 +167,8 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
     return supabase;
   }
   
-  // Create cache key from userId and tenantId
-  const cacheKey = `${userId}-${tenant}`;
+  // Create cache key from userId, tenantId and session token
+  const cacheKey = `${userId}-${tenant}-${globalSessionToken ?? 'anon'}`;
   
   // Return cached client if exists
   if (clientCache.has(cacheKey)) {
@@ -149,6 +183,7 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
       headers: {
         'x-farmer-id': userId,
         'x-tenant-id': tenant,
+        ...(globalSessionToken ? { 'x-session-token': globalSessionToken } : {}),
       }
     }
   });
