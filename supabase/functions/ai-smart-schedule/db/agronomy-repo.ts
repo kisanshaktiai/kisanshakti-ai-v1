@@ -361,6 +361,7 @@ export async function getFieldActionRules(
   cropCode: string,
   regionCode: string | null,
   methods: string[],
+  tenantId: string | null,
 ): Promise<FieldActionRule[]> {
   const FIELD_ACTION_RULE_LIMIT = 1000;
   const { data } = await supabase
@@ -372,6 +373,10 @@ export async function getFieldActionRules(
     .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
     .or(regionFilter(regionCode))
     .or(methodFilter(methods))
+    // Global/system rules (owner_tenant_id IS NULL) remain available; tenant-owned
+    // rules are visible only to the resolved schedule tenant. With no tenant context,
+    // fail closed to global rules rather than reading another tenant's rules.
+    .or(tenantId ? `owner_tenant_id.is.null,owner_tenant_id.eq.${tenantId}` : "owner_tenant_id.is.null")
     .limit(FIELD_ACTION_RULE_LIMIT);
   const rows = (data || []) as FieldActionRule[];
   if (rows.length === FIELD_ACTION_RULE_LIMIT) {
@@ -411,6 +416,7 @@ export async function getObservationRules(
   cropCode: string,
   regionCode: string | null,
   methods: string[],
+  tenantId: string | null,
 ): Promise<ObservationRuleRef[]> {
   const { data } = await supabase
     .from("decision_rules")
@@ -421,6 +427,8 @@ export async function getObservationRules(
     .or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`)
     .or(regionFilter(regionCode))
     .or(methodFilter(methods))
+    // Same tenant boundary as scheduled field-action rules.
+    .or(tenantId ? `owner_tenant_id.is.null,owner_tenant_id.eq.${tenantId}` : "owner_tenant_id.is.null")
     .limit(2000);
   return (data || []) as ObservationRuleRef[];
 }
