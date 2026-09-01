@@ -25,8 +25,10 @@
 - `assertion_strength` is an evidence WEIGHT scored by decision/evidence-confidence.ts, NEVER a SQL exclusion filter; all symbolic codes fold through utils/canonical-code.ts; stage families only from crop_stage_graph (see mem://architecture/assertion-strength-weight-not-filter).
 - Edge deploy cap is UPLOADED SOURCE bytes (own + _shared), not the built bundle (2.76 MB vs 5 MB cap) — only deleting source characters helps; never split the brain for size (see mem://architecture/edge-deploy-size-is-source-not-bundle).
 - intent_observation_mapping must NEVER delete grounded observations (clarification seed = UNION(confirmed, perceived, IOM-ranked)); rule/hypothesis ids are UPPER_SNAKE while observation/crop/stage codes are lower_snake (see mem://architecture/iom-weight-not-filter-and-id-casing).
+- Farmer/tenant identity is server-verified ONLY via `x-session-token` → `verified_session_context()`; never trust `x-farmer-id`/`x-tenant-id` headers (see mem://security/server-verified-farmer-identity).
 
 ## Memories
+- [Server-verified farmer identity](mem://security/server-verified-farmer-identity) — Session-token identity, farmer-auth core, PIN rules, edge-function slot cap.
 - [Crop Schedule DB-SSOT](mem://architecture/crop-schedule-db-ssot) — Schedule pipeline is DB-only; no hardcoded seed/NPK/price/labor constants; gaps instead of invented values.
 - [Edge Deploy Size = Source Bytes](mem://architecture/edge-deploy-size-is-source-not-bundle) — Measured bundle 2.76 MB vs 4.57 MB source upload; comment compaction is the only lever.
 - [IOM Weight & ID Casing](mem://architecture/iom-weight-not-filter-and-id-casing) — RC-1 clarification-seed union, stage-differential recovery, DB-verified identifier casing table.
