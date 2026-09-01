@@ -86,6 +86,3 @@ verify_jwt = false
 
 [functions.farmer-auth]
 verify_jwt = false
-
-[functions.farmer-auth-v1]
-verify_jwt = false
