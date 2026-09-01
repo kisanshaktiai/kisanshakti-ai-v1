@@ -10690,6 +10690,81 @@ export type Database = {
         }
         Relationships: []
       }
+      env_observations_202612: {
+        Row: {
+          cell_key: string | null
+          confidence: number | null
+          created_at: string | null
+          dist_kind: string | null
+          entity_key: string | null
+          horizon_hours: number | null
+          issue_time: string
+          land_id: string | null
+          obs_id: number
+          obs_version: number | null
+          prior_version: number | null
+          property_code: string
+          qc_flags: string[] | null
+          qc_level: number | null
+          raw_unit: string | null
+          raw_value: number | null
+          revision_reason: string | null
+          source_id: string
+          superseded_by: number | null
+          u_std: number | null
+          valid_time: string
+          value: number
+        }
+        Insert: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time: string
+          value: number
+        }
+        Update: {
+          cell_key?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          dist_kind?: string | null
+          entity_key?: string | null
+          horizon_hours?: number | null
+          issue_time?: string
+          land_id?: string | null
+          obs_id?: never
+          obs_version?: number | null
+          prior_version?: number | null
+          property_code?: string
+          qc_flags?: string[] | null
+          qc_level?: number | null
+          raw_unit?: string | null
+          raw_value?: number | null
+          revision_reason?: string | null
+          source_id?: string
+          superseded_by?: number | null
+          u_std?: number | null
+          valid_time?: string
+          value?: number
+        }
+        Relationships: []
+      }
       env_observations_hist: {
         Row: {
           cell_key: string | null
@@ -11164,6 +11239,138 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      farm_decision: {
+        Row: {
+          acted_at: string | null
+          action_code: string
+          action_text_en: string | null
+          alert_id: string | null
+          category: string
+          created_at: string
+          decision_date: string
+          decision_key: string
+          evidence: Json
+          farmer_id: string | null
+          id: string
+          land_id: string
+          priority: string
+          rule_id: string | null
+          schedule_id: string | null
+          source: string
+          status: string
+          task_id: string | null
+          tenant_id: string | null
+          title_en: string
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          acted_at?: string | null
+          action_code: string
+          action_text_en?: string | null
+          alert_id?: string | null
+          category: string
+          created_at?: string
+          decision_date: string
+          decision_key: string
+          evidence?: Json
+          farmer_id?: string | null
+          id?: string
+          land_id: string
+          priority: string
+          rule_id?: string | null
+          schedule_id?: string | null
+          source: string
+          status: string
+          task_id?: string | null
+          tenant_id?: string | null
+          title_en: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          acted_at?: string | null
+          action_code?: string
+          action_text_en?: string | null
+          alert_id?: string | null
+          category?: string
+          created_at?: string
+          decision_date?: string
+          decision_key?: string
+          evidence?: Json
+          farmer_id?: string | null
+          id?: string
+          land_id?: string
+          priority?: string
+          rule_id?: string | null
+          schedule_id?: string | null
+          source?: string
+          status?: string
+          task_id?: string | null
+          tenant_id?: string | null
+          title_en?: string
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "farm_decision_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -15612,6 +15819,144 @@ export type Database = {
           },
         ]
       }
+      land_farm_state: {
+        Row: {
+          alerts_pending: number
+          canopy: Json | null
+          computed_at: string
+          crop_code: string | null
+          das: number | null
+          dat: number | null
+          farmer_id: string | null
+          gaps: string[]
+          growth_stage: string | null
+          id: string
+          land_id: string
+          observations: Json | null
+          stage_code: string | null
+          stage_confidence: number | null
+          stage_drift_days: number | null
+          stage_source: string | null
+          stage_uuid: string | null
+          stage_window: Json | null
+          state: Json
+          state_date: string
+          state_version: Json | null
+          tenant_id: string | null
+          thermal: Json | null
+          water: Json | null
+        }
+        Insert: {
+          alerts_pending?: number
+          canopy?: Json | null
+          computed_at?: string
+          crop_code?: string | null
+          das?: number | null
+          dat?: number | null
+          farmer_id?: string | null
+          gaps?: string[]
+          growth_stage?: string | null
+          id?: string
+          land_id: string
+          observations?: Json | null
+          stage_code?: string | null
+          stage_confidence?: number | null
+          stage_drift_days?: number | null
+          stage_source?: string | null
+          stage_uuid?: string | null
+          stage_window?: Json | null
+          state: Json
+          state_date: string
+          state_version?: Json | null
+          tenant_id?: string | null
+          thermal?: Json | null
+          water?: Json | null
+        }
+        Update: {
+          alerts_pending?: number
+          canopy?: Json | null
+          computed_at?: string
+          crop_code?: string | null
+          das?: number | null
+          dat?: number | null
+          farmer_id?: string | null
+          gaps?: string[]
+          growth_stage?: string | null
+          id?: string
+          land_id?: string
+          observations?: Json | null
+          stage_code?: string | null
+          stage_confidence?: number | null
+          stage_drift_days?: number | null
+          stage_source?: string | null
+          stage_uuid?: string | null
+          stage_window?: Json | null
+          state?: Json
+          state_date?: string
+          state_version?: Json | null
+          tenant_id?: string | null
+          thermal?: Json | null
+          water?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       land_gdd_daily: {
         Row: {
           anchor_date: string
@@ -15776,6 +16121,123 @@ export type Database = {
           upper_cap_c?: number
         }
         Relationships: []
+      }
+      land_observation: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          farmer_id: string | null
+          id: string
+          land_id: string
+          measurement_type: string
+          media_url: string | null
+          notes: string | null
+          observation_category: string | null
+          observation_code: string | null
+          observed_at: string
+          source: string
+          stage_uuid: string | null
+          tenant_id: string | null
+          unit: string | null
+          value: number | null
+          value_text: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          farmer_id?: string | null
+          id?: string
+          land_id: string
+          measurement_type: string
+          media_url?: string | null
+          notes?: string | null
+          observation_category?: string | null
+          observation_code?: string | null
+          observed_at?: string
+          source?: string
+          stage_uuid?: string | null
+          tenant_id?: string | null
+          unit?: string | null
+          value?: number | null
+          value_text?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          farmer_id?: string | null
+          id?: string
+          land_id?: string
+          measurement_type?: string
+          media_url?: string | null
+          notes?: string | null
+          observation_category?: string | null
+          observation_code?: string | null
+          observed_at?: string
+          source?: string
+          stage_uuid?: string | null
+          tenant_id?: string | null
+          unit?: string | null
+          value?: number | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_observation_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
       }
       land_tile_intersections: {
         Row: {
@@ -20257,6 +20719,57 @@ export type Database = {
           is_farmer_observable?: boolean | null
           migration_tag?: string
           observation_code?: string | null
+        }
+        Relationships: []
+      }
+      observation_protocol: {
+        Row: {
+          created_at: string
+          crop_code: string | null
+          how_text_en: string | null
+          id: string
+          integer_only: boolean
+          is_active: boolean
+          measurement_type: string
+          observation_category: string
+          sample_count: number | null
+          sampling_method: string | null
+          source: string | null
+          unit: string | null
+          value_max: number | null
+          value_min: number | null
+        }
+        Insert: {
+          created_at?: string
+          crop_code?: string | null
+          how_text_en?: string | null
+          id?: string
+          integer_only?: boolean
+          is_active?: boolean
+          measurement_type: string
+          observation_category: string
+          sample_count?: number | null
+          sampling_method?: string | null
+          source?: string | null
+          unit?: string | null
+          value_max?: number | null
+          value_min?: number | null
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string | null
+          how_text_en?: string | null
+          id?: string
+          integer_only?: boolean
+          is_active?: boolean
+          measurement_type?: string
+          observation_category?: string
+          sample_count?: number | null
+          sampling_method?: string | null
+          source?: string | null
+          unit?: string | null
+          value_max?: number | null
+          value_min?: number | null
         }
         Relationships: []
       }
@@ -37363,6 +37876,141 @@ export type Database = {
           },
         ]
       }
+      v_farm_today: {
+        Row: {
+          alerts_pending: number | null
+          canopy: Json | null
+          computed_at: string | null
+          crop_code: string | null
+          das: number | null
+          dat: number | null
+          decisions: Json | null
+          farmer_id: string | null
+          gaps: string[] | null
+          growth_stage: string | null
+          land_id: string | null
+          observations: Json | null
+          stage_code: string | null
+          stage_confidence: number | null
+          stage_drift_days: number | null
+          stage_source: string | null
+          stage_uuid: string | null
+          stage_window: Json | null
+          state_date: string | null
+          state_version: Json | null
+          tenant_id: string | null
+          thermal: Json | null
+          water: Json | null
+        }
+        Insert: {
+          alerts_pending?: number | null
+          canopy?: Json | null
+          computed_at?: string | null
+          crop_code?: string | null
+          das?: number | null
+          dat?: number | null
+          decisions?: never
+          farmer_id?: string | null
+          gaps?: string[] | null
+          growth_stage?: string | null
+          land_id?: string | null
+          observations?: Json | null
+          stage_code?: string | null
+          stage_confidence?: number | null
+          stage_drift_days?: number | null
+          stage_source?: string | null
+          stage_uuid?: string | null
+          stage_window?: Json | null
+          state_date?: string | null
+          state_version?: Json | null
+          tenant_id?: string | null
+          thermal?: Json | null
+          water?: Json | null
+        }
+        Update: {
+          alerts_pending?: number | null
+          canopy?: Json | null
+          computed_at?: string | null
+          crop_code?: string | null
+          das?: number | null
+          dat?: number | null
+          decisions?: never
+          farmer_id?: string | null
+          gaps?: string[] | null
+          growth_stage?: string | null
+          land_id?: string | null
+          observations?: Json | null
+          stage_code?: string | null
+          stage_confidence?: number | null
+          stage_drift_days?: number | null
+          stage_source?: string | null
+          stage_uuid?: string | null
+          stage_window?: Json | null
+          state_date?: string | null
+          state_version?: Json | null
+          tenant_id?: string | null
+          thermal?: Json | null
+          water?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_farm_state_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       v_gate_taxonomy_drift: {
         Row: {
           canonical_group: string | null
@@ -39297,6 +39945,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      build_land_farm_state: {
+        Args: { p_date?: string; p_land_id: string }
+        Returns: Json
+      }
       calc_day_length_hours: {
         Args: { p_date: string; p_lat: number }
         Returns: number
@@ -39573,6 +40225,14 @@ export type Database = {
       }
       derive_biological_stage_transitions: {
         Args: { p_crop_code?: string }
+        Returns: Json
+      }
+      derive_farm_decisions: {
+        Args: {
+          p_date?: string
+          p_land_id: string
+          p_obs_lookback_days?: number
+        }
         Returns: Json
       }
       derive_stage_transition_conditions: {
@@ -40841,6 +41501,7 @@ export type Database = {
         Returns: boolean
       }
       refresh_farmer_upcoming_needs: { Args: never; Returns: undefined }
+      refresh_my_farm_decisions: { Args: { p_land_id: string }; Returns: Json }
       refresh_organization_analytics: {
         Args: { p_tenant_id: string }
         Returns: undefined
@@ -40997,6 +41658,8 @@ export type Database = {
       }
       resolve_tenant_by_slug: { Args: { p_slug: string }; Returns: Json }
       resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
+      run_daily_farm_decisions: { Args: { p_date?: string }; Returns: Json }
+      run_daily_farm_state: { Args: { p_date?: string }; Returns: Json }
       run_daily_phenology: { Args: never; Returns: Json }
       run_env_verification: { Args: never; Returns: Json }
       sanitize_white_label_config: {
@@ -41025,6 +41688,10 @@ export type Database = {
           p_tenant_id: string
         }
         Returns: undefined
+      }
+      set_farm_decision_status: {
+        Args: { p_id: string; p_status: string }
+        Returns: Json
       }
       set_farmer_plan_feature: {
         Args: {
@@ -41727,6 +42394,29 @@ export type Database = {
           table_name: string
         }
         Returns: string
+      }
+      upsert_farm_decision: {
+        Args: {
+          p_action: string
+          p_alert: string
+          p_cat: string
+          p_date: string
+          p_evidence: Json
+          p_farmer: string
+          p_key: string
+          p_land: string
+          p_prio: string
+          p_rule: string
+          p_sched: string
+          p_source: string
+          p_status: string
+          p_task: string
+          p_tenant: string
+          p_text: string
+          p_title: string
+          p_valid_until: string
+        }
+        Returns: undefined
       }
       upsert_tenant_branding: {
         Args: {
