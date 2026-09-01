@@ -83,3 +83,5 @@ verify_jwt = false
 
 [functions.rag-ingest]
 verify_jwt = false
+[functions.farmer-auth]
+verify_jwt = false
