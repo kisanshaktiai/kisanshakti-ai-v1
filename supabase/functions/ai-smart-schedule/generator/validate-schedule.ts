@@ -18,6 +18,7 @@
 //     V2 every task carries non-empty source provenance (source_refs);
 //     V3 days_from_sowing is null or negative;
 //     V4 every task has a task_name and a task_type.
+//     V5 recurrence metadata, when present, is structurally valid.
 //   Soft checks (warnings — recorded, never block):
 //     W1 a harvest-type task dated after the variety's stated maturity window;
 //     W2 a task with no resolvable stage link;
@@ -78,6 +79,17 @@ export function validateBaseline(
     }
     if (!t.task_name || !t.task_type) {
       cap(violations, `V4 incomplete_task: ${ref}`);
+    }
+    if (t.recurrence) {
+      const r = t.recurrence;
+      if (
+        !Number.isFinite(r.interval_days) || r.interval_days < 1 ||
+        !Number.isFinite(r.window_start) || !Number.isFinite(r.window_end) ||
+        r.window_start < 0 || r.window_end < r.window_start ||
+        !Number.isFinite(r.expected_events) || r.expected_events < 1
+      ) {
+        cap(violations, `V5 recurrence_invalid: ${ref}`);
+      }
     }
     if (
       varietyMaxDays != null &&
