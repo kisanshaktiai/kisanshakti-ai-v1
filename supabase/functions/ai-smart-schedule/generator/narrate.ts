@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-09-01 — atomic locale fallback: partial chunk success previously produced mixed
+// local-language/source-language schedules. Narration is all-or-nothing per schedule.
+// If any chunk fails, authoritative source text is preserved for every task.
 // 2026-08-30 — farmer-register narration (language-agnostic): the prompt was literal
 //   translation only, so technical English rendered into formal, jargon-heavy text that
 //   smallholders could not follow (long compound sentences, loan-words like top-dress/LCC
@@ -144,13 +147,17 @@ export async function narrateTasks(
     clearTimeout(budgetTimer);
   }
 
-  if (!applied) {
-    return { tasks, narrated: false, reason: `llm_failed:${failures.slice(0, 2).join("|") || "no_output"}` };
+  // A farmer-facing schedule must not mix translated and source-language cards.
+  // Fail closed to one authoritative source language for the entire schedule.
+  if (!applied || failures.length) {
+    return {
+      tasks,
+      narrated: false,
+      reason: !applied
+        ? `llm_failed:${failures.slice(0, 2).join("|") || "no_output"}`
+        : `llm_partial_rejected:${failures.length}/${chunks.length}_chunks_failed`,
+    };
   }
-  return {
-    tasks: out,
-    narrated: true,
-    reason: failures.length ? `partial:${failures.length}/${chunks.length}_chunks_failed` : undefined,
-  };
+  return { tasks: out, narrated: true };
 }
 
