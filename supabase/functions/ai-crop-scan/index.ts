@@ -280,7 +280,7 @@ serve(async (req) => {
     // Handle growth_tracking mode
     if (mode === 'growth_tracking') {
       console.log('🌱 Growth Tracking Mode:', { landId, uploadId, expectedStage });
-      
+
       const allImages = [...(images || []), ...(videoFrames || [])];
       if (allImages.length === 0) {
         return new Response(
@@ -288,6 +288,73 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      // 2026-09-01 — Server-side field context derivation.
+      // The client sends identifiers only; anything the caller omits is read here
+      // from the authoritative land/NDVI/soil rows so the prompt is never "unknown"
+      // when the data actually exists.
+      let ctxCrop = landCrop;
+      let ctxSowingDate = sowingDate;
+      let ctxExpectedStage = expectedStage;
+      let ctxDas: number | null = null;
+      let ctxAreaAcres: number | null = null;
+      let ctxNdvi: number | null = ndviData?.[0]?.ndvi_value ?? null;
+      let ctxSoil: any = soilData ?? null;
+
+      if (landId) {
+        try {
+          const ctxClient = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+          );
+
+          const [landRes, ndviRes, soilRes] = await Promise.all([
+            ctxClient
+              .from('lands')
+              .select('current_crop, crop_stage, das, area_acres, last_sowing_date, transplant_date, cultivation_date')
+              .eq('id', landId)
+              .maybeSingle(),
+            ctxNdvi === null
+              ? ctxClient
+                  .from('ndvi_data')
+                  .select('ndvi_value, mean_ndvi, date')
+                  .eq('land_id', landId)
+                  .order('date', { ascending: false })
+                  .limit(1)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null } as any),
+            ctxSoil
+              ? Promise.resolve({ data: null, error: null } as any)
+              : ctxClient
+                  .from('soil_health')
+                  .select('nitrogen_level, phosphorus_level, potassium_level, ph_level, soil_type, organic_carbon')
+                  .eq('land_id', landId)
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+          ]);
+
+          const land: any = landRes?.data;
+          if (land) {
+            ctxCrop = ctxCrop || land.current_crop || undefined;
+            ctxSowingDate = ctxSowingDate || land.last_sowing_date || land.transplant_date || land.cultivation_date || undefined;
+            ctxExpectedStage = ctxExpectedStage || land.crop_stage || undefined;
+            ctxDas = typeof land.das === 'number' ? land.das : null;
+            ctxAreaAcres = typeof land.area_acres === 'number' ? land.area_acres : null;
+          }
+          const ndviRow: any = ndviRes?.data;
+          if (ndviRow) ctxNdvi = ndviRow.ndvi_value ?? ndviRow.mean_ndvi ?? null;
+          if (soilRes?.data) ctxSoil = soilRes.data;
+        } catch (e) {
+          console.error('⚠️ growth_tracking context derivation failed:', e);
+        }
+      }
+
+      const ctxAreaGuntha = landArea?.guntha ?? (ctxAreaAcres !== null ? Math.round(ctxAreaAcres * 40) : null);
+
+      console.log('🌱 Derived growth context:', {
+        crop: ctxCrop, sowingDate: ctxSowingDate, expectedStage: ctxExpectedStage, das: ctxDas, ndvi: ctxNdvi, soil: !!ctxSoil
+      });
 
       const languageInstruction = language === 'hi' 
         ? 'Respond in Hindi (हिंदी). Use simple farmer-friendly language. Address farmer as "किसान मित्र".'
@@ -301,18 +368,21 @@ ROLE: Monitor crop growth, detect early stress signals, provide proactive guidan
 
 CRITICAL RULES:
 1. Treat each photo as time-series growth evidence
-2. Compare with expected growth stage: ${expectedStage || 'unknown'}
-3. Correlate visual data with NDVI: ${ndviData?.[0]?.ndvi_value || 'N/A'}, Soil: ${soilData ? 'available' : 'N/A'}
+2. Compare with expected growth stage: ${ctxExpectedStage || 'unknown'}
+3. Correlate visual data with NDVI: ${ctxNdvi ?? 'N/A'}, Soil: ${ctxSoil ? 'available' : 'N/A'}
 4. If signals conflict, flag as "needs_observation"
 5. Predict what will happen in next 3-7-14 days
 6. Give ACTIONABLE advice with specific quantities
 
 CONTEXT:
-- Crop: ${landCrop || 'Unknown'}
-- Sowing Date: ${sowingDate || 'Unknown'}
-- Land Area: ${landArea?.guntha || 'Unknown'} guntha
-- Latest NDVI: ${ndviData?.[0]?.ndvi_value || 'N/A'}
-- Soil NPK: ${soilData?.nitrogen_level || 'N/A'}/${soilData?.phosphorus_level || 'N/A'}/${soilData?.potassium_level || 'N/A'}
+- Crop: ${ctxCrop || 'Unknown'}
+- Sowing Date: ${ctxSowingDate || 'Unknown'}
+- Days After Sowing: ${ctxDas ?? 'Unknown'}
+- Land Area: ${ctxAreaGuntha ?? 'Unknown'} guntha
+- Latest NDVI: ${ctxNdvi ?? 'N/A'}
+- Soil NPK: ${ctxSoil?.nitrogen_level || 'N/A'}/${ctxSoil?.phosphorus_level || 'N/A'}/${ctxSoil?.potassium_level || 'N/A'}
+- Soil pH: ${ctxSoil?.ph_level ?? 'N/A'}
+
 
 ${languageInstruction}
 
