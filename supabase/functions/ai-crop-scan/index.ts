@@ -391,7 +391,7 @@ Return JSON:
   "crop_current_status": "1-2 sentence status",
   "growth_stage_analysis": {
     "detected_stage": "detected stage name",
-    "expected_stage": "${expectedStage || 'unknown'}",
+    "expected_stage": "${ctxExpectedStage || 'unknown'}",
     "deviation": "ahead|on_track|slightly_delayed|delayed|severely_delayed",
     "stage_confidence": 0-100
   },
