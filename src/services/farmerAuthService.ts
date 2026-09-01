@@ -1,34 +1,14 @@
-/**
- * farmerAuthService — the only client entry point for farmer credentials.
- *
- * The `farmers` table no longer exposes public lookup / registration / PIN-write
- * policies. Every credential operation goes through the `farmer-auth` edge
- * function, which verifies identity server-side and returns an opaque session
- * token. The token — not a browser-supplied farmer/tenant id — is what the
- * database trusts.
- */
+/** farmerAuthService — server-side farmer authentication transport. */
 import { supabase, setSessionToken } from '@/integrations/supabase/client';
 
 const FUNCTION_NAME = 'farmer-auth';
-
-export interface FarmerSession {
-  token: string;
-  expiresAt: string;
-}
-
-export interface FarmerAuthResult {
-  session: FarmerSession;
-  farmer: any;
-  profile: any;
-}
+export interface FarmerSession { token: string; expiresAt: string; }
+export interface FarmerAuthResult { session: FarmerSession; farmer: any; profile: any; }
 
 class FarmerAuthError extends Error {
-  code: string;
-  retryAfterSeconds?: number;
+  code: string; retryAfterSeconds?: number;
   constructor(code: string, message: string, retryAfterSeconds?: number) {
-    super(message);
-    this.code = code;
-    this.retryAfterSeconds = retryAfterSeconds;
+    super(message); this.code = code; this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -42,37 +22,48 @@ const MESSAGES: Record<string, string> = {
   server_error: 'Something went wrong. Please try again.',
 };
 
-// The same handler is served by two slugs (see _shared/farmer-auth-core.ts).
-// `tenant-config` is the always-deployed transport; `farmer-auth` is preferred
-// when it is reachable. A 404 on the first slug transparently falls through.
-const ENDPOINTS = [FUNCTION_NAME, 'tenant-config'] as const;
+// tenant-config is already live and mounts the same auth core. Prefer it so
+// login does not depend on the separately deployed farmer-auth slug.
+const ENDPOINTS = ['tenant-config', FUNCTION_NAME] as const;
 let preferredEndpoint: string | null = null;
 
 async function invokeOnce<T>(fn: string, payload: Record<string, unknown>) {
-  const { data, error } = await supabase.functions.invoke(fn, { body: payload });
+  try {
+    const { data, error } = await supabase.functions.invoke(fn, { body: payload });
 
-  // supabase-js surfaces non-2xx as FunctionsHttpError; recover the JSON body.
-  if (error) {
-    const status = (error as any).context?.status;
-    let parsed: any = null;
-    try {
-      parsed = await (error as any).context?.json?.();
-    } catch {
-      /* body not JSON */
+    if (error) {
+      const status = (error as any).context?.status;
+      let parsed: any = null;
+      try { parsed = await (error as any).context?.json?.(); } catch {}
+
+      // CORS/preflight/network failures often have no usable HTTP status.
+      // Retry the alternate server transport; do not mask real auth errors.
+      if (status === 404 || parsed?.code === 'NOT_FOUND' || status == null) {
+        return { retryTransport: true } as const;
+      }
+
+      const code = parsed?.error ?? 'server_error';
+      throw new FarmerAuthError(
+        code,
+        MESSAGES[code] ?? error.message,
+        parsed?.retryAfterSeconds,
+      );
     }
-    if (status === 404 || parsed?.code === 'NOT_FOUND') {
-      return { notFound: true } as const;
+
+    if (data && (data as any).error) {
+      const code = (data as any).error as string;
+      throw new FarmerAuthError(
+        code,
+        MESSAGES[code] ?? code,
+        (data as any).retryAfterSeconds,
+      );
     }
-    const code = parsed?.error ?? 'server_error';
-    throw new FarmerAuthError(code, MESSAGES[code] ?? error.message, parsed?.retryAfterSeconds);
-  }
 
-  if (data && (data as any).error) {
-    const code = (data as any).error as string;
-    throw new FarmerAuthError(code, MESSAGES[code] ?? code, (data as any).retryAfterSeconds);
+    return { retryTransport: false, data: data as T } as const;
+  } catch (error) {
+    if (error instanceof FarmerAuthError) throw error;
+    return { retryTransport: true } as const;
   }
-
-  return { notFound: false, data: data as T } as const;
 }
 
 async function call<T>(payload: Record<string, unknown>): Promise<T> {
@@ -82,7 +73,7 @@ async function call<T>(payload: Record<string, unknown>): Promise<T> {
 
   for (const fn of order) {
     const res = await invokeOnce<T>(fn, payload);
-    if (res.notFound) continue;
+    if (res.retryTransport) continue;
     preferredEndpoint = fn;
     return res.data as T;
   }
@@ -90,58 +81,35 @@ async function call<T>(payload: Record<string, unknown>): Promise<T> {
   throw new FarmerAuthError('server_error', MESSAGES.server_error);
 }
 
-
 export const farmerAuthService = {
-  /** Minimal existence probe — returns no identifiers. */
   async lookup(mobile: string, tenantId?: string | null) {
     return call<{ exists: boolean; requiresPinSetup: boolean }>({
-      action: 'lookup',
-      mobile,
-      tenantId: tenantId ?? undefined,
+      action: 'lookup', mobile, tenantId: tenantId ?? undefined,
     });
   },
-
   async register(mobile: string, tenantId: string, pin: string, language?: string) {
     const result = await call<FarmerAuthResult>({
-      action: 'register',
-      mobile,
-      tenantId,
-      pin,
-      language,
+      action: 'register', mobile, tenantId, pin, language,
     });
     setSessionToken(result.session.token);
     return result;
   },
-
   async verifyPin(mobile: string, tenantId: string | null, pin: string) {
     const result = await call<FarmerAuthResult>({
-      action: 'verifyPin',
-      mobile,
-      tenantId: tenantId ?? undefined,
-      pin,
+      action: 'verifyPin', mobile, tenantId: tenantId ?? undefined, pin,
     });
     setSessionToken(result.session.token);
     return result;
   },
-
-  /** Requires the current PIN, or a live session for the same farmer. */
   async changePin(
-    mobile: string,
-    tenantId: string | null,
-    newPin: string,
-    currentPin?: string,
+    mobile: string, tenantId: string | null, newPin: string, currentPin?: string,
   ) {
     const result = await call<FarmerAuthResult>({
-      action: 'changePin',
-      mobile,
-      tenantId: tenantId ?? undefined,
-      newPin,
-      currentPin,
+      action: 'changePin', mobile, tenantId: tenantId ?? undefined, newPin, currentPin,
     });
     setSessionToken(result.session.token);
     return result;
   },
-
   async logout(token?: string | null) {
     try {
       if (token) await call({ action: 'logout', sessionToken: token });
