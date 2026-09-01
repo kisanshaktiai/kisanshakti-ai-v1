@@ -22,7 +22,15 @@
       "warning": "चेतावणी",
       "success": "यश",
       "urgent": "तातडीचे"
-    }
+    },
+    "irrigation_title": "सिंचन सल्ला",
+    "pest_alert_title": "कीड इशारा",
+    "pest_alert_content": "आज शेतात किडीच्या नुकसानीची तपासणी करा आणि पिकाची पाहणी करा.",
+    "market_update_title": "बाजार अपडेट",
+    "market_update_content": "माल विकण्यापूर्वी आजचे बाजार भाव पहा.",
+    "time_2h_ago": "2 तासांपूर्वी",
+    "time_5h_ago": "5 तासांपूर्वी",
+    "time_1d_ago": "1 दिवसापूर्वी"
   },
   "__qa": {
     "voice_examples_en": [

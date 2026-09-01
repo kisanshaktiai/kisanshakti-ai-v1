@@ -72,6 +72,10 @@
       "nearby": "पास में",
       "far": "खेत से दूर",
       "unknown": "स्थान अज्ञात"
-    }
+    },
+    "assumptions": "अनुमान",
+    "basedOn": "इस आधार पर",
+    "confident": "विश्वास",
+    "yieldEstimate": "अपेक्षित उपज"
   }
 }

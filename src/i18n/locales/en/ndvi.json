@@ -117,7 +117,10 @@
       "rule_based": "Rule-based · no AI guesses"
     },
     "trend": {
-      "need_more": "Need at least 4 reliable observations"
+      "need_more": "Need at least 4 reliable observations",
+      "improving": "Improving",
+      "declining": "Declining",
+      "stable": "Stable"
     },
     "projection": {
       "title": "Indicative projection",
@@ -158,6 +161,31 @@
     "warning": {
       "attention": "Attention needed",
       "no_alerts": "No alerts"
+    },
+    "banner": {
+      "attention": "📢 Attention Required",
+      "critical": "🚨 Critical Alert",
+      "high": "⚠️ High Priority Alert",
+      "irrigate": "Irrigate Now",
+      "call_expert": "Call Expert"
+    },
+    "health_score": {
+      "title": "Crop Health",
+      "subtitle": "Scientific NDVI Analysis"
+    },
+    "prediction": {
+      "title": "AI Prediction",
+      "current": "Current NDVI",
+      "7_days": "7-Day Forecast",
+      "14_days": "14-Day Forecast",
+      "confidence": "confidence",
+      "improving_msg": "Good news!",
+      "improving_detail": "Your crop health is expected to improve over the next 2 weeks.",
+      "declining_msg": "Attention needed!",
+      "declining_detail": "Crop health may decline. Consider taking preventive action.",
+      "stable_msg": "Stable conditions",
+      "stable_detail": "Crop health is expected to remain steady. Continue current care.",
+      "not_available": "Predictions available after more data is collected"
     }
   },
   "__qa": {

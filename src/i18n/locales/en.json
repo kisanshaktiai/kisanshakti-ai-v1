@@ -336,7 +336,10 @@
     "continueInChat": "Ask AI for Help",
     "savedToFieldLog": "Saved to field log",
     "shareNotSupported": "Share not supported",
-    "labTestRequested": "Lab test requested"
+    "labTestRequested": "Lab test requested",
+    "holdSteady": "Hold steady",
+    "steadyHold": "Keep the phone steady while scanning",
+    "moderateConfidence": "Moderate confidence — take another photo for a better result"
   },
   "voice": {
     "enabled": "Voice navigation enabled",
@@ -405,5 +408,97 @@
       "medium": "Normal",
       "low": "Info"
     }
+  },
+  "actions": {
+    "retry": "Retry"
+  },
+  "alerts": {
+    "recent_alerts": "Recent Alerts",
+    "view_all": "View All"
+  },
+  "anchor": {
+    "clarify": {
+      "body": "We have your transplanting date as {{transplant}} but your sowing date as {{sowing}}. When did you sow the nursery?",
+      "failed": "Could not save the date. Please try again.",
+      "saved": "Thanks — we updated the sowing date."
+    }
+  },
+  "general": {
+    "no_lands_yet": "No lands added yet — continuing as general question.",
+    "no_specific_land": "No specific land — general question",
+    "no_specific_land_hint": "Best for season planning, scheme info, market trends.",
+    "or_pick_land": "Or pick a land",
+    "pick_land_title": "Pick a land for context",
+    "pick_land_subtitle": "Attach a land so the agronomist tailors advice to your crop & stage."
+  },
+  "mode": {
+    "sheet_title": "Farming Method"
+  },
+  "perm": {
+    "center": {
+      "title": "App Permissions",
+      "subtitle": "Turn on what you need. Change any time in Settings."
+    },
+    "continue": "Continue",
+    "granted": "Permission granted",
+    "alreadyOn": "Already enabled",
+    "blocked": "Permission blocked",
+    "openSettings": "Open Settings",
+    "openSettingsHint": "Open phone Settings to enable it.",
+    "nativeNote": "You can change this any time in phone Settings.",
+    "webNote": "You can change this any time in your browser settings.",
+    "revokeHint": "To turn this off, use your phone Settings → Apps → KisanShakti.",
+    "status": {
+      "on": "On",
+      "off": "Off",
+      "blocked": "Blocked"
+    }
+  },
+  "quota": {
+    "exceeded_title": "Today's chats are over",
+    "exceeded_body": "You used {{used}}/{{limit}} chats today. New chats unlock automatically at midnight.",
+    "tenant_disabled_title": "AI Chat unavailable",
+    "tenant_disabled_body": "AI Chat is not enabled for your organisation. Please contact your administrator.",
+    "upgrade_cta": "Upgrade plan",
+    "used": "{{used}}/{{limit}} chats today",
+    "resets_in": "resets in {{time}}"
+  },
+  "reels": {
+    "official_channel": "KisanShakti AI",
+    "liked": "Liked",
+    "saved": "Saved",
+    "unsaved": "Removed from saved",
+    "open_on_youtube": "Open on YouTube",
+    "watch_on_channel": "Watch on YouTube",
+    "comments": {
+      "subtitle": "Comments for official KisanShakti AI videos live on YouTube.",
+      "body": "Join the conversation on the official KisanShakti AI YouTube channel. Your comment helps other farmers too.",
+      "open_youtube": "View comments on YouTube"
+    }
+  },
+  "stage": {
+    "estimatedPrefix": "Estimated: {{text}}",
+    "approachingNext": "{{stage}} (transitioning to the next stage around now)",
+    "recentlyEntered": "Recently entered {{stage}}"
+  },
+  "subscription": {
+    "gate": {
+      "feature_disabled": {
+        "title": "Premium feature",
+        "body": "Upgrade your plan to unlock this feature."
+      }
+    }
+  },
+  "tenant_suspended": {
+    "title": "Service paused",
+    "org": "Organisation",
+    "body": "Your organisation's plan needs renewal. Please contact your administrator to restore access."
+  },
+  "tour": {
+    "guide": "KisanShakti Guide",
+    "listen": "Listen",
+    "next": "Next",
+    "skip": "Skip",
+    "done": "Done"
   }
 }

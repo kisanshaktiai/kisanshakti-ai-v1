@@ -25,7 +25,18 @@
     "small_marginal": "लघु आणि सीमांत शेतकरी",
     "free": "विनामूल्य",
     "variable": "परिवर्तनशील",
-    "per_year": "/वर्ष"
+    "per_year": "/वर्ष",
+    "amount_label": "लाभ",
+    "eligibility_label": "पात्रता",
+    "pm_kisan_title": "पीएम-किसान",
+    "pm_kisan_description": "पात्र शेतकरी कुटुंबांना वर्षातून तीन हप्त्यांत थेट आर्थिक मदत.",
+    "pm_kisan_amount": "₹6,000 प्रति वर्ष",
+    "crop_insurance_title": "प्रधानमंत्री पीक विमा योजना",
+    "crop_insurance_description": "नैसर्गिक आपत्ती, कीड व रोगांपासून पिकाला विमा संरक्षण.",
+    "crop_insurance_amount": "विमा रकमेपर्यंत",
+    "soil_health_title": "मृदा आरोग्य पत्रिका",
+    "soil_health_description": "शेताची मोफत माती तपासणी आणि अन्नद्रव्य शिफारस.",
+    "soil_health_amount": "मोफत"
   },
   "__qa": {
     "voice_examples_en": [

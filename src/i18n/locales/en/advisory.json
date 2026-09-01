@@ -21,7 +21,15 @@
       "warning": "Warning",
       "success": "Success",
       "urgent": "Urgent"
-    }
+    },
+    "irrigation_title": "Irrigation Advice",
+    "pest_alert_title": "Pest Alert",
+    "pest_alert_content": "Watch your field for pest damage and scout the crop today.",
+    "market_update_title": "Market Update",
+    "market_update_content": "Check today's mandi rates before you sell your produce.",
+    "time_2h_ago": "2 hours ago",
+    "time_5h_ago": "5 hours ago",
+    "time_1d_ago": "1 day ago"
   },
   "__qa": {
     "voice_examples_en": [

@@ -160,7 +160,9 @@
         "cotton": "Cotton",
         "others": "Others",
         "all": "All Crops"
-      }
+      },
+      "selectState": "Select State",
+      "yourState": "Your State"
     }
   },
   "__qa": {

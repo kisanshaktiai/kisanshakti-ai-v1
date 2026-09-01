@@ -312,7 +312,10 @@
         "error": "Failed to remove land",
         "link_copied": "Link Copied",
         "link_copied_message": "Land link copied to clipboard"
-      }
+      },
+      "add_crop": "Add Crop",
+      "manage_crops": "Manage Crops",
+      "view_details": "View Details"
     },
     "details": {
       "total_area": "Total Area",
@@ -481,7 +484,12 @@
         "district": "District is required",
         "crop": "Current crop is required",
         "sowing": "Sowing date is required"
-      }
+      },
+      "exactDate": "Exact date (optional)",
+      "holdToTalk": "Hold to talk",
+      "listening": "Listening…",
+      "stageEstimated": "estimated from calendar",
+      "voiceUnsupported": "Voice not supported"
     },
     "location": {
       "title": "Location",
@@ -508,7 +516,10 @@
       "villageTypeName": "Type village name",
       "useTypedAbove": "Use what you typed",
       "openParent": "Open"
-    }
+    },
+    "quota_title": "Land limit reached",
+    "quota_body": "You've used {{used}}/{{limit}} lands on the {{plan}} plan. Upgrade to add more.",
+    "quota_body_short": "You have used {{used}}/{{limit}} lands. Upgrade to add more."
   },
   "__qa": {
     "voice_examples_en": [

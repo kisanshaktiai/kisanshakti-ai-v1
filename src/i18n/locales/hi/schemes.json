@@ -25,7 +25,18 @@
     "small_marginal": "लघु और सीमांत किसान",
     "free": "मुफ्त",
     "variable": "परिवर्तनशील",
-    "per_year": "/वर्ष"
+    "per_year": "/वर्ष",
+    "amount_label": "लाभ",
+    "eligibility_label": "पात्रता",
+    "pm_kisan_title": "पीएम-किसान",
+    "pm_kisan_description": "पात्र किसान परिवारों को साल में तीन किस्तों में सीधी आर्थिक मदद।",
+    "pm_kisan_amount": "₹6,000 प्रति वर्ष",
+    "crop_insurance_title": "प्रधानमंत्री फसल बीमा योजना",
+    "crop_insurance_description": "प्राकृतिक आपदा, कीट और रोग से फसल का बीमा सुरक्षा।",
+    "crop_insurance_amount": "बीमित राशि तक",
+    "soil_health_title": "मृदा स्वास्थ्य कार्ड",
+    "soil_health_description": "खेत की मुफ़्त मिट्टी जाँच और पोषक तत्व सलाह।",
+    "soil_health_amount": "निःशुल्क"
   },
   "__qa": {
     "voice_examples_en": [

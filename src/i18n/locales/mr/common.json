@@ -79,6 +79,21 @@
       "expired_tap_renew": "नूतनीकरण करा"
     },
     "undo": "पूर्ववत करा",
-    "try_again": "पुन्हा प्रयत्न करा"
+    "try_again": "पुन्हा प्रयत्न करा",
+    "acres": "एकर",
+    "addLand": "जमीन जोडा",
+    "clear": "काढा",
+    "copied": "कॉपी झाले",
+    "daysShort": "दि",
+    "featureInDevelopment": "ही सुविधा सध्या तयार होत आहे",
+    "goBack": "मागे जा",
+    "goHome": "मुख्य पानावर जा",
+    "goodMorning": "सुप्रभात",
+    "goodAfternoon": "नमस्कार",
+    "goodEvening": "शुभ संध्याकाळ",
+    "info": "माहिती",
+    "listen": "ऐका",
+    "loadingFeatures": "सुविधा लोड होत आहेत...",
+    "rateLimitError": "खूप विनंत्या झाल्या. कृपया थोड्या वेळाने प्रयत्न करा."
   }
 }
