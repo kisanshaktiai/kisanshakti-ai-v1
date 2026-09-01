@@ -1,6 +1,7 @@
 import { localDB } from './localDB';
 import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integrations/supabase/client';
 import CryptoJS from 'crypto-js';
+import { farmerAuthService, FarmerAuthError } from './farmerAuthService';
 
 interface OfflineAuthData {
   farmerId: string;
@@ -168,7 +169,7 @@ class OfflineAuthService {
           setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
         );
 
-        const authPromise = this.performOnlineAuth(farmerId, tenantId, pin);
+        const authPromise = this.performOnlineAuth(mobile, tenantId, pin);
         
         const result = await Promise.race([authPromise, timeoutPromise]);
         
@@ -176,8 +177,8 @@ class OfflineAuthService {
         if (result.success) {
           console.log('✅ [OfflineAuth] Online authentication successful, caching data');
           await this.cacheAuthData(
-            farmerId,
-            tenantId,
+            result.farmerData?.id ?? farmerId,
+            result.farmerData?.tenant_id ?? tenantId,
             mobile,
             pin,
             result.farmerData,
@@ -238,7 +239,7 @@ class OfflineAuthService {
   }
 
   private async performOnlineAuth(
-    farmerId: string,
+    mobile: string,
     tenantId: string,
     pin: string
   ): Promise<{
@@ -248,76 +249,26 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
-    // CRITICAL: RLS on `farmers` requires the `x-tenant-id` header (and ideally
-    // `x-farmer-id`) to be set so `get_current_tenant_id()` resolves. When the
-    // user lands directly on /pin from a restored session they skip /auth where
-    // headers would normally be set, so we set them here and use an auth-scoped
-    // client to guarantee they ride along on this request.
-    updateSupabaseHeaders(farmerId, tenantId);
-    const authedClient = supabaseWithAuth(farmerId, tenantId);
+    // Credentials are verified server-side only. The client never reads
+    // `pin_hash` and never derives its own identity.
+    try {
+      const result = await farmerAuthService.verifyPin(mobile, tenantId || null, pin);
 
-    // Fetch farmer data in array mode. PostgREST object mode (`single` / `maybeSingle`)
-    // can still surface PGRST116 in production bundles when no rows are visible via RLS.
-    const { data: farmerRows, error: fetchError } = await authedClient
-      .from('farmers')
-      .select('*')
-      .eq('id', farmerId)
-      .eq('tenant_id', tenantId)
-      .limit(2);
+      updateSupabaseHeaders(result.farmer.id, result.farmer.tenant_id);
 
-    if (fetchError) {
-      throw fetchError;
-    }
-
-    const farmer = farmerRows?.[0] ?? null;
-
-    if (!farmer) {
-      // No farmer row for this (id, tenant) pair — let caller fall back to
-      // offline validation rather than surfacing a Postgres error to the UI.
       return {
-        success: false,
+        success: true,
         isOffline: false,
-        error: 'Account not found for this tenant. Please re-register or try offline.',
+        farmerData: result.farmer,
+        profileData: result.profile
       };
-    }
-
-    // Validate PIN - compare hashed versions
-    const pinHash = this.hashPin(pin);
-    
-    // Try using the RPC function first if it exists
-    const { data: isValid, error: validationError } = await supabase
-      .rpc('validate_farmer_pin', {
-        p_farmer_id: farmerId,
-        p_pin: pin,
-        p_tenant_id: tenantId
-      });
-
-    if (validationError || !isValid) {
-      // Fallback: compare salted hash directly (matches SetPin.tsx hashing scheme)
-      if (farmer.pin_hash !== pinHash) {
-        return {
-          success: false,
-          isOffline: false,
-          error: 'Incorrect PIN'
-        };
+    } catch (error: any) {
+      if (error instanceof FarmerAuthError) {
+        // Credential failures must not be retried or masked by offline fallback.
+        return { success: false, isOffline: false, error: error.message };
       }
+      throw error;
     }
-
-    // Fetch profile data
-    const { data: profileRows } = await authedClient
-      .from('user_profiles')
-      .select('*')
-      .eq('farmer_id', farmerId)
-      .limit(1);
-
-    const profileData = profileRows?.[0] ?? null;
-
-    return {
-      success: true,
-      isOffline: false,
-      farmerData: farmer,
-      profileData
-    };
   }
 
   // Check if we have cached auth data
