@@ -328,6 +328,12 @@ serve(async (req) => {
       language,
     );
     const narrated = narration.tasks;
+    if (!narration.narrated && narration.reason && narration.reason !== "no_translation_needed") {
+      baseline.gaps.push(`narration_unavailable: ${narration.reason}`);
+      baseline.coverage.narration = false;
+    } else if (language !== "en") {
+      baseline.coverage.narration = true;
+    }
 
     // ── Persist ─────────────────────────────────────────────────────────────
     const sow = new Date(inputs.sowingDate);
@@ -354,7 +360,7 @@ serve(async (req) => {
         expected_harvest_date: harvestDateStr,
         is_active: true,
         status: "active",
-        generation_language: language,
+        generation_language: narration.narrated ? language : "en",
         ai_model: narration.narrated ? "gemini-2.5-flash (narration only)" : "none",
         calculated_for_area_acres: inputs.landAreaAcres,
         total_duration_days: durationDays,
@@ -373,7 +379,12 @@ serve(async (req) => {
         generation_params: {
           generator_version: GENERATOR_VERSION,
           resolved_inputs: inputs,
-          narration: { applied: narration.narrated, reason: narration.reason ?? null },
+          narration: {
+            requested_language: language,
+            persisted_language: narration.narrated ? language : "en",
+            applied: narration.narrated,
+            reason: narration.reason ?? null,
+          },
         },
         metadata: {
           coverage: baseline.coverage,
@@ -439,7 +450,7 @@ serve(async (req) => {
       trigger_rule_id: t.rule_ids[0] || null,
       confidence: t.confidence,
       source_refs: t.source_refs,
-      language,
+      language: narration.narrated ? language : "en",
       is_pinned: false,
     }));
 
