@@ -73,6 +73,7 @@ export function setGlobalAuthData(userId: string, tenantId: string) {
  */
 export function clearGlobalAuthData() {
   globalAuthData = null;
+  setSessionToken(null);
   headersReady = false;
   headerPromise = null;
   // Clear client cache to prevent memory leaks
@@ -131,6 +132,10 @@ export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
   if (tenantId) {
     headers['x-tenant-id'] = tenantId;
   }
+
+  if (globalSessionToken) {
+    headers['x-session-token'] = globalSessionToken;
+  }
   
   // Update the global headers on the supabase client
   (supabase as any).rest.headers = {
@@ -162,8 +167,8 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
     return supabase;
   }
   
-  // Create cache key from userId and tenantId
-  const cacheKey = `${userId}-${tenant}`;
+  // Create cache key from userId, tenantId and session token
+  const cacheKey = `${userId}-${tenant}-${globalSessionToken ?? 'anon'}`;
   
   // Return cached client if exists
   if (clientCache.has(cacheKey)) {
@@ -178,6 +183,7 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
       headers: {
         'x-farmer-id': userId,
         'x-tenant-id': tenant,
+        ...(globalSessionToken ? { 'x-session-token': globalSessionToken } : {}),
       }
     }
   });
