@@ -42,16 +42,26 @@ const MESSAGES: Record<string, string> = {
   server_error: 'Something went wrong. Please try again.',
 };
 
-async function call<T>(payload: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, { body: payload });
+// The same handler is served by two slugs (see _shared/farmer-auth-core.ts).
+// `tenant-config` is the always-deployed transport; `farmer-auth` is preferred
+// when it is reachable. A 404 on the first slug transparently falls through.
+const ENDPOINTS = [FUNCTION_NAME, 'tenant-config'] as const;
+let preferredEndpoint: string | null = null;
+
+async function invokeOnce<T>(fn: string, payload: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke(fn, { body: payload });
 
   // supabase-js surfaces non-2xx as FunctionsHttpError; recover the JSON body.
   if (error) {
+    const status = (error as any).context?.status;
     let parsed: any = null;
     try {
       parsed = await (error as any).context?.json?.();
     } catch {
       /* body not JSON */
+    }
+    if (status === 404 || parsed?.code === 'NOT_FOUND') {
+      return { notFound: true } as const;
     }
     const code = parsed?.error ?? 'server_error';
     throw new FarmerAuthError(code, MESSAGES[code] ?? error.message, parsed?.retryAfterSeconds);
@@ -62,8 +72,24 @@ async function call<T>(payload: Record<string, unknown>): Promise<T> {
     throw new FarmerAuthError(code, MESSAGES[code] ?? code, (data as any).retryAfterSeconds);
   }
 
-  return data as T;
+  return { notFound: false, data: data as T } as const;
 }
+
+async function call<T>(payload: Record<string, unknown>): Promise<T> {
+  const order = preferredEndpoint
+    ? [preferredEndpoint, ...ENDPOINTS.filter((e) => e !== preferredEndpoint)]
+    : [...ENDPOINTS];
+
+  for (const fn of order) {
+    const res = await invokeOnce<T>(fn, payload);
+    if (res.notFound) continue;
+    preferredEndpoint = fn;
+    return res.data as T;
+  }
+
+  throw new FarmerAuthError('server_error', MESSAGES.server_error);
+}
+
 
 export const farmerAuthService = {
   /** Minimal existence probe — returns no identifiers. */
