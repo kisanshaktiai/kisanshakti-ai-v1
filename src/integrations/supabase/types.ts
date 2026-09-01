@@ -41143,6 +41143,7 @@ export type Database = {
         Returns: boolean
       }
       has_tenant_access: { Args: { check_tenant_id: string }; Returns: boolean }
+      hash_session_token: { Args: { _token: string }; Returns: string }
       increment_usage: {
         Args: {
           p_farmer_id: string
@@ -42572,6 +42573,16 @@ export type Database = {
         Args: { config_data: Json }
         Returns: Json
       }
+      verified_farmer_id: { Args: never; Returns: string }
+      verified_session_context: {
+        Args: never
+        Returns: {
+          farmer_id: string
+          session_id: string
+          tenant_id: string
+        }[]
+      }
+      verified_tenant_id: { Args: never; Returns: string }
       verify_admin_user_setup: {
         Args: never
         Returns: {
