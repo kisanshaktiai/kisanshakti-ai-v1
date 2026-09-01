@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { Loader2, Lock, ArrowLeft, WifiOff } from 'lucide-react';
@@ -37,7 +37,7 @@ export default function PinAuth() {
   // Ensure we have all required data (but allow if cached auth exists for offline)
   useEffect(() => {
     const checkRequiredData = async () => {
-      if (!mobile || !farmerId) {
+      if (!mobile) {
         // Check if we have cached auth for offline
         const cachedAuth = await offlineAuthService.getCachedAuthData();
         if (cachedAuth) {
@@ -65,8 +65,8 @@ export default function PinAuth() {
       const authResult = await offlineAuthService.authenticateWithFallback(
         mobile!,
         value,
-        farmerId!,
-        tenantId!
+        farmerId || '',
+        tenantId || ''
       );
 
       if (!authResult.success) {
@@ -84,22 +84,8 @@ export default function PinAuth() {
           variant: 'default',
         });
       } else {
-        // Update login stats only if online
-        try {
-          await supabase
-            .from('farmers')
-            .update({
-              last_login_at: new Date().toISOString(),
-              last_app_open: new Date().toISOString(),
-              total_app_opens: (farmer.total_app_opens || 0) + 1,
-              failed_login_attempts: 0
-            })
-            .eq('id', farmerId);
-        } catch (error) {
-          console.log('Could not update login stats, will sync later');
-        }
-        
-        // Cache auth data for offline use
+        // Login stats are updated server-side by farmer-auth.
+        // Cache auth data for offline use.
         await offlineAuthService.cacheAuthData(
           farmer.id,
           farmer.tenant_id,
@@ -119,7 +105,7 @@ export default function PinAuth() {
         farmerId: farmer.id,
         tenantId: farmer.tenant_id,
         mobile: farmer.mobile_number,
-        token: `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
+        token: getSessionToken() || `offline_${Date.now()}`,
         createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days for offline
         isPinVerified: true,
