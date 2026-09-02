@@ -7,7 +7,18 @@ import { VarietySelector } from '@/components/crops/VarietySelector';
 import { useCropVarieties } from '@/hooks/useCropVarieties';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle, Wheat, Sprout, Check } from 'lucide-react';
+import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle, Wheat, Sprout, Check, Mountain } from 'lucide-react';
+
+/** Localizes a raw land attribute value through the shared lands.wizard.* keys. */
+const localizeLandValue = (
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  group: 'soil_types' | 'water_sources' | 'irrigation_types',
+  raw?: string | null,
+): string => {
+  if (!raw) return '';
+  const slug = String(raw).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return t(`lands.wizard.${group}.${slug}`, { defaultValue: raw });
+};
 import { format, differenceInDays, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -271,35 +282,45 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         animate={{ opacity: 1, y: 0 }}
         className="h-full flex flex-col"
       >
-        {/* Fixed Header Bar — opaque for mobile FPS (no backdrop-blur) */}
-        <div className="px-4 py-3 bg-background border-b border-border/50 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onBack}
-                className="h-9 w-9 rounded-xl bg-muted/60 hover:bg-primary/10 transition-all duration-300"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{land.name}</h3>
-                <p className="text-xs text-muted-foreground">
-                  {land.area_acres} acres {land.area_guntas && `• ${land.area_guntas} guntas`}
-                </p>
-              </div>
+        {/* Compact land strip — one row: back + land identity + real attribute chips.
+            Opaque (no backdrop-blur) for mobile FPS. */}
+        <div className="px-3 py-2 bg-background border-b border-border/50 shrink-0">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              className="h-9 w-9 shrink-0 rounded-xl bg-muted/60 hover:bg-primary/10"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <div className="min-w-0 shrink-0 max-w-[42%]">
+              <h3 className="text-sm font-semibold text-foreground leading-tight truncate">
+                {land.name}
+              </h3>
+              <p className="text-[11px] text-muted-foreground leading-tight truncate">
+                {[land.village, land.district].filter(Boolean).join(', ')}
+              </p>
             </div>
-            <div className="flex items-center gap-2">
+
+            {/* Attribute chips — DB values only, horizontally scrollable */}
+            <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              <span className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary whitespace-nowrap">
+                <Wheat className="h-3 w-3" />
+                {land.area_acres}
+                {land.area_guntas ? ` • ${land.area_guntas}g` : ''}
+              </span>
               {land.soil_type && (
-                <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                  {land.soil_type}
+                <span className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-muted border border-border/60 text-[11px] font-medium text-foreground whitespace-nowrap">
+                  <Mountain className="h-3 w-3 text-muted-foreground" />
+                  {localizeLandValue(t, 'soil_types', land.soil_type)}
                 </span>
               )}
               {land.water_source && (
-                <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20">
+                <span className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-info/10 border border-info/20 text-[11px] font-medium text-foreground whitespace-nowrap">
                   <Droplets className="h-3 w-3 text-info" />
-                  <span className="text-info dark:text-info">{t('schedule.crop_input.water', 'Water')}</span>
+                  {localizeLandValue(t, 'water_sources', land.water_source)}
                 </span>
               )}
             </div>

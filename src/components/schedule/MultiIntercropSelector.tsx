@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Plus, X, Leaf, Check, Sprout, TreeDeciduous, Flower2 } from 'lucide-react';
+import { Plus, X, Leaf, Check, Sprout, TreeDeciduous, Flower2, ChevronLeft } from 'lucide-react';
 import { useLanguageStore } from '@/stores/languageStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -252,26 +252,44 @@ export default function MultiIntercropSelector({
         </div>
       ) : null}
 
-      {/* Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-md w-[calc(100vw-2rem)] max-h-[80vh] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl flex flex-col bg-background/95 backdrop-blur-xl">
-          {/* Header - Fixed */}
-          <DialogHeader className="px-5 pt-5 pb-3 shrink-0 bg-gradient-to-b from-success/10 to-transparent">
-            <DialogTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-success/20">
-                <Leaf className="h-5 w-5 text-success" />
+      {/* Full-screen picker — identical shell to the crop / variety steps
+          (opaque background, no backdrop-blur, header bar + footer action bar). */}
+      <AnimatePresence>
+        {showDialog && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-background pt-14 pb-nav-safe flex flex-col"
+          >
+            {/* Header bar */}
+            <div className="px-3 py-2 bg-background border-b border-border/50 shrink-0">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setShowDialog(false); resetForm(); }}
+                  className="h-9 w-9 shrink-0 rounded-xl bg-muted/60 hover:bg-primary/10"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="h-9 w-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                  <Leaf className="h-4.5 w-4.5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-foreground leading-tight truncate">
+                    {t.intercropTitle}
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground leading-tight truncate">
+                    {t.intercropDescription}
+                  </p>
+                </div>
               </div>
-              {t.intercropTitle}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground mt-1">
-              {t.intercropDescription}
-            </DialogDescription>
-          </DialogHeader>
+            </div>
 
-          {/* Scrollable Content Area */}
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {/* Crop Selector - Scrollable */}
-            <div className="h-[280px] overflow-y-auto">
+            {/* Crop picker fills the remaining height */}
+            <div className="flex-1 min-h-0 overflow-hidden">
               <CentralizedCropSelector
                 selectedCropId={selectedCropId}
                 onSelect={handleCropSelect}
@@ -282,18 +300,18 @@ export default function MultiIntercropSelector({
               />
             </div>
 
-            {/* Selected Crop Details */}
+            {/* Selected crop details */}
             <AnimatePresence>
               {selectedCropName && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="px-5 py-4 border-t border-border/50 space-y-4 bg-gradient-to-t from-success/5 to-transparent"
+                  className="shrink-0 px-4 py-3 border-t border-border/50 space-y-3 bg-background overflow-hidden"
                 >
-                  <div className="flex items-center gap-2 p-2.5 bg-success/15 rounded-xl border border-success/30">
-                    <Check className="h-4 w-4 text-success shrink-0" />
-                    <span className="text-sm font-semibold text-success dark:text-success truncate">
+                  <div className="flex items-center gap-2 p-2.5 bg-primary/10 rounded-xl border border-primary/20">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-sm font-semibold text-foreground truncate">
                       {selectedLocalizedName || selectedCropName}
                     </span>
                   </div>
@@ -305,7 +323,7 @@ export default function MultiIntercropSelector({
                         placeholder={t.varietyPlaceholder}
                         value={variety}
                         onChange={(e) => setVariety(e.target.value)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
+                        className="h-12 text-sm rounded-xl bg-card border-border focus:border-primary/50"
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -317,48 +335,32 @@ export default function MultiIntercropSelector({
                         placeholder={t.areaPlaceholder}
                         value={areaPercent}
                         onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
+                        className="h-12 text-sm rounded-xl bg-card border-border focus:border-primary/50"
                       />
                     </div>
                   </div>
 
-                  {/* Area hint */}
-                  <p className="text-[10px] text-muted-foreground text-center">
-                    Max: {remainingArea}% available
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    {remainingArea}% {t.remaining}
                   </p>
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
 
-          {/* Footer - Fixed at Bottom */}
-          <DialogFooter className="flex flex-col gap-2 p-5 pt-3 border-t border-border/50 shrink-0 bg-background/80 backdrop-blur-sm">
-            <Button
-              onClick={handleConfirm}
-              disabled={!selectedCropName || areaPercent <= 0}
-              className={cn(
-                "w-full h-12 rounded-xl font-semibold transition-all duration-300",
-                selectedCropName && areaPercent > 0
-                  ? "bg-gradient-to-r from-success to-success hover:from-success hover:to-success text-white shadow-lg shadow-success/30/25"
-                  : "bg-muted text-muted-foreground"
-              )}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              {t.confirm}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowDialog(false);
-                resetForm();
-              }}
-              className="w-full h-10 text-muted-foreground rounded-xl"
-            >
-              {t.cancel}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {/* Footer action bar */}
+            <div className="shrink-0 p-3 border-t border-border/50 bg-background">
+              <Button
+                onClick={handleConfirm}
+                disabled={!selectedCropName || areaPercent <= 0}
+                className="w-full h-12 rounded-xl font-semibold"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                {t.confirm}
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

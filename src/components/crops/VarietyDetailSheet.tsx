@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Droplets, Calendar, MapPin, Shield, Sprout, Award, TrendingUp, BookOpen, Check, Info, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { useThreatNames } from '@/lib/threatLocalName';
 import {
   useVarietyResistance,
   useVarietyTranslation,
@@ -58,19 +59,23 @@ const formatPrice = (o: VarietyOffering) => {
   return `${currency}${o.price}${pack}`;
 };
 
+/** Renders nothing when the value is missing — never shows an em-dash placeholder. */
 const Metric: React.FC<{
   icon: React.ElementType;
   label: string;
   value: React.ReactNode;
-}> = ({ icon: Icon, label, value }) => (
-  <div className="rounded-2xl bg-card border border-border/60 p-3">
-    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-      <Icon className="h-3.5 w-3.5" />
-      {label}
+}> = ({ icon: Icon, label, value }) => {
+  if (value == null || value === '') return null;
+  return (
+    <div className="rounded-2xl bg-muted/40 border border-border/50 p-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Icon className="h-3.5 w-3.5 text-primary" />
+        {label}
+      </div>
+      <div className="text-sm font-semibold mt-1 leading-tight text-foreground">{value}</div>
     </div>
-    <div className="text-sm font-semibold mt-1 leading-tight">{value ?? '—'}</div>
-  </div>
-);
+  );
+};
 
 export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
   variety,
@@ -84,6 +89,8 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
   const { rows: resistance, loading: resLoading } = useVarietyResistance(variety?.id);
   const { translation, loading: trLoading } = useVarietyTranslation(variety?.id, lang);
   const { offerings, loading: offLoading } = useVarietyOfferings(variety?.id);
+  const { resolve: resolveThreat } = useThreatNames();
+  const [descExpanded, setDescExpanded] = React.useState(false);
 
   if (!variety) return null;
 
@@ -123,33 +130,41 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
         </div>
 
         <SheetHeader className="px-4 pt-2 pb-3 shrink-0 text-left">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <SheetTitle className="text-base leading-tight flex items-center gap-2 flex-wrap">
-                <span className="truncate">{variety.name}</span>
-                {variety.variety_code && (
-                  <Badge variant="outline" className="h-5 text-[10px] px-1.5">
-                    {variety.variety_code}
-                  </Badge>
-                )}
-                {variety.variety_completeness_score != null && (
-                  <Badge variant="secondary" className="h-5 text-[10px] flex items-center gap-0.5">
-                    <Award className="h-2.5 w-2.5" />
-                    {Math.round(Number(variety.variety_completeness_score))}%
-                  </Badge>
-                )}
-              </SheetTitle>
-              {localName && (
-                <p className="text-sm text-muted-foreground mt-0.5">{localName}</p>
+          <div className="min-w-0">
+            {/* Farmer-first: local name is the primary heading when available */}
+            <SheetTitle className="text-[19px] font-semibold leading-snug text-foreground">
+              <span className="block truncate">{localName || variety.name}</span>
+            </SheetTitle>
+            {localName && (
+              <p className="text-[13px] text-muted-foreground mt-0.5 truncate">{variety.name}</p>
+            )}
+            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+              {variety.variety_code && (
+                <Badge variant="outline" className="h-5 text-[10px] px-1.5 border-primary/30 text-primary">
+                  {variety.variety_code}
+                </Badge>
               )}
-              <div className="flex flex-wrap gap-1.5 mt-1.5 text-[11px] text-muted-foreground">
-                {variety.brand && <span>{variety.brand}</span>}
-                {variety.released_by && (
-                  <span>· {t('schedule.variety.released_by', 'Released by')} {variety.released_by}</span>
-                )}
-                {variety.season && <span>· <span className="capitalize">{variety.season}</span></span>}
-              </div>
+              {variety.variety_completeness_score != null && (
+                <Badge variant="secondary" className="h-5 text-[10px] flex items-center gap-0.5">
+                  <Award className="h-2.5 w-2.5" />
+                  {Math.round(Number(variety.variety_completeness_score))}%
+                </Badge>
+              )}
+              {variety.season && (
+                <Badge variant="outline" className="h-5 text-[10px] px-1.5 capitalize">
+                  {variety.season}
+                </Badge>
+              )}
             </div>
+            {(variety.brand || variety.released_by) && (
+              <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+                {variety.brand}
+                {variety.brand && variety.released_by ? ' · ' : ''}
+                {variety.released_by
+                  ? `${t('schedule.variety.released_by', 'Released by')} ${variety.released_by}`
+                  : ''}
+              </p>
+            )}
           </div>
         </SheetHeader>
 
@@ -186,9 +201,27 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
                   {t('schedule.variety.loading_details', 'Loading…')}
                 </p>
               ) : description ? (
-                <p className="text-[13px] leading-relaxed text-foreground whitespace-pre-wrap">
-                  {description}
-                </p>
+                <div className="space-y-1">
+                  <p
+                    className={cn(
+                      'text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap',
+                      !descExpanded && 'line-clamp-6'
+                    )}
+                  >
+                    {description}
+                  </p>
+                  {description.length > 260 && (
+                    <button
+                      type="button"
+                      onClick={() => setDescExpanded((v) => !v)}
+                      className="text-[11px] font-medium text-primary"
+                    >
+                      {descExpanded
+                        ? t('common.read_less', 'Show less')
+                        : t('common.read_more', 'Read more')}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
                   <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
@@ -244,19 +277,24 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-1">
-                  {resistance.map((r, i) => (
-                    <Badge
-                      key={`${r.pathogen}-${i}`}
-                      variant="outline"
-                      className={cn('h-6 text-[11px] px-2 gap-1 capitalize', levelStyle(r.level))}
-                      title={r.notes || undefined}
-                    >
-                      <span className="font-medium">
-                        {r.pathogen.replace(/_/g, ' ').toLowerCase()}
-                      </span>
-                      <span className="opacity-80">· {r.level.toUpperCase()}</span>
-                    </Badge>
-                  ))}
+                  {resistance.map((r, i) => {
+                    const nm = resolveThreat(r.pathogen.replace(/_/g, ' '));
+                    return (
+                      <Badge
+                        key={`${r.pathogen}-${i}`}
+                        variant="outline"
+                        className={cn(
+                          'h-6 text-[11px] px-2 gap-1',
+                          nm.localized ? '' : 'capitalize',
+                          levelStyle(r.level)
+                        )}
+                        title={[nm.scientific, r.notes].filter(Boolean).join(' — ') || undefined}
+                      >
+                        <span className="font-medium">{nm.label}</span>
+                        <span className="opacity-80">· {r.level.toUpperCase()}</span>
+                      </Badge>
+                    );
+                  })}
                 </div>
               )}
             </section>
