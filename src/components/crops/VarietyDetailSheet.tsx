@@ -59,19 +59,23 @@ const formatPrice = (o: VarietyOffering) => {
   return `${currency}${o.price}${pack}`;
 };
 
+/** Renders nothing when the value is missing — never shows an em-dash placeholder. */
 const Metric: React.FC<{
   icon: React.ElementType;
   label: string;
   value: React.ReactNode;
-}> = ({ icon: Icon, label, value }) => (
-  <div className="rounded-2xl bg-card border border-border/60 p-3">
-    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-      <Icon className="h-3.5 w-3.5" />
-      {label}
+}> = ({ icon: Icon, label, value }) => {
+  if (value == null || value === '') return null;
+  return (
+    <div className="rounded-2xl bg-muted/40 border border-border/50 p-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Icon className="h-3.5 w-3.5 text-primary" />
+        {label}
+      </div>
+      <div className="text-sm font-semibold mt-1 leading-tight text-foreground">{value}</div>
     </div>
-    <div className="text-sm font-semibold mt-1 leading-tight">{value ?? '—'}</div>
-  </div>
-);
+  );
+};
 
 export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
   variety,
