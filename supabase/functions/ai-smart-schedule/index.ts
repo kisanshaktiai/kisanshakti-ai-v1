@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-09-02 12:45 UTC — Farmer-language pipeline: tasks are sanitized by
+//   generator/farmer-text.ts (audit tags stripped, shorthand expanded, provenance moved
+//   to resources.technical_details) and then simplified/translated for EVERY app
+//   language (English included). Narration now accepts partial success.
+
 // 2026-08-30 — P0-RC5 (crop biological stage engine audit): a new cycle re-anchors the
 //   THERMAL clock too. lands.gdd_anchor_date is sticky in accumulate_gdd_for_land
 //   ("respect an existing anchor; only derive when NULL"), so writing planting_date
