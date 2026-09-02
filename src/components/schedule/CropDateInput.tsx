@@ -7,7 +7,18 @@ import { VarietySelector } from '@/components/crops/VarietySelector';
 import { useCropVarieties } from '@/hooks/useCropVarieties';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle, Wheat, Sprout, Check } from 'lucide-react';
+import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle, Wheat, Sprout, Check, Mountain } from 'lucide-react';
+
+/** Localizes a raw land attribute value through the shared lands.wizard.* keys. */
+const localizeLandValue = (
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  group: 'soil_types' | 'water_sources' | 'irrigation_types',
+  raw?: string | null,
+): string => {
+  if (!raw) return '';
+  const slug = String(raw).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return t(`lands.wizard.${group}.${slug}`, { defaultValue: raw });
+};
 import { format, differenceInDays, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
