@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Droplets, Calendar, MapPin, Shield, Sprout, Award, TrendingUp } from 'lucide-react';
 import { useVarietyResistance, type CropVariety } from '@/hooks/useCropVarieties';
 import { cn } from '@/lib/utils';
+import { useThreatNames } from '@/lib/threatLocalName';
 import { useTranslation } from 'react-i18next';
 
 interface VarietyDetailCardProps {
