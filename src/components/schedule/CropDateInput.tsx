@@ -632,10 +632,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       <p className="text-xs font-medium text-success truncate">{cropVariety}</p>
                     </div>
                   )}
+                  )}
                 </div>
               </div>
-
-                  )}
 
               {/* Mobile decision footer — one primary decision per step */}
               <div className="p-4 pt-3 border-t border-border/40 bg-background shrink-0">
