@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Droplets, Calendar, MapPin, Shield, Sprout, Award, TrendingUp, BookOpen, Check, Info, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { useThreatNames } from '@/lib/threatLocalName';
 import {
   useVarietyResistance,
   useVarietyTranslation,
