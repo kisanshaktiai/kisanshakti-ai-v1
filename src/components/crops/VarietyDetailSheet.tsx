@@ -200,9 +200,27 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
                   {t('schedule.variety.loading_details', 'Loading…')}
                 </p>
               ) : description ? (
-                <p className="text-[13px] leading-relaxed text-foreground whitespace-pre-wrap">
-                  {description}
-                </p>
+                <div className="space-y-1">
+                  <p
+                    className={cn(
+                      'text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap',
+                      !descExpanded && 'line-clamp-6'
+                    )}
+                  >
+                    {description}
+                  </p>
+                  {description.length > 260 && (
+                    <button
+                      type="button"
+                      onClick={() => setDescExpanded((v) => !v)}
+                      className="text-[11px] font-medium text-primary"
+                    >
+                      {descExpanded
+                        ? t('common.read_less', 'Show less')
+                        : t('common.read_more', 'Read more')}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
                   <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
