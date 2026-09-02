@@ -244,19 +244,24 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-1">
-                  {resistance.map((r, i) => (
-                    <Badge
-                      key={`${r.pathogen}-${i}`}
-                      variant="outline"
-                      className={cn('h-6 text-[11px] px-2 gap-1 capitalize', levelStyle(r.level))}
-                      title={r.notes || undefined}
-                    >
-                      <span className="font-medium">
-                        {r.pathogen.replace(/_/g, ' ').toLowerCase()}
-                      </span>
-                      <span className="opacity-80">· {r.level.toUpperCase()}</span>
-                    </Badge>
-                  ))}
+                  {resistance.map((r, i) => {
+                    const nm = resolveThreat(r.pathogen.replace(/_/g, ' '));
+                    return (
+                      <Badge
+                        key={`${r.pathogen}-${i}`}
+                        variant="outline"
+                        className={cn(
+                          'h-6 text-[11px] px-2 gap-1',
+                          nm.localized ? '' : 'capitalize',
+                          levelStyle(r.level)
+                        )}
+                        title={[nm.scientific, r.notes].filter(Boolean).join(' — ') || undefined}
+                      >
+                        <span className="font-medium">{nm.label}</span>
+                        <span className="opacity-80">· {r.level.toUpperCase()}</span>
+                      </Badge>
+                    );
+                  })}
                 </div>
               )}
             </section>
