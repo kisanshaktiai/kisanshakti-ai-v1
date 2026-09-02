@@ -26,6 +26,7 @@ const levelStyle = (level: string) => {
 export const VarietyDetailCard: React.FC<VarietyDetailCardProps> = ({ variety, className }) => {
   const { t, i18n } = useTranslation();
   const { rows: resistance, loading } = useVarietyResistance(variety.id);
+  const { resolve: resolveThreat } = useThreatNames();
 
   const lang = i18n.language;
   const localName =
