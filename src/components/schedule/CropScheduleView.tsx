@@ -630,7 +630,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                               }}
                             >
                               <Volume2 className="h-3 w-3 mr-1" />
-                              {i18n.language === 'hi' ? 'सुनें' : i18n.language === 'mr' ? 'ऐका' : 'Listen'}
+                              {t('schedule.listen')}
                             </Button>
                             {/* Camera button for task photo */}
                             <Button
@@ -643,7 +643,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                               }}
                             >
                               <Camera className="h-3 w-3" />
-                              {i18n.language === 'hi' ? 'फोटो' : i18n.language === 'mr' ? 'फोटो' : 'Photo'}
+                              {t('schedule.photo')}
                             </Button>
                           </div>
                         </div>
