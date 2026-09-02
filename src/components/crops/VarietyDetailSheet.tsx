@@ -129,33 +129,41 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
         </div>
 
         <SheetHeader className="px-4 pt-2 pb-3 shrink-0 text-left">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <SheetTitle className="text-base leading-tight flex items-center gap-2 flex-wrap">
-                <span className="truncate">{variety.name}</span>
-                {variety.variety_code && (
-                  <Badge variant="outline" className="h-5 text-[10px] px-1.5">
-                    {variety.variety_code}
-                  </Badge>
-                )}
-                {variety.variety_completeness_score != null && (
-                  <Badge variant="secondary" className="h-5 text-[10px] flex items-center gap-0.5">
-                    <Award className="h-2.5 w-2.5" />
-                    {Math.round(Number(variety.variety_completeness_score))}%
-                  </Badge>
-                )}
-              </SheetTitle>
-              {localName && (
-                <p className="text-sm text-muted-foreground mt-0.5">{localName}</p>
+          <div className="min-w-0">
+            {/* Farmer-first: local name is the primary heading when available */}
+            <SheetTitle className="text-[19px] font-semibold leading-snug text-foreground">
+              <span className="block truncate">{localName || variety.name}</span>
+            </SheetTitle>
+            {localName && (
+              <p className="text-[13px] text-muted-foreground mt-0.5 truncate">{variety.name}</p>
+            )}
+            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+              {variety.variety_code && (
+                <Badge variant="outline" className="h-5 text-[10px] px-1.5 border-primary/30 text-primary">
+                  {variety.variety_code}
+                </Badge>
               )}
-              <div className="flex flex-wrap gap-1.5 mt-1.5 text-[11px] text-muted-foreground">
-                {variety.brand && <span>{variety.brand}</span>}
-                {variety.released_by && (
-                  <span>· {t('schedule.variety.released_by', 'Released by')} {variety.released_by}</span>
-                )}
-                {variety.season && <span>· <span className="capitalize">{variety.season}</span></span>}
-              </div>
+              {variety.variety_completeness_score != null && (
+                <Badge variant="secondary" className="h-5 text-[10px] flex items-center gap-0.5">
+                  <Award className="h-2.5 w-2.5" />
+                  {Math.round(Number(variety.variety_completeness_score))}%
+                </Badge>
+              )}
+              {variety.season && (
+                <Badge variant="outline" className="h-5 text-[10px] px-1.5 capitalize">
+                  {variety.season}
+                </Badge>
+              )}
             </div>
+            {(variety.brand || variety.released_by) && (
+              <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+                {variety.brand}
+                {variety.brand && variety.released_by ? ' · ' : ''}
+                {variety.released_by
+                  ? `${t('schedule.variety.released_by', 'Released by')} ${variety.released_by}`
+                  : ''}
+              </p>
+            )}
           </div>
         </SheetHeader>
 
