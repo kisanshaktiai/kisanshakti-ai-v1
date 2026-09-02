@@ -119,6 +119,22 @@ export const farmerAuthService = {
     setSessionToken(result.session.token);
     return result;
   },
+  /** Forgot-PIN step 1 — sends a one-time code by SMS. */
+  async requestPinReset(mobile: string, tenantId: string | null) {
+    return call<{ sent?: boolean; expiresInSeconds?: number }>({
+      action: 'requestPinReset', mobile, tenantId: tenantId ?? undefined,
+    });
+  },
+  /** Forgot-PIN step 2 — proves the code and sets a new PIN. */
+  async verifyPinReset(
+    mobile: string, tenantId: string | null, code: string, newPin: string,
+  ) {
+    const result = await call<FarmerAuthResult>({
+      action: 'verifyPinReset', mobile, tenantId: tenantId ?? undefined, code, newPin,
+    });
+    setSessionToken(result.session.token);
+    return result;
+  },
   async logout(token?: string | null) {
     try {
       if (token) await call({ action: 'logout', sessionToken: token });
