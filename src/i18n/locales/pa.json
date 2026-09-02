@@ -122,6 +122,61 @@
       "task_updated": "ਕੰਮ ਸਫਲਤਾਪੂਰਵਕ ਅੱਪਡੇਟ ਹੋਇਆ",
       "changes_saved": "ਤੁਹਾਡੀਆਂ ਤਬਦੀਲੀਆਂ ਸੰਭਾਲ ਲਈਆਂ ਗਈਆਂ ਹਨ",
       "update_failed": "ਕੰਮ ਅੱਪਡੇਟ ਕਰਨ ਵਿੱਚ ਅਸਫਲ"
+    },
+    "farmer_task": {
+      "what": "ਕੀ ਕਰਨਾ ਹੈ",
+      "how": "ਕਿਵੇਂ ਕਰਨਾ ਹੈ",
+      "how_much": "ਕਿੰਨਾ ਚਾਹੀਦਾ ਹੈ",
+      "how_not_available": "ਇਸ ਕੰਮ ਲਈ ਤਸਦੀਕ ਕੀਤਾ ਤਰੀਕਾ ਹਾਲੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।",
+      "amount_not_available": "ਇਸ ਕੰਮ ਲਈ ਤਸਦੀਕ ਕੀਤੀ ਮਾਤਰਾ ਹਾਲੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
+    },
+    "crop_growth": {
+      "title": "ਫਸਲ ਦੀ ਵਾਧਾ ਜਾਂਚ",
+      "description": "ਫਸਲ ਦੀ ਜਾਂਚ ਲਈ ਫੋਟੋ ਅਪਲੋਡ ਕਰੋ",
+      "upload_photo": "ਫੋਟੋ ਅਪਲੋਡ ਕਰੋ"
+    },
+    "loading_overlay": {
+      "preparing": "ਤੁਹਾਡੀ ਫਸਲ ਦੀ ਯੋਜਨਾ ਤਿਆਰ ਹੋ ਰਹੀ ਹੈ...",
+      "steps": {
+        "crop_requirements": "ਫਸਲ ਦੀ ਜਾਣਕਾਰੀ ਜਾਂਚ ਰਹੇ ਹਾਂ",
+        "weather": "ਮੌਸਮ ਜਾਂਚ ਰਹੇ ਹਾਂ",
+        "irrigation": "ਪਾਣੀ ਦੀ ਲੋੜ ਦੇਖ ਰਹੇ ਹਾਂ",
+        "nutrition": "ਪੋਸ਼ਣ ਕੰਮ ਦੀ ਯੋਜਨਾ ਬਣਾ ਰਹੇ ਹਾਂ",
+        "growth": "ਫਸਲ ਦੇ ਵਾਧੇ ਦੇ ਪੜਾਅ ਦੇਖ ਰਹੇ ਹਾਂ",
+        "monsoon": "ਮੌਸਮ ਦੇ ਖਤਰੇ ਜਾਂਚ ਰਹੇ ਹਾਂ",
+        "harvest": "ਵਾਢੀ ਦਾ ਸਮਾਂ ਤੈਅ ਕਰ ਰਹੇ ਹਾਂ"
+      },
+      "farming_type": {
+        "organic_only": "ਜੈਵਿਕ ਖੇਤੀ",
+        "organic_fertilizer": "ਇਕੱਠੀ ਖੇਤੀ",
+        "fertilizer_pesticide": "ਖਾਦ ਅਤੇ ਫਸਲ ਸੁਰੱਖਿਆ"
+      }
+    },
+    "amount": {
+      "task_quantity": "ਮਾਤਰਾ",
+      "water": "ਪਾਣੀ",
+      "fertilizer": "ਖਾਦ",
+      "pesticide": "ਕੀਟਨਾਸ਼ਕ",
+      "fungicide": "ਫਫੂੰਦਨਾਸ਼ਕ",
+      "herbicide": "ਘਾਹਨਾਸ਼ਕ",
+      "bio_pesticide": "ਜੈਵ ਕੀਟਨਾਸ਼ਕ",
+      "seed": "ਬੀਜ"
+    },
+    "task_type": {
+      "irrigation": "ਪਾਣੀ ਦਿਓ",
+      "nutrition": "ਖਾਦ/ਪੋਸ਼ਣ ਦਿਓ",
+      "micronutrient": "ਸੂਖਮ ਪੋਸ਼ਕ ਦਿਓ",
+      "pest_management": "ਕੀਟ ਕੰਟਰੋਲ ਕਰੋ",
+      "disease_management": "ਬਿਮਾਰੀ ਕੰਟਰੋਲ ਕਰੋ",
+      "weed_management": "ਘਾਹ ਕੰਟਰੋਲ ਕਰੋ",
+      "intercultural": "ਅੰਤਰ-ਖੇਤੀ ਕਰੋ",
+      "sowing": "ਬੀਜਾਈ ਕਰੋ",
+      "seed_treatment": "ਬੀਜ ਇਲਾਜ ਕਰੋ",
+      "land_preparation": "ਜ਼ਮੀਨ ਤਿਆਰ ਕਰੋ",
+      "monitoring": "ਖੇਤ ਦੀ ਜਾਂਚ ਕਰੋ",
+      "harvest": "ਵਾਢੀ ਕਰੋ",
+      "post_harvest": "ਵਾਢੀ ਤੋਂ ਬਾਅਦ ਦਾ ਕੰਮ ਕਰੋ",
+      "generic": "ਇਹ ਕੰਮ ਕਰੋ"
     }
   },
   "instaScan": {
