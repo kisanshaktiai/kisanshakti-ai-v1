@@ -22397,6 +22397,42 @@ export type Database = {
         }
         Relationships: []
       }
+      pin_reset_codes: {
+        Row: {
+          attempts: number
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          farmer_id: string
+          id: string
+          mobile_number: string
+          tenant_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          farmer_id: string
+          id?: string
+          mobile_number: string
+          tenant_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          farmer_id?: string
+          id?: string
+          mobile_number?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       plan_features: {
         Row: {
           created_at: string
