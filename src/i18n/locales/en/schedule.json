@@ -408,6 +408,61 @@
       "high": "High",
       "low": "Low",
       "medium": "Medium"
+    },
+    "farmer_task": {
+      "what": "What to do",
+      "how": "How to do it",
+      "how_much": "How much",
+      "how_not_available": "The database has not provided a verified method for this task yet.",
+      "amount_not_available": "The database has not provided a verified amount for this task yet."
+    },
+    "crop_growth": {
+      "title": "Crop Growth Tracking",
+      "description": "Upload a photo to check your crop",
+      "upload_photo": "Upload Photo"
+    },
+    "loading_overlay": {
+      "steps": {
+        "crop_requirements": "Checking crop details",
+        "weather": "Checking weather",
+        "irrigation": "Planning water needs",
+        "nutrition": "Planning nutrient work",
+        "growth": "Checking crop growth stages",
+        "monsoon": "Checking weather risks",
+        "harvest": "Setting harvest timeline"
+      },
+      "preparing": "Preparing your crop schedule...",
+      "farming_type": {
+        "organic_only": "Organic farming",
+        "organic_fertilizer": "Integrated farming",
+        "fertilizer_pesticide": "Fertilizer and crop protection"
+      }
+    },
+    "amount": {
+      "task_quantity": "Amount",
+      "water": "Water",
+      "fertilizer": "Fertilizer",
+      "pesticide": "Pesticide",
+      "fungicide": "Fungicide",
+      "herbicide": "Herbicide",
+      "bio_pesticide": "Bio pesticide",
+      "seed": "Seed"
+    },
+    "task_type": {
+      "irrigation": "Irrigation",
+      "nutrition": "Nutrition",
+      "micronutrient": "Micronutrient",
+      "pest_management": "Pest management",
+      "disease_management": "Disease management",
+      "weed_management": "Weed management",
+      "intercultural": "Intercultural work",
+      "sowing": "Sowing",
+      "seed_treatment": "Seed treatment",
+      "land_preparation": "Land preparation",
+      "monitoring": "Field scouting",
+      "harvest": "Harvest",
+      "post_harvest": "Post-harvest work",
+      "generic": "Do this task"
     }
   },
   "common": {
