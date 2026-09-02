@@ -124,3 +124,29 @@ export function resolveThreatName(raw: string, lang: string): ThreatDisplayName 
   }
   return { label: cleaned, scientific, localized: false };
 }
+
+/* ── React binding ───────────────────────────────────────────────────────── */
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+/**
+ * Loads the DB name tables once and returns a resolver bound to the active UI
+ * language. Re-renders the consumer when the tables arrive.
+ */
+export function useThreatNames() {
+  const { i18n } = useTranslation();
+  const lang = (i18n.language || 'en').split('-')[0];
+  const [ready, setReady] = useState(!!cache);
+
+  useEffect(() => {
+    let alive = true;
+    if (cache) { setReady(true); return; }
+    loadNames().then(() => { if (alive) setReady(true); });
+    return () => { alive = false; };
+  }, []);
+
+  return {
+    ready,
+    resolve: (raw: string) => resolveThreatName(raw, lang),
+  };
+}
