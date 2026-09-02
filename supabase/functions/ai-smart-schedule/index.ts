@@ -63,6 +63,7 @@ import { generateBaseline, GENERATOR_VERSION } from "./generator/baseline-genera
 import { narrateTasks } from "./generator/narrate.ts";
 import { attachRagEvidence, type RagEvidenceSummary } from "./db/rag-evidence.ts";
 import { isFlagEnabled } from "../_shared/featureFlags.ts";
+import { applyScheduleHarness } from "./harness/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -294,6 +295,20 @@ serve(async (req) => {
       for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
     }
 
+    // ── HARNESS V1: validated PlanIntent seam (flag-gated, fail-closed) ───────
+    let harnessTrace: Record<string, unknown> | null = null;
+    try {
+      const harnessFlag = await isFlagEnabled(supabase, "crop_schedule_harness_v1", { tenantId, farmerId });
+      if (harnessFlag.enabled) {
+        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps });
+        if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
+        baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
+        harnessTrace = harnessed.result.trace;
+      }
+    } catch {
+      return json({ error: "Schedule harness execution failed before persistence", code: "HARNESS_FAILURE" }, 422);
+    }
+
     // ── PHASE 2 / P1: verified RAG evidence attachment (flag-gated) ─────────
     // Runs AFTER the deterministic baseline so RAG can only annotate, never
     // generate. belowThreshold / unservable ⇒ explicit NO_EVIDENCE on the task.
@@ -379,6 +394,7 @@ serve(async (req) => {
         generation_params: {
           generator_version: GENERATOR_VERSION,
           resolved_inputs: inputs,
+          harness: harnessTrace,
           narration: {
             requested_language: language,
             persisted_language: narration.narrated ? language : "en",
@@ -524,6 +540,7 @@ serve(async (req) => {
       missing_section_label_keys: missingSectionLabelKeys,
       gaps: baseline.gaps,
       generatorVersion: GENERATOR_VERSION,
+      harness: harnessTrace,
       narrationApplied: narration.narrated,
       executionTimeMs: Date.now() - startTime,
       generatedAt: new Date().toISOString(),
