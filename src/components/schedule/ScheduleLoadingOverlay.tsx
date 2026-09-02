@@ -23,56 +23,6 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
   const { t } = useTranslation();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
-  const quotes = motivationalQuotes[lang] || motivationalQuotes.en;
-
-  useEffect(() => {
-    if (!isLoading) return;
-
-    const stepInterval = setInterval(() => {
-      setCurrentStepIndex((prev) => (prev + 1) % loadingSteps.length);
-    }, 2000);
-
-    return () => {
-      clearInterval(stepInterval);
-    };
-  }, [isLoading, quotes.length]);
-
-  useEffect(() => {
-    if (isLoading) {
-      setCurrentStepIndex(0);
-    }
-  }, [isLoading]);
-
-  if (!isLoading) return null;
-
-  const currentQuote = quotes[currentQuoteIndex];
-
-  const getFarmingTypeLabel = () => {
-    const labels: Record<string, Record<string, string>> = {
-      organic_only: {
-        en: "100% Organic",
-        hi: "पूर्ण जैविक",
-        mr: "संपूर्ण सेंद्रिय",
-        pa: "ਪੂਰੀ ਜੈਵਿਕ",
-        ta: "முழு இயற்கை",
-      },
-      organic_fertilizer: {
-        en: "Organic + Fertilizer",
-        hi: "जैविक + रासायनिक",
-        mr: "सेंद्रिय + रासायनिक",
-        pa: "ਜੈਵਿਕ + ਰਸਾਇਣਕ",
-        ta: "இயற்கை + உரம்",
-      },
-      fertilizer_pesticide: {
-        en: "Full Chemical",
-        hi: "पूर्ण रासायनिक",
-        mr: "पूर्ण रासायनिक",
-        pa: "ਪੂਰੀ ਰਸਾਇਣਕ",
-        ta: "முழு ரசாயனம்",
-      },
-    };
-    return labels[farmingType]?.[lang] || labels[farmingType]?.en || farmingType;
-  };
 
   return (
     <AnimatePresence>
