@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface CropVariety {
@@ -174,6 +174,31 @@ async function fetchOfferings(varietyId: string): Promise<VarietyOffering[]> {
   })();
   inflightOfferings.set(varietyId, p);
   return p;
+}
+
+function normalizeState(value: string | null | undefined): string {
+  return String(value || '').trim().toLocaleLowerCase();
+}
+
+export function useRegionalCropVarieties(cropId?: string | null, state?: string | null) {
+  const { varieties, loading } = useCropVarieties(cropId);
+  const regionalVarieties = useMemo(() => {
+    const normalized = normalizeState(state);
+    if (!normalized) return varieties;
+    const matched = varieties.filter((v) =>
+      Array.isArray(v.state_suitability) &&
+      v.state_suitability.some((s) => normalizeState(s) === normalized)
+    );
+    return matched.length ? matched : varieties;
+  }, [varieties, state]);
+  return {
+    varieties: regionalVarieties,
+    loading,
+    hasRegionalMatch: regionalVarieties.some((v) =>
+      Array.isArray(v.state_suitability) &&
+      v.state_suitability.some((s) => normalizeState(s) === normalizeState(state))
+    ),
+  };
 }
 
 export function useCropVarieties(cropId?: string | null) {
