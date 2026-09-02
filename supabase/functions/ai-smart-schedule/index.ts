@@ -295,10 +295,10 @@ serve(async (req) => {
       for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
     }
 
-    // ── HARNESS V1: validated PlanIntent seam (flag-gated, fail-closed) ───────
+    // ── HARNESS V2: LLM planner over deterministic candidate graph (flag-gated, fail-closed) ───────
     let harnessTrace: Record<string, unknown> | null = null;
     try {
-      const harnessFlag = await isFlagEnabled(supabase, "crop_schedule_harness_v1", { tenantId, farmerId });
+      const harnessFlag = await isFlagEnabled(supabase, "crop_schedule_harness_v2", { tenantId, farmerId });
       if (harnessFlag.enabled) {
         const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps });
         if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
