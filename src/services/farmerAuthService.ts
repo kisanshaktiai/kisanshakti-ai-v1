@@ -21,6 +21,11 @@ const MESSAGES: Record<string, string> = {
   tenant_required: 'Application is still loading. Please try again.',
   server_error: 'Something went wrong. Please try again.',
   transport_unavailable: 'Network connection is weak. Please try again.',
+  rate_limited: 'Too many reset requests. Please wait before trying again.',
+  sms_not_configured: 'PIN reset by SMS is not available yet. Please contact support.',
+  sms_send_failed: 'Could not send the reset code. Please try again.',
+  invalid_reset_code: 'Incorrect reset code. Please try again.',
+  reset_code_expired: 'This reset code has expired. Please request a new one.',
 };
 
 // tenant-config is already live and mounts the same auth core. Prefer it so
