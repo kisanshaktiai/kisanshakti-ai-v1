@@ -408,6 +408,61 @@
       "high": "जास्त",
       "low": "कमी",
       "medium": "मध्यम"
+    },
+    "farmer_task": {
+      "what": "काय करायचे",
+      "how": "कसे करायचे",
+      "how_much": "किती लागेल",
+      "how_not_available": "या कामासाठी पडताळलेली पद्धत अजून उपलब्ध नाही.",
+      "amount_not_available": "या कामासाठी पडताळलेले प्रमाण अजून उपलब्ध नाही."
+    },
+    "crop_growth": {
+      "title": "पिकाची वाढ",
+      "description": "पिकाची तपासणी करण्यासाठी फोटो अपलोड करा",
+      "upload_photo": "फोटो अपलोड करा"
+    },
+    "loading_overlay": {
+      "steps": {
+        "crop_requirements": "पिकाची माहिती तपासत आहोत",
+        "weather": "हवामान तपासत आहोत",
+        "irrigation": "पाण्याची गरज पाहत आहोत",
+        "nutrition": "पोषण कामाचे नियोजन करत आहोत",
+        "growth": "पिकाच्या वाढीचे टप्पे पाहत आहोत",
+        "monsoon": "हवामानाचा धोका तपासत आहोत",
+        "harvest": "कापणीची वेळ ठरवत आहोत"
+      },
+      "preparing": "तुमच्या पिकाचे वेळापत्रक तयार होत आहे...",
+      "farming_type": {
+        "organic_only": "सेंद्रिय शेती",
+        "organic_fertilizer": "एकात्मिक शेती",
+        "fertilizer_pesticide": "खत आणि पीक संरक्षण"
+      }
+    },
+    "amount": {
+      "task_quantity": "प्रमाण",
+      "water": "पाणी",
+      "fertilizer": "खत",
+      "pesticide": "कीटकनाशक",
+      "fungicide": "बुरशीनाशक",
+      "herbicide": "तणनाशक",
+      "bio_pesticide": "जैविक कीटकनाशक",
+      "seed": "बियाणे"
+    },
+    "task_type": {
+      "irrigation": "पाणी द्या",
+      "nutrition": "खत/पोषण द्या",
+      "micronutrient": "सूक्ष्म अन्नद्रव्य द्या",
+      "pest_management": "कीड नियंत्रण करा",
+      "disease_management": "रोग नियंत्रण करा",
+      "weed_management": "तण नियंत्रण करा",
+      "intercultural": "आंतरमशागत करा",
+      "sowing": "पेरणी करा",
+      "seed_treatment": "बियाणे प्रक्रिया करा",
+      "land_preparation": "जमीन तयार करा",
+      "monitoring": "शेताची पाहणी करा",
+      "harvest": "कापणी करा",
+      "post_harvest": "काढणीनंतरचे काम करा",
+      "generic": "हे काम करा"
     }
   },
   "common": {
