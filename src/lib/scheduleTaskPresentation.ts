@@ -28,7 +28,7 @@ function taskTypeLabelKey(taskType: string): string {
   return map[key] || 'schedule.task_type.generic';
 }
 /** Presentation-only adapter. Reorganizes existing DB fields into What / How / How much and never invents agronomy. */
-export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: (key: string, fallback?: string) => string): ScheduleTaskPresentation {
+export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: (key: string, fallback?: any) => string): ScheduleTaskPresentation {
   const resources = task.resources && typeof task.resources === 'object' && !Array.isArray(task.resources) ? task.resources as Record<string, unknown> : {};
   const taskType = String(task.task_type ?? '').trim().toLowerCase();
   const rawName = cleanText(task.task_name);

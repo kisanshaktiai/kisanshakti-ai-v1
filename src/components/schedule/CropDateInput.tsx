@@ -375,8 +375,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               <div className="flex-1 min-h-0 overflow-y-auto mobile-scroll-container">
                 <div className="p-4 space-y-5">
                   {wizardStep === 'variety' && (
-                  {/* Variety — tap-a-card picker from master_products (SSOT), free-text fallback */}
+                  /* Variety — tap-a-card picker from master_products (SSOT), free-text fallback */
                   <div className="space-y-2">
+
                     {varietiesLoading && varieties.length === 0 ? (
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground">
@@ -431,8 +432,10 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                   )}
 
                   {wizardStep === 'planting' && (
+                  <>
                   {/* Date Selection */}
                   <div className="space-y-2">
+
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="h-4 w-4 text-primary" />
                       <span className="text-sm font-medium">
@@ -632,7 +635,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       <p className="text-xs font-medium text-success truncate">{cropVariety}</p>
                     </div>
                   )}
+                  </>
                   )}
+
                 </div>
               </div>
 
@@ -648,14 +653,25 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     {t('schedule.crop_input.next', 'Next')}
                   </Button>
                 ) : (
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={!cropName || !sowingDate || loading}
-                    className="w-full h-14 rounded-2xl text-base font-semibold"
-                  >
-                    {loading ? <><Sparkles className="mr-2 h-5 w-5 animate-spin" />{t('schedule.crop_input.generating')}</> : <>{t('schedule.crop_input.generate_ai_schedule')}<Sparkles className="ml-2 h-5 w-5" /></>}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setWizardStep('variety')}
+                      className="h-14 rounded-2xl px-4 shrink-0"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </Button>
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={!cropName || !sowingDate || loading}
+                      className="flex-1 h-14 rounded-2xl text-base font-semibold"
+                    >
+                      {loading ? <><Sparkles className="mr-2 h-5 w-5 animate-spin" />{t('schedule.crop_input.generating')}</> : <>{t('schedule.crop_input.generate_ai_schedule')}<Sparkles className="ml-2 h-5 w-5" /></>}
+                    </Button>
+                  </div>
                 )}
+
               </div>
             </motion.div>
           )}
