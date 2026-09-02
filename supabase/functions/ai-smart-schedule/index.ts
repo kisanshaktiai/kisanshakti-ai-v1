@@ -339,7 +339,11 @@ gs) baseline.gaps.push(`validation_warning: ${w}`);
 
     // ── Narration (translation only) ────────────────────────────────────────
     const narration = await narrateTasks(
-      baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description })),
+      baseline.tasks.map((t) => ({
+        task_name: t.task_name,
+        task_description: t.task_description,
+        instructions: narrated[idx]?.instructions || t.instructions,
+      })),
       language,
     );
     const narrated = narration.tasks;
