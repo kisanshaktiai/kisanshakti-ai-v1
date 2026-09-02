@@ -1,9 +1,2 @@
-import type { CandidateTask, PlanIntent } from "./types.ts";
-export function validatePlanIntent(plan: PlanIntent, candidates: CandidateTask[]): string[] {
-  const errors:string[]=[]; const allowed=new Set(candidates.map(c=>c.index));
-  if(plan.schema_version!=="schedule_plan_intent_v1") errors.push("schema_version_invalid");
-  for(const i of plan.selected_candidate_indices) if(!allowed.has(i)) errors.push(`unknown_candidate_index:${i}`);
-  const seen=new Set<number>();
-  for(const item of plan.sequence){ if(!allowed.has(item.candidate_index)) errors.push(`unknown_candidate_index:${item.candidate_index}`); if(seen.has(item.candidate_index)) errors.push(`duplicate_candidate_index:${item.candidate_index}`); seen.add(item.candidate_index); }
-  return [...new Set(errors)];
-}
+import type { PlanIntent,ScheduleCandidateGraph } from "./types.ts"; import { PLAN_SCHEMA_VERSION } from "./types.ts";
+export function validatePlanIntent(plan:PlanIntent,graph:ScheduleCandidateGraph):string[]{const e:string[]=[];if(plan.schema_version!==PLAN_SCHEMA_VERSION)e.push("schema_version_invalid");if(!["READY","NEEDS_DATA","NO_VALID_PLAN"].includes(plan.status))e.push("status_invalid");const allowed=new Set(graph.nodes.map(n=>n.id)),seen=new Set<string>();for(const x of plan.sequence){if(!allowed.has(x.candidate_id))e.push(`unknown_candidate_id:${x.candidate_id}`);if(seen.has(x.candidate_id))e.push(`duplicate_candidate_id:${x.candidate_id}`);seen.add(x.candidate_id)}if(plan.status==="READY"){if(plan.sequence.length!==graph.nodes.length)e.push("required_candidate_missing");for(const n of graph.nodes)if(!seen.has(n.id))e.push(`required_candidate_missing:${n.id}`);const orders=plan.sequence.map(x=>x.sequence_order);if(new Set(orders).size!==orders.length)e.push("duplicate_sequence_order");const o=[...plan.sequence].sort((a,b)=>a.sequence_order-b.sequence_order);for(let i=0;i<o.length;i++)if(o[i].sequence_order!==i+1)e.push("sequence_order_not_contiguous");const pos=new Map(o.map((x,i)=>[x.candidate_id,i]));for(const edge of graph.edges){const a=pos.get(edge.from),b=pos.get(edge.to);if(a!=null&&b!=null&&a>=b)e.push(`dependency_violation:${edge.from}->${edge.to}`)}}return[...new Set(e)]}
