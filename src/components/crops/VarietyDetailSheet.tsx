@@ -90,6 +90,7 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
   const { translation, loading: trLoading } = useVarietyTranslation(variety?.id, lang);
   const { offerings, loading: offLoading } = useVarietyOfferings(variety?.id);
   const { resolve: resolveThreat } = useThreatNames();
+  const [descExpanded, setDescExpanded] = React.useState(false);
 
   if (!variety) return null;
 
