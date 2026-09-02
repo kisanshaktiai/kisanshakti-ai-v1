@@ -180,7 +180,7 @@ export default function ModernTaskCard({
                 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="font-bold text-sm text-foreground leading-tight line-clamp-2">{task.task_name}</h3>
+                    <h3 className="font-bold text-sm text-foreground leading-tight line-clamp-2">{farmerTask.what}</h3>
                     <StagePhaseBadge phase={stagePhase} />
                   </div>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -335,7 +335,7 @@ export default function ModernTaskCard({
                   <TaskIcon className="h-7 w-7 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <DialogTitle className="text-lg font-bold leading-tight">{task.task_name}</DialogTitle>
+                  <DialogTitle className="text-lg font-bold leading-tight">{farmerTask.what}</DialogTitle>
                   <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
                     {format(taskDate, 'EEEE, dd MMMM yyyy')}
@@ -442,19 +442,6 @@ export default function ModernTaskCard({
               </div>
             </div>
 
-            {/* Quantity */}
-            {formatQuantity(quantity) && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Package className="h-4 w-4 text-info" />
-                  {t('schedule.task_card.quantity')}
-                </h4>
-                <div className="p-3 rounded-xl bg-info/5 border border-info/20">
-                  <p className="text-sm font-medium text-foreground">{formatQuantity(quantity)}</p>
-                </div>
-              </div>
-            )}
-
             {/* Product Details */}
             {formatQuantity(productDetails) && (
               <div className="space-y-2">
@@ -490,31 +477,6 @@ export default function ModernTaskCard({
                 </h4>
                 <div className="p-3 rounded-xl bg-gradient-to-r from-warning/10 to-destructive/5 border border-warning/20">
                   <p className="text-sm text-warning dark:text-warning leading-relaxed">{climateRisk}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Instructions */}
-            {Array.isArray(task.instructions) && task.instructions.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  📋 {t('schedule.task_card.instructions')}
-                </h4>
-                <div className="space-y-2">
-                  {task.instructions.map((instruction: string, index: number) => (
-                    <motion.div 
-                      key={index} 
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="flex items-start gap-3 text-sm p-3 rounded-xl bg-muted/30"
-                    >
-                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-xs shrink-0">
-                        {index + 1}
-                      </span>
-                      <span className="text-muted-foreground leading-relaxed">{instruction}</span>
-                    </motion.div>
-                  ))}
                 </div>
               </div>
             )}
