@@ -3,7 +3,7 @@
 // AI Provider types
 export type AIProvider = "openai" | "google" | "gemini";
 
-// Model configurations per provider - UPDATED to Gemini 2.5 Flash
+// Model configurations: OpenAI GPT-5.6 Luna primary, Gemini provider fallback
 export const AI_MODELS = {
   openai: {
     // GPT-5.6 Luna is the primary high-volume production model.
@@ -36,7 +36,7 @@ export const AI_CONFIG = {
   // Default provider - OpenAI preferred for reliable JSON structured output
   DEFAULT_PROVIDER: "openai" as AIProvider,
   
-  // PRODUCTION: Gemini 2.5 Flash - best for agriculture schedules
+  // Primary schedule model. Gemini is used only after OpenAI provider failure.
   MODEL: "gpt-5.6-luna",
   OPENAI_MODEL: "gpt-5.6-luna",
   GOOGLE_MODEL: "google/gemini-2.5-flash",
@@ -103,12 +103,12 @@ export function getAPIKey(provider: AIProvider): string {
 
 // Get any available API key (for backward compatibility)
 export function getAnyAPIKey(): string {
-  // Try Gemini first (preferred for agriculture)
-  const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  if (geminiKey && geminiKey.trim() !== "") return geminiKey;
-  
+  // OpenAI first for all generic compatibility callers.
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
   if (openaiKey && openaiKey.trim() !== "") return openaiKey;
+
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (geminiKey && geminiKey.trim() !== "") return geminiKey;
   
   throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
 }
@@ -233,7 +233,7 @@ export function validateAIConfig(): { valid: boolean; error?: string; provider?:
   if (!hasAnyAIKey()) {
     return { 
       valid: false, 
-      error: "No AI API keys configured. Please add GEMINI_API_KEY in Supabase secrets for best results." 
+      error: "No AI API keys configured. Please add OPENAI_API_KEY (primary) or GEMINI_API_KEY (fallback) in Supabase secrets." 
     };
   }
   
