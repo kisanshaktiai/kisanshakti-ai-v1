@@ -498,7 +498,13 @@ serve(async (req) => {
         ...(t.resources ?? {}),
         ...(t.quantity ? { quantity: t.quantity } : {}),
         ...(t.recurrence ? { recurrence: t.recurrence } : {}),
+        // 2026-09-02: provenance / agronomic-audit lines are kept, but out of the
+        // farmer-facing instruction list (rendered in the card's details area).
+        ...(sanitized[idx]?.technical_details?.length
+          ? { technical_details: sanitized[idx].technical_details }
+          : {}),
       },
+
 
       estimated_cost: t.estimated_cost,
       currency: "INR",
