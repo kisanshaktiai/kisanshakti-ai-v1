@@ -191,7 +191,10 @@ export function getBestScheduleProvider(): { provider: AIProvider; model: string
   // CRITICAL FIX: OpenAI FIRST for schedule generation (reliable structured output)
   if (hasOpenAIKey()) {
     console.log("🚀 [AIConfig] Using OpenAI for schedule generation (primary)");
-    return { provider: "openai", model: AI_MODELS.openai.default };
+    // Schedule planner/narrator can be pinned by secret without code changes.
+    // Default is a current balanced reasoning model; general chat defaults remain unchanged.
+    const scheduleModel = Deno.env.get("OPENAI_SCHEDULE_MODEL")?.trim() || "gpt-5.6-terra";
+    return { provider: "openai", model: scheduleModel };
   }
   
   // Fallback to Gemini if OpenAI not available
