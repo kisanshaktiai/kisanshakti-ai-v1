@@ -20,6 +20,7 @@ const MESSAGES: Record<string, string> = {
   already_registered: 'This mobile number is already registered. Please sign in.',
   tenant_required: 'Application is still loading. Please try again.',
   server_error: 'Something went wrong. Please try again.',
+  transport_unavailable: 'Network connection is weak. Please try again.',
 };
 
 // tenant-config is already live and mounts the same auth core. Prefer it so
@@ -78,7 +79,10 @@ async function call<T>(payload: Record<string, unknown>): Promise<T> {
     return res.data as T;
   }
 
-  throw new FarmerAuthError('server_error', MESSAGES.server_error);
+  // Every transport attempt failed without a usable HTTP response — this is a
+  // network/CORS failure, NOT a credential failure. Callers must be able to
+  // tell them apart so offline PIN validation can take over.
+  throw new FarmerAuthError('transport_unavailable', MESSAGES.transport_unavailable);
 }
 
 export const farmerAuthService = {

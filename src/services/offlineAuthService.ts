@@ -189,7 +189,8 @@ class OfflineAuthService {
         return result;
       } catch (error: any) {
         lastError = error;
-        const isNetworkError = error.message === 'TypeError: Failed to fetch' || 
+        const isNetworkError = error?.code === 'transport_unavailable' ||
+                               error.message === 'TypeError: Failed to fetch' || 
                                error.message?.includes('Failed to fetch') ||
                                error.message === 'Request timeout' ||
                                error.message === 'Load failed' ||
@@ -224,7 +225,8 @@ class OfflineAuthService {
     }
     
     // Both online and offline failed
-    const isNetworkError = lastError?.message?.includes('Failed to fetch') || 
+    const isNetworkError = (lastError as any)?.code === 'transport_unavailable' ||
+                           lastError?.message?.includes('Failed to fetch') || 
                            lastError?.message === 'Request timeout' ||
                            lastError?.message === 'Load failed' ||
                            lastError?.name === 'TypeError';
@@ -264,6 +266,9 @@ class OfflineAuthService {
       };
     } catch (error: any) {
       if (error instanceof FarmerAuthError) {
+        // Transport failures must bubble up so the retry + offline-PIN
+        // fallback path runs. Only genuine credential failures are terminal.
+        if (error.code === 'transport_unavailable') throw error;
         // Credential failures must not be retried or masked by offline fallback.
         return { success: false, isOffline: false, error: error.message };
       }
