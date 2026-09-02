@@ -32,6 +32,47 @@ const SESSION_TTL_DAYS = 7;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
+// --- PIN reset (forgot-PIN) policy -----------------------------------------
+const RESET_CODE_TTL_MS = 10 * 60_000;
+const RESET_MAX_ATTEMPTS = 5;
+const RESET_MAX_PER_HOUR = 3;
+const RESET_MIN_INTERVAL_MS = 60_000;
+
+const MSG91_AUTH_KEY = Deno.env.get("MSG91_AUTH_KEY") ?? "";
+const MSG91_SENDER_ID = Deno.env.get("MSG91_SENDER_ID") ?? "";
+const MSG91_OTP_TEMPLATE_ID = Deno.env.get("MSG91_OTP_TEMPLATE_ID") ?? "";
+
+/** SMS delivery is optional infrastructure; without it there is no reset path. */
+function smsConfigured(): boolean {
+  return !!(MSG91_AUTH_KEY && MSG91_OTP_TEMPLATE_ID);
+}
+
+async function sendOtpSms(mobile: string, code: string): Promise<boolean> {
+  try {
+    const res = await fetch("https://control.msg91.com/api/v5/flow/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authkey: MSG91_AUTH_KEY,
+      },
+      body: JSON.stringify({
+        template_id: MSG91_OTP_TEMPLATE_ID,
+        sender: MSG91_SENDER_ID || undefined,
+        short_url: "0",
+        recipients: [{ mobiles: `91${mobile}`, otp: code }],
+      }),
+    });
+    if (!res.ok) {
+      console.error("[farmer-auth] sms send failed", res.status, await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[farmer-auth] sms send error", err);
+    return false;
+  }
+}
+
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
