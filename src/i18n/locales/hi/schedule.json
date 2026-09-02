@@ -408,6 +408,61 @@
       "high": "ज्यादा",
       "low": "कम",
       "medium": "मध्यम"
+    },
+    "farmer_task": {
+      "what": "क्या करना है",
+      "how": "कैसे करना है",
+      "how_much": "कितना चाहिए",
+      "how_not_available": "इस काम के लिए सत्यापित तरीका अभी उपलब्ध नहीं है।",
+      "amount_not_available": "इस काम के लिए सत्यापित मात्रा अभी उपलब्ध नहीं है।"
+    },
+    "crop_growth": {
+      "title": "फसल की बढ़त",
+      "description": "फसल की जांच के लिए फोटो अपलोड करें",
+      "upload_photo": "फोटो अपलोड करें"
+    },
+    "loading_overlay": {
+      "steps": {
+        "crop_requirements": "फसल की जानकारी जांच रहे हैं",
+        "weather": "मौसम जांच रहे हैं",
+        "irrigation": "पानी की जरूरत देख रहे हैं",
+        "nutrition": "पोषक कार्य की योजना बना रहे हैं",
+        "growth": "फसल के बढ़ने के चरण देख रहे हैं",
+        "monsoon": "मौसम के जोखिम देख रहे हैं",
+        "harvest": "कटाई का समय तय कर रहे हैं"
+      },
+      "preparing": "आपकी फसल की योजना तैयार हो रही है...",
+      "farming_type": {
+        "organic_only": "जैविक खेती",
+        "organic_fertilizer": "एकीकृत खेती",
+        "fertilizer_pesticide": "उर्वरक और फसल सुरक्षा"
+      }
+    },
+    "amount": {
+      "task_quantity": "मात्रा",
+      "water": "पानी",
+      "fertilizer": "उर्वरक",
+      "pesticide": "कीटनाशक",
+      "fungicide": "फफूंदनाशक",
+      "herbicide": "खरपतवारनाशक",
+      "bio_pesticide": "जैव कीटनाशक",
+      "seed": "बीज"
+    },
+    "task_type": {
+      "irrigation": "पानी दें",
+      "nutrition": "उर्वरक/पोषण दें",
+      "micronutrient": "सूक्ष्म पोषक दें",
+      "pest_management": "कीट नियंत्रण करें",
+      "disease_management": "रोग नियंत्रण करें",
+      "weed_management": "खरपतवार नियंत्रण करें",
+      "intercultural": "अंतर खेती का काम करें",
+      "sowing": "बुवाई करें",
+      "seed_treatment": "बीज उपचार करें",
+      "land_preparation": "खेत तैयार करें",
+      "monitoring": "खेत की जांच करें",
+      "harvest": "कटाई करें",
+      "post_harvest": "कटाई के बाद का काम करें",
+      "generic": "यह काम करें"
     }
   },
   "common": {
