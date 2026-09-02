@@ -5,7 +5,9 @@ export interface ScheduleTaskPresentation {
   hasVerifiedAmount: boolean;
 }
 
-const SOURCE_PREFIX = /^source\s*:/i;
+const SOURCE_PREFIX = /^(?:source|evidence)\s*:/i;
+const MACHINE_CONDITION_PREFIX = /^[a-z0-9_]+\s*:/i;
+const INTERNAL_INSTRUCTION_PREFIX = /^(?:critical\s+soil\s+moisture)\s*:/i;
 const cleanText = (value: unknown): string | null => typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== 'null' && value.trim().toLowerCase() !== 'undefined' ? value.trim() : null;
 const asArray = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 function quantityText(value: unknown): string | null {
@@ -32,7 +34,9 @@ export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: 
   const rawName = cleanText(task.task_name);
   const what = rawName && rawName.length <= 72 ? rawName : t(taskTypeLabelKey(taskType));
   const detailedSteps = asArray(task.detailed_steps).map(cleanText).filter((x): x is string => Boolean(x));
-  const instructions = asArray(task.instructions).map(cleanText).filter((x): x is string => Boolean(x) && !SOURCE_PREFIX.test(x));
+  const instructions = asArray(task.instructions)
+    .map(cleanText)
+    .filter((x): x is string => Boolean(x) && !SOURCE_PREFIX.test(x) && !MACHINE_CONDITION_PREFIX.test(x) && !INTERNAL_INSTRUCTION_PREFIX.test(x));
   const desc = cleanText(task.task_description);
   const how = [...detailedSteps, ...instructions];
   if (!how.length && desc && taskType !== 'irrigation' && taskType !== 'monitoring') how.push(desc);
