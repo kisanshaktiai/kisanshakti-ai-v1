@@ -18,6 +18,8 @@ interface VarietySelectorProps {
   onManualSubmit?: (proposedName: string) => void;
   label?: string;
   cropName?: string;
+  /** Land state from the selected land; DB state_suitability decides regional suggestions. */
+  regionState?: string | null;
 }
 
 /**
@@ -36,12 +38,14 @@ export function VarietySelector({
   onManualSubmit,
   label,
   cropName,
+  regionState,
 }: VarietySelectorProps) {
   const { t, i18n } = useTranslation();
   const { varieties, loading } = useCropVarieties(cropId);
   const [search, setSearch] = useState('');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [showAllRegions, setShowAllRegions] = useState(false);
 
   const lang = (i18n.language || 'en').split('-')[0];
 
@@ -50,15 +54,21 @@ export function VarietySelector({
     [varieties, value]
   );
 
+  const normalizedState = String(regionState || '').trim().toLocaleLowerCase();
+  const regional = useMemo(() => normalizedState
+    ? varieties.filter((v) => Array.isArray(v.state_suitability) && v.state_suitability.some((s) => String(s).trim().toLocaleLowerCase() === normalizedState))
+    : [], [varieties, normalizedState]);
+
+  const baseVarieties = (!showAllRegions && regional.length > 0) ? regional : varieties;
   const filtered = useMemo(() => {
-    if (!search.trim()) return varieties;
+    if (!search.trim()) return baseVarieties;
     const q = search.toLowerCase();
-    return varieties.filter((v) =>
+    return baseVarieties.filter((v) =>
       [v.name, v.variety_code, v.brand, v.label_hi, v.label_mr, v.released_by]
         .filter(Boolean)
         .some((s) => String(s).toLowerCase().includes(q))
     );
-  }, [varieties, search]);
+  }, [baseVarieties, search]);
 
   const previewVariety = useMemo(
     () => varieties.find((v) => v.id === previewId) ?? null,
@@ -118,6 +128,21 @@ export function VarietySelector({
             className="h-9 pl-8 text-sm"
           />
         </div>
+      )}
+
+      {/* Region-first suggestion is derived only from master_products.state_suitability. */}
+      {regional.length > 0 && !showAllRegions && (
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-primary/5 border border-primary/15 px-3 py-2">
+          <p className="text-[11px] text-muted-foreground">{t('schedule.variety.regional_suggestions', 'Suggested for your selected land region')}</p>
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => setShowAllRegions(true)}>
+            {t('schedule.variety.show_other_regions', 'See other varieties')}
+          </Button>
+        </div>
+      )}
+      {showAllRegions && regional.length > 0 && (
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-0 text-[11px]" onClick={() => setShowAllRegions(false)}>
+          {t('schedule.variety.show_regional_first', 'Show suggestions for my region')}
+        </Button>
       )}
 
       {/* Helper hint */}
