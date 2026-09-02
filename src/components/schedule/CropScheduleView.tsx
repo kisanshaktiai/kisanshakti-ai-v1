@@ -570,8 +570,8 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                   <Camera className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm">{i18n.language === 'hi' ? 'फसल वृद्धि ट्रैकिंग' : i18n.language === 'mr' ? 'पीक वाढ ट्रॅकिंग' : 'Crop Growth Tracking'}</h3>
-                  <p className="text-xs text-muted-foreground">{i18n.language === 'hi' ? 'फोटो अपलोड करें और AI विश्लेषण प्राप्त करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा आणि AI विश्लेषण मिळवा' : 'Upload photos for AI analysis'}</p>
+                  <h3 className="font-semibold text-sm">{t('schedule.crop_growth.title')}</h3>
+                  <p className="text-xs text-muted-foreground">{t('schedule.crop_growth.description')}</p>
                 </div>
               </div>
               <Sprout className="h-5 w-5 text-primary" />
@@ -584,7 +584,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               onClick={() => setShowLandPhotoUpload(true)}
             >
               <Camera className="h-4 w-4" />
-              {i18n.language === 'hi' ? 'फोटो अपलोड करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा' : 'Upload Photo'}
+              {t('schedule.crop_growth.upload_photo')}
             </Button>
           </div>
         </Card>
