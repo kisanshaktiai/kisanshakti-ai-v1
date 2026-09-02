@@ -25,6 +25,7 @@
 export interface NarratableTask {
   task_name: string;
   task_description: string;
+  instructions?: string[];
 }
 
 const NUM_RE = /\d+(?:[.,]\d+)?/g;
@@ -54,8 +55,8 @@ async function narrateChunk(
   language: string,
   apiKey: string,
   signal: AbortSignal,
-): Promise<Array<{ i: number; name?: string; desc?: string }>> {
-  const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description }));
+): Promise<Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>> {
+  const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description, instructions: t.instructions ?? [] }));
   const prompt = [
     `You render farm task labels into language code "${language}" in the SIMPLE SPOKEN`,
     `style a smallholder farmer uses in that language — short sentences a 12-year-old`,
@@ -92,7 +93,7 @@ async function narrateChunk(
   if (!res.ok) throw new Error(`llm_http_${res.status}`);
   const json = await res.json();
   const text = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
-  const parsed = JSON.parse(text) as Array<{ i: number; name?: string; desc?: string }>;
+  const parsed = JSON.parse(text) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
   return parsed.map((p) => ({ ...p, i: offset + p.i }));
 }
 
@@ -119,7 +120,7 @@ export async function narrateTasks(
   try {
     // Bounded concurrency: unbounded Promise.all over every chunk held all
     // request/response bodies in memory at once and tripped WORKER_RESOURCE_LIMIT (546).
-    const results: PromiseSettledResult<Array<{ i: number; name?: string; desc?: string }>>[] = [];
+    const results: PromiseSettledResult<Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>>[] = [];
     for (let i = 0; i < chunks.length; i += MAX_CONCURRENCY) {
       if (controller.signal.aborted) break;
       const window = chunks.slice(i, i + MAX_CONCURRENCY);
@@ -140,6 +141,13 @@ export async function narrateTasks(
         if (!target) continue;
         if (item.name && isFaithful(target.task_name, item.name)) target.task_name = item.name;
         if (item.desc && isFaithful(target.task_description, item.desc)) target.task_description = item.desc;
+        if (Array.isArray(item.instructions) && item.instructions.length === (target.instructions ?? []).length) {
+          const translatedInstructions = item.instructions.map(String);
+          const sourceInstructions = target.instructions ?? [];
+          if (translatedInstructions.every((line, i) => isFaithful(String(sourceInstructions[i] ?? ""), line))) {
+            target.instructions = translatedInstructions;
+          }
+        }
         applied++;
       }
     }
@@ -160,4 +168,3 @@ export async function narrateTasks(
   }
   return { tasks: out, narrated: true };
 }
-
