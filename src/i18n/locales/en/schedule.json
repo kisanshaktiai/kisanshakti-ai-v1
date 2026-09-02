@@ -491,6 +491,14 @@
     ]
   },
   "variety": {
-    "none_for_crop": "No seed varieties are listed for this crop yet. You can type the variety name you sowed."
+    "none_for_crop": "No seed varieties are listed for this crop yet. You can type the variety name you sowed.",
+    "regional_suggestions": "Suggested for your selected land region",
+    "show_other_regions": "See other varieties",
+    "show_regional_first": "Show suggestions for my region"
+  },
+  "crop_input": {
+    "next": "Next",
+    "crop_summary": "Crop",
+    "variety_summary": "Variety"
   }
 }
