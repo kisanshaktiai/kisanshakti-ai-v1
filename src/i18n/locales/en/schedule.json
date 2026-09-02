@@ -463,7 +463,8 @@
       "harvest": "Harvest",
       "post_harvest": "Post-harvest work",
       "generic": "Do this task"
-    }
+    },
+    "photo": "Photo"
   },
   "common": {
     "cancel": "Cancel",
