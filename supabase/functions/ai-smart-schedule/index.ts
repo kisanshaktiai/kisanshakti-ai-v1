@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-09-02 12:45 UTC — Farmer-language pipeline: tasks are sanitized by
+//   generator/farmer-text.ts (audit tags stripped, shorthand expanded, provenance moved
+//   to resources.technical_details) and then simplified/translated for EVERY app
+//   language (English included). Narration now accepts partial success.
+
 // 2026-08-30 — P0-RC5 (crop biological stage engine audit): a new cycle re-anchors the
 //   THERMAL clock too. lands.gdd_anchor_date is sticky in accumulate_gdd_for_land
 //   ("respect an existing anchor; only derive when NULL"), so writing planting_date
@@ -61,6 +66,8 @@ import {
 } from "./db/resolve-inputs.ts";
 import { generateBaseline, GENERATOR_VERSION } from "./generator/baseline-generator.ts";
 import { narrateTasks } from "./generator/narrate.ts";
+import { sanitizeTaskText } from "./generator/farmer-text.ts";
+
 import { attachRagEvidence, type RagEvidenceSummary } from "./db/rag-evidence.ts";
 import { isFlagEnabled } from "../_shared/featureFlags.ts";
 import { applyScheduleHarness } from "./harness/index.ts";
@@ -355,7 +362,19 @@ serve(async (req) => {
       console.error("rag-evidence attachment failed (non-fatal):", e);
     }
 
-    // ── Narration (translation only) ────────────────────────────────────────
+    // ── Farmer text: sanitize → simplify/translate ──────────────────────────
+    // 2026-09-02: audit tags, provenance and shorthand are stripped/expanded
+    // deterministically first; the model then rewrites the result into simple
+    // farmer language in the farmer's app language (English included).
+    const sanitized = baseline.tasks.map((t) =>
+      sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions }),
+    );
+    baseline.tasks.forEach((t, i) => {
+      t.task_name = sanitized[i].task_name || t.task_name;
+      t.task_description = sanitized[i].task_description;
+      t.instructions = sanitized[i].instructions;
+    });
+
     const narration = await narrateTasks(
       baseline.tasks.map((t) => ({
         task_name: t.task_name,
@@ -365,12 +384,16 @@ serve(async (req) => {
       language,
     );
     const narrated = narration.tasks;
-    if (!narration.narrated && narration.reason && narration.reason !== "no_translation_needed") {
-      baseline.gaps.push(`narration_unavailable: ${narration.reason}`);
+    if (!narration.narrated) {
+      baseline.gaps.push(`narration_unavailable: ${narration.reason ?? "unknown"}`);
       baseline.coverage.narration = false;
-    } else if (language !== "en") {
-      baseline.coverage.narration = true;
+    } else {
+      if (narration.narratedCount < narration.totalCount) {
+        baseline.gaps.push(`narration_partial: ${narration.narratedCount}/${narration.totalCount}`);
+      }
+      baseline.coverage.narration = narration.narratedCount === narration.totalCount;
     }
+
 
     // ── Persist ─────────────────────────────────────────────────────────────
     const sow = new Date(inputs.sowingDate);
@@ -480,7 +503,13 @@ serve(async (req) => {
         ...(t.resources ?? {}),
         ...(t.quantity ? { quantity: t.quantity } : {}),
         ...(t.recurrence ? { recurrence: t.recurrence } : {}),
+        // 2026-09-02: provenance / agronomic-audit lines are kept, but out of the
+        // farmer-facing instruction list (rendered in the card's details area).
+        ...(sanitized[idx]?.technical_details?.length
+          ? { technical_details: sanitized[idx].technical_details }
+          : {}),
       },
+
 
       estimated_cost: t.estimated_cost,
       currency: "INR",
