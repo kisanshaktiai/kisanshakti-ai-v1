@@ -23,6 +23,24 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
   const { t } = useTranslation();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
+  useEffect(() => {
+    if (!isLoading) return;
+
+    const stepInterval = setInterval(() => {
+      setCurrentStepIndex((prev) => (prev + 1) % loadingSteps.length);
+    }, 2000);
+
+    return () => clearInterval(stepInterval);
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (isLoading) {
+      setCurrentStepIndex(0);
+    }
+  }, [isLoading]);
+
+  // Critical flow guard: this overlay must never block land/crop/variety/date selection.
+  if (!isLoading) return null;
 
   return (
     <AnimatePresence>
