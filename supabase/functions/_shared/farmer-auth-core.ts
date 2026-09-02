@@ -314,6 +314,120 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
       });
     }
 
+    // -------------------------------------------------------- requestPinReset
+    // Sends a one-time code by SMS. This is the ONLY account-recovery path for
+    // a farmer who forgot their PIN. The code itself is never stored.
+    if (action === "requestPinReset") {
+      const farmer = await findFarmer(mobile, tenantId);
+      // Uniform response — never reveal whether the mobile is registered.
+      if (!farmer) return json({ sent: true });
+
+      // Rate limit: max 3 per hour, min 60s between sends.
+      const { data: recent } = await admin.from("pin_reset_codes")
+        .select("created_at")
+        .eq("farmer_id", farmer.id)
+        .gte("created_at", new Date(Date.now() - 3600_000).toISOString())
+        .order("created_at", { ascending: false });
+
+      if ((recent?.length ?? 0) >= RESET_MAX_PER_HOUR) {
+        return json({ error: "rate_limited", retryAfterSeconds: 3600 }, 429);
+      }
+      const lastAt = recent?.[0]?.created_at ? new Date(recent[0].created_at).getTime() : 0;
+      const sinceLast = Date.now() - lastAt;
+      if (lastAt && sinceLast < RESET_MIN_INTERVAL_MS) {
+        return json({
+          error: "rate_limited",
+          retryAfterSeconds: Math.ceil((RESET_MIN_INTERVAL_MS - sinceLast) / 1000),
+        }, 429);
+      }
+
+      if (!smsConfigured()) {
+        return json({ error: "sms_not_configured" }, 503);
+      }
+
+      const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000)
+        .padStart(6, "0");
+
+      // Invalidate any previous unconsumed codes.
+      await admin.from("pin_reset_codes")
+        .update({ consumed_at: new Date().toISOString() })
+        .eq("farmer_id", farmer.id)
+        .is("consumed_at", null);
+
+      const { error: insErr } = await admin.from("pin_reset_codes").insert({
+        farmer_id: farmer.id,
+        tenant_id: farmer.tenant_id ?? tenantId,
+        mobile_number: mobile,
+        code_hash: await sha256Hex(code + PIN_SALT),
+        expires_at: new Date(Date.now() + RESET_CODE_TTL_MS).toISOString(),
+      });
+      if (insErr) return json({ error: "server_error" }, 500);
+
+      const delivered = await sendOtpSms(mobile, code);
+      if (!delivered) return json({ error: "sms_send_failed" }, 502);
+
+      return json({ sent: true, expiresInSeconds: RESET_CODE_TTL_MS / 1000 });
+    }
+
+    // --------------------------------------------------------- verifyPinReset
+    if (action === "verifyPinReset") {
+      if (!isValidPin(body?.newPin)) return json({ error: "invalid_pin" }, 400);
+      const code = String(body?.code ?? "");
+      if (!/^\d{6}$/.test(code)) return json({ error: "invalid_reset_code" }, 400);
+
+      const farmer = await findFarmer(mobile, tenantId);
+      if (!farmer) return json({ error: "invalid_reset_code" }, 401);
+
+      const { data: row } = await admin.from("pin_reset_codes")
+        .select("*")
+        .eq("farmer_id", farmer.id)
+        .is("consumed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!row) return json({ error: "invalid_reset_code" }, 401);
+      if (new Date(row.expires_at).getTime() <= Date.now()) {
+        return json({ error: "reset_code_expired" }, 401);
+      }
+      if (Number(row.attempts ?? 0) >= RESET_MAX_ATTEMPTS) {
+        return json({ error: "reset_code_expired" }, 401);
+      }
+
+      const matches = (await sha256Hex(code + PIN_SALT)) === row.code_hash;
+      if (!matches) {
+        await admin.from("pin_reset_codes")
+          .update({ attempts: Number(row.attempts ?? 0) + 1 })
+          .eq("id", row.id);
+        return json({ error: "invalid_reset_code" }, 401);
+      }
+
+      await admin.from("pin_reset_codes")
+        .update({ consumed_at: new Date().toISOString() })
+        .eq("id", row.id);
+
+      const { error: updErr } = await admin.from("farmers").update({
+        pin_hash: await hashPin(body.newPin),
+        pin_updated_at: new Date().toISOString(),
+        failed_login_attempts: 0,
+      }).eq("id", farmer.id);
+      if (updErr) return json({ error: "server_error" }, 500);
+
+      // Credential change invalidates every existing session.
+      await admin.from("user_sessions")
+        .update({ is_active: false }).eq("user_id", farmer.id);
+
+      const { data: profile } = await admin.from("user_profiles")
+        .select("*").eq("farmer_id", farmer.id).maybeSingle();
+
+      const session = await createSession(farmer.id, req);
+      return json({
+        session: { token: session.token, expiresAt: session.expiresAt },
+        farmer: sanitizeFarmer(farmer),
+        profile: profile ?? null,
+      });
+    }
+
     return json({ error: "unknown_action" }, 400);
   } catch (err) {
     console.error("[farmer-auth] error", err);
@@ -324,5 +438,13 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
 /** True when a POST body targets the farmer-auth action router. */
 export function isFarmerAuthAction(body: any): boolean {
   return typeof body?.action === "string" &&
-    ["lookup", "register", "verifyPin", "changePin", "logout"].includes(body.action);
+    [
+      "lookup",
+      "register",
+      "verifyPin",
+      "changePin",
+      "logout",
+      "requestPinReset",
+      "verifyPinReset",
+    ].includes(body.action);
 }
