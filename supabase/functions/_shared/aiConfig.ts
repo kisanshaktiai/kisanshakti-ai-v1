@@ -6,10 +6,11 @@ export type AIProvider = "openai" | "google" | "gemini";
 // Model configurations per provider - UPDATED to Gemini 2.5 Flash
 export const AI_MODELS = {
   openai: {
-    default: "gpt-4o-mini",
-    fallback: "gpt-4o-mini",
-    premium: "gpt-4o",
-    vision: "gpt-4o",
+    // GPT-5.6 Luna is the primary high-volume production model.
+    default: "gpt-5.6-luna",
+    fallback: "gpt-5.6-luna",
+    premium: "gpt-5.6-terra",
+    vision: "gpt-5.6-luna",
   },
   google: {
     default: "google/gemini-2.5-flash",
@@ -36,8 +37,8 @@ export const AI_CONFIG = {
   DEFAULT_PROVIDER: "openai" as AIProvider,
   
   // PRODUCTION: Gemini 2.5 Flash - best for agriculture schedules
-  MODEL: "gemini-2.5-flash",
-  OPENAI_MODEL: "gpt-4o-mini",
+  MODEL: "gpt-5.6-luna",
+  OPENAI_MODEL: "gpt-5.6-luna",
   GOOGLE_MODEL: "google/gemini-2.5-flash",
   GEMINI_MODEL: "gemini-2.5-flash",
   
@@ -46,7 +47,8 @@ export const AI_CONFIG = {
   
   // Fallback models for retry logic
   FALLBACK_MODEL: "gemini-2.0-flash",
-  OPENAI_FALLBACK: "gpt-4o-mini",
+  // Schedule fallback is provider-level Gemini, not an older OpenAI model.
+  OPENAI_FALLBACK: "gpt-5.6-luna",
   GOOGLE_FALLBACK: "google/gemini-2.5-flash-lite",
   GEMINI_FALLBACK: "gemini-2.0-flash",
 
@@ -193,7 +195,7 @@ export function getBestScheduleProvider(): { provider: AIProvider; model: string
     console.log("🚀 [AIConfig] Using OpenAI for schedule generation (primary)");
     // Schedule planner/narrator can be pinned by secret without code changes.
     // Default is a current balanced reasoning model; general chat defaults remain unchanged.
-    const scheduleModel = Deno.env.get("OPENAI_SCHEDULE_MODEL")?.trim() || "gpt-5.6-terra";
+    const scheduleModel = Deno.env.get("OPENAI_SCHEDULE_MODEL")?.trim() || "gpt-5.6-luna";
     return { provider: "openai", model: scheduleModel };
   }
   
@@ -204,6 +206,26 @@ export function getBestScheduleProvider(): { provider: AIProvider; model: string
   }
   
   throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
+}
+
+// Ordered schedule provider chain. OpenAI is always attempted first when configured;
+// Gemini is used only as a provider fallback after an OpenAI request failure.
+export function getScheduleProviderChain(): Array<{ provider: AIProvider; model: string }> {
+  const chain: Array<{ provider: AIProvider; model: string }> = [];
+  if (hasOpenAIKey()) {
+    chain.push({
+      provider: "openai",
+      model: Deno.env.get("OPENAI_SCHEDULE_MODEL")?.trim() || "gpt-5.6-luna",
+    });
+  }
+  if (hasGeminiKey()) {
+    chain.push({
+      provider: "gemini",
+      model: Deno.env.get("GEMINI_SCHEDULE_FALLBACK_MODEL")?.trim() || AI_MODELS.gemini.default,
+    });
+  }
+  if (!chain.length) throw new Error("No AI API keys configured. Please add OPENAI_API_KEY or GEMINI_API_KEY in Supabase secrets.");
+  return chain;
 }
 
 // Validate configuration before making AI calls
