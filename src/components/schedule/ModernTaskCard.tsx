@@ -44,6 +44,7 @@ import StagePhaseBadge from './StagePhaseBadge';
 import RescheduledNotice from './RescheduledNotice';
 import type { StagePhase } from '@/hooks/useLandStage';
 import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
+import { buildScheduleTaskPresentation } from '@/lib/scheduleTaskPresentation';
 
 interface TaskCardProps {
   task: any;
@@ -118,6 +119,7 @@ export default function ModernTaskCard({
   const climateRisk = task.climate_risk || resources.climate_risk;
   const quantity = task.quantity || resources.quantity;
   const productDetails = task.product_details || resources.product_details;
+  const farmerTask = buildScheduleTaskPresentation(task, t);
   // A recurring task (irrigation window / weekly scouting) is stored ONCE with its
   // cadence — the calendar is never cloned per occurrence.
   const recurrence = resources.recurrence && Number(resources.recurrence.interval_days) > 0
@@ -246,10 +248,25 @@ export default function ModernTaskCard({
               </div>
             </div>
 
-            {/* Description preview */}
-            {task.task_description && (
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 pl-1">{task.task_description}</p>
-            )}
+            {/* Farmer-first preview: What / How / How much. Values come only from task data. */}
+            <div className="space-y-2 rounded-xl bg-primary/5 border border-primary/15 p-3">
+              <div>
+                <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">{t('schedule.farmer_task.what')}</p>
+                <p className="text-sm font-semibold text-foreground mt-0.5">{farmerTask.what}</p>
+              </div>
+              {farmerTask.how[0] && (
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.farmer_task.how')}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{farmerTask.how[0]}</p>
+                </div>
+              )}
+              {farmerTask.howMuch[0] && (
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.farmer_task.how_much')}</p>
+                  <p className="text-xs font-medium text-foreground mt-0.5">{farmerTask.howMuch[0]}</p>
+                </div>
+              )}
+            </div>
 
             {/* Scientific Confidence Badge */}
             {task.confidence_score != null && (
@@ -386,16 +403,44 @@ export default function ModernTaskCard({
               </div>
             )}
 
-            {/* Description */}
-            {task.task_description && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">
+            {/* Farmer-first action contract. Never fabricates missing agronomy. */}
+            <div className="space-y-3 p-4 rounded-2xl bg-primary/5 border border-primary/20">
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  {t('schedule.task_card.description')}
+                  {t('schedule.farmer_task.what')}
                 </h4>
-                <p className="text-sm text-muted-foreground leading-relaxed p-3 rounded-xl bg-muted/30">{task.task_description}</p>
+                <p className="text-sm text-foreground leading-relaxed">{farmerTask.what}</p>
               </div>
-            )}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold flex items-center gap-2">
+                  📋 {t('schedule.farmer_task.how')}
+                </h4>
+                {farmerTask.how.length ? farmerTask.how.map((step: string, index: number) => (
+                  <div key={index} className="flex items-start gap-3 text-sm p-3 rounded-xl bg-background/70">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-xs shrink-0">{index + 1}</span>
+                    <span className="text-foreground leading-relaxed">{step}</span>
+                  </div>
+                )) : (
+                  <p className="text-sm text-muted-foreground">{t('schedule.farmer_task.how_not_available')}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold flex items-center gap-2">
+                  <Package className="h-4 w-4 text-info" />
+                  {t('schedule.farmer_task.how_much')}
+                </h4>
+                {farmerTask.howMuch.length ? (
+                  <div className="space-y-2">
+                    {farmerTask.howMuch.map((amount: string, index: number) => (
+                      <p key={index} className="text-sm font-medium text-foreground p-3 rounded-xl bg-info/5 border border-info/20">{amount}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t('schedule.farmer_task.amount_not_available')}</p>
+                )}
+              </div>
+            </div>
 
             {/* Quantity */}
             {formatQuantity(quantity) && (
