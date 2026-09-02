@@ -94,7 +94,7 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
           {/* Crop & Farming Type */}
           <div className="text-center">
             <p className="text-lg font-bold text-foreground">{cropName}</p>
-            <p className="text-sm text-primary font-medium">{t(`schedule.loading_overlay.farming_type.${farmingType}`, farmingType)}</p>
+            <p className="text-sm text-primary font-medium">{t(`schedule.loading_overlay.farming_type.${farmingType}`, { defaultValue: farmingType })}</p>
           </div>
 
           {/* Single Step Display - smooth transition */}
