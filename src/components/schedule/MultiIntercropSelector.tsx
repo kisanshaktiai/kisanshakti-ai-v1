@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Plus, X, Leaf, Check, Sprout, TreeDeciduous, Flower2 } from 'lucide-react';
+import { Plus, X, Leaf, Check, Sprout, TreeDeciduous, Flower2, ChevronLeft } from 'lucide-react';
 import { useLanguageStore } from '@/stores/languageStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
