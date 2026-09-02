@@ -26,6 +26,7 @@ interface CropDateInputProps {
     area_guntas?: number;
     village?: string;
     district?: string;
+    state?: string;
     soil_type?: string;
     water_source?: string;
   };
@@ -59,6 +60,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
+  const [wizardStep, setWizardStep] = useState<'variety' | 'planting'>('variety');
   const [varietyId, setVarietyId] = useState<string | null>(null);
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
@@ -248,6 +250,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     // Clear stale variety; the VarietySelector re-loads from master_products.
     setVarietyId(null);
     setCropVariety('');
+    setWizardStep('variety');
   };
 
   const handleChangeCrop = () => {
@@ -257,6 +260,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     setVarietyId(null);
     setCropVariety('');
     setIntercrops([]);
+    setWizardStep('variety');
   };
 
   return (
@@ -358,9 +362,19 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 </div>
               </div>
 
+              {/* Small persistent selection summary; values are DB/user selections, not inferred. */}
+              <div className="px-4 py-2 border-b border-border/40 bg-muted/30 shrink-0">
+                <div className="flex items-center gap-2 overflow-x-auto text-xs whitespace-nowrap">
+                  <span className="text-muted-foreground">{t('schedule.crop_input.crop_summary', 'Crop')}: <strong className="text-foreground">{localizedCropName || cropName}</strong></span>
+                  {cropVariety && <span className="text-muted-foreground">• {t('schedule.crop_input.variety_summary', 'Variety')}: <strong className="text-foreground">{cropVariety}</strong></span>}
+                  {sowingDate && wizardStep === 'planting' && <span className="text-muted-foreground">• {format(sowingDate, 'PP')}</span>}
+                </div>
+              </div>
+
               {/* Scrollable content — variety first (most critical decision) */}
               <div className="flex-1 min-h-0 overflow-y-auto mobile-scroll-container">
                 <div className="p-4 space-y-5">
+                  {wizardStep === 'variety' && (
                   {/* Variety — tap-a-card picker from master_products (SSOT), free-text fallback */}
                   <div className="space-y-2">
                     {varietiesLoading && varieties.length === 0 ? (
@@ -386,6 +400,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                         }}
                         label={t('schedule.crop_input.variety_label')}
                         cropName={cropName}
+                        regionState={land.state}
                       />
                     ) : (
                       <>
@@ -413,6 +428,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
                   </div>
 
+                  )}
+
+                  {wizardStep === 'planting' && (
                   {/* Date Selection */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -617,25 +635,28 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 </div>
               </div>
 
-              {/* Sticky Submit Footer — always fully visible above the bottom nav */}
-              <div className="p-4 pt-3 border-t border-border/40 bg-background shrink-0">
-                <Button
-                  onClick={handleSubmit}
-                  disabled={!cropName || !sowingDate || loading}
-                  className="w-full h-14 rounded-2xl text-base font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
-                >
-                  {loading ? (
-                    <>
-                      <Sparkles className="mr-2 h-5 w-5 animate-spin" />
-                      {t('schedule.crop_input.generating')}
-                    </>
-                  ) : (
-                    <>
-                      {t('schedule.crop_input.generate_ai_schedule')}
-                      <Sparkles className="ml-2 h-5 w-5" />
-                    </>
                   )}
-                </Button>
+
+              {/* Mobile decision footer — one primary decision per step */}
+              <div className="p-4 pt-3 border-t border-border/40 bg-background shrink-0">
+                {wizardStep === 'variety' ? (
+                  <Button
+                    type="button"
+                    disabled={!cropVariety || loading}
+                    onClick={() => setWizardStep('planting')}
+                    className="w-full h-14 rounded-2xl text-base font-semibold"
+                  >
+                    {t('schedule.crop_input.next', 'Next')}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={!cropName || !sowingDate || loading}
+                    className="w-full h-14 rounded-2xl text-base font-semibold"
+                  >
+                    {loading ? <><Sparkles className="mr-2 h-5 w-5 animate-spin" />{t('schedule.crop_input.generating')}</> : <>{t('schedule.crop_input.generate_ai_schedule')}<Sparkles className="ml-2 h-5 w-5" /></>}
+                  </Button>
+                )}
               </div>
             </motion.div>
           )}
