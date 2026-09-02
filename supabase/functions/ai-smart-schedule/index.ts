@@ -292,21 +292,34 @@ serve(async (req) => {
       );
     }
     if (baseline.validation && baseline.validation.warnings.length) {
-      for (const w of baseline.validation.warnin    // ── HARNESS V2: LLM planner over deterministic candidate graph (flag-gated, fail-closed) ───────
+      for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
+    }
+
+    // ── HARNESS V2: LLM planner over deterministic candidate graph ──────────
+    // Flag-gated. The planner may only sequence deterministic candidates.
+    // Invalid/unavailable LLM output falls back to the deterministic sequence.
     let harnessTrace: Record<string, unknown> | null = null;
     try {
       const harnessFlag = await isFlagEnabled(supabase, "crop_schedule_harness_v2", { tenantId, farmerId });
       if (harnessFlag.enabled) {
-        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps });
-        if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
+        const harnessed = await applyScheduleHarness(baseline.tasks, {
+          cropCode: inputs.cropCode,
+          cultivationMethod: inputs.cultivationMethod,
+          cropCycle: inputs.cropCycle,
+          gaps: baseline.gaps,
+        });
+        if (!harnessed.result.applied || harnessed.result.status !== "READY") {
+          return json({
+            error: "Schedule harness failed closed before persistence",
+            code: "HARNESS_VALIDATION_FAILED",
+            trace: harnessed.result.trace,
+          }, 422);
+        }
         baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
         harnessTrace = harnessed.result.trace;
       }
     } catch {
       return json({ error: "Schedule harness execution failed before persistence", code: "HARNESS_FAILURE" }, 422);
-    }
-
-gs) baseline.gaps.push(`validation_warning: ${w}`);
     }
 
     // ── PHASE 2 / P1: verified RAG evidence attachment (flag-gated) ─────────
@@ -342,7 +355,7 @@ gs) baseline.gaps.push(`validation_warning: ${w}`);
       baseline.tasks.map((t) => ({
         task_name: t.task_name,
         task_description: t.task_description,
-        instructions: narrated[idx]?.instructions || t.instructions,
+        instructions: t.instructions,
       })),
       language,
     );
@@ -454,7 +467,7 @@ gs) baseline.gaps.push(`validation_warning: ${w}`);
       weather_dependent: t.weather_dependent,
       status: "pending",
       sequence_order: idx + 1,
-      instructions: t.instructions,
+      instructions: narrated[idx]?.instructions || t.instructions,
       precautions: t.precautions ?? [],
       // v1.5.0: recurring tasks (irrigation window, weekly scouting) carry their cadence
       // in resources.recurrence instead of being expanded into one dated row per event.
