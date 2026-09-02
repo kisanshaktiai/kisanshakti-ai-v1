@@ -2,7 +2,7 @@
 // Agronomic selection remains deterministic/DB-backed. The model only rewrites supplied
 // facts into clear farmer language and cannot add a dose, product, timing or treatment.
 
-import { buildAIRequest, getAPIEndpoint, getAPIKey, getBestScheduleProvider, type AIProvider } from "../../_shared/aiConfig.ts";
+import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 
 export interface NarratableTask {
   task_name: string;
@@ -40,11 +40,8 @@ async function narrateChunk(
   chunk: NarratableTask[],
   offset: number,
   language: string,
-  provider: AIProvider,
-  model: string,
-  apiKey: string,
   signal: AbortSignal,
-): Promise<Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>> {
+): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
   const payload = chunk.map((t, i) => ({
     i,
     name: t.task_name,
@@ -53,49 +50,57 @@ async function narrateChunk(
   }));
 
   const prompt = [
-    `You are the farmer-language explanation layer inside a high-assurance agricultural schedule. Output language code: "${language}".`,
-    `All agronomic candidates and values were selected before you. You are NOT an agronomy source of truth.`,
-    `Use ONLY facts supplied in each task. Do not use model memory to add agricultural facts, products, doses, timings or treatments.`,
-    `Your goal is natural, simple language a rural smallholder farmer can understand.`,
+    `You are the farmer-language explanation layer for a high-assurance agricultural schedule. Output language code: "${language}".`,
+    `You explain only the supplied facts. The database and deterministic pipeline remain the agricultural authority.`,
+    `Do NOT use model memory to add agricultural facts, products, doses, timings or treatments.`,
     `HARD FACT RULES:`,
     `1. Never add, remove, calculate, convert or change a number, unit, date, product, chemical, dose, timing or threshold.`,
     `2. Never recommend treatment when the supplied task only says to inspect or monitor.`,
     `3. Never expose rule IDs, database field names, source labels, evidence tags, internal audit notes or machine-style identifiers.`,
     `4. If information is missing, leave the corresponding field empty. Never fill a gap with a guess.`,
-    `FARMER EXPLANATION RULES:`,
-    `5. "name": a short action title, normally 2-6 words.`,
-    `6. "desc": explain the supplied task in short natural sentences. Prefer: what to do, how to do it, when/how much if supplied.`,
-    `7. "instructions": turn each supplied actionable line into a clear spoken step. Do not output raw condition codes such as blast_leaf_lesions.`,
-    `8. When an abbreviation N, P or K appears in supplied nutrient text, explain it in the selected language using the standard full nutrient name — Nitrogen (N), Phosphorus (P), Potassium (K) — without adding any new recommendation or value.`,
-    `9. Use the common local farmer word first. A technical term may appear once in brackets when it helps understanding.`,
-    `10. Keep sentences short and direct. Avoid textbook tone, English loan words when a clear local equivalent exists, and long paragraphs.`,
-    `11. Preserve the same number of actionable instruction items. Return STRICT JSON only:`,
+    `FARMER LANGUAGE RULES:`,
+    `5. Use short, natural spoken language suitable for a rural smallholder farmer.`,
+    `6. name: a short action title, normally 2-6 words.`,
+    `7. desc: explain what to do, how to do it, and how much/when only when supplied.`,
+    `8. instructions: rewrite each supplied actionable line into a clear farmer step; do not expose raw condition codes.`,
+    `9. When supplied nutrient text contains N, P or K, explain as Nitrogen (N), Phosphorus (P), Potassium (K) in the selected language without adding a new recommendation.`,
+    `10. Preserve the same number of actionable instruction items. Return STRICT JSON only:`,
     `[{"i":0,"name":"...","desc":"...","instructions":["..."]}]`,
     `INPUT:`,
     JSON.stringify(payload),
   ].join("\n");
 
-  const body = buildAIRequest(
-    provider,
-    model,
-    [{ role: "system", content: "Return only valid JSON. Follow the supplied agricultural fact boundary exactly." }, { role: "user", content: prompt }],
-    { maxTokens: 3500, temperature: 0, useJsonMode: true },
-  );
-
-  const res = await fetch(getAPIEndpoint(provider), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) throw new Error(`llm_http_${res.status}`);
-  const json = await res.json();
-  const text = json?.choices?.[0]?.message?.content ?? "[]";
-  const parsed = JSON.parse(text) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
-  return parsed.map((p) => ({ ...p, i: offset + p.i }));
+  let lastError: unknown = new Error("MODEL_UNAVAILABLE");
+  for (const { provider, model } of getScheduleProviderChain()) {
+    const apiKey = getAPIKey(provider);
+    if (!apiKey) continue;
+    try {
+      const body = buildAIRequest(
+        provider,
+        model,
+        [
+          { role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly." },
+          { role: "user", content: prompt },
+        ],
+        // Rewriting must be stable and reproducible.
+        { maxTokens: 3500, temperature: 0, useJsonMode: true },
+      );
+      const res = await fetch(getAPIEndpoint(provider), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (!res.ok) throw new Error(`llm_http_${res.status}`);
+      const json = await res.json();
+      const text = json?.choices?.[0]?.message?.content ?? "[]";
+      const parsed = JSON.parse(text) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
+      return { items: parsed.map((p) => ({ ...p, i: offset + p.i })), provider, model };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 export async function narrateTasks(
@@ -104,16 +109,11 @@ export async function narrateTasks(
 ): Promise<{ tasks: NarratableTask[]; narrated: boolean; reason?: string; provider?: string; model?: string }> {
   if (!tasks.length || language === "en") return { tasks, narrated: false, reason: "no_translation_needed" };
 
-  let provider: AIProvider;
-  let model: string;
-  let apiKey: string;
-  try {
-    ({ provider, model } = getBestScheduleProvider());
-    apiKey = getAPIKey(provider);
-  } catch {
-    return { tasks, narrated: false, reason: "no_llm_key" };
-  }
-  if (!apiKey) return { tasks, narrated: false, reason: "no_llm_key" };
+  let configured: Array<{ provider: AIProvider; model: string }>;
+  try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, reason: "no_llm_key" }; }
+  if (!configured.length) return { tasks, narrated: false, reason: "no_llm_key" };
+  let provider: AIProvider | undefined;
+  let model: string | undefined;
 
   const chunks: Array<{ items: NarratableTask[]; offset: number }> = [];
   for (let i = 0; i < tasks.length; i += CHUNK_SIZE) chunks.push({ items: tasks.slice(i, i + CHUNK_SIZE), offset: i });
@@ -130,7 +130,7 @@ export async function narrateTasks(
       if (controller.signal.aborted) break;
       const settled = await Promise.allSettled(
         chunks.slice(i, i + MAX_CONCURRENCY).map((c) =>
-          narrateChunk(c.items, c.offset, language, provider, model, apiKey, controller.signal),
+          narrateChunk(c.items, c.offset, language, controller.signal),
         ),
       );
       results.push(...settled);
@@ -141,7 +141,9 @@ export async function narrateTasks(
         failures.push((result.reason as Error)?.message || "unknown");
         continue;
       }
-      for (const item of result.value) {
+      provider = result.value.provider;
+      model = result.value.model;
+      for (const item of result.value.items) {
         const target = out[item.i];
         if (!target) continue;
         if (item.name && isFaithful(target.task_name, item.name)) target.task_name = item.name;
