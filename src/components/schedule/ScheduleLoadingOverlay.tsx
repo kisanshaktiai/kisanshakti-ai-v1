@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Leaf, Sun, Droplets, Wind, Sprout, TreeDeciduous, CloudRain, Wheat } from "lucide-react";
-import { useLanguageStore } from "@/stores/languageStore";
+import { useTranslation } from "react-i18next";
 
 interface ScheduleLoadingOverlayProps {
   isLoading: boolean;
@@ -9,123 +9,18 @@ interface ScheduleLoadingOverlayProps {
   farmingType: string;
 }
 
-const motivationalQuotes: Record<string, { text: string; author?: string }[]> = {
-  en: [
-    {
-      text: "The farmer is the only man in our economy who buys everything at retail, sells everything at wholesale, and pays the freight both ways.",
-      author: "John F. Kennedy",
-    },
-    {
-      text: "Agriculture is our wisest pursuit, because it will in the end contribute most to real wealth, good morals, and happiness.",
-      author: "Thomas Jefferson",
-    },
-    { text: "To forget how to dig the earth and to tend the soil is to forget ourselves.", author: "Mahatma Gandhi" },
-    {
-      text: "The ultimate goal of farming is not the growing of crops, but the cultivation and perfection of human beings.",
-      author: "Masanobu Fukuoka",
-    },
-  ],
-  hi: [
-    { text: "किसान देश की रीढ़ है। जब किसान खुश होगा, तभी देश खुशहाल होगा।", author: "लाल बहादुर शास्त्री" },
-    { text: "खेती करना मनुष्य का सबसे श्रेष्ठ और पवित्र कर्म है।", author: "महात्मा गांधी" },
-    { text: "मेहनत का फल हमेशा मीठा होता है।" },
-    { text: "अन्न देवो भव - अन्न ही भगवान है।" },
-  ],
-  mr: [
-    { text: "शेतकरी हा देशाचा खरा कणा आहे.", author: "लाल बहादूर शास्त्री" },
-    { text: "शेती करणे हे माणसाचे सर्वात श्रेष्ठ आणि पवित्र कर्तव्य आहे.", author: "महात्मा गांधी" },
-    { text: "मेहनतीचे फळ नेहमी गोड असते." },
-    { text: "अन्न हेच देव आहे - अन्न देवो भव." },
-  ],
-  pa: [
-    { text: "ਕਿਸਾਨ ਦੇਸ਼ ਦੀ ਰੀੜ੍ਹ ਹੈ।", author: "ਲਾਲ ਬਹਾਦੁਰ ਸ਼ਾਸਤਰੀ" },
-    { text: "ਖੇਤੀ ਕਰਨਾ ਮਨੁੱਖ ਦਾ ਸਭ ਤੋਂ ਉੱਤਮ ਕੰਮ ਹੈ।", author: "ਮਹਾਤਮਾ ਗਾਂਧੀ" },
-    { text: "ਮਿਹਨਤ ਦਾ ਫਲ ਹਮੇਸ਼ਾ ਮਿੱਠਾ ਹੁੰਦਾ ਹੈ।" },
-  ],
-  ta: [
-    { text: "உழவர் நாட்டின் முதுகெலும்பு.", author: "லால் பகதூர் சாஸ்திரி" },
-    { text: "விவசாயம் செய்வது மனிதனின் மிகச்சிறந்த கடமை.", author: "மகாத்மா காந்தி" },
-    { text: "உழைப்பின் பலன் எப்போதும் இனிமையானது." },
-  ],
-};
-
 const loadingSteps = [
-  {
-    icon: Sprout,
-    text: {
-      en: "Analyzing crop requirements",
-      hi: "फसल आवश्यकताओं का विश्लेषण",
-      mr: "पीक आवश्यकतांचे विश्लेषण",
-      pa: "ਫ਼ਸਲ ਲੋੜਾਂ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ",
-      ta: "பயிர் தேவைகளை ஆராய்தல்",
-    },
-  },
-  {
-    icon: Sun,
-    text: {
-      en: "Checking weather patterns",
-      hi: "मौसम पैटर्न की जांच",
-      mr: "हवामान पद्धती तपासणे",
-      pa: "ਮੌਸਮ ਪੈਟਰਨ ਦੀ ਜਾਂਚ",
-      ta: "வானிலை மாதிரிகளை சோதித்தல்",
-    },
-  },
-  {
-    icon: Droplets,
-    text: {
-      en: "Planning irrigation schedule",
-      hi: "सिंचाई योजना बनाना",
-      mr: "सिंचन वेळापत्रक नियोजन",
-      pa: "ਸਿੰਚਾਈ ਯੋਜਨਾ",
-      ta: "நீர்ப்பாசன திட்டம்",
-    },
-  },
-  {
-    icon: Leaf,
-    text: {
-      en: "Designing nutrient management",
-      hi: "पोषक तत्व प्रबंधन",
-      mr: "पोषक व्यवस्थापन",
-      pa: "ਪੋਸ਼ਕ ਤੱਤ ਪ੍ਰਬੰਧਨ",
-      ta: "ஊட்டச்சத்து மேலாண்மை",
-    },
-  },
-  {
-    icon: TreeDeciduous,
-    text: {
-      en: "Setting growth milestones",
-      hi: "विकास मील के पत्थर",
-      mr: "वाढ टप्पे",
-      pa: "ਵਿਕਾਸ ਮੀਲ ਪੱਥਰ",
-      ta: "வளர்ச்சி மைல்கற்கள்",
-    },
-  },
-  {
-    icon: CloudRain,
-    text: {
-      en: "Optimizing for monsoon",
-      hi: "मानसून अनुकूलन",
-      mr: "मान्सून अनुकूलन",
-      pa: "ਮਾਨਸੂਨ ਅਨੁਕੂਲਨ",
-      ta: "பருவமழை மேம்படுத்தல்",
-    },
-  },
-  {
-    icon: Wheat,
-    text: {
-      en: "Finalizing harvest timeline",
-      hi: "कटाई समयरेखा",
-      mr: "कापणी टाइमलाइन",
-      pa: "ਵਾਢੀ ਸਮਾਂ-ਸਾਰਣੀ",
-      ta: "அறுவடை காலக்கெடு",
-    },
-  },
-];
+  { icon: Sprout, key: "crop_requirements" },
+  { icon: Sun, key: "weather" },
+  { icon: Droplets, key: "irrigation" },
+  { icon: Leaf, key: "nutrition" },
+  { icon: TreeDeciduous, key: "growth" },
+  { icon: CloudRain, key: "monsoon" },
+  { icon: Wheat, key: "harvest" },
+] as const;
 
 export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingType }: ScheduleLoadingOverlayProps) {
-  const { currentLanguage } = useLanguageStore();
-  const lang = currentLanguage || "en";
-  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
+  const { t } = useTranslation();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
   const quotes = motivationalQuotes[lang] || motivationalQuotes.en;
@@ -133,23 +28,17 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
   useEffect(() => {
     if (!isLoading) return;
 
-    const quoteInterval = setInterval(() => {
-      setCurrentQuoteIndex((prev) => (prev + 1) % quotes.length);
-    }, 5000);
-
     const stepInterval = setInterval(() => {
       setCurrentStepIndex((prev) => (prev + 1) % loadingSteps.length);
     }, 2000);
 
     return () => {
-      clearInterval(quoteInterval);
       clearInterval(stepInterval);
     };
   }, [isLoading, quotes.length]);
 
   useEffect(() => {
     if (isLoading) {
-      setCurrentQuoteIndex(0);
       setCurrentStepIndex(0);
     }
   }, [isLoading]);
@@ -255,7 +144,7 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
           {/* Crop & Farming Type */}
           <div className="text-center">
             <p className="text-lg font-bold text-foreground">{cropName}</p>
-            <p className="text-sm text-primary font-medium">{getFarmingTypeLabel()}</p>
+            <p className="text-sm text-primary font-medium">{t(`schedule.loading_overlay.farming_type.${farmingType}`, farmingType)}</p>
           </div>
 
           {/* Single Step Display - smooth transition */}
@@ -274,7 +163,7 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
                   >
                     <Icon className="h-5 w-5 text-primary" />
                     <span className="text-sm font-medium text-foreground">
-                      {step.text[lang as keyof typeof step.text] || step.text.en}
+                      {t(`schedule.loading_overlay.steps.${step.key}`)}
                     </span>
                   </motion.div>
                 ) : null;
@@ -298,23 +187,6 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
             ))}
           </div>
 
-          {/* Motivational Quote - smooth crossfade */}
-          <div className="h-28 flex items-center">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentQuoteIndex}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.5 }}
-                className="text-center px-4 py-4 rounded-xl bg-muted/50 border border-border/50 w-full"
-              >
-                <p className="text-sm italic text-foreground/80 leading-relaxed">"{currentQuote.text}"</p>
-                {currentQuote.author && <p className="text-xs text-muted-foreground mt-2">— {currentQuote.author}</p>}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
           {/* Loading indicator */}
           <div className="flex justify-center items-center gap-2 text-xs text-muted-foreground">
             <motion.div
@@ -323,15 +195,7 @@ export default function ScheduleLoadingOverlay({ isLoading, cropName, farmingTyp
               className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full"
             />
             <span>
-              {lang === "hi"
-                ? "AI शेड्यूल तैयार कर रहा है..."
-                : lang === "mr"
-                  ? "AI वेळापत्रक तयार करत आहे..."
-                  : lang === "pa"
-                    ? "AI ਅਨੁਸੂਚੀ ਤਿਆਰ ਕਰ ਰਿਹਾ ਹੈ..."
-                    : lang === "ta"
-                      ? "AI அட்டவணை தயாரிக்கிறது..."
-                      : "AI preparing your schedule..."}
+              {t('schedule.loading_overlay.preparing')}
             </span>
           </div>
         </div>
