@@ -438,8 +438,17 @@ serve(async (req) => {
         expected_harvest_date: harvestDateStr,
         is_active: true,
         status: "active",
-        generation_language: narration.narrated ? language : "en",
+        // 2026-09-03: NEVER silently downgrade to English. The schedule belongs to the
+        // language the farmer asked for; when narration fails the text is flagged as
+        // translation-pending instead of being relabelled "en".
+        generation_language: language,
         ai_model: narration.narrated ? `${narration.provider ?? "unknown"}/${narration.model ?? "unknown"} (narration only)` : "none",
+        // Day-0 SSOT context actually used/observed for this land (recorded, not derived).
+        input_soil_data: landContext.soil,
+        input_weather_data: landContext.weather,
+        input_land_coordinates: landContext.coordinates,
+        agro_climatic_zone: landContext.agroClimaticZone,
+
         calculated_for_area_acres: inputs.landAreaAcres,
         total_duration_days: durationDays,
         seed_quantity_kg: baseline.totals.seed_kg,
