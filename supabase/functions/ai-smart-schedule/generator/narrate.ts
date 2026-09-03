@@ -2,9 +2,16 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 8; const MAX_CONCURRENCY = 3; const NARRATION_BUDGET_MS = 110_000; const RETRY_DELAYS_MS = [2_000, 6_000, 15_000]; const MAX_RETRY_AFTER_MS = 30_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 8; const MAX_CONCURRENCY = 2; const NARRATION_BUDGET_MS = 110_000; const RETRY_DELAYS_MS = [2_000, 6_000, 15_000]; const MAX_RETRY_AFTER_MS = 20_000; let rateLimited = false;
+// Provider 429s are workspace-wide, not per-chunk. A single shared cooldown makes every
+// in-flight and queued chunk wait out one Retry-After window instead of each chunk burning
+// its own retry ladder against a rate limit that is still active.
+let cooldownUntil = 0;
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
+async function waitForCooldown(signal: AbortSignal) { const wait = cooldownUntil - Date.now(); if (wait > 0) await sleep(Math.min(wait, MAX_RETRY_AFTER_MS), signal); }
+function noteRateLimit(retryAfterMs: number | null) { rateLimited = true; cooldownUntil = Math.max(cooldownUntil, Date.now() + (retryAfterMs ?? 5_000)); }
 class RetryableError extends Error { constructor(message: string, readonly retryAfterMs: number | null) { super(message); } }
+
 function numbersOf(s: string): string[] { return (s.match(NUM_RE) || []).map((n) => n.replace(",", ".")); }
 export function isFaithful(source: string, translated: string): boolean { const a = numbersOf(source).sort(); const b = numbersOf(translated).sort(); return a.length === b.length && a.every((v, i) => v === b[i]); }
 // Truncated model output (max_tokens cut) yields unterminated JSON. Salvage every complete
