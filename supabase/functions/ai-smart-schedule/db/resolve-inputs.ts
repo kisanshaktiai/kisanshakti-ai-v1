@@ -69,6 +69,9 @@ export interface ResolvedInputs {
   transplantDate: string | null;
   /** Farmer's app language — carried so DB-backed labels are read in that language. */
   language?: string;
+  /** Farmer's declared farming policy (organic_only | organic_fertilizer | fertilizer_pesticide).
+   *  Selection ONLY — it filters/prefers existing DB rows, never invents agronomy. */
+  farmingPolicy?: string | null;
   gaps: string[];
   provenance: Record<string, unknown>;
 }
@@ -261,6 +264,7 @@ export async function resolveInputs(
     sowingDate?: string | null;
     transplantDate?: string | null;
     language: string;
+    farmingType?: string | null;
   },
 ): Promise<ResolvedInputs> {
   const gaps: string[] = [];
@@ -432,6 +436,7 @@ export async function resolveInputs(
     regionCode,
     soilFertilityClass,
     soilTestId,
+    farmingPolicy: params.farmingType ? String(params.farmingType) : null,
     sowingDate: params.sowingDate || (land?.planting_date as string) || (land?.cultivation_date as string) || null,
     transplantDate: params.transplantDate || (land?.transplant_date as string) || null,
     gaps,

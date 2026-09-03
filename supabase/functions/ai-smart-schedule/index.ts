@@ -167,6 +167,7 @@ serve(async (req) => {
       sowingDate,
       transplantDate,
       language,
+      farmingType,
     });
     // The farmer's language travels with the resolved inputs so DB-backed labels
     // (observation_translations etc.) are read in that language, not English.
