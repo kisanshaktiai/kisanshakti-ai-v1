@@ -376,13 +376,20 @@ serve(async (req) => {
     // deterministically first; the model then rewrites the result into simple
     // farmer language in the farmer's app language (English included).
     const sanitized = baseline.tasks.map((t) =>
-      sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions }),
+      sanitizeTaskText({
+        task_name: t.task_name,
+        task_description: t.task_description,
+        instructions: t.instructions,
+        technical_details: t.technical_details,
+      }),
     );
     baseline.tasks.forEach((t, i) => {
       t.task_name = sanitized[i].task_name || t.task_name;
       t.task_description = sanitized[i].task_description;
       t.instructions = sanitized[i].instructions;
+      if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`);
     });
+
 
     const narration = await narrateTasks(
       baseline.tasks.map((t) => ({
