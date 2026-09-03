@@ -969,6 +969,24 @@ export async function generateBaseline(
     gaps.push("input_price_not_authoritatively_mappable");
   }
 
+  // 2026-09-03: collapse exact duplicates (same type + same label + same day) that two
+  // DB rows can produce. Evidence is UNIONED, never dropped; different nutrients or
+  // different labels on the same day remain separate tasks (that is real agronomy).
+  const dedup = new Map<string, BaselineTask>();
+  for (const t of tasks) {
+    const key = `${t.task_type}|${t.task_name}|${t.days_from_sowing}|${t.nutrient ?? ""}`;
+    const prev = dedup.get(key);
+    if (!prev) { dedup.set(key, t); continue; }
+    prev.rule_ids = [...new Set([...prev.rule_ids, ...t.rule_ids])];
+    prev.instructions = [...new Set([...prev.instructions, ...t.instructions])];
+    prev.precautions = [...new Set([...prev.precautions, ...t.precautions])];
+    prev.technical_details = [...new Set([...(prev.technical_details ?? []), ...(t.technical_details ?? [])])];
+    prev.source_refs = [...prev.source_refs, ...t.source_refs];
+    if (!prev.task_description && t.task_description) prev.task_description = t.task_description;
+    gaps.push("duplicate_task_merged");
+  }
+  tasks = [...dedup.values()];
+
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(
     (a, b) =>
@@ -977,6 +995,7 @@ export async function generateBaseline(
       a.task_type.localeCompare(b.task_type) ||
       a.task_name.localeCompare(b.task_name),
   );
+
 
   // A task labelled with a stage that could not be resolved to a crop_stage_master
   // row is reported as a gap — the stage link is left null, never invented.
