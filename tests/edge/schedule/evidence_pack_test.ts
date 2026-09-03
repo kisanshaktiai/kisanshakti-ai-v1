@@ -1,5 +1,36 @@
 import { assert } from "https://deno.land/std@0.208.0/assert/mod.ts";
-const read=(p:string)=>Deno.readTextFile(p);
-Deno.test("Harness is evidence-pack based, not baseline-task-only",async()=>{const src=await read("supabase/functions/ai-smart-schedule/harness/index.ts");assert(src.includes("buildAgronomicEvidencePack"));assert(src.includes("llm-v3.ts"));assert(src.includes("evidence_candidate_count"));});
-Deno.test("evidence pack does not invent micronutrient application doses",async()=>{const src=await read("supabase/functions/ai-smart-schedule/harness/evidence-pack.ts");assert(src.includes("GUIDELINE_EVIDENCE"));assert(src.includes("Application dose/form not supplied"));assert(src.includes("materializable: false"));});
-Deno.test("legacy deterministic baseline remains the required fallback",async()=>{const src=await read("supabase/functions/ai-smart-schedule/harness/index.ts");const graph=await read("supabase/functions/ai-smart-schedule/harness/candidate-graph.ts");assert(src.includes("optional evidence candidates were not auto-applied"));assert(graph.includes("required:true"));});
+
+const read = (p: string) => Deno.readTextFile(p);
+
+Deno.test("Harness is evidence-pack based, not baseline-task-only", async () => {
+  const src = await read("supabase/functions/ai-smart-schedule/harness/index.ts");
+  assert(src.includes("buildAgronomicEvidencePack"));
+  assert(src.includes("llm-v3.ts"));
+  assert(src.includes("evidence_candidate_count"));
+});
+
+Deno.test("production Harness receives the exact resolved request context", async () => {
+  const src = await read("supabase/functions/ai-smart-schedule/index.ts");
+  const harness = await read("supabase/functions/ai-smart-schedule/harness/index.ts");
+  const llm = await read("supabase/functions/ai-smart-schedule/harness/llm-v3.ts");
+  assert(src.includes("resolvedInputs: inputs"));
+  assert(src.includes("landContext"));
+  assert(src.includes("evidencePack"));
+  assert(harness.includes("contextSnapshot"));
+  assert(harness.includes("legacy.resolvedInputs"));
+  assert(llm.includes("resolved_context"));
+});
+
+Deno.test("evidence pack does not invent micronutrient application doses", async () => {
+  const src = await read("supabase/functions/ai-smart-schedule/harness/evidence-pack.ts");
+  assert(src.includes("GUIDELINE_EVIDENCE"));
+  assert(src.includes("Application dose/form not supplied"));
+  assert(src.includes("materializable: false"));
+});
+
+Deno.test("legacy deterministic baseline remains the required fallback", async () => {
+  const src = await read("supabase/functions/ai-smart-schedule/harness/index.ts");
+  const graph = await read("supabase/functions/ai-smart-schedule/harness/candidate-graph.ts");
+  assert(src.includes("optional evidence candidates were not auto-applied"));
+  assert(graph.includes("required:true"));
+});
