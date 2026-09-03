@@ -669,11 +669,41 @@ export async function generateBaseline(
   coverage.field_actions = rules.length > 0;
   if (!rules.length) gaps.push("decision_rules_no_field_actions");
 
+  // ── Farming-policy selection (DB-driven, never inventive) ─────────────────
+  // organic_only          → a synthetic-chemical rule is used ONLY through its
+  //                         decision_rules.organic_alternative; with no alternative the
+  //                         rule is suppressed and recorded as a gap.
+  // organic_fertilizer    → chemical nutrition allowed; plant-protection rules prefer the
+  //                         organic_alternative when the DB provides one.
+  // fertilizer_pesticide  → no restriction (previous behaviour).
+  const farmingPolicy = String(inputs.farmingPolicy ?? "").toLowerCase() || null;
+  const PROTECTION_CATEGORIES = new Set(["pest", "disease", "weed", "ipm", "proactive_pest", "proactive_monitoring"]);
+  const policyApplied: string[] = [];
+  const policySuppressed: string[] = [];
+
   for (const rule of rules) {
     const chem = String(rule.chemical_class ?? "").toLowerCase();
     if (chem && banned.has(chem)) {
       gaps.push(`rule_skipped_banned_chemical:${rule.rule_id}`);
       continue;
+    }
+
+    const organicAlt = String(rule.organic_alternative ?? "").trim() || null;
+    const isProtection = PROTECTION_CATEGORIES.has(String(rule.category ?? "").toLowerCase());
+    const isSynthetic = Boolean(chem) || Boolean(rule.dosage_per_acre);
+    let policyActionText: string | null = null;
+
+    if (farmingPolicy === "organic_only" && isSynthetic) {
+      if (!organicAlt) {
+        policySuppressed.push(rule.rule_id);
+        gaps.push(`rule_suppressed_by_farming_policy:${rule.rule_id}`);
+        continue;
+      }
+      policyActionText = organicAlt;
+      policyApplied.push(rule.rule_id);
+    } else if (farmingPolicy === "organic_fertilizer" && isProtection && isSynthetic && organicAlt) {
+      policyActionText = organicAlt;
+      policyApplied.push(rule.rule_id);
     }
     const stageList: string[] = Array.isArray(rule.stage_applicable)
       ? (rule.stage_applicable as string[])
@@ -699,14 +729,16 @@ export async function generateBaseline(
       // farmer instruction list. They now ride in technical_details.
       const ruleTechnical: string[] = [];
       if (rule.etl_threshold) ruleTechnical.push(`ETL: ${rule.etl_threshold}`);
-      if (rule.dosage_per_acre) ruleTechnical.push(`Dose/acre: ${rule.dosage_per_acre}`);
+      // Under an organic substitution the chemical dose is NOT the applied dose — never show it.
+      if (rule.dosage_per_acre && !policyActionText) ruleTechnical.push(`Dose/acre: ${rule.dosage_per_acre}`);
       if (rule.phi_days != null) ruleTechnical.push(`PHI: ${rule.phi_days} days`);
       if (rule.scientific_source) ruleTechnical.push(`Source: ${rule.scientific_source}`);
       const ruleInstructions: string[] = [];
       const rulePrecautions: string[] = Array.isArray(rule.contraindications)
         ? (rule.contraindications as unknown[]).map((c) => String(c)).filter(Boolean)
         : [];
-      if (!rule.action_text && !ruleTechnical.length && !rulePrecautions.length) {
+      const effectiveActionText = policyActionText || rule.action_text;
+      if (!effectiveActionText && !ruleTechnical.length && !rulePrecautions.length) {
         gaps.push("rule_task_no_detail");
       }
 
@@ -718,12 +750,12 @@ export async function generateBaseline(
         task_name:
           shortName(
             ruleLabel && stageTag ? `${ruleLabel} — ${stageTag}` : ruleLabel || stageTag,
-            rule.action_text,
+            effectiveActionText,
             rule.rule_id,
           ) || rule.rule_id,
 
         task_type: taskType,
-        task_description: rule.action_text || "",
+        task_description: effectiveActionText || "",
         days_from_sowing: das as number,
         anchor_type: "STAGE",
         anchor_stage: stage.stage_code || stage.growth_stage,
@@ -739,7 +771,12 @@ export async function generateBaseline(
         estimated_cost: null,
         rule_ids: [rule.rule_id],
         confidence: null,
-        source_refs: [{ table: "decision_rules", row_id: rule.rule_id, source: rule.scientific_source ?? null }],
+        source_refs: [{
+          table: "decision_rules",
+          row_id: rule.rule_id,
+          source: rule.scientific_source ?? null,
+          ...(policyActionText ? { field: "organic_alternative", farming_policy: farmingPolicy } : {}),
+        }],
         instructions: ruleInstructions,
         precautions: rulePrecautions,
         technical_details: ruleTechnical,
