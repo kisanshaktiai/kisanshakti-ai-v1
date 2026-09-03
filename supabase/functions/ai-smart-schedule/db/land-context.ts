@@ -26,9 +26,10 @@ export async function loadLandContext(
   const [{ data: land }, { data: soilRow }, { data: weatherRow }, { data: ndviRow }] = await Promise.all([
     supabase
       .from("lands")
-      .select("id, center_lat, center_lon, soil_type, soil_ph, soil_data_source, soil_confidence_level, last_soil_test_date, agro_climatic_zone_id")
+      .select("id, center_lat, center_lon, soil_type, soil_ph, soil_data_source, soil_confidence_level, last_soil_test_date")
       .eq("id", landId)
       .maybeSingle(),
+
     supabase
       .from("soil_health")
       .select("*")
