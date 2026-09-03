@@ -41387,6 +41387,13 @@ export type Database = {
         }
         Returns: Json
       }
+      persist_ai_crop_schedule_atomic: {
+        Args: { p_land: Json; p_schedule: Json; p_tasks: Json }
+        Returns: {
+          schedule_id: string
+          task_count: number
+        }[]
+      }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
