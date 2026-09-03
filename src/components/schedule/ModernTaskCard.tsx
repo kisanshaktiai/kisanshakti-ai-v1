@@ -440,7 +440,27 @@ export default function ModernTaskCard({
                   <p className="text-sm text-muted-foreground">{t('schedule.farmer_task.amount_not_available')}</p>
                 )}
               </div>
+              {farmerTask.needsTranslation && (
+                <p className="text-xs text-muted-foreground italic">
+                  {t('schedule.farmer_task.translation_pending')}
+                </p>
+              )}
             </div>
+
+            {/* Agronomic audit detail — collapsed by default, never farmer headline text. */}
+            {farmerTask.technicalDetails.length > 0 && (
+              <details className="rounded-2xl border border-border bg-muted/30 p-3">
+                <summary className="text-sm font-semibold cursor-pointer select-none">
+                  {t('schedule.farmer_task.technical_details')}
+                </summary>
+                <ul className="mt-2 space-y-1">
+                  {farmerTask.technicalDetails.map((line: string, index: number) => (
+                    <li key={index} className="text-xs text-muted-foreground leading-relaxed">{line}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
 
             {/* Product Details */}
             {formatQuantity(productDetails) && (
