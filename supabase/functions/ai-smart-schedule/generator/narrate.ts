@@ -192,19 +192,22 @@ export async function narrateTasks(
   narrated: boolean;
   narratedCount: number;
   totalCount: number;
+  /** Indices of tasks whose text was actually rewritten in the requested language. */
+  appliedIndices: number[];
   reason?: string;
   provider?: string;
   model?: string;
 }> {
   const totalCount = tasks.length;
-  if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, reason: "no_tasks" };
+  if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_tasks" };
 
   let configured: Array<{ provider: AIProvider; model: string }>;
-  try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, reason: "no_llm_key" }; }
-  if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, reason: "no_llm_key" };
+  try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" }; }
+  if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" };
   let provider: AIProvider | undefined;
   let model: string | undefined;
 
+  rateLimited = false;
   const chunks: Array<{ items: NarratableTask[]; offset: number }> = [];
   for (let i = 0; i < tasks.length; i += CHUNK_SIZE) chunks.push({ items: tasks.slice(i, i + CHUNK_SIZE), offset: i });
 
@@ -212,18 +215,23 @@ export async function narrateTasks(
   const budgetTimer = setTimeout(() => controller.abort(), NARRATION_BUDGET_MS);
   const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) }));
   const failures: string[] = [];
-  let applied = 0;
+  const appliedIndices = new Set<number>();
 
   try {
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = [];
-    for (let i = 0; i < chunks.length; i += MAX_CONCURRENCY) {
+    let i = 0;
+    while (i < chunks.length) {
       if (controller.signal.aborted) break;
+      // Once a provider rate-limits, the whole pipeline slows to one request at a time
+      // instead of re-triggering the same 429 on every parallel chunk.
+      const width = rateLimited ? 1 : MAX_CONCURRENCY;
       const settled = await Promise.allSettled(
-        chunks.slice(i, i + MAX_CONCURRENCY).map((c) =>
+        chunks.slice(i, i + width).map((c) =>
           narrateChunkWithRetry(c.items, c.offset, language, controller.signal),
         ),
       );
       results.push(...settled);
+      i += width;
     }
 
     for (const result of results) {
@@ -247,20 +255,22 @@ export async function narrateTasks(
             touched = true;
           }
         }
-        if (touched) applied++;
+        if (touched) appliedIndices.add(item.i);
       }
     }
   } finally {
     clearTimeout(budgetTimer);
   }
 
+  const applied = appliedIndices.size;
   if (!applied) {
     return {
       tasks: out,
       narrated: false,
       narratedCount: 0,
       totalCount,
-      reason: `llm_failed:${failures.slice(0, 2).join("|") || "no_output"}`,
+      appliedIndices: [],
+      reason: `llm_failed:${[...new Set(failures)].slice(0, 2).join("|") || "no_output"}`,
       provider,
       model,
     };
@@ -273,8 +283,10 @@ export async function narrateTasks(
     narrated: true,
     narratedCount: applied,
     totalCount,
+    appliedIndices: [...appliedIndices].sort((a, b) => a - b),
     reason: applied < totalCount ? `partial:${applied}/${totalCount}` : undefined,
     provider,
     model,
+
   };
 }
