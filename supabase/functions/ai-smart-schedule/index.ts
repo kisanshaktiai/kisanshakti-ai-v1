@@ -420,96 +420,10 @@ serve(async (req) => {
       ? new Date(sow.getTime() + durationDays * 86400000).toISOString().split("T")[0]
       : null;
 
-    const { data: savedSchedule, error: scheduleError } = await supabase
-      .from("crop_schedules")
-      .insert({
-        land_id: landId,
-        farmer_id: farmerId,
-        tenant_id: tenantId,
-        crop_name: inputs.cropLabel || cropName,
-        crop_variety: inputs.varietyName,
-        variety_id: inputs.varietyId,
-        // P0-A: canonical stage-clock method — the DB phenology resolvers exact-match
-        // this stored value against crop_stage_master (schedule is SSOT for method).
-        cultivation_method: inputs.stageClockMethod ?? inputs.cultivationMethod,
-        crop_cycle: inputs.cropCycle,
-        sowing_date: inputs.sowingDate,
-        transplant_date: inputs.transplantDate,
-        expected_harvest_date: harvestDateStr,
-        is_active: true,
-        status: "active",
-        // 2026-09-03: NEVER silently downgrade to English. The schedule belongs to the
-        // language the farmer asked for; when narration fails the text is flagged as
-        // translation-pending instead of being relabelled "en".
-        generation_language: language,
-        ai_model: narration.narrated ? `${narration.provider ?? "unknown"}/${narration.model ?? "unknown"} (narration only)` : "none",
-        // Day-0 SSOT context actually used/observed for this land (recorded, not derived).
-        input_soil_data: landContext.soil,
-        input_weather_data: landContext.weather,
-        input_land_coordinates: landContext.coordinates,
-        agro_climatic_zone: landContext.agroClimaticZone,
-
-        calculated_for_area_acres: inputs.landAreaAcres,
-        total_duration_days: durationDays,
-        seed_quantity_kg: baseline.totals.seed_kg,
-        fertilizer_n_kg: baseline.totals.n_kg,
-        fertilizer_p_kg: baseline.totals.p_kg,
-        fertilizer_k_kg: baseline.totals.k_kg,
-        total_estimated_cost: baseline.totals.estimated_cost,
-        state_region: inputs.state,
-        district_name: inputs.district,
-        farming_type: farmingType,
-        tasks_total_count: baseline.tasks.length,
-        tasks_completed_count: 0,
-        backdated_consent: !!backdatedConsent,
-        backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-        generation_params: {
-          generator_version: GENERATOR_VERSION,
-          resolved_inputs: inputs,
-          harness: harnessTrace,
-          narration: {
-            requested_language: language,
-            persisted_language: language,
-            applied: narration.narrated,
-            narrated_count: narration.narratedCount,
-            total_count: narration.totalCount,
-            reason: narration.reason ?? null,
-          },
-          land_context_gaps: landContext.gaps,
-          ndvi_context: landContext.ndvi,
-
-        },
-        metadata: {
-          coverage: baseline.coverage,
-          missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k),
-          gaps: baseline.gaps,
-          provenance: baseline.provenance,
-          rag_evidence: ragEvidence,
-        },
-      })
-      .select()
-      .single();
-
-    if (scheduleError) {
-      if ((scheduleError.message || "").includes("LAND_NOT_AVAILABLE")) {
-        return json(
-          {
-            success: false,
-            error:
-              "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.",
-            code: "LAND_NOT_AVAILABLE",
-            landId,
-          },
-          200,
-        );
-      }
-      throw new Error(`Failed to save schedule: ${scheduleError.message}`);
-    }
-
+    // Build the complete persistence payload before any database write.
+    // The RPC below commits schedule + every task + land activation atomically.
     const narratedIdx = new Set(narration.appliedIndices);
-    const tasksToInsert = baseline.tasks.map((t, idx) => ({
-
-      schedule_id: savedSchedule.id,
+    const tasksToPersist = baseline.tasks.map((t, idx) => ({
       farmer_id: farmerId,
       tenant_id: tenantId,
       task_name: narrated[idx]?.task_name || t.task_name,
@@ -531,60 +445,126 @@ serve(async (req) => {
       sequence_order: idx + 1,
       instructions: narrated[idx]?.instructions || t.instructions,
       precautions: t.precautions ?? [],
-      // v1.5.0: recurring tasks (irrigation window, weekly scouting) carry their cadence
-      // in resources.recurrence instead of being expanded into one dated row per event.
       resources: {
         ...(t.resources ?? {}),
         ...(t.quantity ? { quantity: t.quantity } : {}),
         ...(t.recurrence ? { recurrence: t.recurrence } : {}),
-        // 2026-09-02: provenance / agronomic-audit lines are kept, but out of the
-        // farmer-facing instruction list (rendered in the card's details area).
         ...(sanitized[idx]?.technical_details?.length
           ? { technical_details: sanitized[idx].technical_details }
           : {}),
-        // 2026-09-03: a task the model could not rewrite is marked translation-pending
-        // (with the language it is currently written in) instead of the whole schedule
-        // being relabelled English.
         ...(narratedIdx.has(idx)
           ? {}
-          : { needs_translation: true, source_language: "en", target_language: language }),
+          : {
+              needs_translation: true,
+              // Do not claim English unless the deterministic source explicitly says so.
+              // Unknown source language remains null rather than becoming false metadata.
+              source_language: null,
+              target_language: language,
+            }),
       },
-
-
-
       estimated_cost: t.estimated_cost,
       currency: "INR",
       rule_ids: t.rule_ids,
       trigger_rule_id: t.rule_ids[0] || null,
       confidence: t.confidence,
       source_refs: t.source_refs,
-      language: narratedIdx.has(idx) ? language : "en",
+      language: narratedIdx.has(idx) ? language : null,
       is_pinned: false,
     }));
 
-    const { error: tasksError } = await supabase.from("schedule_tasks").insert(tasksToInsert);
-    if (tasksError) throw new Error(`Failed to save tasks: ${tasksError.message}`);
+    const schedulePayload = {
+      land_id: landId,
+      farmer_id: farmerId,
+      tenant_id: tenantId,
+      crop_name: inputs.cropLabel || cropName,
+      crop_variety: inputs.varietyName,
+      variety_id: inputs.varietyId,
+      cultivation_method: inputs.stageClockMethod ?? inputs.cultivationMethod,
+      crop_cycle: inputs.cropCycle,
+      sowing_date: inputs.sowingDate,
+      transplant_date: inputs.transplantDate,
+      expected_harvest_date: harvestDateStr,
+      is_active: true,
+      status: "active",
+      generation_language: language,
+      ai_model: narration.narrated
+        ? `${narration.provider ?? "unknown"}/${narration.model ?? "unknown"} (narration only)`
+        : "none",
+      input_soil_data: landContext.soil,
+      input_weather_data: landContext.weather,
+      input_land_coordinates: landContext.coordinates,
+      agro_climatic_zone: landContext.agroClimaticZone,
+      calculated_for_area_acres: inputs.landAreaAcres,
+      total_duration_days: durationDays,
+      seed_quantity_kg: baseline.totals.seed_kg,
+      fertilizer_n_kg: baseline.totals.n_kg,
+      fertilizer_p_kg: baseline.totals.p_kg,
+      fertilizer_k_kg: baseline.totals.k_kg,
+      total_estimated_cost: baseline.totals.estimated_cost,
+      state_region: inputs.state,
+      district_name: inputs.district,
+      farming_type: farmingType,
+      tasks_total_count: baseline.tasks.length,
+      tasks_completed_count: 0,
+      backdated_consent: !!backdatedConsent,
+      backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
+      generation_params: {
+        generator_version: GENERATOR_VERSION,
+        resolved_inputs: inputs,
+        harness: harnessTrace,
+        narration: {
+          requested_language: language,
+          persisted_language: language,
+          applied: narration.narrated,
+          narrated_count: narration.narratedCount,
+          total_count: narration.totalCount,
+          reason: narration.reason ?? null,
+        },
+        land_context_gaps: landContext.gaps,
+        ndvi_context: landContext.ndvi,
+      },
+      metadata: {
+        coverage: baseline.coverage,
+        missing_sections: Object.entries(baseline.coverage)
+          .filter(([, ok]) => ok === false)
+          .map(([k]) => k),
+        gaps: baseline.gaps,
+        provenance: baseline.provenance,
+        rag_evidence: ragEvidence,
+      },
+    };
 
-    await supabase
-      .from("lands")
-      .update({
-        current_crop: inputs.cropLabel || cropName,
-        current_crop_variety_id: inputs.varietyId,
-        planting_date: inputs.sowingDate,
-        transplant_date: inputs.transplantDate,
-        // P0-RC5: DAS clock and GDD clock start on the same day (accumulator precedence:
-        // transplant → planting). current_gdd is cleared so a stale sum from the previous
-        // cycle can never feed the stage engine before the rebuild.
-        gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting",
-        gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate,
-        current_gdd: null,
-        gdd_last_computed_at: null,
-        expected_harvest_date: harvestDateStr,
-        active_schedule_id: savedSchedule.id,
-        crop_cycle: inputs.cropCycle,
-        updated_at: new Date().toISOString(),
+    const landPayload = {
+      current_crop: inputs.cropLabel || cropName,
+      current_crop_variety_id: inputs.varietyId,
+      planting_date: inputs.sowingDate,
+      transplant_date: inputs.transplantDate,
+      gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting",
+      gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate,
+      current_gdd: null,
+      gdd_last_computed_at: null,
+      expected_harvest_date: harvestDateStr,
+      crop_cycle: inputs.cropCycle,
+    };
+
+    const { data: persisted, error: persistError } = await supabase
+      .rpc("persist_ai_crop_schedule_atomic", {
+        p_schedule: schedulePayload,
+        p_tasks: tasksToPersist,
+        p_land: landPayload,
       })
-      .eq("id", landId);
+      .single();
+
+    if (persistError || !persisted?.schedule_id) {
+      throw new Error(`Failed to persist schedule atomically: ${persistError?.message ?? "missing schedule result"}`);
+    }
+    if (Number(persisted.task_count) !== tasksToPersist.length) {
+      throw new Error(
+        `Atomic persistence task count mismatch: expected ${tasksToPersist.length}, got ${persisted.task_count}`,
+      );
+    }
+
+    const savedSchedule = { id: persisted.schedule_id };
 
     // Sections the agronomic database could not cover for this crop. They are returned
     // explicitly so the app can render them as "pending" instead of silently omitting them.
