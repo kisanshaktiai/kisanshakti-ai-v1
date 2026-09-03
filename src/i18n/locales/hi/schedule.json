@@ -318,7 +318,17 @@
       "variety_label": "किस्म (वैकल्पिक)",
       "variety_loading": "किस्में लोड हो रही हैं…",
       "variety_placeholder": "जैसे, IR-64, HD-2967, BT कपास",
-      "water": "पानी"
+      "water": "पानी",
+      "quick_date": {
+        "today": "आज",
+        "yesterday": "कल",
+        "week_ago": "1 हफ्ता पहले",
+        "fifteen_days_ago": "15 दिन पहले",
+        "month_ago": "1 महीना पहले",
+        "choose_date": "दूसरी तारीख चुनें",
+        "days_ago_note": "{{days}} दिन पहले",
+        "today_note": "आज बोया"
+      }
     },
     "section_pending": {
       "title": "कुछ भाग अभी तैयार किए जा रहे हैं",
@@ -466,7 +476,35 @@
       "post_harvest": "कटाई के बाद का काम करें",
       "generic": "यह काम करें"
     },
-    "photo": "फोटो"
+    "photo": "फोटो",
+    "method": {
+      "title": "खेती की पद्धति चुनें",
+      "subtitle": "इसी से तय होगा कि शेड्यूल में कौन-से इनपुट आएंगे",
+      "change": "बदलें",
+      "organic_only_title": "जैविक",
+      "organic_only_subtitle": "शून्य रसायन, प्रीमियम दाम",
+      "organic_only_tradeoff": "कम उपज, बेहतर दाम, कम लागत",
+      "organic_fertilizer_title": "संतुलित",
+      "organic_fertilizer_subtitle": "जैविक + रासायनिक मिश्रण",
+      "organic_fertilizer_tradeoff": "संतुलित उपज और लागत",
+      "fertilizer_pesticide_title": "अधिक उत्पादन",
+      "fertilizer_pesticide_subtitle": "पूर्ण रसायन, अधिकतम पैदावार",
+      "fertilizer_pesticide_tradeoff": "सबसे अधिक उपज, सबसे अधिक लागत"
+    },
+    "backdated": {
+      "title": "पुरानी तारीख की शेड्यूल चेतावनी",
+      "description": "आप पहले से बोई गई फसल के लिए शेड्यूल बना रहे हैं।",
+      "days_line": "आपने जो बुवाई तारीख चुनी है वह {{days}} दिन पहले की है।",
+      "consequence_1": "AI आपकी फसल की वर्तमान अवस्था सत्यापित नहीं कर सकता",
+      "consequence_2": "सिफारिशें आपकी फसल की वास्तविक स्थिति से मेल नहीं खा सकतीं",
+      "consequence_3": "जो काम पहले होने चाहिए थे वे अतिदेय दिखेंगे",
+      "consequence_4": "मौसम आधारित समायोजन पुराने डेटा का उपयोग करेगा",
+      "consent": "मैं समझता/समझती हूं कि पुरानी तारीख का उपयोग करने से गलत सिफारिशें मिल सकती हैं। किसी भी गलत सलाह की पूरी जिम्मेदारी मेरी है।",
+      "confirm": "मैं स्वीकार करता/करती हूं",
+      "cancel": "वापस जाएं और तारीख बदलें",
+      "important": "महत्वपूर्ण",
+      "important_note": "सटीक AI सिफारिशों के लिए, कृपया सुनिश्चित करें कि बुवाई की तारीख वही है जब आपने वास्तव में फसल बोई थी।"
+    }
   },
   "common": {
     "cancel": "रद्द करें",

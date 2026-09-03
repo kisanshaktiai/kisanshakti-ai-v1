@@ -72,7 +72,17 @@
       "variety_label": "Variety (Optional)",
       "variety_loading": "Loading varieties…",
       "variety_placeholder": "e.g., IR-64, HD-2967, BT Cotton",
-      "water": "Water"
+      "water": "Water",
+      "quick_date": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "week_ago": "1 week ago",
+        "fifteen_days_ago": "15 days ago",
+        "month_ago": "1 month ago",
+        "choose_date": "Choose another date",
+        "days_ago_note": "{{days}} days ago",
+        "today_note": "Sown today"
+      }
     },
     "schedule_view": {
       "no_active_schedule": "No Active Schedule",
@@ -466,7 +476,35 @@
       "post_harvest": "Post-harvest work",
       "generic": "Do this task"
     },
-    "photo": "Photo"
+    "photo": "Photo",
+    "method": {
+      "title": "Choose farming method",
+      "subtitle": "This decides which inputs your schedule will use",
+      "change": "Change",
+      "organic_only_title": "Organic",
+      "organic_only_subtitle": "Zero chemicals, premium price",
+      "organic_only_tradeoff": "Lower yield, premium price, lower input cost",
+      "organic_fertilizer_title": "Balanced",
+      "organic_fertilizer_subtitle": "Organic base + fertilizers",
+      "organic_fertilizer_tradeoff": "Balanced yield and cost",
+      "fertilizer_pesticide_title": "High Yield",
+      "fertilizer_pesticide_subtitle": "Full chemicals, max output",
+      "fertilizer_pesticide_tradeoff": "Highest yield, highest input cost"
+    },
+    "backdated": {
+      "title": "Backdated Schedule Warning",
+      "description": "You are creating a schedule for a crop that was planted in the past.",
+      "days_line": "The sowing date you selected is {{days}} days ago.",
+      "consequence_1": "AI cannot verify the current growth stage of your crop",
+      "consequence_2": "Recommendations may not match your crop's actual condition",
+      "consequence_3": "Tasks already past due will be marked as overdue",
+      "consequence_4": "Weather-based adjustments will use historical data",
+      "consent": "I understand that using a backdated sowing date may result in inaccurate recommendations. I take full responsibility for any incorrect advisory.",
+      "confirm": "I Accept & Continue",
+      "cancel": "Go Back & Change Date",
+      "important": "Important",
+      "important_note": "For accurate AI recommendations, please ensure the sowing date matches when you actually planted the crop."
+    }
   },
   "common": {
     "cancel": "Cancel",
