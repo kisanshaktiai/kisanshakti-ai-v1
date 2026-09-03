@@ -166,8 +166,17 @@ serve(async (req) => {
       transplantDate,
       language,
     });
+    // The farmer's language travels with the resolved inputs so DB-backed labels
+    // (observation_translations etc.) are read in that language, not English.
+    inputs.language = language;
+
+    // Land-level SSOT context (soil / weather / NDVI / coordinates). Recorded, never
+    // used to invent agronomy; missing sources become explicit gaps.
+    const landContext = await loadLandContext(supabase, landId);
+    if (landContext.gaps.length) inputs.gaps.push(...landContext.gaps);
 
     resolvedCropCode = inputs.cropCode || null;
+
 
     // ── P0-1: crop-identity SSOT gate (fail closed, overwrite nothing) ──────
     // (a) Another ACTIVE schedule on this land for a DIFFERENT crop.
