@@ -542,7 +542,14 @@ serve(async (req) => {
         ...(sanitized[idx]?.technical_details?.length
           ? { technical_details: sanitized[idx].technical_details }
           : {}),
+        // 2026-09-03: a task the model could not rewrite is marked translation-pending
+        // (with the language it is currently written in) instead of the whole schedule
+        // being relabelled English.
+        ...(narratedIdx.has(idx)
+          ? {}
+          : { needs_translation: true, source_language: "en", target_language: language }),
       },
+
 
 
       estimated_cost: t.estimated_cost,
