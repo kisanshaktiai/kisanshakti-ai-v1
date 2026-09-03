@@ -558,7 +558,7 @@ serve(async (req) => {
       trigger_rule_id: t.rule_ids[0] || null,
       confidence: t.confidence,
       source_refs: t.source_refs,
-      language: narration.narrated ? language : "en",
+      language: narratedIdx.has(idx) ? language : "en",
       is_pinned: false,
     }));
 
