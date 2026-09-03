@@ -499,6 +499,7 @@
   "crop_input": {
     "next": "Next",
     "crop_summary": "Crop",
-    "variety_summary": "Variety"
+    "variety_summary": "Variety",
+    "variety_optional_hint": "Don't know the variety? You can continue without it."
   }
 }

@@ -499,6 +499,7 @@
   "crop_input": {
     "next": "आगे",
     "crop_summary": "फसल",
-    "variety_summary": "किस्म"
+    "variety_summary": "किस्म",
+    "variety_optional_hint": "वाण नहीं मालूम? आप बिना चुने भी आगे बढ़ सकते हैं।"
   }
 }
