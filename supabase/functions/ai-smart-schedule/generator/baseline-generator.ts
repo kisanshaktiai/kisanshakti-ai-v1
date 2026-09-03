@@ -392,13 +392,20 @@ export async function generateBaseline(
 
   if (stages.length) {
     const sowStage = stages.find((s) => (das0(s, s.das_min) ?? 0) <= 0) || stages[0] || null;
-    const sowDescription = seed?.rationale || "";
+    // 2026-09-03: seed.rationale is a DERIVATION string ("150 plants/m2 x 18.0 g TGW,
+    // corrected for 90% germination, 98% purity …") — audit evidence, not farmer text.
+    // The farmer line is built from the same DB numbers in plain words.
+    const sowTechnical: string[] = [];
+    if (seed?.rationale) sowTechnical.push(`Derivation: ${seed.rationale}`);
+    const sowDescription = seedKg != null && areaAcres != null
+      ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
+      : "";
     const sowInstructions: string[] = [];
     if (!sowDescription) {
-      if (seedKg != null && areaAcres != null) sowInstructions.push(`Seed rate: ${seedKg} kg for ${areaAcres} acre`);
       if (sowStage?.growth_stage) sowInstructions.push(`Stage: ${sowStage.growth_stage}`);
       if (!sowInstructions.length) gaps.push("sowing_task_no_detail");
     }
+
     const sowProvenance: Provenance[] = seed
       ? [seed.provenance]
       : sowStage
@@ -426,7 +433,9 @@ export async function generateBaseline(
       source_refs: sowProvenance,
       instructions: sowInstructions,
       precautions: [],
+      technical_details: sowTechnical,
     });
+
   }
 
 
