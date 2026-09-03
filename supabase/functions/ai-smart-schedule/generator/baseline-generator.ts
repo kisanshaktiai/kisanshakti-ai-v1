@@ -1047,6 +1047,18 @@ export async function generateBaseline(
     varietyDuration?.maxDays ?? null,
   );
 
+  if (farmingPolicy) {
+    provenance.push({
+      table: "decision_rules",
+      source: `farming_policy:${farmingPolicy}`,
+      row_id: null,
+      detail: {
+        organic_substituted_rule_ids: [...new Set(policyApplied)],
+        suppressed_rule_ids: [...new Set(policySuppressed)],
+      },
+    } as unknown as Provenance);
+  }
+
   return {
     tasks,
     validation,
